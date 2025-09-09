@@ -1,0 +1,282 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Professional Background System */
+    --background: 0 0% 98.5%; /* Subtle off-white for sophistication */
+    --foreground: 220 20% 12%; /* Deep professional text */
+    
+    /* Card & Surface Colors */
+    --card: 0 0% 100%; /* Pure white for clean cards */
+    --card-foreground: 220 20% 15%;
+    --card-hover: 210 20% 98%; /* Subtle hover state */
+    
+    /* Popover & Dialog */
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 12%;
+    
+    /* Brand Colors - Professional Blue System */
+    --primary: 207 61% 45%; /* #1777CB - Main brand */
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 207 65% 40%; /* Deeper on hover */
+    --primary-light: 207 61% 95%; /* Light background */
+    
+    /* Secondary - Sophisticated Gray */
+    --secondary: 220 15% 96%;
+    --secondary-foreground: 220 20% 20%;
+    
+    /* Muted - Subtle Professional Tones */
+    --muted: 220 12% 95%;
+    --muted-foreground: 220 12% 45%;
+    
+    /* Accent - Complementary Professional */
+    --accent: 207 50% 92%;
+    --accent-foreground: 207 61% 35%;
+    
+    /* Status Colors - Corporate Standard */
+    --destructive: 0 60% 50%; /* Professional red */
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 45%; /* Professional green */
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%; /* Professional amber */
+    --warning-foreground: 0 0% 100%;
+    --info: 199 89% 48%; /* Professional cyan */
+    --info-foreground: 0 0% 100%;
+    
+    /* Border & Input - Clean Lines */
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 207 61% 45%;
+    
+    /* Layout & Spacing */
+    --radius: 0.375rem; /* Slightly rounded for modern look */
+    --header-height: 64px;
+    --sidebar-width: 260px;
+    
+    /* Shadows - Minimal */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+    --shadow-md: 0 2px 4px 0 rgb(0 0 0 / 0.06);
+    --shadow-lg: 0 4px 6px 0 rgb(0 0 0 / 0.07);
+    --shadow-xl: 0 8px 12px 0 rgb(0 0 0 / 0.08);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    letter-spacing: -0.01em;
+  }
+  
+  /* Professional Typography Scale */
+  h1, .heading-1 {
+    @apply text-3xl font-semibold text-gray-900 tracking-tight;
+    line-height: 1.2;
+  }
+  
+  h2, .heading-2 {
+    @apply text-2xl font-semibold text-gray-900 tracking-tight;
+    line-height: 1.3;
+  }
+  
+  h3, .heading-3 {
+    @apply text-xl font-semibold text-gray-800;
+    line-height: 1.4;
+  }
+  
+  h4, .heading-4 {
+    @apply text-lg font-medium text-gray-800;
+    line-height: 1.4;
+  }
+  
+  p {
+    @apply text-gray-700;
+    line-height: 1.7;
+  }
+  
+  .text-label {
+    @apply text-sm font-medium text-gray-600;
+    letter-spacing: 0.01em;
+  }
+  
+  .text-caption {
+    @apply text-xs text-gray-500;
+    letter-spacing: 0.02em;
+  }
+}
+
+/* Apple-style animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.6s ease-out;
+}
+
+.animate-slideIn {
+  animation: slideIn 0.4s ease-out;
+}
+
+/* Professional Form Styles */
+@layer components {
+  /* Input Base Styles */
+  input[type="text"],
+  input[type="email"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="password"],
+  select,
+  textarea {
+    @apply text-sm font-normal;
+    @apply placeholder:text-gray-400;
+    @apply focus:ring-2 focus:ring-hansl-500/20;
+    @apply transition-all duration-200;
+  }
+  
+  /* Professional Card Styles */
+  .card-professional {
+    @apply bg-white rounded-lg border border-gray-200;
+    @apply shadow-sm hover:shadow-md;
+    @apply transition-shadow duration-200;
+  }
+  
+  /* Data Table Styles */
+  .table-professional {
+    @apply w-full text-sm text-left text-gray-700;
+  }
+  
+  .table-professional thead {
+    @apply text-xs text-gray-600 uppercase bg-gray-50;
+    @apply border-b border-gray-200;
+    letter-spacing: 0.05em;
+  }
+  
+  .table-professional tbody tr {
+    @apply bg-white border-b border-gray-100;
+    @apply hover:bg-gray-50/50 transition-colors;
+  }
+  
+  /* Professional Button Variants */
+  .btn-professional {
+    @apply px-4 py-2 rounded-md font-medium;
+    @apply transition-all duration-200;
+    @apply focus:outline-none focus:ring-2 focus:ring-offset-2;
+  }
+  
+  .btn-primary {
+    @apply bg-hansl-500 text-white;
+    @apply hover:bg-hansl-600 active:bg-hansl-700;
+    @apply focus:ring-hansl-500;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-100 text-gray-700;
+    @apply hover:bg-gray-200 active:bg-gray-300;
+    @apply focus:ring-gray-500;
+  }
+  
+  /* Status Badge Styles */
+  .badge-status {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full;
+    @apply text-xs font-medium;
+  }
+  
+  /* Professional Sidebar */
+  .sidebar-professional {
+    @apply bg-white border-r border-gray-200;
+    @apply shadow-sm;
+  }
+  
+  /* Professional Header */
+  .header-professional {
+    @apply bg-white border-b border-gray-200;
+    @apply shadow-sm;
+    height: var(--header-height);
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-400 rounded-full;
+  &:hover {
+    @apply bg-gray-500;
+  }
+}
+
+/* Loading skeleton */
+.skeleton {
+  @apply animate-pulse bg-gray-200 rounded;
+}
+
+/* Minimal Effects */
+.card-minimal {
+  @apply bg-white rounded-md border border-gray-200;
+  @apply hover:border-gray-300 transition-colors;
+}
+
+/* Minimal Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fade {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Focus States */
+.focus-visible-professional:focus-visible {
+  @apply outline-none ring-2 ring-hansl-500/20 ring-offset-2;
+}
+
+/* Hover States */
+.hover-lift {
+  @apply transition-transform duration-200;
+  @apply hover:-translate-y-0.5;
+}
+
+/* Professional Divider */
+.divider-professional {
+  @apply border-t border-gray-200;
+}
+
+/* Content Container */
+.container-professional {
+  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+}

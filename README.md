@@ -1,36 +1,260 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# HANSL Workspace - 구매/발주 관리 시스템
 
-## Getting Started
+## 📋 개요
 
-First, run the development server:
+HANSL Workspace는 기업의 구매 요청부터 발주, 승인, 입고까지 전체 프로세스를 관리하는 통합 시스템입니다.
 
+### 주요 기능
+- 📝 구매 요청 생성 및 관리
+- ✅ 다단계 승인 프로세스 (중간/최종 승인)
+- 📊 Excel 발주서 생성 및 다운로드
+- 🔔 Slack 연동 실시간 알림
+- 📦 입고 관리 및 추적
+- 👥 직원 및 거래처 관리
+
+## 🚀 시작하기
+
+### 필수 요구사항
+- Node.js 18.0 이상
+- npm 또는 yarn
+- Supabase 계정
+- Slack 앱 (선택사항)
+
+### 설치
+
+1. **저장소 클론**
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone [repository-url]
+cd hanslworkspace
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. **의존성 설치**
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. **환경변수 설정**
+`.env.local` 파일을 생성하고 다음 내용을 입력:
+```env
+# Supabase
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Slack (선택사항)
+SLACK_USER_TOKEN=your_user_token
+SLACK_BOT_TOKEN=your_bot_token
+SLACK_SIGNING_SECRET=your_signing_secret
+```
 
-## Learn More
+4. **개발 서버 실행**
+```bash
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+http://localhost:3000 에서 앱에 접속할 수 있습니다.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 📁 프로젝트 구조
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+hanslworkspace/
+├── src/
+│   ├── app/                  # Next.js App Router
+│   │   ├── (protected)/      # 인증이 필요한 페이지
+│   │   │   ├── dashboard/    # 대시보드
+│   │   │   ├── purchase/     # 발주 관리
+│   │   │   ├── approval/     # 승인 관리
+│   │   │   ├── vendor/       # 거래처 관리
+│   │   │   └── employee/     # 직원 관리
+│   │   ├── api/              # API 엔드포인트
+│   │   └── login/            # 로그인 페이지
+│   ├── components/           # React 컴포넌트
+│   │   ├── ui/              # UI 컴포넌트 (shadcn/ui)
+│   │   ├── purchase/         # 발주 관련 컴포넌트
+│   │   ├── approval/         # 승인 관련 컴포넌트
+│   │   └── layout/           # 레이아웃 컴포넌트
+│   ├── lib/                  # 라이브러리 및 유틸리티
+│   │   └── supabase/         # Supabase 클라이언트
+│   ├── services/             # 비즈니스 로직
+│   ├── hooks/                # 커스텀 React 훅
+│   ├── types/                # TypeScript 타입 정의
+│   └── utils/                # 유틸리티 함수
+├── scripts/                  # 유틸리티 스크립트
+│   ├── test-purchase.js      # 발주 테스트
+│   ├── test-slack.js         # Slack 테스트
+│   ├── test-excel.js         # Excel 테스트
+│   └── health-check.js       # 시스템 점검
+└── public/                   # 정적 파일
+```
 
-## Deploy on Vercel
+## 🔧 주요 기능 설명
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 1. 구매 요청 생성
+- 요청자가 구매 요청서 작성
+- 최대 100개 품목 동시 입력 가능
+- 거래처 및 담당자 선택
+- 납기일 및 프로젝트 정보 입력
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 2. 승인 프로세스
+```
+요청 생성 → 중간관리자 승인 → 최종관리자 승인 → Lead Buyer 처리
+```
+- 역할 기반 접근 제어
+- 일괄 승인 기능
+- 반려 시 사유 입력
+
+### 3. Excel 발주서
+- 표준 발주서 양식 자동 생성
+- 회사 정보 및 거래처 정보 포함
+- 품목별 상세 내역
+- 자동 합계 계산
+
+### 4. Slack 알림
+- 승인 요청 시 자동 알림
+- 승인/반려 결과 통보
+- 입고 완료 알림
+
+### 5. 입고 관리
+- 부분 입고 지원
+- 입고 수량 추적
+- 입고 완료 자동 처리
+
+## 📊 데이터베이스 스키마
+
+### 주요 테이블
+- `employees` - 직원 정보 및 권한
+- `vendors` - 거래처 정보
+- `vendor_contacts` - 거래처 담당자
+- `purchase_requests` - 발주 요청
+- `purchase_request_items` - 발주 품목
+- `deliveries` - 입고 정보
+
+## 🔐 권한 관리
+
+### 사용자 역할
+| 역할 | 권한 |
+|------|------|
+| 일반 직원 | 구매 요청 생성, 본인 요청 조회 |
+| 중간관리자 | 중간 승인 권한 |
+| 최종관리자 | 최종 승인 권한 |
+| Lead Buyer | 발주 처리, Excel 다운로드 |
+| Admin | 전체 시스템 관리 |
+
+## 🧪 테스트
+
+### 단위 테스트
+```bash
+# 발주 기능 테스트
+node scripts/test-purchase.js
+
+# Slack 알림 테스트  
+node scripts/test-slack.js
+
+# Excel 다운로드 테스트
+node scripts/test-excel.js
+
+# 시스템 전체 점검
+node scripts/health-check.js
+```
+
+### 개발 도구
+```bash
+# 코드 스타일 검사
+npm run lint
+
+# TypeScript 타입 체크
+npx tsc --noEmit
+
+# 프로덕션 빌드
+npm run build
+```
+
+## 📝 API 문서
+
+### 주요 API 엔드포인트
+
+#### 직원 관리
+- `GET /api/employee` - 직원 목록 조회
+- `GET /api/employee/[id]` - 직원 상세 조회
+- `POST /api/employee` - 직원 등록
+- `PUT /api/employee/[id]` - 직원 정보 수정
+
+#### 발주 관리
+- `GET /api/purchase` - 발주 목록 조회
+- `POST /api/purchase` - 발주 생성
+- `POST /api/purchase/[id]/approve` - 발주 승인
+- `GET /api/excel/download/[orderNumber]` - Excel 다운로드
+
+#### 승인 관리
+- `POST /api/approval` - 개별 승인 처리
+- `POST /api/approval/batch` - 일괄 승인 처리
+
+#### 알림
+- `POST /api/slack/notify` - Slack 알림 전송
+
+## 🚀 배포
+
+### Vercel 배포
+```bash
+# Vercel CLI 설치
+npm i -g vercel
+
+# 배포
+vercel
+```
+
+### Docker 배포
+```dockerfile
+FROM node:18-alpine
+WORKDIR /app
+COPY . .
+RUN npm ci --only=production
+RUN npm run build
+EXPOSE 3000
+CMD ["npm", "start"]
+```
+
+## 🛠️ 환경 설정
+
+### 개발 환경
+- **Framework**: Next.js 15.5.0
+- **Language**: TypeScript 5.9
+- **Styling**: Tailwind CSS 3.4
+- **UI Components**: shadcn/ui
+- **Database**: Supabase (PostgreSQL)
+- **State Management**: React Hook Form
+- **Excel**: ExcelJS
+
+### 프로덕션 최적화
+- React Strict Mode 활성화
+- SWC 미니파이어 사용
+- 이미지 최적화
+- Server Actions 활성화
+
+## 🤝 기여하기
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## 📄 라이선스
+
+이 프로젝트는 비공개 소프트웨어입니다. 무단 사용 및 배포를 금지합니다.
+
+## 👥 팀
+
+- **개발**: HANSL IT Team
+- **기획**: HANSL Purchase Team
+- **디자인**: HANSL UX Team
+
+## 📞 지원
+
+문제가 발생하거나 도움이 필요한 경우:
+- 이메일: support@hansl.com
+- Slack: #hansl-workspace-support
+
+---
+
+© 2025 HANSL. All rights reserved.
