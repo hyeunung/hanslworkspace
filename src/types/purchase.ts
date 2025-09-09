@@ -170,6 +170,12 @@ export interface PurchaseRequestWithDetails extends PurchaseRequest {
   sales_order_number?: string
   is_payment_completed?: boolean
   payment_completed_at?: string
+  middle_manager_comment?: string
+  final_manager_comment?: string
+  purchase_comment?: string
+  purpose?: string
+  order_number?: string
+  link?: string
 }
 
 export type PurchaseStatus = 'pending' | 'inProgress' | 'received' | 'rejected'

@@ -786,7 +786,7 @@ export default function PurchaseNewMain() {
                       onValueChange={(value) => {
                         field.onChange(Number(value));
                         setVendor(value);
-                        setSelectedVendor(Number(value));
+                        setValue('vendor_id', Number(value));
                         setVendorSearchTerm("");
                       }}
                     >

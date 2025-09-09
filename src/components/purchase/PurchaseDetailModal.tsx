@@ -289,7 +289,7 @@ export default function PurchaseDetailModal({
           is_received: isReceived,
           delivery_status: isReceived ? 'received' : 'pending',
           received_quantity: isReceived ? 
-            purchase?.items?.find(item => item.id === itemId)?.quantity || 0 : 0,
+            purchase?.items?.find(item => String(item.id) === String(itemId))?.quantity || 0 : 0,
           received_at: isReceived ? new Date().toISOString() : null
         })
         .eq('id', itemId)

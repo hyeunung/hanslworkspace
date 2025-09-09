@@ -750,7 +750,7 @@ const FastPurchaseTable = memo(({ purchases, activeTab = 'done', currentUserRole
         activeTab={activeTab}
         onRefresh={onRefresh}
         onDelete={(purchase) => {
-          setPurchaseToDelete(purchase);
+          setPurchaseToDelete(purchase as Purchase);
           setDeleteConfirmOpen(true);
         }}
       />

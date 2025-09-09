@@ -620,7 +620,7 @@ export default function SupportMain() {
                           if ((inquiry.inquiry_type === 'modify' || inquiry.inquiry_type === 'delete') && inquiry.purchase_request_id) {
                             fetchPurchaseDetail(inquiry.purchase_request_id.toString())
                           } else {
-                            setExpandedInquiry(expandedInquiry === inquiry.id ? null : inquiry.id)
+                            setExpandedInquiry(expandedInquiry === inquiry.id ? null : inquiry.id!)
                           }
                         }}
                       >

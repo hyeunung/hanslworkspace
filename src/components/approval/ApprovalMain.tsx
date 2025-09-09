@@ -182,7 +182,7 @@ export default function ApprovalMain() {
     return counts
   }
 
-  const getFilteredApprovals = () => {
+  const getFilteredApprovals = (): PurchaseRequestWithDetails[] => {
     if (!employee) return []
 
     // purchase_role 처리
@@ -369,7 +369,7 @@ export default function ApprovalMain() {
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
       const filteredApprovals = getFilteredApprovals()
-      setSelectedApprovals(filteredApprovals.map(approval => Number(approval.id!)).filter((id): id is number => !isNaN(id)))
+      setSelectedApprovals((filteredApprovals as PurchaseRequestWithDetails[]).map(approval => Number(approval.id!)).filter((id): id is number => !isNaN(id)))
     } else {
       setSelectedApprovals([])
     }
@@ -462,14 +462,14 @@ export default function ApprovalMain() {
       </div>
 
       <div className="space-y-4">
-          {filteredApprovals.length > 0 && (
+          {(filteredApprovals as PurchaseRequestWithDetails[]).length > 0 && (
             <div className="flex items-center justify-between">
               <BatchApprovalButton
                 selectedCount={selectedApprovals.length}
-                totalCount={filteredApprovals.length}
+                totalCount={(filteredApprovals as PurchaseRequestWithDetails[]).length}
                 onBatchApproval={() => handleBatchApproval(selectedApprovals)}
                 onSelectAll={handleSelectAll}
-                allSelected={selectedApprovals.length === filteredApprovals.length}
+                allSelected={selectedApprovals.length === (filteredApprovals as PurchaseRequestWithDetails[]).length}
               />
               <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
                 <SelectTrigger className="w-[200px]">
@@ -487,7 +487,7 @@ export default function ApprovalMain() {
           )}
 
           <div className="space-y-4">
-            {filteredApprovals.length === 0 ? (
+            {(filteredApprovals as PurchaseRequestWithDetails[]).length === 0 ? (
               <div className="text-center py-12">
                 <AlertCircle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">승인 대기 항목이 없습니다</h3>
@@ -496,7 +496,7 @@ export default function ApprovalMain() {
                 </p>
               </div>
             ) : (
-              filteredApprovals.map((approval) => (
+              (filteredApprovals as PurchaseRequestWithDetails[]).map((approval: PurchaseRequestWithDetails) => (
                 <ApprovalCard
                   key={approval.id}
                   approval={approval}
