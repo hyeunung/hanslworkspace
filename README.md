@@ -28,6 +28,34 @@ git clone [repository-url]
 cd hanslworkspace
 ```
 
+2. **환경 변수 설정**
+
+로컬 개발을 위해 `.env` 파일을 생성하고 다음 변수들을 설정하세요:
+
+```bash
+# Supabase Configuration (필수)
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
+
+# Slack Configuration (선택)
+SLACK_USER_TOKEN=xoxp-your-user-token
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_SIGNING_SECRET=your-signing-secret
+```
+
+**Supabase 키 가져오기:**
+1. [Supabase Dashboard](https://app.supabase.com) 로그인
+2. 프로젝트 선택 → Settings → API
+3. Project URL과 anon public key 복사
+
+**배포 환경 설정:**
+- **Vercel**: Dashboard → Settings → Environment Variables
+- **Netlify**: Site Settings → Environment Variables
+
+각 플랫폼에서 다음 환경 변수를 추가하세요:
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
 2. **의존성 설치**
 ```bash
 npm install
