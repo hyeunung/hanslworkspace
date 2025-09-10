@@ -122,41 +122,18 @@ export default function VendorMain() {
         onCreateNew={handleCreateNew}
       />
 
-      {/* 통계 정보 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-lg border">
-          <div className="text-2xl font-bold text-hansl-600">
-            {filteredVendors.length}
-          </div>
-          <div className="text-sm text-gray-600">총 업체 수</div>
-        </div>
-        <div className="bg-white p-4 rounded-lg border">
-          <div className="text-2xl font-bold text-green-600">
-            {filteredVendors.filter(v => v.is_active).length}
-          </div>
-          <div className="text-sm text-gray-600">활성 업체</div>
-        </div>
-        <div className="bg-white p-4 rounded-lg border">
-          <div className="text-2xl font-bold text-red-600">
-            {filteredVendors.filter(v => !v.is_active).length}
-          </div>
-          <div className="text-sm text-gray-600">비활성 업체</div>
-        </div>
-        <div className="bg-white p-4 rounded-lg border">
-          <div className="text-2xl font-bold text-purple-600">
-            {filteredVendors.filter(v => v.business_number).length}
-          </div>
-          <div className="text-sm text-gray-600">사업자등록 완료</div>
-        </div>
-      </div>
-
       {/* 테이블 섹션 */}
       <div className="bg-white rounded-lg border">
         <div className="p-4 border-b">
           <div className="flex justify-between items-center">
-            <h3 className="text-lg font-medium">업체 목록</h3>
-            <div className="text-sm text-gray-600">
-              {loading ? '로딩 중...' : `총 ${filteredVendors.length}개의 업체`}
+            <div className="flex items-center gap-3">
+              <h3 className="text-lg font-medium">업체 목록</h3>
+              <span className="px-3 py-1 bg-blue-50 text-blue-600 text-sm font-semibold rounded-full">
+                총 {filteredVendors.length}개
+              </span>
+            </div>
+            <div className="text-sm text-gray-500">
+              {loading && '업데이트 중...'}
             </div>
           </div>
         </div>

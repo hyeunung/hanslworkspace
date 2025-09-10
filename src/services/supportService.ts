@@ -44,7 +44,7 @@ class SupportService {
         .maybeSingle()
 
       const { error } = await this.supabase
-        .from('support_inquires')
+        .from('support_inquiries')
         .insert({
           user_id: user.id,
           user_email: employee?.email || user.email,
@@ -72,7 +72,7 @@ class SupportService {
       if (authError || !user) return { success: false, data: [], error: '로그인이 필요합니다.' }
 
       const { data, error } = await this.supabase
-        .from('support_inquires')
+        .from('support_inquiries')
         .select(`
           *,
           purchase_requests (
@@ -96,7 +96,7 @@ class SupportService {
   async getAllInquiries(): Promise<{ success: boolean; data: SupportInquiry[]; error?: string }> {
     try {
       const { data, error } = await this.supabase
-        .from('support_inquires')
+        .from('support_inquiries')
         .select(`
           *,
           purchase_requests (
@@ -153,7 +153,7 @@ class SupportService {
       }
 
       const { error } = await this.supabase
-        .from('support_inquires')
+        .from('support_inquiries')
         .update(updateData)
         .eq('id', inquiryId)
 
@@ -219,13 +219,13 @@ class SupportService {
   // 실시간 구독 설정
   subscribeToInquiries(callback: (payload: any) => void) {
     return this.supabase
-      .channel('support_inquires_changes')
+      .channel('support_inquiries_changes')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'support_inquires'
+          table: 'support_inquiries'
         },
         callback
       )
@@ -338,6 +338,63 @@ class SupportService {
       return { success: true, data }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : '발주요청 조회 실패' }
+    }
+  }
+
+  // 문의 삭제
+  async deleteInquiry(inquiryId: number): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { data: { user }, error: authError } = await this.supabase.auth.getUser()
+      if (authError || !user) return { success: false, error: '로그인이 필요합니다.' }
+
+      // 관리자 권한 확인
+      const { data: employee } = await this.supabase
+        .from('employees')
+        .select('purchase_role')
+        .eq('email', user.email)
+        .single()
+
+      const isAdmin = employee?.purchase_role?.includes('app_admin')
+
+      // 관리자가 아닌 경우에만 본인 문의 확인
+      if (!isAdmin) {
+        // 문의 정보 확인 (본인 것인지)
+        const { data: inquiry, error: fetchError } = await this.supabase
+          .from('support_inquiries')
+          .select('user_id, status, resolution_note')
+          .eq('id', inquiryId)
+          .single()
+
+        if (fetchError || !inquiry) {
+          return { success: false, error: '문의를 찾을 수 없습니다.' }
+        }
+
+        // 본인 문의가 아니면 삭제 불가
+        if (inquiry.user_id !== user.id) {
+          return { success: false, error: '본인의 문의만 삭제할 수 있습니다.' }
+        }
+
+        // 일반 사용자는 답변이 있거나 처리중인 문의는 삭제 불가
+        if (inquiry.resolution_note) {
+          return { success: false, error: '답변이 완료된 문의는 삭제할 수 없습니다.' }
+        }
+
+        if (inquiry.status !== 'open') {
+          return { success: false, error: '처리가 진행된 문의는 삭제할 수 없습니다.' }
+        }
+      }
+      // 관리자는 모든 문의 삭제 가능 (제한 없음)
+
+      // 삭제 실행
+      const { error } = await this.supabase
+        .from('support_inquiries')
+        .delete()
+        .eq('id', inquiryId)
+
+      if (error) throw error
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : '문의 삭제 실패' }
     }
   }
 }

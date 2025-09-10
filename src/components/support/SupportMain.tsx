@@ -194,6 +194,20 @@ export default function SupportMain() {
     }
   }
 
+  // 문의 삭제
+  const handleDeleteInquiry = async (inquiryId: number) => {
+    if (!confirm('정말로 이 문의를 삭제하시겠습니까?\n삭제된 문의는 복구할 수 없습니다.')) return
+
+    const result = await supportService.deleteInquiry(inquiryId)
+    
+    if (result.success) {
+      toast.success('문의가 삭제되었습니다.')
+      loadInquiries()
+    } else {
+      toast.error(result.error || '문의 삭제 실패')
+    }
+  }
+
   // 발주요청 상세 조회
   const fetchPurchaseDetail = async (purchaseRequestId: string) => {
     setLoadingDetail(true)
@@ -325,21 +339,24 @@ export default function SupportMain() {
         <div className="mb-4">
           <h1 className="text-2xl font-bold text-gray-900">문의하기</h1>
           <p className="text-sm text-gray-600 mt-1">
-            시스템 사용 중 궁금하신 점이나 개선사항을 알려주세요
+            {isAdmin 
+              ? '모든 문의를 관리하고 답변할 수 있습니다'
+              : '시스템 사용 중 궁금하신 점이나 개선사항을 알려주세요'}
           </p>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-          {/* 문의 작성 폼 */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MessageCircle className="w-5 h-5" />
-                문의 내용
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
+        <div className={`${isAdmin ? 'max-w-4xl' : 'grid grid-cols-1 xl:grid-cols-2 gap-4'}`}>
+          {/* 문의 작성 폼 - app_admin이 아닌 경우에만 표시 */}
+          {!isAdmin && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageCircle className="w-5 h-5" />
+                  문의 내용
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     문의 유형 <span className="text-red-500">*</span>
@@ -581,6 +598,7 @@ export default function SupportMain() {
               </form>
             </CardContent>
           </Card>
+          )}
 
           {/* 문의 목록 */}
           <Card>
@@ -673,6 +691,21 @@ export default function SupportMain() {
                                 완료
                               </Button>
                             )}
+                            {/* 삭제 버튼 - 관리자는 모든 문의 삭제 가능, 일반 사용자는 본인의 open 상태만 */}
+                            {(isAdmin || (inquiry.status === 'open' && !inquiry.resolution_note && inquiry.user_email === currentUserEmail)) && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDeleteInquiry(inquiry.id!)
+                                }}
+                                className="h-6 w-6 p-0 hover:bg-red-50"
+                                title="문의 삭제"
+                              >
+                                <Trash2 className="w-3 h-3 text-red-600" />
+                              </Button>
+                            )}
                             <button
                               type="button"
                               className="p-1 hover:bg-gray-200 rounded"
@@ -730,18 +763,25 @@ export default function SupportMain() {
 
       {/* 발주요청 상세 모달 */}
       <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>발주요청 상세</span>
+            <DialogTitle className="flex items-center justify-between text-lg">
+              <div className="flex items-center gap-2">
+                <span>발주요청 상세</span>
+                {selectedInquiryDetail?.purchase_order_number && (
+                  <Badge variant="outline" className="font-normal">
+                    {selectedInquiryDetail.purchase_order_number}
+                  </Badge>
+                )}
+              </div>
               {isAdmin && selectedInquiryDetail && (
                 <Button
                   variant="destructive"
                   size="sm"
                   onClick={deletePurchaseRequest}
-                  className="h-8 text-xs px-3"
+                  className="h-8 px-3"
                 >
-                  <Trash2 className="w-3 h-3 mr-1" />
+                  <Trash2 className="w-4 h-4 mr-1" />
                   전체 삭제
                 </Button>
               )}
@@ -753,144 +793,159 @@ export default function SupportMain() {
               <div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : selectedInquiryDetail && (
-            <div className="space-y-4">
+            <div className="space-y-6">
               {/* 기본 정보 */}
-              <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
                 <div>
-                  <span className="text-sm text-gray-600">발주번호</span>
-                  <p className="font-medium">{selectedInquiryDetail.purchase_order_number || 'N/A'}</p>
+                  <span className="text-xs text-gray-500 uppercase tracking-wider">발주번호</span>
+                  <p className="font-semibold text-sm mt-1">{selectedInquiryDetail.purchase_order_number || 'N/A'}</p>
                 </div>
                 <div>
-                  <span className="text-sm text-gray-600">업체명</span>
-                  <p className="font-medium">{selectedInquiryDetail.vendor_name}</p>
+                  <span className="text-xs text-gray-500 uppercase tracking-wider">업체명</span>
+                  <p className="font-semibold text-sm mt-1">{selectedInquiryDetail.vendor_name}</p>
                 </div>
                 <div>
-                  <span className="text-sm text-gray-600">요청자</span>
-                  <p className="font-medium">{selectedInquiryDetail.requester_name}</p>
+                  <span className="text-xs text-gray-500 uppercase tracking-wider">요청자</span>
+                  <p className="font-semibold text-sm mt-1">{selectedInquiryDetail.requester_name}</p>
                 </div>
                 <div>
-                  <span className="text-sm text-gray-600">요청일</span>
-                  <p className="font-medium">
+                  <span className="text-xs text-gray-500 uppercase tracking-wider">요청일</span>
+                  <p className="font-semibold text-sm mt-1">
                     {selectedInquiryDetail.request_date && 
                       format(new Date(selectedInquiryDetail.request_date), 'yyyy-MM-dd')}
                   </p>
                 </div>
               </div>
 
-              {/* 품목 목록 - 발주요청 관리와 동일한 형식 */}
+              {/* 품목 목록 - 개선된 디자인 */}
               <div>
-                <h3 className="font-medium mb-2">품목 상세</h3>
-                <div className="border rounded-lg overflow-hidden">
+                <h3 className="font-semibold text-base mb-3">품목 상세</h3>
+                <div className="border rounded-lg overflow-x-auto">
                   <table className="w-full">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-gray-50 border-b">
                       <tr>
-                        <th className="text-left text-xs font-medium text-gray-700 px-2 py-2 w-12">번호</th>
-                        <th className="text-left text-xs font-medium text-gray-700 px-2 py-2">품명</th>
-                        <th className="text-left text-xs font-medium text-gray-700 px-2 py-2">규격</th>
-                        <th className="text-center text-xs font-medium text-gray-700 px-2 py-2 w-16">수량</th>
-                        <th className="text-right text-xs font-medium text-gray-700 px-2 py-2 w-24">단가</th>
-                        <th className="text-right text-xs font-medium text-gray-700 px-2 py-2 w-28">금액</th>
-                        <th className="text-left text-xs font-medium text-gray-700 px-2 py-2">비고</th>
-                        <th className="text-left text-xs font-medium text-gray-700 px-2 py-2 w-20">링크</th>
-                        {isAdmin && <th className="text-center text-xs font-medium text-gray-700 px-2 py-2 w-20">작업</th>}
+                        <th className="text-left text-xs font-medium text-gray-700 px-3 py-3 w-12">번호</th>
+                        <th className="text-left text-xs font-medium text-gray-700 px-3 py-3 min-w-[180px]">품명</th>
+                        <th className="text-left text-xs font-medium text-gray-700 px-3 py-3 min-w-[150px]">규격</th>
+                        <th className="text-center text-xs font-medium text-gray-700 px-3 py-3 w-20">수량</th>
+                        <th className="text-right text-xs font-medium text-gray-700 px-3 py-3 w-28">단가</th>
+                        <th className="text-right text-xs font-medium text-gray-700 px-3 py-3 w-32">금액</th>
+                        <th className="text-left text-xs font-medium text-gray-700 px-3 py-3 min-w-[150px]">비고</th>
+                        <th className="text-center text-xs font-medium text-gray-700 px-3 py-3 w-16">링크</th>
+                        {isAdmin && <th className="text-center text-xs font-medium text-gray-700 px-3 py-3 w-24">작업</th>}
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-gray-200">
                       {selectedInquiryDetail.purchase_request_items?.map((item: any, index: number) => (
-                        <tr key={item.id} className="border-t hover:bg-gray-50">
-                          <td className="text-xs px-2 py-2 text-center">{item.line_number || index + 1}</td>
-                          <td className="text-xs px-2 py-2">
+                        <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="text-sm px-3 py-3 text-center font-medium text-gray-600">
+                            {item.line_number || index + 1}
+                          </td>
+                          <td className="text-sm px-3 py-3">
                             {editingItemId === item.id ? (
                               <Input
                                 value={editingItem?.item_name || ''}
                                 onChange={(e) => setEditingItem({...editingItem, item_name: e.target.value})}
-                                className="h-7 text-xs"
+                                className="h-9 text-sm w-full"
+                                autoFocus
                               />
                             ) : (
-                              item.item_name
+                              <span className="font-medium text-gray-900">{item.item_name}</span>
                             )}
                           </td>
-                          <td className="text-xs px-2 py-2">
+                          <td className="text-sm px-3 py-3">
                             {editingItemId === item.id ? (
                               <Input
                                 value={editingItem?.specification || ''}
                                 onChange={(e) => setEditingItem({...editingItem, specification: e.target.value})}
-                                className="h-7 text-xs"
+                                className="h-9 text-sm w-full"
                               />
                             ) : (
-                              item.specification || '-'
+                              <span className="text-gray-600">{item.specification || '-'}</span>
                             )}
                           </td>
-                          <td className="text-xs text-center px-2 py-2">
+                          <td className="text-sm text-center px-3 py-3">
                             {editingItemId === item.id ? (
                               <Input
                                 type="number"
                                 value={editingItem?.quantity || ''}
                                 onChange={(e) => setEditingItem({...editingItem, quantity: parseInt(e.target.value)})}
-                                className="h-7 text-xs text-center"
+                                className="h-9 text-sm text-center w-full"
                               />
                             ) : (
-                              item.quantity
+                              <span className="font-medium">{item.quantity}</span>
                             )}
                           </td>
-                          <td className="text-xs text-right px-2 py-2">
+                          <td className="text-sm text-right px-3 py-3">
                             {editingItemId === item.id ? (
                               <Input
                                 type="number"
                                 value={editingItem?.unit_price_value || ''}
                                 onChange={(e) => setEditingItem({...editingItem, unit_price_value: parseInt(e.target.value)})}
-                                className="h-7 text-xs text-right"
+                                className="h-9 text-sm text-right w-full"
                               />
                             ) : (
-                              item.unit_price_value ? `${parseFloat(item.unit_price_value).toLocaleString()}` : '-'
+                              <span className="font-medium">
+                                {item.unit_price_value ? `${parseFloat(item.unit_price_value).toLocaleString()}` : '-'}
+                              </span>
                             )}
                           </td>
-                          <td className="text-xs text-right px-2 py-2">
+                          <td className="text-sm text-right px-3 py-3">
                             {editingItemId === item.id ? (
-                              `${((editingItem?.quantity || 0) * (editingItem?.unit_price_value || 0)).toLocaleString()}`
+                              <span className="font-semibold text-blue-600">
+                                {((editingItem?.quantity || 0) * (editingItem?.unit_price_value || 0)).toLocaleString()}
+                              </span>
                             ) : (
-                              item.amount_value ? `${parseFloat(item.amount_value).toLocaleString()}` : '-'
+                              <span className="font-semibold text-blue-600">
+                                {item.amount_value ? `${parseFloat(item.amount_value).toLocaleString()}` : '-'}
+                              </span>
                             )}
                           </td>
-                          <td className="text-xs px-2 py-2">
+                          <td className="text-sm px-3 py-3">
                             {editingItemId === item.id ? (
-                              <Input
+                              <Textarea
                                 value={editingItem?.remark || ''}
                                 onChange={(e) => setEditingItem({...editingItem, remark: e.target.value})}
-                                className="h-7 text-xs"
+                                className="h-9 text-sm w-full resize-none"
+                                rows={1}
                               />
                             ) : (
-                              item.remark || '-'
+                              <span className="text-gray-600 text-xs">{item.remark || '-'}</span>
                             )}
                           </td>
-                          <td className="text-xs px-2 py-2">
+                          <td className="text-sm text-center px-3 py-3">
                             {item.link ? (
-                              <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                                링크
+                              <a 
+                                href={item.link} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="inline-flex items-center justify-center w-8 h-8 rounded hover:bg-blue-50 text-blue-600"
+                              >
+                                <Eye className="w-4 h-4" />
                               </a>
                             ) : (
-                              '-'
+                              <span className="text-gray-400">-</span>
                             )}
                           </td>
                           {isAdmin && (
-                            <td className="text-xs text-center px-3 py-2">
+                            <td className="text-sm text-center px-3 py-3">
                               {editingItemId === item.id ? (
                                 <div className="flex justify-center gap-1">
                                   <Button
                                     size="sm"
-                                    variant="outline"
                                     onClick={() => saveEditItem(item.id)}
-                                    className="h-6 w-6 p-0"
+                                    className="h-8 px-2 bg-green-600 hover:bg-green-700"
                                   >
-                                    <Save className="w-3 h-3" />
+                                    <Save className="w-4 h-4 mr-1" />
+                                    저장
                                   </Button>
                                   <Button
                                     size="sm"
-                                    variant="ghost"
+                                    variant="outline"
                                     onClick={cancelEditItem}
-                                    className="h-6 w-6 p-0"
+                                    className="h-8 px-2"
                                   >
-                                    <X className="w-3 h-3" />
+                                    취소
                                   </Button>
                                 </div>
                               ) : (
@@ -899,17 +954,17 @@ export default function SupportMain() {
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => startEditItem(item)}
-                                    className="h-6 w-6 p-0"
+                                    className="h-8 w-8 p-0 hover:bg-blue-50"
                                   >
-                                    <Edit2 className="w-3 h-3" />
+                                    <Edit2 className="w-4 h-4 text-blue-600" />
                                   </Button>
                                   <Button
                                     size="sm"
                                     variant="ghost"
                                     onClick={() => deleteItem(item.id)}
-                                    className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
+                                    className="h-8 w-8 p-0 hover:bg-red-50"
                                   >
-                                    <Trash2 className="w-3 h-3" />
+                                    <Trash2 className="w-4 h-4 text-red-600" />
                                   </Button>
                                 </div>
                               )}
@@ -918,17 +973,17 @@ export default function SupportMain() {
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="bg-gray-50">
+                    <tfoot className="bg-gray-50 border-t-2">
                       <tr>
-                        <td colSpan={5} className="text-xs font-medium text-right px-2 py-2">
+                        <td colSpan={5} className="text-sm font-semibold text-right px-3 py-3">
                           합계
                         </td>
-                        <td className="text-xs font-medium text-right px-2 py-2">
+                        <td className="text-sm font-bold text-right px-3 py-3 text-blue-600">
                           {selectedInquiryDetail.purchase_request_items
                             ?.reduce((sum: number, item: any) => sum + (parseFloat(item.amount_value) || 0), 0)
                             .toLocaleString()}
                         </td>
-                        <td colSpan={isAdmin ? 3 : 2} className="px-2 py-2"></td>
+                        <td colSpan={isAdmin ? 3 : 2} className="px-3 py-3"></td>
                       </tr>
                     </tfoot>
                   </table>

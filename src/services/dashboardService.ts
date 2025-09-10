@@ -438,15 +438,20 @@ export class DashboardService {
 
       let updateData: any = {}
 
+      // pending, 대기, null, 빈 문자열 모두 대기 상태로 간주
+      const isPending = (status: any) => (
+        status === 'pending' || status === '대기' || status === '' || status === null || status === undefined
+      )
+
       // app_admin은 현재 필요한 승인 단계를 처리
       if (roles.includes('app_admin')) {
-        if (request.middle_manager_status === 'pending') {
+        if (isPending(request.middle_manager_status)) {
           updateData = {
             middle_manager_status: 'approved',
             middle_manager_approved_at: new Date().toISOString(),
             middle_manager_id: employee.id
           }
-        } else if (request.final_manager_status === 'pending') {
+        } else if (request.middle_manager_status === 'approved' && isPending(request.final_manager_status)) {
           updateData = {
             final_manager_status: 'approved',
             final_manager_approved_at: new Date().toISOString(),
@@ -454,25 +459,40 @@ export class DashboardService {
           }
         }
       } else if (roles.includes('middle_manager')) {
-        updateData = {
-          middle_manager_status: 'approved',
-          middle_manager_approved_at: new Date().toISOString(),
-          middle_manager_id: employee.id
+        if (isPending(request.middle_manager_status)) {
+          updateData = {
+            middle_manager_status: 'approved',
+            middle_manager_approved_at: new Date().toISOString(),
+            middle_manager_id: employee.id
+          }
         }
       } else if (roles.includes('final_approver') || roles.includes('ceo')) {
-        updateData = {
-          final_manager_status: 'approved',
-          final_manager_approved_at: new Date().toISOString(),
-          final_manager_id: employee.id
+        if (request.middle_manager_status === 'approved' && isPending(request.final_manager_status)) {
+          updateData = {
+            final_manager_status: 'approved',
+            final_manager_approved_at: new Date().toISOString(),
+            final_manager_id: employee.id
+          }
         }
       }
+
+      // updateData가 비어있으면 승인할 단계가 없음
+      if (Object.keys(updateData).length === 0) {
+        console.log('No approval needed for request:', requestId, request)
+        return { success: false, error: '승인할 수 있는 상태가 아닙니다.' }
+      }
+
+      console.log('Approving request:', requestId, 'with data:', updateData)
 
       const { error } = await this.supabase
         .from('purchase_requests')
         .update(updateData)
         .eq('id', requestId)
 
-      if (error) throw error
+      if (error) {
+        console.error('Approval error:', error)
+        throw error
+      }
 
       return { success: true }
     } catch (error) {
