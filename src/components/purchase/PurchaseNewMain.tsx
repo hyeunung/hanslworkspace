@@ -732,7 +732,7 @@ export default function PurchaseNewMain() {
             <div className="flex flex-col items-start">
               <Label className="mb-1 block text-xs">발주서 종류<span className="text-red-500 ml-1">*</span></Label>
               <Select value={watch('po_template_type')} onValueChange={value => setValue('po_template_type', value)}>
-                <SelectTrigger className="h-8 w-28 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                <SelectTrigger className="h-9 w-28 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                   <SelectValue placeholder="종류 선택" />
                 </SelectTrigger>
                 <SelectContent position="popper" className="z-[9999]">
@@ -751,7 +751,7 @@ export default function PurchaseNewMain() {
                 <div>
                   <Label className="mb-1 block text-xs">요청 유형<span className="text-red-500 ml-1">*</span></Label>
                   <Select value={watch('request_type')} onValueChange={(value) => setValue('request_type', value)}>
-                    <SelectTrigger className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -763,7 +763,7 @@ export default function PurchaseNewMain() {
                 <div>
                   <Label className="mb-1 block text-xs">진행 종류<span className="text-red-500 ml-1">*</span></Label>
                   <Select value={watch('progress_type')} onValueChange={(value) => setValue('progress_type', value)}>
-                    <SelectTrigger className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -775,7 +775,7 @@ export default function PurchaseNewMain() {
                 <div>
                   <Label className="mb-1 block text-xs">결제 종류<span className="text-red-500 ml-1">*</span></Label>
                   <Select value={watch('payment_category')} onValueChange={(value) => setValue('payment_category', value)}>
-                    <SelectTrigger className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -791,7 +791,7 @@ export default function PurchaseNewMain() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label className="mb-1 block text-xs">업체명<span className="text-red-500 ml-1">*</span></Label>
-                  <Suspense fallback={<div className="h-8 bg-gray-100 animate-pulse rounded-md" />}>
+                  <Suspense fallback={<div className="h-9 bg-gray-100 animate-pulse rounded-md" />}>
                     <ReactSelect
                       options={vendors.map(v => ({ value: v.id.toString(), label: v.vendor_name }))}
                       value={vendors.find(v => v.id.toString() === vendor) ? { value: vendor, label: vendors.find(v => v.id.toString() === vendor)?.vendor_name } : null}
@@ -818,10 +818,10 @@ export default function PurchaseNewMain() {
                       pageSize={20}
                       styles={{
                         container: base => ({ ...base, width: '100%', fontSize: '12px' }),
-                        control: base => ({ ...base, height: 32, minHeight: 32, background: '#fff', border: '1px solid #d2d2d7', borderRadius: 6, fontSize: '12px', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)', '&:hover': { boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' } }),
-                        valueContainer: base => ({ ...base, height: 32, padding: '0 8px', fontSize: '12px' }),
+                        control: base => ({ ...base, height: 36, minHeight: 36, background: '#fff', border: '1px solid #d2d2d7', borderRadius: 6, fontSize: '12px', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)', '&:hover': { boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' } }),
+                        valueContainer: base => ({ ...base, height: 36, padding: '0 8px', fontSize: '12px' }),
                         input: base => ({ ...base, margin: 0, padding: 0, fontSize: '12px' }),
-                        indicatorsContainer: base => ({ ...base, height: 32 }),
+                        indicatorsContainer: base => ({ ...base, height: 36 }),
                         menuPortal: base => ({ ...base, zIndex: 1400 })
                       }}
                     />
@@ -844,7 +844,7 @@ export default function PurchaseNewMain() {
                       setValue('contact_id', val ? Number(val) : undefined);
                     }}
                   >
-                    <SelectTrigger className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="담당자 선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -862,7 +862,7 @@ export default function PurchaseNewMain() {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <Label className="mb-1 block text-xs">구매요구자</Label>
-                  <Suspense fallback={<div className="h-8 bg-gray-100 animate-pulse rounded-md" />}>
+                  <Suspense fallback={<div className="h-9 bg-gray-100 animate-pulse rounded-md" />}>
                     <ReactSelect
                       key={`employee-select-${employeeName}`}
                       value={employeeName ? { value: employeeName, label: employeeName } : null}
@@ -888,8 +888,8 @@ export default function PurchaseNewMain() {
                       styles={{
                         control: (base) => ({
                           ...base,
-                          minHeight: '32px',
-                          height: '32px',
+                          minHeight: '36px',
+                          height: '36px',
                           fontSize: '12px',
                           borderColor: '#d2d2d7',
                           borderRadius: '6px',
@@ -901,12 +901,12 @@ export default function PurchaseNewMain() {
                         }),
                         valueContainer: (base) => ({
                           ...base,
-                          height: '30px',
+                          height: '34px',
                           padding: '0 8px'
                         }),
                         input: (base) => ({ ...base, margin: '0px', padding: '0px' }),
                         indicatorSeparator: () => ({ display: 'none' }),
-                        indicatorsContainer: (base) => ({ ...base, height: '32px' }),
+                        indicatorsContainer: (base) => ({ ...base, height: '36px' }),
                         menu: (base) => ({ ...base, fontSize: '12px', zIndex: 9999 }),
                         option: (base) => ({ ...base, fontSize: '12px', padding: '8px 12px' })
                       }}
@@ -919,7 +919,7 @@ export default function PurchaseNewMain() {
                     type="date"
                     value={watch('request_date')}
                     onChange={e => setValue('request_date', e.target.value)}
-                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200"
+                    className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200"
                   />
                 </div>
                 <div>
@@ -928,7 +928,7 @@ export default function PurchaseNewMain() {
                     type="date"
                     value={watch('delivery_request_date')}
                     onChange={e => setValue('delivery_request_date', e.target.value)}
-                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200"
+                    className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200"
                   />
                 </div>
               </div>
@@ -942,7 +942,7 @@ export default function PurchaseNewMain() {
                     value={watch('project_vendor')} 
                     onChange={(e) => setValue('project_vendor', e.target.value)} 
                     placeholder="입력"
-                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
+                    className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
                   />
                 </div>
                 <div>
@@ -952,7 +952,7 @@ export default function PurchaseNewMain() {
                     value={watch('sales_order_number')} 
                     onChange={(e) => setValue('sales_order_number', e.target.value)} 
                     placeholder="입력"
-                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
+                    className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
                   />
                 </div>
                 <div>
@@ -962,7 +962,7 @@ export default function PurchaseNewMain() {
                     value={watch('project_item')} 
                     onChange={(e) => setValue('project_item', e.target.value)} 
                     placeholder="입력"
-                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
+                    className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
                   />
                 </div>
               </div>
@@ -1280,7 +1280,7 @@ export default function PurchaseNewMain() {
                     value={contact.contact_name}
                     onChange={(e) => handleContactChange(index, 'contact_name', e.target.value)}
                     placeholder="담당자 이름"
-                    className="h-8"
+                    className="h-9"
                   />
                 </div>
                 <div className="flex-1">
@@ -1289,7 +1289,7 @@ export default function PurchaseNewMain() {
                     value={contact.contact_email}
                     onChange={(e) => handleContactChange(index, 'contact_email', e.target.value)}
                     placeholder="이메일"
-                    className="h-8"
+                    className="h-9"
                   />
                 </div>
                 <div className="flex-1">
@@ -1298,7 +1298,7 @@ export default function PurchaseNewMain() {
                     value={contact.contact_phone}
                     onChange={(e) => handleContactChange(index, 'contact_phone', e.target.value)}
                     placeholder="전화번호"
-                    className="h-8"
+                    className="h-9"
                   />
                 </div>
                 <div className="flex-1">
@@ -1307,7 +1307,7 @@ export default function PurchaseNewMain() {
                     value={contact.position}
                     onChange={(e) => handleContactChange(index, 'position', e.target.value)}
                     placeholder="직책"
-                    className="h-8"
+                    className="h-9"
                   />
                 </div>
                 <Button
@@ -1315,7 +1315,7 @@ export default function PurchaseNewMain() {
                   size="sm"
                   variant="ghost"
                   onClick={() => removeContactSlot(index)}
-                  className="h-8 px-2"
+                  className="h-9 px-2"
                 >
                   <X className="h-4 w-4" />
                 </Button>
