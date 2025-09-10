@@ -722,320 +722,273 @@ export default function PurchaseNewMain() {
       }}
     >
       <div className="flex gap-6">
-        {/* 발주요청 기본 정보 - 좌측 */}
-        <div className="w-1/3 relative bg-white border border-gray-200 rounded-lg p-6 space-y-4">
+        {/* 발주 기본 정보 - 좌측 1/4 폭 */}
+        <div className="w-1/4 relative bg-muted/20 border border-border rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 p-5 space-y-4">
           <div className="flex flex-row items-start justify-between w-full mb-4">
             <div className="flex flex-col">
-              <h4 className="text-base font-semibold text-gray-900">발주요청 기본 정보</h4>
+              <h4 className="font-semibold text-foreground">발주 기본 정보</h4>
+              <p className="text-xs text-muted-foreground mt-0.5">Basic Information</p>
             </div>
             <div className="flex flex-col items-start">
-              <Label className="mb-1 block text-xs">발주요청서 종류<span className="text-red-500 ml-1">*</span></Label>
-              <Controller
-                control={control}
-                name="po_template_type"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="h-8 w-28 bg-white border border-gray-200 rounded-md text-xs">
-                      <SelectValue placeholder="종류 선택" />
+              <Label className="mb-1 block text-xs">발주서 종류<span className="text-red-500 ml-1">*</span></Label>
+              <Select value={watch('po_template_type')} onValueChange={value => setValue('po_template_type', value)}>
+                <SelectTrigger className="h-8 w-28 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                  <SelectValue placeholder="종류 선택" />
+                </SelectTrigger>
+                <SelectContent position="popper" className="z-[9999]">
+                  <SelectItem value="일반">일반</SelectItem>
+                  <SelectItem value="PCB">PCB</SelectItem>
+                  <SelectItem value="소모품">소모품</SelectItem>
+                  <SelectItem value="기타">기타</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          {watch('po_template_type') === '일반' && (
+            <div className="space-y-4">
+              {/* 요청 설정 */}
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <Label className="mb-1 block text-xs">요청 유형<span className="text-red-500 ml-1">*</span></Label>
+                  <Select value={watch('request_type')} onValueChange={(value) => setValue('request_type', value)}>
+                    <SelectTrigger className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                      <SelectValue placeholder="선택" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="일반">일반</SelectItem>
-                      <SelectItem value="PCB">PCB</SelectItem>
+                    <SelectContent position="popper" className="z-[9999]">
+                      <SelectItem value="원자재">원자재</SelectItem>
                       <SelectItem value="소모품">소모품</SelectItem>
-                      <SelectItem value="기타">기타</SelectItem>
                     </SelectContent>
                   </Select>
-                )}
-              />
-            </div>
-          </div>
-
-          {/* 구매요청자 */}
-          <div>
-            <Label className="mb-1 block text-xs">구매요청자<span className="text-red-500 ml-1">*</span></Label>
-            <Controller
-              control={control}
-              name="requester_name"
-              render={({ field }) => (
-                <Input
-                  {...field}
-                  value={field.value || employeeName || ''}
-                  className="h-8 bg-white border border-gray-200 text-xs"
-                  placeholder="구매요청자 이름"
-                  readOnly
-                />
-              )}
-            />
-          </div>
-
-          {/* 업체 선택 */}
-          <div>
-            <Label className="mb-1 block text-xs">업체 선택<span className="text-red-500 ml-1">*</span></Label>
-            <Controller
-              control={control}
-              name="vendor_id"
-              render={({ field }) => {
-                const filteredVendors = vendors.filter(v => 
-                  v.vendor_name.toLowerCase().includes(vendorSearchTerm.toLowerCase())
-                );
-                
-                return (
-                  <div className="relative">
-                    <Select 
-                      value={field.value?.toString()} 
-                      onValueChange={(value) => {
-                        field.onChange(Number(value));
-                        setVendor(value);
-                        setValue('vendor_id', Number(value));
-                        setVendorSearchTerm("");
-                      }}
-                    >
-                      <SelectTrigger className="h-8 bg-white border border-gray-200 text-xs">
-                        <SelectValue placeholder="업체 선택" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <div className="p-2" onClick={(e) => e.stopPropagation()}>
-                          <Input
-                            placeholder="업체 검색..."
-                            value={vendorSearchTerm}
-                            onChange={(e) => setVendorSearchTerm(e.target.value)}
-                            onKeyDown={(e) => e.stopPropagation()}
-                            className="h-7 text-xs mb-2"
-                            autoFocus
-                          />
-                        </div>
-                        {filteredVendors.length === 0 ? (
-                          <div className="text-xs text-gray-500 text-center py-2">
-                            검색 결과가 없습니다
-                          </div>
-                        ) : (
-                          filteredVendors.map((vendor) => (
-                            <SelectItem key={vendor.id} value={vendor.id.toString()} className="text-xs">
-                              {vendor.vendor_name}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                );
-              }}
-            />
-          </div>
-
-          {/* 담당자 */}
-          {selectedVendor > 0 && (
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <Label className="block text-xs">담당자</Label>
-                <Button
-                  type="button"
-                  onClick={openContactsManager}
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                >
-                  <Pencil className="h-3 w-3 mr-1" />
-                  관리
-                </Button>
-              </div>
-              {contacts.length > 0 ? (
-                <Controller
-                  control={control}
-                  name="contact_id"
-                  render={({ field }) => (
-                    <Select value={field.value?.toString()} onValueChange={(value) => field.onChange(Number(value))}>
-                      <SelectTrigger className="h-8 bg-white border border-gray-200 text-xs">
-                        <SelectValue placeholder="담당자 선택" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {contacts.map((contact) => (
-                          <SelectItem key={contact.id} value={contact.id.toString()}>
-                            {contact.contact_name} ({contact.position})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              ) : (
-                <div className="text-xs text-gray-500 p-2 border border-gray-200 rounded bg-gray-50">
-                  담당자를 추가하려면 관리 버튼을 클릭하세요
                 </div>
-              )}
+                <div>
+                  <Label className="mb-1 block text-xs">진행 종류<span className="text-red-500 ml-1">*</span></Label>
+                  <Select value={watch('progress_type')} onValueChange={(value) => setValue('progress_type', value)}>
+                    <SelectTrigger className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                      <SelectValue placeholder="선택" />
+                    </SelectTrigger>
+                    <SelectContent position="popper" className="z-[9999]">
+                      <SelectItem value="일반">일반</SelectItem>
+                      <SelectItem value="선진행">선진행</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="mb-1 block text-xs">결제 종류<span className="text-red-500 ml-1">*</span></Label>
+                  <Select value={watch('payment_category')} onValueChange={(value) => setValue('payment_category', value)}>
+                    <SelectTrigger className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                      <SelectValue placeholder="선택" />
+                    </SelectTrigger>
+                    <SelectContent position="popper" className="z-[9999]">
+                      <SelectItem value="발주">발주</SelectItem>
+                      <SelectItem value="구매 요청">구매 요청</SelectItem>
+                      <SelectItem value="현장 결제">현장 결제</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* 업체 정보 */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="mb-1 block text-xs">업체명<span className="text-red-500 ml-1">*</span></Label>
+                  <Suspense fallback={<div className="h-8 bg-gray-100 animate-pulse rounded-md" />}>
+                    <ReactSelect
+                      options={vendors.map(v => ({ value: v.id.toString(), label: v.vendor_name }))}
+                      value={vendors.find(v => v.id.toString() === vendor) ? { value: vendor, label: vendors.find(v => v.id.toString() === vendor)?.vendor_name } : null}
+                      onChange={(option) => {
+                        const opt = option as { value: string; label: string } | null;
+                        if (opt) {
+                          setVendor(opt.value);
+                          setValue('vendor_id', Number(opt.value));
+                        } else {
+                          setVendor('');
+                          setValue('vendor_id', 0);
+                        }
+                      }}
+                      placeholder="업체 선택"
+                      isClearable
+                      isSearchable
+                      closeMenuOnSelect={false}
+                      classNamePrefix="vendor-select"
+                      blurInputOnSelect={false}
+                      openMenuOnFocus={false}
+                      openMenuOnClick={true}
+                      tabSelectsValue={false}
+                      captureMenuScroll={false}
+                      pageSize={20}
+                      styles={{
+                        container: base => ({ ...base, width: '100%', fontSize: '12px' }),
+                        control: base => ({ ...base, height: 32, minHeight: 32, background: '#fff', border: '1px solid #d2d2d7', borderRadius: 6, fontSize: '12px', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)', '&:hover': { boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' } }),
+                        valueContainer: base => ({ ...base, height: 32, padding: '0 8px', fontSize: '12px' }),
+                        input: base => ({ ...base, margin: 0, padding: 0, fontSize: '12px' }),
+                        indicatorsContainer: base => ({ ...base, height: 32 }),
+                        menuPortal: base => ({ ...base, zIndex: 1400 })
+                      }}
+                    />
+                  </Suspense>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <Label className="text-xs">업체 담당자</Label>
+                    <span
+                      className="text-primary text-[10px] cursor-pointer hover:underline select-none flex items-center"
+                      onClick={openContactsManager}
+                    >
+                      <span className="-translate-y-px">+</span><span className="ml-1">추가/수정</span>
+                    </span>
+                  </div>
+                  <Select
+                    value={watch('contacts')[0] || ''}
+                    onValueChange={val => {
+                      setValue('contacts', [val]);
+                      setValue('contact_id', val ? Number(val) : undefined);
+                    }}
+                  >
+                    <SelectTrigger className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                      <SelectValue placeholder="담당자 선택" />
+                    </SelectTrigger>
+                    <SelectContent position="popper" className="z-[9999]">
+                      {contacts.map(c => (
+                        <SelectItem key={c.id} value={c.id.toString()}>
+                          {c.contact_name || c.contact_email || c.contact_phone || c.position || ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* 구매요구자 및 일정 정보 */}
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <Label className="mb-1 block text-xs">구매요구자</Label>
+                  <Suspense fallback={<div className="h-8 bg-gray-100 animate-pulse rounded-md" />}>
+                    <ReactSelect
+                      key={`employee-select-${employeeName}`}
+                      value={employeeName ? { value: employeeName, label: employeeName } : null}
+                      defaultValue={employeeName ? { value: employeeName, label: employeeName } : null}
+                      onChange={(selectedOption) => {
+                        const value = (selectedOption as EmployeeOption)?.value || "";
+                        setValue('requester_name', value);
+                        setEmployeeName(value);
+                      }}
+                      options={employees.map(employee => ({
+                        value: employee.name,
+                        label: employee.name
+                      }))}
+                      placeholder="선택"
+                      isSearchable
+                      isClearable={false}
+                      noOptionsMessage={() => "일치하는 직원이 없습니다"}
+                      filterOption={(option, inputValue) => {
+                        const employee = employees.find(emp => emp.name === option.value);
+                        const searchText = `${employee?.name || ''} ${employee?.position || ''} ${employee?.email || ''}`.toLowerCase();
+                        return searchText.includes(inputValue.toLowerCase());
+                      }}
+                      styles={{
+                        control: (base) => ({
+                          ...base,
+                          minHeight: '32px',
+                          height: '32px',
+                          fontSize: '12px',
+                          borderColor: '#d2d2d7',
+                          borderRadius: '6px',
+                          boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
+                          '&:hover': {
+                            borderColor: '#d2d2d7',
+                            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'
+                          }
+                        }),
+                        valueContainer: (base) => ({
+                          ...base,
+                          height: '30px',
+                          padding: '0 8px'
+                        }),
+                        input: (base) => ({ ...base, margin: '0px', padding: '0px' }),
+                        indicatorSeparator: () => ({ display: 'none' }),
+                        indicatorsContainer: (base) => ({ ...base, height: '32px' }),
+                        menu: (base) => ({ ...base, fontSize: '12px', zIndex: 9999 }),
+                        option: (base) => ({ ...base, fontSize: '12px', padding: '8px 12px' })
+                      }}
+                    />
+                  </Suspense>
+                </div>
+                <div>
+                  <Label className="mb-1 block text-xs">청구일</Label>
+                  <Input
+                    type="date"
+                    value={watch('request_date')}
+                    onChange={e => setValue('request_date', e.target.value)}
+                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200"
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1 block text-xs">입고 요청일</Label>
+                  <Input
+                    type="date"
+                    value={watch('delivery_request_date')}
+                    onChange={e => setValue('delivery_request_date', e.target.value)}
+                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200"
+                  />
+                </div>
+              </div>
+
+              {/* 프로젝트 정보 */}
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <Label className="mb-1 block text-xs">PJ업체</Label>
+                  <Input 
+                    type="text" 
+                    value={watch('project_vendor')} 
+                    onChange={(e) => setValue('project_vendor', e.target.value)} 
+                    placeholder="입력"
+                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1 block text-xs">수주번호</Label>
+                  <Input 
+                    type="text" 
+                    value={watch('sales_order_number')} 
+                    onChange={(e) => setValue('sales_order_number', e.target.value)} 
+                    placeholder="입력"
+                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1 block text-xs">Item</Label>
+                  <Input 
+                    type="text" 
+                    value={watch('project_item')} 
+                    onChange={(e) => setValue('project_item', e.target.value)} 
+                    placeholder="입력"
+                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
+                  />
+                </div>
+              </div>
             </div>
           )}
-
-          {/* 수주번호 */}
-          <div>
-            <Label className="mb-1 block text-xs">수주번호</Label>
-            <Controller
-              control={control}
-              name="sales_order_number"
-              render={({ field }) => (
-                <Input
-                  {...field}
-                  className="h-8 bg-white border border-gray-200 text-xs"
-                  placeholder="주문번호"
-                />
-              )}
-            />
-          </div>
-
-          {/* PJ업체 */}
-          <div>
-            <Label className="mb-1 block text-xs">PJ업체</Label>
-            <Controller
-              control={control}
-              name="project_vendor"
-              render={({ field }) => (
-                <Input
-                  {...field}
-                  className="h-8 bg-white border border-gray-200 text-xs"
-                  placeholder="PJ업체"
-                />
-              )}
-            />
-          </div>
-
-          {/* PJ ITEM */}
-          <div>
-            <Label className="mb-1 block text-xs">PJ ITEM</Label>
-            <Controller
-              control={control}
-              name="project_item"
-              render={({ field }) => (
-                <Input
-                  {...field}
-                  className="h-8 bg-white border border-gray-200 text-xs"
-                  placeholder="PJ ITEM"
-                />
-              )}
-            />
-          </div>
-
-          {/* 요청일 */}
-          <div>
-            <Label className="mb-1 block text-xs">요청일<span className="text-red-500 ml-1">*</span></Label>
-            <Controller
-              control={control}
-              name="request_date"
-              render={({ field }) => (
-                <Input
-                  {...field}
-                  type="date"
-                  className="h-8 bg-white border border-gray-200 text-xs"
-                />
-              )}
-            />
-          </div>
-
-          {/* 납기요청일 */}
-          <div>
-            <Label className="mb-1 block text-xs">납기요청일</Label>
-            <Controller
-              control={control}
-              name="delivery_request_date"
-              render={({ field }) => (
-                <Input
-                  {...field}
-                  type="date"
-                  className="h-8 bg-white border border-gray-200 text-xs"
-                />
-              )}
-            />
-          </div>
-
-          {/* 요청 종류 */}
-          <div>
-            <Label className="mb-1 block text-xs">요청 종류<span className="text-red-500 ml-1">*</span></Label>
-            <Controller
-              control={control}
-              name="request_type"
-              render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="h-8 bg-white border border-gray-200 text-xs">
-                    <SelectValue placeholder="요청 종류" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="원자재">원자재</SelectItem>
-                    <SelectItem value="소모품">소모품</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
-          </div>
-
-          {/* 진행 종류 */}
-          <div>
-            <Label className="mb-1 block text-xs">진행 종류<span className="text-red-500 ml-1">*</span></Label>
-            <Controller
-              control={control}
-              name="progress_type"
-              render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="h-8 bg-white border border-gray-200 text-xs">
-                    <SelectValue placeholder="진행 종류" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="일반">일반</SelectItem>
-                    <SelectItem value="선진행">선진행</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
-          </div>
-
-          {/* 결제 종류 */}
-          <div>
-            <Label className="mb-1 block text-xs">결제 종류<span className="text-red-500 ml-1">*</span></Label>
-            <Controller
-              control={control}
-              name="payment_category"
-              render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="h-8 bg-white border border-gray-200 text-xs">
-                    <SelectValue placeholder="결제 종류" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="발주요청">발주요청</SelectItem>
-                    <SelectItem value="구매요청">구매요청</SelectItem>
-                    <SelectItem value="현장 결제">현장 결제</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
-          </div>
-
-          {/* 통화 */}
-          <div>
-            <Label className="mb-1 block text-xs">통화<span className="text-red-500 ml-1">*</span></Label>
-            <Controller
-              control={control}
-              name="currency"
-              render={({ field }) => (
-                <Select 
-                  value={field.value} 
-                  onValueChange={(value) => {
-                    field.onChange(value);
-                    setCurrency(value);
-                  }}
-                >
-                  <SelectTrigger className="h-8 bg-white border border-gray-200 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="KRW">KRW (원화)</SelectItem>
-                    <SelectItem value="USD">USD (달러)</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-            />
-          </div>
         </div>
 
-        {/* 품목 정보 - 우측 (테이블 형태) */}
-        <div className="flex-1 bg-white border border-gray-200 rounded-lg p-6">
+        {/* Professional Items Section - 우측 3/4 폭 */}
+        <div className="w-3/4 space-y-4">
+          <div className="flex items-center mb-2">
+            <div className="flex flex-col justify-center">
+              <h4 className="font-semibold text-foreground">품목 목록</h4>
+              <p className="text-xs text-muted-foreground mt-0.5">Purchase Items</p>
+            </div>
+            <div className="ml-[15px]">
+              <Select value={currency} onValueChange={setCurrency}>
+                <SelectTrigger className="w-20 h-8 text-xs border-border rounded-md shadow-sm hover:shadow-md transition-shadow duration-200 bg-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="rounded-md">
+                  <SelectItem value="KRW">KRW</SelectItem>
+                  <SelectItem value="USD">USD</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <div className="flex items-center justify-between mb-4">
             <div>
               <h4 className="text-base font-semibold text-gray-900">품목 정보</h4>

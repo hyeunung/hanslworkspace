@@ -237,9 +237,9 @@ export default function DashboardMain() {
                   </Button>
                 </div>
               ) : (
-                data.myRecentRequests.map((request) => (
-                  <div key={request.id} className="border rounded-lg p-4 hover:shadow-sm transition-shadow">
-                    <div className="flex items-center justify-between mb-3">
+                data.myRecentRequests.slice(0, 5).map((request) => (
+                  <div key={request.id} className="border rounded-lg p-3 hover:shadow-sm transition-shadow">
+                    <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-sm">{request.vendor_name}</span>
                         <Badge className="bg-yellow-100 text-yellow-800" variant="outline">
@@ -251,7 +251,7 @@ export default function DashboardMain() {
                       </span>
                     </div>
                     
-                    <div className="mb-3">
+                    <div className="mb-2">
                       <div className="flex justify-between text-sm mb-1">
                         <span className="text-gray-600">승인 진행률</span>
                         <span className="font-medium">
@@ -404,7 +404,7 @@ export default function DashboardMain() {
                     <p className="text-xs">구매 대기 없음</p>
                   </div>
                 ) : (
-                  data.myPurchaseStatus.waitingPurchase.map((item) => {
+                  data.myPurchaseStatus.waitingPurchase.slice(0, 5).map((item) => {
                     const items = item.purchase_request_items || []
                     const totalAmount = items.reduce((sum: number, i: any) => {
                       return sum + (Number(i.amount_value) || 0)
@@ -415,7 +415,7 @@ export default function DashboardMain() {
                     const firstItem = items[0]
                     
                     return (
-                      <div key={item.id} className="border rounded-lg p-3 hover:shadow-sm transition-shadow">
+                      <div key={item.id} className="border rounded-lg p-2 hover:shadow-sm transition-shadow">
                         <div className="flex justify-between items-start mb-2">
                           <span className="font-medium text-sm truncate">{item.vendor_name || '업체명 없음'}</span>
                           <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700 shrink-0">
@@ -467,13 +467,13 @@ export default function DashboardMain() {
                     <p className="text-xs">입고 대기 없음</p>
                   </div>
                 ) : (
-                  data.myPurchaseStatus.waitingDelivery.map((item) => {
+                  data.myPurchaseStatus.waitingDelivery.slice(0, 5).map((item) => {
                     const totalItems = item.purchase_request_items?.length || 0
                     const receivedItems = item.purchase_request_items?.filter((i: any) => i.is_received).length || 0
                     const partialDelivery = receivedItems > 0 && receivedItems < totalItems
                     
                     return (
-                      <div key={item.id} className="border rounded-lg p-3 hover:shadow-sm transition-shadow">
+                      <div key={item.id} className="border rounded-lg p-2 hover:shadow-sm transition-shadow">
                         <div className="flex justify-between items-start mb-2">
                           <span className="font-medium text-sm truncate">{item.vendor_name || '업체명 없음'}</span>
                           <Badge variant="outline" className={`text-xs shrink-0 ${partialDelivery ? 'bg-orange-50 text-orange-700' : 'bg-blue-50 text-blue-700'}`}>
@@ -535,7 +535,7 @@ export default function DashboardMain() {
                     <p className="text-xs">최근 완료 없음</p>
                   </div>
                 ) : (
-                  data.myPurchaseStatus.recentCompleted.map((item) => {
+                  data.myPurchaseStatus.recentCompleted.slice(0, 5).map((item) => {
                     const items = item.purchase_request_items || []
                     const totalAmount = items.reduce((sum: number, i: any) => {
                       return sum + (Number(i.amount_value) || 0)
@@ -546,7 +546,7 @@ export default function DashboardMain() {
                     const firstItem = items[0]
                     
                     return (
-                      <div key={item.id} className="border rounded-lg p-3 hover:shadow-sm transition-shadow bg-green-50/30">
+                      <div key={item.id} className="border rounded-lg p-2 hover:shadow-sm transition-shadow bg-green-50/30">
                         <div className="flex justify-between items-start mb-2">
                           <span className="font-medium text-sm truncate">{item.vendor_name || '업체명 없음'}</span>
                           <Badge className="text-xs bg-green-100 text-green-800 shrink-0">
