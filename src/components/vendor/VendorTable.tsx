@@ -90,12 +90,12 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
   return (
     <>
       {/* Desktop Table View */}
-      <div className="hidden md:block border rounded-lg overflow-hidden">
+      <div className="hidden lg:block border rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[100px] min-w-[100px]">
+            <TableHead className="w-24 min-w-[80px] lg:w-32">
               <SortableHeader
                 sortKey="vendor_name"
                 currentSortKey={sortConfig.key as string | null}
@@ -105,9 +105,9 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                 업체명
               </SortableHeader>
             </TableHead>
-            <TableHead className="w-[60px] min-w-[60px] text-center">담당자</TableHead>
-            <TableHead>담당자 정보</TableHead>
-            <TableHead className="w-[70px] min-w-[70px]">
+            <TableHead className="w-16 min-w-[50px] text-center">담당자</TableHead>
+            <TableHead className="min-w-[200px]">담당자 정보</TableHead>
+            <TableHead className="w-20 min-w-[60px]">
               <SortableHeader
                 sortKey="created_at"
                 currentSortKey={sortConfig.key as string | null}
@@ -117,7 +117,7 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                 등록일
               </SortableHeader>
             </TableHead>
-            <TableHead className="w-[50px] min-w-[50px] text-center">작업</TableHead>
+            <TableHead className="w-14 min-w-[45px] text-center">작업</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -207,6 +207,93 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
           )}
         </TableBody>
           </Table>
+        </div>
+      </div>
+
+      {/* Tablet View */}
+      <div className="hidden md:block lg:hidden">
+        <div className="overflow-x-auto border rounded-lg">
+          <table className="w-full min-w-[600px]">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left p-3 font-medium text-gray-900 text-sm">업체명</th>
+                <th className="text-center p-3 font-medium text-gray-900 text-sm w-20">담당자</th>
+                <th className="text-left p-3 font-medium text-gray-900 text-sm">연락처</th>
+                <th className="text-left p-3 font-medium text-gray-900 text-sm w-24">등록일</th>
+                <th className="text-center p-3 font-medium text-gray-900 text-sm w-16">작업</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {sortedData.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center py-8 text-gray-500">
+                    등록된 업체가 없습니다.
+                  </td>
+                </tr>
+              ) : (
+                sortedData.map((vendor) => (
+                  <tr key={vendor.id} className="hover:bg-gray-50">
+                    <td className="p-3 font-medium text-sm">{vendor.vendor_name}</td>
+                    <td className="p-3 text-center">
+                      <Badge variant="outline" className="text-xs">
+                        {vendor.vendor_contacts?.length || 0}명
+                      </Badge>
+                    </td>
+                    <td className="p-3 text-sm">
+                      {vendor.vendor_contacts && vendor.vendor_contacts.length > 0 ? (
+                        <div>
+                          <div className="font-medium">{vendor.vendor_contacts[0].contact_name}</div>
+                          <div className="text-gray-500 text-xs">{vendor.vendor_contacts[0].contact_phone}</div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">담당자 없음</span>
+                      )}
+                    </td>
+                    <td className="p-3 text-sm">{formatDate(vendor.created_at)}</td>
+                    <td className="p-3 text-center">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => onView(vendor)}>
+                            <Eye className="mr-2 h-4 w-4" />
+                            상세 보기
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => onEdit(vendor)}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            수정
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleToggleStatus(vendor)}>
+                            {vendor.is_active ? (
+                              <>
+                                <ToggleLeft className="mr-2 h-4 w-4" />
+                                비활성화
+                              </>
+                            ) : (
+                              <>
+                                <ToggleRight className="mr-2 h-4 w-4" />
+                                활성화
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={() => handleDelete(vendor)}
+                            className="text-red-600"
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            삭제
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 

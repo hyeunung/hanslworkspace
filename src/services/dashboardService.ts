@@ -71,7 +71,6 @@ export class DashboardService {
     const today = new Date().toISOString().split('T')[0]
     const roles = this.parseRoles(employee.purchase_role)
 
-    console.log('Getting stats for employee:', employee.name, 'with roles:', roles) // 디버깅용
 
     // 병렬 쿼리로 성능 최적화
     const [
@@ -119,7 +118,6 @@ export class DashboardService {
       todayActions: todayActionsResult
     }
 
-    console.log('Dashboard stats:', stats) // 디버깅용
     return stats
   }
 
@@ -246,15 +244,29 @@ export class DashboardService {
     )
 
     if (roles.includes('app_admin')) {
-      // app_admin은 중간/최종 승인 대기를 모두 본다 (구매 대기는 제외)
+      // app_admin은 중간/최종 승인 대기를 모두 본다
       filteredData = filteredData.filter(item => (
         isPending(item.middle_manager_status) ||
         (item.middle_manager_status === 'approved' && isPending(item.final_manager_status))
       ))
-    } else if (roles.includes('middle_manager') && !roles.some(r => ['final_approver','ceo','app_admin'].includes(r))) {
-      // 중간 승인 대기 항목만
+    } else if (roles.includes('middle_manager')) {
+      // middle_manager는 모든 중간 승인 대기 항목을 본다
       filteredData = filteredData.filter(item => isPending(item.middle_manager_status))
-    } else if (roles.some(r => ['final_approver','ceo','app_admin'].includes(r))) {
+    } else if (roles.includes('raw_material_manager')) {
+      // raw_material_manager는 발주 카테고리의 최종 승인 대기만
+      filteredData = filteredData.filter(item => 
+        item.middle_manager_status === 'approved' && 
+        isPending(item.final_manager_status) &&
+        item.payment_category === '발주요청'
+      )
+    } else if (roles.includes('consumable_manager')) {
+      // consumable_manager는 구매 카테고리의 최종 승인 대기만
+      filteredData = filteredData.filter(item => 
+        item.middle_manager_status === 'approved' && 
+        isPending(item.final_manager_status) &&
+        item.payment_category === '구매요청'
+      )
+    } else if (roles.some(r => ['final_approver','ceo'].includes(r))) {
       // 최종 승인 대기 (중간 승인 완료)
       filteredData = filteredData.filter(item => 
         item.middle_manager_status === 'approved' && isPending(item.final_manager_status)
@@ -365,26 +377,28 @@ export class DashboardService {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
     const [waitingPurchase, waitingDelivery, recentCompleted] = await Promise.all([
-      // 내가 요청했고 구매 대기중인 항목: 승인 완료 + 구매 미착수(또는 대기)
+      // 내가 요청했고 구매 대기중인 항목: 최종승인 완료 + 구매요청 카테고리 + 결제 미완료
       this.supabase
         .from('purchase_requests')
         .select(`
           *,
           vendors (vendor_name),
-          purchase_request_items (item_name, quantity)
+          purchase_request_items (item_name, quantity, specification, amount_value)
         `)
         .eq('requester_name', employee.name)
-        .or('purchase_status.is.null,purchase_status.eq.pending,purchase_status.eq.,purchase_status.eq.대기')
+        .eq('payment_category', '구매요청')
+        .eq('final_manager_status', 'approved')
+        .or('is_payment_completed.is.null,is_payment_completed.eq.false')
         .order('created_at', { ascending: false })
         .limit(5),
 
-      // 내가 요청했고 입고 대기중인 항목
+      // 내가 요청했고 입고 대기중인 항목: 결제 완료 + 입고 미완료
       this.supabase
         .from('purchase_requests')
         .select(`
           *,
           vendors (vendor_name),
-          purchase_request_items (item_name, quantity)
+          purchase_request_items (item_name, quantity, specification, amount_value, is_received)
         `)
         .eq('requester_name', employee.name)
         .eq('is_payment_completed', true)
@@ -407,14 +421,8 @@ export class DashboardService {
         .limit(5)
     ])
 
-    // 선진행은 최종승인 없어도 포함, 일반은 최종승인된 것만 포함
-    const waitingPurchaseRows = (waitingPurchase.data || []).filter((item: any) => {
-      const isAdvance = (item.progress_type || '').includes('선진행')
-      return isAdvance || item.final_manager_status === 'approved'
-    })
-
     return {
-      waitingPurchase: waitingPurchaseRows,
+      waitingPurchase: waitingPurchase.data || [],
       waitingDelivery: waitingDelivery.data || [],
       recentCompleted: recentCompleted.data || []
     }
@@ -422,8 +430,14 @@ export class DashboardService {
 
   // 원클릭 승인 API
   async quickApprove(requestId: string, employee: Employee): Promise<{success: boolean, error?: string}> {
+    console.log('=== Quick Approve Debug ===')
+    console.log('Request ID:', requestId)
+    console.log('Employee:', employee)
+    console.log('Employee purchase_role:', employee.purchase_role)
+    
     try {
       const roles = this.parseRoles(employee.purchase_role)
+      console.log('Parsed roles:', roles)
 
       // 먼저 현재 요청의 상태를 확인
       const { data: request } = await this.supabase
@@ -433,8 +447,11 @@ export class DashboardService {
         .single()
 
       if (!request) {
+        console.log('Request not found')
         return { success: false, error: '요청을 찾을 수 없습니다.' }
       }
+      
+      console.log('Current request status:', request)
 
       let updateData: any = {}
 
@@ -447,53 +464,61 @@ export class DashboardService {
       if (roles.includes('app_admin')) {
         if (isPending(request.middle_manager_status)) {
           updateData = {
-            middle_manager_status: 'approved',
-            middle_manager_approved_at: new Date().toISOString(),
-            middle_manager_id: employee.id
+            middle_manager_status: 'approved'
           }
         } else if (request.middle_manager_status === 'approved' && isPending(request.final_manager_status)) {
           updateData = {
-            final_manager_status: 'approved',
-            final_manager_approved_at: new Date().toISOString(),
-            final_manager_id: employee.id
+            final_manager_status: 'approved'
           }
         }
       } else if (roles.includes('middle_manager')) {
         if (isPending(request.middle_manager_status)) {
           updateData = {
-            middle_manager_status: 'approved',
-            middle_manager_approved_at: new Date().toISOString(),
-            middle_manager_id: employee.id
+            middle_manager_status: 'approved'
           }
         }
       } else if (roles.includes('final_approver') || roles.includes('ceo')) {
         if (request.middle_manager_status === 'approved' && isPending(request.final_manager_status)) {
           updateData = {
-            final_manager_status: 'approved',
-            final_manager_approved_at: new Date().toISOString(),
-            final_manager_id: employee.id
+            final_manager_status: 'approved'
+          }
+        }
+      } else if (roles.includes('raw_material_manager') || roles.includes('consumable_manager')) {
+        // raw_material_manager와 consumable_manager도 최종 승인 권한이 있음
+        if (request.middle_manager_status === 'approved' && isPending(request.final_manager_status)) {
+          updateData = {
+            final_manager_status: 'approved'
           }
         }
       }
 
       // updateData가 비어있으면 승인할 단계가 없음
       if (Object.keys(updateData).length === 0) {
-        console.log('No approval needed for request:', requestId, request)
+        console.log('No approval needed - updateData is empty')
+        console.log('Middle status:', request.middle_manager_status)
+        console.log('Final status:', request.final_manager_status)
+        console.log('Roles:', roles)
         return { success: false, error: '승인할 수 있는 상태가 아닙니다.' }
       }
+      
+      console.log('Update data:', updateData)
 
-      console.log('Approving request:', requestId, 'with data:', updateData)
-
-      const { error } = await this.supabase
+      const { data: updatedData, error } = await this.supabase
         .from('purchase_requests')
         .update(updateData)
         .eq('id', requestId)
+        .select()
+        .single()
 
       if (error) {
         console.error('Approval error:', error)
+        console.error('Error message:', error.message)
+        console.error('Error code:', error.code)
+        console.error('Error details:', error.details)
         throw error
       }
 
+      console.log('Update successful:', updatedData)
       return { success: true }
     } catch (error) {
       return { success: false, error: (error as Error).message }
@@ -528,7 +553,6 @@ export class DashboardService {
       ])
 
       const total = (mid.count || 0) + (fin.count || 0) + (pur.count || 0)
-      console.log('Pending count (admin):', total)
       return total
     }
 
@@ -542,7 +566,6 @@ export class DashboardService {
         console.error('Error counting pending (middle_manager):', error)
         return 0
       }
-      console.log('Pending count (middle_manager):', count)
       return count || 0
     }
 
@@ -557,7 +580,6 @@ export class DashboardService {
         console.error('Error counting pending (final_approver/ceo):', error)
         return 0
       }
-      console.log('Pending count (final_approver/ceo):', count)
       return count || 0
     }
 
@@ -572,7 +594,6 @@ export class DashboardService {
         console.error('Error counting pending (lead_buyer):', error)
         return 0
       }
-      console.log('Pending count (lead_buyer):', count)
       return count || 0
     }
 

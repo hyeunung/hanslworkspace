@@ -28,19 +28,26 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   
   // 권한별 로직 계산
-  const isAdmin = currentUserRoles?.includes('app_admin') || currentUserRoles?.includes('final_approver');
+  const isAdmin = currentUserRoles?.includes('app_admin');
+  const isFinalApprover = currentUserRoles?.includes('final_approver');
+  const isMiddleManager = currentUserRoles?.includes('middle_manager');
+  const hasApprovalRole = isAdmin || isFinalApprover || isMiddleManager;
   
   // 탭별 기본 직원 필터 계산
   const computeDefaultEmployee = (tabKey: string): string => {
-    if (!currentUserName) return currentUserName || '';
+    if (!currentUserName) return '';
     
-    // 기본값은 항상 로그인한 사용자 본인
+    // app_admin만 전체 보기 가능
+    if (isAdmin) {
+      return 'all';
+    }
+    
+    // 나머지는 본인 것만
     return currentUserName;
   };
   
   // 탭 변경 시 직원 필터 기본값 설정
   useEffect(() => {
-    if (!currentUserName) return;
     const defaultEmployee = computeDefaultEmployee(activeTab);
     setSelectedEmployee(defaultEmployee);
   }, [activeTab, currentUserName, isAdmin]);
@@ -213,17 +220,20 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     });
   }, [searchFilteredPurchases]);
 
-  // 탭 카운트 (캐시됨, 날짜 필터 기준)
+  // 탭 카운트 (캐시됨, 날짜 + 직원 필터 기준)
   const tabCounts = useMemo(() => {
     const getUniqueOrderCount = (filtered: Purchase[]) => {
       return new Set(filtered.map(p => p.purchase_order_number)).size;
     };
     
+    // 직원 필터 적용된 데이터 사용 (전체 항목 제외)
+    const purchasesForCount = employeeFilteredPurchases;
+    
     return {
-      pending: getUniqueOrderCount(dateFilteredPurchases.filter(p => 
+      pending: getUniqueOrderCount(purchasesForCount.filter(p => 
         ['pending', '대기', '', null].includes(p.final_manager_status as any)
       )),
-      purchase: getUniqueOrderCount(dateFilteredPurchases.filter(p => {
+      purchase: getUniqueOrderCount(purchasesForCount.filter(p => {
         // 구매요청 건이면서, 구매완료 전인 항목
         const isRequest = p.payment_category === '구매요청';
         const notPaid = !p.is_payment_completed;
@@ -235,14 +245,14 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
         
         return isSeonJin || finalApproved;
       })),
-      receipt: getUniqueOrderCount(dateFilteredPurchases.filter(p => {
+      receipt: getUniqueOrderCount(purchasesForCount.filter(p => {
         const notReceived = !p.is_received;
         const cond = (p.progress_type || '').includes('선진행') || p.final_manager_status === 'approved';
         return notReceived && cond;
       })),
-      done: getUniqueOrderCount(dateFilteredPurchases)
+      done: getUniqueOrderCount(purchasesForCount)
     };
-  }, [dateFilteredPurchases]);
+  }, [employeeFilteredPurchases]);
 
   // 사용자별 저장된 기간 불러오기
   useEffect(() => {

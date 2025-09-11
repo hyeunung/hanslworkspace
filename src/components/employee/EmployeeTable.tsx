@@ -149,7 +149,7 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[60px] min-w-[60px]">
+                <TableHead className="w-16 min-w-[50px]">
               <SortableHeader
                 sortKey="employeeID"
                 currentSortKey={sortConfig.key as string | null}
@@ -159,7 +159,7 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                 사번
               </SortableHeader>
             </TableHead>
-            <TableHead className="w-[50px] min-w-[50px]">
+            <TableHead className="w-14 min-w-[45px]">
               <SortableHeader
                 sortKey="name"
                 currentSortKey={sortConfig.key as string | null}
@@ -169,7 +169,7 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                 이름
               </SortableHeader>
             </TableHead>
-            <TableHead className="w-[45px] min-w-[45px]">
+            <TableHead className="w-12 min-w-[40px]">
               <SortableHeader
                 sortKey="position"
                 currentSortKey={sortConfig.key as string | null}
@@ -179,7 +179,7 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                 직급
               </SortableHeader>
             </TableHead>
-            <TableHead className="w-[60px] min-w-[60px]">
+            <TableHead className="w-16 min-w-[50px]">
               <SortableHeader
                 sortKey="department"
                 currentSortKey={sortConfig.key as string | null}
@@ -189,7 +189,7 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                 부서
               </SortableHeader>
             </TableHead>
-            <TableHead className="w-[85px] min-w-[85px]">
+            <TableHead className="w-20 min-w-[70px]">
               <SortableHeader
                 sortKey="phone"
                 currentSortKey={sortConfig.key as string | null}
@@ -199,7 +199,7 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                 연락처
               </SortableHeader>
             </TableHead>
-            <TableHead className="w-[130px] min-w-[130px]">
+            <TableHead className="w-32 min-w-[100px]">
               <SortableHeader
                 sortKey="email"
                 currentSortKey={sortConfig.key as string | null}
@@ -210,11 +210,11 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
               </SortableHeader>
             </TableHead>
             {/* 연차 정보는 모든 사용자에게 표시 */}
-            <TableHead className="w-[45px] min-w-[45px] text-center">생성</TableHead>
-            <TableHead className="w-[45px] min-w-[45px] text-center">사용</TableHead>
-            <TableHead className="w-[45px] min-w-[45px] text-center">남은</TableHead>
+            <TableHead className="w-11 min-w-[40px] text-center">생성</TableHead>
+            <TableHead className="w-11 min-w-[40px] text-center">사용</TableHead>
+            <TableHead className="w-11 min-w-[40px] text-center">남은</TableHead>
             {/* lg 이상에서만 표시되는 칼럼들 */}
-            <TableHead className="hidden lg:table-cell w-[70px] min-w-[70px]">
+            <TableHead className="hidden lg:table-cell w-18 min-w-[60px]">
               <SortableHeader
                 sortKey="join_date"
                 currentSortKey={sortConfig.key as string | null}
@@ -224,7 +224,7 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                 입사일
               </SortableHeader>
             </TableHead>
-            <TableHead className="hidden lg:table-cell w-[80px] min-w-[80px]">
+            <TableHead className="hidden lg:table-cell w-20 min-w-[70px]">
               <SortableHeader
                 sortKey="birthday"
                 currentSortKey={sortConfig.key as string | null}
@@ -237,9 +237,9 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
             {/* HR/Admin만 볼 수 있는 민감한 정보 */}
             {isHRorAdmin && (
               <>
-                <TableHead className="hidden xl:table-cell w-[50px] min-w-[50px]">은행</TableHead>
-                <TableHead className="hidden xl:table-cell w-[90px] min-w-[90px]">계좌번호</TableHead>
-                <TableHead className="hidden 2xl:table-cell">주소</TableHead>
+                <TableHead className="hidden xl:table-cell w-14 min-w-[45px]">은행</TableHead>
+                <TableHead className="hidden xl:table-cell w-24 min-w-[80px]">계좌번호</TableHead>
+                <TableHead className="hidden 2xl:table-cell min-w-[120px]">주소</TableHead>
                 <TableHead>
                   <SortableHeader
                     sortKey="purchase_role"
@@ -272,7 +272,7 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                 </TableHead>
               </>
             )}
-                <TableHead className="w-[60px] min-w-[60px]">작업</TableHead>
+                <TableHead className="w-16 min-w-[50px]">작업</TableHead>
               </TableRow>
             </TableHeader>
         <TableBody>
@@ -393,8 +393,115 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
         </div>
       </div>
 
+      {/* Tablet View */}
+      <div className="hidden md:block lg:hidden">
+        <div className="overflow-x-auto border rounded-lg">
+          <table className="w-full min-w-[700px]">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left p-3 font-medium text-gray-900 text-sm w-16">사번</th>
+                <th className="text-left p-3 font-medium text-gray-900 text-sm w-20">이름</th>
+                <th className="text-left p-3 font-medium text-gray-900 text-sm w-20">직급</th>
+                <th className="text-left p-3 font-medium text-gray-900 text-sm w-24">부서</th>
+                <th className="text-left p-3 font-medium text-gray-900 text-sm">연락처</th>
+                <th className="text-left p-3 font-medium text-gray-900 text-sm">이메일</th>
+                {isHRorAdmin && (
+                  <>
+                    <th className="text-left p-3 font-medium text-gray-900 text-sm w-24">권한</th>
+                    <th className="text-center p-3 font-medium text-gray-900 text-sm w-16">상태</th>
+                  </>
+                )}
+                <th className="text-center p-3 font-medium text-gray-900 text-sm w-16">작업</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {sortedData.length === 0 ? (
+                <tr>
+                  <td colSpan={isHRorAdmin ? 9 : 7} className="text-center py-8 text-gray-500">
+                    등록된 직원이 없습니다.
+                  </td>
+                </tr>
+              ) : (
+                sortedData.map((employee) => (
+                  <tr key={employee.id} className="hover:bg-gray-50">
+                    <td className="p-3 text-sm">
+                      {employee.employeeID || employee.employee_number || employee.id.slice(0, 8)}
+                    </td>
+                    <td className="p-3 text-sm font-medium">{employee.name}</td>
+                    <td className="p-3 text-sm">{employee.position || '-'}</td>
+                    <td className="p-3 text-sm">{employee.department || '-'}</td>
+                    <td className="p-3 text-sm">{employee.phone || '-'}</td>
+                    <td className="p-3 text-sm">{employee.email || '-'}</td>
+                    {isHRorAdmin && (
+                      <>
+                        <td className="p-3">
+                          <Badge className={`text-xs ${getRoleBadgeColor(employee.purchase_role)}`}>
+                            {getRoleDisplayName(employee.purchase_role)}
+                          </Badge>
+                        </td>
+                        <td className="p-3 text-center">
+                          <Badge
+                            variant={employee.is_active ? 'default' : 'secondary'}
+                            className={`text-xs ${employee.is_active ? 'bg-green-100 text-green-800' : ''}`}
+                          >
+                            {employee.is_active ? '활성' : '비활성'}
+                          </Badge>
+                        </td>
+                      </>
+                    )}
+                    <td className="p-3 text-center">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => onView(employee)}>
+                            <Eye className="mr-2 h-4 w-4" />
+                            상세 보기
+                          </DropdownMenuItem>
+                          {canEdit && (
+                            <>
+                              <DropdownMenuItem onClick={() => onEdit(employee)}>
+                                <Edit className="mr-2 h-4 w-4" />
+                                수정
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleToggleStatus(employee)}>
+                                {employee.is_active ? (
+                                  <>
+                                    <ToggleLeft className="mr-2 h-4 w-4" />
+                                    비활성화
+                                  </>
+                                ) : (
+                                  <>
+                                    <ToggleRight className="mr-2 h-4 w-4" />
+                                    활성화
+                                  </>
+                                )}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => handleDelete(employee)}
+                                className="text-red-600"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                삭제
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Mobile Card View */}
-      <div className="block lg:hidden space-y-3">
+      <div className="block md:hidden space-y-3">
         {sortedData.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             등록된 직원이 없습니다.

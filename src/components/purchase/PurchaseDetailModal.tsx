@@ -52,29 +52,94 @@ export default function PurchaseDetailModal({
   const [editedPurchase, setEditedPurchase] = useState<PurchaseRequestWithDetails | null>(null)
   const [editedItems, setEditedItems] = useState<any[]>([])
   const [deletedItemIds, setDeletedItemIds] = useState<number[]>([])
+  const [userRoles, setUserRoles] = useState<string[]>([])
   const supabase = createClient()
   
+  // 사용자 권한 직접 로드
+  useEffect(() => {
+    const loadUserRoles = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          // 먼저 ID로 시도
+          let { data: employeeData } = await supabase
+            .from('employees')
+            .select('*')
+            .eq('id', user.id)
+            .maybeSingle()
+          
+          // ID로 못 찾았으면 이메일로 시도
+          if (!employeeData && user.email) {
+            const { data: employeeByEmail } = await supabase
+              .from('employees')
+              .select('*')
+              .eq('email', user.email)
+              .maybeSingle()
+            
+            employeeData = employeeByEmail
+          }
+          
+          if (employeeData?.purchase_role) {
+            let roles: string[] = []
+            if (Array.isArray(employeeData.purchase_role)) {
+              roles = employeeData.purchase_role.map((r: any) => String(r).trim())
+            } else {
+              const roleString = String(employeeData.purchase_role)
+              roles = roleString
+                .split(',')
+                .map((r: string) => r.trim())
+                .filter((r: string) => r.length > 0)
+            }
+            setUserRoles(roles)
+          }
+        }
+      } catch (error) {
+      }
+    }
+    
+    if (isOpen) {
+      loadUserRoles()
+    }
+  }, [isOpen])
+  
+  // currentUserRoles가 배열이 아니면 userRoles 사용
+  const effectiveRoles = Array.isArray(currentUserRoles) && currentUserRoles.length > 0 
+    ? currentUserRoles 
+    : userRoles
+  
   // 권한 체크
-  const canEdit = currentUserRoles.includes('final_approver') || 
-                  currentUserRoles.includes('app_admin') || 
-                  currentUserRoles.includes('ceo')
+  const canEdit = effectiveRoles.includes('final_approver') || 
+                  effectiveRoles.includes('app_admin') || 
+                  effectiveRoles.includes('ceo')
   
   const canDelete = canEdit
   
   // 입고 권한 체크 (final_approver, app_admin, ceo가 입고 처리 가능)
-  const canReceiptCheck = currentUserRoles.includes('final_approver') || 
-                         currentUserRoles.includes('app_admin') || 
-                         currentUserRoles.includes('ceo')
+  const canReceiptCheck = effectiveRoles.includes('final_approver') || 
+                         effectiveRoles.includes('app_admin') || 
+                         effectiveRoles.includes('ceo')
   
   // 승인 권한 체크
-  const canApproveMiddle = currentUserRoles.includes('middle_manager') || 
-                           currentUserRoles.includes('app_admin') || 
-                           currentUserRoles.includes('ceo')
+  const canApproveMiddle = effectiveRoles.includes('middle_manager') || 
+                           effectiveRoles.includes('app_admin') || 
+                           effectiveRoles.includes('ceo')
   
-  const canApproveFinal = currentUserRoles.includes('final_approver') || 
-                          currentUserRoles.includes('app_admin') || 
-                          currentUserRoles.includes('ceo')
-
+   const canApproveFinal = effectiveRoles.includes('final_approver') || 
+                           effectiveRoles.includes('app_admin') || 
+                           effectiveRoles.includes('ceo')
+   
+   // 디버깅 로그
+   console.log('=== PurchaseDetailModal Debug ===')
+   console.log('Current User Roles (prop):', currentUserRoles)
+   console.log('User Roles (direct load):', userRoles)
+   console.log('Effective Roles:', effectiveRoles)
+   console.log('Can Approve Middle:', canApproveMiddle)
+   console.log('Can Approve Final:', canApproveFinal)
+   console.log('Is Editing:', isEditing)
+   console.log('Middle Manager Status:', purchase?.middle_manager_status)
+   console.log('Final Manager Status:', purchase?.final_manager_status)
+   console.log('================================')
+ 
   useEffect(() => {
     if (purchaseId && isOpen) {
       loadPurchaseDetail(purchaseId.toString())
@@ -130,7 +195,7 @@ export default function PurchaseDetailModal({
     }
   }
 
-  const formatDate = (date: string | null) => {
+  const formatDate = (date: string | null | undefined) => {
     if (!date) return '-'
     return new Date(date).toLocaleDateString('ko-KR')
   }
@@ -606,8 +671,7 @@ export default function PurchaseDetailModal({
                       </Badge>
                     </div>
                     {!isEditing && canApproveMiddle && 
-                     purchase.middle_manager_status !== 'approved' && 
-                     purchase.middle_manager_status !== 'rejected' && (
+                     purchase.middle_manager_status === 'pending' && (
                       <div className="flex gap-2">
                         <Button
                           size="sm"
@@ -647,8 +711,7 @@ export default function PurchaseDetailModal({
                     </div>
                     {!isEditing && canApproveFinal && 
                      purchase.middle_manager_status === 'approved' &&
-                     purchase.final_manager_status !== 'approved' && 
-                     purchase.final_manager_status !== 'rejected' && (
+                     purchase.final_manager_status === 'pending' && (
                       <div className="flex gap-2">
                         <Button
                           size="sm"

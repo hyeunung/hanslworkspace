@@ -215,6 +215,7 @@ export default function ApprovalMain() {
           approval.middle_manager_status === 'approved' && 
           approval.final_manager_status === 'pending'
         )
+      }
     }
 
     // 정렬 적용
@@ -247,36 +248,29 @@ export default function ApprovalMain() {
       
       let updateData: any = {}
 
-      // hanslwebapp 방식으로 직접 업데이트
+      // PurchaseDetailModal과 동일한 방식으로 단순화
+      // 실제 DB에 없는 필드들 제거: middle_manager_name, final_manager_name, *_comment
       if (roles.includes('middle_manager')) {
         // 1차 승인 (검증)
         if (action === 'approve') {
           updateData = { 
-            middle_manager_status: 'approved',
-            middle_manager_name: employee?.name,
-            middle_manager_comment: comment || null
+            middle_manager_status: 'approved'
           }
         } else {
           updateData = { 
-            middle_manager_status: 'rejected',
-            middle_manager_comment: comment || '반려',
-            middle_manager_name: employee?.name
+            middle_manager_status: 'rejected'
           }
         }
       } else if (roles.some(r => ['final_approver', 'ceo', 'app_admin'].includes(r))) {
         // 최종 승인
         if (action === 'approve') {
           updateData = { 
-            final_manager_status: 'approved',
-            final_manager_name: employee?.name,
-            final_manager_comment: comment || null
+            final_manager_status: 'approved'
           }
         } else {
           updateData = { 
             final_manager_status: 'rejected',
-            final_manager_comment: comment || '반려',
-            final_manager_name: employee?.name,
-            // 최종 승인자가 반려하면 중간 승인도 함께 반려 (hanslwebapp 방식)
+            // 최종 승인자가 반려하면 중간 승인도 함께 반려
             middle_manager_status: 'rejected'
           }
         }
@@ -324,16 +318,15 @@ export default function ApprovalMain() {
 
       let updateData: any = {}
 
-      // hanslwebapp 방식으로 직접 업데이트 (approved_at 필드 제거)
+      // PurchaseDetailModal과 동일한 방식으로 단순화
+      // 실제 DB에 없는 필드들 제거: middle_manager_name, final_manager_name, *_comment
       if (roles.includes('middle_manager')) {
         updateData = {
-          middle_manager_status: 'approved',
-          middle_manager_name: employee?.name
+          middle_manager_status: 'approved'
         }
       } else if (roles.some(r => ['final_approver', 'ceo', 'app_admin'].includes(r))) {
         updateData = {
-          final_manager_status: 'approved',
-          final_manager_name: employee?.name
+          final_manager_status: 'approved'
         }
       } else {
         throw new Error('승인 권한이 없습니다')

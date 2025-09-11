@@ -399,7 +399,7 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
           </CardTitle>
         </CardHeader>
         <CardContent className="py-3">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">시작일</label>
               <Input
@@ -423,14 +423,15 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">요청자</label>
               <Select 
-                value={selectedEmployee || currentUserName || "all"} 
-                onValueChange={(value) => setSelectedEmployee(value === "all" ? "" : value)}
+                value={selectedEmployee || "all"} 
+                onValueChange={setSelectedEmployee}
               >
                 <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder={currentUserName || "선택"} />
+                  <SelectValue placeholder={selectedEmployee === "all" ? "전체" : selectedEmployee || "선택"} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">전체</SelectItem>
+                  {/* app_admin만 전체 옵션 표시 */}
+                  {isAdmin && <SelectItem value="all">전체</SelectItem>}
                   {employees
                     .filter(emp => emp.full_name && emp.full_name.trim() !== '')
                     .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
@@ -517,22 +518,22 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
 
       {/* 직접 구현한 탭 (hanslwebapp 방식) - 빠른 성능 */}
       <div className="space-y-3">
-        {/* 탭 버튼들 */}
-        <div className="flex space-x-1 bg-gray-50 p-1 rounded-lg border border-gray-200">
+        {/* 탭 버튼들 - 모바일 반응형 개선 */}
+        <div className="flex flex-col sm:flex-row sm:space-x-1 space-y-1 sm:space-y-0 bg-gray-50 p-1 rounded-lg border border-gray-200">
           {NAV_TABS.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-4 rounded-md text-sm font-medium transition-colors ${
+              className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-3 sm:px-4 rounded-md text-xs sm:text-sm font-medium transition-colors ${
                 activeTab === tab.key
                   ? 'text-hansl-600 bg-white shadow-sm border border-gray-200'
                   : 'text-gray-600 bg-transparent hover:text-gray-900 hover:bg-white/50'
               }`}
             >
-              <span>{tab.label}</span>
+              <span className="whitespace-nowrap">{tab.label}</span>
               <Badge 
                 variant="secondary" 
-                className={`text-xs ${
+                className={`text-[10px] sm:text-xs ${
                   activeTab === tab.key 
                     ? 'bg-hansl-50 text-hansl-700' 
                     : 'bg-gray-100 text-gray-600'

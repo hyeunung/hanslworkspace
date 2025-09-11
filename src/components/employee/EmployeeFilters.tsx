@@ -109,57 +109,58 @@ export default function EmployeeFilters({
   return (
     <div className="space-y-4">
       {/* 상단 액션 버튼 */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">직원 관리</h2>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">직원 관리</h2>
         <div className="flex gap-2">
           <Button
             variant="outline"
             onClick={onExport}
-            className="flex items-center gap-2"
+            className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
           >
-            <Download className="w-4 h-4" />
-            Excel 내보내기
+            <Download className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Excel 내보내기</span>
+            <span className="sm:hidden">Excel</span>
           </Button>
           <Button 
             onClick={onCreateNew}
-            className="flex items-center gap-2"
+            className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
             직원 등록
           </Button>
         </div>
       </div>
 
       {/* 필터 섹션 */}
-      <div className="bg-white p-4 rounded-lg border space-y-4">
-        <form onSubmit={handleSearchSubmit} className="flex gap-4 items-end flex-wrap">
+      <div className="bg-white p-3 sm:p-4 rounded-lg border space-y-4">
+        <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-end sm:flex-wrap">
           {/* 검색 */}
-          <div className="flex-1 sm:min-w-[300px]">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+          <div className="flex-1 sm:min-w-[250px]">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
               검색
             </label>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3 sm:w-4 sm:h-4" />
               <Input
                 type="text"
-                placeholder="이름, 이메일, 전화번호, 직급, 부서, Slack ID로 검색"
+                placeholder="이름, 이메일, 전화번호로 검색"
                 value={localSearch}
                 onChange={(e) => setLocalSearch(e.target.value)}
-                className="pl-10"
+                className="pl-8 sm:pl-10 text-sm h-9"
               />
             </div>
           </div>
 
           {/* 부서 필터 */}
-          <div className="sm:min-w-[120px]">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+          <div className="w-full sm:w-auto sm:min-w-[120px]">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
               부서
             </label>
             <Select
               value={filters.department || 'all'}
               onValueChange={handleDepartmentChange}
             >
-              <SelectTrigger>
+              <SelectTrigger className="h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -174,15 +175,15 @@ export default function EmployeeFilters({
           </div>
 
           {/* 직급 필터 */}
-          <div className="sm:min-w-[120px]">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+          <div className="w-full sm:w-auto sm:min-w-[120px]">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
               직급
             </label>
             <Select
               value={filters.position || 'all'}
               onValueChange={handlePositionChange}
             >
-              <SelectTrigger>
+              <SelectTrigger className="h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -197,15 +198,15 @@ export default function EmployeeFilters({
           </div>
 
           {/* 권한 필터 */}
-          <div className="sm:min-w-[140px]">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+          <div className="w-full sm:w-auto sm:min-w-[140px]">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
               권한
             </label>
             <Select
               value={filters.purchase_role || 'all'}
               onValueChange={handleRoleChange}
             >
-              <SelectTrigger>
+              <SelectTrigger className="h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -221,8 +222,8 @@ export default function EmployeeFilters({
           </div>
 
           {/* 상태 필터 */}
-          <div className="sm:min-w-[100px]">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+          <div className="w-full sm:w-auto sm:min-w-[100px]">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
               상태
             </label>
             <Select
@@ -235,7 +236,7 @@ export default function EmployeeFilters({
               }
               onValueChange={handleStatusChange}
             >
-              <SelectTrigger>
+              <SelectTrigger className="h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -247,8 +248,8 @@ export default function EmployeeFilters({
           </div>
 
           {/* 검색 및 초기화 버튼 */}
-          <div className="flex gap-2">
-            <Button type="submit">
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button type="submit" className="flex-1 sm:flex-none h-9 text-sm">
               검색
             </Button>
             {hasFilters && (
@@ -256,10 +257,11 @@ export default function EmployeeFilters({
                 type="button" 
                 variant="outline" 
                 onClick={clearFilters}
-                className="flex items-center gap-1"
+                className="flex items-center gap-1 h-9 text-sm"
               >
-                <X className="w-4 h-4" />
-                초기화
+                <X className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">초기화</span>
+                <span className="sm:hidden">초기</span>
               </Button>
             )}
           </div>

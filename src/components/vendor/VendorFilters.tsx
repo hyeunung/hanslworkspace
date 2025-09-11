@@ -52,50 +52,51 @@ export default function VendorFilters({
   return (
     <div className="space-y-4">
       {/* 상단 액션 버튼 */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">업체 관리</h2>
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">업체 관리</h2>
         <div className="flex gap-2">
           <Button
             variant="outline"
             onClick={onExport}
-            className="flex items-center gap-2"
+            className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
           >
-            <Download className="w-4 h-4" />
-            Excel 내보내기
+            <Download className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Excel 내보내기</span>
+            <span className="sm:hidden">Excel</span>
           </Button>
           <Button 
             onClick={onCreateNew}
-            className="flex items-center gap-2"
+            className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
             업체 등록
           </Button>
         </div>
       </div>
 
       {/* 필터 섹션 */}
-      <div className="bg-white p-4 rounded-lg border space-y-4">
-        <form onSubmit={handleSearchSubmit} className="flex gap-4 items-end">
+      <div className="bg-white p-3 sm:p-4 rounded-lg border space-y-4">
+        <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-end">
           {/* 검색 */}
           <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
               검색
             </label>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3 sm:w-4 sm:h-4" />
               <Input
                 type="text"
-                placeholder="업체명, 사업자번호, 대표자, 연락처, 이메일로 검색"
+                placeholder="업체명, 사업자번호, 연락처 검색"
                 value={localSearch}
                 onChange={(e) => setLocalSearch(e.target.value)}
-                className="pl-10"
+                className="pl-8 sm:pl-10 text-sm h-9"
               />
             </div>
           </div>
 
           {/* 상태 필터 */}
-          <div className="sm:min-w-[120px]">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+          <div className="w-full sm:w-auto sm:min-w-[120px]">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
               상태
             </label>
             <Select
@@ -108,7 +109,7 @@ export default function VendorFilters({
               }
               onValueChange={handleStatusChange}
             >
-              <SelectTrigger>
+              <SelectTrigger className="h-9">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -120,8 +121,8 @@ export default function VendorFilters({
           </div>
 
           {/* 검색 및 초기화 버튼 */}
-          <div className="flex gap-2">
-            <Button type="submit">
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button type="submit" className="flex-1 sm:flex-none h-9 text-sm">
               검색
             </Button>
             {hasFilters && (
@@ -129,10 +130,11 @@ export default function VendorFilters({
                 type="button" 
                 variant="outline" 
                 onClick={clearFilters}
-                className="flex items-center gap-1"
+                className="flex items-center gap-1 h-9 text-sm"
               >
-                <X className="w-4 h-4" />
-                초기화
+                <X className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">초기화</span>
+                <span className="sm:hidden">초기</span>
               </Button>
             )}
           </div>
