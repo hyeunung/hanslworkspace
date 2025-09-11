@@ -721,9 +721,9 @@ export default function PurchaseNewMain() {
         }
       }}
     >
-      <div className="flex gap-6">
-        {/* 발주 기본 정보 - 좌측 1/4 폭 */}
-        <div className="w-1/4 relative bg-muted/20 border border-border rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 p-5 space-y-4">
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
+        {/* 발주 기본 정보 - 모바일: 전체폭, 데스크톱: 1/4 폭 */}
+        <div className="w-full lg:w-1/4 relative bg-muted/20 border border-border rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 p-4 lg:p-5 space-y-4">
           <div className="flex flex-row items-start justify-between w-full mb-4">
             <div className="flex flex-col">
               <h4 className="font-semibold text-foreground">발주 기본 정보</h4>
@@ -747,7 +747,7 @@ export default function PurchaseNewMain() {
           {watch('po_template_type') === '일반' && (
             <div className="space-y-4">
               {/* 요청 설정 */}
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <Label className="mb-1 block text-xs">요청 유형<span className="text-red-500 ml-1">*</span></Label>
                   <Select value={watch('request_type')} onValueChange={(value) => setValue('request_type', value)}>
@@ -788,7 +788,7 @@ export default function PurchaseNewMain() {
               </div>
 
               {/* 업체 정보 */}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <Label className="mb-1 block text-xs">업체명<span className="text-red-500 ml-1">*</span></Label>
                   <Suspense fallback={<div className="h-9 bg-gray-100 animate-pulse rounded-md" />}>
@@ -859,7 +859,7 @@ export default function PurchaseNewMain() {
               </div>
 
               {/* 구매요구자 및 일정 정보 */}
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <Label className="mb-1 block text-xs">구매요구자</Label>
                   <Suspense fallback={<div className="h-9 bg-gray-100 animate-pulse rounded-md" />}>
@@ -934,7 +934,7 @@ export default function PurchaseNewMain() {
               </div>
 
               {/* 프로젝트 정보 */}
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <Label className="mb-1 block text-xs">PJ업체</Label>
                   <Input 
@@ -970,8 +970,8 @@ export default function PurchaseNewMain() {
           )}
         </div>
 
-        {/* Professional Items Section - 우측 3/4 폭 */}
-        <div className="w-3/4 space-y-4">
+        {/* Professional Items Section - 모바일: 전체폭, 데스크톱: 3/4 폭 */}
+        <div className="w-full lg:w-3/4 space-y-4">
           <div className="flex items-center mb-2">
             <div className="flex flex-col justify-center">
               <h4 className="font-semibold text-foreground">품목 목록</h4>
@@ -989,12 +989,12 @@ export default function PurchaseNewMain() {
               </Select>
             </div>
           </div>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div>
-              <h4 className="text-base font-semibold text-gray-900">품목 정보</h4>
+              <h4 className="text-sm sm:text-base font-semibold text-gray-900">품목 정보</h4>
               <p className="text-xs text-gray-500 mt-1">최대 100개 품목 입력 가능</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary" className="text-hansl-500">
                 총 금액: {totalAmount.toLocaleString('ko-KR')} {currency}
               </Badge>
@@ -1028,7 +1028,7 @@ export default function PurchaseNewMain() {
                 min={1}
                 value={addCount}
                 onChange={e => setAddCount(Math.max(1, Number(e.target.value.replace(/[^0-9]/g, ''))))}
-                className="w-16 h-8 text-xs"
+                className="w-14 sm:w-16 h-8 text-xs"
               />
               <Button
                 type="button"
@@ -1074,23 +1074,23 @@ export default function PurchaseNewMain() {
                   <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr className="border-b border-gray-200">
                       <th className="px-2 py-2 text-left font-medium text-gray-700 w-10">#</th>
-                      <th className="px-2 py-2 text-left font-medium text-gray-700 sm:min-w-[150px]">
+                      <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[120px] sm:min-w-[150px]">
                         품목<span className="text-red-500">*</span>
                       </th>
-                      <th className="px-2 py-2 text-left font-medium text-gray-700 sm:min-w-[120px]">규격</th>
+                      <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[100px] sm:min-w-[120px]">규격</th>
                       <th className="px-2 py-2 text-center font-medium text-gray-700 w-20">
                         수량<span className="text-red-500">*</span>
                       </th>
-                      <th className="px-2 py-2 text-right font-medium text-gray-700 sm:min-w-[100px]">
+                      <th className="px-2 py-2 text-right font-medium text-gray-700 min-w-[90px] sm:min-w-[100px]">
                         단가 ({currency})
                       </th>
-                      <th className="px-2 py-2 text-right font-medium text-gray-700 sm:min-w-[120px]">
+                      <th className="px-2 py-2 text-right font-medium text-gray-700 min-w-[100px] sm:min-w-[120px]">
                         합계 ({currency})
                       </th>
                       {paymentCategory === "구매요청" && (
-                        <th className="px-2 py-2 text-left font-medium text-gray-700 sm:min-w-[150px]">링크</th>
+                        <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[120px] sm:min-w-[150px]">링크</th>
                       )}
-                      <th className="px-2 py-2 text-left font-medium text-gray-700 sm:min-w-[150px]">비고</th>
+                      <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[100px] sm:min-w-[150px]">비고</th>
                       <th className="px-2 py-2 text-center font-medium text-gray-700 w-10"></th>
                     </tr>
                   </thead>
