@@ -31,9 +31,11 @@ export default function DashboardMain() {
     loadDashboardData()
   }, [])
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = async (showLoading = true) => {
     try {
-      setLoading(true)
+      if (showLoading) {
+        setLoading(true)
+      }
       const supabase = createClient()
       
       const { data: { user } } = await supabase.auth.getUser()
@@ -70,13 +72,20 @@ export default function DashboardMain() {
       }
     } catch (error) {
     } finally {
-      setLoading(false)
+      if (showLoading) {
+        setLoading(false)
+      }
     }
   }
 
   const handleQuickApprove = async (requestId: string) => {
     if (!data?.employee) {
       toast.error('사용자 정보를 찾을 수 없습니다.')
+      return
+    }
+
+    // 승인 확인 메시지
+    if (!confirm('정말로 승인하시겠습니까?')) {
       return
     }
 
@@ -103,7 +112,7 @@ export default function DashboardMain() {
         toast.success('승인이 완료되었습니다.')
         // 성공 시 백그라운드에서 데이터 동기화 (UI 깜빡임 없이)
         setTimeout(() => {
-          loadDashboardData()
+          loadDashboardData(false)  // false를 전달하여 로딩 화면 표시 안 함
         }, 1000)
       } else {
         // 실패 시 원래 데이터로 롤백

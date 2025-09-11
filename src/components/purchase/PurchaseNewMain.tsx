@@ -791,7 +791,7 @@ export default function PurchaseNewMain() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">업체명<span className="text-red-500 ml-0.5">*</span></Label>
-                  <Suspense fallback={<div className="h-9 bg-gray-100 animate-pulse rounded-md" />}>
+                  <Suspense fallback={<div className="h-7 sm:h-8 lg:h-9 bg-gray-100 animate-pulse rounded-md" />}>
                     <ReactSelect
                       options={vendors.map(v => ({ value: v.id.toString(), label: v.vendor_name }))}
                       value={vendors.find(v => v.id.toString() === vendor) ? { value: vendor, label: vendors.find(v => v.id.toString() === vendor)?.vendor_name } : null}
@@ -862,7 +862,7 @@ export default function PurchaseNewMain() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">구매요구자</Label>
-                  <Suspense fallback={<div className="h-9 bg-gray-100 animate-pulse rounded-md" />}>
+                  <Suspense fallback={<div className="h-7 sm:h-8 lg:h-9 bg-gray-100 animate-pulse rounded-md" />}>
                     <ReactSelect
                       key={`employee-select-${employeeName}`}
                       value={employeeName ? { value: employeeName, label: employeeName } : null}
