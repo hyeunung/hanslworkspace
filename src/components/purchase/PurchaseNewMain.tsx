@@ -747,9 +747,9 @@ export default function PurchaseNewMain() {
           {watch('po_template_type') === '일반' && (
             <div className="space-y-4">
               {/* 요청 설정 */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                 <div>
-                  <Label className="mb-1 block text-xs">요청 유형<span className="text-red-500 ml-1">*</span></Label>
+                  <Label className="mb-0.5 block text-[10px] sm:text-xs">요청 유형<span className="text-red-500 ml-0.5">*</span></Label>
                   <Select value={watch('request_type')} onValueChange={(value) => setValue('request_type', value)}>
                     <SelectTrigger className="h-7 sm:h-8 lg:h-9 bg-white border border-[#d2d2d7] rounded-md text-[11px] sm:text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="선택" />
@@ -761,7 +761,7 @@ export default function PurchaseNewMain() {
                   </Select>
                 </div>
                 <div>
-                  <Label className="mb-1 block text-xs">진행 종류<span className="text-red-500 ml-1">*</span></Label>
+                  <Label className="mb-0.5 block text-[10px] sm:text-xs">진행 종류<span className="text-red-500 ml-0.5">*</span></Label>
                   <Select value={watch('progress_type')} onValueChange={(value) => setValue('progress_type', value)}>
                     <SelectTrigger className="h-7 sm:h-8 lg:h-9 bg-white border border-[#d2d2d7] rounded-md text-[11px] sm:text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="선택" />
@@ -773,7 +773,7 @@ export default function PurchaseNewMain() {
                   </Select>
                 </div>
                 <div>
-                  <Label className="mb-1 block text-xs">결제 종류<span className="text-red-500 ml-1">*</span></Label>
+                  <Label className="mb-0.5 block text-[10px] sm:text-xs">결제 종류<span className="text-red-500 ml-0.5">*</span></Label>
                   <Select value={watch('payment_category')} onValueChange={(value) => setValue('payment_category', value)}>
                     <SelectTrigger className="h-7 sm:h-8 lg:h-9 bg-white border border-[#d2d2d7] rounded-md text-[11px] sm:text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="선택" />
@@ -790,7 +790,7 @@ export default function PurchaseNewMain() {
               {/* 업체 정보 */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
-                  <Label className="mb-1 block text-xs">업체명<span className="text-red-500 ml-1">*</span></Label>
+                  <Label className="mb-0.5 block text-[10px] sm:text-xs">업체명<span className="text-red-500 ml-0.5">*</span></Label>
                   <Suspense fallback={<div className="h-9 bg-gray-100 animate-pulse rounded-md" />}>
                     <ReactSelect
                       options={vendors.map(v => ({ value: v.id.toString(), label: v.vendor_name }))}
@@ -859,9 +859,9 @@ export default function PurchaseNewMain() {
               </div>
 
               {/* 구매요구자 및 일정 정보 */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 <div>
-                  <Label className="mb-1 block text-xs">구매요구자</Label>
+                  <Label className="mb-0.5 block text-[10px] sm:text-xs">구매요구자</Label>
                   <Suspense fallback={<div className="h-9 bg-gray-100 animate-pulse rounded-md" />}>
                     <ReactSelect
                       key={`employee-select-${employeeName}`}
@@ -914,7 +914,7 @@ export default function PurchaseNewMain() {
                   </Suspense>
                 </div>
                 <div>
-                  <Label className="mb-1 block text-xs">청구일</Label>
+                  <Label className="mb-0.5 block text-[10px] sm:text-xs">청구일</Label>
                   <Input
                     type="date"
                     value={watch('request_date')}
@@ -923,7 +923,7 @@ export default function PurchaseNewMain() {
                   />
                 </div>
                 <div>
-                  <Label className="mb-1 block text-xs">입고 요청일</Label>
+                  <Label className="mb-0.5 block text-[10px] sm:text-xs">입고 요청일</Label>
                   <Input
                     type="date"
                     value={watch('delivery_request_date')}
@@ -934,9 +934,9 @@ export default function PurchaseNewMain() {
               </div>
 
               {/* 프로젝트 정보 */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                 <div>
-                  <Label className="mb-1 block text-xs">PJ업체</Label>
+                  <Label className="mb-0.5 block text-[10px] sm:text-xs">PJ업체</Label>
                   <Input 
                     type="text" 
                     value={watch('project_vendor')} 
@@ -946,7 +946,7 @@ export default function PurchaseNewMain() {
                   />
                 </div>
                 <div>
-                  <Label className="mb-1 block text-xs">수주번호</Label>
+                  <Label className="mb-0.5 block text-[10px] sm:text-xs">수주번호</Label>
                   <Input 
                     type="text" 
                     value={watch('sales_order_number')} 
@@ -956,7 +956,7 @@ export default function PurchaseNewMain() {
                   />
                 </div>
                 <div>
-                  <Label className="mb-1 block text-xs">Item</Label>
+                  <Label className="mb-0.5 block text-[10px] sm:text-xs">Item</Label>
                   <Input 
                     type="text" 
                     value={watch('project_item')} 
