@@ -751,7 +751,7 @@ export default function PurchaseNewMain() {
                 <div>
                   <Label className="mb-1 block text-xs">요청 유형<span className="text-red-500 ml-1">*</span></Label>
                   <Select value={watch('request_type')} onValueChange={(value) => setValue('request_type', value)}>
-                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="h-7 sm:h-8 lg:h-9 bg-white border border-[#d2d2d7] rounded-md text-[11px] sm:text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -763,7 +763,7 @@ export default function PurchaseNewMain() {
                 <div>
                   <Label className="mb-1 block text-xs">진행 종류<span className="text-red-500 ml-1">*</span></Label>
                   <Select value={watch('progress_type')} onValueChange={(value) => setValue('progress_type', value)}>
-                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="h-7 sm:h-8 lg:h-9 bg-white border border-[#d2d2d7] rounded-md text-[11px] sm:text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -775,7 +775,7 @@ export default function PurchaseNewMain() {
                 <div>
                   <Label className="mb-1 block text-xs">결제 종류<span className="text-red-500 ml-1">*</span></Label>
                   <Select value={watch('payment_category')} onValueChange={(value) => setValue('payment_category', value)}>
-                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="h-7 sm:h-8 lg:h-9 bg-white border border-[#d2d2d7] rounded-md text-[11px] sm:text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -844,7 +844,7 @@ export default function PurchaseNewMain() {
                       setValue('contact_id', val ? Number(val) : undefined);
                     }}
                   >
-                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="h-7 sm:h-8 lg:h-9 bg-white border border-[#d2d2d7] rounded-md text-[11px] sm:text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="담당자 선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
