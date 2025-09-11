@@ -788,7 +788,7 @@ export default function PurchaseNewMain() {
               </div>
 
               {/* 업체 정보 */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-1.5 sm:gap-2 lg:grid-cols-2">
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">업체명<span className="text-red-500 ml-0.5">*</span></Label>
                   <Suspense fallback={<div className="h-7 sm:h-8 lg:h-9 bg-gray-100 animate-pulse rounded-md" />}>
@@ -817,11 +817,11 @@ export default function PurchaseNewMain() {
                       captureMenuScroll={false}
                       pageSize={20}
                       styles={{
-                        container: base => ({ ...base, width: '100%', fontSize: '11px', '@media (min-width: 640px)': { fontSize: '12px' } }),
-                        control: base => ({ ...base, height: 28, minHeight: 28, background: '#fff', border: '1px solid #d2d2d7', borderRadius: 6, fontSize: '11px', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)', '&:hover': { boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' }, '@media (min-width: 640px)': { height: 32, minHeight: 32, fontSize: '12px' }, '@media (min-width: 1024px)': { height: 36, minHeight: 36 } }),
-                        valueContainer: base => ({ ...base, height: 28, padding: '0 6px', fontSize: '11px', '@media (min-width: 640px)': { height: 32, padding: '0 8px', fontSize: '12px' }, '@media (min-width: 1024px)': { height: 36 } }),
-                        input: base => ({ ...base, margin: 0, padding: 0, fontSize: '11px', '@media (min-width: 640px)': { fontSize: '12px' } }),
-                        indicatorsContainer: base => ({ ...base, height: 28, '@media (min-width: 640px)': { height: 32 }, '@media (min-width: 1024px)': { height: 36 } }),
+                        container: base => ({ ...base, width: '100%', fontSize: '11px' }),
+                        control: base => ({ ...base, height: 28, minHeight: 28, background: '#fff', border: '1px solid #d2d2d7', borderRadius: 6, fontSize: '11px', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)', '&:hover': { boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' } }),
+                        valueContainer: base => ({ ...base, height: 28, padding: '0 6px', fontSize: '11px' }),
+                        input: base => ({ ...base, margin: 0, padding: 0, fontSize: '11px' }),
+                        indicatorsContainer: base => ({ ...base, height: 28 }),
                         menuPortal: base => ({ ...base, zIndex: 1400 })
                       }}
                     />
@@ -859,7 +859,7 @@ export default function PurchaseNewMain() {
               </div>
 
               {/* 구매요구자 및 일정 정보 */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 sm:gap-2">
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">구매요구자</Label>
                   <Suspense fallback={<div className="h-7 sm:h-8 lg:h-9 bg-gray-100 animate-pulse rounded-md" />}>
@@ -897,23 +897,19 @@ export default function PurchaseNewMain() {
                           '&:hover': {
                             borderColor: '#d2d2d7',
                             boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'
-                          },
-                          '@media (min-width: 640px)': { height: '32px', minHeight: '32px', fontSize: '12px' },
-                          '@media (min-width: 1024px)': { height: '36px', minHeight: '36px' }
+                          }
                         }),
                         valueContainer: (base) => ({
                           ...base,
                           height: '26px',
                           padding: '0 6px',
-                          fontSize: '11px',
-                          '@media (min-width: 640px)': { height: '30px', padding: '0 8px', fontSize: '12px' },
-                          '@media (min-width: 1024px)': { height: '34px' }
+                          fontSize: '11px'
                         }),
-                        input: (base) => ({ ...base, margin: '0px', padding: '0px', fontSize: '11px', '@media (min-width: 640px)': { fontSize: '12px' } }),
+                        input: (base) => ({ ...base, margin: '0px', padding: '0px', fontSize: '11px' }),
                         indicatorSeparator: () => ({ display: 'none' }),
-                        indicatorsContainer: (base) => ({ ...base, height: '28px', '@media (min-width: 640px)': { height: '32px' }, '@media (min-width: 1024px)': { height: '36px' } }),
-                        menu: (base) => ({ ...base, fontSize: '11px', zIndex: 9999, '@media (min-width: 640px)': { fontSize: '12px' } }),
-                        option: (base) => ({ ...base, fontSize: '11px', padding: '6px 10px', '@media (min-width: 640px)': { fontSize: '12px', padding: '8px 12px' } })
+                        indicatorsContainer: (base) => ({ ...base, height: '28px' }),
+                        menu: (base) => ({ ...base, fontSize: '11px', zIndex: 9999 }),
+                        option: (base) => ({ ...base, fontSize: '11px', padding: '6px 10px' })
                       }}
                     />
                   </Suspense>
