@@ -818,13 +818,13 @@ export default function PurchaseNewMain() {
                       pageSize={20}
                       styles={{
                         container: base => ({ ...base, width: '100%' }),
-                        control: base => ({ ...base, height: 28, minHeight: 28, maxHeight: 28, background: '#fff', border: '1px solid #d2d2d7', borderRadius: 6, fontSize: '11px', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)', '&:hover': { boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' } }),
-                        valueContainer: base => ({ ...base, height: '100%', padding: '0 6px', fontSize: '11px' }),
-                        input: base => ({ ...base, margin: 0, padding: 0, fontSize: '11px' }),
-                        indicatorsContainer: base => ({ ...base, height: 28 }),
+                        control: base => ({ ...base, height: 36, minHeight: 36, background: '#fff', border: '1px solid #d2d2d7', borderRadius: 6, fontSize: '0.75rem', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)', '&:hover': { boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' } }),
+                        valueContainer: base => ({ ...base, height: 34, padding: '0 8px', fontSize: '0.75rem' }),
+                        input: base => ({ ...base, margin: 0, padding: 0, fontSize: '0.75rem' }),
+                        indicatorsContainer: base => ({ ...base, height: 36 }),
                         indicatorSeparator: () => ({ display: 'none' }),
-                        dropdownIndicator: base => ({ ...base, padding: 4 }),
-                        clearIndicator: base => ({ ...base, padding: 4 }),
+                        dropdownIndicator: base => ({ ...base, padding: 6 }),
+                        clearIndicator: base => ({ ...base, padding: 6 }),
                         menuPortal: base => ({ ...base, zIndex: 1400 })
                       }}
                     />
@@ -891,10 +891,9 @@ export default function PurchaseNewMain() {
                       styles={{
                         control: (base) => ({
                           ...base,
-                          minHeight: '28px',
-                          height: '28px',
-                          maxHeight: '28px',
-                          fontSize: '11px',
+                          minHeight: '36px',
+                          height: '36px',
+                          fontSize: '0.75rem',
                           borderColor: '#d2d2d7',
                           borderRadius: '6px',
                           boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
@@ -905,17 +904,17 @@ export default function PurchaseNewMain() {
                         }),
                         valueContainer: (base) => ({
                           ...base,
-                          height: '100%',
-                          padding: '0 6px',
-                          fontSize: '11px'
+                          height: '34px',
+                          padding: '0 8px',
+                          fontSize: '0.75rem'
                         }),
-                        input: (base) => ({ ...base, margin: '0px', padding: '0px', fontSize: '11px' }),
+                        input: (base) => ({ ...base, margin: '0px', padding: '0px', fontSize: '0.75rem' }),
                         indicatorSeparator: () => ({ display: 'none' }),
-                        indicatorsContainer: (base) => ({ ...base, height: '28px' }),
-                        dropdownIndicator: base => ({ ...base, padding: 4 }),
-                        clearIndicator: base => ({ ...base, padding: 4 }),
-                        menu: (base) => ({ ...base, fontSize: '11px', zIndex: 9999 }),
-                        option: (base) => ({ ...base, fontSize: '11px', padding: '6px 10px' })
+                        indicatorsContainer: (base) => ({ ...base, height: '36px' }),
+                        dropdownIndicator: base => ({ ...base, padding: 6 }),
+                        clearIndicator: base => ({ ...base, padding: 6 }),
+                        menu: (base) => ({ ...base, fontSize: '0.75rem', zIndex: 9999 }),
+                        option: (base) => ({ ...base, fontSize: '0.75rem', padding: '6px 10px' })
                       }}
                     />
                   </Suspense>
