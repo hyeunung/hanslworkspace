@@ -1,13 +1,15 @@
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { dashboardService } from '@/services/dashboardService'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AlertTriangle, Clock, CheckCircle, TrendingUp, Zap, Calendar, ArrowRight, Eye, ThumbsUp, X, Package, Truck, ShoppingCart, FileText, Building2 } from 'lucide-react'
-import PurchaseDetailModal from '@/components/purchase/PurchaseDetailModal'
-import PurchaseStatusModal from '@/components/dashboard/PurchaseStatusModal'
+
+// Lazy load modals for better performance
+const PurchaseDetailModal = lazy(() => import('@/components/purchase/PurchaseDetailModal'))
+const PurchaseStatusModal = lazy(() => import('@/components/dashboard/PurchaseStatusModal'))
 import { toast } from 'sonner'
 import type { DashboardData, UrgentRequest, MyRequestStatus } from '@/types/purchase'
 import { useNavigate } from 'react-router-dom'
@@ -50,13 +52,6 @@ export default function DashboardMain() {
       if (!employee) return
 
       const dashboardData = await dashboardService.getDashboardData(employee)
-      console.log('=== Dashboard Employee Debug ===')
-      console.log('User ID:', user.id)
-      console.log('Employee:', employee)
-      console.log('Employee ID:', employee.id)
-      console.log('Employee Name:', employee.name)
-      console.log('Employee Purchase Role:', employee.purchase_role)
-      console.log('==============================')
       
       setData(dashboardData)
       
@@ -467,12 +462,16 @@ export default function DashboardMain() {
                                   handleQuickApprove(approval.id)
                                 }}
                                 disabled={actionLoading === approval.id}
-                                className="h-5 sm:h-6 px-2 bg-green-600 hover:bg-green-700 text-white text-[10px] sm:text-xs"
+                                className={`h-5 sm:h-6 px-2 text-white text-[10px] sm:text-xs ${
+                                  approval.middle_manager_status === 'approved' 
+                                    ? 'bg-blue-600 hover:bg-blue-700' 
+                                    : 'bg-green-600 hover:bg-green-700'
+                                }`}
                               >
                                 {actionLoading === approval.id ? (
                                   <div className="w-2 sm:w-2.5 h-2 sm:h-2.5 border border-white border-t-transparent rounded-full animate-spin" />
                                 ) : (
-                                  '승인'
+                                  approval.middle_manager_status === 'approved' ? '최종승인' : '1차승인'
                                 )}
                               </Button>
                             </div>
@@ -679,7 +678,8 @@ export default function DashboardMain() {
       </div>
       
       {/* 승인 상세보기 모달 */}
-      <PurchaseDetailModal
+      <Suspense fallback={<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div></div>}>
+        <PurchaseDetailModal
         purchaseId={selectedApprovalId}
         isOpen={isModalOpen}
         onClose={() => {
@@ -691,11 +691,13 @@ export default function DashboardMain() {
           loadDashboardData()
           setIsModalOpen(false)
           setSelectedApprovalId(null)
-        }}
-      />
+          }}
+        />
+      </Suspense>
       
       {/* 구매/입고 상태 상세보기 모달 */}
-      <PurchaseStatusModal
+      <Suspense fallback={<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div></div>}>
+        <PurchaseStatusModal
         isOpen={isStatusModalOpen}
         onClose={() => {
           setIsStatusModalOpen(false)
@@ -703,8 +705,9 @@ export default function DashboardMain() {
           setStatusModalType(null)
         }}
         item={selectedStatusItem}
-        type={statusModalType as any}
-      />
+          type={statusModalType as any}
+        />
+      </Suspense>
     </div>
   )
 }
