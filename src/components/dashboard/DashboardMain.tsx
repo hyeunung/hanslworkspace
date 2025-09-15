@@ -384,7 +384,11 @@ export default function DashboardMain() {
                       return (
                         <div 
                           key={approval.id} 
-                          className="border rounded-lg p-2 sm:p-2.5 hover:bg-gray-50 transition-colors cursor-pointer"
+                          className={`border rounded-lg p-2 sm:p-2.5 transition-colors cursor-pointer ${
+                            isAdvance 
+                              ? 'bg-red-50 border-red-200 hover:bg-red-100' 
+                              : 'hover:bg-gray-50'
+                          }`}
                           onClick={(e) => {
                             // 버튼 클릭시에는 카드 클릭 이벤트 무시
                             if ((e.target as HTMLElement).closest('button')) return
@@ -394,29 +398,11 @@ export default function DashboardMain() {
                         >
                           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
                             <div className="flex-1 min-w-0">
-                              {/* 첫번째 줄: 요청자, 뱃지들 */}
+                              {/* 첫번째 줄: 요청자, 날짜 */}
                               <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 mb-1">
                                 <span className="font-medium text-xs sm:text-sm">
                                   {approval.requester_name}
                                 </span>
-                                <Badge 
-                                  variant="outline" 
-                                  className={`text-[9px] sm:text-[10px] h-3 sm:h-3.5 px-1 ${
-                                    approval.middle_manager_status === 'approved' 
-                                      ? 'bg-blue-50 text-blue-700 border-blue-200' 
-                                      : 'bg-yellow-50 text-yellow-700 border-yellow-200'
-                                  }`}
-                                >
-                                  {approval.middle_manager_status === 'approved' ? '최종' : '1차'}
-                                </Badge>
-                                {isAdvance && (
-                                  <Badge 
-                                    variant="outline"
-                                    className="text-[9px] sm:text-[10px] h-3 sm:h-3.5 px-1 bg-red-50 text-red-700 border-red-200"
-                                  >
-                                    선진행
-                                  </Badge>
-                                )}
                                 <span className="text-[9px] sm:text-[10px] text-gray-500">
                                   {new Date(approval.request_date || approval.created_at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
                                 </span>
