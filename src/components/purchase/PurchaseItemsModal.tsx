@@ -11,13 +11,13 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 
 interface PurchaseItem {
-  id?: number;
-  line_number: number;
+  id?: number | string;
+  line_number?: number;
   item_name: string;
-  specification: string;
+  specification?: string;
   quantity: number;
-  unit_price_value: number;
-  amount_value: number;
+  unit_price_value?: number;
+  amount_value?: number;
   remark?: string;
   link?: string;
   is_received?: boolean;
@@ -72,7 +72,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
     
     // 금액 자동 계산 (amount_value를 직접 수정하는 경우가 아닐 때만)
     if (field === 'quantity' || field === 'unit_price_value') {
-      newItems[index].amount_value = newItems[index].quantity * newItems[index].unit_price_value;
+      newItems[index].amount_value = newItems[index].quantity * (newItems[index].unit_price_value || 0);
     }
     
     setEditingItems(newItems);
@@ -135,7 +135,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
       if (error) throw error;
 
       // 총금액 업데이트
-      const totalAmount = editingItems.reduce((sum, item) => sum + item.amount_value, 0);
+      const totalAmount = editingItems.reduce((sum, item) => sum + (item.amount_value || 0), 0);
       await supabase
         .from('purchase_requests')
         .update({ total_amount: totalAmount })
@@ -303,7 +303,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                         className="h-8 text-sm text-right"
                       />
                     ) : (
-                      <span>{item.unit_price_value.toLocaleString()} {purchase.currency}</span>
+                      <span>{(item.unit_price_value || 0).toLocaleString()} {purchase.currency}</span>
                     )}
                   </TableCell>
                   <TableCell className="text-right">
@@ -315,7 +315,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                         className="h-8 text-sm text-right font-medium"
                       />
                     ) : (
-                      <span className="font-medium">{item.amount_value.toLocaleString()} {purchase.currency}</span>
+                      <span className="font-medium">{(item.amount_value || 0).toLocaleString()} {purchase.currency}</span>
                     )}
                   </TableCell>
                   <TableCell>

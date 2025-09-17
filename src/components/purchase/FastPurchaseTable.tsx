@@ -4,6 +4,7 @@ import PurchaseDetailModal from "./PurchaseDetailModal";
 import MobilePurchaseCard from "./MobilePurchaseCard";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs/generatePurchaseOrderExcel";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,42 +15,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-
-interface Purchase {
-  id: number;
-  purchase_order_number?: string;
-  payment_category?: string; // 결제종류 필드
-  requester_name: string;
-  vendor_name: string;
-  middle_manager_status?: string;
-  final_manager_status?: string;
-  is_received: boolean;
-  total_amount: number;
-  currency: string;
-  delivery_request_date?: string;
-  request_date: string;
-  items?: any[];
-  // 추가 필드들
-  contact_name?: string;
-  item_name?: string;
-  specification?: string;
-  quantity?: number;
-  unit_price_value?: number;
-  amount_value?: number;
-  remark?: string;
-  project_vendor?: string;
-  sales_order_number?: string;
-  project_item?: string;
-  vendor_payment_schedule?: string;
-  is_payment_completed?: boolean;
-  progress_type?: string; // 선진행/일반 구분
-}
+import { Purchase, PurchaseRequestWithDetails } from "@/types/purchase";
 
 interface FastPurchaseTableProps {
   purchases: Purchase[];
   activeTab?: string; // 현재 활성 탭
   currentUserRoles?: string[];
   onRefresh?: () => void;
+  onPaymentComplete?: (purchaseId: number) => Promise<void>;
+  onReceiptComplete?: (purchaseId: number) => Promise<void>;
 }
 
 // 상태 배지 컴포넌트 (더 빠르게)
@@ -75,32 +49,10 @@ const StatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
 
 StatusBadge.displayName = 'StatusBadge';
 
-// 구매현황 탭 전용 - 간단한 구매 상태 배지
-const PurchaseStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
-  // 입고 상태 확인
-  const isReceived = purchase.is_received || 
-                     (purchase.items && purchase.items.length > 0 && 
-                      purchase.items.every((item: any) => 
-                        item.is_received === true || 
-                        item.delivery_status === 'received' ||
-                        item.delivery_status === 'completed'
-                      ));
-  
-  // 입고 완료되면 구매완료
-  if (isReceived) {
-    return <Badge className="bg-gray-100 text-gray-600 text-[11px]">구매완료</Badge>;
-  }
-  
-  // 그 외 모든 경우는 진행중 (노란색)
-  return <Badge className="bg-yellow-100 text-yellow-800 text-[11px]">진행중</Badge>;
-});
-
-PurchaseStatusBadge.displayName = 'PurchaseStatusBadge';
-
 // 반응형 칼럼 클래스 - Tailwind 클래스로 유연한 너비 관리
 const COMMON_COLUMN_CLASSES = {
   approvalStatus: "text-center w-20 min-w-[70px]",
-  purchaseOrderNumber: "pl-2 w-32 min-w-[100px] lg:w-36",
+  purchaseOrderNumber: "pl-2 w-32 min-w-[110px] sm:w-36 lg:w-40 xl:w-44",
   paymentCategory: "text-center w-20 min-w-[70px]",
   requesterName: "w-20 min-w-[60px]",
   requestDate: "w-20 min-w-[70px] lg:w-24",
@@ -218,6 +170,28 @@ const getReceiptProgress = (purchase: Purchase) => {
   return { received, total, percentage };
 };
 
+// 구매완료 현황 계산 함수
+const getPaymentProgress = (purchase: Purchase) => {
+  // purchase_requests 테이블의 is_payment_completed 필드 우선 체크
+  if (purchase.is_payment_completed) {
+    return { completed: 1, total: 1, percentage: 100 };
+  }
+  
+  // items 배열이 없으면 전체 미완료로 처리
+  if (!purchase.items || purchase.items.length === 0) {
+    return { completed: 0, total: 1, percentage: 0 };
+  }
+  
+  // 개별 아이템 구매완료 상태 계산
+  const total = purchase.items.length;
+  const completed = purchase.items.filter((item: any) => 
+    item.is_payment_completed === true
+  ).length;
+  const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+  
+  return { completed, total, percentage };
+};
+
 // 날짜 포맷 함수
 const formatDate = (dateStr?: string) => {
   if (!dateStr) return '-';
@@ -247,12 +221,17 @@ const ProgressTypeBadge = memo(({ type }: { type?: string }) => {
 ProgressTypeBadge.displayName = 'ProgressTypeBadge';
 
 // 테이블 행 컴포넌트 메모화
-const TableRow = memo(({ purchase, onClick, activeTab }: { 
+const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentComplete, onReceiptComplete, onExcelDownload }: { 
   purchase: Purchase; 
   onClick: (purchase: Purchase) => void;
   activeTab?: string;
+  isLeadBuyer?: boolean;
+  onPaymentComplete?: (purchaseId: number) => Promise<void>;
+  onReceiptComplete?: (purchaseId: number) => Promise<void>;
+  onExcelDownload?: (purchase: Purchase) => Promise<void>;
 }) => {
   const receiptProgress = getReceiptProgress(purchase);
+  const paymentProgress = getPaymentProgress(purchase);
   const isAdvance = purchase.progress_type === '선진행' || purchase.progress_type?.includes('선진행');
   
   return (
@@ -266,10 +245,23 @@ const TableRow = memo(({ purchase, onClick, activeTab }: {
           <ApprovalStatusBadge purchase={purchase} />
         </td>
       )}
-      {/* 구매현황 탭에서는 구매상태를 맨 앞에 표시 */}
+      {/* 구매현황 탭에서는 구매완료 진행률만 표시 */}
       {activeTab === 'purchase' && (
-        <td className={`px-2 py-1.5 whitespace-nowrap ${COMMON_COLUMN_CLASSES.purchaseStatus}`}>
-          <PurchaseStatusBadge purchase={purchase} />
+        <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receiptProgress}`}>
+          <div className="flex items-center justify-center gap-1">
+            <div className="bg-gray-200 rounded-full h-1.5 w-8">
+              <div 
+                className={`h-1.5 rounded-full ${
+                  paymentProgress.percentage === 100 ? 'bg-blue-500' : 
+                  paymentProgress.percentage > 0 ? 'bg-blue-400' : 'bg-gray-300'
+                }`}
+                style={{ width: `${paymentProgress.percentage}%` }}
+              />
+            </div>
+            <span className="text-[11px] text-gray-600">
+              {paymentProgress.percentage}%
+            </span>
+          </div>
         </td>
       )}
       {/* 입고현황 탭에서는 입고진행을 맨 앞에 표시 */}
@@ -292,19 +284,55 @@ const TableRow = memo(({ purchase, onClick, activeTab }: {
         </td>
       )}
       <td className={`px-2 py-1.5 font-medium text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>
-        <span className="block truncate" title={purchase.purchase_order_number || ''}>
-          {purchase.purchase_order_number || '-'}
-        </span>
+        <div className="flex items-center gap-1">
+          {/* 엑셀 다운로드 아이콘 - 항상 표시, 조건에 따라 활성화/비활성화 */}
+          {onExcelDownload && (
+            <img
+              src="/excels-icon.svg"
+              alt="엑셀 다운로드"
+              width="16"
+              height="16"
+              className={`inline-block align-middle transition-transform p-0.5 rounded
+                ${purchase.is_po_download ? 'border border-gray-400' : ''}
+                ${(purchase.progress_type === '선진행' || purchase.progress_type?.includes('선진행') ||
+                  (purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'approved'))
+                  ? (purchase.is_po_download ? 'cursor-pointer' : 'cursor-pointer hover:scale-110')
+                  : 'opacity-40 grayscale cursor-not-allowed'}`}
+              onClick={async (e: React.MouseEvent) => {
+                if (purchase.progress_type === '선진행' || purchase.progress_type?.includes('선진행') ||
+                    (purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'approved')) {
+                  e.stopPropagation();
+                  await onExcelDownload(purchase);
+                }
+              }}
+              style={{
+                pointerEvents: (purchase.progress_type === '선진행' || purchase.progress_type?.includes('선진행') ||
+                  (purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'approved'))
+                  ? 'auto' : 'none'
+              }}
+              title={purchase.is_po_download ? '다운로드 완료' : '엑셀 발주서 다운로드'}
+            />
+          )}
+          <span className="block truncate" title={purchase.purchase_order_number || ''}>
+            {purchase.purchase_order_number || '-'}
+          </span>
+        </div>
       </td>
       {/* 승인대기, 입고현황, 전체항목 탭에서만 결제종류 표시 */}
       {(activeTab === 'pending' || activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
         <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>
           <Badge className={`text-[11px] ${
-            purchase.payment_category === '구매요청' ? 'bg-blue-100 text-blue-800' : 
-            purchase.payment_category === '경비 청구' ? 'bg-green-100 text-green-800' :
+            purchase.payment_category === '구매 요청' ? 'bg-blue-100 text-blue-800' : 
+            purchase.payment_category === '발주' ? 'bg-green-100 text-green-800' :
+            purchase.payment_category === '경비 청구' ? 'bg-yellow-100 text-yellow-800' :
             'bg-gray-100 text-gray-800'
           }`}>
-            {purchase.payment_category || '-'}
+            {(() => {
+              // 표시 텍스트 통일
+              if (purchase.payment_category === '구매 요청') return '구매요청';
+              if (purchase.payment_category === '발주') return '발주요청';
+              return purchase.payment_category || '-';
+            })()}
           </Badge>
         </td>
       )}
@@ -513,18 +541,28 @@ const TableRow = memo(({ purchase, onClick, activeTab }: {
 TableRow.displayName = 'TableRow';
 
 // 메인 테이블 컴포넌트
-const FastPurchaseTable = memo(({ purchases, activeTab = 'done', currentUserRoles = [], onRefresh }: FastPurchaseTableProps) => {
+const FastPurchaseTable = memo(({ 
+  purchases, 
+  activeTab = 'done', 
+  currentUserRoles = [], 
+  onRefresh,
+  onPaymentComplete,
+  onReceiptComplete 
+}: FastPurchaseTableProps) => {
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [purchaseToDelete, setPurchaseToDelete] = useState<Purchase | null>(null);
   const supabase = createClient();
 
-  // 권한 전달 디버깅
-  console.log('=== FastPurchaseTable 권한 확인 ===');
-  console.log('currentUserRoles:', currentUserRoles);
-  console.log('Active Tab:', activeTab);
-  console.log('================================');
+  // 권한 체크 - lead buyer와 app_admin만 구매완료/입고완료 버튼 사용 가능
+  const isLeadBuyer = currentUserRoles && (
+    currentUserRoles.includes('raw_material_manager') || 
+    currentUserRoles.includes('consumable_manager') ||
+    currentUserRoles.includes('purchase_manager') ||
+    currentUserRoles.includes('app_admin')
+  );
+  
 
   // 권한 체크
   const canEdit = currentUserRoles.includes('final_approver') || 
@@ -543,7 +581,141 @@ const FastPurchaseTable = memo(({ purchases, activeTab = 'done', currentUserRole
     setSelectedPurchaseId(null);
   };
 
+  // 엑셀 다운로드 핸들러
+  const handleExcelDownload = async (purchase: Purchase) => {
+    try {
+      // DB에서 직접 모든 품목 조회
+      const { data: purchaseRequest, error: requestError } = await supabase
+        .from('purchase_requests')
+        .select('*')
+        .eq('purchase_order_number', purchase.purchase_order_number)
+        .single();
 
+      if (requestError || !purchaseRequest) {
+        toast.error('해당 발주요청번호의 데이터를 찾을 수 없습니다.');
+        return;
+      }
+
+      // 품목 데이터 조회
+      const { data: orderItems, error: itemsError } = await supabase
+        .from('purchase_request_items')
+        .select('*')
+        .eq('purchase_order_number', purchase.purchase_order_number)
+        .order('line_number');
+
+      if (itemsError || !orderItems || orderItems.length === 0) {
+        toast.error('해당 발주요청번호의 품목 데이터를 찾을 수 없습니다.');
+        return;
+      }
+
+      // 업체 상세 정보 및 담당자 정보 조회
+      const vendorInfo = {
+        vendor_name: purchase.vendor_name,
+        vendor_phone: '',
+        vendor_fax: '',
+        vendor_contact_name: '',
+        vendor_payment_schedule: ''
+      };
+
+      try {
+        const vendorId = purchaseRequest.vendor_id || purchase.vendor_id;
+        const contactId = purchaseRequest.contact_id || purchase.contact_id;
+        
+        // vendor 정보 조회
+        if (vendorId) {
+          const { data: vendorData } = await supabase
+            .from('vendors')
+            .select('vendor_phone, vendor_fax, vendor_payment_schedule')
+            .eq('id', vendorId)
+            .single();
+
+          if (vendorData) {
+            vendorInfo.vendor_phone = vendorData.vendor_phone || '';
+            vendorInfo.vendor_fax = vendorData.vendor_fax || '';
+            vendorInfo.vendor_payment_schedule = vendorData.vendor_payment_schedule || '';
+          }
+        }
+
+        // vendor_contacts에서 contact_id로 담당자 정보 조회
+        if (contactId) {
+          const { data: contactData } = await supabase
+            .from('vendor_contacts')
+            .select('contact_name, contact_phone, contact_email')
+            .eq('id', contactId)
+            .single();
+          if (contactData) {
+            vendorInfo.vendor_contact_name = contactData.contact_name || '';
+          }
+        }
+      } catch (error) {
+        // 업체 정보 조회 실패는 무시
+      }
+
+      const excelData: PurchaseOrderData = {
+        purchase_order_number: purchaseRequest.purchase_order_number || '',
+        request_date: purchaseRequest.request_date,
+        delivery_request_date: purchaseRequest.delivery_request_date,
+        requester_name: purchaseRequest.requester_name,
+        vendor_name: vendorInfo.vendor_name || '',
+        vendor_contact_name: vendorInfo.vendor_contact_name,
+        vendor_phone: vendorInfo.vendor_phone,
+        vendor_fax: vendorInfo.vendor_fax,
+        project_vendor: purchaseRequest.project_vendor,
+        sales_order_number: purchaseRequest.sales_order_number,
+        project_item: purchaseRequest.project_item,
+        vendor_payment_schedule: vendorInfo.vendor_payment_schedule,
+        items: orderItems.map((item: any) => ({
+          line_number: item.line_number,
+          item_name: item.item_name,
+          specification: item.specification,
+          quantity: item.quantity,
+          unit_price_value: item.unit_price_value,
+          amount_value: item.amount_value,
+          remark: item.remark,
+          currency: purchaseRequest.currency || 'KRW'
+        }))
+      };
+
+      // 코드 기반 ExcelJS 생성
+      const blob = await generatePurchaseOrderExcelJS(excelData);
+      
+      // 다운로드용 파일명
+      const downloadFilename = `발주서_${excelData.vendor_name}_${excelData.purchase_order_number}.xlsx`;
+
+      // 다운로드 제공
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = downloadFilename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('엑셀 파일이 다운로드되었습니다.');
+      
+      // DB에 다운로드 완료 플래그(is_po_download) 업데이트 - lead_buyer만 해당
+      try {
+        const canUpdateFlag = currentUserRoles && currentUserRoles.includes('lead_buyer');
+
+        if (canUpdateFlag) {
+          const { error: downloadFlagErr } = await supabase
+            .from('purchase_requests')
+            .update({ is_po_download: true })
+            .eq('purchase_order_number', purchase.purchase_order_number);
+          
+          if (!downloadFlagErr) {
+            // 화면 업데이트
+            onRefresh?.();
+          }
+        }
+      } catch (flagErr) {
+        // 플래그 업데이트 실패는 무시
+      }
+    } catch (error) {
+      toast.error('엑셀 다운로드에 실패했습니다.');
+    }
+  };
 
   const handleConfirmDelete = async () => {
     if (!purchaseToDelete) return;
@@ -582,7 +754,7 @@ const FastPurchaseTable = memo(({ purchases, activeTab = 'done', currentUserRole
         <thead className="bg-gray-50">
           <tr>
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.approvalStatus}`}>승인상태</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주요청번호</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
@@ -605,7 +777,7 @@ const FastPurchaseTable = memo(({ purchases, activeTab = 'done', currentUserRole
     
     const baseHeaders = (
       <>
-        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주요청번호</th>
+        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
         {(activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
           <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
         )}
@@ -662,9 +834,9 @@ const FastPurchaseTable = memo(({ purchases, activeTab = 'done', currentUserRole
     return (
       <thead className="bg-gray-50">
         <tr>
-          {/* 구매현황 탭에서는 구매상태를 맨 앞에 */}
+          {/* 구매현황 탭에서는 구매완료 진행률을 맨 앞에 */}
           {activeTab === 'purchase' && (
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.purchaseStatus}`}>구매상태</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>구매진행</th>
           )}
           {/* 입고현황 탭에서는 입고진행을 맨 앞에 */}
           {activeTab === 'receipt' && (
@@ -691,6 +863,10 @@ const FastPurchaseTable = memo(({ purchases, activeTab = 'done', currentUserRole
                   purchase={purchase} 
                   onClick={handleRowClick}
                   activeTab={activeTab}
+                  isLeadBuyer={isLeadBuyer}
+                  onPaymentComplete={onPaymentComplete}
+                  onReceiptComplete={onReceiptComplete}
+                  onExcelDownload={handleExcelDownload}
                 />
               ))}
             </tbody>
@@ -704,7 +880,7 @@ const FastPurchaseTable = memo(({ purchases, activeTab = 'done', currentUserRole
           <table className="w-full min-w-[640px] text-[11px]">
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left p-2 font-medium text-gray-900 w-24 sm:w-28">발주번호</th>
+                <th className="text-left p-2 font-medium text-gray-900 w-20 sm:w-24">발주번호</th>
                 <th className="text-left p-2 font-medium text-gray-900 w-16 sm:w-20">요청자</th>
                 <th className="text-left p-2 font-medium text-gray-900 w-24 sm:w-28">업체</th>
                 <th className="text-left p-2 font-medium text-gray-900 min-w-[100px]">품명</th>
@@ -756,7 +932,7 @@ const FastPurchaseTable = memo(({ purchases, activeTab = 'done', currentUserRole
         activeTab={activeTab}
         onRefresh={onRefresh}
         onDelete={(purchase) => {
-          setPurchaseToDelete(purchase as Purchase);
+          setPurchaseToDelete(purchase as unknown as Purchase);
           setDeleteConfirmOpen(true);
         }}
       />

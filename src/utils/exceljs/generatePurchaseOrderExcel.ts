@@ -123,7 +123,10 @@ export async function generatePurchaseOrderExcelJS(data: PurchaseOrderData): Pro
       tl: { col: logoCol, row: logoRow }, // D1 셀 중앙에서 왼쪽 2px, 위로 2px 이동
       ext: { width: logoWidth, height: logoHeight },
     });
-  } catch (e) {}
+  } catch (e) {
+    // Excel 생성 중 오류 발생 시 로깅 (사용자에게는 영향 없음)
+    console.warn('Excel 생성 중 경고:', e);
+  }
 
   // 2. 제목 (B1:H1 병합, 중앙정렬)
   sheet.getCell('D1').value = '                발 주 서';

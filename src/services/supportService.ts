@@ -73,14 +73,7 @@ class SupportService {
 
       const { data, error } = await this.supabase
         .from('support_inquiries')
-        .select(`
-          *,
-          purchase_requests (
-            purchase_order_number,
-            vendor_name,
-            requester_name
-          )
-        `)
+        .select('*,purchase_requests(purchase_order_number,vendor_name,requester_name)')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
@@ -97,19 +90,7 @@ class SupportService {
     try {
       const { data, error } = await this.supabase
         .from('support_inquiries')
-        .select(`
-          *,
-          purchase_requests (
-            purchase_order_number,
-            vendor_name,
-            requester_name,
-            purchase_request_items (
-              item_name,
-              specification,
-              quantity
-            )
-          )
-        `)
+        .select('*,purchase_requests(purchase_order_number,vendor_name,requester_name,purchase_request_items(item_name,specification,quantity))')
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -183,18 +164,7 @@ class SupportService {
 
       let query = this.supabase
         .from('purchase_requests')
-        .select(`
-          id,
-          purchase_order_number,
-          vendor_name,
-          request_date,
-          requester_name,
-          purchase_request_items (
-            item_name,
-            specification,
-            quantity
-          )
-        `)
+        .select('id,purchase_order_number,vendor_name,request_date,requester_name,purchase_request_items(item_name,specification,quantity)')
         .eq('requester_name', employee.name)
         .order('request_date', { ascending: false })
 
@@ -316,20 +286,7 @@ class SupportService {
     try {
       const { data, error } = await this.supabase
         .from('purchase_requests')
-        .select(`
-          *,
-          purchase_request_items (
-            id,
-            line_number,
-            item_name,
-            specification,
-            quantity,
-            unit_price_value,
-            amount_value,
-            remark,
-            link
-          )
-        `)
+        .select('*,purchase_request_items(id,line_number,item_name,specification,quantity,unit_price_value,amount_value,remark,link)')
         .eq('id', requestId)
         .single()
 

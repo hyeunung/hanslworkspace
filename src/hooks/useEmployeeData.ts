@@ -1,13 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
-
-interface Employee {
-  id: string;
-  name: string;
-  email: string;
-  purchase_role: string | string[];
-  slack_id?: string;
-}
+import type { Employee } from '@/types/purchase';
 
 // 전역 캐시 (탭 전환 시 재사용)
 let cachedEmployee: Employee | null = null;

@@ -84,13 +84,10 @@ const PurchaseTable = memo(({
                       width="20"
                       height="20"
                       className={`inline-block align-middle transition-transform cursor-pointer hover:scale-110
-                        ${purchase.is_po_download ? 'border border-gray-400 rounded opacity-60' : ''}`}
+                        ${purchase.is_po_download ? 'border border-gray-400 rounded' : ''}`}
                       onClick={async (e: React.MouseEvent) => {
                         e.stopPropagation();
                         await onExcelDownload(purchase);
-                      }}
-                      style={{
-                        filter: purchase.is_po_download ? 'grayscale(1)' : undefined
                       }}
                       title="엑셀 발주서 다운로드"
                     />

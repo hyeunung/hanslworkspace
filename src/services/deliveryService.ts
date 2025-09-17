@@ -157,16 +157,7 @@ class DeliveryService {
     try {
       const { data, error } = await this.supabase
         .from('purchase_request_items')
-        .select(`
-          *,
-          purchase_request:purchase_requests(
-            id,
-            purchase_order_number,
-            requester_name,
-            vendor:vendors(vendor_name),
-            final_manager_status
-          )
-        `)
+        .select('*,purchase_request:purchase_requests(id,purchase_order_number,requester_name,vendor:vendors(vendor_name),final_manager_status)')
         .in('delivery_status', ['pending', 'partial'])
         .order('created_at', { ascending: false });
 
@@ -186,15 +177,7 @@ class DeliveryService {
     try {
       const { data, error } = await this.supabase
         .from('purchase_request_items')
-        .select(`
-          *,
-          purchase_request:purchase_requests(
-            id,
-            purchase_order_number,
-            requester_name,
-            vendor:vendors(vendor_name)
-          )
-        `)
+        .select('*,purchase_request:purchase_requests(id,purchase_order_number,requester_name,vendor:vendors(vendor_name))')
         .not('received_date', 'is', null)
         .order('received_date', { ascending: false })
         .limit(limit);

@@ -27,11 +27,7 @@ export default function PurchaseDetailMain() {
       
       const { data, error } = await supabase
         .from('purchase_requests')
-        .select(`
-          *,
-          vendors(id, vendor_name),
-          purchase_request_items(*)
-        `)
+        .select('*,vendors(id,vendor_name),purchase_request_items(*)')
         .eq('id', purchaseId)
         .single()
 
@@ -130,11 +126,11 @@ export default function PurchaseDetailMain() {
         </div>
         <div className="bg-white p-4 rounded-lg border">
           <p className="text-sm text-gray-600 mb-1">구매 처리</p>
-          {getStatusBadge(purchase.purchase_status)}
+          {getStatusBadge(purchase.purchase_status || 'pending')}
         </div>
         <div className="bg-white p-4 rounded-lg border">
           <p className="text-sm text-gray-600 mb-1">납품 상태</p>
-          {getDeliveryStatusBadge(purchase.delivery_status)}
+          {getDeliveryStatusBadge(purchase.delivery_status || 'pending')}
         </div>
       </div>
 
@@ -211,7 +207,7 @@ export default function PurchaseDetailMain() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {purchase.items.map((item, index) => (
+              {(purchase.items || []).map((item, index) => (
                 <tr key={index}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {item.item_name}

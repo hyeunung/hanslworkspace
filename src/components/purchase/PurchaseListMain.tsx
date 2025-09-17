@@ -1,7 +1,6 @@
 
-import { useState, useCallback } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, lazy, Suspense, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { usePurchaseData } from "@/hooks/usePurchaseData";
 import { useFastPurchaseFilters } from "@/hooks/useFastPurchaseFilters";
 import FastPurchaseTable from "@/components/purchase/FastPurchaseTable";
@@ -9,43 +8,19 @@ import FastPurchaseTable from "@/components/purchase/FastPurchaseTable";
 import { Search, Filter, Plus, Package } from "lucide-react";
 import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs/generatePurchaseOrderExcel";
 import { Input } from "@/components/ui/input";
-import PurchaseItemsModal from "@/components/purchase/PurchaseItemsModal";
+
+// Lazy load modal for better performance
+const PurchaseItemsModal = lazy(() => import("@/components/purchase/PurchaseItemsModal"));
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Combobox, ComboboxOption } from "@/components/ui/combobox";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 // Tabs 컴포넌트를 제거하고 직접 구현 (hanslwebapp 방식)
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/client";
 import { format } from "date-fns";
 import { toast } from "sonner";
-
-// 발주(구매) 데이터의 타입 정의
-interface Purchase {
-  id: number;
-  purchase_order_number?: string;
-  request_date: string;
-  delivery_request_date?: string;
-  progress_type: string;
-  is_payment_completed: boolean;
-  payment_category: string;
-  currency: string;
-  request_type: string;
-  vendor_name: string;
-  vendor_id?: number;
-  contact_id?: number;
-  requester_name: string;
-  project_vendor: string;
-  sales_order_number: string;
-  project_item: string;
-  middle_manager_status?: string;
-  final_manager_status?: string;
-  total_amount: number;
-  is_received: boolean;
-
-  is_po_download?: boolean;
-  items?: any[];
-}
+import { Purchase } from "@/types/purchase";
 
 interface PurchaseListMainProps {
   onEmailToggle?: () => void;
@@ -63,6 +38,7 @@ const NAV_TABS: { key: string; label: string }[] = [
 // 발주 목록 메인 컴포넌트
 export default function PurchaseListMain({ onEmailToggle, showEmailButton = true }: PurchaseListMainProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const supabase = createClient();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingData, setEditingData] = useState<any>({});
@@ -77,6 +53,8 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
     loading,
     currentUserRoles,
     currentUserName,
+    currentUserEmail,
+    currentUserId,
     refreshPurchases: loadPurchases
   } = usePurchaseData();
   
@@ -108,7 +86,16 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
     setRemarkFilter,
     filteredPurchases,
     tabCounts
-  } = useFastPurchaseFilters(purchases, currentUserRoles, currentUserName);
+  } = useFastPurchaseFilters(purchases, currentUserRoles, currentUserName, currentUserId, currentUserEmail);
+  
+  // URL 쿼리 파라미터에서 탭 설정
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const tab = searchParams.get('tab');
+    if (tab === 'purchase') {
+      setActiveTab('purchase');
+    }
+  }, [location.search, setActiveTab]);
   
 
   // 상태에 따른 배지 생성
@@ -210,7 +197,7 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
       }
 
       // 업체 상세 정보 및 담당자 정보 조회
-      let vendorInfo = {
+      const vendorInfo = {
         vendor_name: purchase.vendor_name,
         vendor_phone: '',
         vendor_fax: '',
@@ -256,7 +243,7 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
         request_date: purchaseRequest.request_date,
         delivery_request_date: purchaseRequest.delivery_request_date,
         requester_name: purchaseRequest.requester_name,
-        vendor_name: vendorInfo.vendor_name,
+        vendor_name: vendorInfo.vendor_name || '',
         vendor_contact_name: vendorInfo.vendor_contact_name,
         vendor_phone: vendorInfo.vendor_phone,
         vendor_fax: vendorInfo.vendor_fax,
@@ -294,13 +281,9 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
       
       toast.success('엑셀 파일이 다운로드되었습니다.');
       
-      // DB에 다운로드 완료 플래그(is_po_download) 업데이트 - raw_material_manager/consumable_manager만 해당
+      // DB에 다운로드 완료 플래그(is_po_download) 업데이트 - lead_buyer만 해당
       try {
-        const isLeadBuyer = currentUserRoles && (
-          currentUserRoles.includes('raw_material_manager') || 
-          currentUserRoles.includes('consumable_manager') ||
-          currentUserRoles.includes('purchase_manager')
-        );
+        const isLeadBuyer = currentUserRoles && currentUserRoles.includes('lead_buyer');
 
         if (isLeadBuyer) {
           const { error: downloadFlagErr } = await supabase
@@ -422,27 +405,26 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
 
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">요청자</label>
-              <Select 
-                value={selectedEmployee || "all"} 
-                onValueChange={setSelectedEmployee}
-              >
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder={selectedEmployee === "all" ? "전체" : selectedEmployee || "선택"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {/* app_admin만 전체 옵션 표시 */}
-                  {isAdmin && <SelectItem value="all">전체</SelectItem>}
-                  {employees
-                    .filter(emp => emp.full_name && emp.full_name.trim() !== '')
-                    .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
-                    .map((employee) => (
-                      <SelectItem key={employee.id} value={employee.full_name || ''}>
-                        {employee.full_name}
-                        {employee.full_name === currentUserName && " (나)"}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                value={selectedEmployee || "all"}
+                onValueChange={(value) => {
+                  setSelectedEmployee(value);
+                }}
+                options={[
+                  { value: "all", label: "전체" },
+                  ...employees
+                    .filter(emp => emp.name && emp.name.trim() !== '')
+                    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                    .map((employee): ComboboxOption => ({
+                      value: employee.name || '',
+                      label: `${employee.name}${employee.name === currentUserName ? " (나)" : ""}`
+                    }))
+                ]}
+                placeholder={selectedEmployee === "all" ? "전체" : selectedEmployee || "선택"}
+                searchPlaceholder="직원 이름 검색..."
+                emptyText="일치하는 직원이 없습니다"
+                className="text-sm"
+              />
             </div>
 
             <div>
@@ -565,6 +547,8 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
                 activeTab={activeTab}
                 currentUserRoles={currentUserRoles}
                 onRefresh={loadPurchases}
+                onPaymentComplete={handlePaymentComplete}
+                onReceiptComplete={handleReceiptComplete}
               />
             )}
           </CardContent>
@@ -573,16 +557,24 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
       
       {/* 세부항목 모달 */}
       {selectedPurchase && (
-        <PurchaseItemsModal
-          isOpen={isModalOpen}
-          onClose={() => {
-            setIsModalOpen(false);
-            setSelectedPurchase(null);
-          }}
-          purchase={selectedPurchase}
-          isAdmin={isAdmin || false}
-          onUpdate={loadPurchases}
-        />
+        <Suspense fallback={<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div></div>}>
+          <PurchaseItemsModal
+            isOpen={isModalOpen}
+            onClose={() => {
+              setIsModalOpen(false);
+              setSelectedPurchase(null);
+            }}
+            purchase={{
+              ...selectedPurchase,
+              vendor_name: selectedPurchase.vendor_name || '',
+              project_vendor: selectedPurchase.project_vendor || '',
+              sales_order_number: selectedPurchase.sales_order_number || '',
+              project_item: selectedPurchase.project_item || ''
+            }}
+            isAdmin={isAdmin || false}
+            onUpdate={loadPurchases}
+          />
+        </Suspense>
       )}
     </div>
   );

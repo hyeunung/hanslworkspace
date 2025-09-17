@@ -47,7 +47,7 @@ export default function ApprovalModal({
     setLoading(true)
     try {
       await onSubmit(comment.trim() || undefined)
-    } catch (error) {
+    } catch (_error) {
       // 에러는 상위 컴포넌트에서 처리
     } finally {
       setLoading(false)

@@ -34,7 +34,7 @@ export const useExcelDownload = (currentUserRoles: string[], onRefresh: () => vo
       }
 
       // 업체 정보 조회
-      let vendorInfo = {
+      const vendorInfo = {
         vendor_name: purchase.vendor_name,
         vendor_phone: '',
         vendor_fax: '',

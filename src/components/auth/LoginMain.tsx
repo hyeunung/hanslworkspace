@@ -29,8 +29,8 @@ export default function LoginMain() {
     }
 
     // SPA에서는 라우트를 직접 이동
+    // window.location.reload() 제거 - App.tsx의 onAuthStateChange가 처리함
     navigate('/dashboard')
-    window.location.reload() // 인증 상태 새로고침
   }
 
   return (

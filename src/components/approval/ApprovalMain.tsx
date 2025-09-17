@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails } from '@/types/purchase'
 import ApprovalCard from '@/components/approval/ApprovalCard'
@@ -9,13 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Loader2, AlertCircle, ArrowUpDown } from 'lucide-react'
 import { toast } from 'sonner'
-
-interface Employee {
-  id: string
-  name: string
-  purchase_role: string | string[]
-  slack_id?: string
-}
+import type { Employee } from '@/types/purchase'
 
 type ApprovalTab = 'middle' | 'final'
 
@@ -64,10 +58,10 @@ export default function ApprovalMain() {
         return
       }
 
-      // 직원 정보 조회
+      // 직원 정보 조회 (전체 필드 조회)
       let { data: employeeData, error: employeeError } = await supabase
         .from('employees')
-        .select('id, name, purchase_role, slack_id')
+        .select('*')
         .eq('id', user.id)
         .single()
 
@@ -75,7 +69,7 @@ export default function ApprovalMain() {
       if (!employeeData && user.email) {
         const { data: userByEmail, error: emailError } = await supabase
           .from('employees')
-          .select('id, name, purchase_role, slack_id')
+          .select('*')
           .eq('email', user.email)
           .single()
         
@@ -117,7 +111,7 @@ export default function ApprovalMain() {
         }
       }
 
-    } catch (error) {
+    } catch (_error) {
       toast.error('데이터 로딩 중 오류가 발생했습니다')
     } finally {
       setLoading(false)
@@ -128,12 +122,7 @@ export default function ApprovalMain() {
     try {
       const { data: approvalData, error: approvalError } = await supabase
         .from('purchase_requests')
-        .select(`
-          *,
-          vendor:vendors(id, vendor_name),
-          vendor_contacts:vendor_contacts(*),
-          items:purchase_request_items(*)
-        `)
+        .select('*,vendor:vendors(id,vendor_name),vendor_contacts:vendor_contacts(*),items:purchase_request_items(*)')
         .order('created_at', { ascending: false })
 
       if (approvalError) throw approvalError
@@ -151,7 +140,7 @@ export default function ApprovalMain() {
       const counts = calculateTabCounts(purchasesWithDetails, employeeData)
       setTabCounts(counts)
 
-    } catch (error) {
+    } catch (_error) {
       toast.error('승인 목록 로딩 중 오류가 발생했습니다')
     }
   }
@@ -519,5 +508,4 @@ export default function ApprovalMain() {
       )}
     </div>
   )
-}
 }

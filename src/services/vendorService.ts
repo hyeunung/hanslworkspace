@@ -14,10 +14,7 @@ class VendorService {
     try {
       let query = this.supabase
         .from('vendors')
-        .select(`
-          *,
-          vendor_contacts (*)
-        `)
+        .select('*,vendor_contacts(*)')
         .order('vendor_name');
 
       // 검색 필터 적용

@@ -53,7 +53,6 @@ export default function SupportMain() {
     
     // 실시간 구독 설정
     const subscription = supportService.subscribeToInquiries((payload) => {
-      console.log('실시간 업데이트:', payload)
       loadInquiries() // 변경사항이 있으면 다시 로드
     })
     

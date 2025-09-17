@@ -265,12 +265,48 @@ export interface QuickAction {
   color: 'red' | 'yellow' | 'green' | 'blue'
 }
 
+// Purchase interface for list views (simplified version)
+export interface Purchase {
+  id: number;
+  purchase_order_number?: string;
+  request_date: string;
+  delivery_request_date?: string;
+  progress_type?: string;
+  is_payment_completed?: boolean;
+  payment_category?: string;
+  currency: string;
+  request_type?: string;
+  vendor_name?: string;
+  vendor_id?: number;
+  contact_id?: number;
+  contact_name?: string;
+  requester_name: string;
+  project_vendor?: string;
+  sales_order_number?: string;
+  project_item?: string;
+  middle_manager_status?: string;
+  final_manager_status?: string;
+  total_amount: number;
+  is_received: boolean;
+  is_po_download?: boolean;
+  items?: PurchaseRequestItem[];
+  // Item level fields (for single item purchases)
+  item_name?: string;
+  specification?: string;
+  quantity?: number;
+  unit_price_value?: number;
+  amount_value?: number;
+  remark?: string;
+  vendor_payment_schedule?: string;
+  link?: string;
+}
+
 export interface DashboardData {
   employee: Employee | null
   stats: DashboardStats
   urgentRequests: UrgentRequest[]
   myRecentRequests: MyRequestStatus[]
-  pendingApprovals: PurchaseRequest[]
+  pendingApprovals: PurchaseRequestWithDetails[]
   quickActions: QuickAction[]
   todaySummary: {
     approved: number
@@ -278,8 +314,8 @@ export interface DashboardData {
     received: number
   }
   myPurchaseStatus: {
-    waitingPurchase: PurchaseRequest[]  // 구매 대기중
-    waitingDelivery: PurchaseRequest[]  // 입고 대기중
-    recentCompleted: PurchaseRequest[]  // 최근 완료
+    waitingPurchase: PurchaseRequestWithDetails[]  // 구매 대기중
+    waitingDelivery: PurchaseRequestWithDetails[]  // 입고 대기중
+    recentCompleted: PurchaseRequestWithDetails[]  // 최근 완료
   }
 }

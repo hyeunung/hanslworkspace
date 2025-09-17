@@ -447,75 +447,75 @@ export default function PurchaseDetailModal({
       ) : purchase ? (
         <div className="space-y-6">
             {/* 기본 정보 */}
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="font-semibold mb-3 flex items-center">
-                <FileText className="w-4 h-4 mr-2" />
+            <div className="bg-gray-50 rounded-lg p-6">
+              <h3 className="font-semibold mb-4 flex items-center text-gray-900">
+                <FileText className="w-5 h-5 mr-2 text-gray-700" />
                 기본 정보
               </h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <p className="text-sm text-gray-500">요청자</p>
-                  <p className="font-medium">{purchase.requester_name}</p>
+                  <p className="text-sm text-gray-500 mb-1">요청자</p>
+                  <p className="font-medium text-gray-900">{purchase.requester_name}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">요청일</p>
-                  <p className="font-medium">{formatDate(purchase.request_date)}</p>
+                  <p className="text-sm text-gray-500 mb-1">요청일</p>
+                  <p className="font-medium text-gray-900">{formatDate(purchase.request_date)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">입고요청일</p>
-                  <p className="font-medium">{formatDate(purchase.delivery_request_date)}</p>
+                  <p className="text-sm text-gray-500 mb-1">입고요청일</p>
+                  <p className="font-medium text-gray-900">{formatDate(purchase.delivery_request_date)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">결제유형</p>
-                  <p className="font-medium">{purchase.payment_category || '-'}</p>
+                  <p className="text-sm text-gray-500 mb-1">결제유형</p>
+                  <p className="font-medium text-gray-900">{purchase.payment_category || '-'}</p>
                 </div>
               </div>
             </div>
 
             {/* 업체 정보 */}
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="font-semibold mb-3 flex items-center">
-                <Building2 className="w-4 h-4 mr-2" />
+            <div className="bg-gray-50 rounded-lg p-6">
+              <h3 className="font-semibold mb-4 flex items-center text-gray-900">
+                <Building2 className="w-5 h-5 mr-2 text-gray-700" />
                 업체 정보
               </h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <p className="text-sm text-gray-500">업체명</p>
-                  <p className="font-medium">{purchase.vendor?.vendor_name || '-'}</p>
+                  <p className="text-sm text-gray-500 mb-1">업체명</p>
+                  <p className="font-medium text-gray-900">{purchase.vendor?.vendor_name || '-'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">프로젝트 업체</p>
-                  <p className="font-medium">{purchase.project_vendor || '-'}</p>
+                  <p className="text-sm text-gray-500 mb-1">프로젝트 업체</p>
+                  <p className="font-medium text-gray-900">{purchase.project_vendor || '-'}</p>
                 </div>
               </div>
             </div>
 
             {/* 품목 리스트 */}
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="font-semibold mb-3 flex items-center">
-                <Package className="w-4 h-4 mr-2" />
+            <div className="bg-gray-50 rounded-lg p-6">
+              <h3 className="font-semibold mb-4 flex items-center text-gray-900">
+                <Package className="w-5 h-5 mr-2 text-gray-700" />
                 품목 리스트
               </h3>
               <div className="overflow-x-auto">
-                <table className="min-w-full">
-                  <thead className="bg-white">
+                <table className="min-w-full bg-white rounded-lg overflow-hidden shadow-sm">
+                  <thead className="bg-gray-100">
                     <tr>
                       {canReceiptCheck && activeTab === 'receipt' && (
-                        <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">입고</th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">입고</th>
                       )}
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">품명</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">규격</th>
-                      <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">수량</th>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">단가</th>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">금액</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">비고</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">품명</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">규격</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">수량</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">단가</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">금액</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">비고</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {(isEditing ? editedItems : purchase.items)?.map((item, index) => (
-                      <tr key={index}>
+                      <tr key={index} className="hover:bg-gray-50 transition-colors">
                         {canReceiptCheck && activeTab === 'receipt' && (
-                          <td className="px-3 py-2 text-center">
+                          <td className="px-4 py-3 text-center">
                             <div className="flex items-center justify-center">
                               {item.is_received || item.delivery_status === 'received' ? (
                                 <button
@@ -539,7 +539,7 @@ export default function PurchaseDetailModal({
                             </div>
                           </td>
                         )}
-                        <td className="px-3 py-2">
+                        <td className="px-4 py-3">
                           {isEditing ? (
                             <Input
                               value={item.item_name}
@@ -550,7 +550,7 @@ export default function PurchaseDetailModal({
                             <span className="text-sm">{item.item_name}</span>
                           )}
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-4 py-3">
                           {isEditing ? (
                             <Input
                               value={item.specification}
@@ -561,7 +561,7 @@ export default function PurchaseDetailModal({
                             <span className="text-sm">{item.specification}</span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-center">
+                        <td className="px-4 py-3 text-center">
                           {isEditing ? (
                             <Input
                               type="number"
@@ -573,7 +573,7 @@ export default function PurchaseDetailModal({
                             <span className="text-sm">{item.quantity}</span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-right">
+                        <td className="px-4 py-3 text-right">
                           {isEditing ? (
                             <Input
                               type="number"
@@ -585,7 +585,7 @@ export default function PurchaseDetailModal({
                             <span className="text-sm">{formatCurrency(item.unit_price_value)} {purchase.currency}</span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-right">
+                        <td className="px-4 py-3 text-right">
                           {isEditing ? (
                             <Input
                               type="number"
@@ -597,7 +597,7 @@ export default function PurchaseDetailModal({
                             <span className="text-sm">{formatCurrency(item.amount_value)} {purchase.currency}</span>
                           )}
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-4 py-3">
                           {isEditing ? (
                             <div className="flex items-center gap-2">
                               <Input

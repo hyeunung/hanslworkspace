@@ -28,7 +28,10 @@ export interface Purchase {
     contact_name: string;
   }>;
   contact_name?: string;
+  requester_id: string;
   requester_name: string;
+  requester_email: string;
+  requester_full_name: string;
   project_vendor: string;
   sales_order_number: string;
   project_item: string;
@@ -72,6 +75,8 @@ export const usePurchaseData = () => {
   const [loading, setLoading] = useState(true);
   const [currentUserRoles, setCurrentUserRoles] = useState<string[]>([]);
   const [currentUserName, setCurrentUserName] = useState<string>('');
+  const [currentUserEmail, setCurrentUserEmail] = useState<string>('');
+  const [currentUserId, setCurrentUserId] = useState<string>('');
   
   const supabase = createClient();
 
@@ -81,28 +86,28 @@ export const usePurchaseData = () => {
       try {
         // 업체 목록, 직원 목록, 사용자 정보를 병렬로 로드
         const [vendorResult, employeeResult, userResult] = await Promise.all([
-          supabase.from('vendors').select('id, vendor_name').order('vendor_name'),
-          supabase.from('employees').select('id, name, email, full_name').order('full_name'),
+          supabase.from('vendors').select('*'),
+          supabase.from('employees').select('*'),
           supabase.auth.getUser()
         ]);
 
-        if (vendorResult.error) throw vendorResult.error;
+        if (vendorResult.error) {
+          // Vendor fetch error - will throw
+          throw vendorResult.error;
+        }
         setVendors(vendorResult.data || []);
         
-        if (employeeResult.error) throw employeeResult.error;
+        if (employeeResult.error) {
+          // Employee fetch error - will throw
+          throw employeeResult.error;
+        }
         setEmployees(employeeResult.data || []);
 
         // 사용자 권한 및 이름 로드
         if (userResult.data.user && !userResult.error) {
-          // 먼저 ID로 시도
-          let { data: employeeData } = await supabase
-            .from('employees')
-            .select('*')
-            .eq('id', userResult.data.user.id)
-            .maybeSingle();
-          
-          // ID로 찾지 못했으면 email로 시도 (일반적인 케이스)
-          if (!employeeData && userResult.data.user.email) {
+          // email로 직원 정보 찾기 (올바른 방법)
+          let employeeData = null;
+          if (userResult.data.user.email) {
             const emailResult = await supabase
               .from('employees')
               .select('*')
@@ -133,7 +138,10 @@ export const usePurchaseData = () => {
             }
             
             setCurrentUserRoles(roles);
-            setCurrentUserName(employeeData.full_name || employeeData.name || '');
+            // name을 우선 사용 (필터링과 일치시키기 위해)
+            setCurrentUserName(employeeData.name || employeeData.full_name || '');
+            setCurrentUserEmail(employeeData.email || '');
+            setCurrentUserId(employeeData.id || '');
           }
         }
       } catch (error) {
@@ -149,6 +157,15 @@ export const usePurchaseData = () => {
     setLoading(true);
     
     try {
+      // employees 데이터가 없으면 먼저 로드
+      let employeeList = employees;
+      if (employeeList.length === 0) {
+        const { data: empData } = await supabase
+          .from('employees')
+          .select('*');
+        employeeList = empData || [];
+      }
+      
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError || !user) {
@@ -158,38 +175,25 @@ export const usePurchaseData = () => {
         return;
       }
 
-      // 발주 데이터 조회 (hanslwebapp과 완전히 동일)
+      // 발주 데이터 조회 (hanslwebapp과 완전히 동일) - 전체 데이터 로드
       const { data, error } = await supabase
         .from('purchase_requests')
-        .select(`
-          *,
-          vendors (
-            vendor_name,
-            vendor_payment_schedule
-          ),
-          vendor_contacts (
-            contact_name
-          ),
-          purchase_request_items (
-            item_name,
-            specification,
-            quantity,
-            unit_price_value,
-            amount_value,
-            remark,
-            line_number,
-            link
-          )
-        `)
+        .select('*,vendors(vendor_name,vendor_payment_schedule),vendor_contacts(contact_name),purchase_request_items(item_name,specification,quantity,unit_price_value,amount_value,remark,line_number,link)')
         .order('request_date', { ascending: false })
-        .limit(2000);
+        .limit(2000); // 충분한 수의 데이터 로드
 
-      if (error) throw error;
+      if (error) {
+        // Purchase data fetch error - will throw
+        throw error;
+      }
 
       // 데이터 변환 (hanslwebapp과 동일)
       const processedData = (data || []).map((request: any) => {
         // 첫 번째 품목 정보 (기존 방식과 호환성 유지)
         const firstItem = request.purchase_request_items?.[0] || {};
+        
+        // requester_id로 employee 찾기
+        const requesterEmployee = employeeList.find(emp => emp.id === request.requester_id);
         
         return {
           id: Number(request.id),
@@ -205,7 +209,10 @@ export const usePurchaseData = () => {
           vendor_name: request.vendors?.vendor_name || '',
           vendor_payment_schedule: request.vendors?.vendor_payment_schedule || '',
           vendor_contacts: request.vendor_contacts || [],
+          requester_id: request.requester_id as string,
           requester_name: request.requester_name as string,
+          requester_email: requesterEmployee?.email || '',
+          requester_full_name: requesterEmployee?.full_name || requesterEmployee?.name || request.requester_name || '',
           item_name: firstItem.item_name as string || '',
           specification: firstItem.specification as string || '',
           quantity: Number(firstItem.quantity) || 0,
@@ -241,7 +248,7 @@ export const usePurchaseData = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [employees]);
 
   useEffect(() => {
     loadPurchases();
@@ -254,6 +261,8 @@ export const usePurchaseData = () => {
     loading,
     currentUserRoles,
     currentUserName,
+    currentUserEmail,
+    currentUserId,
     refreshPurchases: loadPurchases
   };
 };

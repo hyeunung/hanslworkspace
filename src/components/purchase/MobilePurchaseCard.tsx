@@ -1,35 +1,7 @@
 import { memo } from 'react'
 import { Eye } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
-
-interface Purchase {
-  id: number
-  purchase_order_number?: string
-  requester_name: string
-  vendor_name: string
-  middle_manager_status?: string
-  final_manager_status?: string
-  is_received: boolean
-  total_amount: number
-  currency: string
-  delivery_request_date?: string
-  request_date: string
-  items?: any[]
-  contact_name?: string
-  item_name?: string
-  specification?: string
-  quantity?: number
-  unit_price_value?: number
-  amount_value?: number
-  remark?: string
-  project_vendor?: string
-  sales_order_number?: string
-  project_item?: string
-  vendor_payment_schedule?: string
-  payment_category?: string
-  is_payment_completed?: boolean
-  progress_type?: string
-}
+import { Purchase } from '@/types/purchase'
 
 interface MobilePurchaseCardProps {
   purchase: Purchase

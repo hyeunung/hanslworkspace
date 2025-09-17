@@ -5,7 +5,8 @@ import type {
   UrgentRequest, 
   MyRequestStatus, 
   QuickAction,
-  Employee 
+  Employee,
+  PurchaseRequestWithDetails 
 } from '@/types/purchase'
 
 export class DashboardService {
@@ -133,11 +134,7 @@ export class DashboardService {
 
     let query = this.supabase
       .from('purchase_requests')
-      .select(`
-        *,
-        vendors (vendor_name),
-        purchase_request_items (id)
-      `)
+      .select('*,vendors(vendor_name),purchase_request_items(id)')
       .lt('created_at', threeDaysAgo)
 
     // 역할별 긴급 요청 필터링
@@ -176,11 +173,7 @@ export class DashboardService {
   async getMyRecentRequests(employee: Employee): Promise<MyRequestStatus[]> {
     const { data } = await this.supabase
       .from('purchase_requests')
-      .select(`
-        *,
-        vendors (vendor_name),
-        purchase_request_items (id)
-      `)
+      .select('*,vendors(vendor_name),purchase_request_items(id)')
       .eq('requester_name', employee.name)
       // 승인이 완료되지 않은 항목만 (승인 진행 중인 것들)
       .or('middle_manager_status.eq.pending,final_manager_status.eq.pending')
@@ -199,7 +192,7 @@ export class DashboardService {
   }
 
   // 승인 대기 항목 (전체 조회) - 발주 리스트와 동일한 방식
-  async getPendingApprovals(employee: Employee) {
+  async getPendingApprovals(employee: Employee): Promise<PurchaseRequestWithDetails[]> {
     const roles = this.parseRoles(employee.purchase_role)
 
     // 먼저 모든 발주요청을 가져옴 (발주 리스트와 동일)
@@ -209,13 +202,9 @@ export class DashboardService {
 
     const firstTry = await this.supabase
       .from('purchase_requests')
-      .select(`
-        *,
-        vendors (vendor_name),
-        purchase_request_items (item_name, quantity, unit_price_value, amount_value)
-      `)
+      .select('*,vendors(vendor_name),purchase_request_items(item_name,quantity,unit_price_value,amount_value)')
       .order('request_date', { ascending: false })
-      .limit(1000)
+      .limit(100) // 최적화: 100개로 제한
 
     if (firstTry.error) {
       // 관계 조회 실패 시 최소 컬럼으로 재시도하여 리스트 자체는 표시되도록 함
@@ -224,9 +213,9 @@ export class DashboardService {
         .from('purchase_requests')
         .select('*')
         .order('request_date', { ascending: false })
-        .limit(1000)
+        .limit(100) // 최적화: 100개로 제한
       if (fallback.error) {
-        console.error('Error fetching purchase requests (fallback failed):', fallback.error)
+        // Fallback query also failed - will return empty array
         return []
       }
       allRequests = fallback.data || []
@@ -373,71 +362,87 @@ export class DashboardService {
   }
 
   // 내 구매/입고 상태 확인
-  async getMyPurchaseStatus(employee: Employee) {
+  async getMyPurchaseStatus(employee: Employee): Promise<{ waitingPurchase: PurchaseRequestWithDetails[], waitingDelivery: PurchaseRequestWithDetails[], recentCompleted: PurchaseRequestWithDetails[] }> {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
-    const [waitingPurchase, waitingDelivery, recentCompleted] = await Promise.all([
-      // 내가 요청했고 구매 대기중인 항목: 최종승인 완료 + 구매요청 카테고리 + 결제 미완료
-      this.supabase
-        .from('purchase_requests')
-        .select(`
-          *,
-          vendors (vendor_name),
-          purchase_request_items (item_name, quantity, specification, amount_value)
-        `)
-        .eq('requester_name', employee.name)
-        .eq('payment_category', '구매요청')
-        .eq('final_manager_status', 'approved')
-        .or('is_payment_completed.is.null,is_payment_completed.eq.false')
-        .order('created_at', { ascending: false })
-        .limit(5),
+    // 먼저 모든 내 요청을 가져온 다음 클라이언트에서 필터링
+    const myRequests = await this.supabase
+      .from('purchase_requests')
+      .select('*,vendors(vendor_name),purchase_request_items(item_name,quantity,specification,amount_value)')
+      .eq('requester_name', employee.name)
+      .order('created_at', { ascending: false })
+      .limit(100)
 
-      // 내가 요청했고 입고 대기중인 항목: 결제 완료 + 입고 미완료
-      this.supabase
-        .from('purchase_requests')
-        .select(`
-          *,
-          vendors (vendor_name),
-          purchase_request_items (item_name, quantity, specification, amount_value, is_received)
-        `)
-        .eq('requester_name', employee.name)
-        .eq('is_payment_completed', true)
-        .or('is_received.is.null,is_received.eq.false')
-        .order('created_at', { ascending: false })
-        .limit(5),
+    if (myRequests.error) {
+      console.error('getMyPurchaseStatus 에러:', myRequests.error)
+      return {
+        waitingPurchase: [],
+        waitingDelivery: [],
+        recentCompleted: []
+      }
+    }
 
-      // 최근 7일간 완료된 내 요청
-      this.supabase
-        .from('purchase_requests')
-        .select(`
-          *,
-          vendors (vendor_name),
-          purchase_request_items (item_name, quantity)
-        `)
-        .eq('requester_name', employee.name)
-        .eq('is_received', true)
-        .gte('received_at', sevenDaysAgo)
-        .order('received_at', { ascending: false })
-        .limit(5)
-    ])
+    const allMyRequests = myRequests.data || []
+
+    // 클라이언트 사이드 필터링 (PurchaseListMain 구매/입고 탭과 동일한 로직)
+    
+    const waitingPurchase = allMyRequests.filter(item => {
+      // 구매 탭 로직: 구매/발주 요청 카테고리 + 결제 미완료 + 선진행(승인무관) OR 일반&최종승인
+      const isRequest = item.payment_category === '구매 요청' || item.payment_category === '구매요청' || item.payment_category === '발주 요청' || item.payment_category === '발주요청'
+      const notPaid = !item.is_payment_completed
+      const isSeonJin = (item.progress_type || '').includes('선진행')
+      
+      // 선진행은 승인 상태와 무관하게 구매 대기
+      if (isRequest && notPaid && isSeonJin) {
+        return true
+      }
+      
+      // 일반은 최종 승인 완료되어야 구매 대기
+      const isIlban = (item.progress_type || '').includes('일반') || !item.progress_type || item.progress_type === ''
+      const finalApproved = item.final_manager_status === 'approved'
+      
+      return isRequest && notPaid && isIlban && finalApproved
+    }).slice(0, 10)
+
+
+    const waitingDelivery = allMyRequests.filter(item => {
+      // 입고 탭 로직: 입고 미완료 + 선진행(승인무관) OR 최종승인
+      const notReceived = !item.is_received
+      const isSeonJin = (item.progress_type || '').includes('선진행')
+      
+      // 선진행은 승인 상태와 무관하게 입고 대기
+      if (notReceived && isSeonJin) {
+        return true
+      }
+      
+      // 일반은 최종 승인 완료되어야 입고 대기
+      const finalApproved = item.final_manager_status === 'approved'
+      
+      return notReceived && finalApproved
+    }).slice(0, 10)
+
+
+    const recentCompleted = allMyRequests.filter(item => {
+      // 입고 완료 && 7일 이내
+      if (item.is_received !== true) return false
+      if (!item.received_at) return false
+      const receivedDate = new Date(item.received_at)
+      const sevenDaysAgoDate = new Date(sevenDaysAgo)
+      return receivedDate >= sevenDaysAgoDate
+    }).slice(0, 10)
 
     return {
-      waitingPurchase: waitingPurchase.data || [],
-      waitingDelivery: waitingDelivery.data || [],
-      recentCompleted: recentCompleted.data || []
+      waitingPurchase: waitingPurchase,
+      waitingDelivery: waitingDelivery,
+      recentCompleted: recentCompleted
     }
   }
 
   // 원클릭 승인 API
   async quickApprove(requestId: string, employee: Employee): Promise<{success: boolean, error?: string}> {
-    console.log('=== Quick Approve Debug ===')
-    console.log('Request ID:', requestId)
-    console.log('Employee:', employee)
-    console.log('Employee purchase_role:', employee.purchase_role)
     
     try {
       const roles = this.parseRoles(employee.purchase_role)
-      console.log('Parsed roles:', roles)
 
       // 먼저 현재 요청의 상태를 확인
       const { data: request } = await this.supabase
@@ -447,11 +452,9 @@ export class DashboardService {
         .single()
 
       if (!request) {
-        console.log('Request not found')
         return { success: false, error: '요청을 찾을 수 없습니다.' }
       }
       
-      console.log('Current request status:', request)
 
       let updateData: any = {}
 
@@ -494,14 +497,9 @@ export class DashboardService {
 
       // updateData가 비어있으면 승인할 단계가 없음
       if (Object.keys(updateData).length === 0) {
-        console.log('No approval needed - updateData is empty')
-        console.log('Middle status:', request.middle_manager_status)
-        console.log('Final status:', request.final_manager_status)
-        console.log('Roles:', roles)
         return { success: false, error: '승인할 수 있는 상태가 아닙니다.' }
       }
       
-      console.log('Update data:', updateData)
 
       const { data: updatedData, error } = await this.supabase
         .from('purchase_requests')
@@ -511,14 +509,10 @@ export class DashboardService {
         .single()
 
       if (error) {
-        console.error('Approval error:', error)
-        console.error('Error message:', error.message)
-        console.error('Error code:', error.code)
-        console.error('Error details:', error.details)
+        // Error details are handled by the caller
         throw error
       }
 
-      console.log('Update successful:', updatedData)
       return { success: true }
     } catch (error) {
       return { success: false, error: (error as Error).message }
@@ -529,7 +523,7 @@ export class DashboardService {
   private async getPendingCount(employee: Employee, roles: string[]): Promise<number> {
     // 공통: '대기', null, 빈 문자열도 대기 상태로 간주
     const pendingClause = (col: string) => (
-      `${col}.in.(pending,대기),${col}.is.null,${col}.eq.`
+      `${col}.in.(pending,대기),${col}.is.null`
     )
 
     // 역할별 카운트 쿼리 구성
@@ -539,17 +533,17 @@ export class DashboardService {
         this.supabase
           .from('purchase_requests')
           .select('id', { count: 'exact', head: true })
-          .or(pendingClause('middle_manager_status')),
+          .or(`middle_manager_status.in.(pending,대기),middle_manager_status.is.null`),
         this.supabase
           .from('purchase_requests')
           .select('id', { count: 'exact', head: true })
           .eq('middle_manager_status', 'approved')
-          .or(pendingClause('final_manager_status')),
+          .or(`final_manager_status.in.(pending,대기),final_manager_status.is.null`),
         this.supabase
           .from('purchase_requests')
           .select('id', { count: 'exact', head: true })
           .eq('final_manager_status', 'approved')
-          .or(pendingClause('purchase_status'))
+          .or(`purchase_status.in.(pending,대기),purchase_status.is.null`)
       ])
 
       const total = (mid.count || 0) + (fin.count || 0) + (pur.count || 0)
@@ -560,10 +554,10 @@ export class DashboardService {
       const { count, error } = await this.supabase
         .from('purchase_requests')
         .select('id', { count: 'exact', head: true })
-        .or(pendingClause('middle_manager_status'))
+        .or(`middle_manager_status.in.(pending,대기),middle_manager_status.is.null`)
 
       if (error) {
-        console.error('Error counting pending (middle_manager):', error)
+        // Count error for middle_manager - will use 0
         return 0
       }
       return count || 0
@@ -574,10 +568,10 @@ export class DashboardService {
         .from('purchase_requests')
         .select('id', { count: 'exact', head: true })
         .eq('middle_manager_status', 'approved')
-        .or(pendingClause('final_manager_status'))
+        .or(`final_manager_status.in.(pending,대기),final_manager_status.is.null`)
 
       if (error) {
-        console.error('Error counting pending (final_approver/ceo):', error)
+        // Count error for final_approver/ceo - will use 0
         return 0
       }
       return count || 0
@@ -588,10 +582,10 @@ export class DashboardService {
         .from('purchase_requests')
         .select('id', { count: 'exact', head: true })
         .eq('final_manager_status', 'approved')
-        .or(pendingClause('purchase_status'))
+        .or(`purchase_status.in.(pending,대기),purchase_status.is.null`)
 
       if (error) {
-        console.error('Error counting pending (lead_buyer):', error)
+        // Count error for lead_buyer - will use 0
         return 0
       }
       return count || 0
@@ -704,6 +698,46 @@ export class DashboardService {
     
     const estimatedCompletion = new Date(created.getTime() + estimatedDays * 24 * 60 * 60 * 1000)
     return estimatedCompletion.toLocaleDateString('ko-KR')
+  }
+
+  // lead_buyer를 위한 미다운로드 발주서 목록 조회
+  async getUndownloadedOrders(employee: Employee): Promise<PurchaseRequestWithDetails[]> {
+    const roles = this.parseRoles(employee.purchase_role)
+    
+    // lead_buyer 또는 "lead buyer" (공백 포함) 권한 체크
+    if (!roles.includes('lead_buyer') && !roles.includes('lead buyer')) {
+      return []
+    }
+
+    // 먼저 모든 발주서를 가져온 다음 클라이언트에서 필터링
+    const { data, error } = await this.supabase
+      .from('purchase_requests')
+      .select('*,purchase_request_items(id,item_name,specification,quantity,unit_price_value,amount_value)')
+      .order('created_at', { ascending: false })
+      .limit(100)
+
+    if (error) {
+      console.error('Failed to fetch undownloaded orders:', error)
+      return []
+    }
+
+    // 클라이언트 사이드 필터링
+    // 조건: (선진행이거나 최종승인 완료) AND (is_po_download가 false 또는 null)
+    const filteredData = (data || []).filter(item => {
+      // 다운로드 가능 조건 체크
+      const isDownloadable = item.progress_type === '선진행' || 
+        (item.middle_manager_status === 'approved' && item.final_manager_status === 'approved')
+      
+      // 아직 다운로드 안 된 것만
+      const notDownloaded = !item.is_po_download || item.is_po_download === false || item.is_po_download === null
+      
+      return isDownloadable && notDownloaded
+    })
+
+    // 오래된 순으로 정렬 (created_at 기준 오름차순)
+    filteredData.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+
+    return filteredData.slice(0, 10) // 상위 10개만 반환
   }
 }
 

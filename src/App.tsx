@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client'
 import Header from '@/components/layout/Header'
 import FixedNavigation from '@/components/layout/FixedNavigation'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import type { Employee } from '@/types/purchase'
 
 // 로그인은 항상 필요하므로 직접 import
 import LoginMain from '@/components/auth/LoginMain'
@@ -16,13 +17,6 @@ const PurchaseDetailMain = lazy(() => import('@/components/purchase/PurchaseDeta
 const VendorMain = lazy(() => import('@/components/vendor/VendorMain'))
 const EmployeeMain = lazy(() => import('@/components/employee/EmployeeMain'))
 const SupportMain = lazy(() => import('@/components/support/SupportMain'))
-
-interface Employee {
-  id: string
-  name: string
-  email: string
-  purchase_role: string | string[]
-}
 
 export default function App() {
   const [employee, setEmployee] = useState<Employee | null>(null)
@@ -53,7 +47,7 @@ export default function App() {
         if (employeeData) {
           setEmployee(employeeData)
         }
-      } catch (error) {
+      } catch (_error) {
         setIsAuthenticated(false)
       } finally {
         setLoading(false)
@@ -64,7 +58,7 @@ export default function App() {
 
     // Supabase auth state listener
     const supabase = createClient()
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, _session) => {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         loadUser()
       } else if (event === 'SIGNED_OUT') {

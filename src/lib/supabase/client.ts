@@ -5,9 +5,7 @@ export function createClient() {
   const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    console.error('Missing Supabase environment variables!')
-    console.error('Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY')
-    console.error('For Vercel/Netlify deployment, add these variables in the dashboard')
+    // Missing Supabase environment variables - will show error on screen
     
     // Provide a more helpful error message on the page
     if (typeof window !== 'undefined') {

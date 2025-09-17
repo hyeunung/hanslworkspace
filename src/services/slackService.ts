@@ -17,7 +17,7 @@ interface SlackDMRequest {
 }
 
 class SlackService {
-  private supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://qvhbigvdfyvhoegkhvef.supabase.co'
+  private supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://qvhbigvdfyvhoegkhvef.supabase.co'
   private supabase = createClient()
 
   /**
@@ -100,7 +100,7 @@ class SlackService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${process.env.VITE_SUPABASE_ANON_KEY}`
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
         },
         body: JSON.stringify(data)
       })
