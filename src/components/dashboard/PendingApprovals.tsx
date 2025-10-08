@@ -16,7 +16,7 @@ export default function PendingApprovals({ approvals, role }: ApprovalProps) {
     
     if (roles.includes('middle_manager')) return '1차 승인 필요'
     if (roles.includes('final_approver') || roles.includes('ceo')) return '최종 승인 필요'
-    if (roles.includes('lead_buyer')) return '구매 처리 필요'
+    if (roles.includes('lead buyer')) return '구매 처리 필요'
     return '처리 필요'
   }
 
@@ -48,7 +48,7 @@ export default function PendingApprovals({ approvals, role }: ApprovalProps) {
                   {approval.purchase_order_number || `발주요청 #${approval.id.slice(0, 8)}`}
                 </p>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  요청자: {approval.requester_name || approval.requester_email}
+                  요청자: {approval.requester_name}
                 </p>
                 <p className="text-xs text-gray-500">
                   {approval.purchase_request_items?.[0]?.item_name}

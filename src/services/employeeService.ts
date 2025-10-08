@@ -384,7 +384,7 @@ class EmployeeService {
       'ceo': 'CEO',
       'final_approver': '최종 승인자',
       'middle_manager': '중간 관리자',
-      'lead_buyer': '수석 구매자',
+      'lead buyer': '수석 구매자',
       'buyer': '구매자'
     };
     

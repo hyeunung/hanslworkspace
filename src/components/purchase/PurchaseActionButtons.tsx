@@ -26,9 +26,9 @@ const PurchaseActionButtons = memo(({
   
   const supabase = createClient();
 
-  // 권한 체크: purchase_manager, raw_material_manager, consumable_manager, lead_buyer, app_admin
+  // 권한 체크: purchase_manager, raw_material_manager, consumable_manager, lead buyer, app_admin
   const canManagePurchase = currentUserRoles.some(role => 
-    ['purchase_manager', 'raw_material_manager', 'consumable_manager', 'lead_buyer', 'app_admin'].includes(role)
+    ['purchase_manager', 'raw_material_manager', 'consumable_manager', 'lead buyer', 'app_admin'].includes(role)
   );
 
   // 결제 완료 처리

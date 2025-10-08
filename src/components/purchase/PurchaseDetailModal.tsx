@@ -53,9 +53,10 @@ export default function PurchaseDetailModal({
   const [editedItems, setEditedItems] = useState<any[]>([])
   const [deletedItemIds, setDeletedItemIds] = useState<number[]>([])
   const [userRoles, setUserRoles] = useState<string[]>([])
+  const [currentUserName, setCurrentUserName] = useState<string>('')
   const supabase = createClient()
   
-  // 사용자 권한 직접 로드
+  // 사용자 권한 및 이름 직접 로드
   useEffect(() => {
     const loadUserRoles = async () => {
       try {
@@ -77,6 +78,11 @@ export default function PurchaseDetailModal({
               .maybeSingle()
             
             employeeData = employeeByEmail
+          }
+          
+          // 사용자 이름 저장
+          if (employeeData?.name) {
+            setCurrentUserName(employeeData.name)
           }
           
           if (employeeData?.purchase_role) {
@@ -114,10 +120,25 @@ export default function PurchaseDetailModal({
   
   const canDelete = canEdit
   
-  // 입고 권한 체크 (final_approver, app_admin, ceo가 입고 처리 가능)
-  const canReceiptCheck = effectiveRoles.includes('final_approver') || 
-                         effectiveRoles.includes('app_admin') || 
-                         effectiveRoles.includes('ceo')
+  // 입고 권한 체크 
+  // 1. 관리자는 모든 건 입고 처리 가능
+  // 2. 일반 직원은 본인이 요청한 건만 입고 처리 가능
+  const isAdmin = effectiveRoles.includes('final_approver') || 
+                  effectiveRoles.includes('app_admin') || 
+                  effectiveRoles.includes('ceo')
+  const isRequester = purchase?.requester_name === currentUserName
+  const canReceiptCheck = isAdmin || isRequester
+  
+  // 디버깅용 로그
+  console.log('Receipt Check Debug:', {
+    activeTab,
+    canReceiptCheck,
+    isAdmin,
+    isRequester,
+    currentUserName,
+    requesterName: purchase?.requester_name,
+    effectiveRoles
+  })
   
   // 승인 권한 체크
   const canApproveMiddle = effectiveRoles.includes('middle_manager') || 
@@ -347,14 +368,11 @@ export default function PurchaseDetailModal({
     }
 
     try {
-      // purchase_request_items 테이블 업데이트
+      // purchase_request_items 테이블 업데이트 (필요한 컬럼만)
       const { error } = await supabase
         .from('purchase_request_items')
         .update({
           is_received: isReceived,
-          delivery_status: isReceived ? 'received' : 'pending',
-          received_quantity: isReceived ? 
-            purchase?.items?.find(item => String(item.id) === String(itemId))?.quantity || 0 : 0,
           received_at: isReceived ? new Date().toISOString() : null
         })
         .eq('id', itemId)
@@ -517,7 +535,7 @@ export default function PurchaseDetailModal({
                         {canReceiptCheck && activeTab === 'receipt' && (
                           <td className="px-4 py-3 text-center">
                             <div className="flex items-center justify-center">
-                              {item.is_received || item.delivery_status === 'received' ? (
+                              {item.is_received ? (
                                 <button
                                   onClick={() => handleReceiptToggle(item.id, false)}
                                   className="flex items-center gap-1 px-2 py-1 text-xs bg-green-100 text-green-800 rounded-md hover:bg-green-200 transition-colors"

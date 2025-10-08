@@ -30,7 +30,6 @@ export interface Purchase {
   contact_name?: string;
   requester_id: string;
   requester_name: string;
-  requester_email: string;
   requester_full_name: string;
   project_vendor: string;
   sales_order_number: string;
@@ -211,7 +210,6 @@ export const usePurchaseData = () => {
           vendor_contacts: request.vendor_contacts || [],
           requester_id: request.requester_id as string,
           requester_name: request.requester_name as string,
-          requester_email: requesterEmployee?.email || '',
           requester_full_name: requesterEmployee?.full_name || requesterEmployee?.name || request.requester_name || '',
           item_name: firstItem.item_name as string || '',
           specification: firstItem.specification as string || '',

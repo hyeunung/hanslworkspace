@@ -16,7 +16,7 @@ LIMIT 5;
 --   WHEN purchase_role = 'middle_manager' THEN '["middle_manager"]'::jsonb
 --   WHEN purchase_role = 'final_approver' THEN '["final_approver"]'::jsonb
 --   WHEN purchase_role = 'ceo' THEN '["ceo"]'::jsonb
---   WHEN purchase_role = 'lead_buyer' THEN '["lead_buyer"]'::jsonb
+--   WHEN purchase_role = 'lead buyer' THEN '["lead buyer"]'::jsonb
 --   WHEN purchase_role = 'app_admin' THEN '["app_admin"]'::jsonb
 --   ELSE purchase_role
 -- END;

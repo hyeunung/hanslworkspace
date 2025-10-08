@@ -6,7 +6,7 @@ const ROLE_HIERARCHY: Record<PurchaseRole, number> = {
   'ceo': 90,
   'final_approver': 70,
   'middle_manager': 60,
-  'lead_buyer': 55,
+  'lead buyer': 55,
   'purchase_manager': 55,
   'raw_material_manager': 50,
   'consumable_manager': 50,
@@ -17,9 +17,9 @@ const ROLE_HIERARCHY: Record<PurchaseRole, number> = {
 // 각 기능별 필요 권한 정의
 export const PERMISSIONS = {
   // 업체 관리
-  VENDOR_VIEW: ['app_admin', 'ceo', 'lead_buyer'],
-  VENDOR_CREATE: ['app_admin', 'ceo', 'lead_buyer'],
-  VENDOR_EDIT: ['app_admin', 'ceo', 'lead_buyer'],
+  VENDOR_VIEW: ['app_admin', 'ceo', 'lead buyer'],
+  VENDOR_CREATE: ['app_admin', 'ceo', 'lead buyer'],
+  VENDOR_EDIT: ['app_admin', 'ceo', 'lead buyer'],
   VENDOR_DELETE: ['app_admin', 'ceo'],
   
   // 직원 관리
@@ -32,10 +32,10 @@ export const PERMISSIONS = {
   // 발주요청 관리
   PURCHASE_VIEW: ['all'], // 모든 권한 허용
   PURCHASE_CREATE: ['all'],
-  PURCHASE_EDIT: ['app_admin', 'ceo', 'lead_buyer'],
+  PURCHASE_EDIT: ['app_admin', 'ceo', 'lead buyer'],
   
   // 승인 관리
-  APPROVAL_VIEW: ['app_admin', 'ceo', 'final_approver', 'middle_manager', 'lead_buyer'],
+  APPROVAL_VIEW: ['app_admin', 'ceo', 'final_approver', 'middle_manager', 'lead buyer'],
   MIDDLE_APPROVAL: ['middle_manager', 'final_approver', 'ceo', 'app_admin'],
   FINAL_APPROVAL: ['final_approver', 'ceo', 'app_admin'],
 } as const
@@ -176,7 +176,7 @@ export function getRoleDisplayName(role: string | undefined): string {
     'ceo': 'CEO',
     'final_approver': '최종 승인자',
     'middle_manager': '중간 관리자',
-    'lead_buyer': '수석 구매자',
+    'lead buyer': '수석 구매자',
     'buyer': '구매자'
   }
   
@@ -190,7 +190,7 @@ export function getRoleColorClass(role: string | undefined): string {
     'ceo': 'bg-red-100 text-red-800 border-red-200',
     'final_approver': 'bg-hansl-100 text-hansl-800 border-hansl-200',
     'middle_manager': 'bg-green-100 text-green-800 border-green-200',
-    'lead_buyer': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+    'lead buyer': 'bg-yellow-100 text-yellow-800 border-yellow-200',
     'buyer': 'bg-gray-100 text-gray-800 border-gray-200'
   }
   

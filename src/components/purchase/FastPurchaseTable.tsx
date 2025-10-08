@@ -161,9 +161,7 @@ const getReceiptProgress = (purchase: Purchase) => {
   // 개별 아이템 입고 상태 계산
   const total = purchase.items.length;
   const received = purchase.items.filter((item: any) => 
-    item.is_received === true || 
-    item.delivery_status === 'received' ||
-    item.delivery_status === 'completed'
+    item.is_received === true
   ).length;
   const percentage = total > 0 ? Math.round((received / total) * 100) : 0;
   
@@ -694,9 +692,9 @@ const FastPurchaseTable = memo(({
       
       toast.success('엑셀 파일이 다운로드되었습니다.');
       
-      // DB에 다운로드 완료 플래그(is_po_download) 업데이트 - lead_buyer만 해당
+      // DB에 다운로드 완료 플래그(is_po_download) 업데이트 - lead buyer만 해당
       try {
-        const canUpdateFlag = currentUserRoles && currentUserRoles.includes('lead_buyer');
+        const canUpdateFlag = currentUserRoles && currentUserRoles.includes('lead buyer');
 
         if (canUpdateFlag) {
           const { error: downloadFlagErr } = await supabase

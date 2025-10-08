@@ -998,7 +998,7 @@ export default function PurchaseNewMain() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
             <div>
               <h4 className="text-sm sm:text-base font-semibold text-gray-900">품목 정보</h4>
-              <p className="text-xs text-gray-500 mt-1">최대 100개 품목 입력 가능</p>
+              <p className="text-xs text-gray-500 mt-1">품목 입력 가능</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="secondary" className="text-hansl-500">
@@ -1034,18 +1034,12 @@ export default function PurchaseNewMain() {
                 min={1}
                 value={addCount}
                 onChange={e => setAddCount(Math.max(1, Number(e.target.value.replace(/[^0-9]/g, ''))))}
-                className="w-14 sm:w-16 h-8 text-xs"
+                className="w-16 sm:w-20 h-8 text-xs"
               />
               <Button
                 type="button"
                 onClick={() => {
-                  const remainingSlots = 100 - fields.length;
-                  if (remainingSlots <= 0) {
-                    alert('최대 100개까지만 추가할 수 있습니다.');
-                    return;
-                  }
-                  const itemsToAdd = Math.min(addCount, remainingSlots);
-                  for (let i = 0; i < itemsToAdd; i++) {
+                  for (let i = 0; i < addCount; i++) {
                     append({
                       line_number: fields.length + 1 + i,
                       item_name: '',
@@ -1058,9 +1052,6 @@ export default function PurchaseNewMain() {
                       remark: '',
                       link: ''
                     });
-                  }
-                  if (itemsToAdd < addCount) {
-                    alert(`최대 한도로 ${itemsToAdd}개만 추가되었습니다.`);
                   }
                 }}
                 size="sm"
@@ -1083,11 +1074,11 @@ export default function PurchaseNewMain() {
                       <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[120px] sm:min-w-[150px]">
                         품목<span className="text-red-500">*</span>
                       </th>
-                      <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[100px] sm:min-w-[120px]">규격</th>
+                      <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[140px] sm:min-w-[180px]">규격</th>
                       <th className="px-2 py-2 text-center font-medium text-gray-700 w-20">
                         수량<span className="text-red-500">*</span>
                       </th>
-                      <th className="px-2 py-2 text-right font-medium text-gray-700 min-w-[90px] sm:min-w-[100px]">
+                      <th className="px-2 py-2 text-right font-medium text-gray-700 min-w-[110px] sm:min-w-[120px]">
                         단가 ({currency})
                       </th>
                       <th className="px-2 py-2 text-right font-medium text-gray-700 min-w-[100px] sm:min-w-[120px]">
@@ -1130,7 +1121,7 @@ export default function PurchaseNewMain() {
                             type="number"
                             min="1"
                             value={item.quantity || ''}
-                            className="h-7 w-full bg-white border border-gray-200 text-xs text-center"
+                            className="h-7 w-20 bg-white border border-gray-200 text-xs text-center"
                             placeholder="0"
                             onChange={(e) => {
                               const newQuantity = parseInt(e.target.value) || 0;
@@ -1231,7 +1222,7 @@ export default function PurchaseNewMain() {
           </div>
           {/* 품목 수 표시 */}
           <div className="mt-2 text-xs text-gray-500 text-right">
-            총 {fields.length}개 품목 / 최대 100개
+            총 {fields.length}개 품목
           </div>
         </div>
       </div>

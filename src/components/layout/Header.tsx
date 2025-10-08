@@ -16,7 +16,7 @@ const getRoleDisplayName = (role: string) => {
     ceo: 'CEO',
     final_approver: '최종 승인자',
     middle_manager: '중간 관리자',
-    lead_buyer: '구매 책임자',
+    'lead buyer': '구매 책임자',
     buyer: '구매 담당자',
     requester: '요청자'
   }

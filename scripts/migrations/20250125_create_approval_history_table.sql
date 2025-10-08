@@ -34,7 +34,7 @@ CREATE POLICY "approval_history_select_policy" ON approval_history
                 e.purchase_role @> ARRAY['ceo'] OR
                 e.purchase_role @> ARRAY['final_approver'] OR
                 e.purchase_role @> ARRAY['middle_manager'] OR
-                e.purchase_role @> ARRAY['lead_buyer']
+                e.purchase_role @> ARRAY['lead buyer']
             )
         )
     );
@@ -52,7 +52,7 @@ CREATE POLICY "approval_history_insert_policy" ON approval_history
                 e.purchase_role @> ARRAY['ceo'] OR
                 e.purchase_role @> ARRAY['final_approver'] OR
                 e.purchase_role @> ARRAY['middle_manager'] OR
-                e.purchase_role @> ARRAY['lead_buyer']
+                e.purchase_role @> ARRAY['lead buyer']
             )
         )
     );

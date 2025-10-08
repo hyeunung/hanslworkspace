@@ -116,7 +116,7 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
       'ceo': 'CEO',
       'final_approver': '최종 승인자',
       'middle_manager': '중간 관리자',
-      'lead_buyer': '수석 구매자',
+      'lead buyer': '수석 구매자',
       'buyer': '구매자'
     }
     
@@ -129,7 +129,7 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
       'ceo': 'bg-red-100 text-red-800',
       'final_approver': 'bg-hansl-100 text-hansl-800',
       'middle_manager': 'bg-green-100 text-green-800',
-      'lead_buyer': 'bg-yellow-100 text-yellow-800',
+      'lead buyer': 'bg-yellow-100 text-yellow-800',
       'buyer': 'bg-gray-100 text-gray-800'
     }
     

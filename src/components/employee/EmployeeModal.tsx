@@ -43,7 +43,7 @@ const PURCHASE_ROLES: { value: PurchaseRole; label: string }[] = [
   { value: 'ceo', label: 'CEO' },
   { value: 'final_approver', label: '최종 승인자' },
   { value: 'middle_manager', label: '중간 관리자' },
-  { value: 'lead_buyer', label: '수석 구매자' },
+  { value: 'lead buyer', label: '수석 구매자' },
   { value: 'buyer', label: '구매자' },
 ]
 

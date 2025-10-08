@@ -223,7 +223,7 @@ ${comment ? `💬 처리내용: ${comment}` : ''}
     const message = this.generateApprovalMessage('request', purchaseData, 'buyer')
     
     return this.sendRoleBasedNotification({
-      targetRole: 'lead_buyer',
+      targetRole: 'lead buyer',
       message,
       purchaseOrderNumber: purchaseData.purchase_order_number,
       withAttachment: true // 엑셀 파일 첨부

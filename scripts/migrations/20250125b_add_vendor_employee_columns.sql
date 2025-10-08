@@ -87,7 +87,7 @@ COMMENT ON COLUMN vendors.email IS '이메일';
 COMMENT ON COLUMN vendors.is_active IS '활성 상태';
 
 COMMENT ON COLUMN employees.is_active IS '활성 상태';
-COMMENT ON COLUMN employees.purchase_role IS '구매 권한 (app_admin, ceo, final_approver, middle_manager, lead_buyer, buyer)';
+COMMENT ON COLUMN employees.purchase_role IS '구매 권한 (app_admin, ceo, final_approver, middle_manager, lead buyer, buyer)';
 
 -- RLS(Row Level Security) 정책 확인 및 추가
 -- vendors 테이블에 대한 정책

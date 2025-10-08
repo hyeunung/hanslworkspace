@@ -281,9 +281,9 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
       
       toast.success('엑셀 파일이 다운로드되었습니다.');
       
-      // DB에 다운로드 완료 플래그(is_po_download) 업데이트 - lead_buyer만 해당
+      // DB에 다운로드 완료 플래그(is_po_download) 업데이트 - lead buyer만 해당
       try {
-        const isLeadBuyer = currentUserRoles && currentUserRoles.includes('lead_buyer');
+        const isLeadBuyer = currentUserRoles && currentUserRoles.includes('lead buyer');
 
         if (isLeadBuyer) {
           const { error: downloadFlagErr } = await supabase

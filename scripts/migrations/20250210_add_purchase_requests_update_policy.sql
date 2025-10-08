@@ -20,8 +20,8 @@ FOR UPDATE USING (
       -- final_approver와 ceo는 최종 승인 가능
       OR purchase_role LIKE '%final_approver%'
       OR purchase_role LIKE '%ceo%'
-      -- lead_buyer는 구매 상태 업데이트 가능
-      OR purchase_role LIKE '%lead_buyer%'
+      -- lead buyer는 구매 상태 업데이트 가능
+      OR purchase_role LIKE '%lead buyer%'
     )
   )
 );

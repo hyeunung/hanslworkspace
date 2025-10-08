@@ -132,12 +132,11 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
         }
         
         case 'receipt': {
-          // 입고대기: 미입고 & (선진행 OR 최종승인)
+          // 입고현황: 미입고 & (선진행 or 최종승인)
           const notReceived = !purchase.is_received;
           const isSeonJin = (purchase.progress_type || '').includes('선진행');
           const finalApproved = purchase.final_manager_status === 'approved';
-          const cond = isSeonJin || finalApproved;
-          matches = notReceived && cond;
+          matches = notReceived && (isSeonJin || finalApproved);
           return matches;
         }
         
@@ -336,8 +335,9 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     
     const receiptFiltered = receiptData.filter(p => {
       const notReceived = !p.is_received;
-      const cond = (p.progress_type || '').includes('선진행') || p.final_manager_status === 'approved';
-      return notReceived && cond;
+      const isSeonJin = (p.progress_type || '').includes('선진행');
+      const finalApproved = p.final_manager_status === 'approved';
+      return notReceived && (isSeonJin || finalApproved);
     });
     
     const counts = {

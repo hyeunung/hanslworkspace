@@ -95,7 +95,7 @@ export default function PurchaseStatusModal({
     item: item.purchase_order_number,
     showPurchaseButton: type === 'purchase',
     hasPermission: currentUserRoles.includes('app_admin') || 
-                   currentUserRoles.includes('lead_buyer')
+                   currentUserRoles.includes('lead buyer')
   })
 
   const getTypeInfo = () => {
@@ -329,8 +329,11 @@ export default function PurchaseStatusModal({
           {/* 버튼 영역 */}
           <div className="flex justify-between gap-3 mt-6">
             <div className="flex gap-2">
-              {/* 입고 완료 버튼 - 입고 대기 상태일 때 */}
-            {type === 'delivery' && (
+              {/* 입고 완료 버튼 - 입고 대기 상태이고 권한 있을 때 */}
+            {type === 'delivery' && 
+             (currentUserRoles.includes('app_admin') || 
+              currentUserRoles.includes('lead buyer') ||
+              currentUserRoles.includes('receiver')) && (
               <Button
                 onClick={async () => {
                   setProcessing(true)
@@ -355,8 +358,11 @@ export default function PurchaseStatusModal({
                       .eq('purchase_request_id', item.id)
                     
                     toast.success('입고완료 처리되었습니다.')
-                    onRefresh?.()
                     onClose()
+                    // 모달이 닫힌 후에 새로고침
+                    setTimeout(() => {
+                      onRefresh?.()
+                    }, 100)
                   } catch (error) {
                     toast.error('처리 중 오류가 발생했습니다.')
                   } finally {
@@ -379,7 +385,7 @@ export default function PurchaseStatusModal({
             {/* 구매 완료 버튼 - 구매 대기 상태이고 권한 있을 때 */}
             {type === 'purchase' && 
              (currentUserRoles.includes('app_admin') || 
-              currentUserRoles.includes('lead_buyer')) && (
+              currentUserRoles.includes('lead buyer')) && (
               <Button
                 onClick={async () => {
                   setProcessing(true)
@@ -395,8 +401,11 @@ export default function PurchaseStatusModal({
                     if (error) throw error
                     
                     toast.success('구매완료 처리되었습니다.')
-                    onRefresh?.()
                     onClose()
+                    // 모달이 닫힌 후에 새로고침
+                    setTimeout(() => {
+                      onRefresh?.()
+                    }, 100)
                   } catch (error) {
                     toast.error('처리 중 오류가 발생했습니다.')
                   } finally {

@@ -28,7 +28,6 @@ class PurchaseService {
 
       const purchaseRequest: Omit<PurchaseRequest, 'id' | 'created_at' | 'updated_at'> = {
         purchase_order_number: purchaseOrderNumber,
-        requester_email: '',
         requester_name: data.requester_name,
         vendor_id: data.vendor_id,
         contact_id: data.contact_id,

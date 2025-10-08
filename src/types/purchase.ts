@@ -62,7 +62,7 @@ export interface EmployeeFormData {
   purchase_role?: string[]
 }
 
-export type PurchaseRole = 'app_admin' | 'ceo' | 'middle_manager' | 'final_approver' | 'raw_material_manager' | 'consumable_manager' | 'purchase_manager' | 'requester' | 'lead_buyer' | 'buyer'  // hanslwebapp과 동일
+export type PurchaseRole = 'app_admin' | 'ceo' | 'middle_manager' | 'final_approver' | 'raw_material_manager' | 'consumable_manager' | 'purchase_manager' | 'requester' | 'lead buyer' | 'buyer'  // hanslwebapp과 동일
 
 export interface Employee {
   id: string
@@ -119,7 +119,6 @@ export interface PurchaseRequestItem {
 export interface PurchaseRequest {
   id: string
   purchase_order_number?: string
-  requester_email?: string
   requester_name: string
   requester_id?: string
   requester_phone?: string

@@ -44,6 +44,9 @@ export default function DashboardMain() {
     try {
       if (showLoading) {
         setLoading(true)
+      } else {
+        // 로딩 표시 없이 새로고침할 때는 기존 data를 유지
+        // data가 null이 되는 것을 방지
       }
       const supabase = createClient()
       
@@ -69,11 +72,61 @@ export default function DashboardMain() {
 
       if (employeeError || !employee) {
         console.error('Employee fetch error:', employeeError)
+        // employee가 없어도 기본값으로 대시보드 표시
+        const defaultEmployee = {
+          id: user.id,
+          name: user.email?.split('@')[0] || 'Guest User',  // 이메일에서 이름 추출
+          email: user.email || '',
+          purchase_role: null
+        }
+        
+        try {
+          const dashboardData = await dashboardService.getDashboardData(defaultEmployee as any)
+          setData(dashboardData)
+        } catch (err) {
+          console.error('❌ 대시보드 데이터 로딩 에러:', err)
+        }
+        
+        setLoading(false)
         return
       }
 
-      const dashboardData = await dashboardService.getDashboardData(employee)
-      setData(dashboardData)
+      console.log('🔍 조회된 Employee 데이터:', {
+        id: employee.id,
+        name: employee.name,
+        email: employee.email,
+        employee_number: employee.employee_number,
+        employeeID: employee.employeeID,
+        purchase_role: employee.purchase_role
+      })
+
+      console.log('========== 대시보드 데이터 로딩 시작 ==========')
+      console.log('1️⃣ 현재 사용자:', employee.name, '/ Email:', employee.email)
+      console.log('2️⃣ Purchase Role:', employee.purchase_role)
+      
+      try {
+        const dashboardData = await dashboardService.getDashboardData(employee)
+        
+        // 전체 입고대기 건수 조회 추가
+        const totalDeliveryWaiting = await dashboardService.getTotalDeliveryWaitingCount()
+        
+        console.log('3️⃣ 대시보드 데이터 로딩 완료:', {
+          hasData: !!dashboardData,
+          hasEmployee: !!dashboardData.employee,
+          employeeName: dashboardData.employee?.name,
+          hasMyPurchaseStatus: !!dashboardData.myPurchaseStatus,
+          myPurchaseStatusCount: dashboardData.myPurchaseStatus?.waitingPurchase?.length || 0,
+          totalDeliveryWaiting: totalDeliveryWaiting
+        })
+        
+        setData({
+          ...dashboardData,
+          totalDeliveryWaitingCount: totalDeliveryWaiting
+        })
+      } catch (err) {
+        console.error('❌ 대시보드 데이터 로딩 에러:', err)
+        toast.error('대시보드 데이터를 불러오는데 실패했습니다.')
+      }
       
       // 사용자 role 설정
       if (employee.purchase_role) {
@@ -85,8 +138,8 @@ export default function DashboardMain() {
               .filter((r: string) => r.length > 0)
         setCurrentUserRoles(roles)
         
-        // lead_buyer 또는 "lead buyer" (공백 포함)인 경우 미다운로드 항목 조회
-        if (roles.includes('lead_buyer') || roles.includes('lead buyer')) {
+        // lead buyer 또는 "lead buyer" (공백 포함)인 경우 미다운로드 항목 조회
+        if (roles.includes('lead buyer') || roles.includes('lead buyer')) {
           const undownloaded = await dashboardService.getUndownloadedOrders(employee)
           setUndownloadedOrders(undownloaded)
         }
@@ -100,7 +153,17 @@ export default function DashboardMain() {
   }
 
   const handleQuickApprove = async (requestId: string) => {
+    console.log('handleQuickApprove 호출:', {
+      requestId: requestId,
+      hasData: !!data,
+      hasEmployee: !!data?.employee,
+      employee: data?.employee
+    })
+    
     if (!data?.employee) {
+      console.error('handleQuickApprove 에러: data.employee가 없음', {
+        data: data
+      })
       toast.error('사용자 정보를 찾을 수 없습니다.')
       return
     }
@@ -211,7 +274,7 @@ export default function DashboardMain() {
       window.URL.revokeObjectURL(url)
       
       // lead buyer인 경우 is_po_download를 true로 업데이트
-      if (currentUserRoles.includes('lead_buyer') || currentUserRoles.includes('lead buyer')) {
+      if (currentUserRoles.includes('lead buyer') || currentUserRoles.includes('lead buyer')) {
         await supabase
           .from('purchase_requests')
           .update({ is_po_download: true })
@@ -381,7 +444,7 @@ export default function DashboardMain() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {/* Lead Buyer - 미다운로드 발주서 */}
-          {(currentUserRoles.includes('lead_buyer') || currentUserRoles.includes('lead buyer')) && undownloadedOrders.length > 0 && (
+          {(currentUserRoles.includes('lead buyer') || currentUserRoles.includes('lead buyer')) && undownloadedOrders.length > 0 && (
             <Card className="w-full col-span-1 row-span-2 border-gray-200 shadow-sm hover:shadow-md transition-shadow">
               <CardHeader className="py-3 px-4 bg-gray-50 border-b">
                 <CardTitle className="text-sm font-semibold flex items-center justify-between">
@@ -491,35 +554,6 @@ export default function DashboardMain() {
             </Card>
           )}
 
-          {/* Lead Buyer - 구매 처리 대기 */}
-          {(currentUserRoles.includes('lead_buyer') || currentUserRoles.includes('lead buyer')) && data.quickActions.find(a => a.id === 'purchase') && (
-            <Card className="border-yellow-200 w-full col-span-1">
-              <CardHeader className="py-2 px-3 bg-yellow-50">
-                <CardTitle className="text-xs sm:text-sm font-semibold flex items-center gap-1.5">
-                  <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-yellow-600" />
-                  구매 처리 대기
-                  <Badge variant="destructive" className="text-[10px] sm:text-xs ml-auto h-4 sm:h-5 px-1 sm:px-1.5">
-                    {data.quickActions.find(a => a.id === 'purchase')?.count || 0}
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-3">
-                <div className="text-center py-4">
-                  <ShoppingCart className="w-10 h-10 mx-auto mb-2 text-yellow-500" />
-                  <p className="text-xs font-medium mb-2">
-                    {data.quickActions.find(a => a.id === 'purchase')?.count || 0}건의 구매 대기중
-                  </p>
-                  <Button 
-                    className="bg-yellow-600 hover:bg-yellow-700 text-xs h-7 px-3"
-                    onClick={() => navigate('/purchase/list')}
-                  >
-                    구매 처리하기
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          
           {/* 내 승인 진행중 */}
           <Card className="w-full col-span-1 border-gray-200 shadow-sm hover:shadow-md transition-shadow">
             <CardHeader className="py-3 px-4 bg-gray-50 border-b">
@@ -720,7 +754,7 @@ export default function DashboardMain() {
             </Card>
           )}
           
-          {/* 구매 대기중 */}
+          {/* 구매 대기중 - 모든 사용자에게 표시 (본인 것만) */}
           <Card className="w-full col-span-1 border-gray-200 shadow-sm hover:shadow-md transition-shadow">
               <CardHeader className="py-3 px-4 bg-gray-50 border-b">
                 <CardTitle className="text-sm font-semibold flex items-center justify-between">
@@ -728,7 +762,7 @@ export default function DashboardMain() {
                     <ShoppingCart className="w-4 h-4 text-yellow-600" />
                     <span className="text-gray-900">구매 대기</span>
                   </div>
-                  {data.myPurchaseStatus.waitingPurchase.length > 0 && (
+                  {data.myPurchaseStatus && data.myPurchaseStatus.waitingPurchase && data.myPurchaseStatus.waitingPurchase.length > 0 && (
                     <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200 px-2 py-0.5">
                       {data.myPurchaseStatus.waitingPurchase.length}
                     </Badge>
@@ -736,7 +770,7 @@ export default function DashboardMain() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4">
-                {data.myPurchaseStatus.waitingPurchase.length === 0 ? (
+                {!data.myPurchaseStatus || !data.myPurchaseStatus.waitingPurchase || data.myPurchaseStatus.waitingPurchase.length === 0 ? (
                   <div className="text-center py-12 text-gray-400">
                     <ShoppingCart className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                     <p className="text-sm font-medium">구매 대기 항목이 없습니다</p>
@@ -793,6 +827,17 @@ export default function DashboardMain() {
                         </div>
                       )
                     })}
+                    {/* Lead Buyer인 경우 구매 처리하기 버튼 표시 */}
+                    {(currentUserRoles.includes('lead_buyer') || currentUserRoles.includes('lead buyer')) && (
+                      <Button 
+                        className="w-full bg-yellow-600 hover:bg-yellow-700 text-xs h-8"
+                        onClick={() => navigate('/purchase/list')}
+                      >
+                        구매 처리하기
+                      </Button>
+                    )}
+                    
+                    {/* 일반 사용자 또는 3개 이상인 경우 전체보기 버튼 */}
                     {data.myPurchaseStatus.waitingPurchase.length > 3 && (
                       <Button 
                         variant="outline" 
@@ -816,9 +861,9 @@ export default function DashboardMain() {
                     <Truck className="w-4 h-4 text-blue-600" />
                     <span className="text-gray-900">입고 대기</span>
                   </div>
-                  {data.myPurchaseStatus.waitingDelivery.length > 0 && (
+                  {(data as any).totalDeliveryWaitingCount > 0 && (
                     <Badge className="bg-blue-100 text-blue-700 border-blue-200 px-2 py-0.5">
-                      {data.myPurchaseStatus.waitingDelivery.length}
+                      {(data as any).totalDeliveryWaitingCount}
                     </Badge>
                   )}
                 </CardTitle>
@@ -1032,7 +1077,7 @@ export default function DashboardMain() {
           }}
           item={selectedStatusItem}
           type={statusModalType as any}
-          onRefresh={loadDashboardData}
+          onRefresh={() => loadDashboardData(false)}
       />
 
       {/* Order Detail Modal - PurchaseStatusModal과 동일한 디자인 */}
