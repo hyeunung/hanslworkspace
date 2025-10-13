@@ -44,7 +44,7 @@ class SupportService {
         .maybeSingle()
 
       const { error } = await this.supabase
-        .from('support_inquiries')
+        .from('support_inquires')
         .insert({
           user_id: user.id,
           user_email: employee?.email || user.email,
@@ -58,7 +58,16 @@ class SupportService {
           status: 'open'
         })
 
-      if (error) return { success: false, error: error.message }
+      if (error) {
+        console.error('문의 등록 에러:', error)
+        console.error('에러 상세:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        })
+        return { success: false, error: error.message }
+      }
       return { success: true }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : '문의 접수 실패' }
@@ -72,7 +81,7 @@ class SupportService {
       if (authError || !user) return { success: false, data: [], error: '로그인이 필요합니다.' }
 
       const { data, error } = await this.supabase
-        .from('support_inquiries')
+        .from('support_inquires')
         .select('*,purchase_requests(purchase_order_number,vendor_name,requester_name)')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
@@ -89,7 +98,7 @@ class SupportService {
   async getAllInquiries(): Promise<{ success: boolean; data: SupportInquiry[]; error?: string }> {
     try {
       const { data, error } = await this.supabase
-        .from('support_inquiries')
+        .from('support_inquires')
         .select('*,purchase_requests(purchase_order_number,vendor_name,requester_name,purchase_request_items(item_name,specification,quantity))')
         .order('created_at', { ascending: false })
 
@@ -134,7 +143,7 @@ class SupportService {
       }
 
       const { error } = await this.supabase
-        .from('support_inquiries')
+        .from('support_inquires')
         .update(updateData)
         .eq('id', inquiryId)
 
@@ -189,13 +198,13 @@ class SupportService {
   // 실시간 구독 설정
   subscribeToInquiries(callback: (payload: any) => void) {
     return this.supabase
-      .channel('support_inquiries_changes')
+      .channel('support_inquires_changes')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'support_inquiries'
+          table: 'support_inquires'
         },
         callback
       )
@@ -317,7 +326,7 @@ class SupportService {
       if (!isAdmin) {
         // 문의 정보 확인 (본인 것인지)
         const { data: inquiry, error: fetchError } = await this.supabase
-          .from('support_inquiries')
+          .from('support_inquires')
           .select('user_id, status, resolution_note')
           .eq('id', inquiryId)
           .single()
@@ -344,7 +353,7 @@ class SupportService {
 
       // 삭제 실행
       const { error } = await this.supabase
-        .from('support_inquiries')
+        .from('support_inquires')
         .delete()
         .eq('id', inquiryId)
 
