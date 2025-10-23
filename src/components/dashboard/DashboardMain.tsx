@@ -886,9 +886,9 @@ export default function DashboardMain() {
                     <Truck className="w-4 h-4 text-blue-600" />
                     <span className="text-gray-900">입고 대기</span>
                   </div>
-                  {(data as any).totalDeliveryWaitingCount > 0 && (
+                  {data.myPurchaseStatus.waitingDelivery.length > 0 && (
                     <Badge className="bg-blue-100 text-blue-700 border-blue-200 px-2 py-0.5">
-                      {(data as any).totalDeliveryWaitingCount}
+                      {data.myPurchaseStatus.waitingDelivery.length}
                     </Badge>
                   )}
                 </CardTitle>
