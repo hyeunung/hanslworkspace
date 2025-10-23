@@ -1,4 +1,4 @@
-import { Employee, PurchaseRole } from '@/types/purchase'
+import { PurchaseRole } from '@/types/purchase'
 
 // 권한 계층 구조 정의 (높은 권한은 하위 권한을 포함)
 const ROLE_HIERARCHY: Record<PurchaseRole, number> = {

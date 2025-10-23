@@ -200,7 +200,6 @@ export class DashboardService {
     let allRequests: any[] | null = null
     let baseError: any = null
 
-    console.log('🔍 [DEBUG] 승인 대기 데이터 조회 시작...')
 
     const firstTry = await this.supabase
       .from('purchase_requests')
@@ -208,15 +207,6 @@ export class DashboardService {
       .order('request_date', { ascending: false })
       .limit(100) // 최적화: 100개로 제한
 
-    console.log('🔍 [DEBUG] 데이터베이스 조회 결과:', {
-      error: firstTry.error,
-      dataCount: firstTry.data?.length || 0,
-      firstFewItems: firstTry.data?.slice(0, 3).map(item => ({
-        발주번호: item.purchase_order_number,
-        요청자: item.requester_name,
-        최종승인: item.final_manager_status
-      }))
-    })
 
     if (firstTry.error) {
       // 관계 조회 실패 시 최소 컬럼으로 재시도하여 리스트 자체는 표시되도록 함
@@ -247,16 +237,6 @@ export class DashboardService {
     // 발주 리스트의 pending 탭과 동일한 조건: final_manager_status가 승인 대기인 것만
     filteredData = filteredData.filter(item => isPending(item.final_manager_status))
     
-    // 디버그: 필터링 결과 로깅
-    console.log('🔍 승인 대기 필터링 결과:', {
-      전체데이터수: allRequests?.length || 0,
-      필터링후: filteredData.length,
-      필터링된항목들: filteredData.map(item => ({
-        발주번호: item.purchase_order_number,
-        요청자: item.requester_name,
-        최종승인상태: item.final_manager_status
-      }))
-    })
 
     // 역할이 있는 사용자만 승인 대기 항목을 볼 수 있음
     if (roles.length === 0) {
@@ -385,12 +365,9 @@ export class DashboardService {
 
   // 내 구매/입고 상태 확인
   async getMyPurchaseStatus(employee: Employee): Promise<{ waitingPurchase: PurchaseRequestWithDetails[], waitingDelivery: PurchaseRequestWithDetails[], recentCompleted: PurchaseRequestWithDetails[] }> {
-    console.log('========== getMyPurchaseStatus 시작 ==========')
-    console.log('4️⃣ 요청 사용자:', employee.name, '/ Email:', employee.email)
     
     // name이 없으면 email 사용
     const requesterName = employee.name || employee.email
-    console.log('5️⃣ 검색할 requester_name:', requesterName)
     
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
@@ -413,18 +390,6 @@ export class DashboardService {
 
     const allMyRequests = myRequests.data || []
     
-    console.log('6️⃣ DB에서 가져온 내 요청 데이터:', {
-      총개수: allMyRequests.length,
-      샘플데이터: allMyRequests.slice(0, 2).map(r => ({
-        id: r.id,
-        발주번호: r.purchase_order_number,
-        결제완료여부: r.is_payment_completed,
-        입고여부: r.is_received,
-        최종승인상태: r.final_manager_status,
-        진행타입: r.progress_type,
-        결제카테고리: r.payment_category
-      }))
-    })
 
     // 클라이언트 사이드 필터링 (PurchaseListMain 구매/입고 탭과 동일한 로직)
     
@@ -436,18 +401,6 @@ export class DashboardService {
       const notPaid = !item.is_payment_completed
       const isSeonJin = (item.progress_type || '').includes('선진행')
       
-      console.log('구매대기 필터링 상세:', {
-        id: item.id ? String(item.id).substring(0, 8) : 'no-id',
-        payment_category: item.payment_category,
-        category_normalized: categoryNormalized,
-        is_payment_completed: item.is_payment_completed,
-        progress_type: item.progress_type,
-        final_manager_status: item.final_manager_status,
-        isPurchaseRequest: isPurchaseRequest,
-        notPaid: notPaid,
-        isSeonJin: isSeonJin,
-        finalApproved: item.final_manager_status === 'approved'
-      })
       
       // 선진행은 승인 상태와 무관하게 구매 대기
       if (isPurchaseRequest && notPaid && isSeonJin) {
@@ -488,19 +441,6 @@ export class DashboardService {
       return receivedDate >= sevenDaysAgoDate
     }).slice(0, 10)
 
-    console.log('7️⃣ 필터링 완료 - 구매대기 조건:', {
-      '✅ 구매대기_개수': waitingPurchase.length,
-      '📦 입고대기_개수': waitingDelivery.length,  
-      '✨ 최근완료_개수': recentCompleted.length,
-      '구매대기_상세': waitingPurchase.slice(0, 2).map(r => ({
-        발주번호: r.purchase_order_number,
-        결제카테고리: r.payment_category,
-        결제완료: r.is_payment_completed ? '완료' : '미완료',
-        진행타입: r.progress_type,
-        최종승인: r.final_manager_status
-      }))
-    })
-    console.log('========== getMyPurchaseStatus 종료 ==========')
 
     return {
       waitingPurchase: waitingPurchase,

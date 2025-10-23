@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { createClient } from '@/lib/supabase/client'
 import { Employee } from '@/types/purchase'
 import { checkPagePermission, PermissionResult } from '@/utils/permissions'
@@ -8,18 +8,18 @@ import { toast } from 'sonner'
 
 interface PermissionGuardProps {
   children: React.ReactNode
-  requiredRoles?: string[]
+  _requiredRoles?: string[]
   fallbackPath?: string
   showError?: boolean
 }
 
 export default function PermissionGuard({ 
   children, 
-  requiredRoles = [], 
+  _requiredRoles = [], 
   fallbackPath = '/dashboard',
   showError = true 
 }: PermissionGuardProps) {
-  const [employee, setEmployee] = useState<Employee | null>(null)
+  const [_employee, setEmployee] = useState<Employee | null>(null)
   const [loading, setLoading] = useState(true)
   const [permissionResult, setPermissionResult] = useState<PermissionResult>({ allowed: false })
   const navigate = useNavigate()

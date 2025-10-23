@@ -59,7 +59,7 @@ export default function ApprovalMain() {
       }
 
       // 직원 정보 조회 (전체 필드 조회)
-      let { data: employeeData, error: employeeError } = await supabase
+      let { data: employeeData, error: _employeeError } = await supabase
         .from('employees')
         .select('*')
         .eq('id', user.id)
@@ -67,7 +67,7 @@ export default function ApprovalMain() {
 
       // ID로 못 찾으면 이메일로 재시도
       if (!employeeData && user.email) {
-        const { data: userByEmail, error: emailError } = await supabase
+        const { data: userByEmail, error: _emailError } = await supabase
           .from('employees')
           .select('*')
           .eq('email', user.email)
@@ -76,7 +76,7 @@ export default function ApprovalMain() {
         if (userByEmail) {
           employeeData = userByEmail
         }
-        employeeError = emailError
+        // _employeeError = _emailError - not used
       }
 
       if (!employeeData) {
@@ -229,7 +229,7 @@ export default function ApprovalMain() {
     setModalType(action)
   }
 
-  const handleApprovalSubmit = async (id: number, action: 'approve' | 'reject', comment?: string) => {
+  const handleApprovalSubmit = async (id: number, action: 'approve' | 'reject', _comment?: string) => {
     try {
       
       // Supabase 직접 호출 - hanslwebapp 방식으로 변경
@@ -269,7 +269,7 @@ export default function ApprovalMain() {
       }
 
       // Supabase 업데이트 실행
-      const { error, data } = await supabase
+      const { error } = await supabase
         .from('purchase_requests')
         .update(updateData)
         .eq('id', Number(id))

@@ -49,14 +49,6 @@ export default function DashboardMain() {
         // data가 null이 되는 것을 방지
       }
       
-      // 캐시 클리어 (임시)
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('dashboard-cache')
-        sessionStorage.clear()
-      }
-      
-      // 상태 초기화
-      setData(null)
       const supabase = createClient()
       
       const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -119,25 +111,8 @@ export default function DashboardMain() {
         // 전체 입고대기 건수 조회 추가
         const totalDeliveryWaiting = await dashboardService.getTotalDeliveryWaitingCount()
         
-        console.log('3️⃣ 대시보드 데이터 로딩 완료:', {
-          hasData: !!dashboardData,
-          hasEmployee: !!dashboardData.employee,
-          employeeName: dashboardData.employee?.name,
-          hasMyPurchaseStatus: !!dashboardData.myPurchaseStatus,
-          myPurchaseStatusCount: dashboardData.myPurchaseStatus?.waitingPurchase?.length || 0,
-          totalDeliveryWaiting: totalDeliveryWaiting,
-          pendingApprovalsCount: dashboardData.pendingApprovals?.length || 0,
-          pendingApprovals: dashboardData.pendingApprovals?.map(item => ({
-            발주번호: item.purchase_order_number,
-            요청자: item.requester_name,
-            최종승인: item.final_manager_status
-          }))
-        })
         
-        setData({
-          ...dashboardData,
-          totalDeliveryWaitingCount: totalDeliveryWaiting
-        })
+        setData(dashboardData)
       } catch (err) {
         console.error('❌ 대시보드 데이터 로딩 에러:', err)
         toast.error('대시보드 데이터를 불러오는데 실패했습니다.')
@@ -691,16 +666,6 @@ export default function DashboardMain() {
                 </div>
               </CardHeader>
               <CardContent className="p-3">
-                {/* 임시 디버그 */}
-                {console.log('🚨 승인 대기 카드 렌더링:', {
-                  pendingApprovalsLength: data.pendingApprovals.length,
-                  pendingApprovals: data.pendingApprovals.map(item => ({
-                    id: item.id,
-                    발주번호: item.purchase_order_number,
-                    요청자: item.requester_name,
-                    최종승인: item.final_manager_status
-                  }))
-                })}
                 {data.pendingApprovals.length === 0 ? (
                   <div className="text-center py-4 text-gray-400">
                     <CheckCircle className="w-6 h-6 mx-auto mb-1" />
