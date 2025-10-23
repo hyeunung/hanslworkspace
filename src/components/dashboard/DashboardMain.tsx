@@ -48,6 +48,15 @@ export default function DashboardMain() {
         // 로딩 표시 없이 새로고침할 때는 기존 data를 유지
         // data가 null이 되는 것을 방지
       }
+      
+      // 캐시 클리어 (임시)
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('dashboard-cache')
+        sessionStorage.clear()
+      }
+      
+      // 상태 초기화
+      setData(null)
       const supabase = createClient()
       
       const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -116,7 +125,13 @@ export default function DashboardMain() {
           employeeName: dashboardData.employee?.name,
           hasMyPurchaseStatus: !!dashboardData.myPurchaseStatus,
           myPurchaseStatusCount: dashboardData.myPurchaseStatus?.waitingPurchase?.length || 0,
-          totalDeliveryWaiting: totalDeliveryWaiting
+          totalDeliveryWaiting: totalDeliveryWaiting,
+          pendingApprovalsCount: dashboardData.pendingApprovals?.length || 0,
+          pendingApprovals: dashboardData.pendingApprovals?.map(item => ({
+            발주번호: item.purchase_order_number,
+            요청자: item.requester_name,
+            최종승인: item.final_manager_status
+          }))
         })
         
         setData({
@@ -676,6 +691,16 @@ export default function DashboardMain() {
                 </div>
               </CardHeader>
               <CardContent className="p-3">
+                {/* 임시 디버그 */}
+                {console.log('🚨 승인 대기 카드 렌더링:', {
+                  pendingApprovalsLength: data.pendingApprovals.length,
+                  pendingApprovals: data.pendingApprovals.map(item => ({
+                    id: item.id,
+                    발주번호: item.purchase_order_number,
+                    요청자: item.requester_name,
+                    최종승인: item.final_manager_status
+                  }))
+                })}
                 {data.pendingApprovals.length === 0 ? (
                   <div className="text-center py-4 text-gray-400">
                     <CheckCircle className="w-6 h-6 mx-auto mb-1" />
