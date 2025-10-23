@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useLayoutEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +13,7 @@ import { FormValues, FormItem } from "@/types/purchase";
 import { toast } from "sonner";
 import { DatePicker } from "@/components/ui/datepicker";
 import { Separator } from "@/components/ui/separator";
-const ReactSelect = lazy(() => import('react-select'));
+import ReactSelect from 'react-select';
 
 interface EmployeeOption {
   value: string;
@@ -791,8 +791,7 @@ export default function PurchaseNewMain() {
               <div className="grid grid-cols-2 gap-1.5 sm:gap-2 lg:grid-cols-2">
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">업체명<span className="text-red-500 ml-0.5">*</span></Label>
-                  <Suspense fallback={<div className="h-7 sm:h-8 lg:h-9 bg-gray-100 animate-pulse rounded-md" />}>
-                    <ReactSelect
+                  <ReactSelect
                       options={vendors.map(v => ({ value: v.id.toString(), label: v.vendor_name }))}
                       value={vendors.find(v => v.id.toString() === vendor) ? { value: vendor, label: vendors.find(v => v.id.toString() === vendor)?.vendor_name } : null}
                       onChange={(option) => {
@@ -828,7 +827,6 @@ export default function PurchaseNewMain() {
                         menuPortal: base => ({ ...base, zIndex: 1400 })
                       }}
                     />
-                  </Suspense>
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-0.5 sm:mb-1">
@@ -865,8 +863,7 @@ export default function PurchaseNewMain() {
               <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">구매요구자</Label>
-                  <Suspense fallback={<div className="h-7 sm:h-8 lg:h-9 bg-gray-100 animate-pulse rounded-md" />}>
-                    <ReactSelect
+                  <ReactSelect
                       key={`employee-select-${employeeName}`}
                       value={employeeName ? { value: employeeName, label: employeeName } : null}
                       defaultValue={employeeName ? { value: employeeName, label: employeeName } : null}
@@ -917,7 +914,6 @@ export default function PurchaseNewMain() {
                         option: (base) => ({ ...base, fontSize: '0.75rem', padding: '6px 10px' })
                       }}
                     />
-                  </Suspense>
                 </div>
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">청구일</Label>
