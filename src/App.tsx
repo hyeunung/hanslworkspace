@@ -17,7 +17,6 @@ const PurchaseDetailMain = lazy(() => import('@/components/purchase/PurchaseDeta
 const VendorMain = lazy(() => import('@/components/vendor/VendorMain'))
 const EmployeeMain = lazy(() => import('@/components/employee/EmployeeMain'))
 const SupportMain = lazy(() => import('@/components/support/SupportMain'))
-const DeleteEmployee = lazy(() => import('@/components/DeleteEmployee'))
 
 export default function App() {
   const [employee, setEmployee] = useState<Employee | null>(null)
@@ -128,9 +127,6 @@ export default function App() {
                     <Route path="/vendor" element={<VendorMain />} />
                     <Route path="/employee" element={<EmployeeMain />} />
                     <Route path="/support" element={<SupportMain />} />
-                    <Route path="/admin/delete-employee" element={
-                      employee?.email === 'hee-ung.jeong@hansl.com' ? <DeleteEmployee /> : <Navigate to="/dashboard" replace />
-                    } />
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />
                   </Routes>
                 </Suspense>
@@ -160,9 +156,6 @@ export default function App() {
                     <Route path="/vendor" element={<VendorMain />} />
                     <Route path="/employee" element={<EmployeeMain />} />
                     <Route path="/support" element={<SupportMain />} />
-                    <Route path="/admin/delete-employee" element={
-                      employee?.email === 'hee-ung.jeong@hansl.com' ? <DeleteEmployee /> : <Navigate to="/dashboard" replace />
-                    } />
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />
                   </Routes>
                 </Suspense>
