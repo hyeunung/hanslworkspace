@@ -61,7 +61,7 @@ const PurchaseTable = memo(({
           <TableHead>요청일</TableHead>
           <TableHead>납기일</TableHead>
           <TableHead>상태</TableHead>
-          {activeTab === 'purchase' && <TableHead>입고현황</TableHead>}
+          {(activeTab === 'purchase' || activeTab === 'receipt') && <TableHead>입고현황</TableHead>}
           <TableHead>총금액</TableHead>
           {activeTab === 'purchase' && <TableHead>처리</TableHead>}
           <TableHead>액션</TableHead>
@@ -132,7 +132,7 @@ const PurchaseTable = memo(({
               <TableCell>
                 {getStatusBadge(purchase)}
               </TableCell>
-              {activeTab === 'purchase' && (
+              {(activeTab === 'purchase' || activeTab === 'receipt') && (
                 <TableCell>
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-sm">
