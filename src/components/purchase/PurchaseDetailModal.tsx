@@ -241,9 +241,7 @@ export default function PurchaseDetailModal({
         .update({
           purchase_order_number: editedPurchase.purchase_order_number,
           requester_name: editedPurchase.requester_name,
-          vendor_name: editedPurchase.vendor?.vendor_name || editedPurchase.vendor_name,
           delivery_request_date: editedPurchase.delivery_request_date,
-          request_date: editedPurchase.request_date,
           payment_category: editedPurchase.payment_category,
           project_vendor: editedPurchase.project_vendor,
           total_amount: totalAmount,
@@ -562,18 +560,10 @@ export default function PurchaseDetailModal({
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 mb-1">요청일</p>
-                  {isEditing ? (
-                    <DatePicker
-                      date={editedPurchase?.request_date ? new Date(editedPurchase.request_date) : undefined}
-                      onDateChange={(date: Date | undefined) => setEditedPurchase(prev => prev ? { ...prev, request_date: date?.toISOString().split('T')[0] || '' } : null)}
-                      className="h-8"
-                    />
-                  ) : (
-                    <p className="font-medium text-gray-900">{formatDate(purchase.request_date)}</p>
-                  )}
+                  <p className="font-medium text-gray-900">{formatDate(purchase.request_date)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500 mb-1">입고요청일</p>
+                  <p className="text-sm text-gray-500 mb-1">입고예정일</p>
                   {isEditing ? (
                     <DatePicker
                       date={editedPurchase?.delivery_request_date ? new Date(editedPurchase.delivery_request_date) : undefined}

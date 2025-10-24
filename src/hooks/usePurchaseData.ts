@@ -186,6 +186,7 @@ export const usePurchaseData = () => {
         throw error;
       }
 
+
       // 데이터 변환 (hanslwebapp과 동일)
       const processedData = (data || []).map((request: any) => {
         // 첫 번째 품목 정보 (기존 방식과 호환성 유지)
