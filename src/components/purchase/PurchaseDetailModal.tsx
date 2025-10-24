@@ -262,9 +262,14 @@ export default function PurchaseDetailModal({
       }
 
       // 각 아이템 업데이트 또는 생성
+      console.log('저장할 editedItems:', editedItems);
+      
       for (const item of editedItems) {
+        console.log('처리 중인 item:', item);
+        
         if (item.id) {
           // 기존 항목 업데이트
+          console.log('기존 항목 업데이트:', item.id);
           const { error } = await supabase
             .from('purchase_request_items')
             .update({
@@ -278,24 +283,36 @@ export default function PurchaseDetailModal({
             })
             .eq('id', item.id)
 
-          if (error) throw error
+          if (error) {
+            console.error('기존 항목 업데이트 오류:', error);
+            throw error;
+          }
         } else {
           // 새 항목 생성
+          console.log('새 항목 생성:', item);
+          const insertData = {
+            purchase_request_id: purchase.id,
+            item_name: item.item_name,
+            specification: item.specification,
+            quantity: item.quantity,
+            unit_price_value: item.unit_price_value,
+            amount_value: item.amount_value,
+            remark: item.remark,
+            line_number: item.line_number || editedItems.indexOf(item) + 1,
+            created_at: new Date().toISOString()
+          };
+          console.log('삽입할 데이터:', insertData);
+          
           const { error } = await supabase
             .from('purchase_request_items')
-            .insert({
-              purchase_request_id: purchase.id,
-              item_name: item.item_name,
-              specification: item.specification,
-              quantity: item.quantity,
-              unit_price_value: item.unit_price_value,
-              amount_value: item.amount_value,
-              remark: item.remark,
-              line_number: item.line_number || editedItems.indexOf(item) + 1,
-              created_at: new Date().toISOString()
-            })
+            .insert(insertData)
 
-          if (error) throw error
+          if (error) {
+            console.error('새 항목 생성 오류:', error);
+            throw error;
+          } else {
+            console.log('새 항목 생성 성공');
+          }
         }
       }
 
@@ -307,7 +324,8 @@ export default function PurchaseDetailModal({
       // 수정된 데이터 다시 로드
       await loadPurchaseDetail(purchaseId?.toString() || '')
     } catch (error) {
-      toast.error('저장 중 오류가 발생했습니다.')
+      console.error('저장 중 전체 오류:', error);
+      toast.error('저장 중 오류가 발생했습니다: ' + (error instanceof Error ? error.message : '알 수 없는 오류'));
     }
   }
 
