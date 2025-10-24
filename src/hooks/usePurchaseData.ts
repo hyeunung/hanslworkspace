@@ -177,7 +177,7 @@ export const usePurchaseData = () => {
       // 발주 데이터 조회 (hanslwebapp과 완전히 동일) - 전체 데이터 로드
       const { data, error } = await supabase
         .from('purchase_requests')
-        .select('*,vendors(vendor_name,vendor_payment_schedule),vendor_contacts(contact_name),purchase_request_items(*)')
+        .select('*,vendors(vendor_name,vendor_payment_schedule),vendor_contacts(contact_name),purchase_request_items(*).order(line_number)')
         .order('request_date', { ascending: false })
         .limit(2000); // 충분한 수의 데이터 로드
 

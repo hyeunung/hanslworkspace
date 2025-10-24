@@ -452,7 +452,7 @@ export default function PurchaseNewMain() {
             purchase_order_number: purchaseOrderNumber,
             requester_name: data.requester_name,
             requester_phone: currentEmployee?.phone,
-            requester_fax: null, // fax는 현재 employees 테이블에 없으므로 null
+            requester_fax: null, // TODO: 추후 제거 예정 (현재는 DB 호환성을 위해 유지)
             requester_address: currentEmployee?.address,
             vendor_id: data.vendor_id,
             sales_order_number: data.sales_order_number,
