@@ -27,12 +27,28 @@ class DeliveryService {
     data: DeliveryUpdateData
   ): Promise<{ success: boolean; error?: string }> {
     try {
+      // 먼저 해당 품목의 주문 수량을 조회
+      const { data: item, error: fetchError } = await this.supabase
+        .from('purchase_request_items')
+        .select('quantity')
+        .eq('id', itemId)
+        .single();
+
+      if (fetchError) throw fetchError;
+      if (!item) throw new Error('품목을 찾을 수 없습니다.');
+
+      // 입고 수량이 주문 수량과 같거나 크면 완전 입고로 처리
+      const isFullyReceived = data.receivedQuantity >= item.quantity;
+
       const updateData = {
         received_quantity: data.receivedQuantity,
         delivery_notes: data.deliveryNotes,
         received_by: data.receivedBy,
         received_by_name: data.receivedByName,
-        received_date: new Date().toISOString()
+        received_date: new Date().toISOString(),
+        is_received: isFullyReceived,
+        received_at: isFullyReceived ? new Date().toISOString() : null,
+        delivery_status: isFullyReceived ? 'received' : 'partial'
       };
 
       const { error } = await this.supabase
@@ -58,14 +74,35 @@ class DeliveryService {
     receivedByName: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const updates = items.map(item => ({
-        id: item.itemId,
-        received_quantity: item.receivedQuantity,
-        delivery_notes: item.deliveryNotes,
-        received_by: receivedBy,
-        received_by_name: receivedByName,
-        received_date: new Date().toISOString()
-      }));
+      // 먼저 모든 품목의 주문 수량을 조회
+      const itemIds = items.map(item => item.itemId);
+      const { data: existingItems, error: fetchError } = await this.supabase
+        .from('purchase_request_items')
+        .select('id, quantity')
+        .in('id', itemIds);
+
+      if (fetchError) throw fetchError;
+      if (!existingItems) throw new Error('품목을 찾을 수 없습니다.');
+
+      // 품목별 주문 수량 맵 생성
+      const quantityMap = new Map(existingItems.map(item => [item.id, item.quantity]));
+
+      const updates = items.map(item => {
+        const orderedQuantity = quantityMap.get(item.itemId) || 0;
+        const isFullyReceived = item.receivedQuantity >= orderedQuantity;
+
+        return {
+          id: item.itemId,
+          received_quantity: item.receivedQuantity,
+          delivery_notes: item.deliveryNotes,
+          received_by: receivedBy,
+          received_by_name: receivedByName,
+          received_date: new Date().toISOString(),
+          is_received: isFullyReceived,
+          received_at: isFullyReceived ? new Date().toISOString() : null,
+          delivery_status: isFullyReceived ? 'received' : 'partial'
+        };
+      });
 
       // 트랜잭션으로 처리
       const { error } = await this.supabase

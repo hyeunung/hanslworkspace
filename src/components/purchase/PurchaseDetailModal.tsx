@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DatePicker } from '@/components/ui/datepicker'
 import { toast } from 'sonner'
 
 interface PurchaseDetailModalProps {
@@ -122,6 +123,9 @@ export default function PurchaseDetailModal({
   
   // 입고 권한 체크 
   // 1. 관리자는 모든 건 입고 처리 가능
+  // 2. 요청자는 자신의 요청건만 입고 처리 가능
+  const canReceiveItems = effectiveRoles.includes('app_admin') || 
+                         (purchase?.requester_name === currentUserName)
   // 2. 일반 직원은 본인이 요청한 건만 입고 처리 가능
   const isAdmin = effectiveRoles.includes('final_approver') || 
                   effectiveRoles.includes('app_admin') || 
@@ -423,6 +427,79 @@ export default function PurchaseDetailModal({
     }
   }
   
+  // 전체 입고완료 처리
+  const handleCompleteAllReceipt = async () => {
+    if (!purchase || !canReceiveItems) return
+    
+    const confirm = window.confirm('모든 품목을 입고완료 처리하시겠습니까?')
+    if (!confirm) return
+    
+    try {
+      // 모든 품목을 입고완료로 업데이트
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('사용자 인증이 필요합니다')
+      
+      const updateData = {
+        is_received: true,
+        delivery_status: 'received',
+        received_quantity: null, // 트리거에서 quantity로 설정됨
+        received_date: new Date().toISOString(),
+        received_by: user.id,
+        received_by_name: currentUserName
+      }
+      
+      const { error } = await supabase
+        .from('purchase_request_items')
+        .update(updateData)
+        .eq('purchase_request_id', purchase.id)
+        .eq('is_received', false) // 아직 입고되지 않은 항목만
+      
+      if (error) throw error
+      
+      toast.success('모든 품목이 입고완료 처리되었습니다.')
+      onRefresh?.()
+      await loadPurchaseDetail(purchaseId?.toString() || '')
+    } catch (error) {
+      console.error('전체 입고완료 처리 오류:', error)
+      toast.error('입고완료 처리 중 오류가 발생했습니다.')
+    }
+  }
+  
+  // 개별 품목 입고완료 처리
+  const handleCompleteItemReceipt = async (itemId: number, itemName: string) => {
+    if (!purchase || !canReceiveItems) return
+    
+    const confirm = window.confirm(`"${itemName}" 품목을 입고완료 처리하시겠습니까?`)
+    if (!confirm) return
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('사용자 인증이 필요합니다')
+      
+      const updateData = {
+        is_received: true,
+        delivery_status: 'received',
+        received_date: new Date().toISOString(),
+        received_by: user.id,
+        received_by_name: currentUserName
+      }
+      
+      const { error } = await supabase
+        .from('purchase_request_items')
+        .update(updateData)
+        .eq('id', itemId)
+      
+      if (error) throw error
+      
+      toast.success(`"${itemName}" 품목이 입고완료 처리되었습니다.`)
+      onRefresh?.()
+      await loadPurchaseDetail(purchaseId?.toString() || '')
+    } catch (error) {
+      console.error('개별 입고완료 처리 오류:', error)
+      toast.error('입고완료 처리 중 오류가 발생했습니다.')
+    }
+  }
+
   // 반려 처리
   const handleReject = async (type: 'middle' | 'final') => {
     if (!purchase) return
@@ -473,19 +550,51 @@ export default function PurchaseDetailModal({
               <div className="grid grid-cols-2 gap-6">
                 <div>
                   <p className="text-sm text-gray-500 mb-1">요청자</p>
-                  <p className="font-medium text-gray-900">{purchase.requester_name}</p>
+                  {isEditing ? (
+                    <Input
+                      value={editedPurchase?.requester_name || ''}
+                      onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, requester_name: e.target.value } : null)}
+                      className="h-8"
+                    />
+                  ) : (
+                    <p className="font-medium text-gray-900">{purchase.requester_name}</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 mb-1">요청일</p>
-                  <p className="font-medium text-gray-900">{formatDate(purchase.request_date)}</p>
+                  {isEditing ? (
+                    <DatePicker
+                      date={editedPurchase?.request_date ? new Date(editedPurchase.request_date) : undefined}
+                      onDateChange={(date: Date | undefined) => setEditedPurchase(prev => prev ? { ...prev, request_date: date?.toISOString().split('T')[0] || '' } : null)}
+                      className="h-8"
+                    />
+                  ) : (
+                    <p className="font-medium text-gray-900">{formatDate(purchase.request_date)}</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 mb-1">입고요청일</p>
-                  <p className="font-medium text-gray-900">{formatDate(purchase.delivery_request_date)}</p>
+                  {isEditing ? (
+                    <DatePicker
+                      date={editedPurchase?.delivery_request_date ? new Date(editedPurchase.delivery_request_date) : undefined}
+                      onDateChange={(date: Date | undefined) => setEditedPurchase(prev => prev ? { ...prev, delivery_request_date: date?.toISOString().split('T')[0] || '' } : null)}
+                      className="h-8"
+                    />
+                  ) : (
+                    <p className="font-medium text-gray-900">{formatDate(purchase.delivery_request_date)}</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 mb-1">결제유형</p>
-                  <p className="font-medium text-gray-900">{purchase.payment_category || '-'}</p>
+                  {isEditing ? (
+                    <Input
+                      value={editedPurchase?.payment_category || ''}
+                      onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, payment_category: e.target.value } : null)}
+                      className="h-8"
+                    />
+                  ) : (
+                    <p className="font-medium text-gray-900">{purchase.payment_category || '-'}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -499,21 +608,49 @@ export default function PurchaseDetailModal({
               <div className="grid grid-cols-2 gap-6">
                 <div>
                   <p className="text-sm text-gray-500 mb-1">업체명</p>
-                  <p className="font-medium text-gray-900">{purchase.vendor?.vendor_name || '-'}</p>
+                  {isEditing ? (
+                    <Input
+                      value={editedPurchase?.vendor?.vendor_name || editedPurchase?.vendor_name || ''}
+                      onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, vendor_name: e.target.value } : null)}
+                      className="h-8"
+                    />
+                  ) : (
+                    <p className="font-medium text-gray-900">{purchase.vendor?.vendor_name || '-'}</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm text-gray-500 mb-1">프로젝트 업체</p>
-                  <p className="font-medium text-gray-900">{purchase.project_vendor || '-'}</p>
+                  {isEditing ? (
+                    <Input
+                      value={editedPurchase?.project_vendor || ''}
+                      onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, project_vendor: e.target.value } : null)}
+                      className="h-8"
+                    />
+                  ) : (
+                    <p className="font-medium text-gray-900">{purchase.project_vendor || '-'}</p>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* 품목 리스트 */}
             <div className="bg-gray-50 rounded-lg p-6">
-              <h3 className="font-semibold mb-4 flex items-center text-gray-900">
-                <Package className="w-5 h-5 mr-2 text-gray-700" />
-                품목 리스트
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold flex items-center text-gray-900">
+                  <Package className="w-5 h-5 mr-2 text-gray-700" />
+                  품목 리스트
+                </h3>
+                {!isEditing && canReceiveItems && purchase?.items?.some(item => !item.is_received) && (
+                  <Button
+                    size="sm"
+                    onClick={handleCompleteAllReceipt}
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                  >
+                    <Truck className="w-4 h-4 mr-1" />
+                    전체 입고완료
+                  </Button>
+                )}
+              </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full bg-white rounded-lg overflow-hidden shadow-sm">
                   <thead className="bg-gray-100">
@@ -527,6 +664,9 @@ export default function PurchaseDetailModal({
                       <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">단가</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">금액</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">비고</th>
+                      {!isEditing && (
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">입고상태</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -636,12 +776,40 @@ export default function PurchaseDetailModal({
                             <span className="text-sm">{item.remark || '-'}</span>
                           )}
                         </td>
+                        {!isEditing && (
+                          <td className="px-4 py-3 text-center">
+                            {item.is_received ? (
+                              <div className="flex items-center justify-center">
+                                <Badge className="bg-green-100 text-green-800 border-green-200">
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                  입고완료
+                                </Badge>
+                              </div>
+                            ) : canReceiveItems ? (
+                              <Button
+                                size="sm"
+                                onClick={() => handleCompleteItemReceipt(item.id, item.item_name)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1"
+                              >
+                                <Truck className="w-3 h-3 mr-1" />
+                                입고완료
+                              </Button>
+                            ) : (
+                              <Badge className="bg-gray-100 text-gray-600 border-gray-200">
+                                입고대기
+                              </Badge>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
                   <tfoot className="bg-gray-100">
                     <tr>
-                      <td colSpan={canReceiptCheck && activeTab === 'receipt' ? 5 : 4} className="px-3 py-2 text-sm font-semibold text-right">
+                      <td colSpan={
+                        ((canReceiptCheck && activeTab === 'receipt') ? 1 : 0) + 
+                        ((!isEditing) ? 5 : 4)
+                      } className="px-3 py-2 text-sm font-semibold text-right">
                         총액
                       </td>
                       <td className="px-3 py-2 text-sm font-semibold text-right">
@@ -650,6 +818,7 @@ export default function PurchaseDetailModal({
                         )} {purchase.currency}
                       </td>
                       <td></td>
+                      {!isEditing && <td></td>}
                     </tr>
                   </tfoot>
                 </table>
