@@ -277,6 +277,7 @@ export default function PurchaseDetailModal({
               specification: item.specification,
               quantity: item.quantity,
               unit_price_value: item.unit_price_value,
+              unit_price_currency: purchase.currency || 'KRW',
               amount_value: item.amount_value,
               remark: item.remark,
               updated_at: new Date().toISOString()
@@ -296,6 +297,7 @@ export default function PurchaseDetailModal({
             specification: item.specification,
             quantity: item.quantity,
             unit_price_value: item.unit_price_value,
+            unit_price_currency: purchase.currency || 'KRW',
             amount_value: item.amount_value,
             remark: item.remark,
             line_number: item.line_number || editedItems.indexOf(item) + 1,
