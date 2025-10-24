@@ -654,9 +654,7 @@ export default function PurchaseDetailModal({
                       <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">단가</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">금액</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">비고</th>
-                      {!isEditing && (
-                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">입고상태</th>
-                      )}
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">입고상태</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -766,39 +764,36 @@ export default function PurchaseDetailModal({
                             <span className="text-sm">{item.remark || '-'}</span>
                           )}
                         </td>
-                        {!isEditing && (
-                          <td className="px-4 py-3 text-center">
-                            {item.is_received ? (
-                              <div className="flex items-center justify-center">
-                                <Badge className="bg-green-100 text-green-800 border-green-200">
-                                  <CheckCircle className="w-3 h-3 mr-1" />
-                                  입고완료
-                                </Badge>
-                              </div>
-                            ) : canReceiveItems ? (
-                              <Button
-                                size="sm"
-                                onClick={() => handleCompleteItemReceipt(item.id, item.item_name)}
-                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1"
-                              >
-                                <Truck className="w-3 h-3 mr-1" />
+                        <td className="px-4 py-3 text-center">
+                          {item.is_received ? (
+                            <div className="flex items-center justify-center">
+                              <Badge className="bg-green-100 text-green-800 border-green-200">
+                                <CheckCircle className="w-3 h-3 mr-1" />
                                 입고완료
-                              </Button>
-                            ) : (
-                              <Badge className="bg-gray-100 text-gray-600 border-gray-200">
-                                입고대기
                               </Badge>
-                            )}
-                          </td>
-                        )}
+                            </div>
+                          ) : !isEditing && canReceiveItems ? (
+                            <Button
+                              size="sm"
+                              onClick={() => handleCompleteItemReceipt(item.id, item.item_name)}
+                              className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1"
+                            >
+                              <Truck className="w-3 h-3 mr-1" />
+                              입고완료
+                            </Button>
+                          ) : (
+                            <Badge className="bg-gray-100 text-gray-600 border-gray-200">
+                              {isEditing ? '입고대기' : '입고대기'}
+                            </Badge>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot className="bg-gray-100">
                     <tr>
                       <td colSpan={
-                        ((canReceiptCheck && activeTab === 'receipt') ? 1 : 0) + 
-                        ((!isEditing) ? 5 : 4)
+                        ((canReceiptCheck && activeTab === 'receipt') ? 1 : 0) + 5
                       } className="px-3 py-2 text-sm font-semibold text-right">
                         총액
                       </td>
@@ -808,7 +803,6 @@ export default function PurchaseDetailModal({
                         )} {purchase.currency}
                       </td>
                       <td></td>
-                      {!isEditing && <td></td>}
                     </tr>
                   </tfoot>
                 </table>
