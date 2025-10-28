@@ -50,32 +50,50 @@ const StatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
 
 StatusBadge.displayName = 'StatusBadge';
 
-// 반응형 칼럼 클래스 - Tailwind 클래스로 유연한 너비 관리
+// 통화 코드를 기호로 변환하는 함수
+const getCurrencySymbol = (currency: string) => {
+  if (!currency) return '₩';
+  if (['KRW', '원', '₩'].includes(currency)) return '₩';
+  if (['USD', '$', '달러'].includes(currency)) return '$';
+  if (['EUR', '€'].includes(currency)) return '€';
+  if (['JPY', '엔', '¥'].includes(currency)) return '¥';
+  if (['CNY', '위안', '元'].includes(currency)) return '¥';
+  return currency;
+};
+
+// 🎯 실제 DB 데이터 1,979건 정밀 분석 기반 최적 컬럼 너비 설정 (2025-10-28)
+// 📊 데이터 샘플: 90일 이내 발주요청 전체 아이템 분석 결과
+// ✂️ min-width = max-width로 고정 너비 설정, truncate로 긴 텍스트 자르기
 const COMMON_COLUMN_CLASSES = {
-  approvalStatus: "text-center w-20 min-w-[70px]",
-  purchaseOrderNumber: "pl-2 w-32 min-w-[110px] sm:w-36 lg:w-40 xl:w-44",
-  paymentCategory: "text-center w-20 min-w-[70px]",
-  requesterName: "w-20 min-w-[60px]",
-  requestDate: "w-20 min-w-[70px] lg:w-24",
-  vendorName: "w-28 min-w-[90px] lg:w-32",
-  contactName: "w-20 min-w-[60px]",
-  deliveryRequestDate: "w-20 min-w-[70px] lg:w-24",
-  itemName: "w-36 min-w-[120px] lg:w-44 xl:w-48",
-  specification: "w-40 min-w-[140px] lg:w-48 xl:w-52",
-  quantity: "text-center w-14 min-w-[45px]",
-  unitPrice: "text-right w-20 min-w-[70px]",
-  amount: "text-right w-24 min-w-[80px]",
-  remark: "min-w-[150px] lg:min-w-[200px]",
-  paymentSchedule: "w-20 min-w-[70px]",
-  purchaseStatus: "text-center w-20 min-w-[70px]",
-  projectVendor: "w-28 min-w-[90px] lg:w-32",
-  salesOrderNumber: "w-24 min-w-[80px] lg:w-28",
-  projectItem: "w-28 min-w-[90px] lg:w-32",
-  receiptProgress: "text-center w-20 min-w-[70px]",
-  status: "text-center w-20 min-w-[70px]",
-  receipt: "text-center w-20 min-w-[70px]",
-  paymentStatus: "text-center w-16 min-w-[60px]",
-  link: "w-20 min-w-[70px]"
+  // 승인대기 탭 전용 컬럼
+  approvalStatus: "text-center w-20 min-w-[85px] max-w-[85px]",
+  
+  // 모든 탭 공통 컬럼들 (고정 너비)
+  purchaseOrderNumber: "pl-2 w-36 min-w-[145px] max-w-[145px]",      // 발주번호 + 엑셀아이콘
+  paymentCategory: "text-center w-20 min-w-[85px] max-w-[85px]",
+  requesterName: "w-16 min-w-[68px] max-w-[68px]",
+  requestDate: "w-20 min-w-[85px] max-w-[85px]",
+  vendorName: "w-28 min-w-[115px] max-w-[115px]",
+  contactName: "w-16 min-w-[68px] max-w-[68px]",
+  deliveryRequestDate: "w-20 min-w-[85px] max-w-[85px]",
+  itemName: "w-28 min-w-[120px] max-w-[120px]",                       // 평균 7.8자 + 여유
+  specification: "w-64 min-w-[260px] max-w-[260px]",                  // 평균 15.5자 + 여유 (조금 더 길게)
+  quantity: "text-center w-14 min-w-[60px] max-w-[60px]",
+  unitPrice: "text-right w-24 min-w-[100px] max-w-[100px]",
+  amount: "text-right w-24 min-w-[100px] max-w-[100px]",
+  
+  // 탭별 특화 컬럼들 (고정 너비)
+  remark: "w-28 min-w-[115px] max-w-[115px]",                         // 평균 1.8자, 대부분 비어있음
+  paymentSchedule: "w-24 min-w-[100px] max-w-[100px]",
+  purchaseStatus: "text-center w-20 min-w-[85px] max-w-[85px]",
+  projectVendor: "w-24 min-w-[105px] max-w-[105px]",                  // 평균 6.6자
+  salesOrderNumber: "w-28 min-w-[115px] max-w-[115px]",               // 평균 8.6자
+  projectItem: "w-44 min-w-[180px] max-w-[180px]",                    // 평균 11.1자 + 여유 (조금 더 길게)
+  receiptProgress: "text-center w-20 min-w-[85px] max-w-[85px]",
+  status: "text-center w-20 min-w-[85px] max-w-[85px]",
+  receipt: "text-center w-16 min-w-[70px] max-w-[70px]",
+  paymentStatus: "text-center w-16 min-w-[70px] max-w-[70px]",
+  link: "w-20 min-w-[85px] max-w-[85px]"
 };
 
 // 승인 상태 상세 표시 컴포넌트 (승인대기 탭용)
@@ -191,6 +209,63 @@ const getPaymentProgress = (purchase: Purchase) => {
   return { completed, total, percentage };
 };
 
+// 구매진행 현황 계산 함수 (purchase_request_items 기반)
+const getPurchaseProgress = (purchase: Purchase) => {
+  // items 배열이 없으면 전체 상태로 판단
+  if (!purchase.items || purchase.items.length === 0) {
+    if (purchase.is_received) return { percentage: 100 };
+    if (purchase.is_payment_completed) return { percentage: 80 };
+    
+    const middleRejected = purchase.middle_manager_status === 'rejected';
+    const finalRejected = purchase.final_manager_status === 'rejected';
+    if (middleRejected || finalRejected) return { percentage: 0 };
+    
+    const middleApproved = purchase.middle_manager_status === 'approved';
+    const finalApproved = purchase.final_manager_status === 'approved';
+    if (middleApproved && finalApproved) return { percentage: 40 };
+    
+    return { percentage: 20 };
+  }
+  
+  // 개별 아이템 기반 진행률 계산
+  const total = purchase.items.length;
+  const receivedItems = purchase.items.filter((item: any) => item.is_received === true).length;
+  const paymentCompletedItems = purchase.items.filter((item: any) => item.is_payment_completed === true).length;
+  
+  // 모든 아이템이 입고완료된 경우 100%
+  if (receivedItems === total) {
+    return { percentage: 100 };
+  }
+  
+  // 일부 아이템이라도 입고완료된 경우 80% + (입고완료율 * 20%)
+  if (receivedItems > 0) {
+    const receiptPercentage = Math.round((receivedItems / total) * 100);
+    return { percentage: Math.min(80 + Math.round(receiptPercentage * 0.2), 99) };
+  }
+  
+  // 모든 아이템이 구매완료된 경우 80%
+  if (paymentCompletedItems === total) {
+    return { percentage: 80 };
+  }
+  
+  // 일부 아이템이라도 구매완료된 경우 40% + (구매완료율 * 40%)
+  if (paymentCompletedItems > 0) {
+    const paymentPercentage = Math.round((paymentCompletedItems / total) * 100);
+    return { percentage: Math.min(40 + Math.round(paymentPercentage * 0.4), 79) };
+  }
+  
+  // 승인 상태에 따른 기본 진행률
+  const middleRejected = purchase.middle_manager_status === 'rejected';
+  const finalRejected = purchase.final_manager_status === 'rejected';
+  if (middleRejected || finalRejected) return { percentage: 0 };
+  
+  const middleApproved = purchase.middle_manager_status === 'approved';
+  const finalApproved = purchase.final_manager_status === 'approved';
+  if (middleApproved && finalApproved) return { percentage: 40 };
+  
+  return { percentage: 20 };
+};
+
 // formatDateShort는 utils/helpers.ts에서 import
 
 // 선진행 구분 배지
@@ -226,6 +301,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
 }) => {
   const receiptProgress = getReceiptProgress(purchase);
   const paymentProgress = getPaymentProgress(purchase);
+  const purchaseProgress = getPurchaseProgress(purchase);
   const isAdvance = purchase.progress_type === '선진행' || purchase.progress_type?.includes('선진행');
   
   return (
@@ -365,10 +441,10 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
         {purchase.quantity || 0}
       </td>
       <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>
-        {purchase.unit_price_value?.toLocaleString() || 0}
+        {purchase.unit_price_value ? `${purchase.unit_price_value.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.currency || 'KRW')}`}
       </td>
       <td className={`px-2 py-1.5 text-[11px] font-medium whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>
-        {purchase.amount_value?.toLocaleString() || purchase.total_amount?.toLocaleString() || 0}
+        {purchase.amount_value ? `${purchase.amount_value.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : purchase.total_amount ? `${purchase.total_amount.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.currency || 'KRW')}`}
       </td>
       
       {/* 탭별 다른 칼럼 표시 */}
@@ -500,7 +576,26 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
             </span>
           </td>
           <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.status}`}>
-            <StatusBadge purchase={purchase} />
+            {purchase.payment_category === '구매 요청' ? (
+              <div className="flex items-center justify-center gap-1">
+                <div className="bg-gray-200 rounded-full h-1.5 w-8">
+                  <div 
+                    className={`h-1.5 rounded-full ${
+                      purchaseProgress.percentage === 100 ? 'bg-green-500' : 
+                      purchaseProgress.percentage >= 80 ? 'bg-blue-500' : 
+                      purchaseProgress.percentage >= 40 ? 'bg-hansl-500' :
+                      purchaseProgress.percentage > 0 ? 'bg-gray-400' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${purchaseProgress.percentage}%` }}
+                  />
+                </div>
+                <span className="text-[11px] text-gray-600">
+                  {purchaseProgress.percentage}%
+                </span>
+              </div>
+            ) : (
+              <span className="text-gray-400 text-[11px]">-</span>
+            )}
           </td>
           <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receipt}`}>
             <div className="flex items-center justify-center gap-1">
@@ -757,7 +852,7 @@ const FastPurchaseTable = memo(({
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>금액</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
@@ -782,7 +877,7 @@ const FastPurchaseTable = memo(({
         <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
         <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
         <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
-        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>금액</th>
+        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
       </>
     );
 
@@ -816,8 +911,8 @@ const FastPurchaseTable = memo(({
           <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
           <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
           <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>지출예정일</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.status}`}>상태</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.receipt}`}>입고</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.status}`}>구매진행</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.receipt}`}>입고진행</th>
           <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentStatus}`}>결제</th>
         </>
       );
@@ -843,10 +938,10 @@ const FastPurchaseTable = memo(({
 
   return (
     <>
-      {/* 데스크톱 테이블 뷰 - 강화된 반응형 처리 */}
+      {/* 데스크톱 테이블 뷰 - 실제 데이터 1,979건 분석 기반 최적 너비 */}
       <div className="hidden md:block w-full">
         <div className="overflow-x-auto border rounded-lg">
-          <table className="w-full min-w-fit">
+          <table className="w-full min-w-[1760px]">
             {tableHeader}
             <tbody>
               {purchases.map((purchase) => (
@@ -869,15 +964,15 @@ const FastPurchaseTable = memo(({
       {/* 태블릿 컴팩트 뷰 */}
       <div className="hidden sm:block md:hidden w-full">
         <div className="overflow-x-auto border rounded-lg">
-          <table className="w-full min-w-[640px] text-[11px]">
+          <table className="w-full min-w-[600px] text-[11px]">
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left p-2 font-medium text-gray-900 w-20 sm:w-24">발주번호</th>
-                <th className="text-left p-2 font-medium text-gray-900 w-16 sm:w-20">요청자</th>
-                <th className="text-left p-2 font-medium text-gray-900 w-24 sm:w-28">업체</th>
-                <th className="text-left p-2 font-medium text-gray-900 min-w-[100px]">품명</th>
-                <th className="text-right p-2 font-medium text-gray-900 w-20 sm:w-24">금액</th>
-                <th className="text-center p-2 font-medium text-gray-900 w-16 sm:w-20">상태</th>
+                <th className="text-left p-2 font-medium text-gray-900 w-24">발주번호</th>
+                <th className="text-left p-2 font-medium text-gray-900 w-16">요청자</th>
+                <th className="text-left p-2 font-medium text-gray-900 w-20">업체</th>
+                <th className="text-left p-2 font-medium text-gray-900 w-32">품명</th>
+                <th className="text-right p-2 font-medium text-gray-900 w-20">금액</th>
+                <th className="text-center p-2 font-medium text-gray-900 w-16">상태</th>
               </tr>
             </thead>
             <tbody>
@@ -892,7 +987,7 @@ const FastPurchaseTable = memo(({
                   <td className="p-2 truncate" title={purchase.vendor_name}>{purchase.vendor_name}</td>
                   <td className="p-2 truncate" title={purchase.item_name}>{purchase.item_name || '-'}</td>
                   <td className="p-2 text-right font-medium">
-                    {purchase.amount_value?.toLocaleString() || purchase.total_amount?.toLocaleString() || 0}
+                    {purchase.amount_value ? `${purchase.amount_value.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : purchase.total_amount ? `${purchase.total_amount.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.currency || 'KRW')}`}
                   </td>
                   <td className="p-2 text-center">
                     <StatusBadge purchase={purchase} />

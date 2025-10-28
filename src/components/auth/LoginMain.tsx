@@ -17,17 +17,23 @@ export default function LoginMain() {
 
     const supabase = createClient()
     
-    const { error } = await supabase.auth.signInWithPassword({
+    // 로그인 시도 로그
+    
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
 
+    // 로그인 응답 처리
+
     if (error) {
-      setError(error.message)
+      console.error('🚨 로그인 에러:', error)
+      setError(`로그인 실패: ${error.message}`)
       setLoading(false)
       return
     }
 
+    // 로그인 성공
     // SPA에서는 라우트를 직접 이동
     // window.location.reload() 제거 - App.tsx의 onAuthStateChange가 처리함
     navigate('/dashboard')

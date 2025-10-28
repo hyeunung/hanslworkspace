@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { ReceiptDownloadButton } from "./ReceiptDownloadButton";
 
 interface PurchaseItem {
   id?: number | string;
@@ -22,6 +23,9 @@ interface PurchaseItem {
   link?: string;
   is_received?: boolean;
   delivery_status?: string;
+  receipt_image_url?: string | null;
+  receipt_uploaded_at?: string | null;
+  receipt_uploaded_by?: string | null;
 }
 
 interface PurchaseItemsModalProps {
@@ -246,6 +250,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                 <TableHead className="text-right">단가</TableHead>
                 <TableHead className="text-right">금액</TableHead>
                 <TableHead>입고상태</TableHead>
+                <TableHead>영수증</TableHead>
                 <TableHead>비고</TableHead>
                 {isEditing && <TableHead className="w-20">삭제</TableHead>}
               </TableRow>
@@ -324,6 +329,15 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                     ) : (
                       <Badge variant="outline">대기</Badge>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    {/* 영수증 다운로드 버튼 */}
+                    <ReceiptDownloadButton
+                      itemId={Number(item.id)}
+                      receiptUrl={item.receipt_image_url}
+                      itemName={item.item_name}
+                      onUpdate={onUpdate}
+                    />
                   </TableCell>
                   <TableCell>
                     {isEditing ? (

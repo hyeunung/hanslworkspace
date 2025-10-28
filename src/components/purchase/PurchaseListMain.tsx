@@ -341,6 +341,14 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
 
       if (error) throw error;
       
+      // 개별 품목도 모두 구매완료 처리
+      await supabase
+        .from('purchase_request_items')
+        .update({ 
+          is_payment_completed: true
+        })
+        .eq('purchase_request_id', purchaseId);
+      
       toast.success('구매완료 처리되었습니다.');
       await loadPurchases();
     } catch (error) {

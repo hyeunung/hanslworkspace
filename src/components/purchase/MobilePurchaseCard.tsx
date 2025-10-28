@@ -2,17 +2,14 @@ import { memo } from 'react'
 import { Eye } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Purchase } from '@/types/purchase'
+import { formatDateShort } from '@/utils/helpers'
 
 interface MobilePurchaseCardProps {
   purchase: Purchase
   onClick: (purchase: Purchase) => void
 }
 
-const formatDate = (dateStr?: string) => {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
+// formatDateShort는 utils/helpers.ts에서 import
 
 const getReceiptProgress = (purchase: Purchase) => {
   if (!purchase.items || purchase.items.length === 0) return { received: 0, total: 0, percentage: 0 }
@@ -73,7 +70,7 @@ const MobilePurchaseCard = memo(({ purchase, onClick }: MobilePurchaseCardProps)
             </span>
           </div>
           <div className="text-xs text-gray-500 mt-1">
-            {formatDate(purchase.request_date)} 요청
+            {formatDateShort(purchase.request_date)} 요청
           </div>
         </div>
         <StatusBadge purchase={purchase} />

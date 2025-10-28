@@ -1,6 +1,7 @@
 
 import { useState, useEffect } from 'react'
 import { Employee, PurchaseRole } from '@/types/purchase'
+import { formatDate } from '@/utils/helpers'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -136,10 +137,7 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
     return colorMap[role || ''] || 'bg-gray-100 text-gray-600'
   }
 
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return '-'
-    return new Date(dateString).toLocaleDateString('ko-KR')
-  }
+  // formatDate는 utils/helpers.ts에서 import
 
   return (
     <>

@@ -102,8 +102,9 @@ const ApproveDetailAccordion: React.FC<ApproveDetailAccordionProps> = ({
         });
         
         if (error) {
+          console.warn('Slack 알림 전송 실패:', error);
         }
-      } catch (syncError) {
+      } catch (_syncError) {
         // Slack 실패는 승인 성공에 영향 없음
       }
     }
@@ -170,8 +171,9 @@ const ApproveDetailAccordion: React.FC<ApproveDetailAccordionProps> = ({
         });
         
         if (error) {
+          console.warn('Slack 알림 전송 실패:', error);
         }
-      } catch (syncError) {
+      } catch (_syncError) {
         // Slack 실패는 승인 성공에 영향 없음
       }
     }

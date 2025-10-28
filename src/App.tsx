@@ -1,9 +1,11 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect, useState, lazy, Suspense } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+
 import { createClient } from '@/lib/supabase/client'
 import Header from '@/components/layout/Header'
 import FixedNavigation from '@/components/layout/FixedNavigation'
 import ErrorBoundary from '@/components/ErrorBoundary'
+
 import type { Employee } from '@/types/purchase'
 
 // 로그인은 항상 필요하므로 직접 import
@@ -17,6 +19,7 @@ const PurchaseDetailMain = lazy(() => import('@/components/purchase/PurchaseDeta
 const VendorMain = lazy(() => import('@/components/vendor/VendorMain'))
 const EmployeeMain = lazy(() => import('@/components/employee/EmployeeMain'))
 const SupportMain = lazy(() => import('@/components/support/SupportMain'))
+const ReceiptsMain = lazy(() => import('@/components/receipts/ReceiptsMain'))
 
 export default function App() {
   const [employee, setEmployee] = useState<Employee | null>(null)
@@ -126,6 +129,7 @@ export default function App() {
                     <Route path="/purchase/requests/:id" element={<PurchaseDetailMain />} />
                     <Route path="/vendor" element={<VendorMain />} />
                     <Route path="/employee" element={<EmployeeMain />} />
+                    <Route path="/receipts" element={<ReceiptsMain />} />
                     <Route path="/support" element={<SupportMain />} />
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />
                   </Routes>
@@ -155,6 +159,7 @@ export default function App() {
                     <Route path="/purchase/requests/:id" element={<PurchaseDetailMain />} />
                     <Route path="/vendor" element={<VendorMain />} />
                     <Route path="/employee" element={<EmployeeMain />} />
+                    <Route path="/receipts" element={<ReceiptsMain />} />
                     <Route path="/support" element={<SupportMain />} />
                     <Route path="*" element={<Navigate to="/dashboard" replace />} />
                   </Routes>

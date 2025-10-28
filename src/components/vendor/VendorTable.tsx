@@ -1,6 +1,7 @@
 
 import { useState } from 'react'
 import { Vendor } from '@/types/purchase'
+import { formatDate } from '@/utils/helpers'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { 
@@ -82,10 +83,7 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
     }
   }
 
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return '-'
-    return new Date(dateString).toLocaleDateString('ko-KR')
-  }
+  // formatDate는 utils/helpers.ts에서 import
 
   return (
     <>

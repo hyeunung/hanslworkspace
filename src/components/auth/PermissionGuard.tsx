@@ -77,7 +77,7 @@ export default function PermissionGuard({
             navigate(result.redirectTo || fallbackPath)
           }, 1000)
         }
-      } catch (error) {
+      } catch (_error) {
         setPermissionResult({
           allowed: false,
           message: '권한 체크 중 오류가 발생했습니다.',
@@ -153,7 +153,8 @@ export function usePermission() {
         if (employeeData) {
           setEmployee(employeeData)
         }
-      } catch (error) {
+      } catch (_error) {
+        // 직원 정보 조회 실패는 무시
       } finally {
         setLoading(false)
       }

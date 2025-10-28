@@ -344,7 +344,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       pending: getUniqueOrderCount(pendingFiltered),
       purchase: getUniqueOrderCount(purchaseFiltered),
       receipt: getUniqueOrderCount(receiptFiltered),
-      done: getUniqueOrderCount(doneData)  // done 탭의 기본값에 따른 전체
+      done: getUniqueOrderCount(doneData)  // 전체 항목
     };
     
     return counts;

@@ -1,16 +1,14 @@
-export interface VendorContact {
-  id: number
+import { BaseEntity } from './common';
+
+export interface VendorContact extends BaseEntity {
   vendor_id: number
   contact_name: string
   contact_email: string
   contact_phone: string
   position: string
-  created_at: string
-  updated_at: string
 }
 
-export interface Vendor {
-  id: number
+export interface Vendor extends BaseEntity {
   vendor_name: string
   vendor_phone?: string
   vendor_fax?: string
@@ -21,8 +19,6 @@ export interface Vendor {
   address?: string
   email?: string
   is_active: boolean
-  created_at: string
-  updated_at: string
   vendor_contacts?: VendorContact[]
 }
 
@@ -112,6 +108,9 @@ export interface PurchaseRequestItem {
   received_date?: string
   received_by?: string
   delivery_status?: 'pending' | 'partial' | 'received'
+  receipt_image_url?: string | null
+  receipt_uploaded_at?: string | null
+  receipt_uploaded_by?: string | null
   created_at: string
   updated_at: string
 }

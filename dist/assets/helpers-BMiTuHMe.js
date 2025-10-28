@@ -1,0 +1,2 @@
+function e(r){if(!r)return"-";try{const t=new Date(r);return isNaN(t.getTime())?"-":t.toLocaleDateString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit"})}catch{return"-"}}function a(r){if(!r)return"-";try{const t=new Date(r);return isNaN(t.getTime())?"-":`${String(t.getMonth()+1).padStart(2,"0")}-${String(t.getDate()).padStart(2,"0")}`}catch{return"-"}}export{e as a,a as f};
+//# sourceMappingURL=helpers-BMiTuHMe.js.map

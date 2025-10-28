@@ -8,7 +8,8 @@ import {
   Building2, 
   Users, 
   FileText,
-  Package
+  Package,
+  Receipt
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -38,6 +39,12 @@ export default function Navigation({ role }: NavigationProps) {
       href: '/purchase/list',
       icon: FileText,
       roles: ['all']
+    },
+    {
+      label: '영수증',
+      href: '/receipts',
+      icon: Receipt,
+      roles: ['app_admin', 'hr', 'lead_buyer']
     },
     {
       label: '업체 관리',

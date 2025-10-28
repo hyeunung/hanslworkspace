@@ -6,7 +6,8 @@ import {
   Users, 
   FileText,
   X,
-  MessageCircle
+  MessageCircle,
+  Receipt
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -44,6 +45,12 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
       href: '/purchase/list',
       icon: FileText,
       roles: ['all']
+    },
+    {
+      label: '영수증',
+      href: '/receipts',
+      icon: Receipt,
+      roles: ['app_admin', 'hr', 'lead_buyer']
     },
     {
       label: '업체 관리',

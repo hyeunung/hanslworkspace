@@ -59,7 +59,7 @@ export default function ApprovalMain() {
       }
 
       // 직원 정보 조회 (전체 필드 조회)
-      let { data: employeeData, error: _employeeError } = await supabase
+      const { data: employeeData, error: _employeeError } = await supabase
         .from('employees')
         .select('*')
         .eq('id', user.id)

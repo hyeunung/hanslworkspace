@@ -105,7 +105,7 @@ export function deepClone<T>(obj: T): T {
   
   const clonedObj = {} as T;
   for (const key in obj) {
-    if (obj.hasOwnProperty(key)) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
       clonedObj[key] = deepClone(obj[key]);
     }
   }
@@ -225,4 +225,87 @@ export function sortBy<T>(
     }
     return 0;
   });
+}
+
+/**
+ * 날짜 문자열을 한국어 형식으로 포맷팅합니다.
+ * @param dateStr - 변환할 날짜 문자열
+ * @returns 포맷된 날짜 문자열 (YYYY.MM.DD 형식)
+ */
+export function formatDate(dateStr?: string | null): string {
+  if (!dateStr) return '-';
+  
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '-';
+    
+    return date.toLocaleDateString('ko-KR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+  } catch {
+    return '-';
+  }
+}
+
+/**
+ * Format date and time for Korean locale
+ */
+export function formatDateTime(dateStr?: string | null): string {
+  if (!dateStr) return '-';
+  
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '-';
+    
+    return date.toLocaleString('ko-KR');
+  } catch {
+    return '-';
+  }
+}
+
+/**
+ * Format date as MM-DD format
+ */
+export function formatDateShort(dateStr?: string | null): string {
+  if (!dateStr) return '-';
+  
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '-';
+    
+    return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  } catch {
+    return '-';
+  }
+}
+
+/**
+ * Calculate relative time (e.g., "2시간 전", "3일 전")
+ */
+export function formatRelativeTime(dateStr?: string | null): string {
+  if (!dateStr) return '-';
+  
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffMinutes < 60) {
+      return diffMinutes < 1 ? '방금 전' : `${diffMinutes}분 전`;
+    } else if (diffHours < 24) {
+      return `${diffHours}시간 전`;
+    } else if (diffDays < 7) {
+      return `${diffDays}일 전`;
+    } else {
+      return formatDate(dateStr);
+    }
+  } catch {
+    return '-';
+  }
 }

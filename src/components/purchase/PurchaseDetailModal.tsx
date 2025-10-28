@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails } from '@/types/purchase'
+import { formatDate } from '@/utils/helpers'
 import { 
   Calendar, 
   User, 
@@ -220,10 +221,7 @@ export default function PurchaseDetailModal({
     }
   }
 
-  const formatDate = (date: string | null | undefined) => {
-    if (!date) return '-'
-    return new Date(date).toLocaleDateString('ko-KR')
-  }
+  // formatDate는 utils/helpers.ts에서 import
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ko-KR').format(amount)

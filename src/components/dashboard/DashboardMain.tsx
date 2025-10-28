@@ -1,12 +1,12 @@
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { dashboardService } from '@/services/dashboardService'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { AlertTriangle, Clock, CheckCircle, TrendingUp, Zap, Calendar, ArrowRight, Eye, ThumbsUp, X, Package, Truck, ShoppingCart, FileText, Building2, Download } from 'lucide-react'
+import { AlertTriangle, Clock, CheckCircle, Calendar, ArrowRight, Eye, ThumbsUp, X, Package, Truck, ShoppingCart, FileText, Building2, Download } from 'lucide-react'
 import ExcelJS from 'exceljs'
 
 // Import modals
@@ -36,11 +36,7 @@ export default function DashboardMain() {
   const navigate = useNavigate()
   const supabase = createClient()
 
-  useEffect(() => {
-    loadDashboardData()
-  }, [])
-
-  const loadDashboardData = async (showLoading = true) => {
+  const loadDashboardData = useCallback(async (showLoading = true) => {
     try {
       if (showLoading) {
         setLoading(true)
@@ -140,7 +136,11 @@ export default function DashboardMain() {
         setLoading(false)
       }
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    loadDashboardData()
+  }, [loadDashboardData])
 
   const handleQuickApprove = async (requestId: string) => {
     console.log('handleQuickApprove 호출:', {
