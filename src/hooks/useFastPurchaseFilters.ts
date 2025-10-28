@@ -1,10 +1,14 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Purchase } from './usePurchaseData';
 import { createClient } from '@/lib/supabase/client';
 
 // 상수 정의 - 특정 직원의 발주요청 숨김 (본인이 아닌 경우에만)
 const HIDDEN_EMPLOYEES = ['정희웅'];  // 정현웅 제거
+
+// 메모이제이션 캐시
+const filterCache = new Map();
+const CACHE_SIZE_LIMIT = 100;
 
 export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: string[], currentUserName: string, currentUserId?: string, currentUserEmail?: string) => {
   const supabase = createClient();
@@ -84,26 +88,57 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     setSelectedEmployee(defaultEmployee);
   }, [activeTab, currentUserName, roleCase, computeDefaultEmployee]);
   
-  // 1단계: 권한별 필터링 (한번만 실행)
+  // 1단계: 권한별 필터링 (캐싱 적용)
   const visiblePurchases = useMemo(() => {
-    if (currentUserRoles.includes('purchase_manager') || currentUserRoles.includes('app_admin')) {
-      return purchases;
+    const cacheKey = `visible_${purchases.length}_${currentUserRoles.join(',')}`;
+    if (filterCache.has(cacheKey)) {
+      return filterCache.get(cacheKey);
     }
-    return purchases.filter(p => !HIDDEN_EMPLOYEES.includes(p.requester_name));
+    
+    let result;
+    if (currentUserRoles.includes('purchase_manager') || currentUserRoles.includes('app_admin')) {
+      result = purchases;
+    } else {
+      result = purchases.filter(p => !HIDDEN_EMPLOYEES.includes(p.requester_name));
+    }
+    
+    // 캐시 크기 제한
+    if (filterCache.size >= CACHE_SIZE_LIMIT) {
+      const firstKey = filterCache.keys().next().value;
+      filterCache.delete(firstKey);
+    }
+    filterCache.set(cacheKey, result);
+    return result;
   }, [purchases, currentUserRoles]);
 
-  // 2단계: 날짜 필터링 (날짜 변경시만 실행)
+  // 2단계: 날짜 필터링 (캐싱 적용)
   const dateFilteredPurchases = useMemo(() => {
-    return visiblePurchases.filter((purchase) => {
+    const cacheKey = `date_${visiblePurchases.length}_${dateFromFilter}_${dateToFilter}`;
+    if (filterCache.has(cacheKey)) {
+      return filterCache.get(cacheKey);
+    }
+    
+    const result = visiblePurchases.filter((purchase) => {
       const requestDate = purchase.request_date ? purchase.request_date.split('T')[0] : '';
       const matchesDateFrom = !dateFromFilter || requestDate >= dateFromFilter;
       const matchesDateTo = !dateToFilter || requestDate <= dateToFilter;
       return matchesDateFrom && matchesDateTo;
     });
+    
+    if (filterCache.size >= CACHE_SIZE_LIMIT) {
+      const firstKey = filterCache.keys().next().value;
+      filterCache.delete(firstKey);
+    }
+    filterCache.set(cacheKey, result);
+    return result;
   }, [visiblePurchases, dateFromFilter, dateToFilter]);
 
-  // 3단계: 탭별 필터링 (hanslwebapp과 100% 동일)
+  // 3단계: 탭별 필터링 (최적화 적용)
   const tabFilteredPurchases = useMemo(() => {
+    const cacheKey = `tab_${dateFilteredPurchases.length}_${activeTab}`;
+    if (filterCache.has(cacheKey)) {
+      return filterCache.get(cacheKey);
+    }
     
     const result = dateFilteredPurchases.filter((purchase) => {
       let matches = false;
@@ -149,20 +184,34 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       }
     });
     
+    if (filterCache.size >= CACHE_SIZE_LIMIT) {
+      const firstKey = filterCache.keys().next().value;
+      filterCache.delete(firstKey);
+    }
+    filterCache.set(cacheKey, result);
     return result;
   }, [dateFilteredPurchases, activeTab]);
 
-  // 4단계: 직원 필터링 (hanslwebapp과 동일한 로직 - 이름 기반)
+  // 4단계: 직원 필터링 (최적화 적용)
   const employeeFilteredPurchases = useMemo(() => {
-    // hanslwebapp 로직과 100% 동일
-    if (selectedEmployee && selectedEmployee !== 'all' && selectedEmployee !== '전체') {
-      // 특정 직원 선택 시 해당 직원의 요청만 표시
-      const filtered = tabFilteredPurchases.filter(purchase => purchase.requester_name === selectedEmployee);
-      return filtered;
+    const cacheKey = `employee_${tabFilteredPurchases.length}_${selectedEmployee}`;
+    if (filterCache.has(cacheKey)) {
+      return filterCache.get(cacheKey);
     }
     
-    // selectedEmployee가 없거나 'all' 또는 '전체'인 경우 전체 표시
-    return tabFilteredPurchases;
+    let result;
+    if (selectedEmployee && selectedEmployee !== 'all' && selectedEmployee !== '전체') {
+      result = tabFilteredPurchases.filter(purchase => purchase.requester_name === selectedEmployee);
+    } else {
+      result = tabFilteredPurchases;
+    }
+    
+    if (filterCache.size >= CACHE_SIZE_LIMIT) {
+      const firstKey = filterCache.keys().next().value;
+      filterCache.delete(firstKey);
+    }
+    filterCache.set(cacheKey, result);
+    return result;
   }, [tabFilteredPurchases, selectedEmployee]);
 
   // 5단계: 업체 필터링 (업체 선택시만 실행)
@@ -350,8 +399,12 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     return counts;
   }, [visiblePurchases, dateFromFilter, dateToFilter, roleCase, currentUserName, computeDefaultEmployee, isLeadBuyer, isAdmin]);
 
-  // 사용자별 저장된 기간 불러오기
+  // 사용자별 저장된 기간 불러오기 (로딩 최적화)
+  const loadedPreferencesRef = useRef(false);
   useEffect(() => {
+    if (loadedPreferencesRef.current) return;
+    loadedPreferencesRef.current = true;
+    
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -371,9 +424,16 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     })();
   }, []);
   
-  // 기간 변경 시 즉시 저장 (사용자별)
+  // 기간 변경 시 디바운스 저장 (사용자별)
+  const saveTimeoutRef = useRef<NodeJS.Timeout>();
   useEffect(() => {
-    (async () => {
+    if (!loadedPreferencesRef.current) return;
+    
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       if (!dateFromFilter || !dateToFilter) return;
@@ -384,7 +444,13 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
         period_end: dateToFilter,
         updated_at: new Date().toISOString()
       });
-    })();
+    }, 1000);
+    
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
   }, [dateFromFilter, dateToFilter]);
 
   return {

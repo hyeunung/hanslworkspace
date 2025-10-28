@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
@@ -67,6 +67,16 @@ export interface Employee {
   full_name?: string;
 }
 
+// 캐시 관리
+const globalCache = {
+  purchases: null as Purchase[] | null,
+  vendors: null as Vendor[] | null,
+  employees: null as Employee[] | null,
+  lastFetch: 0,
+  userInfo: null as any,
+  CACHE_DURATION: 5 * 60 * 1000 // 5분
+};
+
 export const usePurchaseData = () => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -78,12 +88,47 @@ export const usePurchaseData = () => {
   const [currentUserId, setCurrentUserId] = useState<string>('');
   
   const supabase = createClient();
+  const initializationRef = useRef(false);
 
-  // 초기 데이터 로드 (업체 목록, 사용자 권한)
+  // 초기 데이터 로드 (업체 목록, 사용자 권한) - 캐싱 적용
   useEffect(() => {
     const loadInitialData = async () => {
+      if (initializationRef.current) return;
+      initializationRef.current = true;
+      
+      const now = Date.now();
+      const cacheValid = globalCache.lastFetch && (now - globalCache.lastFetch) < globalCache.CACHE_DURATION;
+      
       try {
-        // 업체 목록, 직원 목록, 사용자 정보를 병렬로 로드
+        // 캐시된 데이터가 유효한 경우 사용
+        if (cacheValid && globalCache.vendors && globalCache.employees && globalCache.userInfo) {
+          setVendors(globalCache.vendors);
+          setEmployees(globalCache.employees);
+          
+          const employeeData = globalCache.userInfo;
+          if (employeeData) {
+            let roles: string[] = [];
+            if (employeeData.purchase_role) {
+              if (Array.isArray(employeeData.purchase_role)) {
+                roles = employeeData.purchase_role.map((r: any) => String(r).trim());
+              } else {
+                const roleString = String(employeeData.purchase_role);
+                roles = roleString
+                  .split(',')
+                  .map((r: string) => r.trim())
+                  .filter((r: string) => r.length > 0);
+              }
+            }
+            
+            setCurrentUserRoles(roles);
+            setCurrentUserName(employeeData.name || employeeData.full_name || '');
+            setCurrentUserEmail(employeeData.email || '');
+            setCurrentUserId(employeeData.id || '');
+          }
+          return;
+        }
+        
+        // 캐시가 없거나 만료된 경우 새로 로드
         const [vendorResult, employeeResult, userResult] = await Promise.all([
           supabase.from('vendors').select('*'),
           supabase.from('employees').select('*'),
@@ -91,16 +136,18 @@ export const usePurchaseData = () => {
         ]);
 
         if (vendorResult.error) {
-          // Vendor fetch error - will throw
           throw vendorResult.error;
         }
-        setVendors(vendorResult.data || []);
+        const vendorData = vendorResult.data || [];
+        setVendors(vendorData);
+        globalCache.vendors = vendorData;
         
         if (employeeResult.error) {
-          // Employee fetch error - will throw
           throw employeeResult.error;
         }
-        setEmployees(employeeResult.data || []);
+        const employeeData = employeeResult.data || [];
+        setEmployees(employeeData);
+        globalCache.employees = employeeData;
 
         // 사용자 권한 및 이름 로드
         if (userResult.data.user && !userResult.error) {
@@ -117,18 +164,14 @@ export const usePurchaseData = () => {
           }
           
           if (employeeData) {
-            // purchase_role을 쉼표로 분할하고 각 role의 공백을 제거
-            let roles: string[] = [];
+            globalCache.userInfo = employeeData;
             
-            // purchase_role이 배열인지 문자열인지 확인
+            let roles: string[] = [];
             if (employeeData.purchase_role) {
               if (Array.isArray(employeeData.purchase_role)) {
-                // 배열인 경우
                 roles = employeeData.purchase_role.map((r: any) => String(r).trim());
               } else {
-                // 문자열인 경우 (일반적)
                 const roleString = String(employeeData.purchase_role);
-                // 쉼표로 분할하고 공백 제거
                 roles = roleString
                   .split(',')
                   .map((r: string) => r.trim())
@@ -137,11 +180,12 @@ export const usePurchaseData = () => {
             }
             
             setCurrentUserRoles(roles);
-            // name을 우선 사용 (필터링과 일치시키기 위해)
             setCurrentUserName(employeeData.name || employeeData.full_name || '');
             setCurrentUserEmail(employeeData.email || '');
             setCurrentUserId(employeeData.id || '');
           }
+          
+          globalCache.lastFetch = now;
         }
       } catch (error) {
         logger.error('초기 데이터 로드 실패', error);
@@ -151,18 +195,31 @@ export const usePurchaseData = () => {
     loadInitialData();
   }, []);
 
-  // 발주 목록 로드
-  const loadPurchases = useCallback(async () => {
+  // 발주 목록 로드 - 캐싱 및 최적화 적용
+  const loadPurchases = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     
     try {
-      // employees 데이터가 없으면 먼저 로드
+      // 캐시 확인
+      const now = Date.now();
+      const cacheValid = globalCache.lastFetch && (now - globalCache.lastFetch) < globalCache.CACHE_DURATION;
+      
+      if (!forceRefresh && cacheValid && globalCache.purchases) {
+        setPurchases(globalCache.purchases);
+        setLoading(false);
+        return;
+      }
+      
+      // employees 데이터 준비
       let employeeList = employees;
       if (employeeList.length === 0) {
-        const { data: empData } = await supabase
-          .from('employees')
-          .select('*');
-        employeeList = empData || [];
+        employeeList = globalCache.employees || [];
+        if (employeeList.length === 0) {
+          const { data: empData } = await supabase
+            .from('employees')
+            .select('*');
+          employeeList = empData || [];
+        }
       }
       
       const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -174,12 +231,16 @@ export const usePurchaseData = () => {
         return;
       }
 
-      // 발주 데이터 조회 (hanslwebapp과 완전히 동일) - 전체 데이터 로드
+      // 최적화된 발주 데이터 조회 - 최근 3개월 데이터만 기본 로드
+      const threeMonthsAgo = new Date();
+      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+      
       const { data, error } = await supabase
         .from('purchase_requests')
         .select('*,vendors(vendor_name,vendor_payment_schedule),vendor_contacts(contact_name),purchase_request_items(*).order(line_number)')
+        .gte('request_date', threeMonthsAgo.toISOString())
         .order('request_date', { ascending: false })
-        .limit(2000); // 충분한 수의 데이터 로드
+        .limit(1000); // 최적화된 데이터 로드
 
       if (error) {
         // Purchase data fetch error - will throw
@@ -239,8 +300,10 @@ export const usePurchaseData = () => {
         };
       });
 
-      // 데이터 로드 완료
+      // 데이터 로드 완료 및 캐싱
       setPurchases(processedData);
+      globalCache.purchases = processedData;
+      globalCache.lastFetch = now;
     } catch (error) {
       logger.error('발주 목록 로드 실패', error);
       toast.error('발주 목록을 불러올 수 없습니다.');

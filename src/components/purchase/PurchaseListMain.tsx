@@ -3,7 +3,7 @@ import { useState, lazy, Suspense, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { usePurchaseData } from "@/hooks/usePurchaseData";
 import { useFastPurchaseFilters } from "@/hooks/useFastPurchaseFilters";
-import FastPurchaseTable from "@/components/purchase/FastPurchaseTable";
+import LazyPurchaseTable from "@/components/purchase/LazyPurchaseTable";
 
 import { Search, Filter, Plus, Package } from "lucide-react";
 import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs/generatePurchaseOrderExcel";
@@ -547,7 +547,7 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
                 <p className="text-gray-600">새로운 발주요청서를 작성해보세요.</p>
               </div>
             ) : (
-              <FastPurchaseTable 
+              <LazyPurchaseTable 
                 purchases={filteredPurchases} 
                 activeTab={activeTab}
                 currentUserRoles={currentUserRoles}
