@@ -239,9 +239,6 @@ export default function PurchaseStatusModal({
               <table className="min-w-full bg-white rounded-lg overflow-hidden shadow-sm">
                 <thead className="bg-gray-100">
                   <tr>
-                    {type === 'purchase' && (
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">구매</th>
-                    )}
                     {type === 'delivery' && (
                       <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">입고</th>
                     )}
@@ -258,21 +255,6 @@ export default function PurchaseStatusModal({
                     const unitPrice = pItem.quantity > 0 ? (Number(pItem.amount_value) || 0) / pItem.quantity : 0
                     return (
                       <tr key={index} className="hover:bg-gray-50 transition-colors">
-                        {type === 'purchase' && (
-                          <td className="px-4 py-3 text-center">
-                            <div className="flex items-center justify-center">
-                              {localItem.is_payment_completed ? (
-                                <Badge className="bg-yellow-100 text-yellow-800 text-xs">
-                                  구매완료
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline" className="text-gray-600 text-xs">
-                                  구매대기
-                                </Badge>
-                              )}
-                            </div>
-                          </td>
-                        )}
                         {type === 'delivery' && (
                           <td className="px-4 py-3 text-center">
                             <div className="flex items-center justify-center">
@@ -359,68 +341,7 @@ export default function PurchaseStatusModal({
           {/* 버튼 영역 */}
           <div className="flex justify-between gap-3 mt-6">
             <div className="flex gap-2">
-              {/* 입고 완료 버튼 - 입고 대기 상태이고 권한 있을 때 */}
-            {type === 'delivery' && 
-             (currentUserRoles.includes('app_admin') || 
-              currentUserRoles.includes('lead buyer') ||
-              currentUserRoles.includes('receiver')) && (
-              <Button
-                onClick={async () => {
-                  setProcessing(true)
-                  try {
-                    const { error } = await supabase
-                      .from('purchase_requests')
-                      .update({ 
-                        is_received: true,
-                        received_at: new Date().toISOString()
-                      })
-                      .eq('id', localItem.id)
-
-                    if (error) throw error
-                    
-                    // 개별 품목도 모두 입고완료 처리
-                    await supabase
-                      .from('purchase_request_items')
-                      .update({ 
-                        is_received: true,
-                        delivery_status: 'received'
-                      })
-                      .eq('purchase_request_id', localItem.id)
-                    
-                    // 로컬 상태 업데이트 (모달 유지하면서 UI만 변경)
-                    setLocalItem(prev => ({
-                      ...prev,
-                      is_received: true,
-                      received_at: new Date().toISOString(),
-                      purchase_request_items: prev.purchase_request_items?.map(pItem => ({
-                        ...pItem,
-                        is_received: true,
-                        delivery_status: 'received'
-                      }))
-                    }))
-                    
-                    toast.success('입고완료 처리되었습니다.')
-                    // 백그라운드에서 새로고침 (모달은 유지)
-                    onRefresh?.()
-                  } catch (error) {
-                    toast.error('처리 중 오류가 발생했습니다.')
-                  } finally {
-                    setProcessing(false)
-                  }
-                }}
-                disabled={processing}
-                className="bg-blue-600 hover:bg-blue-700"
-                size="sm"
-              >
-                {processing ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                ) : (
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                )}
-                입고 완료 처리
-              </Button>
-            )}
-
+  
             {/* 구매 완료 버튼 - 구매 대기 상태이고 권한 있을 때 */}
             {type === 'purchase' && 
              (currentUserRoles.includes('app_admin') || 

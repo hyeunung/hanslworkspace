@@ -169,6 +169,7 @@ export default function PurchaseDetailModal({
   useEffect(() => {
     if (purchaseId && isOpen) {
       loadPurchaseDetail(purchaseId.toString())
+      setIsEditing(false) // 모달 열 때마다 편집 모드 초기화
     }
   }, [purchaseId, isOpen])
 
@@ -477,6 +478,36 @@ export default function PurchaseDetailModal({
     }
   }
   
+  // 전체 구매완료 처리
+  const handleCompleteAllPayment = async () => {
+    if (!purchase || !canReceiveItems) return
+    
+    const confirm = window.confirm('모든 품목을 구매완료 처리하시겠습니까?')
+    if (!confirm) return
+    
+    try {
+      const updateData = {
+        is_payment_completed: true,
+        payment_completed_at: new Date().toISOString()
+      }
+      
+      const { error } = await supabase
+        .from('purchase_request_items')
+        .update(updateData)
+        .eq('purchase_request_id', purchase.id)
+        .eq('is_payment_completed', false) // 아직 구매완료되지 않은 항목만
+      
+      if (error) throw error
+      
+      toast.success('모든 품목이 구매완료 처리되었습니다.')
+      onRefresh?.()
+      await loadPurchaseDetail(purchaseId?.toString() || '')
+    } catch (error) {
+      console.error('전체 구매완료 처리 오류:', error)
+      toast.error('구매완료 처리 중 오류가 발생했습니다.')
+    }
+  }
+
   // 전체 입고완료 처리
   const handleCompleteAllReceipt = async () => {
     if (!purchase || !canReceiveItems) return
@@ -584,135 +615,241 @@ export default function PurchaseDetailModal({
   }
 
   const content = (
-    <>
+    <div className="space-y-8">
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-hansl-600"></div>
         </div>
       ) : purchase ? (
-        <div className="space-y-6">
+        <div>
             {/* 기본 정보 */}
-            <div className="bg-gray-50 rounded-lg p-6">
-              <h3 className="font-semibold mb-4 flex items-center text-gray-900">
-                <FileText className="w-5 h-5 mr-2 text-gray-700" />
-                기본 정보
-              </h3>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">요청자</p>
-                  {isEditing ? (
-                    <Input
-                      value={editedPurchase?.requester_name || ''}
-                      onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, requester_name: e.target.value } : null)}
-                      className="h-8"
-                    />
-                  ) : (
-                    <p className="font-medium text-gray-900">{purchase.requester_name}</p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">요청일</p>
-                  <p className="font-medium text-gray-900">{formatDate(purchase.request_date)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">입고예정일</p>
-                  {isEditing ? (
-                    <DatePicker
-                      date={editedPurchase?.delivery_request_date ? new Date(editedPurchase.delivery_request_date) : undefined}
-                      onDateChange={(date: Date | undefined) => setEditedPurchase(prev => prev ? { ...prev, delivery_request_date: date?.toISOString().split('T')[0] || '' } : null)}
-                      className="h-8"
-                    />
-                  ) : (
-                    <p className="font-medium text-gray-900">{formatDate(purchase.delivery_request_date)}</p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">결제유형</p>
-                  {isEditing ? (
-                    <Input
-                      value={editedPurchase?.payment_category || ''}
-                      onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, payment_category: e.target.value } : null)}
-                      className="h-8"
-                    />
-                  ) : (
-                    <p className="font-medium text-gray-900">{purchase.payment_category || '-'}</p>
-                  )}
-                </div>
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+              <div className="border-b border-gray-200 px-6 py-4">
+                <h3 className="text-lg font-semibold flex items-center text-gray-900">
+                  <FileText className="w-5 h-5 mr-3 text-blue-600" />
+                  기본 정보
+                </h3>
+              </div>
+              <div className="p-6">
+                <div className="grid grid-cols-4 gap-x-8 gap-y-6">
+                  <div>
+                    <label className="text-sm font-medium text-gray-600 mb-2 block">발주서 종류</label>
+                    {isEditing ? (
+                      <Input
+                        value={editedPurchase?.purchase_type || ''}
+                        onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, purchase_type: e.target.value } : null)}
+                        className="h-9"
+                        placeholder="일반"
+                      />
+                    ) : (
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.purchase_type || '일반'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600 mb-2 block">요청 유형</label>
+                    {isEditing ? (
+                      <Input
+                        value={editedPurchase?.request_type || ''}
+                        onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, request_type: e.target.value } : null)}
+                        className="h-9"
+                        placeholder="선택"
+                      />
+                    ) : (
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.request_type || '-'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600 mb-2 block">진행 종류</label>
+                    {isEditing ? (
+                      <Input
+                        value={editedPurchase?.progress_type || ''}
+                        onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, progress_type: e.target.value } : null)}
+                        className="h-9"
+                        placeholder="선택"
+                      />
+                    ) : (
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.progress_type || '-'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600 mb-2 block">결제 종류</label>
+                    {isEditing ? (
+                      <Input
+                        value={editedPurchase?.payment_category || ''}
+                        onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, payment_category: e.target.value } : null)}
+                        className="h-9"
+                        placeholder="선택"
+                      />
+                    ) : (
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.payment_category || '-'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600 mb-2 block">업체명</label>
+                    {isEditing ? (
+                      <Input
+                        value={editedPurchase?.vendor?.vendor_name || editedPurchase?.vendor_name || ''}
+                        onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, vendor_name: e.target.value } : null)}
+                        className="h-9"
+                        placeholder="업체 선택"
+                      />
+                    ) : (
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.vendor?.vendor_name || '-'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600 mb-2 block">업체 담당자</label>
+                    {isEditing ? (
+                      <Input
+                        value={editedPurchase?.vendor_contact || ''}
+                        onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, vendor_contact: e.target.value } : null)}
+                        className="h-9"
+                        placeholder="담당자 선택"
+                      />
+                    ) : (
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.vendor_contact || '-'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600 mb-2 block">구매요청자</label>
+                    {isEditing ? (
+                      <Input
+                        value={editedPurchase?.requester_name || ''}
+                        onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, requester_name: e.target.value } : null)}
+                        className="h-9"
+                      />
+                    ) : (
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.requester_name}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600 mb-2 block">청구일</label>
+                    {isEditing ? (
+                      <DatePicker
+                        date={editedPurchase?.request_date ? new Date(editedPurchase.request_date) : undefined}
+                        onDateChange={(date: Date | undefined) => setEditedPurchase(prev => prev ? { ...prev, request_date: date?.toISOString().split('T')[0] || '' } : null)}
+                        className="h-9"
+                      />
+                    ) : (
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{formatDate(purchase.request_date)}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600 mb-2 block">입고 요청일</label>
+                    {isEditing ? (
+                      <DatePicker
+                        date={editedPurchase?.delivery_request_date ? new Date(editedPurchase.delivery_request_date) : undefined}
+                        onDateChange={(date: Date | undefined) => setEditedPurchase(prev => prev ? { ...prev, delivery_request_date: date?.toISOString().split('T')[0] || '' } : null)}
+                        className="h-9"
+                      />
+                    ) : (
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{formatDate(purchase.delivery_request_date)}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600 mb-2 block">PJ업체</label>
+                    {isEditing ? (
+                      <Input
+                        value={editedPurchase?.project_vendor || ''}
+                        onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, project_vendor: e.target.value } : null)}
+                        className="h-9"
+                        placeholder="입력"
+                      />
+                    ) : (
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.project_vendor || '-'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600 mb-2 block">수주번호</label>
+                    {isEditing ? (
+                      <Input
+                        value={editedPurchase?.order_number || ''}
+                        onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, order_number: e.target.value } : null)}
+                        className="h-9"
+                        placeholder="입력"
+                      />
+                    ) : (
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.order_number || '-'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600 mb-2 block">Item</label>
+                    {isEditing ? (
+                      <Input
+                        value={editedPurchase?.item_category || ''}
+                        onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, item_category: e.target.value } : null)}
+                        className="h-9"
+                        placeholder="입력"
+                      />
+                    ) : (
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.item_category || '-'}</p>
+                    )}
+                  </div>
               </div>
             </div>
 
-            {/* 업체 정보 */}
-            <div className="bg-gray-50 rounded-lg p-6">
-              <h3 className="font-semibold mb-4 flex items-center text-gray-900">
-                <Building2 className="w-5 h-5 mr-2 text-gray-700" />
-                업체 정보
-              </h3>
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">업체명</p>
-                  {isEditing ? (
-                    <Input
-                      value={editedPurchase?.vendor?.vendor_name || editedPurchase?.vendor_name || ''}
-                      onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, vendor_name: e.target.value } : null)}
-                      className="h-8"
-                    />
-                  ) : (
-                    <p className="font-medium text-gray-900">{purchase.vendor?.vendor_name || '-'}</p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">프로젝트 업체</p>
-                  {isEditing ? (
-                    <Input
-                      value={editedPurchase?.project_vendor || ''}
-                      onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, project_vendor: e.target.value } : null)}
-                      className="h-8"
-                    />
-                  ) : (
-                    <p className="font-medium text-gray-900">{purchase.project_vendor || '-'}</p>
-                  )}
-                </div>
-              </div>
-            </div>
 
             {/* 품목 리스트 */}
-            <div className="bg-gray-50 rounded-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold flex items-center text-gray-900">
-                  <Package className="w-5 h-5 mr-2 text-gray-700" />
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+              <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold flex items-center text-gray-900">
+                  <Package className="w-5 h-5 mr-3 text-green-600" />
                   품목 리스트
                 </h3>
-                {!isEditing && canReceiveItems && purchase?.items?.some(item => !item.is_received) && (
-                  <Button
-                    size="sm"
-                    onClick={handleCompleteAllReceipt}
-                    className="bg-green-600 hover:bg-green-700 text-white"
-                  >
-                    <Truck className="w-4 h-4 mr-1" />
-                    전체 입고완료
-                  </Button>
+                {!isEditing && canReceiveItems && (
+                  <>
+                    {activeTab === 'purchase' && (() => {
+                      const totalItems = purchase?.items?.length || 0;
+                      const completedItems = purchase?.items?.filter(item => item.is_payment_completed).length || 0;
+                      const percentage = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+                      const isInProgress = completedItems > 0;
+                      
+                      return (
+                        <Button
+                          size="sm"
+                          onClick={handleCompleteAllPayment}
+                          className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl border border-blue-400 active:scale-95 transition-all duration-200"
+                        >
+                          <CreditCard className="w-4 h-4 mr-1" />
+                          전체 구매완료
+                        </Button>
+                      );
+                    })()}
+                    {activeTab === 'receipt' && (() => {
+                      const totalItems = purchase?.items?.length || 0;
+                      const completedItems = purchase?.items?.filter(item => item.is_received).length || 0;
+                      const percentage = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
+                      const isInProgress = completedItems > 0;
+                      
+                      return (
+                        <Button
+                          size="sm"
+                          onClick={handleCompleteAllReceipt}
+                          className="bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl border border-green-400 active:scale-95 transition-all duration-200"
+                        >
+                          <Truck className="w-4 h-4 mr-1" />
+                          전체 입고완료
+                        </Button>
+                      );
+                    })()}
+                  </>
                 )}
               </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full bg-white rounded-lg overflow-hidden shadow-sm">
-                  <thead className="bg-gray-100">
+              <div className="p-6">
+                <div className="overflow-x-auto bg-white rounded-lg border border-gray-200">
+                  <table className="min-w-full">
+                    <thead className="bg-gray-50">
                     <tr>
-                      {canReceiptCheck && activeTab === 'purchase' && (
-                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">구매</th>
-                      )}
-                      {canReceiptCheck && activeTab === 'receipt' && (
-                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">입고</th>
-                      )}
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">품명</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">규격</th>
                       <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">수량</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">단가</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">금액</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">비고</th>
-                      {activeTab === 'purchase' && (
-                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">구매상태</th>
+                      {canReceiptCheck && activeTab === 'purchase' && (
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">구매완료</th>
                       )}
-                      {activeTab === 'receipt' && (
+                      {canReceiptCheck && activeTab === 'receipt' && (
                         <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">입고상태</th>
                       )}
                       {!activeTab && (
@@ -723,56 +860,6 @@ export default function PurchaseDetailModal({
                   <tbody className="bg-white divide-y divide-gray-200">
                     {(isEditing ? editedItems : purchase.items)?.map((item, index) => (
                       <tr key={index} className="hover:bg-gray-50 transition-colors">
-                        {canReceiptCheck && activeTab === 'purchase' && (
-                          <td className="px-4 py-3 text-center">
-                            <div className="flex items-center justify-center">
-                              {item.is_payment_completed ? (
-                                <button
-                                  onClick={() => handlePaymentToggle(item.id, false)}
-                                  className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-md hover:bg-blue-200 transition-colors"
-                                  disabled={!canReceiptCheck}
-                                >
-                                  <CheckCircle className="w-3 h-3" />
-                                  구매완료
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handlePaymentToggle(item.id, true)}
-                                  className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors"
-                                  disabled={!canReceiptCheck}
-                                >
-                                  <CreditCard className="w-3 h-3" />
-                                  구매대기
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        )}
-                        {canReceiptCheck && activeTab === 'receipt' && (
-                          <td className="px-4 py-3 text-center">
-                            <div className="flex items-center justify-center">
-                              {item.is_received ? (
-                                <button
-                                  onClick={() => handleReceiptToggle(item.id, false)}
-                                  className="flex items-center gap-1 px-2 py-1 text-xs bg-green-100 text-green-800 rounded-md hover:bg-green-200 transition-colors"
-                                  disabled={!canReceiptCheck}
-                                >
-                                  <CheckCircle className="w-3 h-3" />
-                                  입고완료
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleReceiptToggle(item.id, true)}
-                                  className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors"
-                                  disabled={!canReceiptCheck}
-                                >
-                                  <Package className="w-3 h-3" />
-                                  미입고
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        )}
                         <td className="px-4 py-3">
                           {isEditing ? (
                             <Input
@@ -852,55 +939,54 @@ export default function PurchaseDetailModal({
                             <span className="text-sm">{item.remark || '-'}</span>
                           )}
                         </td>
-                        {activeTab === 'purchase' && (
+                        {canReceiptCheck && activeTab === 'purchase' && (
                           <td className="px-4 py-3 text-center">
-                            {item.is_payment_completed ? (
-                              <Badge className="bg-blue-100 text-blue-800 border-blue-200">
-                                <CheckCircle className="w-3 h-3 mr-1" />
-                                구매완료
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-gray-100 text-gray-600 border-gray-200">
-                                구매대기
-                              </Badge>
-                            )}
+                            <div className="flex items-center justify-center">
+                              {item.is_payment_completed ? (
+                                <button
+                                  onClick={() => handlePaymentToggle(item.id, false)}
+                                  className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors shadow-md border border-blue-400"
+                                  disabled={!canReceiptCheck}
+                                >
+                                  <CheckCircle className="w-3 h-3" />
+                                  구매완료
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handlePaymentToggle(item.id, true)}
+                                  className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors"
+                                  disabled={!canReceiptCheck}
+                                >
+                                  <CreditCard className="w-3 h-3" />
+                                  구매대기
+                                </button>
+                              )}
+                            </div>
                           </td>
                         )}
-                        {activeTab === 'receipt' && (
+                        {canReceiptCheck && activeTab === 'receipt' && (
                           <td className="px-4 py-3 text-center">
-                            {item.is_received ? (
-                              <Badge className="bg-green-100 text-green-800 border-green-200">
-                                <CheckCircle className="w-3 h-3 mr-1" />
-                                입고완료
-                              </Badge>
-                            ) : !isEditing && canReceiveItems ? (
-                              <Button
-                                size="sm"
-                                onClick={() => handleCompleteItemReceipt(item.id, item.item_name)}
-                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1"
-                              >
-                                <Truck className="w-3 h-3 mr-1" />
-                                입고완료
-                              </Button>
-                            ) : (
-                              <Badge className="bg-gray-100 text-gray-600 border-gray-200">
-                                입고대기
-                              </Badge>
-                            )}
-                          </td>
-                        )}
-                        {!activeTab && (
-                          <td className="px-4 py-3 text-center">
-                            {item.is_received ? (
-                              <Badge className="bg-green-100 text-green-800 border-green-200">
-                                <CheckCircle className="w-3 h-3 mr-1" />
-                                입고완료
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-gray-100 text-gray-600 border-gray-200">
-                                입고대기
-                              </Badge>
-                            )}
+                            <div className="flex items-center justify-center">
+                              {item.is_received ? (
+                                <button
+                                  onClick={() => handleReceiptToggle(item.id, false)}
+                                  className="flex items-center gap-1 px-2 py-1 text-xs bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors shadow-md border border-green-400"
+                                  disabled={!canReceiptCheck}
+                                >
+                                  <CheckCircle className="w-3 h-3" />
+                                  입고완료
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleReceiptToggle(item.id, true)}
+                                  className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors"
+                                  disabled={!canReceiptCheck}
+                                >
+                                  <Package className="w-3 h-3" />
+                                  입고대기
+                                </button>
+                              )}
+                            </div>
                           </td>
                         )}
                       </tr>
@@ -908,9 +994,7 @@ export default function PurchaseDetailModal({
                   </tbody>
                   <tfoot className="bg-gray-100">
                     <tr>
-                      <td colSpan={
-                        ((canReceiptCheck && activeTab === 'receipt') ? 1 : 0) + 5
-                      } className="px-3 py-2 text-sm font-semibold text-right">
+                      <td colSpan={canReceiptCheck && (activeTab === 'purchase' || activeTab === 'receipt') ? 6 : 5} className="px-3 py-2 text-sm font-semibold text-right">
                         총액
                       </td>
                       <td className="px-3 py-2 text-sm font-semibold text-right">
@@ -918,7 +1002,6 @@ export default function PurchaseDetailModal({
                           (isEditing ? editedItems : purchase.items)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
                         )} {purchase.currency}
                       </td>
-                      <td></td>
                     </tr>
                   </tfoot>
                 </table>
@@ -937,26 +1020,29 @@ export default function PurchaseDetailModal({
             </div>
 
             {/* 승인 정보 */}
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="font-semibold mb-3 flex items-center">
-                <User className="w-4 h-4 mr-2" />
-                승인 정보
-              </h3>
-              <div className="space-y-4">
-                {/* 중간 승인 */}
-                <div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-500">중간승인</p>
-                      <Badge 
-                        variant={purchase.middle_manager_status === 'approved' ? 'default' : 'secondary'}
-                        className={purchase.middle_manager_status === 'approved' ? 'bg-green-100 text-green-800' : 
-                                 purchase.middle_manager_status === 'rejected' ? 'bg-red-100 text-red-800' : ''}
-                      >
-                        {purchase.middle_manager_status === 'approved' ? '승인' : 
-                         purchase.middle_manager_status === 'rejected' ? '반려' : '대기'}
-                      </Badge>
-                    </div>
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+              <div className="border-b border-gray-200 px-6 py-4">
+                <h3 className="text-lg font-semibold flex items-center text-gray-900">
+                  <User className="w-5 h-5 mr-3 text-purple-600" />
+                  승인 정보
+                </h3>
+              </div>
+              <div className="p-6">
+                <div className="grid grid-cols-2 gap-8">
+                  {/* 중간 승인 */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">중간승인</h4>
+                        <Badge 
+                          variant={purchase.middle_manager_status === 'approved' ? 'default' : 'secondary'}
+                          className={purchase.middle_manager_status === 'approved' ? 'bg-green-100 text-green-800' : 
+                                   purchase.middle_manager_status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-600'}
+                        >
+                          {purchase.middle_manager_status === 'approved' ? '승인' : 
+                           purchase.middle_manager_status === 'rejected' ? '반려' : '대기'}
+                        </Badge>
+                      </div>
                     {!isEditing && canApproveMiddle && 
                      purchase.middle_manager_status === 'pending' && (
                       <div className="flex gap-2">
@@ -979,23 +1065,23 @@ export default function PurchaseDetailModal({
                         </Button>
                       </div>
                     )}
-                  </div>
-                </div>
-                
-                {/* 최종 승인 */}
-                <div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-gray-500">최종승인</p>
-                      <Badge 
-                        variant={purchase.final_manager_status === 'approved' ? 'default' : 'secondary'}
-                        className={purchase.final_manager_status === 'approved' ? 'bg-green-100 text-green-800' : 
-                                 purchase.final_manager_status === 'rejected' ? 'bg-red-100 text-red-800' : ''}
-                      >
-                        {purchase.final_manager_status === 'approved' ? '승인' : 
-                         purchase.final_manager_status === 'rejected' ? '반려' : '대기'}
-                      </Badge>
                     </div>
+                  </div>
+                  
+                  {/* 최종 승인 */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">최종승인</h4>
+                        <Badge 
+                          variant={purchase.final_manager_status === 'approved' ? 'default' : 'secondary'}
+                          className={purchase.final_manager_status === 'approved' ? 'bg-green-100 text-green-800' : 
+                                   purchase.final_manager_status === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-600'}
+                        >
+                          {purchase.final_manager_status === 'approved' ? '승인' : 
+                           purchase.final_manager_status === 'rejected' ? '반려' : '대기'}
+                        </Badge>
+                      </div>
                     {!isEditing && canApproveFinal && 
                      purchase.middle_manager_status === 'approved' &&
                      purchase.final_manager_status === 'pending' && (
@@ -1019,17 +1105,20 @@ export default function PurchaseDetailModal({
                         </Button>
                       </div>
                     )}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        ) : (
-          <div className="text-center py-12 text-gray-500">
-            발주 정보를 불러올 수 없습니다.
-          </div>
-        )}
-    </>
+        </div>
+        </div>
+      ) : (
+        <div className="text-center py-12 text-gray-500">
+          발주 정보를 불러올 수 없습니다.
+        </div>
+      )}
+    </div>
   )
 
   // embedded가 true면 Dialog 없이 내용만 반환
