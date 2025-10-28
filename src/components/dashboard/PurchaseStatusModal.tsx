@@ -424,7 +424,8 @@ export default function PurchaseStatusModal({
             {/* 구매 완료 버튼 - 구매 대기 상태이고 권한 있을 때 */}
             {type === 'purchase' && 
              (currentUserRoles.includes('app_admin') || 
-              currentUserRoles.includes('lead buyer')) && (
+              currentUserRoles.includes('lead buyer') ||
+              currentUserRoles.includes('receiver')) && (
               <Button
                 onClick={async () => {
                   setProcessing(true)
