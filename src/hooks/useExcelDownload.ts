@@ -38,22 +38,20 @@ export const useExcelDownload = (currentUserRoles: string[], onRefresh: () => vo
         vendor_name: purchase.vendor_name,
         vendor_phone: '',
         vendor_fax: '',
-        vendor_contact_name: '',
-        vendor_payment_schedule: ''
+        vendor_contact_name: ''
       };
 
       // 업체 상세 정보 조회
       if (purchase.vendor_id) {
         const { data: vendorData } = await supabase
           .from('vendors')
-          .select('vendor_phone, vendor_fax, vendor_payment_schedule')
+          .select('vendor_phone, vendor_fax')
           .eq('id', purchase.vendor_id)
           .single();
 
         if (vendorData) {
           vendorInfo.vendor_phone = vendorData.vendor_phone || '';
           vendorInfo.vendor_fax = vendorData.vendor_fax || '';
-          vendorInfo.vendor_payment_schedule = vendorData.vendor_payment_schedule || '';
         }
       }
 
@@ -83,7 +81,6 @@ export const useExcelDownload = (currentUserRoles: string[], onRefresh: () => vo
         project_vendor: purchase.project_vendor,
         sales_order_number: purchase.sales_order_number,
         project_item: purchase.project_item,
-        vendor_payment_schedule: vendorInfo.vendor_payment_schedule,
         items: orderItems.map((item: any, index: number) => ({
           line_number: index + 1,
           item_name: item.item_name,
@@ -96,7 +93,7 @@ export const useExcelDownload = (currentUserRoles: string[], onRefresh: () => vo
         }))
       };
 
-      // Excel 생성 및 다운로드
+      // Excel 생성 및 다운로드 (코드 기반)
       const blob = await generatePurchaseOrderExcelJS(excelData);
       const downloadFilename = `발주서_${excelData.vendor_name}_${excelData.purchase_order_number}.xlsx`;
 
@@ -113,11 +110,7 @@ export const useExcelDownload = (currentUserRoles: string[], onRefresh: () => vo
       toast.success('엑셀 파일이 다운로드되었습니다.');
       
       // DB 플래그 업데이트 (권한이 있는 경우만)
-      const isLeadBuyer = currentUserRoles && (
-        currentUserRoles.includes('raw_material_manager') || 
-        currentUserRoles.includes('consumable_manager') ||
-        currentUserRoles.includes('purchase_manager')
-      );
+      const isLeadBuyer = currentUserRoles && currentUserRoles.includes('lead buyer');
 
       if (isLeadBuyer) {
         const { error: updateError } = await supabase

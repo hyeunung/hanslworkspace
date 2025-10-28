@@ -201,8 +201,7 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
         vendor_name: purchase.vendor_name,
         vendor_phone: '',
         vendor_fax: '',
-        vendor_contact_name: '',
-        vendor_payment_schedule: ''
+        vendor_contact_name: ''
       };
 
       try {
@@ -213,14 +212,13 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
         if (vendorId) {
           const { data: vendorData, error: vendorError } = await supabase
             .from('vendors')
-            .select('vendor_phone, vendor_fax, vendor_payment_schedule')
+            .select('vendor_phone, vendor_fax')
             .eq('id', vendorId)
             .single();
 
           if (vendorData && !vendorError) {
             vendorInfo.vendor_phone = vendorData.vendor_phone || '';
             vendorInfo.vendor_fax = vendorData.vendor_fax || '';
-            vendorInfo.vendor_payment_schedule = vendorData.vendor_payment_schedule || '';
           }
         }
 
@@ -250,7 +248,6 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
         project_vendor: purchaseRequest.project_vendor,
         sales_order_number: purchaseRequest.sales_order_number,
         project_item: purchaseRequest.project_item,
-        vendor_payment_schedule: vendorInfo.vendor_payment_schedule,
         items: orderItems.map((item: any) => ({
           line_number: item.line_number,
           item_name: item.item_name,

@@ -1,4 +1,4 @@
-// ExcelJS를 dynamic import로 변경하여 번들 크기 최적화
+// hanslwebapp과 동일한 코드 기반 Excel 생성
 
 export interface PurchaseOrderData {
   purchase_order_number: string;
@@ -46,14 +46,15 @@ function getCurrencySymbol(currency: string) {
 }
 
 /**
- * 엑셀 발주서 생성 (ExcelJS)
+ * 엑셀 발주서 생성 (ExcelJS) - hanslwebapp과 동일한 방식
  * @param data PurchaseOrderData
  * @returns Blob (xlsx)
  */
 export async function generatePurchaseOrderExcelJS(data: PurchaseOrderData): Promise<Blob> {
   // ExcelJS를 동적으로 import하여 초기 번들 크기 감소
   const ExcelJS = await import('exceljs');
-  const workbook = new ExcelJS.default.Workbook();
+  const workbook = new ExcelJS.Workbook();
+  
   const sheet = workbook.addWorksheet('발주서', {
     pageSetup: {
       paperSize: 9, // A4
@@ -74,12 +75,23 @@ export async function generatePurchaseOrderExcelJS(data: PurchaseOrderData): Pro
     }
   });
 
-  // 행 높이 고정: 1행 39.75pt, 2행부터 15.75pt
-  sheet.getRow(1).height = 39.75;
+  // 행 높이 고정: 1행 39.75px(≈29.8pt), 2행부터 18px(≈13.5pt)
+  sheet.getRow(1).height = 29.8; // 39.75px
   for (let r = 2; r <= 60; r++) {
-    sheet.getRow(r).height = 15.75;
+    sheet.getRow(r).height = 15.75; // 21px≈15.75pt
   }
-  // 폰트 기본값 설정은 나중에 개별 적용
+  // 폰트 기본값: 맑은고딕, 크기 11 (2행부터), 1행은 20
+  // 1행
+  sheet.getRow(1).eachCell(cell => {
+    cell.font = { ...(cell.font || {}), name: '맑은 고딕', size: 20 };
+  });
+
+  // 나머지 행 기본 폰트 설정 (필요시 뒤에서 개별 셀에서 다시 bold 지정)
+  for (let r = 2; r <= 60; r++) {
+    sheet.getRow(r).eachCell(cell => {
+      cell.font = { ...(cell.font || {}), name: '맑은 고딕', size: 11 };
+    });
+  }
 
   // 1. 병합 범위 템플릿과 1:1 적용
   sheet.mergeCells('A1:G1');
@@ -88,140 +100,95 @@ export async function generatePurchaseOrderExcelJS(data: PurchaseOrderData): Pro
   sheet.mergeCells('A4:B4'); sheet.mergeCells('C4:D4'); sheet.mergeCells('F4:G4');
   sheet.mergeCells('A5:B5'); sheet.mergeCells('C5:D5'); sheet.mergeCells('F5:G5');
   sheet.mergeCells('A6:B6'); sheet.mergeCells('C6:D6'); sheet.mergeCells('F6:G6');
-  sheet.mergeCells('A7:B7'); sheet.mergeCells('C7:D7'); sheet.mergeCells('E7:F7');
+  sheet.mergeCells('A7:B7'); sheet.mergeCells('C7:D7'); sheet.mergeCells('F7:G7');
   // 8~46행(헤더/품목/합계) 병합 없음
   // 합계가 들어가는 행에 맞춰 병합 범위도 동적으로 이동
   // (아래에서 sumRow 계산 후 병합)
 
-  // 로고 이미지 처리 (필요 시 활성화)
-  // 현재는 로고 없이 템플릿과 동일한 형식으로 처리
+  try {
+    const response = await fetch('/logo_KOR.png');
+    const arrayBuffer = await response.arrayBuffer();
+    const imageId = workbook.addImage({
+      buffer: arrayBuffer,
+      extension: 'png',
+    });
+    // 로고(이모티콘)는 너비 0.58col, '발주서' 글자 바로 왼쪽에 딱 붙게 배치
+    // D열 width가 undefined/null/0이면 기본값 22로 대체
+    const dWidth = sheet.getColumn('D').width || 22;
+    const logoWidth = Math.max(1, dWidth * 7.2 * 0.58) + 4; // 기존보다 4px 더 크게
+    const logoHeight = 30 + 4; // 기존 30에서 4px 더 크게
+    // D1 셀 중앙(3.5, 0.5)에서 왼쪽 2px(0.28col), 위로 2px(0.13row) 이동
+    const logoCol = 3.5 - 0.50;
+    const logoRow = 0.5 - 0.20;
+    sheet.addImage(imageId, {
+      tl: { col: logoCol, row: logoRow }, // D1 셀 중앙에서 왼쪽 2px, 위로 2px 이동
+      ext: { width: logoWidth, height: logoHeight },
+    });
+  } catch (e) {}
 
-  // 2. 제목 (A1:G1 병합, 중앙정렬)
-  sheet.getCell('A1').value = '             발 주 서';
-  sheet.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
-  sheet.getCell('A1').font = { name: 'GulimChe', size: 25, bold: true };
+  // 2. 제목 (B1:H1 병합, 중앙정렬)
+  sheet.getCell('D1').value = '                발 주 서';
+  sheet.getCell('D1').alignment = { horizontal: 'left', vertical: 'middle', indent: 1 };
+  sheet.getCell('D1').font = { bold: true, size: 20 };
 
-  // 3. 상단 정보 고정 라벨 적용 (템플릿과 동일한 형식)
-  sheet.getCell('A2').value = '업 체 명';
-  sheet.getCell('A2').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
-  sheet.getCell('A3').value = '담 당 자';
-  sheet.getCell('A3').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('A3').alignment = { horizontal: 'center', vertical: 'middle' };
-  sheet.getCell('A4').value = '청 구 일';
-  sheet.getCell('A4').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('A4').alignment = { horizontal: 'center', vertical: 'middle' };
-  sheet.getCell('A5').value = '전화 번호';
-  sheet.getCell('A5').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('A5').alignment = { horizontal: 'center', vertical: 'middle' };
-  sheet.getCell('A6').value = '팩스 번호';
-  sheet.getCell('A6').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('A6').alignment = { horizontal: 'center', vertical: 'middle' };
-  sheet.getCell('A7').value = '입고 요청일';
-  sheet.getCell('A7').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('A7').alignment = { horizontal: 'center', vertical: 'middle' };
+  // 3. 상단 정보 고정 라벨 적용 (공백 포함)
+  sheet.getCell('A2').value = '업   체   명';
+  sheet.getCell('A2').font = { bold: true };
+  sheet.getCell('A3').value = '담   당   자';
+  sheet.getCell('A3').font = { bold: true };
+  sheet.getCell('A4').value = '청   구   일';
+  sheet.getCell('A4').font = { bold: true };
+  sheet.getCell('A5').value = 'TEL.';
+  sheet.getCell('A5').font = { bold: true };
+  sheet.getCell('A6').value = 'FAX.';
+  sheet.getCell('A6').font = { bold: true };
+  sheet.getCell('A7').value = '입고요청일';
+  sheet.getCell('A7').font = { bold: true };
 
-  sheet.getCell('E2').value = '구매요구자';
-  sheet.getCell('E2').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('E2').alignment = { horizontal: 'center', vertical: 'middle' };
-  sheet.getCell('E3').value = '주  소';
-  sheet.getCell('E3').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('E3').alignment = { horizontal: 'center', vertical: 'middle' };
-  sheet.getCell('E4').value = '발주 번호';
-  sheet.getCell('E4').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('E4').alignment = { horizontal: 'center', vertical: 'middle' };
-  sheet.getCell('E5').value = '전화 번호';
-  sheet.getCell('E5').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('E5').alignment = { horizontal: 'center', vertical: 'middle' };
-  sheet.getCell('E6').value = '팩스 번호';
-  sheet.getCell('E6').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('E6').alignment = { horizontal: 'center', vertical: 'middle' };
+  sheet.getCell('E2').value = '구매요청자';
+  sheet.getCell('E2').font = { bold: true };
+  sheet.getCell('E3').value = '주         소';
+  sheet.getCell('E3').font = { bold: true };
+  sheet.getCell('E4').value = '발 주 번 호';
+  sheet.getCell('E4').font = { bold: true };
+  sheet.getCell('E5').value = 'TEL.';
+  sheet.getCell('E5').font = { bold: true };
+  sheet.getCell('E6').value = 'FAX.';
+  sheet.getCell('E6').font = { bold: true };
   sheet.getCell('E7').value = '지출 예정일';
-  sheet.getCell('E7').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('E7').alignment = { horizontal: 'center', vertical: 'middle' };
+  sheet.getCell('E7').font = { bold: true };
 
-  // E7:F7 병합됨 - 지출 예정일 값은 F7에
-  sheet.getCell('F7').value = data.vendor_payment_schedule || '익월말 결제';
-  sheet.getCell('F7').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('F7').alignment = { horizontal: 'center', vertical: 'middle' };
+  sheet.getCell('F7').value = data.vendor_payment_schedule || '';
 
-  // 데이터 매핑 (템플릿과 동일한 형식)
+  // 데이터 매핑(예시)
   sheet.getCell('C2').value = data.vendor_name;
-  sheet.getCell('C2').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('C2').alignment = { horizontal: 'center', vertical: 'middle' };
-  
   sheet.getCell('C3').value = data.vendor_contact_name || '';
-  sheet.getCell('C3').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('C3').alignment = { horizontal: 'center', vertical: 'middle' };
-  
   sheet.getCell('C4').value = formatDate(data.request_date);
-  sheet.getCell('C4').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('C4').alignment = { horizontal: 'center', vertical: 'middle' };
-  
   sheet.getCell('C5').value = data.vendor_phone || '';
-  sheet.getCell('C5').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('C5').alignment = { horizontal: 'center', vertical: 'middle' };
-  
   sheet.getCell('C6').value = data.vendor_fax || '';
-  sheet.getCell('C6').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('C6').alignment = { horizontal: 'center', vertical: 'middle' };
-  
   sheet.getCell('C7').value = formatDate(data.delivery_request_date);
-  sheet.getCell('C7').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('C7').alignment = { horizontal: 'center', vertical: 'middle' };
 
   sheet.getCell('F2').value = data.requester_name;
-  sheet.getCell('F2').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('F2').alignment = { horizontal: 'center', vertical: 'middle' };
-  
-  sheet.getCell('F3').value = '대구광역시 달서구 성서공단북로 305';
-  sheet.getCell('F3').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('F3').alignment = { horizontal: 'center', vertical: 'middle' };
-  
+  sheet.getCell('F3').value = '대구광역시 달서구 성서공단북로305';
   sheet.getCell('F4').value = data.purchase_order_number;
-  sheet.getCell('F4').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('F4').alignment = { horizontal: 'center', vertical: 'middle' };
-  
-  sheet.getCell('F5').value = '(053) 626 - 7805';
-  sheet.getCell('F5').font = { name: 'GulimChe', size: 11 };
+  sheet.getCell('F5').value = '(053) 626-7805';
+  sheet.getCell('F6').value = '(053) 657-7905';
   sheet.getCell('F5').alignment = { horizontal: 'center', vertical: 'middle' };
-  
-  sheet.getCell('F6').value = '(053) 657 - 7905';
-  sheet.getCell('F6').font = { name: 'GulimChe', size: 11 };
   sheet.getCell('F6').alignment = { horizontal: 'center', vertical: 'middle' };
 
-  // 8행: 테이블 헤더 (템플릿과 동일)
-  sheet.getCell('A8').value = '번호';
-  sheet.getCell('A8').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('A8').alignment = { horizontal: 'center', vertical: 'middle' };
-  
-  sheet.getCell('B8').value = '품명';
-  sheet.getCell('B8').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('B8').alignment = { horizontal: 'center', vertical: 'middle' };
-  
-  sheet.getCell('C8').value = '규  격';
-  sheet.getCell('C8').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('C8').alignment = { horizontal: 'center', vertical: 'middle' };
-  
-  sheet.getCell('D8').value = '수 량';
-  sheet.getCell('D8').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('D8').alignment = { horizontal: 'center', vertical: 'middle' };
-  
-  sheet.getCell('E8').value = '단  가';
-  sheet.getCell('E8').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('E8').alignment = { horizontal: 'center', vertical: 'middle' };
-  
-  sheet.getCell('F8').value = '금  액';
-  sheet.getCell('F8').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('F8').alignment = { horizontal: 'center', vertical: 'middle' };
-  
-  sheet.getCell('G8').value = '비고 (사용 용도)';
-  sheet.getCell('G8').font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('G8').alignment = { horizontal: 'center', vertical: 'middle' };
+  // 8행: 테이블 헤더
+  const tableHeaders = ['No', '품명', '규격', '수량', '단가', '금액', '비고'];
+  for (let i = 0; i < tableHeaders.length; i++) {
+    sheet.getCell(String.fromCharCode(65 + i) + '8').value = tableHeaders[i];
+    sheet.getCell(String.fromCharCode(65 + i) + '8').font = { bold: true };
+    if(i===6){
+       sheet.getCell('G8').alignment = { horizontal:'center', vertical:'middle' };
+    }
+  }
 
-  // 품목이 38개를 넘으면 아래로 밀어서 합계/하단 정보 출력 (템플릿에서는 47행에 합계)
+  // 품목이 45개를 넘으면 아래로 밀어서 합계/하단 정보 출력
   const baseRow = 9;
-  const minRows = 38; // 템플릿에서는 A47에 합계가 있으므로 9~46행이 38개
+  const minRows = 45;
   // --- 품목 데이터 line_number 기준 정렬 ---
   const sortedItems = [...data.items].sort((a, b) => a.line_number - b.line_number);
   const itemRows = sortedItems.length;
@@ -231,30 +198,19 @@ export async function generatePurchaseOrderExcelJS(data: PurchaseOrderData): Pro
   for (let i = 0; i < sortedItems.length; i++) {
     const item = sortedItems[i];
     const rowIdx = baseRow + i;
-    
     sheet.getCell('A' + rowIdx).value = item.line_number;
-    sheet.getCell('A' + rowIdx).font = { name: 'GulimChe', size: 11 };
-    sheet.getCell('A' + rowIdx).alignment = { horizontal: 'center', vertical: 'middle' };
-    
-    sheet.getCell('B' + rowIdx).value = item.item_name;
-    sheet.getCell('B' + rowIdx).font = { name: 'GulimChe', size: 11 };
-    sheet.getCell('B' + rowIdx).alignment = { horizontal: 'left', vertical: 'middle' };
-    
+    const bCell = sheet.getCell('B' + rowIdx);
+    bCell.value = item.item_name;
+    bCell.alignment = { horizontal: 'left', vertical: 'middle' };
     sheet.getCell('C' + rowIdx).value = item.specification;
-    sheet.getCell('C' + rowIdx).font = { name: 'GulimChe', size: 11 };
     sheet.getCell('C' + rowIdx).alignment = { horizontal: 'left', vertical: 'middle' };
-    
     sheet.getCell('D' + rowIdx).value = item.quantity;
-    sheet.getCell('D' + rowIdx).font = { name: 'GulimChe', size: 11 };
-    sheet.getCell('D' + rowIdx).alignment = { horizontal: 'center', vertical: 'middle' };
-    
     // 단가(E열) - 통화 기호 포함
     const unitSymbol = getCurrencySymbol(item.currency);
     const unitWithCurrency = (item.unit_price_value !== undefined && item.unit_price_value !== null)
       ? `${item.unit_price_value.toLocaleString()} ${unitSymbol}`.trim()
       : '';
     sheet.getCell('E' + rowIdx).value = unitWithCurrency;
-    sheet.getCell('E' + rowIdx).font = { name: 'GulimChe', size: 11 };
     sheet.getCell('E' + rowIdx).alignment = { horizontal: 'right', vertical: 'middle' };
 
     // 금액(F열) - 통화 기호 포함
@@ -263,16 +219,14 @@ export async function generatePurchaseOrderExcelJS(data: PurchaseOrderData): Pro
       ? `${item.amount_value.toLocaleString()} ${amountSymbol}`.trim()
       : '';
     sheet.getCell('F' + rowIdx).value = amountWithCurrency;
-    sheet.getCell('F' + rowIdx).font = { name: 'GulimChe', size: 11 };
     sheet.getCell('F' + rowIdx).alignment = { horizontal: 'right', vertical: 'middle' };
-    
-    // 비고(G열)
-    sheet.getCell('G' + rowIdx).value = (item.remark !== undefined && item.remark !== null) ? String(item.remark) : '';
-    sheet.getCell('G' + rowIdx).font = { name: 'GulimChe', size: 11 };
-    sheet.getCell('G' + rowIdx).alignment = { horizontal: 'center', vertical: 'middle' };
+    // G열은 비워둠
+    const gCell = sheet.getCell('G' + rowIdx);
+    gCell.value = (item.remark !== undefined && item.remark !== null) ? String(item.remark) : '';
+    gCell.alignment = { horizontal: 'left', vertical: 'middle', wrapText: false, shrinkToFit: true };
   }
 
-  // 품목이 38개보다 적으면 빈 행 추가
+  // 품목이 45개보다 적으면 빈 행 추가
   for (let i = itemRows; i < minRows; i++) {
     const rowIdx = baseRow + i;
     for (let c = 0; c < 7; c++) {
@@ -280,22 +234,17 @@ export async function generatePurchaseOrderExcelJS(data: PurchaseOrderData): Pro
     }
   }
 
-  // 합계 (템플릿과 동일한 형식으로 A47처럼 병합)
-  const sumMergeRange = itemRows < 38 ? 'A47:E47' : `A${sumRow}:E${sumRow}`;
-  sheet.mergeCells(sumMergeRange);
-  const actualSumRow = itemRows < 38 ? 47 : sumRow;
-  sheet.getCell('A' + actualSumRow).value = '합계';
-  sheet.getCell('A' + actualSumRow).font = { name: 'GulimChe', size: 11, bold: true };
-  sheet.getCell('A' + actualSumRow).alignment = { horizontal: 'center', vertical: 'middle' };
-  
+  // 합계
+  sheet.mergeCells(`A${sumRow}:E${sumRow}`);
+  sheet.getCell('A' + sumRow).value = '합계';
+  sheet.getCell('A' + sumRow).font = { bold: true };
   const totalSymbol = getCurrencySymbol(data.items[0]?.currency);
   const totalAmount = data.items.reduce((sum, item) => sum + (item.amount_value || 0), 0);
-  sheet.getCell('F' + actualSumRow).value = `${totalAmount.toLocaleString()} ${totalSymbol}`.trim();
-  sheet.getCell('F' + actualSumRow).font = { name: 'GulimChe', size: 11 };
-  sheet.getCell('F' + actualSumRow).alignment = { horizontal: 'right', vertical: 'middle' };
+  sheet.getCell('F' + sumRow).value = `${totalAmount.toLocaleString()} ${totalSymbol}`.trim();
+  sheet.getCell('F' + sumRow).alignment = { horizontal: 'right', vertical: 'middle' };
 
   // 실제 마지막 데이터가 들어간 행까지 동적으로 테두리 적용 (합계까지만)
-  const lastRow = actualSumRow;
+  const lastRow = sumRow;
   for (let r = 1; r <= lastRow; r++) {
     for (let c = 1; c <= 7; c++) {
       const col = String.fromCharCode(64 + c); // A~G
@@ -312,14 +261,18 @@ export async function generatePurchaseOrderExcelJS(data: PurchaseOrderData): Pro
       }
       // 기존 스타일: 2행/8행/합계행(sumRow) 위, 8행 아래, 마지막행만 굵은선
       cell.border = {
-        top:    { style: (r === 1) ? 'medium' : (r === 2 || r === 8 || r === actualSumRow) ? 'medium' : 'thin' },
+        top:    { style: (r === 1) ? 'medium' : (r === 2 || r === 8 || r === sumRow) ? 'medium' : 'thin' },
         left:   { style: c === 1 ? 'medium' : 'thin' },
         right:  { style: c === 7 ? 'medium' : 'thin' },
-        bottom: { style: (r === 8 || r === actualSumRow || r === lastRow) ? 'medium' : 'thin' }
+        bottom: { style: (r === 8 || r === sumRow || r === lastRow) ? 'medium' : 'thin' }
       };
     }
   }
-  // 품목 데이터 정렬은 이미 위에서 설정했으므로 삭제
+  // 규격(C열) 입력란(품목 데이터 행)은 마지막에 좌측 정렬로 덮어쓴다
+  for (let i = 0; i < itemRows; i++) {
+    const rowIdx = baseRow + i;
+    sheet.getCell('C' + rowIdx).alignment = { horizontal: 'left', vertical: 'middle' };
+  }
 
   // B2:B7, D2:D7, E2:E6 오른쪽 테두리 굵게
   for (let r = 2; r <= 7; r++) {
@@ -359,32 +312,39 @@ export async function generatePurchaseOrderExcelJS(data: PurchaseOrderData): Pro
   }
 
   // 합계 행(A열) 왼쪽 테두리 굵게 명시적 설정
-  const sumCellBorder = sheet.getCell('A' + actualSumRow).border || {};
-  sheet.getCell('A' + actualSumRow).border = {
+  const sumCellBorder = sheet.getCell('A' + sumRow).border || {};
+  sheet.getCell('A' + sumRow).border = {
     ...sumCellBorder,
     left: { style: 'medium' }
   };
 
-  // 열 너비 (템플릿 기준 정확히 매칭)
-  sheet.getColumn('A').width = 6.33203125;
-  sheet.getColumn('B').width = 12.6640625;
-  sheet.getColumn('C').width = 31.6640625;
-  sheet.getColumn('D').width = 12.6640625;
-  sheet.getColumn('E').width = 15.6640625;
-  sheet.getColumn('F').width = 17.6640625;
-  sheet.getColumn('G').width = 39;
+  // 열 너비 (템플릿 기준)
+  const colWidths = { A:4.7, B:23, C:30, D:11, E:15, F:16, G:37 };
+  Object.entries(colWidths).forEach(([col, width]) => {
+    sheet.getColumn(col).width = width;
+  });
 
   /* -----------------------------------
-      행 높이 최종 설정
+      최종 행 높이/폰트 일괄 적용
       1행 : 39.75pt
-      2행~lastRow : 15.75pt
+      2행~lastRow : 18pt
   ----------------------------------- */
-  sheet.getRow(1).height = 39.75;
+  sheet.getRow(1).height = 29.8; // 39.75px≈29.8pt
+  sheet.getRow(1).eachCell(c => { c.font = { ...(c.font || {}), name: '맑은 고딕', size: 20 }; });
+
   for (let r = 2; r <= lastRow; r++) {
-    sheet.getRow(r).height = 15.75;
+    const row = sheet.getRow(r);
+    row.height = 15.75; // 21px≈15.75pt
+    row.eachCell(c => {
+      c.font = { ...(c.font || {}), name: '맑은 고딕', size: 11 };
+    });
   }
 
-  // 품목 데이터 행의 폰트 및 정렬은 이미 위에서 설정했으므로 삭제
+  // G열 전체 좌측 정렬 및 자동 줄바꿈 보장
+  for (let r = 9; r <= lastRow; r++) {
+    sheet.getCell('G' + r).alignment = { horizontal: 'left', vertical: 'middle', wrapText: false, shrinkToFit: true };
+    sheet.getCell('B' + r).alignment = { horizontal: 'left', vertical: 'middle' };
+  }
 
   // 9. 파일 생성
   const buffer = await workbook.xlsx.writeBuffer();

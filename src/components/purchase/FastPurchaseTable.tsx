@@ -5,6 +5,7 @@ import MobilePurchaseCard from "./MobilePurchaseCard";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs/generatePurchaseOrderExcel";
+import { formatDateShort } from "@/utils/helpers";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -190,12 +191,7 @@ const getPaymentProgress = (purchase: Purchase) => {
   return { completed, total, percentage };
 };
 
-// 날짜 포맷 함수
-const formatDate = (dateStr?: string) => {
-  if (!dateStr) return '-';
-  const date = new Date(dateStr);
-  return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-};
+// formatDateShort는 utils/helpers.ts에서 import
 
 // 선진행 구분 배지
 const ProgressTypeBadge = memo(({ type }: { type?: string }) => {
@@ -340,7 +336,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
         </span>
       </td>
       <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.requestDate}`}>
-        {formatDate(purchase.request_date)}
+        {formatDateShort(purchase.request_date)}
       </td>
       <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.vendorName}`}>
         <span className="block truncate" title={purchase.vendor_name || ''}>
@@ -353,7 +349,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
         </span>
       </td>
       <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>
-        {formatDate(purchase.delivery_request_date)}
+        {formatDateShort(purchase.delivery_request_date)}
       </td>
       <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.itemName}`}>
         <span className="block truncate" title={purchase.item_name || ''}>
@@ -555,9 +551,7 @@ const FastPurchaseTable = memo(({
 
   // 권한 체크 - lead buyer와 app_admin만 구매완료/입고완료 버튼 사용 가능
   const isLeadBuyer = currentUserRoles && (
-    currentUserRoles.includes('raw_material_manager') || 
-    currentUserRoles.includes('consumable_manager') ||
-    currentUserRoles.includes('purchase_manager') ||
+    currentUserRoles.includes('lead buyer') ||
     currentUserRoles.includes('app_admin')
   );
   
