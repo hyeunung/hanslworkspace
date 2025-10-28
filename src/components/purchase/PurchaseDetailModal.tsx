@@ -382,6 +382,38 @@ export default function PurchaseDetailModal({
     setEditedItems(newItems)
   }
 
+  // 구매완료 처리 함수
+  const handlePaymentToggle = async (itemId: number, isCompleted: boolean) => {
+    if (!canReceiptCheck) {
+      toast.error('구매완료 처리 권한이 없습니다.')
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('purchase_request_items')
+        .update({
+          is_payment_completed: isCompleted,
+          payment_completed_at: isCompleted ? new Date().toISOString() : null
+        })
+        .eq('id', itemId)
+
+      if (error) throw error
+
+      toast.success(isCompleted ? '구매완료 처리되었습니다.' : '구매완료가 취소되었습니다.')
+      
+      // 데이터 새로고침
+      if (purchaseId) {
+        await loadPurchaseDetail(purchaseId.toString())
+      }
+      
+      // 부모 컴포넌트 새로고침
+      onRefresh?.()
+    } catch (error) {
+      toast.error('구매완료 처리 중 오류가 발생했습니다.')
+    }
+  }
+
   // 입고 처리 함수
   const handleReceiptToggle = async (itemId: number, isReceived: boolean) => {
     if (!canReceiptCheck) {
@@ -665,6 +697,9 @@ export default function PurchaseDetailModal({
                 <table className="min-w-full bg-white rounded-lg overflow-hidden shadow-sm">
                   <thead className="bg-gray-100">
                     <tr>
+                      {canReceiptCheck && activeTab === 'purchase' && (
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">구매</th>
+                      )}
                       {canReceiptCheck && activeTab === 'receipt' && (
                         <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">입고</th>
                       )}
@@ -674,12 +709,45 @@ export default function PurchaseDetailModal({
                       <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">단가</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">금액</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">비고</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">입고상태</th>
+                      {activeTab === 'purchase' && (
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">구매상태</th>
+                      )}
+                      {activeTab === 'receipt' && (
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">입고상태</th>
+                      )}
+                      {!activeTab && (
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">입고상태</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {(isEditing ? editedItems : purchase.items)?.map((item, index) => (
                       <tr key={index} className="hover:bg-gray-50 transition-colors">
+                        {canReceiptCheck && activeTab === 'purchase' && (
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center">
+                              {item.is_payment_completed ? (
+                                <button
+                                  onClick={() => handlePaymentToggle(item.id, false)}
+                                  className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-md hover:bg-blue-200 transition-colors"
+                                  disabled={!canReceiptCheck}
+                                >
+                                  <CheckCircle className="w-3 h-3" />
+                                  구매완료
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handlePaymentToggle(item.id, true)}
+                                  className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 transition-colors"
+                                  disabled={!canReceiptCheck}
+                                >
+                                  <CreditCard className="w-3 h-3" />
+                                  구매대기
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )}
                         {canReceiptCheck && activeTab === 'receipt' && (
                           <td className="px-4 py-3 text-center">
                             <div className="flex items-center justify-center">
@@ -784,29 +852,57 @@ export default function PurchaseDetailModal({
                             <span className="text-sm">{item.remark || '-'}</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-center">
-                          {item.is_received ? (
-                            <div className="flex items-center justify-center">
+                        {activeTab === 'purchase' && (
+                          <td className="px-4 py-3 text-center">
+                            {item.is_payment_completed ? (
+                              <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                구매완료
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-gray-100 text-gray-600 border-gray-200">
+                                구매대기
+                              </Badge>
+                            )}
+                          </td>
+                        )}
+                        {activeTab === 'receipt' && (
+                          <td className="px-4 py-3 text-center">
+                            {item.is_received ? (
                               <Badge className="bg-green-100 text-green-800 border-green-200">
                                 <CheckCircle className="w-3 h-3 mr-1" />
                                 입고완료
                               </Badge>
-                            </div>
-                          ) : !isEditing && canReceiveItems ? (
-                            <Button
-                              size="sm"
-                              onClick={() => handleCompleteItemReceipt(item.id, item.item_name)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1"
-                            >
-                              <Truck className="w-3 h-3 mr-1" />
-                              입고완료
-                            </Button>
-                          ) : (
-                            <Badge className="bg-gray-100 text-gray-600 border-gray-200">
-                              {isEditing ? '입고대기' : '입고대기'}
-                            </Badge>
-                          )}
-                        </td>
+                            ) : !isEditing && canReceiveItems ? (
+                              <Button
+                                size="sm"
+                                onClick={() => handleCompleteItemReceipt(item.id, item.item_name)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-2 py-1"
+                              >
+                                <Truck className="w-3 h-3 mr-1" />
+                                입고완료
+                              </Button>
+                            ) : (
+                              <Badge className="bg-gray-100 text-gray-600 border-gray-200">
+                                입고대기
+                              </Badge>
+                            )}
+                          </td>
+                        )}
+                        {!activeTab && (
+                          <td className="px-4 py-3 text-center">
+                            {item.is_received ? (
+                              <Badge className="bg-green-100 text-green-800 border-green-200">
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                입고완료
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-gray-100 text-gray-600 border-gray-200">
+                                입고대기
+                              </Badge>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

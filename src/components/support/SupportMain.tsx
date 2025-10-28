@@ -91,6 +91,7 @@ export default function SupportMain() {
 
   // 문의 목록 로드
   const loadInquiries = async () => {
+    console.log('🔄 loadInquiries 시작 - isAdmin:', isAdmin)
     setLoadingInquiries(true)
     
     // 관리자면 모든 문의, 아니면 내 문의만
@@ -98,8 +99,13 @@ export default function SupportMain() {
       ? await supportService.getAllInquiries()
       : await supportService.getMyInquiries()
     
+    console.log('📋 문의 목록 로드 결과:', result)
+    
     if (result.success) {
+      console.log('✅ 문의 목록 설정:', result.data.length, '건')
       setInquiries(result.data)
+    } else {
+      console.error('❌ 문의 목록 로드 실패:', result.error)
     }
     
     setLoadingInquiries(false)
