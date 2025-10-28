@@ -227,6 +227,9 @@ export default function PurchaseStatusModal({
               <table className="min-w-full bg-white rounded-lg overflow-hidden shadow-sm">
                 <thead className="bg-gray-100">
                   <tr>
+                    {type === 'purchase' && (
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">구매</th>
+                    )}
                     {type === 'delivery' && (
                       <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">입고</th>
                     )}
@@ -243,6 +246,21 @@ export default function PurchaseStatusModal({
                     const unitPrice = pItem.quantity > 0 ? (Number(pItem.amount_value) || 0) / pItem.quantity : 0
                     return (
                       <tr key={index} className="hover:bg-gray-50 transition-colors">
+                        {type === 'purchase' && (
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center">
+                              {item.is_payment_completed ? (
+                                <Badge className="bg-yellow-100 text-yellow-800 text-xs">
+                                  구매완료
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-gray-600 text-xs">
+                                  구매대기
+                                </Badge>
+                              )}
+                            </div>
+                          </td>
+                        )}
                         {type === 'delivery' && (
                           <td className="px-4 py-3 text-center">
                             <div className="flex items-center justify-center">
