@@ -111,6 +111,8 @@ export interface PurchaseRequestItem {
   receipt_image_url?: string | null
   receipt_uploaded_at?: string | null
   receipt_uploaded_by?: string | null
+  is_payment_completed?: boolean
+  payment_completed_at?: string | null
   created_at: string
   updated_at: string
 }

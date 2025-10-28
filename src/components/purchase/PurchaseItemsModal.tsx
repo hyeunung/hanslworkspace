@@ -331,15 +331,6 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                     )}
                   </TableCell>
                   <TableCell>
-                    {/* 영수증 다운로드 버튼 */}
-                    <ReceiptDownloadButton
-                      itemId={Number(item.id)}
-                      receiptUrl={item.receipt_image_url}
-                      itemName={item.item_name}
-                      onUpdate={onUpdate}
-                    />
-                  </TableCell>
-                  <TableCell>
                     {isEditing ? (
                       <Input
                         value={item.remark || ''}

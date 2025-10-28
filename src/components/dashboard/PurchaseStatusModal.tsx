@@ -47,6 +47,12 @@ export default function PurchaseStatusModal({
   const supabase = createClient()
   const [currentUserRoles, setCurrentUserRoles] = useState<string[]>([])
   const [processing, setProcessing] = useState(false)
+  const [localItem, setLocalItem] = useState(item)
+
+  // localItem을 item prop 변경 시 업데이트
+  useEffect(() => {
+    setLocalItem(item)
+  }, [item])
 
   // Get current user roles
   useEffect(() => {
@@ -78,9 +84,9 @@ export default function PurchaseStatusModal({
     fetchUserRoles()
   }, [type])
 
-  if (!item) return null
+  if (!localItem) return null
 
-  const items = item.purchase_request_items || []
+  const items = localItem.purchase_request_items || []
   const totalAmount = items.reduce((sum: number, i: any) => {
     return sum + (Number(i.amount_value) || 0)
   }, 0)
@@ -92,15 +98,15 @@ export default function PurchaseStatusModal({
   console.log('🔍 PurchaseStatusModal Debug:', {
     type,
     currentUserRoles,
-    item: item.purchase_order_number,
+    item: localItem.purchase_order_number,
     showPurchaseButton: type === 'purchase',
     showDeliveryButton: type === 'delivery',
     hasAdminPermission: currentUserRoles.includes('app_admin'),
     hasLeadBuyerPermission: currentUserRoles.includes('lead buyer'),
     hasReceiverPermission: currentUserRoles.includes('receiver'),
     itemData: {
-      is_payment_completed: item.is_payment_completed,
-      is_received: item.is_received
+      is_payment_completed: localItem.is_payment_completed,
+      is_received: localItem.is_received
     }
   })
 
@@ -137,10 +143,10 @@ export default function PurchaseStatusModal({
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">
-            {item.purchase_order_number || 'PO번호 없음'} 상세보기
+            {localItem.purchase_order_number || 'PO번호 없음'} 상세보기
           </DialogTitle>
           <DialogDescription>
-            {item.vendor_name || '업체명 없음'}
+            {localItem.vendor_name || '업체명 없음'}
           </DialogDescription>
         </DialogHeader>
 
@@ -154,29 +160,29 @@ export default function PurchaseStatusModal({
             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
               <div>
                 <p className="text-sm text-gray-500 mb-1">요청자</p>
-                <p className="font-medium text-gray-900">{item.requester_name}</p>
+                <p className="font-medium text-gray-900">{localItem.requester_name}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500 mb-1">요청일</p>
                 <p className="font-medium text-gray-900">
-                  {new Date(item.request_date || item.created_at).toLocaleDateString('ko-KR')}
+                  {new Date(localItem.request_date || localItem.created_at).toLocaleDateString('ko-KR')}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-gray-500 mb-1">납기요청일</p>
                 <p className="font-medium text-gray-900">
-                  {item.delivery_request_date 
-                    ? new Date(item.delivery_request_date).toLocaleDateString('ko-KR')
+                  {localItem.delivery_request_date 
+                    ? new Date(localItem.delivery_request_date).toLocaleDateString('ko-KR')
                     : '-'}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-gray-500 mb-1">결제유형</p>
-                <p className="font-medium text-gray-900">{item.payment_category || '-'}</p>
+                <p className="font-medium text-gray-900">{localItem.payment_category || '-'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500 mb-1">진행구분</p>
-                <p className="font-medium text-gray-900">{item.progress_type || '일반'}</p>
+                <p className="font-medium text-gray-900">{localItem.progress_type || '일반'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500 mb-1">상태</p>
@@ -198,27 +204,27 @@ export default function PurchaseStatusModal({
             <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
               <div>
                 <p className="text-sm text-gray-500 mb-1">업체명</p>
-                <p className="font-medium text-gray-900">{item.vendor_name || '-'}</p>
+                <p className="font-medium text-gray-900">{localItem.vendor_name || '-'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500 mb-1">프로젝트 업체</p>
-                <p className="font-medium text-gray-900">{item.project_vendor || '-'}</p>
+                <p className="font-medium text-gray-900">{localItem.project_vendor || '-'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500 mb-1">판매주문번호</p>
-                <p className="font-medium text-gray-900">{item.sales_order_number || '-'}</p>
+                <p className="font-medium text-gray-900">{localItem.sales_order_number || '-'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500 mb-1">프로젝트 품목</p>
-                <p className="font-medium text-gray-900">{item.project_item || '-'}</p>
+                <p className="font-medium text-gray-900">{localItem.project_item || '-'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500 mb-1">발주서 템플릿</p>
-                <p className="font-medium text-gray-900">{item.po_template_type || '일반'}</p>
+                <p className="font-medium text-gray-900">{localItem.po_template_type || '일반'}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500 mb-1">통화</p>
-                <p className="font-medium text-gray-900">{item.currency || 'KRW'}</p>
+                <p className="font-medium text-gray-900">{localItem.currency || 'KRW'}</p>
               </div>
             </div>
           </div>
@@ -255,7 +261,7 @@ export default function PurchaseStatusModal({
                         {type === 'purchase' && (
                           <td className="px-4 py-3 text-center">
                             <div className="flex items-center justify-center">
-                              {item.is_payment_completed ? (
+                              {localItem.is_payment_completed ? (
                                 <Badge className="bg-yellow-100 text-yellow-800 text-xs">
                                   구매완료
                                 </Badge>
@@ -368,7 +374,7 @@ export default function PurchaseStatusModal({
                         is_received: true,
                         received_at: new Date().toISOString()
                       })
-                      .eq('id', item.id)
+                      .eq('id', localItem.id)
 
                     if (error) throw error
                     
@@ -379,14 +385,23 @@ export default function PurchaseStatusModal({
                         is_received: true,
                         delivery_status: 'received'
                       })
-                      .eq('purchase_request_id', item.id)
+                      .eq('purchase_request_id', localItem.id)
+                    
+                    // 로컬 상태 업데이트 (모달 유지하면서 UI만 변경)
+                    setLocalItem(prev => ({
+                      ...prev,
+                      is_received: true,
+                      received_at: new Date().toISOString(),
+                      purchase_request_items: prev.purchase_request_items?.map(pItem => ({
+                        ...pItem,
+                        is_received: true,
+                        delivery_status: 'received'
+                      }))
+                    }))
                     
                     toast.success('입고완료 처리되었습니다.')
-                    onClose()
-                    // 모달이 닫힌 후에 새로고침
-                    setTimeout(() => {
-                      onRefresh?.()
-                    }, 100)
+                    // 백그라운드에서 새로고침 (모달은 유지)
+                    onRefresh?.()
                   } catch (error) {
                     toast.error('처리 중 오류가 발생했습니다.')
                   } finally {
@@ -420,16 +435,20 @@ export default function PurchaseStatusModal({
                         is_payment_completed: true,
                         payment_completed_at: new Date().toISOString()
                       })
-                      .eq('id', item.id)
+                      .eq('id', localItem.id)
 
                     if (error) throw error
                     
+                    // 로컬 상태 업데이트 (모달 유지하면서 UI만 변경)
+                    setLocalItem(prev => ({
+                      ...prev,
+                      is_payment_completed: true,
+                      payment_completed_at: new Date().toISOString()
+                    }))
+                    
                     toast.success('구매완료 처리되었습니다.')
-                    onClose()
-                    // 모달이 닫힌 후에 새로고침
-                    setTimeout(() => {
-                      onRefresh?.()
-                    }, 100)
+                    // 백그라운드에서 새로고침 (모달은 유지)
+                    onRefresh?.()
                   } catch (error) {
                     toast.error('처리 중 오류가 발생했습니다.')
                   } finally {
@@ -454,7 +473,7 @@ export default function PurchaseStatusModal({
               <Button
                 variant="outline"
                 onClick={() => {
-                  navigate(`/purchase?highlight=${item.id}`)
+                  navigate(`/purchase?highlight=${localItem.id}`)
                   onClose()
                 }}
                 size="sm"

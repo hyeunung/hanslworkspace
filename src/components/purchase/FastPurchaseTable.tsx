@@ -385,6 +385,9 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
           )}
           <span className="block truncate" title={purchase.purchase_order_number || ''}>
             {purchase.purchase_order_number || '-'}
+            {purchase.items && purchase.items.length > 1 && (
+              <span className="text-gray-500 ml-0.5">({purchase.items.length})</span>
+            )}
           </span>
         </div>
       </td>
