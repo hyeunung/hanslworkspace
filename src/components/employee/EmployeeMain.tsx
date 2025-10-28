@@ -5,6 +5,7 @@ import { employeeService } from '@/services/employeeService'
 import EmployeeFilters from '@/components/employee/EmployeeFilters'
 import EmployeeTable from '@/components/employee/EmployeeTable'
 import EmployeeModal from '@/components/employee/EmployeeModal'
+import AttendanceDownload from '@/components/employee/AttendanceDownload'
 import { toast } from 'sonner'
 // XLSX는 사용할 때만 동적으로 import (성능 최적화)
 
@@ -20,6 +21,9 @@ export default function EmployeeMain() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
   const [modalMode, setModalMode] = useState<ModalMode>('create')
+  
+  // 출근현황표 모달 상태
+  const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false)
 
   // 직원 목록 로드
   const loadEmployees = async () => {
@@ -125,6 +129,7 @@ export default function EmployeeMain() {
         onFiltersChange={setFilters}
         onExport={handleExport}
         onCreateNew={handleCreateNew}
+        onAttendanceDownload={() => setIsAttendanceModalOpen(true)}
       />
 
       {/* 테이블 섹션 */}
@@ -146,13 +151,20 @@ export default function EmployeeMain() {
         />
       </div>
 
-      {/* 모달 */}
+      {/* 직원 모달 */}
       <EmployeeModal
         isOpen={isModalOpen}
         onClose={handleModalClose}
         employee={selectedEmployee}
         onSave={handleSave}
         mode={modalMode}
+      />
+
+      {/* 출근현황표 다운로드 모달 */}
+      <AttendanceDownload
+        employees={employees}
+        isOpen={isAttendanceModalOpen}
+        onClose={() => setIsAttendanceModalOpen(false)}
       />
       </div>
     </>

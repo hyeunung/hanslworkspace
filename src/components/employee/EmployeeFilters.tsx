@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Search, X, Download, Plus } from 'lucide-react'
+import { Search, X, Download, Plus, Calendar } from 'lucide-react'
 import { employeeService } from '@/services/employeeService'
 
 interface EmployeeFiltersProps {
@@ -18,6 +18,7 @@ interface EmployeeFiltersProps {
   onFiltersChange: (filters: EmployeeFiltersType) => void
   onExport: () => void
   onCreateNew: () => void
+  onAttendanceDownload: () => void
 }
 
 const PURCHASE_ROLES: { value: PurchaseRole; label: string }[] = [
@@ -33,7 +34,8 @@ export default function EmployeeFilters({
   filters, 
   onFiltersChange, 
   onExport,
-  onCreateNew 
+  onCreateNew,
+  onAttendanceDownload
 }: EmployeeFiltersProps) {
   const [localSearch, setLocalSearch] = useState(filters.search || '')
   const [departments, setDepartments] = useState<string[]>([])
@@ -112,6 +114,15 @@ export default function EmployeeFilters({
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <h2 className="text-xl sm:text-2xl font-bold text-gray-900">직원 관리</h2>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={onAttendanceDownload}
+            className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+          >
+            <Calendar className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">출근현황표</span>
+            <span className="sm:hidden">출근</span>
+          </Button>
           <Button
             variant="outline"
             onClick={onExport}
