@@ -90,25 +90,36 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
   
   // 1단계: 권한별 필터링 (캐싱 적용)
   const visiblePurchases = useMemo(() => {
-    const cacheKey = `visible_${purchases.length}_${currentUserRoles.join(',')}`;
-    if (filterCache.has(cacheKey)) {
-      return filterCache.get(cacheKey);
+    try {
+      const cacheKey = `visible_${purchases.length}_${currentUserRoles.join(',')}`;
+      if (filterCache.has(cacheKey)) {
+        return filterCache.get(cacheKey);
+      }
+      
+      let result;
+      if (currentUserRoles.includes('purchase_manager') || currentUserRoles.includes('app_admin')) {
+        result = purchases;
+      } else {
+        result = purchases.filter(p => !HIDDEN_EMPLOYEES.includes(p.requester_name));
+      }
+      
+      // 캐시 크기 제한
+      if (filterCache.size >= CACHE_SIZE_LIMIT) {
+        const firstKey = filterCache.keys().next().value;
+        filterCache.delete(firstKey);
+      }
+      filterCache.set(cacheKey, result);
+      return result;
+    } catch (error) {
+      console.error('필터링 중 오류:', error);
+      // 캐시 초기화 후 직접 계산
+      filterCache.clear();
+      if (currentUserRoles.includes('purchase_manager') || currentUserRoles.includes('app_admin')) {
+        return purchases;
+      } else {
+        return purchases.filter(p => !HIDDEN_EMPLOYEES.includes(p.requester_name));
+      }
     }
-    
-    let result;
-    if (currentUserRoles.includes('purchase_manager') || currentUserRoles.includes('app_admin')) {
-      result = purchases;
-    } else {
-      result = purchases.filter(p => !HIDDEN_EMPLOYEES.includes(p.requester_name));
-    }
-    
-    // 캐시 크기 제한
-    if (filterCache.size >= CACHE_SIZE_LIMIT) {
-      const firstKey = filterCache.keys().next().value;
-      filterCache.delete(firstKey);
-    }
-    filterCache.set(cacheKey, result);
-    return result;
   }, [purchases, currentUserRoles]);
 
   // 2단계: 날짜 필터링 (캐싱 적용)

@@ -102,30 +102,40 @@ export const usePurchaseData = () => {
       try {
         // 캐시된 데이터가 유효한 경우 사용
         if (cacheValid && globalCache.vendors && globalCache.employees && globalCache.userInfo) {
-          setVendors(globalCache.vendors);
-          setEmployees(globalCache.employees);
-          
-          const employeeData = globalCache.userInfo;
-          if (employeeData) {
-            let roles: string[] = [];
-            if (employeeData.purchase_role) {
-              if (Array.isArray(employeeData.purchase_role)) {
-                roles = employeeData.purchase_role.map((r: any) => String(r).trim());
-              } else {
-                const roleString = String(employeeData.purchase_role);
-                roles = roleString
-                  .split(',')
-                  .map((r: string) => r.trim())
-                  .filter((r: string) => r.length > 0);
-              }
-            }
+          try {
+            setVendors(globalCache.vendors);
+            setEmployees(globalCache.employees);
             
-            setCurrentUserRoles(roles);
-            setCurrentUserName(employeeData.name || employeeData.full_name || '');
-            setCurrentUserEmail(employeeData.email || '');
-            setCurrentUserId(employeeData.id || '');
+            const employeeData = globalCache.userInfo;
+            if (employeeData) {
+              let roles: string[] = [];
+              if (employeeData.purchase_role) {
+                if (Array.isArray(employeeData.purchase_role)) {
+                  roles = employeeData.purchase_role.map((r: any) => String(r).trim());
+                } else {
+                  const roleString = String(employeeData.purchase_role);
+                  roles = roleString
+                    .split(',')
+                    .map((r: string) => r.trim())
+                    .filter((r: string) => r.length > 0);
+                }
+              }
+              
+              setCurrentUserRoles(roles);
+              setCurrentUserName(employeeData.name || employeeData.full_name || '');
+              setCurrentUserEmail(employeeData.email || '');
+              setCurrentUserId(employeeData.id || '');
+            }
+            return;
+          } catch (error) {
+            logger.error('캐시 데이터 사용 중 오류', error);
+            // 캐시 초기화
+            globalCache.purchases = null;
+            globalCache.vendors = null;
+            globalCache.employees = null;
+            globalCache.userInfo = null;
+            globalCache.lastFetch = 0;
           }
-          return;
         }
         
         // 캐시가 없거나 만료된 경우 새로 로드
@@ -196,7 +206,7 @@ export const usePurchaseData = () => {
   }, []);
 
   // 발주 목록 로드 - 캐싱 및 최적화 적용
-  const loadPurchases = useCallback(async (forceRefresh = false) => {
+  const loadPurchases = useCallback(async (forceRefresh?: boolean) => {
     setLoading(true);
     
     try {
@@ -205,9 +215,16 @@ export const usePurchaseData = () => {
       const cacheValid = globalCache.lastFetch && (now - globalCache.lastFetch) < globalCache.CACHE_DURATION;
       
       if (!forceRefresh && cacheValid && globalCache.purchases) {
-        setPurchases(globalCache.purchases);
-        setLoading(false);
-        return;
+        try {
+          setPurchases(globalCache.purchases);
+          setLoading(false);
+          return;
+        } catch (error) {
+          logger.error('발주 데이터 캐시 사용 중 오류', error);
+          // 캐시 초기화
+          globalCache.purchases = null;
+          globalCache.lastFetch = 0;
+        }
       }
       
       // employees 데이터 준비
