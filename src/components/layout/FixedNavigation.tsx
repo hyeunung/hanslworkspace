@@ -50,7 +50,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
       label: '영수증',
       href: '/receipts',
       icon: Receipt,
-      roles: ['app_admin', 'hr', 'lead_buyer']
+      roles: ['app_admin', 'hr', 'lead buyer']
     },
     {
       label: '업체 관리',

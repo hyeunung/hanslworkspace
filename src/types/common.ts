@@ -61,7 +61,7 @@ export interface SearchParams {
 }
 
 // 사용자 역할 관련 타입
-export type UserRole = 'app_admin' | 'ceo' | 'final_approver' | 'middle_manager' | 'lead_buyer' | 'buyer' | 'requester' | 'hr';
+export type UserRole = 'app_admin' | 'ceo' | 'final_approver' | 'middle_manager' | 'lead buyer' | 'buyer' | 'requester' | 'hr';
 
 export interface UserPermissions {
   canCreate: boolean;

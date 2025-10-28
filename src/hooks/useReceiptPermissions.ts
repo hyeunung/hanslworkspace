@@ -61,7 +61,7 @@ export function useReceiptPermissions() {
       // 권한 계산
       const isAppAdmin = role.includes('app_admin');
       const isHr = role.includes('hr');
-      const isLeadBuyer = role.includes('lead_buyer');
+      const isLeadBuyer = role.includes('lead buyer');
       
       // 영수증 관리 접근 가능 권한
       const hasReceiptAccess = isAppAdmin || isHr || isLeadBuyer;

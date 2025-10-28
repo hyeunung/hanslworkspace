@@ -818,7 +818,7 @@ export default function DashboardMain() {
                       )
                     })}
                     {/* Lead Buyer인 경우 구매 처리하기 버튼 표시 */}
-                    {(currentUserRoles.includes('lead_buyer') || currentUserRoles.includes('lead buyer')) && (
+                    {(currentUserRoles.includes('lead buyer') || currentUserRoles.includes('lead buyer')) && (
                       <Button 
                         className="w-full bg-yellow-600 hover:bg-yellow-700 text-xs h-8"
                         onClick={() => navigate('/purchase/list')}

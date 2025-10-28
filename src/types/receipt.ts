@@ -28,7 +28,7 @@ export interface ReceiptUploadData {
   description?: string;
 }
 
-export type UserRole = 'app_admin' | 'hr' | 'lead_buyer' | string;
+export type UserRole = 'app_admin' | 'hr' | 'lead buyer' | string;
 
 export interface ReceiptPermissions {
   canView: boolean;

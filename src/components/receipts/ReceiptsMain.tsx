@@ -31,7 +31,7 @@ import { formatDate, formatFileSize, extractStoragePathFromUrl } from "@/utils/r
  * 
  * ### 권한 체계
  * - `app_admin`: 모든 기능 + 삭제 + 등록인 정보 조회
- * - `hr`, `lead_buyer`: 조회, 업로드, 다운로드, 인쇄
+ * - `hr`, `lead buyer`: 조회, 업로드, 다운로드, 인쇄
  * - 기타: 접근 불가
  * 
  * @example
