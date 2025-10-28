@@ -89,13 +89,19 @@ export default function PurchaseStatusModal({
   }, 0)
   
   // 디버깅
-  console.log('PurchaseStatusModal Debug:', {
+  console.log('🔍 PurchaseStatusModal Debug:', {
     type,
     currentUserRoles,
     item: item.purchase_order_number,
     showPurchaseButton: type === 'purchase',
-    hasPermission: currentUserRoles.includes('app_admin') || 
-                   currentUserRoles.includes('lead buyer')
+    showDeliveryButton: type === 'delivery',
+    hasAdminPermission: currentUserRoles.includes('app_admin'),
+    hasLeadBuyerPermission: currentUserRoles.includes('lead buyer'),
+    hasReceiverPermission: currentUserRoles.includes('receiver'),
+    itemData: {
+      is_payment_completed: item.is_payment_completed,
+      is_received: item.is_received
+    }
   })
 
   const getTypeInfo = () => {
