@@ -242,11 +242,18 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
         return;
       }
 
+      const affectedRows = updateResult?.length || 0;
+      
       console.log('✅ [ReceiptDebug] 업데이트 성공:', {
         updateResult,
         executionTime: `${executionTime.toFixed(2)}ms`,
-        affectedRows: updateResult?.length || 0
+        affectedRows
       });
+
+      // affectedRows가 0이어도 성공으로 처리 (이미 인쇄완료 상태인 경우)
+      if (affectedRows === 0) {
+        console.log('ℹ️ [ReceiptDebug] 이미 인쇄완료 상태였습니다.');
+      }
 
       // 디버그 모니터에 성공 결과 추적
       debugMonitor.trackUpdateResult(receipt.id, true, null, executionTime);

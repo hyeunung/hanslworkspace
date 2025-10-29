@@ -140,37 +140,144 @@ export default function ReceiptsMain() {
 
   // 영수증 인쇄 완료 처리
   const markAsPrinted = useCallback(async (receiptId: string) => {
+    console.log('🖨️ [ReceiptsMain] 인쇄완료 처리 시작:', {
+      receiptId,
+      timestamp: new Date().toISOString(),
+      location: 'ReceiptsMain.tsx'
+    });
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // 1. 사용자 인증 정보 확인
+      console.log('🔐 [ReceiptsMain] 사용자 인증 정보 확인 중...');
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        console.error('❌ [ReceiptsMain] 인증 오류:', authError);
+        toast.error('사용자 인증에 실패했습니다.');
+        return;
+      }
+      
       if (!user) {
+        console.error('❌ [ReceiptsMain] 사용자 정보 없음');
         toast.error('사용자 정보를 불러올 수 없습니다.');
         return;
       }
 
-      // 사용자 이름 가져오기
-      const { data: employee } = await supabase
+      console.log('✅ [ReceiptsMain] 사용자 인증 성공:', {
+        userId: user.id,
+        email: user.email,
+        lastSignIn: user.last_sign_in_at
+      });
+
+      // 2. 사용자 권한 및 정보 확인
+      console.log('👤 [ReceiptsMain] 직원 정보 조회 중...');
+      const { data: employee, error: empError } = await supabase
         .from('employees')
-        .select('name')
+        .select('name, purchase_role')
         .eq('email', user.email)
         .single();
 
-      const { error } = await supabase
+      if (empError) {
+        console.error('❌ [ReceiptsMain] 직원 정보 조회 실패:', empError);
+        toast.error('직원 정보를 불러올 수 없습니다.');
+        return;
+      }
+
+      console.log('✅ [ReceiptsMain] 직원 정보 조회 성공:', {
+        name: employee?.name,
+        email: user.email,
+        role: employee?.purchase_role
+      });
+
+      // 3. 권한 검증
+      const role = employee?.purchase_role || '';
+      const hasPermission = role.includes('app_admin') || role.includes('hr') || role.includes('lead buyer');
+      
+      console.log('🛡️ [ReceiptsMain] 권한 검증:', {
+        role,
+        hasPermission,
+        isAppAdmin: role.includes('app_admin'),
+        isHr: role.includes('hr'),
+        isLeadBuyer: role.includes('lead buyer')
+      });
+
+      if (!hasPermission) {
+        console.error('❌ [ReceiptsMain] 권한 부족:', { role });
+        toast.error('인쇄완료 처리 권한이 없습니다.');
+        return;
+      }
+
+      // 4. 업데이트 데이터 준비
+      const updateData = {
+        is_printed: true,
+        printed_at: new Date().toISOString(),
+        printed_by: user.id,
+        printed_by_name: employee?.name || user.email
+      };
+
+      console.log('📝 [ReceiptsMain] 업데이트 데이터 준비:', updateData);
+
+      // 5. 데이터베이스 업데이트 실행
+      console.log('🔄 [ReceiptsMain] 데이터베이스 업데이트 실행 중...');
+      const startTime = performance.now();
+      
+      const { data: updateResult, error: updateError } = await supabase
         .from('purchase_receipts')
-        .update({
-          is_printed: true,
-          printed_at: new Date().toISOString(),
-          printed_by: user.id,
-          printed_by_name: employee?.name || user.email
-        })
-        .eq('id', receiptId);
+        .update(updateData)
+        .eq('id', receiptId)
+        .select('*');
 
-      if (error) throw error;
+      const endTime = performance.now();
+      const executionTime = endTime - startTime;
 
+      if (updateError) {
+        console.error('❌ [ReceiptsMain] 업데이트 실패:', {
+          error: updateError,
+          code: updateError.code,
+          message: updateError.message,
+          details: updateError.details,
+          hint: updateError.hint,
+          executionTime: `${executionTime.toFixed(2)}ms`
+        });
+        
+        // RLS 관련 오류 특별 처리
+        if (updateError.code === '42501' || updateError.message?.includes('policy')) {
+          toast.error('데이터베이스 권한 오류가 발생했습니다. 관리자에게 문의하세요.');
+        } else {
+          toast.error(`업데이트 실패: ${updateError.message}`);
+        }
+        return;
+      }
+
+      console.log('✅ [ReceiptsMain] 업데이트 성공:', {
+        updateResult,
+        executionTime: `${executionTime.toFixed(2)}ms`,
+        affectedRows: updateResult?.length || 0
+      });
+
+      // 6. 성공 처리
       toast.success('인쇄 완료로 표시되었습니다.');
-      loadReceipts(); // 목록 새로고침
+      
+      // 7. 목록 새로고침
+      console.log('🔄 [ReceiptsMain] 목록 새로고침 처리...');
+      loadReceipts();
+
+      console.log('🎉 [ReceiptsMain] 인쇄완료 처리 완료:', {
+        receiptId,
+        success: true,
+        timestamp: new Date().toISOString()
+      });
+
     } catch (error) {
-      console.error('인쇄 완료 처리 오류:', error);
-      toast.error('인쇄 완료 처리에 실패했습니다.');
+      console.error('💥 [ReceiptsMain] 예외 발생:', {
+        error,
+        message: error.message,
+        stack: error.stack,
+        receiptId,
+        timestamp: new Date().toISOString()
+      });
+      
+      toast.error(`인쇄 완료 처리에 실패했습니다: ${error.message}`);
     }
   }, [supabase, loadReceipts]);
 
