@@ -133,6 +133,7 @@ export interface PurchaseRequest {
   request_date: string
   desired_delivery_date?: string
   delivery_request_date?: string
+  revised_delivery_request_date?: string
   payment_category?: string
   request_type?: string
   progress_type?: string
@@ -271,6 +272,7 @@ export interface Purchase {
   purchase_order_number?: string;
   request_date: string;
   delivery_request_date?: string;
+  revised_delivery_request_date?: string;
   progress_type?: string;
   is_payment_completed?: boolean;
   payment_category?: string;

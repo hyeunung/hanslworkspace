@@ -245,6 +245,7 @@ export default function PurchaseDetailModal({
           purchase_order_number: editedPurchase.purchase_order_number,
           requester_name: editedPurchase.requester_name,
           delivery_request_date: editedPurchase.delivery_request_date,
+          revised_delivery_request_date: editedPurchase.revised_delivery_request_date,
           payment_category: editedPurchase.payment_category,
           project_vendor: editedPurchase.project_vendor,
           total_amount: totalAmount,
@@ -762,6 +763,18 @@ export default function PurchaseDetailModal({
                       />
                     ) : (
                       <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{formatDate(purchase.delivery_request_date)}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-600 mb-2 block">변경 입고일</label>
+                    {isEditing ? (
+                      <DatePicker
+                        date={editedPurchase?.revised_delivery_request_date ? new Date(editedPurchase.revised_delivery_request_date) : undefined}
+                        onDateChange={(date: Date | undefined) => setEditedPurchase(prev => prev ? { ...prev, revised_delivery_request_date: date?.toISOString().split('T')[0] || '' } : null)}
+                        className="h-9"
+                      />
+                    ) : (
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{formatDate(purchase.revised_delivery_request_date)}</p>
                     )}
                   </div>
                   <div>

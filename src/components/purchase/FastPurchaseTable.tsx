@@ -76,6 +76,7 @@ const COMMON_COLUMN_CLASSES = {
   vendorName: "w-28 min-w-[115px] max-w-[115px]",
   contactName: "w-16 min-w-[68px] max-w-[68px]",
   deliveryRequestDate: "w-20 min-w-[85px] max-w-[85px]",
+  revisedDeliveryRequestDate: "w-20 min-w-[85px] max-w-[85px]",
   itemName: "w-28 min-w-[120px] max-w-[120px]",                       // 평균 7.8자 + 여유
   specification: "w-64 min-w-[260px] max-w-[260px]",                  // 평균 15.5자 + 여유 (조금 더 길게)
   quantity: "text-center w-14 min-w-[60px] max-w-[60px]",
@@ -429,6 +430,9 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       </td>
       <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>
         {formatDateShort(purchase.delivery_request_date)}
+      </td>
+      <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>
+        {formatDateShort(purchase.revised_delivery_request_date)}
       </td>
       <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.itemName}`}>
         <span className="block truncate" title={purchase.item_name || ''}>
@@ -961,6 +965,7 @@ const FastPurchaseTable = memo(({
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>변경 입고일</th>
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] text-left ${COMMON_COLUMN_CLASSES.itemName}`}>품명</th>
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
             <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
@@ -986,6 +991,7 @@ const FastPurchaseTable = memo(({
         <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
         <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
         <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
+        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>변경 입고일</th>
         <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] text-left ${COMMON_COLUMN_CLASSES.itemName}`}>품명</th>
         <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
         <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
