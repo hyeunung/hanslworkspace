@@ -7,13 +7,14 @@ export interface SupportInquiry {
   user_id?: string
   user_email?: string
   user_name?: string
-  inquiry_type: 'bug' | 'modify' | 'delete' | 'other'
+  inquiry_type: 'bug' | 'modify' | 'delete' | 'other' | 'annual_leave' | 'attendance'
   subject: string
   message: string
   status?: 'open' | 'in_progress' | 'resolved' | 'closed'
   handled_by?: string
   resolution_note?: string
-  purchase_request_id?: number  // bigint는 number로 처리
+  purchase_request_id?: number | null
+  purchase_info?: string
   purchase_order_number?: string
   processed_at?: string
   requester_id?: string
@@ -21,10 +22,11 @@ export interface SupportInquiry {
 }
 
 export interface CreateSupportInquiryPayload {
-  inquiry_type: 'bug' | 'modify' | 'delete' | 'other'
+  inquiry_type: 'bug' | 'modify' | 'delete' | 'other' | 'annual_leave' | 'attendance'
   subject: string
   message: string
-  purchase_request_id?: string
+  purchase_request_id?: number
+  purchase_info?: string
   purchase_order_number?: string
 }
 
@@ -53,7 +55,7 @@ class SupportService {
           inquiry_type: payload.inquiry_type,
           subject: payload.subject,
           message: payload.message,
-          purchase_request_id: payload.purchase_request_id,
+          purchase_info: payload.purchase_info,
           purchase_order_number: payload.purchase_order_number,
           status: 'open'
         })
@@ -88,7 +90,7 @@ class SupportService {
 
       const { data, error } = await this.supabase
         .from('support_inquires')
-        .select('*,purchase_requests(purchase_order_number,vendor_name,requester_name)')
+        .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
@@ -113,7 +115,7 @@ class SupportService {
       console.log('🔍 getAllInquiries 시작 (관리자용)')
       const { data, error } = await this.supabase
         .from('support_inquires')
-        .select('*,purchase_requests(purchase_order_number,vendor_name,requester_name,purchase_request_items(item_name,specification,quantity).order(line_number))')
+        .select('*')
         .order('created_at', { ascending: false })
 
       console.log('📊 전체 문의 쿼리 결과:', { data, error })
@@ -194,7 +196,7 @@ class SupportService {
 
       let query = this.supabase
         .from('purchase_requests')
-        .select('id,purchase_order_number,vendor_name,request_date,requester_name,purchase_request_items(item_name,specification,quantity).order(line_number)')
+        .select('id,purchase_order_number,vendor_name,request_date,requester_name,purchase_request_items(item_name,specification,quantity)')
         .eq('requester_name', employee.name)
         .order('request_date', { ascending: false })
 
@@ -316,7 +318,7 @@ class SupportService {
     try {
       const { data, error } = await this.supabase
         .from('purchase_requests')
-        .select('*,purchase_request_items(id,line_number,item_name,specification,quantity,unit_price_value,amount_value,remark,link).order(line_number)')
+        .select('*,purchase_request_items(id,line_number,item_name,specification,quantity,unit_price_value,amount_value,remark,link)')
         .eq('id', requestId)
         .single()
 

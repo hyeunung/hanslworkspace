@@ -90,9 +90,16 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
   
   // 1단계: 권한별 필터링 (캐싱 적용)
   const visiblePurchases = useMemo(() => {
+    console.log('🔍 [Filter] 1단계 권한별 필터링 시작:', {
+      purchasesCount: purchases.length,
+      currentUserRoles,
+      currentUserName
+    });
+    
     try {
       const cacheKey = `visible_${purchases.length}_${currentUserRoles.join(',')}`;
       if (filterCache.has(cacheKey)) {
+        console.log('📦 [Filter] 캐시에서 가져옴');
         return filterCache.get(cacheKey);
       }
       
@@ -102,6 +109,11 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       } else {
         result = purchases.filter(p => !HIDDEN_EMPLOYEES.includes(p.requester_name));
       }
+      
+      console.log('✅ [Filter] 권한별 필터링 완료:', {
+        originalCount: purchases.length,
+        filteredCount: result.length
+      });
       
       // 캐시 크기 제한
       if (filterCache.size >= CACHE_SIZE_LIMIT) {
@@ -326,13 +338,27 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
 
   // 8단계: 최종 정렬 - 최신순 (내림차순)
   const filteredPurchases = useMemo(() => {
-    return [...searchFilteredPurchases].sort((a, b) => {
+    const result = [...searchFilteredPurchases].sort((a, b) => {
       // request_date를 기준으로 내림차순 정렬 (최신이 위로)
       const dateA = a.request_date ? new Date(a.request_date).getTime() : 0;
       const dateB = b.request_date ? new Date(b.request_date).getTime() : 0;
       return dateB - dateA;
     });
-  }, [searchFilteredPurchases]);
+    
+    console.log('✅ [Filter] 최종 필터링 완료:', {
+      activeTab,
+      searchFilteredCount: searchFilteredPurchases.length,
+      finalCount: result.length,
+      firstFewResults: result.slice(0, 3).map(p => ({
+        id: p.id,
+        po: p.purchase_order_number,
+        requester: p.requester_name,
+        date: p.request_date
+      }))
+    });
+    
+    return result;
+  }, [searchFilteredPurchases, activeTab]);
 
   // 탭 카운트 (hanslwebapp과 동일한 조건)
   const tabCounts = useMemo(() => {

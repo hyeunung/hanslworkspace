@@ -810,27 +810,136 @@ const FastPurchaseTable = memo(({
   const handleConfirmDelete = async () => {
     if (!purchaseToDelete) return;
 
+    console.log('🗑️ === 삭제 프로세스 시작 ===');
+    console.log('삭제할 발주요청:', {
+      id: purchaseToDelete.id,
+      purchase_order_number: purchaseToDelete.purchase_order_number,
+      requester_name: purchaseToDelete.requester_name,
+      final_manager_status: purchaseToDelete.final_manager_status
+    });
+
     try {
+      // 현재 사용자 정보 확인
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      console.log('현재 사용자:', user?.email || '로그인 안됨');
+      
+      if (authError || !user) {
+        console.error('❌ 인증 오류:', authError);
+        toast.error("로그인이 필요합니다.");
+        return;
+      }
+
+      // 사용자 권한 확인
+      const { data: employee, error: empError } = await supabase
+        .from('employees')
+        .select('name, email, purchase_role')
+        .eq('email', user.email)
+        .single();
+
+      console.log('사용자 권한 정보:', {
+        employee: employee?.name,
+        roles: employee?.purchase_role,
+        email: employee?.email
+      });
+
+      if (empError || !employee) {
+        console.error('❌ 직원 정보 조회 실패:', empError);
+        toast.error("사용자 권한을 확인할 수 없습니다.");
+        return;
+      }
+
+      // 권한 체크
+      let roles = [];
+      if (employee.purchase_role) {
+        if (Array.isArray(employee.purchase_role)) {
+          roles = employee.purchase_role.map(r => String(r).trim());
+        } else {
+          const roleString = String(employee.purchase_role);
+          roles = roleString.split(',').map(r => r.trim()).filter(r => r.length > 0);
+        }
+      }
+
+      const canEdit = roles.includes('final_approver') || 
+                      roles.includes('app_admin') || 
+                      roles.includes('ceo');
+      
+      const isApproved = purchaseToDelete.final_manager_status === 'approved';
+      const isRequester = purchaseToDelete.requester_name === employee.name;
+      const canDeleteThis = isApproved ? canEdit : (canEdit || isRequester);
+
+      console.log('삭제 권한 분석:', {
+        canEdit,
+        isApproved,
+        isRequester,
+        canDeleteThis,
+        userRoles: roles
+      });
+
+      if (!canDeleteThis) {
+        console.error('❌ 삭제 권한 없음');
+        toast.error("삭제 권한이 없습니다.");
+        return;
+      }
+
+      console.log('✅ 삭제 권한 확인됨 - 아이템 삭제 시작');
+
       // 모든 아이템 삭제
-      const { error: itemsError } = await supabase
+      const { data: deletedItems, error: itemsError } = await supabase
         .from('purchase_request_items')
         .delete()
-        .eq('purchase_request_id', purchaseToDelete.id);
+        .eq('purchase_request_id', purchaseToDelete.id)
+        .select();
 
-      if (itemsError) throw itemsError;
+      if (itemsError) {
+        console.error('❌ 아이템 삭제 실패:', itemsError);
+        console.error('아이템 삭제 오류 상세:', {
+          code: itemsError.code,
+          message: itemsError.message,
+          details: itemsError.details,
+          hint: itemsError.hint
+        });
+        throw itemsError;
+      }
+
+      console.log('✅ 아이템 삭제 성공:', deletedItems?.length || 0, '개 삭제됨');
+      console.log('삭제된 아이템:', deletedItems);
+
+      console.log('📝 발주요청 삭제 시작');
 
       // 발주요청 삭제
-      const { error: requestError } = await supabase
+      const { data: deletedRequest, error: requestError } = await supabase
         .from('purchase_requests')
         .delete()
-        .eq('id', purchaseToDelete.id);
+        .eq('id', purchaseToDelete.id)
+        .select();
 
-      if (requestError) throw requestError;
+      if (requestError) {
+        console.error('❌ 발주요청 삭제 실패:', requestError);
+        console.error('발주요청 삭제 오류 상세:', {
+          code: requestError.code,
+          message: requestError.message,
+          details: requestError.details,
+          hint: requestError.hint
+        });
+        throw requestError;
+      }
+
+      console.log('✅ 발주요청 삭제 성공:', deletedRequest);
+      console.log('🎉 === 삭제 프로세스 완료 ===');
 
       toast.success("발주요청 내역이 삭제되었습니다.");
       onRefresh?.();
     } catch (error) {
-      toast.error("삭제 중 오류가 발생했습니다.");
+      console.error('💥 삭제 중 전체 오류:', error);
+      console.error('오류 상세 정보:', {
+        name: error.name,
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        stack: error.stack
+      });
+      toast.error(`삭제 중 오류가 발생했습니다: ${error.message || '알 수 없는 오류'}`);
     }
     
     setDeleteConfirmOpen(false);

@@ -1,7 +1,7 @@
 
 import { useState, lazy, Suspense, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { usePurchaseData } from "@/hooks/usePurchaseData";
+import { usePurchaseData, clearPurchaseCache } from "@/hooks/usePurchaseData";
 import { useFastPurchaseFilters } from "@/hooks/useFastPurchaseFilters";
 import LazyPurchaseTable from "@/components/purchase/LazyPurchaseTable";
 
@@ -59,6 +59,22 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
   } = usePurchaseData();
   
   const isAdmin = currentUserRoles?.includes('app_admin');
+  
+  // 디버깅 로그 추가
+  useEffect(() => {
+    console.log('📊 [PurchaseListMain] 발주 데이터 상태:', {
+      purchasesCount: purchases.length,
+      loading,
+      currentUserName,
+      currentUserRoles,
+      firstFewPurchases: purchases.slice(0, 3).map(p => ({
+        id: p.id,
+        po: p.purchase_order_number,
+        requester: p.requester_name,
+        date: p.request_date
+      }))
+    });
+  }, [purchases, loading, currentUserName, currentUserRoles]);
 
   // 필터링 및 탭 관리
   const {

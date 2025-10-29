@@ -15,6 +15,7 @@ import {
   Truck, 
   Package, 
   CheckCircle,
+  Clock,
   Building2,
   Calendar,
   FileText,
@@ -32,7 +33,7 @@ interface PurchaseStatusModalProps {
   isOpen: boolean
   onClose: () => void
   item: any
-  type: 'purchase' | 'delivery' | 'completed'
+  type: 'pending' | 'purchase' | 'delivery' | 'completed'
   onRefresh?: () => void
 }
 
@@ -112,6 +113,13 @@ export default function PurchaseStatusModal({
 
   const getTypeInfo = () => {
     switch (type) {
+      case 'pending':
+        return {
+          icon: <Clock className="w-6 h-6 text-orange-600" />,
+          title: '승인 대기',
+          status: '승인 처리 대기중',
+          color: 'bg-orange-50 text-orange-700 border-orange-200'
+        }
       case 'purchase':
         return {
           icon: <ShoppingCart className="w-6 h-6 text-yellow-600" />,
@@ -132,6 +140,13 @@ export default function PurchaseStatusModal({
           title: '처리 완료',
           status: '모든 처리 완료',
           color: 'bg-green-50 text-green-700 border-green-200'
+        }
+      default:
+        return {
+          icon: <Package className="w-6 h-6 text-gray-600" />,
+          title: '상태 확인',
+          status: '상태 확인 필요',
+          color: 'bg-gray-50 text-gray-700 border-gray-200'
         }
     }
   }
@@ -362,7 +377,7 @@ export default function PurchaseStatusModal({
                     if (error) throw error
                     
                     // 로컬 상태 업데이트 (모달 유지하면서 UI만 변경)
-                    setLocalItem(prev => ({
+                    setLocalItem((prev: any) => ({
                       ...prev,
                       is_payment_completed: true,
                       payment_completed_at: new Date().toISOString()

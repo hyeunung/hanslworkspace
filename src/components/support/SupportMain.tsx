@@ -32,7 +32,7 @@ export default function SupportMain() {
   
   // 문의 목록 관련
   const [inquiries, setInquiries] = useState<SupportInquiry[]>([])
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
   const [currentUserEmail, setCurrentUserEmail] = useState('')
   const [loadingInquiries, setLoadingInquiries] = useState(true)
   const [expandedInquiry, setExpandedInquiry] = useState<number | null>(null)
@@ -53,18 +53,14 @@ export default function SupportMain() {
     
     // 실시간 구독 설정
     const subscription = supportService.subscribeToInquiries((payload) => {
-      loadInquiries() // 변경사항이 있으면 다시 로드
+      // 권한 상태 확인 후 적절한 목록 로드
+      checkUserRole()
     })
     
     return () => {
       subscription.unsubscribe()
     }
   }, [])
-
-  // isAdmin 상태가 변경되면 문의 목록 다시 로드
-  useEffect(() => {
-    loadInquiries()
-  }, [isAdmin])
 
   // 사용자 권한 확인
   const checkUserRole = async () => {
@@ -85,12 +81,44 @@ export default function SupportMain() {
         ? employee.purchase_role
         : employee.purchase_role?.split(',').map((r: string) => r.trim()) || []
       
-      setIsAdmin(roles.includes('app_admin'))
+      const adminStatus = roles.includes('app_admin')
+      setIsAdmin(adminStatus)
+      console.log('👤 사용자 권한 확인:', { email: user.email, roles, isAdmin: adminStatus })
+      
+      // 권한 확인 후 바로 목록 로드
+      loadInquiriesWithRole(adminStatus)
     }
+  }
+  
+  // 역할에 따라 문의 목록 로드 (내부 함수)
+  const loadInquiriesWithRole = async (adminStatus: boolean) => {
+    console.log('🔄 loadInquiriesWithRole - isAdmin:', adminStatus)
+    setLoadingInquiries(true)
+    
+    const result = adminStatus 
+      ? await supportService.getAllInquiries()
+      : await supportService.getMyInquiries()
+    
+    console.log('📋 문의 목록 로드 결과:', result)
+    
+    if (result.success) {
+      console.log('✅ 문의 목록 설정:', result.data.length, '건')
+      setInquiries(result.data)
+    } else {
+      console.error('❌ 문의 목록 로드 실패:', result.error)
+    }
+    
+    setLoadingInquiries(false)
   }
 
   // 문의 목록 로드
   const loadInquiries = async () => {
+    // 권한 확인이 완료되지 않았으면 대기
+    if (isAdmin === null) {
+      console.log('⏳ 권한 확인 대기 중...');
+      return;
+    }
+    
     console.log('🔄 loadInquiries 시작 - isAdmin:', isAdmin)
     setLoadingInquiries(true)
     
@@ -160,11 +188,34 @@ export default function SupportMain() {
 
     setLoading(true)
     
+    // 발주 정보를 텍스트로 구성
+    let finalMessage = message;
+    let purchaseInfo = '';
+    
+    if (selectedPurchase) {
+      const items = selectedPurchase.purchase_request_items || [];
+      const itemsText = items.map((item: any) => 
+        `- ${item.item_name} (${item.specification}) ${item.quantity}개`
+      ).join('\n');
+      
+      purchaseInfo = `발주번호: ${selectedPurchase.purchase_order_number}
+업체: ${selectedPurchase.vendor_name}
+요청자: ${selectedPurchase.requester_name}
+요청일: ${selectedPurchase.request_date}
+품목:
+${itemsText}`;
+
+      finalMessage = `${message}
+
+[관련 발주 정보]
+${purchaseInfo}`;
+    }
+
     const result = await supportService.createInquiry({
       inquiry_type: inquiryType as any,
       subject,
-      message,
-      purchase_request_id: selectedPurchase?.id,
+      message: finalMessage,
+      purchase_info: purchaseInfo,
       purchase_order_number: selectedPurchase?.purchase_order_number
     })
 
@@ -213,22 +264,10 @@ export default function SupportMain() {
     }
   }
 
-  // 발주요청 상세 조회
-  const fetchPurchaseDetail = async (purchaseRequestId: string) => {
-    setLoadingDetail(true)
-    setEditingItemId(null)
-    setEditingItem(null)
-    
-    const result = await supportService.getPurchaseRequestDetail(purchaseRequestId)
-    
-    if (result.success) {
-      setSelectedInquiryDetail(result.data)
-      setShowDetailModal(true)
-    } else {
-      toast.error(result.error || '발주요청 상세 조회 실패')
-    }
-    
-    setLoadingDetail(false)
+  // 문의 상세 보기
+  const viewInquiryDetail = (inquiry: SupportInquiry) => {
+    setSelectedInquiryDetail(inquiry)
+    setShowDetailModal(true)
   }
 
   // 품목 수정 시작
@@ -335,6 +374,18 @@ export default function SupportMain() {
       case 'other': return '기타 문의'
       default: return type
     }
+  }
+
+  // 권한 확인 중일 때 로딩 표시
+  if (isAdmin === null) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">권한 확인 중...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -634,17 +685,9 @@ export default function SupportMain() {
                     <div key={inquiry.id} className="border rounded overflow-hidden">
                       {/* 문의 요약 (한 줄) */}
                       <div 
-                        className={`px-3 py-2 hover:bg-gray-50 transition-colors cursor-pointer ${
-                          (inquiry.inquiry_type === 'modify' || inquiry.inquiry_type === 'delete') && inquiry.purchase_request_id
-                            ? 'hover:bg-blue-50'
-                            : ''
-                        }`}
+                        className="px-3 py-2 hover:bg-gray-50 transition-colors cursor-pointer"
                         onClick={() => {
-                          if ((inquiry.inquiry_type === 'modify' || inquiry.inquiry_type === 'delete') && inquiry.purchase_request_id) {
-                            fetchPurchaseDetail(inquiry.purchase_request_id.toString())
-                          } else {
-                            setExpandedInquiry(expandedInquiry === inquiry.id ? null : inquiry.id!)
-                          }
+                          setExpandedInquiry(expandedInquiry === inquiry.id ? null : inquiry.id!)
                         }}
                       >
                         <div className="flex items-center justify-between gap-2">
