@@ -74,7 +74,7 @@ const globalCache = {
   employees: null as Employee[] | null,
   lastFetch: 0,
   userInfo: null as any,
-  CACHE_DURATION: 0 // 캐시 비활성화 (디버깅)
+  CACHE_DURATION: 2 * 60 * 1000 // 2분 캐싱으로 성능 향상
 };
 
 // 캐시 강제 초기화 함수 (디버깅용)
@@ -290,13 +290,22 @@ export const usePurchaseData = () => {
         return;
       }
 
-      // 모든 발주 데이터 조회 - 3개월 제한 제거
-      console.log('📅 [DEBUG] 모든 데이터 조회 (날짜 제한 없음)');
+      // 최근 6개월 발주 데이터 조회 (성능 최적화)
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      sixMonthsAgo.setHours(0, 0, 0, 0);
+      
+      console.log('📅 [DEBUG] 최근 6개월 데이터 조회:', {
+        sixMonthsAgo: sixMonthsAgo.toISOString(),
+        today: new Date().toISOString()
+      });
       
       const { data, error } = await supabase
         .from('purchase_requests')
         .select('*,vendors(vendor_name,vendor_payment_schedule),vendor_contacts(contact_name),purchase_request_items(*).order(line_number)')
-        .order('request_date', { ascending: false }); // limit 제거, 날짜 필터 제거
+        .gte('request_date', sixMonthsAgo.toISOString())
+        .order('request_date', { ascending: false })
+        .limit(500); // 성능 최적화: 최대 500건
 
       if (error) {
         console.error('❌ [DEBUG] 발주 데이터 조회 실패:', error);
