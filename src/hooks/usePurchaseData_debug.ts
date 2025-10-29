@@ -74,17 +74,7 @@ const globalCache = {
   employees: null as Employee[] | null,
   lastFetch: 0,
   userInfo: null as any,
-  CACHE_DURATION: 2 * 60 * 1000 // 2분 캐싱으로 성능 향상
-};
-
-// 캐시 강제 초기화 함수 (디버깅용)
-export const clearPurchaseCache = () => {
-  console.log('🔄 캐시 강제 초기화');
-  globalCache.purchases = null;
-  globalCache.vendors = null;
-  globalCache.employees = null;
-  globalCache.userInfo = null;
-  globalCache.lastFetch = 0;
+  CACHE_DURATION: 5 * 60 * 1000 // 5분
 };
 
 export const usePurchaseData = () => {
@@ -290,22 +280,21 @@ export const usePurchaseData = () => {
         return;
       }
 
-      // 최근 6개월 발주 데이터 조회 (성능 최적화)
-      const sixMonthsAgo = new Date();
-      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-      sixMonthsAgo.setHours(0, 0, 0, 0);
+      // 최적화된 발주 데이터 조회 - 최근 3개월 데이터만 기본 로드
+      const threeMonthsAgo = new Date();
+      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
       
-      console.log('📅 [DEBUG] 최근 6개월 데이터 조회:', {
-        sixMonthsAgo: sixMonthsAgo.toISOString(),
+      console.log('📅 [DEBUG] 날짜 범위:', {
+        threeMonthsAgo: threeMonthsAgo.toISOString(),
         today: new Date().toISOString()
       });
       
       const { data, error } = await supabase
         .from('purchase_requests')
         .select('*,vendors(vendor_name,vendor_payment_schedule),vendor_contacts(contact_name),purchase_request_items(*).order(line_number)')
-        .gte('request_date', sixMonthsAgo.toISOString())
+        .gte('request_date', threeMonthsAgo.toISOString())
         .order('request_date', { ascending: false })
-        .limit(500); // 성능 최적화: 최대 500건
+        .limit(1000); // 최적화된 데이터 로드
 
       if (error) {
         console.error('❌ [DEBUG] 발주 데이터 조회 실패:', error);

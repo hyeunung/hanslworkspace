@@ -74,17 +74,7 @@ const globalCache = {
   employees: null as Employee[] | null,
   lastFetch: 0,
   userInfo: null as any,
-  CACHE_DURATION: 2 * 60 * 1000 // 2분 캐싱으로 성능 향상
-};
-
-// 캐시 강제 초기화 함수 (디버깅용)
-export const clearPurchaseCache = () => {
-  console.log('🔄 캐시 강제 초기화');
-  globalCache.purchases = null;
-  globalCache.vendors = null;
-  globalCache.employees = null;
-  globalCache.userInfo = null;
-  globalCache.lastFetch = 0;
+  CACHE_DURATION: 5 * 60 * 1000 // 5분
 };
 
 export const usePurchaseData = () => {
@@ -106,21 +96,13 @@ export const usePurchaseData = () => {
       if (initializationRef.current) return;
       initializationRef.current = true;
       
-      console.log('🚀 [DEBUG] loadInitialData 시작');
       const now = Date.now();
       const cacheValid = globalCache.lastFetch && (now - globalCache.lastFetch) < globalCache.CACHE_DURATION;
-      console.log('📊 [DEBUG] 캐시 상태:', {
-        cacheValid,
-        lastFetch: globalCache.lastFetch,
-        timeSinceLastFetch: now - globalCache.lastFetch,
-        cacheHasData: !!(globalCache.vendors && globalCache.employees && globalCache.userInfo)
-      });
       
       try {
         // 캐시된 데이터가 유효한 경우 사용
         if (cacheValid && globalCache.vendors && globalCache.employees && globalCache.userInfo) {
           try {
-            console.log('✅ [DEBUG] 캐시 데이터 사용');
             setVendors(globalCache.vendors);
             setEmployees(globalCache.employees);
             
@@ -147,7 +129,6 @@ export const usePurchaseData = () => {
             return;
           } catch (error) {
             logger.error('캐시 데이터 사용 중 오류', error);
-            console.error('❌ [DEBUG] 캐시 오류:', error);
             // 캐시 초기화
             globalCache.purchases = null;
             globalCache.vendors = null;
@@ -158,7 +139,6 @@ export const usePurchaseData = () => {
         }
         
         // 캐시가 없거나 만료된 경우 새로 로드
-        console.log('🔄 [DEBUG] 데이터 새로 로드');
         const [vendorResult, employeeResult, userResult] = await Promise.all([
           supabase.from('vendors').select('*'),
           supabase.from('employees').select('*'),
@@ -166,26 +146,21 @@ export const usePurchaseData = () => {
         ]);
 
         if (vendorResult.error) {
-          console.error('❌ [DEBUG] 업체 로드 실패:', vendorResult.error);
           throw vendorResult.error;
         }
         const vendorData = vendorResult.data || [];
         setVendors(vendorData);
         globalCache.vendors = vendorData;
-        console.log('✅ [DEBUG] 업체 로드 완료:', vendorData.length, '개');
         
         if (employeeResult.error) {
-          console.error('❌ [DEBUG] 직원 로드 실패:', employeeResult.error);
           throw employeeResult.error;
         }
         const employeeData = employeeResult.data || [];
         setEmployees(employeeData);
         globalCache.employees = employeeData;
-        console.log('✅ [DEBUG] 직원 로드 완료:', employeeData.length, '개');
 
         // 사용자 권한 및 이름 로드
         if (userResult.data.user && !userResult.error) {
-          console.log('👤 [DEBUG] 사용자 정보:', userResult.data.user.email);
           // email로 직원 정보 찾기 (올바른 방법)
           let employeeData = null;
           if (userResult.data.user.email) {
@@ -214,12 +189,6 @@ export const usePurchaseData = () => {
               }
             }
             
-            console.log('👤 [DEBUG] 사용자 권한:', {
-              name: employeeData.name,
-              email: employeeData.email,
-              roles
-            });
-            
             setCurrentUserRoles(roles);
             setCurrentUserName(employeeData.name || employeeData.full_name || '');
             setCurrentUserEmail(employeeData.email || '');
@@ -230,7 +199,6 @@ export const usePurchaseData = () => {
         }
       } catch (error) {
         logger.error('초기 데이터 로드 실패', error);
-        console.error('❌ [DEBUG] 초기 데이터 로드 실패:', error);
       }
     };
 
@@ -239,7 +207,6 @@ export const usePurchaseData = () => {
 
   // 발주 목록 로드 - 캐싱 및 최적화 적용
   const loadPurchases = useCallback(async (forceRefresh?: boolean) => {
-    console.log('🔄 [DEBUG] loadPurchases 시작 - forceRefresh:', forceRefresh);
     setLoading(true);
     
     try {
@@ -247,22 +214,13 @@ export const usePurchaseData = () => {
       const now = Date.now();
       const cacheValid = globalCache.lastFetch && (now - globalCache.lastFetch) < globalCache.CACHE_DURATION;
       
-      console.log('📊 [DEBUG] 캐시 확인:', {
-        forceRefresh,
-        cacheValid,
-        hasCachedData: !!globalCache.purchases,
-        cacheAge: now - globalCache.lastFetch
-      });
-      
       if (!forceRefresh && cacheValid && globalCache.purchases) {
         try {
-          console.log('✅ [DEBUG] 캐시된 발주 데이터 사용:', globalCache.purchases.length, '건');
           setPurchases(globalCache.purchases);
           setLoading(false);
           return;
         } catch (error) {
           logger.error('발주 데이터 캐시 사용 중 오류', error);
-          console.error('❌ [DEBUG] 캐시 오류:', error);
           // 캐시 초기화
           globalCache.purchases = null;
           globalCache.lastFetch = 0;
@@ -290,36 +248,22 @@ export const usePurchaseData = () => {
         return;
       }
 
-      // 최근 6개월 발주 데이터 조회 (성능 최적화)
-      const sixMonthsAgo = new Date();
-      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-      sixMonthsAgo.setHours(0, 0, 0, 0);
-      
-      console.log('📅 [DEBUG] 최근 6개월 데이터 조회:', {
-        sixMonthsAgo: sixMonthsAgo.toISOString(),
-        today: new Date().toISOString()
-      });
+      // 최적화된 발주 데이터 조회 - 최근 3개월 데이터만 기본 로드
+      const threeMonthsAgo = new Date();
+      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
       
       const { data, error } = await supabase
         .from('purchase_requests')
         .select('*,vendors(vendor_name,vendor_payment_schedule),vendor_contacts(contact_name),purchase_request_items(*).order(line_number)')
-        .gte('request_date', sixMonthsAgo.toISOString())
+        .gte('request_date', threeMonthsAgo.toISOString())
         .order('request_date', { ascending: false })
-        .limit(500); // 성능 최적화: 최대 500건
+        .limit(1000); // 최적화된 데이터 로드
 
       if (error) {
-        console.error('❌ [DEBUG] 발주 데이터 조회 실패:', error);
+        // Purchase data fetch error - will throw
         throw error;
       }
 
-      console.log('📊 [DEBUG] 발주 데이터 조회 결과:', {
-        dataCount: Array.isArray(data) ? data.length : 0,
-        firstFewIds: Array.isArray(data) ? data.slice(0, 5).map(d => ({
-          id: d.id,
-          po_number: d.purchase_order_number,
-          date: d.request_date
-        })) : []
-      });
 
       // 데이터 변환 (hanslwebapp과 동일)
       const processedData = (data || []).map((request: any) => {
@@ -373,24 +317,12 @@ export const usePurchaseData = () => {
         };
       });
 
-      console.log('✅ [DEBUG] 발주 데이터 처리 완료:', {
-        processedCount: processedData.length,
-        sampleData: processedData.slice(0, 3).map(p => ({
-          id: p.id,
-          po: p.purchase_order_number,
-          requester: p.requester_name,
-          date: p.request_date
-        }))
-      });
-
       // 데이터 로드 완료 및 캐싱
       setPurchases(processedData);
       globalCache.purchases = processedData;
       globalCache.lastFetch = now;
-      console.log('✅ [DEBUG] 캐시 업데이트 완료');
     } catch (error) {
       logger.error('발주 목록 로드 실패', error);
-      console.error('❌ [DEBUG] 발주 목록 로드 실패:', error);
       toast.error('발주 목록을 불러올 수 없습니다.');
     } finally {
       setLoading(false);
@@ -398,7 +330,6 @@ export const usePurchaseData = () => {
   }, [employees]);
 
   useEffect(() => {
-    console.log('🚀 [DEBUG] usePurchaseData 첫 로드');
     loadPurchases();
   }, [loadPurchases]);
 

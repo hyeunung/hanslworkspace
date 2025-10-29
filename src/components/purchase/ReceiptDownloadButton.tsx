@@ -76,7 +76,7 @@ export const ReceiptDownloadButton: React.FC<ReceiptDownloadButtonProps> = ({
       console.log('✅ 영수증 다운로드 완료');
       
       // 성공 메시지 (선택적)
-      if (typeof window !== 'undefined' && window.alert) {
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
         alert('✅ 영수증이 다운로드되었습니다.');
       }
     } catch (error) {

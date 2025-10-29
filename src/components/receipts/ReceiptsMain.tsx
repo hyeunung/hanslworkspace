@@ -269,15 +269,16 @@ export default function ReceiptsMain() {
       });
 
     } catch (error) {
+      const errorObj = error as any;
       console.error('💥 [ReceiptsMain] 예외 발생:', {
         error,
-        message: error.message,
-        stack: error.stack,
+        message: errorObj?.message,
+        stack: errorObj?.stack,
         receiptId,
         timestamp: new Date().toISOString()
       });
       
-      toast.error(`인쇄 완료 처리에 실패했습니다: ${error.message}`);
+      toast.error(`인쇄 완료 처리에 실패했습니다: ${errorObj?.message || '알 수 없는 오류'}`);
     }
   }, [supabase, loadReceipts]);
 

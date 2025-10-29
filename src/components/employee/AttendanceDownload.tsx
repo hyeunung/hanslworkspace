@@ -124,7 +124,7 @@ export default function AttendanceDownload({ employees, isOpen, onClose }: Atten
       // 엑셀 파일 생성
       const excelData = {
         employeeName: selectedEmp.name || '',
-        employeeId: selectedEmp.employee_id || '',
+        employeeId: selectedEmp.employeeID || '',
         department: selectedEmp.department || '',
         startDate,
         endDate,

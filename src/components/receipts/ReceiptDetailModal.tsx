@@ -274,10 +274,11 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
       });
 
     } catch (error) {
+      const errorObj = error as any;
       console.error('💥 [ReceiptDebug] 예외 발생:', {
         error,
-        message: error.message,
-        stack: error.stack,
+        message: errorObj?.message,
+        stack: errorObj?.stack,
         receiptId: receipt.id,
         timestamp: new Date().toISOString()
       });
@@ -285,7 +286,7 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
       // 디버그 모니터에 실패 결과 추적
       debugMonitor.trackUpdateResult(receipt.id, false, error);
       
-      toast.error(`인쇄 완료 처리에 실패했습니다: ${error.message}`);
+      toast.error(`인쇄 완료 처리에 실패했습니다: ${errorObj?.message || '알 수 없는 오류'}`);
     }
   }, [supabase, receipt.id, receipt.file_name, onClose, onDelete]);
 

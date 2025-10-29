@@ -34,7 +34,7 @@ interface PurchaseDetailModalProps {
   embedded?: boolean  // Dialog 없이 내용만 렌더링
   currentUserRoles?: string[]
   activeTab?: string
-  onRefresh?: () => void
+  onRefresh?: (forceRefresh?: boolean) => void
   onDelete?: (purchase: PurchaseRequestWithDetails) => void
 }
 
@@ -326,7 +326,7 @@ export default function PurchaseDetailModal({
       toast.success('발주 내역이 수정되었습니다.')
       setIsEditing(false)
       setDeletedItemIds([])
-      onRefresh?.()
+      onRefresh?.(true)
       
       // 수정된 데이터 다시 로드
       await loadPurchaseDetail(purchaseId?.toString() || '')
@@ -413,7 +413,7 @@ export default function PurchaseDetailModal({
       }
       
       // 부모 컴포넌트 새로고침
-      onRefresh?.()
+      onRefresh?.(true)
     } catch (error) {
       toast.error('구매완료 처리 중 오류가 발생했습니다.')
     }
@@ -446,7 +446,7 @@ export default function PurchaseDetailModal({
       }
       
       // 부모 컴포넌트 새로고침
-      onRefresh?.()
+      onRefresh?.(true)
     } catch (error) {
       toast.error('입고 처리 중 오류가 발생했습니다.')
     }
@@ -475,7 +475,8 @@ export default function PurchaseDetailModal({
       }
       
       toast.success(`${type === 'middle' ? '중간' : '최종'} 승인이 완료되었습니다.`)
-      onRefresh?.()
+      // 승인 완료 후 강제로 데이터 새로고침 (캐시 무시)
+      onRefresh?.(true)
       await loadPurchaseDetail(purchaseId?.toString() || '')
     } catch (error) {
       toast.error('승인 처리 중 오류가 발생했습니다.')
@@ -504,7 +505,7 @@ export default function PurchaseDetailModal({
       if (error) throw error
       
       toast.success('모든 품목이 구매완료 처리되었습니다.')
-      onRefresh?.()
+      onRefresh?.(true)
       await loadPurchaseDetail(purchaseId?.toString() || '')
     } catch (error) {
       console.error('전체 구매완료 처리 오류:', error)
@@ -542,7 +543,7 @@ export default function PurchaseDetailModal({
       if (error) throw error
       
       toast.success('모든 품목이 입고완료 처리되었습니다.')
-      onRefresh?.()
+      onRefresh?.(true)
       await loadPurchaseDetail(purchaseId?.toString() || '')
     } catch (error) {
       console.error('전체 입고완료 처리 오류:', error)
@@ -577,7 +578,7 @@ export default function PurchaseDetailModal({
       if (error) throw error
       
       toast.success(`"${itemName}" 품목이 입고완료 처리되었습니다.`)
-      onRefresh?.()
+      onRefresh?.(true)
       await loadPurchaseDetail(purchaseId?.toString() || '')
     } catch (error) {
       console.error('개별 입고완료 처리 오류:', error)
@@ -611,7 +612,8 @@ export default function PurchaseDetailModal({
       }
       
       toast.success(`${type === 'middle' ? '중간' : '최종'} 반려가 완료되었습니다.`)
-      onRefresh?.()
+      // 반려 완료 후 강제로 데이터 새로고침 (캐시 무시)
+      onRefresh?.(true)
       await loadPurchaseDetail(purchaseId?.toString() || '')
     } catch (error) {
       toast.error('반려 처리 중 오류가 발생했습니다.')
@@ -640,13 +642,13 @@ export default function PurchaseDetailModal({
                     <label className="text-sm font-medium text-gray-600 mb-2 block">발주서 종류</label>
                     {isEditing ? (
                       <Input
-                        value={editedPurchase?.purchase_type || ''}
-                        onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, purchase_type: e.target.value } : null)}
+                        value={editedPurchase?.request_type || ''}
+                        onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, request_type: e.target.value } : null)}
                         className="h-9"
                         placeholder="일반"
                       />
                     ) : (
-                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.purchase_type || '일반'}</p>
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.request_type || '일반'}</p>
                     )}
                   </div>
                   <div>
@@ -705,13 +707,25 @@ export default function PurchaseDetailModal({
                     <label className="text-sm font-medium text-gray-600 mb-2 block">업체 담당자</label>
                     {isEditing ? (
                       <Input
-                        value={editedPurchase?.vendor_contact || ''}
-                        onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, vendor_contact: e.target.value } : null)}
+                        value={editedPurchase?.vendor_contacts?.[0]?.contact_name || ''}
+                        onChange={(e) => {
+                          setEditedPurchase(prev => {
+                            if (!prev) return null;
+                            const contacts = prev.vendor_contacts || [];
+                            const updatedContacts = [...contacts];
+                            if (updatedContacts[0]) {
+                              updatedContacts[0] = { ...updatedContacts[0], contact_name: e.target.value };
+                            } else {
+                              updatedContacts[0] = { contact_name: e.target.value } as any;
+                            }
+                            return { ...prev, vendor_contacts: updatedContacts };
+                          })
+                        }}
                         className="h-9"
                         placeholder="담당자 선택"
                       />
                     ) : (
-                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.vendor_contact || '-'}</p>
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.vendor_contacts?.[0]?.contact_name || '-'}</p>
                     )}
                   </div>
                   <div>
@@ -780,13 +794,13 @@ export default function PurchaseDetailModal({
                     <label className="text-sm font-medium text-gray-600 mb-2 block">Item</label>
                     {isEditing ? (
                       <Input
-                        value={editedPurchase?.item_category || ''}
-                        onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, item_category: e.target.value } : null)}
+                        value={editedPurchase?.project_item || ''}
+                        onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, project_item: e.target.value } : null)}
                         className="h-9"
                         placeholder="입력"
                       />
                     ) : (
-                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.item_category || '-'}</p>
+                      <p className="text-gray-900 bg-gray-50 px-3 py-2 rounded-md">{purchase.project_item || '-'}</p>
                     )}
                   </div>
               </div>

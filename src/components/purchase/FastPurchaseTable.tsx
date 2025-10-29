@@ -849,7 +849,7 @@ const FastPurchaseTable = memo(({
       }
 
       // 권한 체크
-      let roles = [];
+      let roles: string[] = [];
       if (employee.purchase_role) {
         if (Array.isArray(employee.purchase_role)) {
           roles = employee.purchase_role.map(r => String(r).trim());
@@ -931,15 +931,16 @@ const FastPurchaseTable = memo(({
       onRefresh?.();
     } catch (error) {
       console.error('💥 삭제 중 전체 오류:', error);
+      const errorObj = error as any;
       console.error('오류 상세 정보:', {
-        name: error.name,
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
-        stack: error.stack
+        name: errorObj?.name,
+        message: errorObj?.message,
+        code: errorObj?.code,
+        details: errorObj?.details,
+        hint: errorObj?.hint,
+        stack: errorObj?.stack
       });
-      toast.error(`삭제 중 오류가 발생했습니다: ${error.message || '알 수 없는 오류'}`);
+      toast.error(`삭제 중 오류가 발생했습니다: ${errorObj?.message || '알 수 없는 오류'}`);
     }
     
     setDeleteConfirmOpen(false);

@@ -137,7 +137,7 @@ class PurchaseService {
 
       if (error) throw error;
 
-      const purchasesWithDetails = (data || []).map(purchase => ({
+      const purchasesWithDetails = (Array.isArray(data) ? data : []).map(purchase => ({
         ...purchase,
         items: purchase.items || [],
         vendor: purchase.vendor || { id: 0, vendor_name: '알 수 없음' },
@@ -165,10 +165,10 @@ class PurchaseService {
       if (error) throw error;
 
       const purchaseWithDetails = {
-        ...data,
-        items: data.items || [],
-        vendor: data.vendor || { id: 0, vendor_name: '알 수 없음' },
-        vendor_contacts: data.vendor_contacts || []
+        ...(data || {}),
+        items: (data && 'items' in data) ? data.items || [] : [],
+        vendor: (data && 'vendor' in data) ? data.vendor || { id: 0, vendor_name: '알 수 없음' } : { id: 0, vendor_name: '알 수 없음' },
+        vendor_contacts: (data && 'vendor_contacts' in data) ? data.vendor_contacts || [] : []
       } as PurchaseRequestWithDetails;
 
       return { success: true, data: purchaseWithDetails };
