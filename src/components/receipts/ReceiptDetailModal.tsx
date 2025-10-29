@@ -152,7 +152,7 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
       if (error) throw error;
 
       toast.success('인쇄 완료로 표시되었습니다.');
-      onClose();
+      // onClose()는 이미 handlePrint에서 호출됨
       if (onDelete) {
         onDelete(); // 목록 새로고침을 위해 호출
       }
@@ -179,11 +179,14 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
       // 인쇄 완료 확인 다이얼로그
       setTimeout(() => {
         if (confirm('인쇄를 완료하셨습니까?')) {
+          // 먼저 모달 닫기
+          onClose();
+          // 그 다음 인쇄완료 처리
           markAsPrinted();
         }
       }, 1000);
     }
-  }, [receipt.receipt_image_url, markAsPrinted]);
+  }, [receipt.receipt_image_url, markAsPrinted, onClose]);
 
   // 영수증 삭제 - useCallback으로 최적화
   const handleDelete = useCallback(async () => {
