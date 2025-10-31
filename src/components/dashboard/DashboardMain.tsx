@@ -607,12 +607,8 @@ export default function DashboardMain() {
                     </div>
                     
                     {/* 항목 리스트 */}
-                    <div className="space-y-1.5 h-[36rem] overflow-y-auto">
-                      {console.log('필터링 전:', data.pendingApprovals)}
-                      {console.log('검색어:', searchTerms.pending)}
-                      {console.log('필터링 후:', filterItems(data.pendingApprovals, searchTerms.pending))}
+                    <div style={{ maxHeight: '36rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
                       {filterItems(data.pendingApprovals, searchTerms.pending).slice(0, 10).map((approval, index) => {
-                        console.log(`렌더링 중 ${index + 1}번째 항목:`, approval.purchase_order_number)
                         const items = approval.purchase_request_items || []
                         const firstItem = items[0] || {}
                         const totalAmount = approval.total_amount || items.reduce((sum: number, i: any) => sum + (Number(i.amount_value) || 0), 0)
@@ -620,10 +616,11 @@ export default function DashboardMain() {
                         
                         return (
                           <div 
-                            key={approval.id} 
-                            className={`border rounded-lg p-2 hover:shadow-sm transition-all cursor-pointer ${
+                            key={`approval-${approval.id}`} 
+                            className={`border rounded-lg p-2 hover:shadow-sm transition-all cursor-pointer mb-1.5 ${
                               isAdvance ? 'bg-red-50 border-red-200' : 'hover:bg-orange-50/30'
                             }`}
+                            style={{ display: 'block' }}
                             onClick={(e) => {
                               if ((e.target as HTMLElement).closest('button')) return
                               setSelectedApprovalId(Number(approval.id))

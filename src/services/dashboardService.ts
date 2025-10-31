@@ -226,15 +226,17 @@ export class DashboardService {
       allRequests = firstTry.data || []
     }
     
-    console.log('📊 전체 조회된 발주요청 개수:', allRequests.length)
-    console.log('📊 최근 5개 발주요청:', allRequests.slice(0, 5).map(item => ({
-      id: item.id,
-      purchase_order_number: item.purchase_order_number,
-      request_date: item.request_date,
-      created_at: item.created_at,
-      middle_manager_status: item.middle_manager_status,
-      final_manager_status: item.final_manager_status
-    })))
+    logger.debug('📊 전체 조회된 발주요청 개수', { count: allRequests.length })
+    logger.debug('📊 최근 5개 발주요청', {
+      items: allRequests.slice(0, 5).map(item => ({
+        id: item.id,
+        purchase_order_number: item.purchase_order_number,
+        request_date: item.request_date,
+        created_at: item.created_at,
+        middle_manager_status: item.middle_manager_status,
+        final_manager_status: item.final_manager_status
+      }))
+    })
 
     // 클라이언트 사이드에서 역할별 필터링
     let filteredData = allRequests || []
@@ -246,7 +248,7 @@ export class DashboardService {
     )
 
     // 발주 리스트의 pending 탭과 동일한 조건: 중간승인자나 최종승인자 중 하나라도 pending이면 승인대기
-    console.log('🔍 승인대기 필터링 전 데이터', {
+    logger.debug('🔍 승인대기 필터링 전 데이터', {
       employeeName: employee.name,
       employeeRoles: this.parseRoles(employee.purchase_role),
       totalRequests: allRequests?.length || 0,
@@ -272,7 +274,7 @@ export class DashboardService {
       // 중간승인 대기 또는 최종승인 대기
       const shouldInclude = middlePending || finalPending
       
-      console.log('✅ 승인대기 항목 필터링', {
+      logger.debug('✅ 승인대기 항목 필터링', {
         id: item.id,
         purchase_order_number: item.purchase_order_number,
         middle_manager_status: item.middle_manager_status,
@@ -285,7 +287,7 @@ export class DashboardService {
       return shouldInclude
     })
     
-    console.log('🔍 승인대기 필터링 후 데이터', {
+    logger.debug('🔍 승인대기 필터링 후 데이터', {
       filteredCount: filteredData.length,
       filteredItems: filteredData.map(item => ({
         id: item.id,
@@ -305,7 +307,7 @@ export class DashboardService {
     
     if (roles.includes('app_admin')) {
       // app_admin은 모든 승인 대기 항목 볼 수 있음 (필터링 없음)
-      console.log('🔑 app_admin 권한으로 모든 승인대기 항목 표시', {
+      logger.debug('🔑 app_admin 권한으로 모든 승인대기 항목 표시', {
         totalItems: roleFilteredData.length
       })
       // app_admin인 경우 추가 필터링 없이 모든 항목 표시
@@ -315,7 +317,7 @@ export class DashboardService {
         const middlePending = isPending(item.middle_manager_status)
         return middlePending
       })
-      console.log('🔑 middle_manager 권한으로 중간승인 대기 항목만 표시', {
+      logger.debug('🔑 middle_manager 권한으로 중간승인 대기 항목만 표시', {
         beforeFilter: filteredData.length,
         afterFilter: roleFilteredData.length
       })
@@ -364,7 +366,7 @@ export class DashboardService {
     // 최종 필터링된 데이터 사용
     filteredData = roleFilteredData
     
-    console.log('📋 품목 정보 조회 시작', {
+    logger.debug('📋 품목 정보 조회 시작', {
       filteredDataCount: filteredData.length,
       filteredDataIds: filteredData.map(item => ({
         id: item.id,
@@ -407,7 +409,7 @@ export class DashboardService {
       })
     )
     
-    console.log('📋 품목 정보 조회 완료', {
+    logger.debug('📋 품목 정보 조회 완료', {
       enhancedDataCount: enhancedData.length,
       enhancedDataSummary: enhancedData.map(item => ({
         id: item.id,
