@@ -225,6 +225,16 @@ export class DashboardService {
     } else {
       allRequests = firstTry.data || []
     }
+    
+    console.log('📊 전체 조회된 발주요청 개수:', allRequests.length)
+    console.log('📊 최근 5개 발주요청:', allRequests.slice(0, 5).map(item => ({
+      id: item.id,
+      purchase_order_number: item.purchase_order_number,
+      request_date: item.request_date,
+      created_at: item.created_at,
+      middle_manager_status: item.middle_manager_status,
+      final_manager_status: item.final_manager_status
+    })))
 
     // 클라이언트 사이드에서 역할별 필터링
     let filteredData = allRequests || []
@@ -262,16 +272,15 @@ export class DashboardService {
       // 중간승인 대기 또는 최종승인 대기
       const shouldInclude = middlePending || finalPending
       
-      if (shouldInclude) {
-        logger.debug('✅ 승인대기 항목 포함', {
-          id: item.id,
-          purchase_order_number: item.purchase_order_number,
-          middle_manager_status: item.middle_manager_status,
-          final_manager_status: item.final_manager_status,
-          middlePending,
-          finalPending
-        })
-      }
+      console.log('✅ 승인대기 항목 필터링', {
+        id: item.id,
+        purchase_order_number: item.purchase_order_number,
+        middle_manager_status: item.middle_manager_status,
+        final_manager_status: item.final_manager_status,
+        middlePending,
+        finalPending,
+        shouldInclude
+      })
       
       return shouldInclude
     })
@@ -353,6 +362,14 @@ export class DashboardService {
     
     // 최종 필터링된 데이터 사용
     filteredData = roleFilteredData
+    
+    console.log('📋 품목 정보 조회 시작', {
+      filteredDataCount: filteredData.length,
+      filteredDataIds: filteredData.map(item => ({
+        id: item.id,
+        purchase_order_number: item.purchase_order_number
+      }))
+    })
 
     // 품목 정보를 별도로 조회하여 추가
     const enhancedData = await Promise.all(
@@ -388,6 +405,16 @@ export class DashboardService {
         }
       })
     )
+    
+    console.log('📋 품목 정보 조회 완료', {
+      enhancedDataCount: enhancedData.length,
+      enhancedDataSummary: enhancedData.map(item => ({
+        id: item.id,
+        purchase_order_number: item.purchase_order_number,
+        itemsCount: item.purchase_request_items?.length || 0,
+        total_amount: item.total_amount
+      }))
+    })
 
     return enhancedData
   }

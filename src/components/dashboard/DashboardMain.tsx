@@ -99,7 +99,7 @@ export default function DashboardMain() {
         const dashboardData = await dashboardService.getDashboardData(employee)
         
         // 디버깅: 승인대기 데이터 확인
-        logger.debug('🔍 대시보드 데이터 로딩 완료', {
+        console.log('🔍 대시보드 데이터 로딩 완료', {
           employeeName: employee.name,
           employeeEmail: employee.email,
           purchaseRole: employee.purchase_role,
