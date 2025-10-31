@@ -308,6 +308,7 @@ export class DashboardService {
       logger.debug('🔑 app_admin 권한으로 모든 승인대기 항목 표시', {
         totalItems: roleFilteredData.length
       })
+      // app_admin인 경우 추가 필터링 없이 모든 항목 표시
     } else if (roles.includes('middle_manager')) {
       // 중간승인자: 중간승인 대기 항목만
       roleFilteredData = filteredData.filter(item => {
