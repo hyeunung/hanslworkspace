@@ -286,11 +286,73 @@ export class DashboardService {
       }))
     })
     
-
     // 역할이 있는 사용자만 승인 대기 항목을 볼 수 있음
     if (roles.length === 0) {
       return []
     }
+
+    // 역할별 권한에 따른 추가 필터링 (app_admin이 최우선)
+    let roleFilteredData = filteredData
+    
+    if (roles.includes('app_admin')) {
+      // app_admin은 모든 승인 대기 항목 볼 수 있음 (필터링 없음)
+      logger.debug('🔑 app_admin 권한으로 모든 승인대기 항목 표시', {
+        totalItems: roleFilteredData.length
+      })
+    } else if (roles.includes('middle_manager')) {
+      // 중간승인자: 중간승인 대기 항목만
+      roleFilteredData = filteredData.filter(item => {
+        const middlePending = isPending(item.middle_manager_status)
+        return middlePending
+      })
+      logger.debug('🔑 middle_manager 권한으로 중간승인 대기 항목만 표시', {
+        beforeFilter: filteredData.length,
+        afterFilter: roleFilteredData.length
+      })
+    } else if (roles.includes('final_approver') || roles.includes('ceo')) {
+      // 최종승인자: 중간승인 완료 + 최종승인 대기 항목만
+      roleFilteredData = filteredData.filter(item => {
+        const middleApproved = item.middle_manager_status === 'approved'
+        const finalPending = isPending(item.final_manager_status)
+        return middleApproved && finalPending
+      })
+      logger.debug('🔑 final_approver/ceo 권한으로 최종승인 대기 항목만 표시', {
+        beforeFilter: filteredData.length,
+        afterFilter: roleFilteredData.length
+      })
+    } else if (roles.includes('raw_material_manager') || roles.includes('consumable_manager')) {
+      // 원자재/소모품 매니저: 최종승인자와 동일한 권한
+      roleFilteredData = filteredData.filter(item => {
+        const middleApproved = item.middle_manager_status === 'approved'
+        const finalPending = isPending(item.final_manager_status)
+        return middleApproved && finalPending
+      })
+      logger.debug('🔑 material_manager 권한으로 최종승인 대기 항목만 표시', {
+        beforeFilter: filteredData.length,
+        afterFilter: roleFilteredData.length
+      })
+    } else if (roles.includes('lead buyer')) {
+      // 구매담당자: 최종승인 완료 + 구매 대기 항목만
+      roleFilteredData = filteredData.filter(item => {
+        const finalApproved = item.final_manager_status === 'approved'
+        const purchasePending = isPending(item.purchase_status)
+        return finalApproved && purchasePending
+      })
+      logger.debug('🔑 lead buyer 권한으로 구매 대기 항목만 표시', {
+        beforeFilter: filteredData.length,
+        afterFilter: roleFilteredData.length
+      })
+    } else {
+      // 기타 역할은 승인 권한 없음
+      roleFilteredData = []
+      logger.debug('🔑 승인 권한 없는 역할', {
+        roles,
+        result: 'empty'
+      })
+    }
+    
+    // 최종 필터링된 데이터 사용
+    filteredData = roleFilteredData
 
     // 품목 정보를 별도로 조회하여 추가
     const enhancedData = await Promise.all(
