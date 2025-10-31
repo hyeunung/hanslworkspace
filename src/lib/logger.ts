@@ -39,9 +39,20 @@ class Logger {
       }
     } else {
       // 프로덕션에서는 경고와 에러만 로깅 (실제로는 외부 서비스로 전송)
-      if (level === 'warn' || level === 'error') {
-        // TODO: Send to external logging service (Sentry, LogRocket, etc.)
-        console[level](`[${level.toUpperCase()}] ${message}`, logData);
+      // 임시 디버깅: 모든 레벨 출력
+      switch (level) {
+        case 'debug':
+          console.debug(`🔍 [${timestamp}] ${message}`, context || '');
+          break;
+        case 'info':
+          console.info(`ℹ️ [${timestamp}] ${message}`, context || '');
+          break;
+        case 'warn':
+          console.warn(`⚠️ [${timestamp}] ${message}`, context || '');
+          break;
+        case 'error':
+          console.error(`❌ [${timestamp}] ${message}`, context || '');
+          break;
       }
     }
   }

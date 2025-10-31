@@ -606,6 +606,9 @@ export default function DashboardMain() {
                     
                     {/* 항목 리스트 */}
                     <div className="space-y-1.5 h-[36rem] overflow-y-auto">
+                      {console.log('필터링 전:', data.pendingApprovals)}
+                      {console.log('검색어:', searchTerms.pending)}
+                      {console.log('필터링 후:', filterItems(data.pendingApprovals, searchTerms.pending))}
                       {filterItems(data.pendingApprovals, searchTerms.pending).slice(0, 10).map((approval) => {
                         const items = approval.purchase_request_items || []
                         const firstItem = items[0] || {}
