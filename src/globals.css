@@ -245,6 +245,15 @@
   .business-radius-badge {
     @apply rounded-lg; /* 8px - Badges and status indicators */
   }
+
+  /* Page Title & Subtitle System - Consistent with hanslwebapp */
+  .page-title {
+    @apply font-semibold text-foreground text-[19px] mb-0; /* Main page titles */
+  }
+  
+  .page-subtitle {
+    @apply text-muted-foreground text-[12.3px] font-normal mt-0 mb-0; /* Page subtitles */
+  }
 }
 
 /* Apple-style animations */

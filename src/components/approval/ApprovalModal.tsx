@@ -96,7 +96,7 @@ export default function ApprovalModal({
 
         <div className="space-y-6">
           {/* 발주 기본 정보 */}
-          <div className="bg-gray-50 p-4 rounded-lg space-y-3">
+          <div className="bg-gray-50 p-4 business-radius-card space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-lg">
                 {approval.purchase_order_number || `발주 #${approval.id?.toString().slice(-8)}`}
@@ -166,7 +166,7 @@ export default function ApprovalModal({
                 <Package className="w-4 h-4" />
                 프로젝트 정보
               </h4>
-              <div className="bg-hansl-50 p-3 rounded-lg space-y-2">
+              <div className="bg-hansl-50 p-3 business-radius-card space-y-2">
                 {approval.project_vendor && (
                   <div>
                     <p className="text-xs text-gray-500">프로젝트 업체</p>
@@ -189,7 +189,7 @@ export default function ApprovalModal({
               <FileText className="w-4 h-4" />
               품목 목록 ({approval.items?.length || 0}건)
             </h4>
-            <div className="max-h-60 overflow-y-auto border rounded-lg">
+            <div className="max-h-60 overflow-y-auto border business-radius-card">
               {approval.items?.map((item, index) => (
                 <div key={item.id || index} className="p-3 border-b border-gray-100 last:border-b-0">
                   <div className="flex justify-between items-start">

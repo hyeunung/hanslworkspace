@@ -5,14 +5,11 @@ import { usePurchaseData, clearPurchaseCache } from "@/hooks/usePurchaseData";
 import { useFastPurchaseFilters } from "@/hooks/useFastPurchaseFilters";
 import LazyPurchaseTable from "@/components/purchase/LazyPurchaseTable";
 
-import { Search, Filter, Plus, Package } from "lucide-react";
+import { Plus, Package } from "lucide-react";
 import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs/generatePurchaseOrderExcel";
-import { Input } from "@/components/ui/input";
 
 // Lazy load modal for better performance
 const PurchaseItemsModal = lazy(() => import("@/components/purchase/PurchaseItemsModal"));
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Combobox, ComboboxOption } from "@/components/ui/combobox";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 // Tabs 컴포넌트를 제거하고 직접 구현 (hanslwebapp 방식)
@@ -65,8 +62,6 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
     activeTab,
     searchTerm,
     vendorFilter,
-    dateFromFilter,
-    dateToFilter,
     selectedEmployee,
     purchaseNumberFilter,
     itemNameFilter,
@@ -76,8 +71,6 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
     setActiveTab,
     setSearchTerm,
     setVendorFilter,
-    setDateFromFilter,
-    setDateToFilter,
     setSelectedEmployee,
     setPurchaseNumberFilter,
     setItemNameFilter,
@@ -101,13 +94,13 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
   // 상태에 따른 배지 생성
   const getStatusBadge = (purchase: Purchase) => {
     if (purchase.is_received) {
-      return <Badge className="bg-green-50 text-green-700">입고완료</Badge>;
+      return <Badge className="bg-green-50 text-green-700 business-radius-badge">입고완료</Badge>;
     } else if (purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'approved') {
-      return <Badge className="bg-hansl-50 text-hansl-700">구매진행</Badge>;
+      return <Badge className="bg-hansl-50 text-hansl-700 business-radius-badge">구매진행</Badge>;
     } else if (purchase.middle_manager_status === 'rejected' || purchase.final_manager_status === 'rejected') {
-      return <Badge className="bg-red-50 text-red-700">반려</Badge>;
+      return <Badge className="bg-red-50 text-red-700 business-radius-badge">반려</Badge>;
     } else {
-      return <Badge className="bg-yellow-50 text-yellow-700">승인대기</Badge>;
+      return <Badge className="bg-yellow-50 text-yellow-700 business-radius-badge">승인대기</Badge>;
     }
   };
 
@@ -366,8 +359,8 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">발주요청 관리</h1>
-          <p className="text-sm text-gray-600 mt-1">발주요청서를 관리하고 승인 처리를 할 수 있습니다</p>
+          <h1 className="page-title">발주요청 관리</h1>
+          <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Purchase Management</p>
         </div>
         <Button 
           onClick={() => navigate('/purchase/new')}
@@ -378,140 +371,16 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
         </Button>
       </div>
 
-      {/* 필터 섹션 */}
-      <Card className="mb-4 border border-gray-200">
-        <CardHeader className="bg-white border-b border-gray-200 py-3">
-          <CardTitle className="flex items-center text-gray-900 text-sm font-medium">
-            <Filter className="w-4 h-4 mr-2" />
-            검색 필터
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="py-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">시작일</label>
-              <Input
-                type="date"
-                value={dateFromFilter}
-                onChange={(e) => setDateFromFilter(e.target.value)}
-                className="text-sm h-9"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">종료일</label>
-              <Input
-                type="date"
-                value={dateToFilter}
-                onChange={(e) => setDateToFilter(e.target.value)}
-                className="text-sm h-9"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">요청자</label>
-              <Combobox
-                value={selectedEmployee || "all"}
-                onValueChange={(value) => {
-                  setSelectedEmployee(value);
-                }}
-                options={[
-                  { value: "all", label: "전체" },
-                  ...employees
-                    .filter(emp => emp.name && emp.name.trim() !== '')
-                    .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-                    .map((employee): ComboboxOption => ({
-                      value: employee.name || '',
-                      label: `${employee.name}${employee.name === currentUserName ? " (나)" : ""}`
-                    }))
-                ]}
-                placeholder={selectedEmployee === "all" ? "전체" : selectedEmployee || "선택"}
-                searchPlaceholder="직원 이름 검색..."
-                emptyText="일치하는 직원이 없습니다"
-                className="text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">업체</label>
-              <Select value={vendorFilter || "all"} onValueChange={(value) => setVendorFilter(value === "all" ? "" : value)}>
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder="전체" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">전체</SelectItem>
-                  {vendors.map((vendor) => (
-                    <SelectItem key={vendor.id} value={vendor.vendor_name}>
-                      {vendor.vendor_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">발주번호</label>
-              <Input
-                placeholder="번호"
-                value={purchaseNumberFilter}
-                onChange={(e) => setPurchaseNumberFilter(e.target.value)}
-                className="text-sm h-9"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">품명</label>
-              <Input
-                placeholder="품명"
-                value={itemNameFilter}
-                onChange={(e) => setItemNameFilter(e.target.value)}
-                className="text-sm h-9"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">승인상태</label>
-              <Select 
-                value={approvalStatusFilter || "all"} 
-                onValueChange={(value) => setApprovalStatusFilter(value === "all" ? "" : value)}
-              >
-                <SelectTrigger className="h-9 text-sm">
-                  <SelectValue placeholder="전체" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">전체</SelectItem>
-                  <SelectItem value="pending">대기</SelectItem>
-                  <SelectItem value="approved">승인</SelectItem>
-                  <SelectItem value="rejected">반려</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="col-span-2 sm:col-span-1">
-              <label className="block text-xs font-medium text-gray-600 mb-1">통합검색</label>
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400" />
-                <Input
-                  placeholder="검색..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-7 text-sm h-9"
-                />
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* 직접 구현한 탭 (hanslwebapp 방식) - 빠른 성능 */}
       <div className="space-y-3">
         {/* 탭 버튼들 - 모바일 반응형 개선 */}
-        <div className="flex flex-col sm:flex-row sm:space-x-1 space-y-1 sm:space-y-0 bg-gray-50 p-1 rounded-lg border border-gray-200">
+        <div className="flex flex-col sm:flex-row sm:space-x-1 space-y-1 sm:space-y-0 bg-gray-50 p-1 business-radius-card border border-gray-200">
           {NAV_TABS.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-3 sm:px-4 rounded-md text-xs sm:text-sm font-medium transition-colors ${
+              className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-3 sm:px-4 business-radius-button text-xs sm:text-sm font-medium transition-colors ${
                 activeTab === tab.key
                   ? 'text-hansl-600 bg-white shadow-sm border border-gray-200'
                   : 'text-gray-600 bg-transparent hover:text-gray-900 hover:bg-white/50'
@@ -520,7 +389,7 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
               <span className="whitespace-nowrap">{tab.label}</span>
               <Badge 
                 variant="secondary" 
-                className={`text-[10px] sm:text-xs ${
+                className={`text-[10px] sm:text-xs business-radius-badge ${
                   activeTab === tab.key 
                     ? 'bg-hansl-50 text-hansl-700' 
                     : 'bg-gray-100 text-gray-600'

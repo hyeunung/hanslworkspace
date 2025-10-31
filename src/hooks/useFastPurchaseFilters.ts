@@ -1,7 +1,7 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Purchase } from './usePurchaseData';
 import { createClient } from '@/lib/supabase/client';
+import { Purchase } from './usePurchaseData';
 
 // 상수 정의 - 특정 직원의 발주요청 숨김 (본인이 아닌 경우에만)
 const HIDDEN_EMPLOYEES = ['정희웅'];  // 정현웅 제거
@@ -23,9 +23,6 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
   const [approvalStatusFilter, setApprovalStatusFilter] = useState('');
   const [remarkFilter, setRemarkFilter] = useState('');
   
-  // 기간 필터 초기값 설정 - 시간 제한 없음 (전체 기간)
-  const [dateFromFilter, setDateFromFilter] = useState('');
-  const [dateToFilter, setDateToFilter] = useState('');
   
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   
@@ -120,37 +117,16 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     }
   }, [purchases, currentUserRoles]);
 
-  // 2단계: 날짜 필터링 (캐싱 적용)
-  const dateFilteredPurchases = useMemo(() => {
-    const cacheKey = `date_${visiblePurchases.length}_${dateFromFilter}_${dateToFilter}`;
+
+  // 2단계: 탭별 필터링 (최적화 적용)
+  const tabFilteredPurchases = useMemo(() => {
+    const cacheKey = `tab_${visiblePurchases.length}_${activeTab}`;
     if (filterCache.has(cacheKey)) {
       return filterCache.get(cacheKey);
     }
+    
     
     const result = visiblePurchases.filter((purchase: Purchase) => {
-      const requestDate = purchase.request_date ? purchase.request_date.split('T')[0] : '';
-      const matchesDateFrom = !dateFromFilter || requestDate >= dateFromFilter;
-      const matchesDateTo = !dateToFilter || requestDate <= dateToFilter;
-      return matchesDateFrom && matchesDateTo;
-    });
-    
-    if (filterCache.size >= CACHE_SIZE_LIMIT) {
-      const firstKey = filterCache.keys().next().value;
-      filterCache.delete(firstKey);
-    }
-    filterCache.set(cacheKey, result);
-    return result;
-  }, [visiblePurchases, dateFromFilter, dateToFilter]);
-
-  // 3단계: 탭별 필터링 (최적화 적용)
-  const tabFilteredPurchases = useMemo(() => {
-    const cacheKey = `tab_${dateFilteredPurchases.length}_${activeTab}`;
-    if (filterCache.has(cacheKey)) {
-      return filterCache.get(cacheKey);
-    }
-    
-    
-    const result = dateFilteredPurchases.filter((purchase: Purchase) => {
       let matches = false;
       
       switch (activeTab) {
@@ -211,9 +187,9 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     }
     filterCache.set(cacheKey, result);
     return result;
-  }, [dateFilteredPurchases, activeTab]);
+  }, [visiblePurchases, activeTab]);
 
-  // 4단계: 직원 필터링 (최적화 적용)
+  // 3단계: 직원 필터링 (최적화 적용)
   const employeeFilteredPurchases = useMemo(() => {
     const cacheKey = `employee_${tabFilteredPurchases.length}_${selectedEmployee}`;
     if (filterCache.has(cacheKey)) {
@@ -235,7 +211,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     return result;
   }, [tabFilteredPurchases, selectedEmployee]);
 
-  // 5단계: 업체 필터링 (업체 선택시만 실행)
+  // 4단계: 업체 필터링 (업체 선택시만 실행)
   const vendorFilteredPurchases = useMemo(() => {
     if (!vendorFilter) {
       return employeeFilteredPurchases;
@@ -243,7 +219,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     return employeeFilteredPurchases.filter((purchase: Purchase) => purchase.vendor_name === vendorFilter);
   }, [employeeFilteredPurchases, vendorFilter]);
 
-  // 6단계: 추가 필터 적용
+  // 5단계: 추가 필터 적용
   const additionalFilteredPurchases = useMemo(() => {
     let filtered = vendorFilteredPurchases;
     
@@ -305,7 +281,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     return filtered;
   }, [vendorFilteredPurchases, purchaseNumberFilter, itemNameFilter, specificationFilter, approvalStatusFilter, remarkFilter]);
 
-  // 7단계: 검색 필터링 (검색어 변경시만 실행)
+  // 6단계: 검색 필터링 (검색어 변경시만 실행)
   const searchFilteredPurchases = useMemo(() => {
     if (!debouncedSearchTerm) {
       return additionalFilteredPurchases;
@@ -334,7 +310,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     });
   }, [additionalFilteredPurchases, debouncedSearchTerm]);
 
-  // 8단계: 최종 정렬 - 최신순 (내림차순)
+  // 7단계: 최종 정렬 - 최신순 (내림차순)
   const filteredPurchases = useMemo(() => {
     const result = [...searchFilteredPurchases].sort((a, b) => {
       // request_date를 기준으로 내림차순 정렬 (최신이 위로)
@@ -352,13 +328,8 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     // 특정 직원 발주요청 숨김 처리
     const countPurchases = visiblePurchases;
     
-    // 기간 필터 적용
-    const dateFilteredForCount = countPurchases.filter((purchase: Purchase) => {
-      const requestDate = purchase.request_date ? purchase.request_date.split('T')[0] : '';
-      const matchesDateFrom = !dateFromFilter || requestDate >= dateFromFilter;
-      const matchesDateTo = !dateToFilter || requestDate <= dateToFilter;
-      return matchesDateFrom && matchesDateTo;
-    });
+    // 날짜 필터 제거 - 전체 데이터 사용
+    const dateFilteredForCount = countPurchases;
     
     // 각 탭의 고유 발주요청번호 카운트 (중복 제거)
     const getUniqueOrderCount = (filtered: Purchase[]) => {
@@ -370,18 +341,18 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       // 구매현황 탭은 특별 처리
       if (tabKey === 'purchase') {
         if (isLeadBuyer || isAdmin) {
-          return dateFilteredForCount;
+          return countPurchases;
         } else {
-          return dateFilteredForCount.filter((p: Purchase) => p.requester_name === currentUserName);
+          return countPurchases.filter((p: Purchase) => p.requester_name === currentUserName);
         }
       }
       
       const defaultEmployee = computeDefaultEmployee(tabKey);
       
       if (defaultEmployee === 'all' || defaultEmployee === '전체') {
-        return dateFilteredForCount;
+        return countPurchases;
       } else {
-        return dateFilteredForCount.filter((p: Purchase) => p.requester_name === defaultEmployee);
+        return countPurchases.filter((p: Purchase) => p.requester_name === defaultEmployee);
       }
     };
     
@@ -431,69 +402,14 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     };
     
     return counts;
-  }, [visiblePurchases, dateFromFilter, dateToFilter, roleCase, currentUserName, computeDefaultEmployee, isLeadBuyer, isAdmin]);
+  }, [visiblePurchases, roleCase, currentUserName, computeDefaultEmployee, isLeadBuyer, isAdmin]);
 
-  // 사용자별 저장된 기간 불러오기 (로딩 최적화)
-  const loadedPreferencesRef = useRef(false);
-  useEffect(() => {
-    if (loadedPreferencesRef.current) return;
-    loadedPreferencesRef.current = true;
-    
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      
-      const { data } = await supabase
-        .from('user_preferences')
-        .select('period_start, period_end')
-        .eq('user_id', user.id)
-        .single();
-        
-      if (data) {
-        const ps = data.period_start ? new Date(data.period_start).toISOString().split('T')[0] : '';
-        const pe = data.period_end ? new Date(data.period_end).toISOString().split('T')[0] : '';
-        setDateFromFilter(ps);
-        setDateToFilter(pe);
-      }
-    })();
-  }, []);
-  
-  // 기간 변경 시 디바운스 저장 (사용자별)
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => {
-    if (!loadedPreferencesRef.current) return;
-    
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    
-    saveTimeoutRef.current = setTimeout(async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      if (!dateFromFilter || !dateToFilter) return;
-      
-      await supabase.from('user_preferences').upsert({
-        user_id: user.id,
-        period_start: dateFromFilter,
-        period_end: dateToFilter,
-        updated_at: new Date().toISOString()
-      });
-    }, 1000);
-    
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-    };
-  }, [dateFromFilter, dateToFilter]);
 
   return {
     // States
     activeTab,
     searchTerm,
     vendorFilter,
-    dateFromFilter,
-    dateToFilter,
     selectedEmployee,
     purchaseNumberFilter,
     itemNameFilter,
@@ -505,8 +421,6 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     setActiveTab,
     setSearchTerm,
     setVendorFilter,
-    setDateFromFilter,
-    setDateToFilter,
     setSelectedEmployee,
     setPurchaseNumberFilter,
     setItemNameFilter,

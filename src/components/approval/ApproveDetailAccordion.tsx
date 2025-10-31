@@ -300,7 +300,7 @@ const ApproveDetailAccordion: React.FC<ApproveDetailAccordionProps> = ({
     // 완료 상태
     if (localIsPaymentCompleted) {
       return (
-        <span className="px-4 py-2 rounded-md text-sm bg-green-100 text-green-800">
+        <span className="px-4 py-2 business-radius-badge text-sm bg-green-100 text-green-800">
           구매완료
         </span>
       );
@@ -311,7 +311,7 @@ const ApproveDetailAccordion: React.FC<ApproveDetailAccordionProps> = ({
 
   return (
     <div className="flex justify-center w-full py-8">
-      <div className="flex flex-col gap-4 px-3 sm:px-6 lg:px-8 py-6 sm:py-8 items-center w-full max-w-[95vw] sm:max-w-6xl bg-gray-50 rounded-2xl shadow-lg">
+      <div className="flex flex-col gap-4 px-3 sm:px-6 lg:px-8 py-6 sm:py-8 items-center w-full max-w-[95vw] sm:max-w-6xl bg-gray-50 business-radius-card shadow-lg">
         {/* 상단 액션 영역 */}
         <div className="w-full flex justify-between items-center mb-4">
           <div className="flex-1 flex justify-center">
@@ -329,7 +329,7 @@ const ApproveDetailAccordion: React.FC<ApproveDetailAccordionProps> = ({
 
         <div className="flex flex-col lg:flex-row gap-8 items-start w-full">
           {/* 왼쪽: 메타 정보 */}
-          <div className="flex flex-col sm:min-w-[220px] sm:max-w-[320px] bg-white rounded-lg p-4 sm:p-6 shadow-sm space-y-4 w-full lg:w-auto">
+          <div className="flex flex-col sm:min-w-[220px] sm:max-w-[320px] bg-white business-radius-card p-4 sm:p-6 shadow-sm space-y-4 w-full lg:w-auto">
             <InfoRow label="요청유형" value={requestType} />
             <InfoRow label="결제종류" value={paymentCategory} />
             <InfoRow label="업체명" value={vendorName} />
@@ -343,7 +343,7 @@ const ApproveDetailAccordion: React.FC<ApproveDetailAccordionProps> = ({
           </div>
 
           {/* 오른쪽: 품목 테이블 */}
-          <div className="flex-1 bg-white rounded-lg p-6 shadow-sm w-full overflow-x-auto">
+          <div className="flex-1 bg-white business-radius-card p-6 shadow-sm w-full overflow-x-auto">
             <table className="w-full sm:min-w-[700px] text-xs">
               <thead>
                 <tr className="bg-gray-100">

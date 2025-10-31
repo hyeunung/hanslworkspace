@@ -227,19 +227,19 @@ export default function PurchaseDetailModal({
       const category = purchase.payment_category.trim()
       
       if (category === '발주') {
-        return <Badge className="bg-green-100 text-green-800 rounded-lg">발주</Badge>
+        return <Badge className="bg-green-100 text-green-800 business-radius-badge">발주</Badge>
       } else if (category === '구매요청') {
-        return <Badge className="bg-blue-100 text-blue-800 rounded-lg">구매요청</Badge>
+        return <Badge className="bg-blue-100 text-blue-800 business-radius-badge">구매요청</Badge>
       } else if (category === '현장결제') {
-        return <Badge className="bg-gray-100 text-gray-800 rounded-lg">현장결제</Badge>
+        return <Badge className="bg-gray-100 text-gray-800 business-radius-badge">현장결제</Badge>
       } else {
         // payment_category 값이 있지만 알려진 값이 아닌 경우
-        return <Badge className="bg-blue-100 text-blue-800 rounded-lg">{category}</Badge>
+        return <Badge className="bg-blue-100 text-blue-800 business-radius-badge">{category}</Badge>
       }
     }
     
     // payment_category가 없으면 임시로 기본값 설정
-    return <Badge className="bg-blue-100 text-blue-800 rounded-lg">구매요청</Badge>
+    return <Badge className="bg-blue-100 text-blue-800 business-radius-badge">구매요청</Badge>
   }
 
   // formatDate는 utils/helpers.ts에서 import
@@ -674,7 +674,7 @@ export default function PurchaseDetailModal({
                   <Button
                     size="sm"
                     onClick={() => handleApprove('middle')}
-                    className="bg-green-500 hover:bg-green-600 text-white rounded-lg px-4 py-2 text-xs shadow-sm"
+                    className="bg-green-500 hover:bg-green-600 text-white business-radius-button px-4 py-2 text-xs shadow-sm"
                   >
                     <Check className="w-3 h-3 mr-1" />
                     1차 승인
@@ -683,7 +683,7 @@ export default function PurchaseDetailModal({
               )}
               {purchase.middle_manager_status === 'approved' && (
                 <div className="absolute -top-2 -right-2 z-10">
-                  <div className="bg-green-500 text-white rounded-lg px-4 py-2 text-xs shadow-sm">
+                  <div className="bg-green-500 text-white business-radius-badge px-4 py-2 text-xs shadow-sm">
                     <Check className="w-3 h-3 mr-1 inline" />
                     1차 승인완료
                   </div>
@@ -691,7 +691,7 @@ export default function PurchaseDetailModal({
               )}
               {purchase.middle_manager_status === 'rejected' && (
                 <div className="absolute -top-2 -right-2 z-10">
-                  <div className="bg-red-500 text-white rounded-lg px-4 py-2 text-xs shadow-sm">
+                  <div className="bg-red-500 text-white business-radius-badge px-4 py-2 text-xs shadow-sm">
                     <X className="w-3 h-3 mr-1 inline" />
                     1차 반려
                   </div>
@@ -699,7 +699,7 @@ export default function PurchaseDetailModal({
               )}
               {purchase.middle_manager_status === 'pending' && !canApproveMiddle && (
                 <div className="absolute -top-2 -right-2 z-10">
-                  <div className="border border-gray-300 text-gray-600 bg-white rounded-lg px-4 py-2 text-xs shadow-sm">
+                  <div className="border border-gray-300 text-gray-600 bg-white business-radius-badge px-4 py-2 text-xs shadow-sm">
                     1차 승인대기
                   </div>
                 </div>
@@ -882,7 +882,7 @@ export default function PurchaseDetailModal({
                   <Button
                     size="sm"
                     onClick={() => handleApprove('final')}
-                    className="bg-green-500 hover:bg-green-600 text-white rounded-lg px-4 py-2 text-xs shadow-sm"
+                    className="bg-green-500 hover:bg-green-600 text-white business-radius-button px-4 py-2 text-xs shadow-sm"
                   >
                     <Check className="w-3 h-3 mr-1" />
                     최종 승인
@@ -891,7 +891,7 @@ export default function PurchaseDetailModal({
               )}
               {purchase.final_manager_status === 'approved' && (
                 <div className="absolute -top-2 -left-2 z-10">
-                  <div className="bg-green-500 text-white rounded-lg px-4 py-2 text-xs shadow-sm">
+                  <div className="bg-green-500 text-white business-radius-badge px-4 py-2 text-xs shadow-sm">
                     <Check className="w-3 h-3 mr-1 inline" />
                     최종 승인완료
                   </div>
@@ -899,7 +899,7 @@ export default function PurchaseDetailModal({
               )}
               {purchase.final_manager_status === 'rejected' && (
                 <div className="absolute -top-2 -left-2 z-10">
-                  <div className="bg-red-500 text-white rounded-lg px-4 py-2 text-xs shadow-sm">
+                  <div className="bg-red-500 text-white business-radius-badge px-4 py-2 text-xs shadow-sm">
                     <X className="w-3 h-3 mr-1 inline" />
                     최종 반려
                   </div>
@@ -908,7 +908,7 @@ export default function PurchaseDetailModal({
               {/* 최종 승인 버튼은 항상 보이되, 1차 승인 전에는 비활성화 */}
               {purchase.middle_manager_status !== 'approved' && purchase.final_manager_status === 'pending' && (
                 <div className="absolute -top-2 -left-2 z-10">
-                  <div className="border border-gray-300 text-gray-400 bg-gray-50 rounded-lg px-4 py-2 text-xs shadow-sm opacity-50">
+                  <div className="border border-gray-300 text-gray-400 bg-gray-50 business-radius-badge px-4 py-2 text-xs shadow-sm opacity-50">
                     최종 승인대기
                   </div>
                 </div>
@@ -929,7 +929,7 @@ export default function PurchaseDetailModal({
                         <Button
                           size="sm"
                           onClick={handleCompleteAllPayment}
-                          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-xs"
+                          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 business-radius-button text-xs"
                         >
                           <CreditCard className="w-3 h-3 mr-1" />
                           전체 구매완료
@@ -939,7 +939,7 @@ export default function PurchaseDetailModal({
                         <Button
                           size="sm"
                           onClick={handleCompleteAllReceipt}
-                          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-xs"
+                          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 business-radius-button text-xs"
                         >
                           <Truck className="w-3 h-3 mr-1" />
                           전체 입고완료
@@ -1070,7 +1070,7 @@ export default function PurchaseDetailModal({
                                   {canPurchase ? (
                                     <button
                                       onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
-                                      className={`text-xs px-2 py-1 rounded-lg border transition-colors ${
+                                      className={`text-xs px-2 py-1 business-radius-badge border transition-colors ${
                                         item.is_payment_completed
                                           ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
                                           : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
@@ -1079,7 +1079,7 @@ export default function PurchaseDetailModal({
                                       {item.is_payment_completed ? '구매완료' : '구매대기'}
                                     </button>
                                   ) : (
-                                    <span className={`text-xs px-2 py-1 rounded-lg ${
+                                    <span className={`text-xs px-2 py-1 business-radius-badge ${
                                       item.is_payment_completed 
                                         ? 'bg-blue-50 text-blue-700' 
                                         : 'bg-gray-50 text-gray-500'
@@ -1096,7 +1096,7 @@ export default function PurchaseDetailModal({
                                   {canReceiptCheck ? (
                                     <button
                                       onClick={() => handleReceiptToggle(item.id, !item.is_received)}
-                                      className={`text-xs px-2 py-1 rounded-lg border transition-colors ${
+                                      className={`text-xs px-2 py-1 business-radius-badge border transition-colors ${
                                         item.is_received
                                           ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
                                           : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
@@ -1105,7 +1105,7 @@ export default function PurchaseDetailModal({
                                       {item.is_received ? '입고완료' : '입고대기'}
                                     </button>
                                   ) : (
-                                    <span className={`text-xs px-2 py-1 rounded-lg ${
+                                    <span className={`text-xs px-2 py-1 business-radius-badge ${
                                       item.is_received 
                                         ? 'bg-green-50 text-green-700' 
                                         : 'bg-gray-50 text-gray-500'

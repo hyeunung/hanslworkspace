@@ -20,7 +20,7 @@ export default function BatchApprovalButton({
   if (totalCount === 0) return null
 
   return (
-    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border">
+    <div className="flex items-center justify-between p-4 bg-gray-50 business-radius-card border">
       <div className="flex items-center gap-3">
         <Button
           variant="ghost"

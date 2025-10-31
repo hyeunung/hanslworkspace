@@ -165,7 +165,7 @@ export default function PurchaseStatusModal({
                 </h1>
                 <p className="modal-subtitle">{localItem.vendor_name || '업체명 없음'}</p>
               </div>
-              <div className={`px-3 py-1.5 rounded-full badge-text ${typeInfo.color}`}>
+              <div className={`px-3 py-1.5 business-radius-badge badge-text ${typeInfo.color}`}>
                 {typeInfo.title}
               </div>
             </div>

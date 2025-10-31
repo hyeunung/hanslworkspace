@@ -11,18 +11,18 @@ interface RequestProps {
 export default function RecentRequests({ requests }: RequestProps) {
   const getStatusBadge = (request: any) => {
     if (request.delivery_status === 'completed') {
-      return <span className="inline-flex items-center px-2 py-0.5 badge-text bg-green-50 text-green-700 rounded">완료</span>
+      return <span className="inline-flex items-center px-2 py-0.5 badge-text bg-green-50 text-green-700 business-radius-badge">완료</span>
     }
     if (request.final_manager_status === 'approved') {
-      return <span className="inline-flex items-center px-2 py-0.5 badge-text bg-blue-50 text-blue-700 rounded">구맨중</span>
+      return <span className="inline-flex items-center px-2 py-0.5 badge-text bg-blue-50 text-blue-700 business-radius-badge">구맨중</span>
     }
     if (request.middle_manager_status === 'approved') {
-      return <span className="inline-flex items-center px-2 py-0.5 badge-text bg-yellow-50 text-yellow-700 rounded">최종승인 대기</span>
+      return <span className="inline-flex items-center px-2 py-0.5 badge-text bg-yellow-50 text-yellow-700 business-radius-badge">최종승인 대기</span>
     }
     if (request.middle_manager_status === 'pending') {
-      return <span className="inline-flex items-center px-2 py-0.5 badge-text bg-gray-50 text-gray-600 rounded">1차승인 대기</span>
+      return <span className="inline-flex items-center px-2 py-0.5 badge-text bg-gray-50 text-gray-600 business-radius-badge">1차승인 대기</span>
     }
-    return <span className="inline-flex items-center px-2 py-0.5 badge-text bg-red-50 text-red-700 rounded">반려</span>
+    return <span className="inline-flex items-center px-2 py-0.5 badge-text bg-red-50 text-red-700 business-radius-badge">반려</span>
   }
 
   return (

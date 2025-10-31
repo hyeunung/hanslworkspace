@@ -371,10 +371,8 @@ export default function DashboardMain() {
         <div className="mb-3">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="header-title">대시보드</h1>
-              <p className="header-subtitle mt-0.5">
-                {data.employee.name}님, 환영합니다. 📊
-              </p>
+              <h1 className="page-title">대시보드</h1>
+              <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Dashboard</p>
             </div>
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="badge-text">

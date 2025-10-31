@@ -112,7 +112,10 @@ export default function EmployeeFilters({
     <div className="space-y-4">
       {/* 상단 액션 버튼 */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">직원 관리</h2>
+        <div>
+          <h2 className="page-title">직원 관리</h2>
+          <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Employee Management</p>
+        </div>
         <div className="flex gap-2">
           <Button
             variant="outline"

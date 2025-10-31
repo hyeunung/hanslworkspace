@@ -53,23 +53,26 @@ export default function VendorFilters({
     <div className="space-y-4">
       {/* 상단 액션 버튼 */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">업체 관리</h2>
+        <div>
+          <h2 className="page-title">업체 관리</h2>
+          <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Vendors Management</p>
+        </div>
         <div className="flex gap-2">
           <Button
             variant="outline"
             onClick={onExport}
-            className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+            className="flex items-center gap-1 sm:gap-2 badge-text"
           >
             <Download className="w-3 h-3 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">Excel 내보내기</span>
-            <span className="sm:hidden">Excel</span>
+            <span className="hidden sm:inline badge-text">Excel 내보내기</span>
+            <span className="sm:hidden badge-text">Excel</span>
           </Button>
           <Button 
             onClick={onCreateNew}
-            className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+            className="flex items-center gap-1 sm:gap-2 badge-text"
           >
             <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
-            업체 등록
+            <span className="badge-text">업체 등록</span>
           </Button>
         </div>
       </div>
@@ -79,7 +82,7 @@ export default function VendorFilters({
         <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-end">
           {/* 검색 */}
           <div className="flex-1">
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+            <label className="block modal-label mb-1">
               검색
             </label>
             <div className="relative">
@@ -89,14 +92,14 @@ export default function VendorFilters({
                 placeholder="업체명, 사업자번호, 연락처 검색"
                 value={localSearch}
                 onChange={(e) => setLocalSearch(e.target.value)}
-                className="pl-8 sm:pl-10 text-sm h-9"
+                className="pl-8 sm:pl-10 modal-value h-9"
               />
             </div>
           </div>
 
           {/* 상태 필터 */}
           <div className="w-full sm:w-auto sm:min-w-[120px]">
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+            <label className="block modal-label mb-1">
               상태
             </label>
             <Select
@@ -122,19 +125,19 @@ export default function VendorFilters({
 
           {/* 검색 및 초기화 버튼 */}
           <div className="flex gap-2 w-full sm:w-auto">
-            <Button type="submit" className="flex-1 sm:flex-none h-9 text-sm">
-              검색
+            <Button type="submit" className="flex-1 sm:flex-none h-9 badge-text">
+              <span className="badge-text">검색</span>
             </Button>
             {hasFilters && (
               <Button 
                 type="button" 
                 variant="outline" 
                 onClick={clearFilters}
-                className="flex items-center gap-1 h-9 text-sm"
+                className="flex items-center gap-1 h-9 badge-text"
               >
                 <X className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span className="hidden sm:inline">초기화</span>
-                <span className="sm:hidden">초기</span>
+                <span className="hidden sm:inline badge-text">초기화</span>
+                <span className="sm:hidden badge-text">초기</span>
               </Button>
             )}
           </div>

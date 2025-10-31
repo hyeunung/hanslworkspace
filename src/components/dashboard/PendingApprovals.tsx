@@ -21,7 +21,7 @@ export default function PendingApprovals({ approvals, role }: ApprovalProps) {
   }
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200">
+    <div className="bg-white business-radius-card border border-gray-200">
       <div className="px-6 py-4 border-b border-gray-200">
         <div className="flex items-center justify-between">
           <h2 className="section-title">승인 대기 항목</h2>
@@ -56,7 +56,7 @@ export default function PendingApprovals({ approvals, role }: ApprovalProps) {
                     ` 외 ${approval.purchase_request_items.length - 1}건`}
                 </p>
               </div>
-              <span className="inline-flex items-center px-2 py-0.5 badge-text bg-yellow-50 text-yellow-700 rounded">
+              <span className="inline-flex items-center px-2 py-0.5 badge-text bg-yellow-50 text-yellow-700 business-radius-badge">
                 {getActionText()}
               </span>
             </div>

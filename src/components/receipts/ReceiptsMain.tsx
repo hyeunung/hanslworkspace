@@ -441,8 +441,8 @@ export default function ReceiptsMain() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">영수증 관리</h1>
-          <p className="text-sm text-gray-600 mt-1">업로드된 영수증을 확인하고 관리할 수 있습니다</p>
+          <h1 className="page-title">영수증 관리</h1>
+          <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Receipt Management</p>
         </div>
         <div className="flex items-center gap-2 mt-4 sm:mt-0">
           <Button

@@ -202,7 +202,7 @@ export default function ApprovalCard({
 
         {/* 프로젝트 정보 */}
         {(approval.project_vendor || approval.project_item) && (
-          <div className="bg-gray-50 p-3 rounded-lg">
+          <div className="bg-gray-50 p-3 business-radius-card">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {approval.project_vendor && (
                 <div>

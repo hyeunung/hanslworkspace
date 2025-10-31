@@ -91,6 +91,10 @@ npm run watch                     # Watch mode for all servers
 - `.header-title` - Main headers (12px, font-bold, truncated)
 - `.link-text` - Link text (10px, truncated)
 
+#### Page Title & Subtitle System (hanslwebapp Standard)
+- `.page-title` - Main page titles (19px, font-semibold, text-foreground)
+- `.page-subtitle` - Page subtitles (12.3px, font-normal, text-muted-foreground)
+
 **Key Features**:
 - All classes include `truncate` for single-line display
 - **Consistent small typography scale** (10px-14px) across cards and modals
