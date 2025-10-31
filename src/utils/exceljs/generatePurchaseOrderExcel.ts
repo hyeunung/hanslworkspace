@@ -124,7 +124,9 @@ export async function generatePurchaseOrderExcelJS(data: PurchaseOrderData): Pro
       tl: { col: logoCol, row: logoRow }, // D1 셀 중앙에서 왼쪽 2px, 위로 2px 이동
       ext: { width: logoWidth, height: logoHeight },
     });
-  } catch (e) {}
+  } catch (_e) {
+    // Logo loading failed, continue without logo
+  }
 
   // 2. 제목 (B1:H1 병합, 중앙정렬)
   sheet.getCell('D1').value = '                발 주 서';

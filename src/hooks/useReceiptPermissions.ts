@@ -75,7 +75,6 @@ export function useReceiptPermissions() {
         canViewUploaderInfo: isAppAdmin, // 오직 app_admin만
       });
     } catch (error) {
-      console.error('권한 확인 오류:', error);
     } finally {
       setLoading(false);
     }

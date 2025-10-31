@@ -83,7 +83,6 @@ export default function SupportMain() {
       
       const adminStatus = roles.includes('app_admin')
       setIsAdmin(adminStatus)
-      console.log('👤 사용자 권한 확인:', { email: user.email, roles, isAdmin: adminStatus })
       
       // 권한 확인 후 바로 목록 로드
       loadInquiriesWithRole(adminStatus)
@@ -92,20 +91,16 @@ export default function SupportMain() {
   
   // 역할에 따라 문의 목록 로드 (내부 함수)
   const loadInquiriesWithRole = async (adminStatus: boolean) => {
-    console.log('🔄 loadInquiriesWithRole - isAdmin:', adminStatus)
     setLoadingInquiries(true)
     
     const result = adminStatus 
       ? await supportService.getAllInquiries()
       : await supportService.getMyInquiries()
     
-    console.log('📋 문의 목록 로드 결과:', result)
     
     if (result.success) {
-      console.log('✅ 문의 목록 설정:', result.data.length, '건')
       setInquiries(result.data)
     } else {
-      console.error('❌ 문의 목록 로드 실패:', result.error)
     }
     
     setLoadingInquiries(false)
@@ -115,11 +110,9 @@ export default function SupportMain() {
   const loadInquiries = async () => {
     // 권한 확인이 완료되지 않았으면 대기
     if (isAdmin === null) {
-      console.log('⏳ 권한 확인 대기 중...');
       return;
     }
     
-    console.log('🔄 loadInquiries 시작 - isAdmin:', isAdmin)
     setLoadingInquiries(true)
     
     // 관리자면 모든 문의, 아니면 내 문의만
@@ -127,13 +120,10 @@ export default function SupportMain() {
       ? await supportService.getAllInquiries()
       : await supportService.getMyInquiries()
     
-    console.log('📋 문의 목록 로드 결과:', result)
     
     if (result.success) {
-      console.log('✅ 문의 목록 설정:', result.data.length, '건')
       setInquiries(result.data)
     } else {
-      console.error('❌ 문의 목록 로드 실패:', result.error)
     }
     
     setLoadingInquiries(false)
@@ -308,7 +298,6 @@ ${purchaseInfo}`;
       if (selectedInquiryDetail?.id) {
         // fetchPurchaseDetail 함수가 정의되어 있지 않으므로 주석 처리
         // TODO: 필요시 상세 정보 새로고침 로직 구현
-        console.log('품목 수정 완료, 상세 정보 새로고침 필요')
       }
       cancelEditItem()
     } else {
@@ -328,7 +317,6 @@ ${purchaseInfo}`;
       if (selectedInquiryDetail?.id) {
         // fetchPurchaseDetail 함수가 정의되어 있지 않으므로 주석 처리
         // TODO: 필요시 상세 정보 새로고침 로직 구현
-        console.log('품목 수정 완료, 상세 정보 새로고침 필요')
       }
     } else {
       toast.error(result.error || '품목 삭제 실패')

@@ -139,7 +139,6 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
       handleClose();
       onSuccess();
     } catch (error) {
-      console.error('업로드 오류:', error);
       toast.error(`업로드 실패: ${error instanceof Error ? error.message : error}`);
     } finally {
       setUploading(false);

@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/logger'
 
 export interface SupportInquiry {
   id?: number
@@ -61,10 +62,8 @@ class SupportService {
         })
 
       if (error) {
-        console.error('문의 등록 에러:', error)
-        console.error('에러 상세:', {
+        logger.error('문의 등록 에러', error, {
           code: error.code,
-          message: error.message,
           details: error.details,
           hint: error.hint
         })
@@ -79,14 +78,11 @@ class SupportService {
   // 내 문의 목록 조회
   async getMyInquiries(): Promise<{ success: boolean; data: SupportInquiry[]; error?: string }> {
     try {
-      console.log('🔍 getMyInquiries 시작')
       const { data: { user }, error: authError } = await this.supabase.auth.getUser()
       if (authError || !user) {
-        console.log('❌ 인증 에러:', authError)
         return { success: false, data: [], error: '로그인이 필요합니다.' }
       }
 
-      console.log('👤 현재 사용자:', user.id, user.email)
 
       const { data, error } = await this.supabase
         .from('support_inquires')
@@ -94,17 +90,13 @@ class SupportService {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
-      console.log('📊 문의 쿼리 결과:', { data, error })
 
       if (error) {
-        console.error('❌ 문의 조회 에러:', error)
         throw error
       }
 
-      console.log('✅ 내 문의 목록 조회 성공:', data?.length || 0, '건')
       return { success: true, data: data || [] }
     } catch (e) {
-      console.error('❌ getMyInquiries 예외:', e)
       return { success: false, data: [], error: e instanceof Error ? e.message : '문의 조회 실패' }
     }
   }
@@ -112,23 +104,18 @@ class SupportService {
   // 모든 문의 목록 조회 (관리자용)
   async getAllInquiries(): Promise<{ success: boolean; data: SupportInquiry[]; error?: string }> {
     try {
-      console.log('🔍 getAllInquiries 시작 (관리자용)')
       const { data, error } = await this.supabase
         .from('support_inquires')
         .select('*')
         .order('created_at', { ascending: false })
 
-      console.log('📊 전체 문의 쿼리 결과:', { data, error })
 
       if (error) {
-        console.error('❌ 전체 문의 조회 에러:', error)
         throw error
       }
 
-      console.log('✅ 전체 문의 목록 조회 성공:', data?.length || 0, '건')
       return { success: true, data: data || [] }
     } catch (e) {
-      console.error('❌ getAllInquiries 예외:', e)
       return { success: false, data: [], error: e instanceof Error ? e.message : '문의 조회 실패' }
     }
   }

@@ -48,7 +48,6 @@ export const ReceiptDownloadButton: React.FC<ReceiptDownloadButtonProps> = ({
       
       const filePath = pathSegments.slice(bucketIndex + 1).join('/');
 
-      console.log('📥 영수증 다운로드 시작:', filePath);
 
       // Supabase Storage에서 다운로드
       const supabase = createClient();
@@ -73,14 +72,12 @@ export const ReceiptDownloadButton: React.FC<ReceiptDownloadButtonProps> = ({
       // 메모리 해제
       window.URL.revokeObjectURL(downloadUrl);
 
-      console.log('✅ 영수증 다운로드 완료');
       
       // 성공 메시지 (선택적)
       if (typeof window !== 'undefined' && typeof window.alert === 'function') {
         alert('✅ 영수증이 다운로드되었습니다.');
       }
     } catch (error) {
-      console.error('❌ 영수증 다운로드 오류:', error);
       alert(`❌ 다운로드 실패: ${error instanceof Error ? error.message : error}`);
     } finally {
       setIsLoading(false);

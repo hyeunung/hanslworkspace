@@ -10,12 +10,9 @@ interface LogContext {
 }
 
 class Logger {
-  private isDevelopment = process.env.NODE_ENV === 'development';
+  private isDevelopment = import.meta.env.DEV || import.meta.env.NODE_ENV === 'development';
   
   private log(level: LogLevel, message: string, context?: LogContext) {
-    // In production, we could send logs to a service like Sentry or LogRocket
-    // For now, we'll use console methods appropriately
-    
     const timestamp = new Date().toISOString();
     const logData = {
       timestamp,
@@ -25,19 +22,26 @@ class Logger {
     };
 
     if (this.isDevelopment) {
+      // 개발환경에서는 모든 로그 출력
       switch (level) {
         case 'debug':
+          console.debug(`🔍 [${timestamp}] ${message}`, context || '');
           break;
         case 'info':
+          console.info(`ℹ️ [${timestamp}] ${message}`, context || '');
           break;
         case 'warn':
+          console.warn(`⚠️ [${timestamp}] ${message}`, context || '');
           break;
         case 'error':
+          console.error(`❌ [${timestamp}] ${message}`, context || '');
           break;
       }
     } else {
-      // In production, only log warnings and errors
+      // 프로덕션에서는 경고와 에러만 로깅 (실제로는 외부 서비스로 전송)
       if (level === 'warn' || level === 'error') {
+        // TODO: Send to external logging service (Sentry, LogRocket, etc.)
+        console[level](`[${level.toUpperCase()}] ${message}`, logData);
       }
     }
   }

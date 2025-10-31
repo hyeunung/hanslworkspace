@@ -2,7 +2,7 @@
 import { Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
-import { ArrowRight, AlertCircle } from 'lucide-react'
+// import { ArrowRight, AlertCircle } from 'lucide-react'
 
 interface ApprovalProps {
   approvals: any[]
@@ -24,10 +24,10 @@ export default function PendingApprovals({ approvals, role }: ApprovalProps) {
     <div className="bg-white rounded-lg border border-gray-200">
       <div className="px-6 py-4 border-b border-gray-200">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-gray-900">승인 대기 항목</h2>
+          <h2 className="section-title">승인 대기 항목</h2>
           <Link
             to="/approval"
-            className="text-sm text-hansl-500 hover:text-hansl-600 transition-colors"
+            className="link-text text-hansl-500 hover:text-hansl-600 transition-colors"
           >
             전체보기 →
           </Link>
@@ -44,28 +44,28 @@ export default function PendingApprovals({ approvals, role }: ApprovalProps) {
           <div key={approval.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
             <div className="flex items-center justify-between mb-1">
               <div className="flex-1">
-                <p className="text-sm font-medium text-gray-900">
+                <p className="card-title">
                   {approval.purchase_order_number || `발주요청 #${approval.id.slice(0, 8)}`}
                 </p>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="card-subtitle mt-0.5">
                   요청자: {approval.requester_name}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="card-description">
                   {approval.purchase_request_items?.[0]?.item_name}
                   {approval.purchase_request_items?.length > 1 && 
                     ` 외 ${approval.purchase_request_items.length - 1}건`}
                 </p>
               </div>
-              <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-yellow-50 text-yellow-700 rounded">
+              <span className="inline-flex items-center px-2 py-0.5 badge-text bg-yellow-50 text-yellow-700 rounded">
                 {getActionText()}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-500">
+              <span className="card-date">
                 {format(new Date(approval.created_at), 'yyyy.MM.dd', { locale: ko })}
               </span>
-              <span className="text-sm font-medium text-gray-700">
-                ₩{approval.total_amount?.toLocaleString() || '0'}
+              <span className="card-amount">
+                ₩{((approval.total_amount || 0)/1000000).toFixed(1)}M
               </span>
             </div>
           </div>

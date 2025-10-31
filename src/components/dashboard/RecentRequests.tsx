@@ -11,28 +11,28 @@ interface RequestProps {
 export default function RecentRequests({ requests }: RequestProps) {
   const getStatusBadge = (request: any) => {
     if (request.delivery_status === 'completed') {
-      return <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-green-50 text-green-700 rounded">완료</span>
+      return <span className="inline-flex items-center px-2 py-0.5 badge-text bg-green-50 text-green-700 rounded">완료</span>
     }
     if (request.final_manager_status === 'approved') {
-      return <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-blue-50 text-blue-700 rounded">구매중</span>
+      return <span className="inline-flex items-center px-2 py-0.5 badge-text bg-blue-50 text-blue-700 rounded">구맨중</span>
     }
     if (request.middle_manager_status === 'approved') {
-      return <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-yellow-50 text-yellow-700 rounded">최종승인 대기</span>
+      return <span className="inline-flex items-center px-2 py-0.5 badge-text bg-yellow-50 text-yellow-700 rounded">최종승인 대기</span>
     }
     if (request.middle_manager_status === 'pending') {
-      return <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-gray-50 text-gray-600 rounded">1차승인 대기</span>
+      return <span className="inline-flex items-center px-2 py-0.5 badge-text bg-gray-50 text-gray-600 rounded">1차승인 대기</span>
     }
-    return <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-red-50 text-red-700 rounded">반려</span>
+    return <span className="inline-flex items-center px-2 py-0.5 badge-text bg-red-50 text-red-700 rounded">반려</span>
   }
 
   return (
     <div className="bg-white rounded-lg border border-gray-200">
       <div className="px-6 py-4 border-b border-gray-200">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-gray-900">최근 발주요청 내역</h2>
+          <h2 className="section-title">최근 발주요청 내역</h2>
           <Link
             to="/purchase/list"
-            className="text-sm text-hansl-500 hover:text-hansl-600 transition-colors"
+            className="link-text text-hansl-500 hover:text-hansl-600 transition-colors"
           >
             전체보기 →
           </Link>
@@ -49,10 +49,10 @@ export default function RecentRequests({ requests }: RequestProps) {
             <div key={request.id} className="px-6 py-4 hover:bg-gray-50 transition-colors">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">
+                  <p className="card-title">
                     {request.purchase_order_number || `발주요청 #${request.id.slice(0, 8)}`}
                   </p>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <p className="card-description mt-0.5">
                     {request.purchase_request_items?.[0]?.item_name}
                     {request.purchase_request_items?.length > 1 && 
                       ` 외 ${request.purchase_request_items.length - 1}건`}
@@ -61,11 +61,11 @@ export default function RecentRequests({ requests }: RequestProps) {
                 {getStatusBadge(request)}
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">
+                <span className="card-date">
                   {format(new Date(request.created_at), 'yyyy.MM.dd', { locale: ko })}
                 </span>
-                <span className="text-sm font-medium text-gray-700">
-                  ₩{request.total_amount?.toLocaleString() || '0'}
+                <span className="card-amount">
+                  ₩{((request.total_amount || 0)/1000000).toFixed(1)}M
                 </span>
               </div>
             </div>

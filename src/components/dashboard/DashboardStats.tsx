@@ -57,10 +57,10 @@ export default function DashboardStats({ stats }: StatsProps) {
               </div>
             </div>
             <div>
-              <p className="text-xs font-medium text-gray-600 uppercase tracking-wider mb-1">
+              <p className="stats-title mb-1">
                 {stat.title}
               </p>
-              <p className="text-3xl font-bold text-gray-900">
+              <p className="stats-value">
                 {stat.value.toLocaleString()}
               </p>
             </div>

@@ -18,9 +18,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 // Tabs 컴포넌트를 제거하고 직접 구현 (hanslwebapp 방식)
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { format } from "date-fns";
 import { toast } from "sonner";
-import { Purchase } from "@/types/purchase";
+import { Purchase } from "@/hooks/usePurchaseData";
 
 interface PurchaseListMainProps {
   onEmailToggle?: () => void;
@@ -60,21 +59,6 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
   
   const isAdmin = currentUserRoles?.includes('app_admin');
   
-  // 디버깅 로그 추가
-  useEffect(() => {
-    console.log('📊 [PurchaseListMain] 발주 데이터 상태:', {
-      purchasesCount: purchases.length,
-      loading,
-      currentUserName,
-      currentUserRoles,
-      firstFewPurchases: purchases.slice(0, 3).map(p => ({
-        id: p.id,
-        po: p.purchase_order_number,
-        requester: p.requester_name,
-        date: p.request_date
-      }))
-    });
-  }, [purchases, loading, currentUserName, currentUserRoles]);
 
   // 필터링 및 탭 관리
   const {

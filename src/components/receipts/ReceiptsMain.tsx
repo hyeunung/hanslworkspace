@@ -12,6 +12,7 @@ import ReceiptUploadModal from "./ReceiptUploadModal";
 import { useReceiptPermissions } from "@/hooks/useReceiptPermissions";
 import type { ReceiptItem } from "@/types/receipt";
 import { formatDate, formatFileSize, extractStoragePathFromUrl } from "@/utils/receipt";
+import { logger } from "@/lib/logger";
 
 /**
  * 영수증 관리 메인 페이지 컴포넌트
@@ -89,7 +90,6 @@ export default function ReceiptsMain() {
 
       setReceipts(data || []);
     } catch (error) {
-      console.error('영수증 조회 오류:', error);
       toast.error('영수증 데이터를 불러오는데 실패했습니다.');
     } finally {
       setLoading(false);
@@ -140,7 +140,6 @@ export default function ReceiptsMain() {
 
   // 영수증 인쇄 완료 처리
   const markAsPrinted = useCallback(async (receiptId: string) => {
-    console.log('🖨️ [ReceiptsMain] 인쇄완료 처리 시작:', {
       receiptId,
       timestamp: new Date().toISOString(),
       location: 'ReceiptsMain.tsx'
@@ -148,29 +147,24 @@ export default function ReceiptsMain() {
 
     try {
       // 1. 사용자 인증 정보 확인
-      console.log('🔐 [ReceiptsMain] 사용자 인증 정보 확인 중...');
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError) {
-        console.error('❌ [ReceiptsMain] 인증 오류:', authError);
         toast.error('사용자 인증에 실패했습니다.');
         return;
       }
       
       if (!user) {
-        console.error('❌ [ReceiptsMain] 사용자 정보 없음');
         toast.error('사용자 정보를 불러올 수 없습니다.');
         return;
       }
 
-      console.log('✅ [ReceiptsMain] 사용자 인증 성공:', {
         userId: user.id,
         email: user.email,
         lastSignIn: user.last_sign_in_at
       });
 
       // 2. 사용자 권한 및 정보 확인
-      console.log('👤 [ReceiptsMain] 직원 정보 조회 중...');
       const { data: employee, error: empError } = await supabase
         .from('employees')
         .select('name, purchase_role')
@@ -178,12 +172,10 @@ export default function ReceiptsMain() {
         .single();
 
       if (empError) {
-        console.error('❌ [ReceiptsMain] 직원 정보 조회 실패:', empError);
         toast.error('직원 정보를 불러올 수 없습니다.');
         return;
       }
 
-      console.log('✅ [ReceiptsMain] 직원 정보 조회 성공:', {
         name: employee?.name,
         email: user.email,
         role: employee?.purchase_role
@@ -193,7 +185,6 @@ export default function ReceiptsMain() {
       const role = employee?.purchase_role || '';
       const hasPermission = role.includes('app_admin') || role.includes('hr') || role.includes('lead buyer');
       
-      console.log('🛡️ [ReceiptsMain] 권한 검증:', {
         role,
         hasPermission,
         isAppAdmin: role.includes('app_admin'),
@@ -202,7 +193,6 @@ export default function ReceiptsMain() {
       });
 
       if (!hasPermission) {
-        console.error('❌ [ReceiptsMain] 권한 부족:', { role });
         toast.error('인쇄완료 처리 권한이 없습니다.');
         return;
       }
@@ -215,10 +205,8 @@ export default function ReceiptsMain() {
         printed_by_name: employee?.name || user.email
       };
 
-      console.log('📝 [ReceiptsMain] 업데이트 데이터 준비:', updateData);
 
       // 5. 데이터베이스 업데이트 실행
-      console.log('🔄 [ReceiptsMain] 데이터베이스 업데이트 실행 중...');
       const startTime = performance.now();
       
       const { data: updateResult, error: updateError } = await supabase
@@ -231,7 +219,6 @@ export default function ReceiptsMain() {
       const executionTime = endTime - startTime;
 
       if (updateError) {
-        console.error('❌ [ReceiptsMain] 업데이트 실패:', {
           error: updateError,
           code: updateError.code,
           message: updateError.message,
@@ -249,7 +236,6 @@ export default function ReceiptsMain() {
         return;
       }
 
-      console.log('✅ [ReceiptsMain] 업데이트 성공:', {
         updateResult,
         executionTime: `${executionTime.toFixed(2)}ms`,
         affectedRows: updateResult?.length || 0
@@ -259,10 +245,8 @@ export default function ReceiptsMain() {
       toast.success('인쇄 완료로 표시되었습니다.');
       
       // 7. 목록 새로고침
-      console.log('🔄 [ReceiptsMain] 목록 새로고침 처리...');
       loadReceipts();
 
-      console.log('🎉 [ReceiptsMain] 인쇄완료 처리 완료:', {
         receiptId,
         success: true,
         timestamp: new Date().toISOString()
@@ -270,7 +254,6 @@ export default function ReceiptsMain() {
 
     } catch (error) {
       const errorObj = error as any;
-      console.error('💥 [ReceiptsMain] 예외 발생:', {
         error,
         message: errorObj?.message,
         stack: errorObj?.stack,
@@ -355,7 +338,6 @@ export default function ReceiptsMain() {
         }
       }, 1000);
     } catch (error) {
-      console.error('인쇄 오류:', error);
       toast.error('인쇄에 실패했습니다.');
     }
   };
@@ -399,7 +381,6 @@ export default function ReceiptsMain() {
       
       toast.success('영수증 이미지가 다운로드되었습니다.');
     } catch (error) {
-      console.error('다운로드 오류:', error);
       toast.error('다운로드에 실패했습니다.');
     }
   };
@@ -427,7 +408,6 @@ export default function ReceiptsMain() {
           .remove([filePath]);
 
         if (storageError) {
-          console.warn('스토리지 파일 삭제 실패:', storageError);
         }
       }
 
@@ -442,7 +422,6 @@ export default function ReceiptsMain() {
       toast.success('영수증이 삭제되었습니다.');
       loadReceipts(); // 목록 새로고침
     } catch (error) {
-      console.error('삭제 오류:', error);
       toast.error('삭제에 실패했습니다.');
     }
   }, [permissions.canDelete, loadReceipts]);
@@ -458,9 +437,7 @@ export default function ReceiptsMain() {
         <div className="flex items-center gap-2 mt-4 sm:mt-0">
           <Button
             onClick={() => {
-              console.log('업로드 버튼 클릭됨');
               setIsUploadModalOpen(true);
-              console.log('모달 상태 변경됨:', true);
             }}
             className="bg-hansl-600 hover:bg-hansl-700 text-white"
           >

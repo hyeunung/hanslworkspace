@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/logger'
 import type { 
   DashboardData, 
   DashboardStats, 
@@ -228,14 +229,26 @@ export class DashboardService {
     // 클라이언트 사이드에서 역할별 필터링
     let filteredData = allRequests || []
 
-    // 발주 리스트와 동일한 필터링 로직 사용 - final_manager_status가 승인 대기인 항목만
+    // 발주 리스트와 동일한 필터링 로직 사용 - 승인 대기인 항목만
     // pending, 대기, 빈문자열, null 모두 대기로 처리
     const isPending = (status: any) => (
       status === 'pending' || status === '대기' || status === '' || status === null || status === undefined
     )
 
-    // 발주 리스트의 pending 탭과 동일한 조건: final_manager_status가 승인 대기인 것만
-    filteredData = filteredData.filter(item => isPending(item.final_manager_status))
+    // 발주 리스트의 pending 탭과 동일한 조건: 중간승인자나 최종승인자 중 하나라도 pending이면 승인대기
+    filteredData = filteredData.filter(item => {
+      const middlePending = isPending(item.middle_manager_status)
+      const finalPending = isPending(item.final_manager_status)
+      
+      // 반려된 경우는 제외
+      const middleRejected = item.middle_manager_status === 'rejected'
+      const finalRejected = item.final_manager_status === 'rejected'
+      
+      if (middleRejected || finalRejected) return false
+      
+      // 중간승인 대기 또는 최종승인 대기
+      return middlePending || finalPending
+    })
     
 
     // 역할이 있는 사용자만 승인 대기 항목을 볼 수 있음
@@ -380,7 +393,7 @@ export class DashboardService {
       .limit(100)
 
     if (myRequests.error) {
-      console.error('getMyPurchaseStatus 에러:', myRequests.error)
+      logger.error('getMyPurchaseStatus 에러', myRequests.error)
       return {
         waitingPurchase: [],
         waitingDelivery: [],
@@ -739,7 +752,7 @@ export class DashboardService {
       .limit(100)
 
     if (error) {
-      console.error('Failed to fetch undownloaded orders:', error)
+      logger.error('Failed to fetch undownloaded orders', error)
       return []
     }
 

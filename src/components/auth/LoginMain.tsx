@@ -19,7 +19,7 @@ export default function LoginMain() {
     
     // 로그인 시도 로그
     
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { data: _data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
@@ -27,7 +27,6 @@ export default function LoginMain() {
     // 로그인 응답 처리
 
     if (error) {
-      console.error('🚨 로그인 에러:', error)
       setError(`로그인 실패: ${error.message}`)
       setLoading(false)
       return

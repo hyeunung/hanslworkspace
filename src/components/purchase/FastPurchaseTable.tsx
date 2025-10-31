@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs/generatePurchaseOrderExcel";
 import { formatDateShort } from "@/utils/helpers";
+import { logger } from "@/lib/logger";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -814,8 +815,6 @@ const FastPurchaseTable = memo(({
   const handleConfirmDelete = async () => {
     if (!purchaseToDelete) return;
 
-    console.log('🗑️ === 삭제 프로세스 시작 ===');
-    console.log('삭제할 발주요청:', {
       id: purchaseToDelete.id,
       purchase_order_number: purchaseToDelete.purchase_order_number,
       requester_name: purchaseToDelete.requester_name,
@@ -825,10 +824,9 @@ const FastPurchaseTable = memo(({
     try {
       // 현재 사용자 정보 확인
       const { data: { user }, error: authError } = await supabase.auth.getUser();
-      console.log('현재 사용자:', user?.email || '로그인 안됨');
+      
       
       if (authError || !user) {
-        console.error('❌ 인증 오류:', authError);
         toast.error("로그인이 필요합니다.");
         return;
       }
@@ -840,14 +838,12 @@ const FastPurchaseTable = memo(({
         .eq('email', user.email)
         .single();
 
-      console.log('사용자 권한 정보:', {
         employee: employee?.name,
         roles: employee?.purchase_role,
         email: employee?.email
       });
 
       if (empError || !employee) {
-        console.error('❌ 직원 정보 조회 실패:', empError);
         toast.error("사용자 권한을 확인할 수 없습니다.");
         return;
       }
@@ -871,7 +867,6 @@ const FastPurchaseTable = memo(({
       const isRequester = purchaseToDelete.requester_name === employee.name;
       const canDeleteThis = isApproved ? canEdit : (canEdit || isRequester);
 
-      console.log('삭제 권한 분석:', {
         canEdit,
         isApproved,
         isRequester,
@@ -880,12 +875,10 @@ const FastPurchaseTable = memo(({
       });
 
       if (!canDeleteThis) {
-        console.error('❌ 삭제 권한 없음');
         toast.error("삭제 권한이 없습니다.");
         return;
       }
 
-      console.log('✅ 삭제 권한 확인됨 - 아이템 삭제 시작');
 
       // 모든 아이템 삭제
       const { data: deletedItems, error: itemsError } = await supabase
@@ -895,8 +888,6 @@ const FastPurchaseTable = memo(({
         .select();
 
       if (itemsError) {
-        console.error('❌ 아이템 삭제 실패:', itemsError);
-        console.error('아이템 삭제 오류 상세:', {
           code: itemsError.code,
           message: itemsError.message,
           details: itemsError.details,
@@ -905,10 +896,8 @@ const FastPurchaseTable = memo(({
         throw itemsError;
       }
 
-      console.log('✅ 아이템 삭제 성공:', deletedItems?.length || 0, '개 삭제됨');
-      console.log('삭제된 아이템:', deletedItems);
+      
 
-      console.log('📝 발주요청 삭제 시작');
 
       // 발주요청 삭제
       const { data: deletedRequest, error: requestError } = await supabase
@@ -918,8 +907,6 @@ const FastPurchaseTable = memo(({
         .select();
 
       if (requestError) {
-        console.error('❌ 발주요청 삭제 실패:', requestError);
-        console.error('발주요청 삭제 오류 상세:', {
           code: requestError.code,
           message: requestError.message,
           details: requestError.details,
@@ -928,15 +915,11 @@ const FastPurchaseTable = memo(({
         throw requestError;
       }
 
-      console.log('✅ 발주요청 삭제 성공:', deletedRequest);
-      console.log('🎉 === 삭제 프로세스 완료 ===');
 
       toast.success("발주요청 내역이 삭제되었습니다.");
       onRefresh?.();
     } catch (error) {
-      console.error('💥 삭제 중 전체 오류:', error);
       const errorObj = error as any;
-      console.error('오류 상세 정보:', {
         name: errorObj?.name,
         message: errorObj?.message,
         code: errorObj?.code,

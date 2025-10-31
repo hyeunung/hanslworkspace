@@ -111,6 +111,111 @@
     @apply text-xs text-gray-500;
     letter-spacing: 0.02em;
   }
+  
+  /* Dashboard Card Typography System */
+  .card-title {
+    @apply font-medium text-[11px] text-gray-900 truncate;
+    letter-spacing: 0.01em;
+  }
+  
+  .card-subtitle {
+    @apply text-[10px] text-gray-600 truncate;
+    letter-spacing: 0.02em;
+  }
+  
+  .card-description {
+    @apply text-[10px] text-gray-500 truncate;
+    letter-spacing: 0.02em;
+  }
+  
+  .card-amount {
+    @apply text-[10px] font-semibold text-gray-900 truncate;
+    letter-spacing: 0.01em;
+  }
+  
+  .card-amount-large {
+    @apply text-[10px] font-bold text-gray-900 truncate;
+    letter-spacing: 0.01em;
+  }
+  
+  .card-date {
+    @apply text-[10px] text-gray-500 truncate;
+    letter-spacing: 0.02em;
+  }
+  
+  .card-status {
+    @apply text-[10px] font-medium truncate;
+    letter-spacing: 0.01em;
+  }
+  
+  /* Dashboard Stats Typography */
+  .stats-title {
+    @apply text-xs font-medium text-gray-600 uppercase tracking-wider;
+    letter-spacing: 0.05em;
+  }
+  
+  .stats-value {
+    @apply text-3xl font-bold text-gray-900;
+    letter-spacing: -0.02em;
+  }
+  
+  /* Modal Typography System - Consistent with Cards */
+  .modal-title {
+    @apply text-sm font-bold text-gray-900 truncate;
+    letter-spacing: 0.01em;
+  }
+  
+  .modal-subtitle {
+    @apply text-[11px] text-gray-600 font-medium truncate;
+    letter-spacing: 0.01em;
+  }
+  
+  .modal-section-title {
+    @apply text-[12px] font-bold text-gray-900 truncate;
+    letter-spacing: 0.01em;
+  }
+  
+  .modal-label {
+    @apply text-[10px] font-semibold text-gray-500 truncate;
+    letter-spacing: 0.02em;
+  }
+  
+  .modal-value {
+    @apply text-[11px] font-bold text-gray-900 truncate;
+    letter-spacing: 0.01em;
+  }
+  
+  .modal-value-large {
+    @apply text-[12px] font-bold text-gray-900 truncate;
+    letter-spacing: 0.01em;
+  }
+  
+  /* Badge Typography System */
+  .badge-text {
+    @apply text-xs font-medium truncate;
+    letter-spacing: 0.01em;
+  }
+  
+  /* Header Typography System */
+  .header-title {
+    @apply text-[12px] font-bold text-gray-900 truncate;
+    letter-spacing: 0.01em;
+  }
+  
+  .header-subtitle {
+    @apply text-[10px] text-gray-600 truncate;
+    letter-spacing: 0.02em;
+  }
+  
+  .section-title {
+    @apply text-[11px] font-semibold text-gray-900 truncate;
+    letter-spacing: 0.01em;
+  }
+  
+  .link-text {
+    @apply text-[10px] truncate;
+    letter-spacing: 0.01em;
+  }
 }
 
 /* Apple-style animations */

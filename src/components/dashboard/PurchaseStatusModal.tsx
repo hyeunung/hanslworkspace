@@ -1,33 +1,23 @@
 import React, { useState, useEffect } from 'react'
 import { 
   Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle,
-  DialogDescription
+  DialogContent
 } from '@/components/ui/dialog'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 import { 
   ShoppingCart, 
   Truck, 
   Package, 
   CheckCircle,
   Clock,
-  Building2,
-  Calendar,
-  FileText,
   ArrowRight,
-  User,
-  CreditCard,
-  MapPin,
-  DollarSign
+  X,
+  CheckCircle2
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { logger } from '@/lib/logger'
 
 interface PurchaseStatusModalProps {
   isOpen: boolean
@@ -59,7 +49,6 @@ export default function PurchaseStatusModal({
   useEffect(() => {
     const fetchUserRoles = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      console.log('Fetching roles for user:', user?.email)
       
       if (user?.email) {
         const { data: employee } = await supabase
@@ -68,17 +57,14 @@ export default function PurchaseStatusModal({
           .eq('email', user.email)
           .single()
         
-        console.log('Employee data:', employee)
         
         if (employee?.purchase_role) {
           // purchase_role이 이미 배열이면 그대로 사용, 문자열이면 split
           const roles = Array.isArray(employee.purchase_role) 
             ? employee.purchase_role 
             : employee.purchase_role.split(',').map((r: string) => r.trim())
-          console.log('Parsed roles:', roles)
           setCurrentUserRoles(roles)
         } else {
-          console.log('No purchase_role found for employee')
         }
       }
     }
@@ -96,7 +82,7 @@ export default function PurchaseStatusModal({
   }, 0)
   
   // 디버깅
-  console.log('🔍 PurchaseStatusModal Debug:', {
+  logger.debug('PurchaseStatusModal 디버깅', {
     type,
     currentUserRoles,
     item: localItem.purchase_order_number,
@@ -104,7 +90,6 @@ export default function PurchaseStatusModal({
     showDeliveryButton: type === 'delivery',
     hasAdminPermission: currentUserRoles.includes('app_admin'),
     hasLeadBuyerPermission: currentUserRoles.includes('lead buyer'),
-    hasReceiverPermission: currentUserRoles.includes('receiver'),
     itemData: {
       is_payment_completed: localItem.is_payment_completed,
       is_received: localItem.is_received
@@ -155,213 +140,245 @@ export default function PurchaseStatusModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-bold">
-            {localItem.purchase_order_number || 'PO번호 없음'} 상세보기
-          </DialogTitle>
-          <DialogDescription>
-            {localItem.vendor_name || '업체명 없음'}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-6">
-          {/* 기본 정보 */}
-          <div className="bg-gray-50 rounded-lg p-6">
-            <h3 className="font-semibold mb-4 flex items-center text-gray-900">
-              <FileText className="w-5 h-5 mr-2 text-gray-700" />
-              기본 정보
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-              <div>
-                <p className="text-sm text-gray-500 mb-1">요청자</p>
-                <p className="font-medium text-gray-900">{localItem.requester_name}</p>
+      <DialogContent 
+        className="overflow-hidden bg-white rounded-3xl shadow-2xl border-0"
+        style={{ maxWidth: '1280px', width: '90vw', maxHeight: '50vh' }}
+        showCloseButton={false}
+      >
+        {/* Apple-style Header */}
+        <div className="relative px-6 pt-6 pb-4">
+          <button
+            onClick={onClose}
+            className="absolute right-6 top-6 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-all duration-200"
+          >
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+          
+          <div className="pr-16">
+            <div className="flex items-start gap-4 mb-2">
+              <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+                {typeInfo.icon}
               </div>
-              <div>
-                <p className="text-sm text-gray-500 mb-1">요청일</p>
-                <p className="font-medium text-gray-900">
-                  {new Date(localItem.request_date || localItem.created_at).toLocaleDateString('ko-KR')}
-                </p>
+              <div className="min-w-0 flex-1">
+                <h1 className="modal-title mb-1">
+                  {localItem.purchase_order_number || 'PO번호 없음'}
+                </h1>
+                <p className="modal-subtitle">{localItem.vendor_name || '업체명 없음'}</p>
               </div>
-              <div>
-                <p className="text-sm text-gray-500 mb-1">납기요청일</p>
-                <p className="font-medium text-gray-900">
-                  {localItem.delivery_request_date 
-                    ? new Date(localItem.delivery_request_date).toLocaleDateString('ko-KR')
-                    : '-'}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 mb-1">결제유형</p>
-                <p className="font-medium text-gray-900">{localItem.payment_category || '-'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 mb-1">진행구분</p>
-                <p className="font-medium text-gray-900">{localItem.progress_type || '일반'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 mb-1">상태</p>
-                <p className="font-medium">
-                  <Badge className={typeInfo.color}>
-                    {typeInfo.title}
-                  </Badge>
-                </p>
+              <div className={`px-3 py-1.5 rounded-full badge-text ${typeInfo.color}`}>
+                {typeInfo.title}
               </div>
             </div>
           </div>
+        </div>
 
-          {/* 업체 정보 */}
-          <div className="bg-gray-50 rounded-lg p-6">
-            <h3 className="font-semibold mb-4 flex items-center text-gray-900">
-              <Building2 className="w-5 h-5 mr-2 text-gray-700" />
-              업체 정보
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-              <div>
-                <p className="text-sm text-gray-500 mb-1">업체명</p>
-                <p className="font-medium text-gray-900">{localItem.vendor_name || '-'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 mb-1">프로젝트 업체</p>
-                <p className="font-medium text-gray-900">{localItem.project_vendor || '-'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 mb-1">판매주문번호</p>
-                <p className="font-medium text-gray-900">{localItem.sales_order_number || '-'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 mb-1">프로젝트 품목</p>
-                <p className="font-medium text-gray-900">{localItem.project_item || '-'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 mb-1">발주서 템플릿</p>
-                <p className="font-medium text-gray-900">{localItem.po_template_type || '일반'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 mb-1">통화</p>
-                <p className="font-medium text-gray-900">{localItem.currency || 'KRW'}</p>
-              </div>
+        {/* Apple-style Content */}
+        <div className="overflow-y-auto max-h-[calc(50vh-160px)] px-6 pb-4 space-y-3">
+          
+          {/* Dense Basic Information Grid */}
+          <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+            <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs">
+              <div><span className="text-gray-500">요청자:</span> <span className="font-medium">{localItem.requester_name}</span></div>
+              <div><span className="text-gray-500">요청일:</span> <span className="font-medium">{new Date(localItem.request_date || localItem.created_at).toLocaleDateString('ko-KR')}</span></div>
+              <div><span className="text-gray-500">납기요청일:</span> <span className="font-medium">{localItem.delivery_request_date ? new Date(localItem.delivery_request_date).toLocaleDateString('ko-KR') : '미지정'}</span></div>
+              
+              <div><span className="text-gray-500">업체명:</span> <span className="font-medium">{localItem.vendor_name || '-'}</span></div>
+              <div><span className="text-gray-500">결제유형:</span> <span className="font-medium">{localItem.payment_category || '일반'}</span></div>
+              <div><span className="text-gray-500">진행구분:</span> <span className="font-medium">{localItem.progress_type || '일반'}</span></div>
+              
+              <div><span className="text-gray-500">프로젝트업체:</span> <span className="font-medium">{localItem.project_vendor || '-'}</span></div>
+              <div><span className="text-gray-500">판매주문번호:</span> <span className="font-medium">{localItem.sales_order_number || '-'}</span></div>
+              <div><span className="text-gray-500">배송지:</span> <span className="font-medium">{localItem.shipping_address || '본사'}</span></div>
+              
+              <div><span className="text-gray-500">통화:</span> <span className="font-medium">{localItem.currency || 'KRW'}</span></div>
+              <div><span className="text-gray-500">템플릿:</span> <span className="font-medium">{localItem.po_template_type || '일반'}</span></div>
+              {localItem.revised_delivery_request_date && (
+                <div><span className="text-orange-500">변경입고일:</span> <span className="font-medium text-orange-900">{new Date(localItem.revised_delivery_request_date).toLocaleDateString('ko-KR')}</span></div>
+              )}
             </div>
           </div>
 
-          {/* 품목 리스트 */}
-          <div className="bg-gray-50 rounded-lg p-6">
-            <h3 className="font-semibold mb-4 flex items-center text-gray-900">
-              <Package className="w-5 h-5 mr-2 text-gray-700" />
-              품목 리스트
-            </h3>
+
+          {/* Compact Items Table */}
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <div className="bg-gray-50 px-3 py-2 border-b border-gray-100">
+              <h3 className="text-sm font-medium text-gray-700">주문 품목 ({items.length}개, 총 ₩{totalAmount.toLocaleString()})</h3>
+            </div>
             <div className="overflow-x-auto">
-              <table className="min-w-full bg-white rounded-lg overflow-hidden shadow-sm">
-                <thead className="bg-gray-100">
+              <table className="w-full text-xs table-fixed">
+                <colgroup>
+                  <col className="w-[25%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[10%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[15%]" />
+                  {(type === 'delivery' || type === 'purchase') && <col className="w-[15%]" />}
+                </colgroup>
+                <thead className="bg-gray-50 border-b border-gray-100">
                   <tr>
-                    {type === 'delivery' && (
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">입고</th>
-                    )}
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">품명</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">규격</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">수량</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">단가</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">금액</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">비고</th>
+                    <th className="text-left p-2 font-medium text-gray-600">품목명</th>
+                    <th className="text-left p-2 font-medium text-gray-600">규격</th>
+                    <th className="text-right p-2 font-medium text-gray-600">수량</th>
+                    <th className="text-right p-2 font-medium text-gray-600">단가</th>
+                    <th className="text-right p-2 font-medium text-gray-600">금액</th>
+                    {type === 'delivery' && <th className="text-center p-2 font-medium text-gray-600">입고상태</th>}
+                    {type === 'purchase' && <th className="text-center p-2 font-medium text-gray-600">구매상태</th>}
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="divide-y divide-gray-100">
                   {items.map((pItem: any, index: number) => {
                     const unitPrice = pItem.quantity > 0 ? (Number(pItem.amount_value) || 0) / pItem.quantity : 0
                     return (
-                      <tr key={index} className="hover:bg-gray-50 transition-colors">
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="p-2">
+                          <div className="font-medium text-gray-900">{pItem.item_name || '품목명 없음'}</div>
+                          {pItem.remark && (
+                            <div className="text-xs text-amber-600 mt-1">비고: {pItem.remark}</div>
+                          )}
+                        </td>
+                        <td className="p-2 text-gray-600">{pItem.specification || '-'}</td>
+                        <td className="p-2 text-right font-medium">{pItem.quantity || 0}</td>
+                        <td className="p-2 text-right">₩{unitPrice.toLocaleString()}</td>
+                        <td className="p-2 text-right font-medium">₩{(Number(pItem.amount_value) || 0).toLocaleString()}</td>
                         {type === 'delivery' && (
-                          <td className="px-4 py-3 text-center">
-                            <div className="flex items-center justify-center">
-                              {pItem.is_received ? (
-                                <Badge className="bg-green-100 text-green-800 text-xs">
+                          <td className="p-2 text-center">
+                            {pItem.is_received ? (
+                              <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded text-xs border border-green-200">
+                                <CheckCircle2 className="w-3 h-3" />
+                                완료
+                              </span>
+                            ) : (
+                              (currentUserRoles.includes('app_admin') || 
+                               currentUserRoles.includes('requester')) && (
+                                <Button
+                                  size="sm"
+                                  onClick={async () => {
+                                    if (!confirm('이 품목을 입고완료 처리하시겠습니까?')) return
+                                    
+                                    try {
+                                      const { error } = await supabase
+                                        .from('purchase_request_items')
+                                        .update({ 
+                                          is_received: true,
+                                          received_at: new Date().toISOString()
+                                        })
+                                        .eq('id', pItem.id)
+
+                                      if (error) throw error
+                                      
+                                      // 로컬 상태 업데이트
+                                      setLocalItem(prev => ({
+                                        ...prev,
+                                        purchase_request_items: prev.purchase_request_items?.map((item: any) =>
+                                          item.id === pItem.id ? { ...item, is_received: true, received_at: new Date().toISOString() } : item
+                                        ) || []
+                                      }))
+                                      
+                                      toast.success('입고완료 처리되었습니다.')
+                                      if (onRefresh) onRefresh()
+                                    } catch (error) {
+                                      toast.error('처리 중 오류가 발생했습니다.')
+                                    }
+                                  }}
+                                  className="bg-blue-600 hover:bg-blue-700 text-white h-6 px-2 text-xs"
+                                >
                                   입고완료
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline" className="text-gray-600 text-xs">
-                                  미입고
-                                </Badge>
-                              )}
-                            </div>
+                                </Button>
+                              )
+                            )}
                           </td>
                         )}
-                        <td className="px-4 py-3">
-                          <span className="text-sm font-medium text-gray-900">{pItem.item_name || '품목명 없음'}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-sm text-gray-600">{pItem.specification || '-'}</span>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <span className="text-sm font-medium text-gray-900">{pItem.quantity || 0}</span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="text-sm text-gray-900">₩{unitPrice.toLocaleString()}</span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="text-sm font-semibold text-gray-900">₩{(Number(pItem.amount_value) || 0).toLocaleString()}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-sm text-gray-600">{pItem.remark || '-'}</span>
-                        </td>
+                        {type === 'purchase' && (
+                          <td className="p-2 text-center">
+                            {pItem.is_payment_completed ? (
+                              <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded text-xs border border-green-200">
+                                <CheckCircle2 className="w-3 h-3" />
+                                완료
+                              </span>
+                            ) : (
+                              (currentUserRoles.includes('app_admin') || 
+                               currentUserRoles.includes('lead buyer')) && (
+                                <Button
+                                  size="sm"
+                                  onClick={async () => {
+                                    if (!confirm('이 품목을 구매완료 처리하시겠습니까?')) return
+                                    
+                                    try {
+                                      const { error } = await supabase
+                                        .from('purchase_request_items')
+                                        .update({ 
+                                          is_payment_completed: true,
+                                          payment_completed_at: new Date().toISOString()
+                                        })
+                                        .eq('id', pItem.id)
+
+                                      if (error) throw error
+                                      
+                                      // 로컬 상태 업데이트
+                                      setLocalItem((prev: any) => ({
+                                        ...prev,
+                                        purchase_request_items: prev.purchase_request_items?.map((item: any) =>
+                                          item.id === pItem.id 
+                                            ? { ...item, is_payment_completed: true, payment_completed_at: new Date().toISOString() }
+                                            : item
+                                        )
+                                      }))
+                                      
+                                      toast.success('품목 구매완료 처리되었습니다.')
+                                      onRefresh?.()
+                                    } catch (error) {
+                                      toast.error('처리 중 오류가 발생했습니다.')
+                                    }
+                                  }}
+                                  className="bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-1 text-xs font-medium"
+                                >
+                                  구매완료
+                                </Button>
+                              )
+                            )}
+                          </td>
+                        )}
                       </tr>
                     )
                   })}
                 </tbody>
               </table>
             </div>
-
-            {/* 총액 */}
-            <div className="mt-6 bg-white rounded-lg p-4 shadow-sm">
-              <div className="flex justify-between items-center">
-                <div>
-                  <span className="text-sm text-gray-600">총</span>
-                  <span className="ml-1 font-semibold text-gray-900">{totalQuantity}개</span>
-                  <span className="text-sm text-gray-600 ml-1">항목</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-sm text-gray-600 block">총액</span>
-                  <span className="font-bold text-xl text-gray-900">₩{totalAmount.toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
           </div>
 
-          {/* 입고 진행률 (입고 대기인 경우) */}
+          {/* Compact Delivery Progress */}
           {type === 'delivery' && items.length > 1 && (
-            <div className="bg-blue-50 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-900 mb-3">입고 진행 현황</h4>
+            <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
               {(() => {
                 const receivedCount = items.filter((i: any) => i.is_received).length
                 const totalCount = items.length
                 const percentage = (receivedCount / totalCount) * 100
                 
                 return (
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">입고 완료</span>
-                      <span className="font-medium text-gray-900">{receivedCount}/{totalCount}개 ({percentage.toFixed(0)}%)</span>
-                    </div>
-                    <div className="w-full bg-blue-200 rounded-full h-2 overflow-hidden">
+                  <div className="flex items-center gap-4">
+                    <div className="text-sm font-medium text-blue-700">입고 진행률</div>
+                    <div className="flex-1 bg-blue-200 rounded-full h-2">
                       <div 
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-500"
                         style={{ width: `${percentage}%` }}
                       />
                     </div>
+                    <div className="text-sm font-medium text-blue-700">{receivedCount}/{totalCount} ({percentage.toFixed(0)}%)</div>
                   </div>
                 )
               })()}
             </div>
           )}
 
-          {/* 버튼 영역 */}
-          <div className="flex justify-between gap-3 mt-6">
-            <div className="flex gap-2">
-  
-            {/* 구매 완료 버튼 - 구매 대기 상태이고 권한 있을 때 */}
+        </div>
+        
+        {/* Apple-style Action Bar */}
+        <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-6">
+          <div className="flex items-center justify-between gap-6">
+            {/* Purchase Complete Button - for purchase type with permissions */}
             {type === 'purchase' && 
              (currentUserRoles.includes('app_admin') || 
-              currentUserRoles.includes('lead buyer') ||
-              currentUserRoles.includes('receiver')) && (
+              currentUserRoles.includes('lead buyer')) && (
               <Button
                 onClick={async () => {
                   setProcessing(true)
@@ -376,7 +393,6 @@ export default function PurchaseStatusModal({
 
                     if (error) throw error
                     
-                    // 로컬 상태 업데이트 (모달 유지하면서 UI만 변경)
                     setLocalItem((prev: any) => ({
                       ...prev,
                       is_payment_completed: true,
@@ -384,7 +400,6 @@ export default function PurchaseStatusModal({
                     }))
                     
                     toast.success('구매완료 처리되었습니다.')
-                    // 백그라운드에서 새로고침 (모달은 유지)
                     onRefresh?.()
                   } catch (error) {
                     toast.error('처리 중 오류가 발생했습니다.')
@@ -393,33 +408,34 @@ export default function PurchaseStatusModal({
                   }
                 }}
                 disabled={processing}
-                className="bg-yellow-600 hover:bg-yellow-700"
-                size="sm"
+                className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-8 py-4 rounded-2xl shadow-lg transition-all duration-200 modal-subtitle"
               >
                 {processing ? (
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-3" />
                 ) : (
-                  <CreditCard className="w-4 h-4 mr-2" />
+                  <CheckCircle2 className="w-5 h-5 mr-3" />
                 )}
                 구매 완료 처리
               </Button>
             )}
-            </div>
 
-            <div className="flex gap-2">
+            <div className="flex items-center gap-4 ml-auto">
               <Button
                 variant="outline"
                 onClick={() => {
                   navigate(`/purchase?highlight=${localItem.id}`)
                   onClose()
                 }}
-                size="sm"
+                className="border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-400 px-8 py-4 rounded-2xl modal-subtitle transition-all duration-200"
               >
                 발주 목록에서 보기
-                <ArrowRight className="w-4 h-4 ml-2" />
+                <ArrowRight className="w-5 h-5 ml-3" />
               </Button>
-              <Button variant="ghost" onClick={onClose} size="sm">
-                닫기
+              <Button 
+                onClick={onClose} 
+                className="bg-gray-900 hover:bg-gray-800 text-white px-10 py-4 rounded-2xl modal-subtitle transition-all duration-200 shadow-lg"
+              >
+                완료
               </Button>
             </div>
           </div>

@@ -23,12 +23,9 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
   const [approvalStatusFilter, setApprovalStatusFilter] = useState('');
   const [remarkFilter, setRemarkFilter] = useState('');
   
-  // 기간 필터 초기값 설정 (올해 1월 1일 ~ 오늘)
-  const thisYear = new Date().getFullYear();
-  const defaultStart = new Date(thisYear, 0, 1).toISOString().split('T')[0];
-  const defaultEnd = new Date().toISOString().split('T')[0];
-  const [dateFromFilter, setDateFromFilter] = useState(defaultStart);
-  const [dateToFilter, setDateToFilter] = useState(defaultEnd);
+  // 기간 필터 초기값 설정 - 시간 제한 없음 (전체 기간)
+  const [dateFromFilter, setDateFromFilter] = useState('');
+  const [dateToFilter, setDateToFilter] = useState('');
   
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   
@@ -90,16 +87,10 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
   
   // 1단계: 권한별 필터링 (캐싱 적용)
   const visiblePurchases = useMemo(() => {
-    console.log('🔍 [Filter] 1단계 권한별 필터링 시작:', {
-      purchasesCount: purchases.length,
-      currentUserRoles,
-      currentUserName
-    });
     
     try {
       const cacheKey = `visible_${purchases.length}_${currentUserRoles.join(',')}`;
       if (filterCache.has(cacheKey)) {
-        console.log('📦 [Filter] 캐시에서 가져옴');
         return filterCache.get(cacheKey);
       }
       
@@ -110,10 +101,6 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
         result = purchases.filter(p => !HIDDEN_EMPLOYEES.includes(p.requester_name));
       }
       
-      console.log('✅ [Filter] 권한별 필터링 완료:', {
-        originalCount: purchases.length,
-        filteredCount: result.length
-      });
       
       // 캐시 크기 제한
       if (filterCache.size >= CACHE_SIZE_LIMIT) {
@@ -123,7 +110,6 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       filterCache.set(cacheKey, result);
       return result;
     } catch (error) {
-      console.error('필터링 중 오류:', error);
       // 캐시 초기화 후 직접 계산
       filterCache.clear();
       if (currentUserRoles.includes('purchase_manager') || currentUserRoles.includes('app_admin')) {
@@ -141,7 +127,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       return filterCache.get(cacheKey);
     }
     
-    const result = visiblePurchases.filter((purchase) => {
+    const result = visiblePurchases.filter((purchase: Purchase) => {
       const requestDate = purchase.request_date ? purchase.request_date.split('T')[0] : '';
       const matchesDateFrom = !dateFromFilter || requestDate >= dateFromFilter;
       const matchesDateTo = !dateToFilter || requestDate <= dateToFilter;
@@ -163,13 +149,25 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       return filterCache.get(cacheKey);
     }
     
-    const result = dateFilteredPurchases.filter((purchase) => {
+    
+    const result = dateFilteredPurchases.filter((purchase: Purchase) => {
       let matches = false;
       
       switch (activeTab) {
         case 'pending':
-          // pending, 대기, 빈값, null 모두 승인대기로 처리
-          matches = ['pending', '대기', '', null].includes(purchase.final_manager_status as any);
+          // 중간승인자나 최종승인자 중 하나라도 pending이면 승인대기
+          const middlePending = ['pending', '대기', '', null, undefined].includes(purchase.middle_manager_status as any);
+          const finalPending = ['pending', '대기', '', null, undefined].includes(purchase.final_manager_status as any);
+          
+          // 반려된 경우는 제외
+          const middleRejected = purchase.middle_manager_status === 'rejected';
+          const finalRejected = purchase.final_manager_status === 'rejected';
+          
+          if (middleRejected || finalRejected) return false;
+          
+          // 중간승인 대기 또는 최종승인 대기
+          matches = middlePending || finalPending;
+          
           return matches;
           
         case 'purchase': {
@@ -224,7 +222,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     
     let result;
     if (selectedEmployee && selectedEmployee !== 'all' && selectedEmployee !== '전체') {
-      result = tabFilteredPurchases.filter(purchase => purchase.requester_name === selectedEmployee);
+      result = tabFilteredPurchases.filter((purchase: Purchase) => purchase.requester_name === selectedEmployee);
     } else {
       result = tabFilteredPurchases;
     }
@@ -242,7 +240,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     if (!vendorFilter) {
       return employeeFilteredPurchases;
     }
-    return employeeFilteredPurchases.filter(purchase => purchase.vendor_name === vendorFilter);
+    return employeeFilteredPurchases.filter((purchase: Purchase) => purchase.vendor_name === vendorFilter);
   }, [employeeFilteredPurchases, vendorFilter]);
 
   // 6단계: 추가 필터 적용
@@ -252,15 +250,15 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     // 발주요청번호 필터
     if (purchaseNumberFilter) {
       const term = purchaseNumberFilter.trim().toLowerCase();
-      filtered = filtered.filter(p => p.purchase_order_number?.toLowerCase().includes(term));
+      filtered = filtered.filter((p: Purchase) => p.purchase_order_number?.toLowerCase().includes(term));
     }
     
     // 품명 필터
     if (itemNameFilter) {
       const term = itemNameFilter.trim().toLowerCase();
-      filtered = filtered.filter(p => {
+      filtered = filtered.filter((p: Purchase) => {
         if (p.items && p.items.length > 0) {
-          return p.items.some(item => item.item_name?.toLowerCase().includes(term));
+          return p.items.some((item: any) => item.item_name?.toLowerCase().includes(term));
         }
         return false;
       });
@@ -269,9 +267,9 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     // 규격 필터
     if (specificationFilter) {
       const term = specificationFilter.trim().toLowerCase();
-      filtered = filtered.filter(p => {
+      filtered = filtered.filter((p: Purchase) => {
         if (p.items && p.items.length > 0) {
-          return p.items.some(item => item.specification?.toLowerCase().includes(term));
+          return p.items.some((item: any) => item.specification?.toLowerCase().includes(term));
         }
         return false;
       });
@@ -279,7 +277,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     
     // 승인상태 필터
     if (approvalStatusFilter && approvalStatusFilter !== 'all') {
-      filtered = filtered.filter(p => {
+      filtered = filtered.filter((p: Purchase) => {
         switch (approvalStatusFilter) {
           case 'pending':
             return !p.final_manager_status || p.final_manager_status === 'pending' || p.final_manager_status === '대기';
@@ -296,9 +294,9 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     // 비고 필터
     if (remarkFilter) {
       const term = remarkFilter.trim().toLowerCase();
-      filtered = filtered.filter(p => {
+      filtered = filtered.filter((p: Purchase) => {
         if (p.items && p.items.length > 0) {
-          return p.items.some(item => item.remark?.toLowerCase().includes(term));
+          return p.items.some((item: any) => item.remark?.toLowerCase().includes(term));
         }
         return false;
       });
@@ -315,7 +313,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     
     const term = debouncedSearchTerm.trim().toLowerCase();
     
-    return additionalFilteredPurchases.filter(purchase => {
+    return additionalFilteredPurchases.filter((purchase: Purchase) => {
       // 빠른 검색 (기본 필드만)
       if (purchase.purchase_order_number?.toLowerCase().includes(term) ||
           purchase.vendor_name?.toLowerCase().includes(term) ||
@@ -326,7 +324,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       
       // 품목 검색 (필요할 때만)
       if (purchase.items && purchase.items.length > 0) {
-        return purchase.items.some(item => 
+        return purchase.items.some((item: any) => 
           (item.item_name && item.item_name.toLowerCase().includes(term)) ||
           (item.specification && item.specification.toLowerCase().includes(term))
         );
@@ -345,17 +343,6 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       return dateB - dateA;
     });
     
-    console.log('✅ [Filter] 최종 필터링 완료:', {
-      activeTab,
-      searchFilteredCount: searchFilteredPurchases.length,
-      finalCount: result.length,
-      firstFewResults: result.slice(0, 3).map(p => ({
-        id: p.id,
-        po: p.purchase_order_number,
-        requester: p.requester_name,
-        date: p.request_date
-      }))
-    });
     
     return result;
   }, [searchFilteredPurchases, activeTab]);
@@ -366,7 +353,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     const countPurchases = visiblePurchases;
     
     // 기간 필터 적용
-    const dateFilteredForCount = countPurchases.filter((purchase) => {
+    const dateFilteredForCount = countPurchases.filter((purchase: Purchase) => {
       const requestDate = purchase.request_date ? purchase.request_date.split('T')[0] : '';
       const matchesDateFrom = !dateFromFilter || requestDate >= dateFromFilter;
       const matchesDateTo = !dateToFilter || requestDate <= dateToFilter;
@@ -385,7 +372,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
         if (isLeadBuyer || isAdmin) {
           return dateFilteredForCount;
         } else {
-          return dateFilteredForCount.filter(p => p.requester_name === currentUserName);
+          return dateFilteredForCount.filter((p: Purchase) => p.requester_name === currentUserName);
         }
       }
       
@@ -394,7 +381,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       if (defaultEmployee === 'all' || defaultEmployee === '전체') {
         return dateFilteredForCount;
       } else {
-        return dateFilteredForCount.filter(p => p.requester_name === defaultEmployee);
+        return dateFilteredForCount.filter((p: Purchase) => p.requester_name === defaultEmployee);
       }
     };
     
@@ -404,12 +391,22 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     const receiptData = getFilteredDataForTab('receipt');
     const doneData = getFilteredDataForTab('done');
     
-    const pendingFiltered = pendingData.filter(p => {
-      const matches = ['pending', '대기', '', null].includes(p.final_manager_status as any);
-      return matches;
+    const pendingFiltered = pendingData.filter((p: Purchase) => {
+      // 중간승인자나 최종승인자 중 하나라도 pending이면 승인대기
+      const middlePending = ['pending', '대기', '', null, undefined].includes(p.middle_manager_status as any);
+      const finalPending = ['pending', '대기', '', null, undefined].includes(p.final_manager_status as any);
+      
+      // 반려된 경우는 제외
+      const middleRejected = p.middle_manager_status === 'rejected';
+      const finalRejected = p.final_manager_status === 'rejected';
+      
+      if (middleRejected || finalRejected) return false;
+      
+      // 중간승인 대기 또는 최종승인 대기
+      return middlePending || finalPending;
     });
     
-    const purchaseFiltered = purchaseData.filter(p => {
+    const purchaseFiltered = purchaseData.filter((p: Purchase) => {
       const isRequest = p.payment_category === '구매 요청';
       const notPaid = !p.is_payment_completed;
       if (!isRequest || !notPaid) return false;
@@ -419,7 +416,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       return (isSeonJin) || (isIlban && finalApproved);
     });
     
-    const receiptFiltered = receiptData.filter(p => {
+    const receiptFiltered = receiptData.filter((p: Purchase) => {
       const notReceived = !p.is_received;
       const isSeonJin = (p.progress_type || '').includes('선진행');
       const finalApproved = p.final_manager_status === 'approved';
@@ -453,8 +450,8 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
         .single();
         
       if (data) {
-        const ps = data.period_start ? new Date(data.period_start).toISOString().split('T')[0] : defaultStart;
-        const pe = data.period_end ? new Date(data.period_end).toISOString().split('T')[0] : defaultEnd;
+        const ps = data.period_start ? new Date(data.period_start).toISOString().split('T')[0] : '';
+        const pe = data.period_end ? new Date(data.period_end).toISOString().split('T')[0] : '';
         setDateFromFilter(ps);
         setDateToFilter(pe);
       }
@@ -462,7 +459,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
   }, []);
   
   // 기간 변경 시 디바운스 저장 (사용자별)
-  const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     if (!loadedPreferencesRef.current) return;
     

@@ -99,7 +99,7 @@ export async function generateAttendanceExcel(data: AttendanceData): Promise<Blo
   headerRow.height = 25;
   
   // 헤더 스타일링
-  headerRow.eachCell((cell, colNumber) => {
+  headerRow.eachCell((cell, _colNumber) => {
     cell.font = { name: '맑은 고딕', size: 10, bold: true };
     cell.alignment = { horizontal: 'center', vertical: 'middle' };
     cell.border = {

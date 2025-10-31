@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { useReceiptPermissions } from "@/hooks/useReceiptPermissions";
 import type { ReceiptItem } from "@/types/receipt";
-import debugMonitor from "@/utils/receiptDebugMonitor";
+import { logger } from "@/lib/logger";
 
 interface ReceiptDetailModalProps {
   receipt: ReceiptItem;
@@ -75,7 +75,7 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
       
       toast.success('영수증 이미지가 다운로드되었습니다.');
     } catch (error) {
-      console.error('다운로드 오류:', error);
+      logger.error('다운로드 오류', error);
       toast.error('다운로드에 실패했습니다.');
     }
   };
@@ -126,41 +126,30 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
 
   // 영수증 인쇄 완료 처리
   const markAsPrinted = useCallback(async () => {
-    console.log('🖨️ [ReceiptDebug] 인쇄완료 처리 시작:', {
+    logger.debug('인쇄완료 처리 시작', {
       receiptId: receipt.id,
-      receiptName: receipt.file_name,
-      timestamp: new Date().toISOString(),
-      userAgent: navigator.userAgent
+      receiptName: receipt.file_name
     });
 
-    // 디버그 모니터에 추적 시작
-    debugMonitor.trackPrintCompletion(receipt.id, receipt.file_name);
 
     try {
       // 1. 사용자 인증 정보 확인
-      console.log('🔐 [ReceiptDebug] 사용자 인증 정보 확인 중...');
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError) {
-        console.error('❌ [ReceiptDebug] 인증 오류:', authError);
+        logger.error('인증 오류', authError);
         toast.error('사용자 인증에 실패했습니다.');
         return;
       }
       
       if (!user) {
-        console.error('❌ [ReceiptDebug] 사용자 정보 없음');
+        logger.error('사용자 정보 없음');
         toast.error('사용자 정보를 불러올 수 없습니다.');
         return;
       }
 
-      console.log('✅ [ReceiptDebug] 사용자 인증 성공:', {
-        userId: user.id,
-        email: user.email,
-        lastSignIn: user.last_sign_in_at
-      });
 
       // 2. 사용자 권한 및 정보 확인
-      console.log('👤 [ReceiptDebug] 직원 정보 조회 중...');
       const { data: employee, error: empError } = await supabase
         .from('employees')
         .select('name, purchase_role')
@@ -168,31 +157,19 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
         .single();
 
       if (empError) {
-        console.error('❌ [ReceiptDebug] 직원 정보 조회 실패:', empError);
+        logger.error('직원 정보 조회 실패', empError);
         toast.error('직원 정보를 불러올 수 없습니다.');
         return;
       }
 
-      console.log('✅ [ReceiptDebug] 직원 정보 조회 성공:', {
-        name: employee?.name,
-        email: user.email,
-        role: employee?.purchase_role
-      });
 
       // 3. 권한 검증
       const role = employee?.purchase_role || '';
       const hasPermission = role.includes('app_admin') || role.includes('hr') || role.includes('lead buyer');
       
-      console.log('🛡️ [ReceiptDebug] 권한 검증:', {
-        role,
-        hasPermission,
-        isAppAdmin: role.includes('app_admin'),
-        isHr: role.includes('hr'),
-        isLeadBuyer: role.includes('lead buyer')
-      });
 
       if (!hasPermission) {
-        console.error('❌ [ReceiptDebug] 권한 부족:', { role });
+        logger.error('권한 부족', { role });
         toast.error('인쇄완료 처리 권한이 없습니다.');
         return;
       }
@@ -205,10 +182,8 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
         printed_by_name: employee?.name || user.email
       };
 
-      console.log('📝 [ReceiptDebug] 업데이트 데이터 준비:', updateData);
 
       // 5. 데이터베이스 업데이트 실행
-      console.log('🔄 [ReceiptDebug] 데이터베이스 업데이트 실행 중...');
       const startTime = performance.now();
       
       const { data: updateResult, error: updateError } = await supabase
@@ -221,17 +196,8 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
       const executionTime = endTime - startTime;
 
       if (updateError) {
-        console.error('❌ [ReceiptDebug] 업데이트 실패:', {
-          error: updateError,
-          code: updateError.code,
-          message: updateError.message,
-          details: updateError.details,
-          hint: updateError.hint,
-          executionTime: `${executionTime.toFixed(2)}ms`
-        });
+        logger.error('업데이트 실패', updateError);
         
-        // 디버그 모니터에 실패 결과 추적
-        debugMonitor.trackUpdateResult(receipt.id, false, updateError, executionTime);
         
         // RLS 관련 오류 특별 처리
         if (updateError.code === '42501' || updateError.message?.includes('policy')) {
@@ -244,47 +210,26 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
 
       const affectedRows = updateResult?.length || 0;
       
-      console.log('✅ [ReceiptDebug] 업데이트 성공:', {
-        updateResult,
-        executionTime: `${executionTime.toFixed(2)}ms`,
-        affectedRows
-      });
 
       // affectedRows가 0이어도 성공으로 처리 (이미 인쇄완료 상태인 경우)
       if (affectedRows === 0) {
-        console.log('ℹ️ [ReceiptDebug] 이미 인쇄완료 상태였습니다.');
       }
 
-      // 디버그 모니터에 성공 결과 추적
-      debugMonitor.trackUpdateResult(receipt.id, true, null, executionTime);
 
       // 6. 성공 처리
       toast.success('인쇄 완료로 표시되었습니다.');
       
       // 7. 목록 새로고침
-      console.log('🔄 [ReceiptDebug] 목록 새로고침 처리...');
       if (onDelete) {
         onDelete(); // 목록 새로고침을 위해 호출
       }
 
-      console.log('🎉 [ReceiptDebug] 인쇄완료 처리 완료:', {
-        receiptId: receipt.id,
-        success: true,
-        timestamp: new Date().toISOString()
-      });
+      logger.debug('인쇄완료 처리 완료', { receiptId: receipt.id });
 
     } catch (error) {
       const errorObj = error as any;
-      console.error('💥 [ReceiptDebug] 예외 발생:', {
-        error,
-        message: errorObj?.message,
-        stack: errorObj?.stack,
-        receiptId: receipt.id,
-        timestamp: new Date().toISOString()
-      });
+      logger.error('인쇄완료 처리 예외', errorObj, { receiptId: receipt.id });
 
-      // 디버그 모니터에 실패 결과 추적
-      debugMonitor.trackUpdateResult(receipt.id, false, error);
       
       toast.error(`인쇄 완료 처리에 실패했습니다: ${errorObj?.message || '알 수 없는 오류'}`);
     }
@@ -306,20 +251,18 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
 
       // 인쇄 완료 확인 다이얼로그
       setTimeout(() => {
-        console.log('🔔 [ReceiptDebug] 인쇄완료 확인 다이얼로그 표시 중...');
         const userConfirmed = confirm('인쇄를 완료하셨습니까?');
-        console.log('👤 [ReceiptDebug] 사용자 응답:', userConfirmed ? '확인 클릭' : '취소 클릭');
         
         if (userConfirmed) {
-          console.log('🚪 [ReceiptDebug] 모달 닫기 실행 중...');
+          logger.debug('모달 닫기 실행 중');
           // 먼저 모달 닫기
           onClose();
           
-          console.log('🎯 [ReceiptDebug] markAsPrinted 함수 호출 시작!');
+          logger.debug('markAsPrinted 함수 호출 시작');
           // 그 다음 인쇄완료 처리
           markAsPrinted();
         } else {
-          console.log('❌ [ReceiptDebug] 사용자가 취소함 - 인쇄완료 처리 안함');
+          logger.debug('사용자가 취소함 - 인쇄완료 처리 안함');
         }
       }, 1000);
     }
@@ -353,7 +296,7 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
           .remove([filePath]);
 
         if (storageError) {
-          console.warn('스토리지 파일 삭제 실패:', storageError);
+          logger.warn('스토리지 파일 삭제 실패', { error: storageError });
         }
       }
 
@@ -371,7 +314,7 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
         onDelete();
       }
     } catch (error) {
-      console.error('삭제 오류:', error);
+      logger.error('삭제 오류', error);
       toast.error('삭제에 실패했습니다.');
     } finally {
       setDeleting(false);

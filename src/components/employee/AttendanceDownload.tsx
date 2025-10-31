@@ -149,7 +149,6 @@ export default function AttendanceDownload({ employees, isOpen, onClose }: Atten
       onClose()
       
     } catch (error) {
-      console.error('출근현황표 다운로드 오류:', error)
       toast.error(error instanceof Error ? error.message : '다운로드 중 오류가 발생했습니다.')
     } finally {
       setIsDownloading(false)

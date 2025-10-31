@@ -53,9 +53,11 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  maxWidth = "sm:max-w-lg",
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  maxWidth?: string
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
@@ -64,7 +66,8 @@ function DialogContent({
         data-slot="dialog-content"
         className={cn(
           "fixed top-[50%] left-[50%] z-50",
-          "w-full max-w-[calc(100%-2rem)] sm:max-w-lg",
+          "w-full",
+          maxWidth,
           "translate-x-[-50%] translate-y-[-50%]",
           "bg-white rounded-lg border border-gray-200",
           "shadow-professional-xl",
