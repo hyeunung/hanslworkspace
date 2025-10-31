@@ -246,7 +246,7 @@ export class DashboardService {
     )
 
     // 발주 리스트의 pending 탭과 동일한 조건: 중간승인자나 최종승인자 중 하나라도 pending이면 승인대기
-    logger.debug('🔍 승인대기 필터링 전 데이터', {
+    console.log('🔍 승인대기 필터링 전 데이터', {
       employeeName: employee.name,
       employeeRoles: this.parseRoles(employee.purchase_role),
       totalRequests: allRequests?.length || 0,
@@ -285,7 +285,7 @@ export class DashboardService {
       return shouldInclude
     })
     
-    logger.debug('🔍 승인대기 필터링 후 데이터', {
+    console.log('🔍 승인대기 필터링 후 데이터', {
       filteredCount: filteredData.length,
       filteredItems: filteredData.map(item => ({
         id: item.id,
@@ -305,7 +305,7 @@ export class DashboardService {
     
     if (roles.includes('app_admin')) {
       // app_admin은 모든 승인 대기 항목 볼 수 있음 (필터링 없음)
-      logger.debug('🔑 app_admin 권한으로 모든 승인대기 항목 표시', {
+      console.log('🔑 app_admin 권한으로 모든 승인대기 항목 표시', {
         totalItems: roleFilteredData.length
       })
       // app_admin인 경우 추가 필터링 없이 모든 항목 표시
@@ -315,7 +315,7 @@ export class DashboardService {
         const middlePending = isPending(item.middle_manager_status)
         return middlePending
       })
-      logger.debug('🔑 middle_manager 권한으로 중간승인 대기 항목만 표시', {
+      console.log('🔑 middle_manager 권한으로 중간승인 대기 항목만 표시', {
         beforeFilter: filteredData.length,
         afterFilter: roleFilteredData.length
       })
