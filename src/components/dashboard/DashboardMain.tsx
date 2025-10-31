@@ -86,7 +86,8 @@ export default function DashboardMain() {
         try {
           const dashboardData = await dashboardService.getDashboardData(defaultEmployee as any)
           setData(dashboardData)
-        } catch (err) {
+        } catch (_err) {
+          // 대시보드 데이터 로딩 실패 시 빈 상태 유지
         }
         
         setLoading(false)
@@ -118,7 +119,7 @@ export default function DashboardMain() {
         
         
         setData(dashboardData)
-      } catch (err) {
+      } catch (_err) {
         toast.error('대시보드 데이터를 불러오는데 실패했습니다.')
       }
       
@@ -138,7 +139,8 @@ export default function DashboardMain() {
           setUndownloadedOrders(undownloaded)
         }
       }
-    } catch (error) {
+    } catch (_error) {
+      // 전체 대시보드 로딩 실패
     } finally {
       if (showLoading) {
         setLoading(false)
@@ -609,7 +611,8 @@ export default function DashboardMain() {
                       {console.log('필터링 전:', data.pendingApprovals)}
                       {console.log('검색어:', searchTerms.pending)}
                       {console.log('필터링 후:', filterItems(data.pendingApprovals, searchTerms.pending))}
-                      {filterItems(data.pendingApprovals, searchTerms.pending).slice(0, 10).map((approval) => {
+                      {filterItems(data.pendingApprovals, searchTerms.pending).slice(0, 10).map((approval, index) => {
+                        console.log(`렌더링 중 ${index + 1}번째 항목:`, approval.purchase_order_number)
                         const items = approval.purchase_request_items || []
                         const firstItem = items[0] || {}
                         const totalAmount = approval.total_amount || items.reduce((sum: number, i: any) => sum + (Number(i.amount_value) || 0), 0)
