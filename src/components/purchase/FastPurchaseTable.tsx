@@ -815,6 +815,7 @@ const FastPurchaseTable = memo(({
   const handleConfirmDelete = async () => {
     if (!purchaseToDelete) return;
 
+    logger.debug('발주 삭제 확인', {
       id: purchaseToDelete.id,
       purchase_order_number: purchaseToDelete.purchase_order_number,
       requester_name: purchaseToDelete.requester_name,
@@ -838,6 +839,7 @@ const FastPurchaseTable = memo(({
         .eq('email', user.email)
         .single();
 
+      logger.debug('사용자 권한 확인', {
         employee: employee?.name,
         roles: employee?.purchase_role,
         email: employee?.email
@@ -867,6 +869,7 @@ const FastPurchaseTable = memo(({
       const isRequester = purchaseToDelete.requester_name === employee.name;
       const canDeleteThis = isApproved ? canEdit : (canEdit || isRequester);
 
+      logger.debug('삭제 권한 확인', {
         canEdit,
         isApproved,
         isRequester,
@@ -888,6 +891,7 @@ const FastPurchaseTable = memo(({
         .select();
 
       if (itemsError) {
+        logger.error('아이템 삭제 중 오류 발생', itemsError, {
           code: itemsError.code,
           message: itemsError.message,
           details: itemsError.details,
@@ -896,8 +900,10 @@ const FastPurchaseTable = memo(({
         throw itemsError;
       }
 
-      
-
+      logger.debug('아이템 삭제 완료', {
+        deletedItemsCount: deletedItems?.length || 0,
+        purchaseRequestId: purchaseToDelete.id
+      });
 
       // 발주요청 삭제
       const { data: deletedRequest, error: requestError } = await supabase
@@ -907,6 +913,7 @@ const FastPurchaseTable = memo(({
         .select();
 
       if (requestError) {
+        logger.error('발주요청 삭제 중 오류 발생', requestError, {
           code: requestError.code,
           message: requestError.message,
           details: requestError.details,
@@ -915,11 +922,16 @@ const FastPurchaseTable = memo(({
         throw requestError;
       }
 
+      logger.debug('발주요청 삭제 완료', {
+        deletedRequestId: purchaseToDelete.id,
+        purchase_order_number: purchaseToDelete.purchase_order_number
+      });
 
       toast.success("발주요청 내역이 삭제되었습니다.");
       onRefresh?.();
     } catch (error) {
       const errorObj = error as any;
+      logger.error('발주요청 삭제 중 예외 발생', errorObj, {
         name: errorObj?.name,
         message: errorObj?.message,
         code: errorObj?.code,

@@ -1,0 +1,2 @@
+function t(t){if(!t)return"-";try{const e=new Date(t);return isNaN(e.getTime())?"-":e.toLocaleDateString("ko-KR",{year:"numeric",month:"2-digit",day:"2-digit"})}catch{return"-"}}function e(t){if(!t)return"-";try{const e=new Date(t);return isNaN(e.getTime())?"-":`${String(e.getMonth()+1).padStart(2,"0")}-${String(e.getDate()).padStart(2,"0")}`}catch{return"-"}}export{e as a,t as f};
+//# sourceMappingURL=helpers-C_CnFjYT.js.map

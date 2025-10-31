@@ -98,6 +98,21 @@ export default function DashboardMain() {
       try {
         const dashboardData = await dashboardService.getDashboardData(employee)
         
+        // 디버깅: 승인대기 데이터 확인
+        logger.debug('🔍 대시보드 데이터 로딩 완료', {
+          employeeName: employee.name,
+          employeeEmail: employee.email,
+          purchaseRole: employee.purchase_role,
+          pendingApprovalsCount: dashboardData.pendingApprovals?.length || 0,
+          pendingApprovals: dashboardData.pendingApprovals?.map(item => ({
+            id: item.id,
+            purchase_order_number: item.purchase_order_number,
+            middle_manager_status: item.middle_manager_status,
+            final_manager_status: item.final_manager_status,
+            vendor_name: item.vendor_name
+          })) || []
+        })
+        
         // 전체 입고대기 건수 조회 추가
         const _totalDeliveryWaiting = await dashboardService.getTotalDeliveryWaitingCount()
         

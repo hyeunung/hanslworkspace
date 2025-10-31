@@ -140,6 +140,7 @@ export default function ReceiptsMain() {
 
   // 영수증 인쇄 완료 처리
   const markAsPrinted = useCallback(async (receiptId: string) => {
+    logger.debug('영수증 인쇄 완료 처리 시작', {
       receiptId,
       timestamp: new Date().toISOString(),
       location: 'ReceiptsMain.tsx'
@@ -159,6 +160,7 @@ export default function ReceiptsMain() {
         return;
       }
 
+      logger.debug('사용자 인증 정보 확인 완료', {
         userId: user.id,
         email: user.email,
         lastSignIn: user.last_sign_in_at
@@ -176,6 +178,7 @@ export default function ReceiptsMain() {
         return;
       }
 
+      logger.debug('직원 정보 조회 완료', {
         name: employee?.name,
         email: user.email,
         role: employee?.purchase_role
@@ -185,6 +188,7 @@ export default function ReceiptsMain() {
       const role = employee?.purchase_role || '';
       const hasPermission = role.includes('app_admin') || role.includes('hr') || role.includes('lead buyer');
       
+      logger.debug('권한 검증 결과', {
         role,
         hasPermission,
         isAppAdmin: role.includes('app_admin'),
@@ -219,6 +223,7 @@ export default function ReceiptsMain() {
       const executionTime = endTime - startTime;
 
       if (updateError) {
+        logger.error('영수증 인쇄완료 업데이트 실패', updateError, {
           error: updateError,
           code: updateError.code,
           message: updateError.message,
@@ -236,6 +241,7 @@ export default function ReceiptsMain() {
         return;
       }
 
+      logger.debug('영수증 인쇄완료 업데이트 성공', {
         updateResult,
         executionTime: `${executionTime.toFixed(2)}ms`,
         affectedRows: updateResult?.length || 0
@@ -247,6 +253,7 @@ export default function ReceiptsMain() {
       // 7. 목록 새로고침
       loadReceipts();
 
+      logger.debug('영수증 인쇄완료 처리 성공', {
         receiptId,
         success: true,
         timestamp: new Date().toISOString()
@@ -254,6 +261,7 @@ export default function ReceiptsMain() {
 
     } catch (error) {
       const errorObj = error as any;
+      logger.error('영수증 인쇄완료 처리 중 예외 발생', error, {
         error,
         message: errorObj?.message,
         stack: errorObj?.stack,
@@ -401,6 +409,7 @@ export default function ReceiptsMain() {
       const filePath = extractStoragePathFromUrl(receipt.receipt_image_url);
       
       if (filePath) {
+        logger.debug('Storage 파일 삭제 시작', { filePath });
         
         // Supabase Storage에서 파일 삭제
         const { error: storageError } = await supabase.storage
@@ -408,6 +417,7 @@ export default function ReceiptsMain() {
           .remove([filePath]);
 
         if (storageError) {
+          logger.warn('Storage 파일 삭제 실패', storageError, { filePath });
         }
       }
 

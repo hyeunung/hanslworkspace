@@ -236,6 +236,19 @@ export class DashboardService {
     )
 
     // 발주 리스트의 pending 탭과 동일한 조건: 중간승인자나 최종승인자 중 하나라도 pending이면 승인대기
+    logger.debug('🔍 승인대기 필터링 전 데이터', {
+      employeeName: employee.name,
+      employeeRoles: this.parseRoles(employee.purchase_role),
+      totalRequests: allRequests?.length || 0,
+      sampleData: allRequests?.slice(0, 3).map(item => ({
+        id: item.id,
+        purchase_order_number: item.purchase_order_number,
+        middle_manager_status: item.middle_manager_status,
+        final_manager_status: item.final_manager_status,
+        vendor_name: item.vendor_name
+      })) || []
+    })
+    
     filteredData = filteredData.filter(item => {
       const middlePending = isPending(item.middle_manager_status)
       const finalPending = isPending(item.final_manager_status)
@@ -247,7 +260,30 @@ export class DashboardService {
       if (middleRejected || finalRejected) return false
       
       // 중간승인 대기 또는 최종승인 대기
-      return middlePending || finalPending
+      const shouldInclude = middlePending || finalPending
+      
+      if (shouldInclude) {
+        logger.debug('✅ 승인대기 항목 포함', {
+          id: item.id,
+          purchase_order_number: item.purchase_order_number,
+          middle_manager_status: item.middle_manager_status,
+          final_manager_status: item.final_manager_status,
+          middlePending,
+          finalPending
+        })
+      }
+      
+      return shouldInclude
+    })
+    
+    logger.debug('🔍 승인대기 필터링 후 데이터', {
+      filteredCount: filteredData.length,
+      filteredItems: filteredData.map(item => ({
+        id: item.id,
+        purchase_order_number: item.purchase_order_number,
+        middle_manager_status: item.middle_manager_status,
+        final_manager_status: item.final_manager_status
+      }))
     })
     
 
