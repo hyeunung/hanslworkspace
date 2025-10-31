@@ -216,9 +216,40 @@ When creating new dashboard cards or similar UI components, use these standardiz
 - **Professional**: Maintains business application aesthetics
 - **Maintainability**: Central CSS management for easy updates
 
+### UI Component Border Radius System (MANDATORY)
+**IMPORTANT**: ALL new components MUST use the standardized border radius for business-like consistency.
+
+#### Standard Border Radius Classes
+- `.business-radius` - Standard business radius (rounded-lg, 8px)
+- `.business-radius-small` - Small elements (rounded-md, 6px) 
+- `.business-radius-card` - Cards and containers (rounded-lg, 8px)
+- `.business-radius-button` - Buttons and interactive elements (rounded-lg, 8px)
+- `.business-radius-modal` - Modals and overlays (rounded-lg, 8px)
+- `.business-radius-input` - Form inputs and fields (rounded-lg, 8px)
+- `.business-radius-badge` - Badges and status indicators (rounded-lg, 8px)
+
+#### Usage Guidelines
+```tsx
+// ✅ CORRECT - Use business radius classes
+<div className="business-radius-card bg-white p-4">...</div>
+<Button className="business-radius-button">확인</Button>
+<Badge className="business-radius-badge">발주</Badge>
+<Input className="business-radius-input" />
+
+// ❌ WRONG - Avoid inconsistent radius values
+<div className="rounded-xl bg-white p-4">...</div>  // Don't use xl
+<div className="rounded-2xl bg-white p-4">...</div>  // Don't use 2xl
+<div className="rounded-3xl bg-white p-4">...</div>  // Don't use 3xl
+```
+
+#### Business Design Principles
+- **Consistency**: All UI elements use rounded-lg (8px) for professional business appearance
+- **Clean & Professional**: Avoid overly rounded elements that look consumer-facing
+- **Business-Like Feel**: Maintains enterprise application aesthetics
+- **Maintainability**: Central radius system for easy global updates
+
 ### Additional Design Guidelines
 - Use Apple-inspired design principles: clean, minimal, professional
-- Prefer rounded corners (rounded-2xl, rounded-3xl) over sharp edges
 - Use subtle shadows and hover states for interactivity
 - Maintain consistent spacing with Tailwind's spacing scale
 - Follow existing color scheme for consistency

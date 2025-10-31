@@ -216,6 +216,35 @@
     @apply text-[10px] truncate;
     letter-spacing: 0.01em;
   }
+
+  /* Business Border Radius System - Professional UI Consistency */
+  .business-radius {
+    @apply rounded-lg; /* 8px - Standard business radius */
+  }
+  
+  .business-radius-small {
+    @apply rounded-md; /* 6px - Small elements */
+  }
+  
+  .business-radius-card {
+    @apply rounded-lg; /* 8px - Cards and containers */
+  }
+  
+  .business-radius-button {
+    @apply rounded-lg; /* 8px - Buttons and interactive elements */
+  }
+  
+  .business-radius-modal {
+    @apply rounded-lg; /* 8px - Modals and overlays */
+  }
+  
+  .business-radius-input {
+    @apply rounded-lg; /* 8px - Form inputs and fields */
+  }
+  
+  .business-radius-badge {
+    @apply rounded-lg; /* 8px - Badges and status indicators */
+  }
 }
 
 /* Apple-style animations */
