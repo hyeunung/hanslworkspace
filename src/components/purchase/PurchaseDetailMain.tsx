@@ -52,26 +52,26 @@ export default function PurchaseDetailMain() {
   const getStatusBadge = (status: string | null) => {
     switch (status) {
       case 'approved':
-        return <Badge className="bg-green-100 text-green-800">승인</Badge>
+        return <Badge variant={null} className="badge-success">승인</Badge>
       case 'rejected':
-        return <Badge className="bg-red-100 text-red-800">반려</Badge>
+        return <Badge variant={null} className="badge-danger">반려</Badge>
       case 'pending':
-        return <Badge className="bg-yellow-100 text-yellow-800">대기</Badge>
+        return <Badge variant={null} className="badge-warning">대기</Badge>
       default:
-        return <Badge className="bg-gray-100 text-gray-800">-</Badge>
+        return <Badge variant={null} className="badge-secondary">-</Badge>
     }
   }
 
   const getDeliveryStatusBadge = (status: string | null) => {
     switch (status) {
       case 'completed':
-        return <Badge className="bg-hansl-100 text-hansl-800">납품완료</Badge>
+        return <Badge variant={null} className="badge-success">납품완료</Badge>
       case 'partial':
-        return <Badge className="bg-purple-100 text-purple-800">부분납품</Badge>
+        return <Badge variant={null} className="badge-warning">부분납품</Badge>
       case 'pending':
-        return <Badge className="bg-orange-100 text-orange-800">납품대기</Badge>
+        return <Badge variant={null} className="badge-secondary">납품대기</Badge>
       default:
-        return <Badge className="bg-gray-100 text-gray-800">-</Badge>
+        return <Badge variant={null} className="badge-secondary">-</Badge>
     }
   }
 

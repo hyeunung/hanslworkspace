@@ -31,14 +31,14 @@ const StatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
     : 'pending'
   
   const config = {
-    completed: { text: '입고완료', className: 'bg-green-100 text-green-800' },
-    inProgress: { text: '구매진행', className: 'bg-hansl-100 text-hansl-800' },
-    rejected: { text: '반려', className: 'bg-red-100 text-red-800' },
-    pending: { text: '승인대기', className: 'bg-yellow-100 text-yellow-800' }
+    completed: { text: '입고완료', className: 'badge-success' },
+    inProgress: { text: '구매진행', className: 'badge-primary' },
+    rejected: { text: '반려', className: 'badge-danger' },
+    pending: { text: '승인대기', className: 'badge-warning' }
   }
   
   const { text, className } = config[status]
-  return <Badge className={`${className} badge-text`}>{text}</Badge>
+  return <Badge variant={null} className={className}>{text}</Badge>
 })
 
 StatusBadge.displayName = 'StatusBadge'
@@ -57,11 +57,11 @@ const MobilePurchaseCard = memo(({ purchase, onClick }: MobilePurchaseCardProps)
         <div>
           <div className="flex items-center gap-2">
             {isAdvance ? (
-              <Badge className="bg-red-500 text-white badge-text px-2 py-0.5">
+              <Badge variant={null} className="badge-danger">
                 선진행
               </Badge>
             ) : (
-              <Badge className="bg-gray-200 text-gray-700 badge-text px-2 py-0.5">
+              <Badge variant={null} className="badge-secondary">
                 일반
               </Badge>
             )}
@@ -142,9 +142,9 @@ const MobilePurchaseCard = memo(({ purchase, onClick }: MobilePurchaseCardProps)
         <div className="flex items-center justify-between card-subtitle">
           <span className="text-gray-600">결제</span>
           {purchase.is_payment_completed ? (
-            <Badge className="bg-green-100 text-green-800 badge-text">완료</Badge>
+            <Badge variant={null} className="badge-success">완료</Badge>
           ) : (
-            <Badge className="bg-gray-100 text-gray-800 badge-text">대기</Badge>
+            <Badge variant={null} className="badge-secondary">대기</Badge>
           )}
         </div>
       )}

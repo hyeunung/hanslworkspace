@@ -78,11 +78,11 @@ export function DeliveryManagement({
   const getStatusBadge = (status: string | undefined, receivedQty: number, totalQty: number) => {
     switch (status) {
       case 'received':
-        return <Badge className="bg-green-100 text-green-800 border-green-200">입고완료</Badge>;
+        return <Badge variant={null} className="badge-success">입고완료</Badge>;
       case 'partial':
-        return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">부분입고</Badge>;
+        return <Badge variant={null} className="badge-warning">부분입고</Badge>;
       default:
-        return <Badge className="bg-gray-100 text-gray-800 border-gray-200">입고대기</Badge>;
+        return <Badge variant={null} className="badge-secondary">입고대기</Badge>;
     }
   };
 
@@ -345,13 +345,13 @@ export function DeliveryManagement({
               입고현황 ({stats.completed}/{stats.total})
             </CardTitle>
             <div className="flex gap-2">
-              <Badge variant="secondary" className="bg-green-50 text-green-700">
+              <Badge variant={null} className="badge-success">
                 완료: {stats.completed}
               </Badge>
-              <Badge variant="secondary" className="bg-yellow-50 text-yellow-700">
+              <Badge variant={null} className="badge-warning">
                 부분: {stats.partial}
               </Badge>
-              <Badge variant="secondary" className="bg-gray-50 text-gray-700">
+              <Badge variant={null} className="badge-secondary">
                 대기: {stats.pending}
               </Badge>
             </div>

@@ -228,19 +228,19 @@ export default function PurchaseDetailModal({
       const category = purchase.payment_category.trim()
       
       if (category === '발주') {
-        return <Badge className="badge-success">발주</Badge>
+        return <Badge variant={null} className="badge-success">발주</Badge>
       } else if (category === '구매요청') {
-        return <Badge className="badge-primary">구매요청</Badge>
+        return <Badge variant={null} className="badge-primary">구매요청</Badge>
       } else if (category === '현장결제') {
-        return <Badge className="badge-secondary">현장결제</Badge>
+        return <Badge variant={null} className="badge-secondary">현장결제</Badge>
       } else {
         // payment_category 값이 있지만 알려진 값이 아닌 경우
-        return <Badge className="badge-primary">{category}</Badge>
+        return <Badge variant={null} className="badge-primary">{category}</Badge>
       }
     }
     
     // payment_category가 없으면 기본값
-    return <Badge className="badge-primary">구매요청</Badge>
+    return <Badge variant={null} className="badge-primary">구매요청</Badge>
   }
 
   // formatDate는 utils/helpers.ts에서 import

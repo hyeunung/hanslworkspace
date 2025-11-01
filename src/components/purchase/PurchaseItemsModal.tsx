@@ -325,9 +325,9 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                   </TableCell>
                   <TableCell>
                     {item.is_received ? (
-                      <Badge className="bg-green-100 text-green-800 badge-text">입고완료</Badge>
+                      <Badge variant={null} className="badge-success">입고완료</Badge>
                     ) : (
-                      <Badge variant="outline" className="badge-text">대기</Badge>
+                      <Badge variant={null} className="badge-secondary">대기</Badge>
                     )}
                   </TableCell>
                   <TableCell>

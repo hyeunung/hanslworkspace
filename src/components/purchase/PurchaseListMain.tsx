@@ -94,13 +94,13 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
   // 상태에 따른 배지 생성
   const getStatusBadge = (purchase: Purchase) => {
     if (purchase.is_received) {
-      return <Badge className="bg-green-50 text-green-700 business-radius-badge">입고완료</Badge>;
+      return <Badge variant={null} className="badge-success">입고완료</Badge>;
     } else if (purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'approved') {
-      return <Badge className="bg-hansl-50 text-hansl-700 business-radius-badge">구매진행</Badge>;
+      return <Badge variant={null} className="badge-primary">구매진행</Badge>;
     } else if (purchase.middle_manager_status === 'rejected' || purchase.final_manager_status === 'rejected') {
-      return <Badge className="bg-red-50 text-red-700 business-radius-badge">반려</Badge>;
+      return <Badge variant={null} className="badge-danger">반려</Badge>;
     } else {
-      return <Badge className="bg-yellow-50 text-yellow-700 business-radius-badge">승인대기</Badge>;
+      return <Badge variant={null} className="badge-warning">승인대기</Badge>;
     }
   };
 
