@@ -31,7 +31,7 @@
           "value": "nosniff"
         }
       ]
-    },
+    }
   ],
   "buildCommand": "npm run build",
   "outputDirectory": "dist"
