@@ -463,7 +463,7 @@ export default function ReceiptsMain() {
       {/* 필터 섹션 */}
       <Card className="mb-4 border border-gray-200">
         <CardHeader className="bg-white border-b border-gray-200 py-3">
-          <CardTitle className="flex items-center text-gray-900 modal-subtitle font-medium">
+          <CardTitle className="flex items-center text-gray-900 modal-section-title">
             <Filter className="w-4 h-4 mr-2" />
             검색 필터
           </CardTitle>
@@ -571,7 +571,7 @@ export default function ReceiptsMain() {
                       <td className="px-4 py-3 modal-subtitle text-center text-gray-600">
                         {formatDate(receipt.uploaded_at)}
                       </td>
-                      <td className="px-4 py-3 modal-subtitle font-medium text-gray-900">
+                      <td className="px-4 py-3 modal-value text-gray-900">
                         {receipt.file_name}
                       </td>
                       <td className="px-4 py-3 modal-subtitle text-gray-900">

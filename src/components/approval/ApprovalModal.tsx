@@ -101,13 +101,36 @@ export default function ApprovalModal({
               <h3 className="modal-section-title">
                 {approval.purchase_order_number || `발주 #${approval.id?.toString().slice(-8)}`}
               </h3>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <Badge variant={approval.progress_type === '선진행' ? 'default' : 'secondary'}>
                   {approval.progress_type}
                 </Badge>
                 <Badge variant="outline">
                   {approval.request_type}
                 </Badge>
+                {/* 승인 버튼을 카드 안으로 이동 */}
+                <div className="flex gap-2 ml-3">
+                  <Button
+                    variant="outline"
+                    onClick={onClose}
+                    disabled={loading}
+                    size="sm"
+                  >
+                    취소
+                  </Button>
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={loading || (type === 'reject' && !comment.trim())}
+                    size="sm"
+                    className={
+                      type === 'approve' 
+                        ? 'bg-green-600 hover:bg-green-700' 
+                        : 'bg-red-600 hover:bg-red-700'
+                    }
+                  >
+                    {loading ? '처리 중...' : getActionButtonText()}
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -239,24 +262,7 @@ export default function ApprovalModal({
         </div>
 
         <DialogFooter className="gap-2">
-          <Button
-            variant="outline"
-            onClick={onClose}
-            disabled={loading}
-          >
-            취소
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={loading || (type === 'reject' && !comment.trim())}
-            className={
-              type === 'approve' 
-                ? 'bg-green-600 hover:bg-green-700' 
-                : 'bg-red-600 hover:bg-red-700'
-            }
-          >
-            {loading ? '처리 중...' : getActionButtonText()}
-          </Button>
+          {/* 승인 버튼이 카드 안으로 이동했으므로 빈 footer */}
         </DialogFooter>
       </DialogContent>
     </Dialog>

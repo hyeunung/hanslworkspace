@@ -243,7 +243,7 @@ export default function PurchaseStatusModal({
                         {type === 'delivery' && (
                           <td className="p-2 text-center">
                             {pItem.is_received ? (
-                              <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded text-xs border border-green-200">
+                              <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 business-radius-badge text-xs border border-green-200">
                                 <CheckCircle2 className="w-3 h-3" />
                                 완료
                               </span>
@@ -291,7 +291,7 @@ export default function PurchaseStatusModal({
                         {type === 'purchase' && (
                           <td className="p-2 text-center">
                             {pItem.is_payment_completed ? (
-                              <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded text-xs border border-green-200">
+                              <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 business-radius-badge text-xs border border-green-200">
                                 <CheckCircle2 className="w-3 h-3" />
                                 완료
                               </span>

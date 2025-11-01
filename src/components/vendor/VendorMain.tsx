@@ -127,7 +127,7 @@ export default function VendorMain() {
         <div className="p-4 border-b">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
-              <h3 className="text-lg font-medium">업체 목록</h3>
+              <h3 className="modal-title">업체 목록</h3>
               <span className="px-3 py-1 bg-blue-50 text-blue-600 text-sm font-semibold rounded-full">
                 총 {filteredVendors.length}개
               </span>
