@@ -1292,14 +1292,29 @@ export default function PurchaseDetailModal({
                 </div>
                 
                 {/* 합계 */}
-                <div className="bg-gray-50 p-2 sm:p-3 border-t border-gray-100">
-                  <div className="flex justify-between items-center">
-                    <span className="modal-section-title">총액</span>
-                    <span className="modal-value-large">
-                      ₩{formatCurrency(
-                        (isEditing ? editedItems : purchase.items)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
-                      )}
-                    </span>
+                <div className="bg-gray-50 px-2 sm:px-3 py-2 border-t border-gray-100">
+                  <div className="hidden sm:grid grid-cols-12 gap-2">
+                    <div className="col-span-7"></div>
+                    <div className="col-span-2 text-right">
+                      <span className="modal-value-large">
+                        ₩{formatCurrency(
+                          (isEditing ? editedItems : purchase.items)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
+                        )}
+                      </span>
+                    </div>
+                    <div className="col-span-3"></div>
+                  </div>
+                  
+                  {/* Mobile 총액 */}
+                  <div className="block sm:hidden">
+                    <div className="flex justify-between items-center">
+                      <span className="modal-section-title">총액</span>
+                      <span className="modal-value-large">
+                        ₩{formatCurrency(
+                          (isEditing ? editedItems : purchase.items)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
+                        )}
+                      </span>
+                    </div>
                   </div>
                 </div>
                 
