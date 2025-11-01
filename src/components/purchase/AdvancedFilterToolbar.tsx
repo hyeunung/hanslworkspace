@@ -225,7 +225,6 @@ export function AdvancedFilterToolbar({
                 <SelectValue placeholder="선택" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="구매 요청">구매 요청</SelectItem>
                 <SelectItem value="카드 결제">카드 결제</SelectItem>
                 <SelectItem value="현금 결제">현금 결제</SelectItem>
               </SelectContent>
