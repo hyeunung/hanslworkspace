@@ -674,7 +674,7 @@ export default function PurchaseDetailModal({
                   <Button
                     size="sm"
                     onClick={() => handleApprove('middle')}
-                    className="bg-green-500 hover:bg-green-600 text-white business-radius-button px-4 py-2 badge-text shadow-sm"
+                    className="bg-green-500 hover:bg-green-600 text-white business-radius-button px-3 py-1.5 badge-text shadow-sm"
                   >
                     <Check className="w-3 h-3 mr-1" />
                     1차 승인
@@ -683,7 +683,7 @@ export default function PurchaseDetailModal({
               )}
               {purchase.middle_manager_status === 'approved' && (
                 <div className="absolute -top-2 -right-2 z-10">
-                  <div className="bg-green-500 text-white business-radius-badge px-4 py-2 badge-text shadow-sm">
+                  <div className="bg-green-500 text-white business-radius-badge px-3 py-1.5 badge-text shadow-sm">
                     <Check className="w-3 h-3 mr-1 inline" />
                     1차 승인완료
                   </div>
@@ -691,7 +691,7 @@ export default function PurchaseDetailModal({
               )}
               {purchase.middle_manager_status === 'rejected' && (
                 <div className="absolute -top-2 -right-2 z-10">
-                  <div className="bg-red-500 text-white business-radius-badge px-4 py-2 badge-text shadow-sm">
+                  <div className="bg-red-500 text-white business-radius-badge px-3 py-1.5 badge-text shadow-sm">
                     <X className="w-3 h-3 mr-1 inline" />
                     1차 반려
                   </div>
@@ -699,14 +699,14 @@ export default function PurchaseDetailModal({
               )}
               {purchase.middle_manager_status === 'pending' && !canApproveMiddle && (
                 <div className="absolute -top-2 -right-2 z-10">
-                  <div className="border border-gray-300 text-gray-600 bg-white business-radius-badge px-4 py-2 badge-text shadow-sm">
+                  <div className="border border-gray-300 text-gray-600 bg-white business-radius-badge px-3 py-1.5 badge-text shadow-sm">
                     1차 승인대기
                   </div>
                 </div>
               )}
               
               {/* 발주 기본정보 */}
-              <div className="bg-white rounded-lg p-4 border border-gray-100 shadow-sm">
+              <div className="bg-white rounded-lg p-3 border border-gray-100 shadow-sm">
                 <div className="mb-3">
                   <h3 className="modal-section-title flex items-center">
                     <FileText className="w-4 h-4 mr-2 text-gray-600" />
@@ -777,7 +777,7 @@ export default function PurchaseDetailModal({
               </div>
 
               {/* 업체 정보 */}
-              <div className="bg-white rounded-lg p-4 border border-gray-100 shadow-sm">
+              <div className="bg-white rounded-lg p-3 border border-gray-100 shadow-sm">
                 <h3 className="modal-section-title mb-3 flex items-center">
                   <Building2 className="w-4 h-4 mr-2 text-gray-600" />
                   업체 정보
@@ -882,7 +882,7 @@ export default function PurchaseDetailModal({
                   <Button
                     size="sm"
                     onClick={() => handleApprove('final')}
-                    className="bg-green-500 hover:bg-green-600 text-white business-radius-button px-4 py-2 badge-text shadow-sm"
+                    className="bg-green-500 hover:bg-green-600 text-white business-radius-button px-3 py-1.5 badge-text shadow-sm"
                   >
                     <Check className="w-3 h-3 mr-1" />
                     최종 승인
@@ -891,7 +891,7 @@ export default function PurchaseDetailModal({
               )}
               {purchase.final_manager_status === 'approved' && (
                 <div className="absolute -top-2 -left-2 z-10">
-                  <div className="bg-green-500 text-white business-radius-badge px-4 py-2 badge-text shadow-sm">
+                  <div className="bg-green-500 text-white business-radius-badge px-3 py-1.5 badge-text shadow-sm">
                     <Check className="w-3 h-3 mr-1 inline" />
                     최종 승인완료
                   </div>
@@ -899,7 +899,7 @@ export default function PurchaseDetailModal({
               )}
               {purchase.final_manager_status === 'rejected' && (
                 <div className="absolute -top-2 -left-2 z-10">
-                  <div className="bg-red-500 text-white business-radius-badge px-4 py-2 badge-text shadow-sm">
+                  <div className="bg-red-500 text-white business-radius-badge px-3 py-1.5 badge-text shadow-sm">
                     <X className="w-3 h-3 mr-1 inline" />
                     최종 반려
                   </div>
@@ -908,14 +908,14 @@ export default function PurchaseDetailModal({
               {/* 최종 승인 버튼은 항상 보이되, 1차 승인 전에는 비활성화 */}
               {purchase.middle_manager_status !== 'approved' && purchase.final_manager_status === 'pending' && (
                 <div className="absolute -top-2 -left-2 z-10">
-                  <div className="border border-gray-300 text-gray-400 bg-gray-50 business-radius-badge px-4 py-2 badge-text shadow-sm opacity-50">
+                  <div className="border border-gray-300 text-gray-400 bg-gray-50 business-radius-badge px-3 py-1.5 badge-text shadow-sm opacity-50">
                     최종 승인대기
                   </div>
                 </div>
               )}
               
               <div className="bg-white rounded-lg border border-gray-100 overflow-hidden shadow-sm">
-                <div className="p-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                <div className="p-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
                   <h3 className="modal-section-title flex items-center">
                     <Package className="w-4 h-4 mr-2 text-gray-600" />
                     품목 리스트
@@ -929,7 +929,7 @@ export default function PurchaseDetailModal({
                         <Button
                           size="sm"
                           onClick={handleCompleteAllPayment}
-                          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 business-radius-button badge-text"
+                          className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 business-radius-button badge-text"
                         >
                           <CreditCard className="w-3 h-3 mr-1" />
                           전체 구매완료
@@ -939,7 +939,7 @@ export default function PurchaseDetailModal({
                         <Button
                           size="sm"
                           onClick={handleCompleteAllReceipt}
-                          className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 business-radius-button badge-text"
+                          className="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 business-radius-button badge-text"
                         >
                           <Truck className="w-3 h-3 mr-1" />
                           전체 입고완료
@@ -950,7 +950,7 @@ export default function PurchaseDetailModal({
                 </div>
                 
                 {/* Items Table Header */}
-                <div className="bg-gray-50 px-4 py-2 border-b border-gray-100">
+                <div className="bg-gray-50 px-3 py-1.5 border-b border-gray-100">
                   <div className="grid grid-cols-12 gap-2 modal-label text-gray-600">
                     <div className="col-span-3">품목명</div>
                     <div className="col-span-2">규격</div>
@@ -965,7 +965,7 @@ export default function PurchaseDetailModal({
                 {/* Items List */}
                 <div className="max-h-[40vh] overflow-y-auto">
                   {(isEditing ? editedItems : purchase.items)?.map((item, index) => (
-                    <div key={index} className="px-4 py-3 border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                    <div key={index} className="px-3 py-2 border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                       <div className="grid grid-cols-12 gap-2 items-center">
                         {/* 품목명 */}
                         <div className="col-span-3">
@@ -1129,7 +1129,7 @@ export default function PurchaseDetailModal({
                 </div>
                 
                 {/* 합계 */}
-                <div className="bg-gray-50 p-4 border-t border-gray-100">
+                <div className="bg-gray-50 p-3 border-t border-gray-100">
                   <div className="flex justify-between items-center">
                     <span className="modal-section-title">총액</span>
                     <span className="modal-value-large">
@@ -1142,12 +1142,12 @@ export default function PurchaseDetailModal({
                 
                 {/* 항목 추가 버튼 */}
                 {isEditing && (
-                  <div className="p-4 border-t border-gray-100">
+                  <div className="p-3 border-t border-gray-100">
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={handleAddItem}
-                      className="w-full rounded-lg border-dashed border-2 border-gray-300 hover:border-gray-400 py-3 badge-text"
+                      className="w-full rounded-lg border-dashed border-2 border-gray-300 hover:border-gray-400 py-2 badge-text"
                     >
                       <Plus className="w-4 h-4 mr-1" />
                       항목 추가

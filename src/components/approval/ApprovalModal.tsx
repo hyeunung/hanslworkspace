@@ -142,7 +142,7 @@ export default function ApprovalModal({
                 <DollarSign className="w-4 h-4 text-gray-500" />
                 <div>
                   <p className="modal-label text-gray-500">총액</p>
-                  <p className="font-medium text-lg">
+                  <p className="modal-value-large">
                     {formatCurrency(approval.total_amount, approval.currency as 'KRW' | 'USD')}
                   </p>
                 </div>
@@ -151,7 +151,7 @@ export default function ApprovalModal({
 
             {approval.delivery_request_date && (
               <div className="pt-2 border-t border-gray-200">
-                <p className="text-sm">
+                <p className="modal-value">
                   <span className="modal-value">납기 요청일:</span>{' '}
                   {format(new Date(approval.delivery_request_date), 'yyyy년 MM월 dd일', { locale: ko })}
                 </p>
@@ -162,7 +162,7 @@ export default function ApprovalModal({
           {/* 프로젝트 정보 */}
           {(approval.project_vendor || approval.project_item) && (
             <div className="space-y-2">
-              <h4 className="font-medium flex items-center gap-2">
+              <h4 className="modal-section-title flex items-center gap-2">
                 <Package className="w-4 h-4" />
                 프로젝트 정보
               </h4>
@@ -185,7 +185,7 @@ export default function ApprovalModal({
 
           {/* 품목 목록 */}
           <div className="space-y-2">
-            <h4 className="font-medium flex items-center gap-2">
+            <h4 className="modal-section-title flex items-center gap-2">
               <FileText className="w-4 h-4" />
               품목 목록 ({approval.items?.length || 0}건)
             </h4>
@@ -196,9 +196,9 @@ export default function ApprovalModal({
                     <div className="flex-1">
                       <p className="modal-value">{item.item_name}</p>
                       {item.specification && (
-                        <p className="text-sm text-gray-600 mt-1">{item.specification}</p>
+                        <p className="card-description mt-1">{item.specification}</p>
                       )}
-                      <div className="flex gap-4 mt-2 text-sm text-gray-500">
+                      <div className="flex gap-4 mt-2 card-description">
                         <span>수량: {item.quantity.toLocaleString()}</span>
                         <span>
                           단가: {item.unit_price_value ? formatCurrency(item.unit_price_value, (item.unit_price_currency || 'KRW') as 'KRW' | 'USD') : '-'}
@@ -221,7 +221,7 @@ export default function ApprovalModal({
 
           {/* 코멘트 입력 */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">
+            <label className="modal-label">
               {type === 'approve' ? '승인 코멘트 (선택사항)' : '반려 사유 (필수)'}
             </label>
             <Textarea

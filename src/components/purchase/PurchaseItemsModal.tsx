@@ -215,7 +215,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
           </div>
         </DialogHeader>
         
-        <div className="flex-shrink-0 grid grid-cols-2 md:grid-cols-4 gap-4 py-4 border-b">
+        <div className="flex-shrink-0 grid grid-cols-2 md:grid-cols-4 gap-3 py-3 border-b">
           <div>
             <p className="modal-label">업체명</p>
             <p className="modal-value">{purchase.vendor_name}</p>
@@ -264,7 +264,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                       <Input
                         value={item.item_name}
                         onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
-                        className="h-8 modal-label"
+                        className="h-7 modal-label"
                       />
                     ) : (
                       <div className="sm:max-w-[200px]">
@@ -279,7 +279,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                       <Input
                         value={item.specification}
                         onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
-                        className="h-8 modal-label"
+                        className="h-7 modal-label"
                       />
                     ) : (
                       <div className="sm:max-w-[150px] truncate" title={item.specification}>
@@ -293,7 +293,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                         type="number"
                         value={item.quantity}
                         onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
-                        className="h-8 text-sm text-right"
+                        className="h-7 text-xs text-right"
                       />
                     ) : (
                       <span className="modal-value">{item.quantity.toLocaleString()}</span>
@@ -305,7 +305,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                         type="number"
                         value={item.unit_price_value}
                         onChange={(e) => handleItemChange(index, 'unit_price_value', e.target.value)}
-                        className="h-8 text-sm text-right"
+                        className="h-7 text-xs text-right"
                       />
                     ) : (
                       <span className="modal-subtitle">{(item.unit_price_value || 0).toLocaleString()} {purchase.currency}</span>
@@ -317,7 +317,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                         type="number"
                         value={item.amount_value}
                         onChange={(e) => handleItemChange(index, 'amount_value', e.target.value)}
-                        className="h-8 modal-label text-right"
+                        className="h-7 modal-label text-right"
                       />
                     ) : (
                       <span className="modal-value">{(item.amount_value || 0).toLocaleString()} {purchase.currency}</span>
@@ -335,7 +335,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                       <Input
                         value={item.remark || ''}
                         onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
-                        className="h-8 modal-label"
+                        className="h-7 modal-label"
                         placeholder="비고"
                       />
                     ) : (
@@ -352,7 +352,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                         variant="ghost"
                         size="icon"
                         onClick={() => handleDeleteItem(index)}
-                        className="h-8 w-8 text-red-500 hover:text-red-700"
+                        className="h-7 w-7 text-red-500 hover:text-red-700"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

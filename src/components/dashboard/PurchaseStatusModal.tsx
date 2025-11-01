@@ -178,22 +178,22 @@ export default function PurchaseStatusModal({
           {/* Dense Basic Information Grid */}
           <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
             <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs">
-              <div><span className="text-gray-500">요청자:</span> <span className="font-medium">{localItem.requester_name}</span></div>
-              <div><span className="text-gray-500">요청일:</span> <span className="font-medium">{new Date(localItem.request_date || localItem.created_at).toLocaleDateString('ko-KR')}</span></div>
-              <div><span className="text-gray-500">납기요청일:</span> <span className="font-medium">{localItem.delivery_request_date ? new Date(localItem.delivery_request_date).toLocaleDateString('ko-KR') : '미지정'}</span></div>
+              <div><span className="modal-label">요청자:</span> <span className="modal-value">{localItem.requester_name}</span></div>
+              <div><span className="modal-label">요청일:</span> <span className="modal-value">{new Date(localItem.request_date || localItem.created_at).toLocaleDateString('ko-KR')}</span></div>
+              <div><span className="modal-label">납기요청일:</span> <span className="modal-value">{localItem.delivery_request_date ? new Date(localItem.delivery_request_date).toLocaleDateString('ko-KR') : '미지정'}</span></div>
               
-              <div><span className="text-gray-500">업체명:</span> <span className="font-medium">{localItem.vendor_name || '-'}</span></div>
-              <div><span className="text-gray-500">결제유형:</span> <span className="font-medium">{localItem.payment_category || '일반'}</span></div>
-              <div><span className="text-gray-500">진행구분:</span> <span className="font-medium">{localItem.progress_type || '일반'}</span></div>
+              <div><span className="modal-label">업체명:</span> <span className="modal-value">{localItem.vendor_name || '-'}</span></div>
+              <div><span className="modal-label">결제유형:</span> <span className="modal-value">{localItem.payment_category || '일반'}</span></div>
+              <div><span className="modal-label">진행구분:</span> <span className="modal-value">{localItem.progress_type || '일반'}</span></div>
               
-              <div><span className="text-gray-500">프로젝트업체:</span> <span className="font-medium">{localItem.project_vendor || '-'}</span></div>
-              <div><span className="text-gray-500">판매주문번호:</span> <span className="font-medium">{localItem.sales_order_number || '-'}</span></div>
-              <div><span className="text-gray-500">배송지:</span> <span className="font-medium">{localItem.shipping_address || '본사'}</span></div>
+              <div><span className="modal-label">프로젝트업체:</span> <span className="modal-value">{localItem.project_vendor || '-'}</span></div>
+              <div><span className="modal-label">판매주문번호:</span> <span className="modal-value">{localItem.sales_order_number || '-'}</span></div>
+              <div><span className="modal-label">배송지:</span> <span className="modal-value">{localItem.shipping_address || '본사'}</span></div>
               
-              <div><span className="text-gray-500">통화:</span> <span className="font-medium">{localItem.currency || 'KRW'}</span></div>
-              <div><span className="text-gray-500">템플릿:</span> <span className="font-medium">{localItem.po_template_type || '일반'}</span></div>
+              <div><span className="modal-label">통화:</span> <span className="modal-value">{localItem.currency || 'KRW'}</span></div>
+              <div><span className="modal-label">템플릿:</span> <span className="modal-value">{localItem.po_template_type || '일반'}</span></div>
               {localItem.revised_delivery_request_date && (
-                <div><span className="text-orange-500">변경입고일:</span> <span className="font-medium text-orange-900">{new Date(localItem.revised_delivery_request_date).toLocaleDateString('ko-KR')}</span></div>
+                <div><span className="modal-label text-orange-500">변경입고일:</span> <span className="modal-value text-orange-900">{new Date(localItem.revised_delivery_request_date).toLocaleDateString('ko-KR')}</span></div>
               )}
             </div>
           </div>
@@ -202,7 +202,7 @@ export default function PurchaseStatusModal({
           {/* Compact Items Table */}
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
             <div className="bg-gray-50 px-3 py-2 border-b border-gray-100">
-              <h3 className="text-sm font-medium text-gray-700">주문 품목 ({items.length}개, 총 ₩{totalAmount.toLocaleString()})</h3>
+              <h3 className="modal-section-title text-gray-700">주문 품목 ({items.length}개, 총 ₩{totalAmount.toLocaleString()})</h3>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs table-fixed">
@@ -216,13 +216,13 @@ export default function PurchaseStatusModal({
                 </colgroup>
                 <thead className="bg-gray-50 border-b border-gray-100">
                   <tr>
-                    <th className="text-left p-2 font-medium text-gray-600">품목명</th>
-                    <th className="text-left p-2 font-medium text-gray-600">규격</th>
-                    <th className="text-right p-2 font-medium text-gray-600">수량</th>
-                    <th className="text-right p-2 font-medium text-gray-600">단가</th>
-                    <th className="text-right p-2 font-medium text-gray-600">금액</th>
-                    {type === 'delivery' && <th className="text-center p-2 font-medium text-gray-600">입고상태</th>}
-                    {type === 'purchase' && <th className="text-center p-2 font-medium text-gray-600">구매상태</th>}
+                    <th className="text-left p-2 modal-label text-gray-600">품목명</th>
+                    <th className="text-left p-2 modal-label text-gray-600">규격</th>
+                    <th className="text-right p-2 modal-label text-gray-600">수량</th>
+                    <th className="text-right p-2 modal-label text-gray-600">단가</th>
+                    <th className="text-right p-2 modal-label text-gray-600">금액</th>
+                    {type === 'delivery' && <th className="text-center p-2 modal-label text-gray-600">입고상태</th>}
+                    {type === 'purchase' && <th className="text-center p-2 modal-label text-gray-600">구매상태</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -231,15 +231,15 @@ export default function PurchaseStatusModal({
                     return (
                       <tr key={index} className="hover:bg-gray-50">
                         <td className="p-2">
-                          <div className="font-medium text-gray-900">{pItem.item_name || '품목명 없음'}</div>
+                          <div className="modal-value text-gray-900">{pItem.item_name || '품목명 없음'}</div>
                           {pItem.remark && (
                             <div className="text-xs text-amber-600 mt-1">비고: {pItem.remark}</div>
                           )}
                         </td>
                         <td className="p-2 text-gray-600">{pItem.specification || '-'}</td>
-                        <td className="p-2 text-right font-medium">{pItem.quantity || 0}</td>
+                        <td className="p-2 text-right modal-value">{pItem.quantity || 0}</td>
                         <td className="p-2 text-right">₩{unitPrice.toLocaleString()}</td>
-                        <td className="p-2 text-right font-medium">₩{(Number(pItem.amount_value) || 0).toLocaleString()}</td>
+                        <td className="p-2 text-right modal-value">₩{(Number(pItem.amount_value) || 0).toLocaleString()}</td>
                         {type === 'delivery' && (
                           <td className="p-2 text-center">
                             {pItem.is_received ? (
@@ -330,7 +330,7 @@ export default function PurchaseStatusModal({
                                       toast.error('처리 중 오류가 발생했습니다.')
                                     }
                                   }}
-                                  className="bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-1 text-xs font-medium"
+                                  className="bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-1 badge-text"
                                 >
                                   구매완료
                                 </Button>
@@ -356,14 +356,14 @@ export default function PurchaseStatusModal({
                 
                 return (
                   <div className="flex items-center gap-4">
-                    <div className="text-sm font-medium text-blue-700">입고 진행률</div>
+                    <div className="modal-value text-blue-700">입고 진행률</div>
                     <div className="flex-1 bg-blue-200 rounded-full h-2">
                       <div 
                         className="bg-blue-600 h-2 rounded-full transition-all duration-500"
                         style={{ width: `${percentage}%` }}
                       />
                     </div>
-                    <div className="text-sm font-medium text-blue-700">{receivedCount}/{totalCount} ({percentage.toFixed(0)}%)</div>
+                    <div className="modal-value text-blue-700">{receivedCount}/{totalCount} ({percentage.toFixed(0)}%)</div>
                   </div>
                 )
               })()}

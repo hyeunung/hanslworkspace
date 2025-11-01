@@ -159,17 +159,17 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
       <DialogContent className="max-w-lg">
         <DialogHeader className="space-y-3">
           <div className="flex items-center justify-between">
-            <DialogTitle className="text-xl font-bold text-gray-900">📎 영수증 업로드</DialogTitle>
+            <DialogTitle className="modal-title">📎 영수증 업로드</DialogTitle>
             <Button
               variant="ghost"
               size="sm"
               onClick={handleClose}
-              className="h-8 w-8 p-0 hover:bg-gray-100"
+              className="h-7 w-7 p-0 hover:bg-gray-100"
             >
               <X className="h-4 w-4" />
             </Button>
           </div>
-          <DialogDescription className="text-sm text-gray-600">
+          <DialogDescription className="modal-subtitle">
             영수증 이미지를 업로드하고 메모를 추가할 수 있습니다.
           </DialogDescription>
         </DialogHeader>
@@ -177,7 +177,7 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
         <div className="space-y-6 pt-2">
           {/* 파일 업로드 영역 */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium text-gray-700">파일 선택</Label>
+            <Label className="modal-label">파일 선택</Label>
             <div
               className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-200 cursor-pointer ${
                 dragOver
@@ -196,8 +196,8 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
                     <FileImage className="w-8 h-8 text-green-600" />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-sm font-medium text-green-800 truncate max-w-[200px] mx-auto">{file.name}</p>
-                    <p className="text-xs text-green-600">
+                    <p className="modal-value text-green-800 truncate max-w-[200px] mx-auto">{file.name}</p>
+                    <p className="badge-text text-green-600">
                       {(file.size / 1024 / 1024).toFixed(2)}MB
                     </p>
                   </div>
@@ -217,10 +217,10 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
                     <Upload className="w-8 h-8 text-gray-400" />
                   </div>
                   <div className="space-y-2">
-                    <p className="text-sm font-medium text-gray-700">
+                    <p className="modal-value">
                       이미지를 드래그하여 놓거나 클릭하여 선택하세요
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="badge-text text-gray-500">
                       JPG, PNG, HEIC, WebP • 최대 10MB
                     </p>
                   </div>
@@ -245,8 +245,8 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
 
           {/* 메모 */}
           <div className="space-y-2">
-            <Label htmlFor="memo" className="text-sm font-medium text-gray-700">
-              메모 <span className="text-gray-400 text-xs">(선택사항)</span>
+            <Label htmlFor="memo" className="modal-label">
+              메모 <span className="text-gray-400 badge-text">(선택사항)</span>
             </Label>
             <Textarea
               id="memo"
@@ -264,7 +264,7 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
             <Button
               variant="outline"
               onClick={handleClose}
-              className="flex-1 h-11 border-gray-200 hover:bg-gray-50"
+              className="flex-1 h-9 border-gray-200 hover:bg-gray-50"
               disabled={uploading}
             >
               취소
@@ -272,7 +272,7 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
             <Button
               onClick={handleUpload}
               disabled={!file || uploading}
-              className="flex-1 h-11 bg-hansl-600 hover:bg-hansl-700 text-white font-medium shadow-sm"
+              className="flex-1 h-9 bg-hansl-600 hover:bg-hansl-700 text-white badge-text shadow-sm"
             >
               {uploading ? (
                 <div className="flex items-center gap-2">

@@ -360,7 +360,7 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
                   size="sm"
                   onClick={handleZoomOut}
                   disabled={imageScale <= 0.5}
-                  className="h-8 w-8 p-0 text-white hover:bg-white/20"
+                  className="h-7 w-7 p-0 text-white hover:bg-white/20"
                 >
                   <ZoomOut className="w-4 h-4" />
                 </Button>
@@ -372,7 +372,7 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
                   size="sm"
                   onClick={handleZoomIn}
                   disabled={imageScale >= 3}
-                  className="h-8 w-8 p-0 text-white hover:bg-white/20"
+                  className="h-7 w-7 p-0 text-white hover:bg-white/20"
                 >
                   <ZoomIn className="w-4 h-4" />
                 </Button>
@@ -381,7 +381,7 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
                   variant="ghost"
                   size="sm"
                   onClick={handleRotate}
-                  className="h-8 w-8 p-0 text-white hover:bg-white/20"
+                  className="h-7 w-7 p-0 text-white hover:bg-white/20"
                 >
                   <RotateCcw className="w-4 h-4" />
                 </Button>
@@ -395,7 +395,7 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
               variant="ghost"
               size="sm"
               onClick={handlePrint}
-              className="w-12 h-12 p-0 text-white hover:bg-gray-700 rounded-lg"
+              className="w-10 h-10 p-0 text-white hover:bg-gray-700 rounded-lg"
               title="인쇄"
             >
               <Printer className="w-6 h-6" />
@@ -405,7 +405,7 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
               variant="ghost"
               size="sm"
               onClick={handleDownload}
-              className="w-12 h-12 p-0 text-white hover:bg-gray-700 rounded-lg"
+              className="w-10 h-10 p-0 text-white hover:bg-gray-700 rounded-lg"
               title="다운로드"
             >
               <Download className="w-6 h-6" />
@@ -417,7 +417,7 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
                 size="sm"
                 onClick={handleDelete}
                 disabled={deleting}
-                className="w-12 h-12 p-0 text-white hover:bg-red-600 rounded-lg"
+                className="w-10 h-10 p-0 text-white hover:bg-red-600 rounded-lg"
                 title="삭제"
               >
                 {deleting ? (
