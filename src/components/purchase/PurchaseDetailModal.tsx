@@ -919,7 +919,7 @@ export default function PurchaseDetailModal({
                   <h3 className="modal-section-title flex items-center">
                     <Package className="w-4 h-4 mr-2 text-gray-600" />
                     품목 리스트
-                    <span className="ml-2 bg-gray-200 text-gray-700 px-2 py-1 rounded-lg badge-text">
+                    <span className="ml-2 bg-gray-200 text-gray-700 px-2 py-1 business-radius-badge badge-text">
                       {purchase.items?.length || 0}개
                     </span>
                   </h3>

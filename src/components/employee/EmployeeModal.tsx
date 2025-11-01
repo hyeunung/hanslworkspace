@@ -333,7 +333,7 @@ export default function EmployeeModal({ isOpen, onClose, employee, onSave, mode 
                 <div className="grid grid-cols-2 gap-4 modal-subtitle">
                   <div>
                     <span className="text-gray-500">상태:</span>
-                    <span className={`ml-2 px-2 py-1 rounded badge-text ${
+                    <span className={`ml-2 px-2 py-1 business-radius-badge badge-text ${
                       employee.is_active 
                         ? 'bg-green-100 text-green-800' 
                         : 'bg-gray-100 text-gray-600'

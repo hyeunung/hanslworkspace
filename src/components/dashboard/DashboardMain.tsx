@@ -771,7 +771,7 @@ export default function DashboardMain() {
                               
                               {/* 이미 구매완료된 경우 완료 표시 */}
                               {item.is_payment_completed && (
-                                <div className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-medium shrink-0">
+                                <div className="bg-green-100 text-green-700 px-2 py-1 business-radius-badge badge-text shrink-0">
                                   완료됨
                                 </div>
                               )}
@@ -930,7 +930,7 @@ export default function DashboardMain() {
                     </h1>
                     <p className="modal-subtitle">{selectedOrder.vendor_name || '업체명 없음'}</p>
                   </div>
-                  <div className={`px-3 py-1.5 rounded-full badge-text bg-orange-50 text-orange-700 border-orange-200`}>
+                  <div className={`px-3 py-1.5 business-radius-badge badge-text bg-orange-50 text-orange-700 border-orange-200`}>
                     미다운로드
                   </div>
                 </div>
