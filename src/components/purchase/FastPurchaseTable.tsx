@@ -46,7 +46,7 @@ const StatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
   };
   
   const { text, className } = config[status];
-  return <Badge className={className}>{text}</Badge>;
+  return <Badge className={`${className} business-radius-badge`}>{text}</Badge>;
 });
 
 StatusBadge.displayName = 'StatusBadge';
@@ -113,7 +113,7 @@ const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
         <div className="flex items-center gap-0.5">
           <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
         </div>
-        <Badge className="bg-red-100 text-red-800 badge-text px-1.5 py-0">
+        <Badge className="bg-red-100 text-red-800 badge-text px-1.5 py-0 business-radius-badge">
           반려
         </Badge>
       </div>
@@ -127,7 +127,7 @@ const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
         <div className="flex items-center gap-0.5">
           <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
         </div>
-        <Badge className="bg-green-100 text-green-800 badge-text px-1.5 py-0">
+        <Badge className="bg-green-100 text-green-800 badge-text px-1.5 py-0 business-radius-badge">
           승인완료
         </Badge>
       </div>
@@ -143,7 +143,7 @@ const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
           <div className="w-3 h-0.5 bg-gray-300"></div>
           <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
         </div>
-        <Badge className="bg-yellow-100 text-yellow-800 badge-text px-1.5 py-0">
+        <Badge className="bg-yellow-100 text-yellow-800 badge-text px-1.5 py-0 business-radius-badge">
           1차 승인
         </Badge>
       </div>
@@ -397,14 +397,12 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       {(activeTab === 'pending' || activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
         <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>
           <Badge className={`card-title business-radius-badge ${
-            purchase.payment_category === '구매 요청' ? 'bg-blue-100 text-blue-800' : 
             purchase.payment_category === '발주' ? 'bg-green-100 text-green-800' :
             purchase.payment_category === '경비 청구' ? 'bg-yellow-100 text-yellow-800' :
             'bg-gray-100 text-gray-800'
           }`}>
             {(() => {
               // 표시 텍스트 통일
-              if (purchase.payment_category === '구매 요청') return '구매요청';
               if (purchase.payment_category === '발주') return '발주요청';
               return purchase.payment_category || '-';
             })()}
@@ -584,26 +582,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
             </span>
           </td>
           <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.status}`}>
-            {purchase.payment_category === '구매 요청' ? (
-              <div className="flex items-center justify-center gap-1">
-                <div className="bg-gray-200 rounded-full h-1.5 w-8">
-                  <div 
-                    className={`h-1.5 rounded-full ${
-                      purchaseProgress.percentage === 100 ? 'bg-green-500' : 
-                      purchaseProgress.percentage >= 80 ? 'bg-blue-500' : 
-                      purchaseProgress.percentage >= 40 ? 'bg-hansl-500' :
-                      purchaseProgress.percentage > 0 ? 'bg-gray-400' : 'bg-red-500'
-                    }`}
-                    style={{ width: `${purchaseProgress.percentage}%` }}
-                  />
-                </div>
-                <span className="card-title text-gray-600">
-                  {purchaseProgress.percentage}%
-                </span>
-              </div>
-            ) : (
-              <span className="text-gray-400 card-title">-</span>
-            )}
+            <span className="text-gray-400 card-title">-</span>
           </td>
           <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receipt}`}>
             <div className="flex items-center justify-center gap-1">

@@ -85,11 +85,67 @@ npm run watch                     # Watch mode for all servers
 
 #### General Typography (Consistent Sizing)
 - `.badge-text` - Badge content (xs/12px, font-medium, truncated)
+- `.button-text` - Button content (xs/12px, font-medium, gray-700, truncated)
+- `.button-text-primary` - Primary button content (xs/12px, font-medium, white, truncated)
+- `.button-text-secondary` - Secondary button content (xs/12px, font-medium, gray-600, truncated)
 - `.section-title` - Section headers (11px, font-semibold, truncated)
 - `.stats-title` - Statistics titles (xs/12px, uppercase, tracking-wide)
 - `.stats-value` - Statistics values (3xl, font-bold) - *Only large stats*
 - `.header-title` - Main headers (12px, font-bold, truncated)
 - `.link-text` - Link text (10px, truncated)
+
+#### Standardized Button System (3-State Button Classification)
+**Based on 1차 승인대기 button as default active waiting state - ALL buttons follow this 3-state system**
+
+**Button Base Structure:**
+```tsx
+// Use this base class for all approval-related buttons
+const buttonBaseClass = 'inline-flex items-center gap-1 business-radius-badge px-2.5 py-0.5 badge-text leading-tight'
+```
+
+**3-State Button System:**
+1. **대기중 (Active Waiting)** - User can take action
+   - **Style**: `${buttonBaseClass} border border-gray-300 text-gray-600 bg-white`
+   - **Default**: Based on 1차 승인대기 button
+   - **Usage**: When user can actually perform the approval action
+
+2. **완료 (Completed)** - Action already finished
+   - **Style**: `${buttonBaseClass} bg-green-500 text-white` (approved)
+   - **Style**: `${buttonBaseClass} bg-red-500 text-white` (rejected)
+   - **Usage**: When approval/rejection is already completed
+
+3. **비활성화 (Inactive/Disabled)** - Waiting but not ready
+   - **Style**: `${buttonBaseClass} border border-gray-300 text-gray-400 bg-white`
+   - **Difference**: Uses `text-gray-400` (lighter) instead of `text-gray-600`
+   - **Usage**: When waiting but prerequisites not met (e.g., 최종승인 waiting for 1차승인)
+
+**Mandatory Usage:**
+- ALL approval buttons MUST use one of these 3 states
+- NO custom button styles for approval workflows
+- Use lighter text (`text-gray-400`) to indicate inactive/disabled waiting states
+
+#### Standardized Badge System (Button-Consistent Sizing)
+**Same dimensions as buttons (px-2.5 py-0.5, business-radius-badge) for visual consistency**
+
+**Badge Base Structure:**
+```tsx
+// Use this base class for all badges
+const badgeBaseClass = 'inline-flex items-center gap-1 business-radius-badge px-2.5 py-0.5 badge-text leading-tight'
+```
+
+**Standard Badge Classes:**
+- `.badge-base` - Base badge class (same size as buttons)
+- `.badge-primary` - Blue background (구매요청 등)
+- `.badge-success` - Green background (발주 등)  
+- `.badge-warning` - Yellow background (승인대기 등)
+- `.badge-danger` - Red background (반려 등)
+- `.badge-secondary` - Gray background (현장결제 등)
+
+**Key Features:**
+- **Same height as buttons**: Consistent `px-2.5 py-0.5` padding
+- **Same border radius**: `business-radius-badge` 
+- **Same text size**: `badge-text` (12px, font-medium)
+- **Visual harmony**: Badges and buttons have identical dimensions
 
 #### Page Title & Subtitle System (hanslwebapp Standard)
 - `.page-title` - Main page titles (19px, font-semibold, text-foreground)

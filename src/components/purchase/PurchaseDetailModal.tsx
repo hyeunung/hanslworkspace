@@ -154,14 +154,18 @@ export default function PurchaseDetailModal({
   });
   
   // 승인 권한 체크
-  const canApproveMiddle = effectiveRoles.includes('middle_manager') || 
-                           effectiveRoles.includes('app_admin') || 
-                           effectiveRoles.includes('ceo')
-  
-   const canApproveFinal = effectiveRoles.includes('final_approver') || 
-                           effectiveRoles.includes('app_admin') || 
-                           effectiveRoles.includes('ceo')
-   
+ const canApproveMiddle = effectiveRoles.includes('middle_manager') || 
+                          effectiveRoles.includes('app_admin') || 
+                          effectiveRoles.includes('ceo')
+ 
+ const canApproveFinal = effectiveRoles.includes('final_approver') || 
+                         effectiveRoles.includes('app_admin') || 
+                         effectiveRoles.includes('ceo')
+ 
+ const approvalPillClass = 'inline-flex items-center gap-1 business-radius-badge px-2 py-0.5 badge-text leading-tight'
+ const approvalButtonClass = 'inline-flex items-center gap-1 business-radius-badge !h-auto !min-h-0 !px-2.5 !py-0.5 badge-text leading-tight'
+ const approvalWaitingPillClass = 'inline-flex items-center gap-1 business-radius-badge px-2.5 py-0.5 badge-text leading-tight'
+ 
    // 디버깅 로그
    logger.debug('PurchaseDetailModal 권한 체크', {
      currentUserRoles,
@@ -219,27 +223,24 @@ export default function PurchaseDetailModal({
   const getStatusBadge = () => {
     if (!purchase) return null
     
-    // 디버깅용 로그
-    console.log('payment_category:', purchase.payment_category)
-    
     // payment_category 우선 확인
     if (purchase.payment_category) {
       const category = purchase.payment_category.trim()
       
       if (category === '발주') {
-        return <Badge className="bg-green-100 text-green-800 business-radius-badge">발주</Badge>
+        return <Badge className="badge-success">발주</Badge>
       } else if (category === '구매요청') {
-        return <Badge className="bg-blue-100 text-blue-800 business-radius-badge">구매요청</Badge>
+        return <Badge className="badge-primary">구매요청</Badge>
       } else if (category === '현장결제') {
-        return <Badge className="bg-gray-100 text-gray-800 business-radius-badge">현장결제</Badge>
+        return <Badge className="badge-secondary">현장결제</Badge>
       } else {
         // payment_category 값이 있지만 알려진 값이 아닌 경우
-        return <Badge className="bg-blue-100 text-blue-800 business-radius-badge">{category}</Badge>
+        return <Badge className="badge-primary">{category}</Badge>
       }
     }
     
-    // payment_category가 없으면 임시로 기본값 설정
-    return <Badge className="bg-blue-100 text-blue-800 business-radius-badge">구매요청</Badge>
+    // payment_category가 없으면 기본값
+    return <Badge className="badge-primary">구매요청</Badge>
   }
 
   // formatDate는 utils/helpers.ts에서 import
@@ -646,8 +647,8 @@ export default function PurchaseDetailModal({
       ) : purchase ? (
         <div>
           {/* Compact Info Header */}
-          <div className="bg-gray-50 rounded-lg p-3 mb-4 border border-gray-100">
-            <div className="flex items-center justify-between">
+          <div className="bg-gray-50 rounded-lg p-2 mb-2 border border-gray-100">
+            <div className="grid grid-cols-3 items-center">
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-3">
                   {getStatusBadge()}
@@ -661,49 +662,79 @@ export default function PurchaseDetailModal({
                   <span className="modal-subtitle">청구일: {formatDate(purchase.request_date)}</span>
                 </div>
               </div>
+              
+              {/* 승인 버튼들을 중앙에 배치 */}
+              <div className="flex items-center justify-center gap-3">
+                {/* 1차 승인 버튼 */}
+                {canApproveMiddle && purchase.middle_manager_status === 'pending' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleApprove('middle')}
+                    className={`${approvalButtonClass} border border-gray-400 bg-white hover:bg-gray-50 hover:border-gray-500`}
+                  >
+                    <Check className="w-3 h-3" />
+                    1차 승인 대기
+                  </Button>
+                )}
+                {purchase.middle_manager_status === 'approved' && (
+                  <div className="button-approved shadow-sm">
+                    <Check className="w-3 h-3" />
+                    1차 승인완료
+                  </div>
+                )}
+                {purchase.middle_manager_status === 'rejected' && (
+                  <div className="button-rejected">
+                    <X className="w-3 h-3" />
+                    1차 반려
+                  </div>
+                )}
+                {purchase.middle_manager_status === 'pending' && !canApproveMiddle && (
+                  <div className={`${approvalWaitingPillClass} border border-gray-300 text-gray-600 bg-white`}>
+                    1차 승인대기
+                  </div>
+                )}
+
+                {/* 최종 승인 버튼 */}
+                {canApproveFinal && purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'pending' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleApprove('final')}
+                    className="button-action"
+                  >
+                    <Check className="w-3 h-3" />
+                    최종 승인
+                  </Button>
+                )}
+                {purchase.final_manager_status === 'approved' && (
+                  <div className="button-approved">
+                    <Check className="w-3 h-3" />
+                    최종 승인완료
+                  </div>
+                )}
+                {purchase.final_manager_status === 'rejected' && (
+                  <div className="button-rejected">
+                    <X className="w-3 h-3" />
+                    최종 반려
+                  </div>
+                )}
+                {purchase.middle_manager_status !== 'approved' && purchase.final_manager_status === 'pending' && (
+                  <div className={`${approvalWaitingPillClass} border border-gray-300 text-gray-600 bg-white`}>
+                    최종 승인대기
+                  </div>
+                )}
+              </div>
+              
+              {/* 우측 빈 영역 */}
+              <div></div>
             </div>
           </div>
 
           {/* Main 2-Column Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            {/* Left Column - Basic Info (40%) */}
+          <div className="grid grid-cols-1 lg:grid-cols-7 gap-6">
+            {/* Left Column - Basic Info (29%) */}
             <div className="lg:col-span-2 space-y-4 relative">
-              {/* 1차 승인 버튼 - 좌측 박스 우측 상단 코너 */}
-              {canApproveMiddle && purchase.middle_manager_status === 'pending' && (
-                <div className="absolute -top-2 -right-2 z-10">
-                  <Button
-                    size="sm"
-                    onClick={() => handleApprove('middle')}
-                    className="bg-green-500 hover:bg-green-600 text-white business-radius-button px-3 py-1.5 badge-text shadow-sm"
-                  >
-                    <Check className="w-3 h-3 mr-1" />
-                    1차 승인
-                  </Button>
-                </div>
-              )}
-              {purchase.middle_manager_status === 'approved' && (
-                <div className="absolute -top-2 -right-2 z-10">
-                  <div className="bg-green-500 text-white business-radius-badge px-3 py-1.5 badge-text shadow-sm">
-                    <Check className="w-3 h-3 mr-1 inline" />
-                    1차 승인완료
-                  </div>
-                </div>
-              )}
-              {purchase.middle_manager_status === 'rejected' && (
-                <div className="absolute -top-2 -right-2 z-10">
-                  <div className="bg-red-500 text-white business-radius-badge px-3 py-1.5 badge-text shadow-sm">
-                    <X className="w-3 h-3 mr-1 inline" />
-                    1차 반려
-                  </div>
-                </div>
-              )}
-              {purchase.middle_manager_status === 'pending' && !canApproveMiddle && (
-                <div className="absolute -top-2 -right-2 z-10">
-                  <div className="border border-gray-300 text-gray-600 bg-white business-radius-badge px-3 py-1.5 badge-text shadow-sm">
-                    1차 승인대기
-                  </div>
-                </div>
-              )}
               
               {/* 발주 기본정보 */}
               <div className="bg-white rounded-lg p-3 border border-gray-100 shadow-sm">
@@ -712,12 +743,11 @@ export default function PurchaseDetailModal({
                     <FileText className="w-4 h-4 mr-2 text-gray-600" />
                     {purchase?.purchase_order_number || 'PO번호 없음'}
                   </h3>
-                  <p className="modal-subtitle mt-1">{purchase?.vendor?.vendor_name || '업체명 없음'}</p>
                 </div>
                 
                 <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
+                  <div className="flex gap-8">
+                    <div className="w-32">
                       <span className="modal-label">발주서 종류</span>
                       {isEditing ? (
                         <Input
@@ -730,7 +760,7 @@ export default function PurchaseDetailModal({
                         <p className="modal-value">{purchase.request_type || '일반'}</p>
                       )}
                     </div>
-                    <div>
+                    <div className="w-32">
                       <span className="modal-label">결제 종류</span>
                       {isEditing ? (
                         <Input
@@ -745,8 +775,8 @@ export default function PurchaseDetailModal({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
+                  <div className="flex gap-8">
+                    <div className="w-32">
                       <span className="modal-label">입고 요청일</span>
                       {isEditing ? (
                         <DatePicker
@@ -758,7 +788,7 @@ export default function PurchaseDetailModal({
                         <p className="modal-subtitle">{formatDate(purchase.delivery_request_date)}</p>
                       )}
                     </div>
-                    <div>
+                    <div className="w-32">
                       <span className="modal-label text-orange-500">변경 입고일</span>
                       {isEditing ? (
                         <DatePicker
@@ -784,8 +814,8 @@ export default function PurchaseDetailModal({
                 </h3>
                 
                 <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
+                  <div className="flex gap-8">
+                    <div className="w-32">
                       <span className="modal-label">업체명</span>
                       {isEditing ? (
                         <Input
@@ -798,7 +828,7 @@ export default function PurchaseDetailModal({
                         <p className="modal-value">{purchase.vendor?.vendor_name || '-'}</p>
                       )}
                     </div>
-                    <div>
+                    <div className="w-32">
                       <span className="modal-label">업체 담당자</span>
                       {isEditing ? (
                         <Input
@@ -825,8 +855,8 @@ export default function PurchaseDetailModal({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
+                  <div className="flex gap-8">
+                    <div className="w-32">
                       <span className="modal-label">PJ업체</span>
                       {isEditing ? (
                         <Input
@@ -839,7 +869,7 @@ export default function PurchaseDetailModal({
                         <p className="modal-value">{purchase.project_vendor || '-'}</p>
                       )}
                     </div>
-                    <div>
+                    <div className="w-32">
                       <span className="modal-label">Item</span>
                       {isEditing ? (
                         <Input
@@ -874,52 +904,15 @@ export default function PurchaseDetailModal({
 
             </div>
 
-            {/* Right Column - Items List (60%) */}
-            <div className="lg:col-span-3 relative">
-              {/* 최종 승인 버튼 - 우측 박스 좌측 상단 코너 */}
-              {canApproveFinal && purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'pending' && (
-                <div className="absolute -top-2 -left-2 z-10">
-                  <Button
-                    size="sm"
-                    onClick={() => handleApprove('final')}
-                    className="bg-green-500 hover:bg-green-600 text-white business-radius-button px-3 py-1.5 badge-text shadow-sm"
-                  >
-                    <Check className="w-3 h-3 mr-1" />
-                    최종 승인
-                  </Button>
-                </div>
-              )}
-              {purchase.final_manager_status === 'approved' && (
-                <div className="absolute -top-2 -left-2 z-10">
-                  <div className="bg-green-500 text-white business-radius-badge px-3 py-1.5 badge-text shadow-sm">
-                    <Check className="w-3 h-3 mr-1 inline" />
-                    최종 승인완료
-                  </div>
-                </div>
-              )}
-              {purchase.final_manager_status === 'rejected' && (
-                <div className="absolute -top-2 -left-2 z-10">
-                  <div className="bg-red-500 text-white business-radius-badge px-3 py-1.5 badge-text shadow-sm">
-                    <X className="w-3 h-3 mr-1 inline" />
-                    최종 반려
-                  </div>
-                </div>
-              )}
-              {/* 최종 승인 버튼은 항상 보이되, 1차 승인 전에는 비활성화 */}
-              {purchase.middle_manager_status !== 'approved' && purchase.final_manager_status === 'pending' && (
-                <div className="absolute -top-2 -left-2 z-10">
-                  <div className="border border-gray-300 text-gray-400 bg-gray-50 business-radius-badge px-3 py-1.5 badge-text shadow-sm opacity-50">
-                    최종 승인대기
-                  </div>
-                </div>
-              )}
+            {/* Right Column - Items List (71%) */}
+            <div className="lg:col-span-5 relative">
               
               <div className="bg-white rounded-lg border border-gray-100 overflow-hidden shadow-sm">
                 <div className="p-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
                   <h3 className="modal-section-title flex items-center">
                     <Package className="w-4 h-4 mr-2 text-gray-600" />
                     품목 리스트
-                    <span className="ml-2 bg-gray-200 text-gray-700 px-2 py-1 business-radius-badge badge-text">
+                    <span className="ml-2 badge-secondary">
                       {purchase.items?.length || 0}개
                     </span>
                   </h3>
@@ -929,7 +922,7 @@ export default function PurchaseDetailModal({
                         <Button
                           size="sm"
                           onClick={handleCompleteAllPayment}
-                          className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 business-radius-button badge-text"
+                          className="button-base button-action-primary"
                         >
                           <CreditCard className="w-3 h-3 mr-1" />
                           전체 구매완료
@@ -939,7 +932,7 @@ export default function PurchaseDetailModal({
                         <Button
                           size="sm"
                           onClick={handleCompleteAllReceipt}
-                          className="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 business-radius-button badge-text"
+                          className="button-base button-action-success"
                         >
                           <Truck className="w-3 h-3 mr-1" />
                           전체 입고완료
@@ -951,7 +944,7 @@ export default function PurchaseDetailModal({
                 
                 {/* Items Table Header */}
                 <div className="bg-gray-50 px-3 py-1.5 border-b border-gray-100">
-                  <div className="grid grid-cols-12 gap-2 modal-label text-gray-600">
+                  <div className="grid grid-cols-12 gap-2 modal-label">
                     <div className="col-span-3">품목명</div>
                     <div className="col-span-2">규격</div>
                     <div className="col-span-1 text-center">수량</div>
@@ -1002,7 +995,7 @@ export default function PurchaseDetailModal({
                               type="number"
                               value={item.quantity}
                               onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
-                              className="text-xs border-gray-200 rounded-lg text-center"
+                              className="modal-label border-gray-200 rounded-lg text-center"
                             />
                           ) : (
                             <span className="modal-subtitle">{item.quantity || 0}</span>
@@ -1016,7 +1009,7 @@ export default function PurchaseDetailModal({
                               type="number"
                               value={item.unit_price_value}
                               onChange={(e) => handleItemChange(index, 'unit_price_value', Number(e.target.value))}
-                              className="text-xs border-gray-200 rounded-lg text-right"
+                              className="modal-label border-gray-200 rounded-lg text-right"
                             />
                           ) : (
                             <span className="modal-subtitle">₩{formatCurrency(item.unit_price_value)}</span>
@@ -1030,7 +1023,7 @@ export default function PurchaseDetailModal({
                               type="number"
                               value={item.amount_value}
                               onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
-                              className="text-xs border-gray-200 rounded-lg text-right"
+                              className="modal-label border-gray-200 rounded-lg text-right"
                             />
                           ) : (
                             <span className="modal-value">₩{formatCurrency(item.amount_value || 0)}</span>
@@ -1070,19 +1063,19 @@ export default function PurchaseDetailModal({
                                   {canPurchase ? (
                                     <button
                                       onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
-                                      className={`badge-text px-2 py-1 business-radius-badge border transition-colors ${
+                                      className={`transition-colors ${
                                         item.is_payment_completed
-                                          ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                                          : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                                          ? 'button-toggle-active'
+                                          : 'button-toggle-inactive'
                                       }`}
                                     >
                                       {item.is_payment_completed ? '구매완료' : '구매대기'}
                                     </button>
                                   ) : (
-                                    <span className={`badge-text px-2 py-1 business-radius-badge ${
+                                    <span className={`${
                                       item.is_payment_completed 
-                                        ? 'bg-blue-50 text-blue-700' 
-                                        : 'bg-gray-50 text-gray-500'
+                                        ? 'button-toggle-active' 
+                                        : 'button-waiting-inactive'
                                     }`}>
                                       {item.is_payment_completed ? '구매완료' : '구매대기'}
                                     </span>
@@ -1096,19 +1089,19 @@ export default function PurchaseDetailModal({
                                   {canReceiptCheck ? (
                                     <button
                                       onClick={() => handleReceiptToggle(item.id, !item.is_received)}
-                                      className={`badge-text px-2 py-1 business-radius-badge border transition-colors ${
+                                      className={`transition-colors ${
                                         item.is_received
-                                          ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                                          : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                                          ? 'button-toggle-success'
+                                          : 'button-toggle-inactive'
                                       }`}
                                     >
                                       {item.is_received ? '입고완료' : '입고대기'}
                                     </button>
                                   ) : (
-                                    <span className={`badge-text px-2 py-1 business-radius-badge ${
+                                    <span className={`${
                                       item.is_received 
-                                        ? 'bg-green-50 text-green-700' 
-                                        : 'bg-gray-50 text-gray-500'
+                                        ? 'button-toggle-success' 
+                                        : 'button-waiting-inactive'
                                     }`}>
                                       {item.is_received ? '입고완료' : '입고대기'}
                                     </span>
@@ -1118,7 +1111,7 @@ export default function PurchaseDetailModal({
                               
                               {/* 기타 탭에서는 기본 상태 표시 */}
                               {activeTab !== 'purchase' && activeTab !== 'receipt' && (
-                                <span className="badge-text text-gray-400">-</span>
+                                <span className="badge-text">-</span>
                               )}
                             </>
                           )}
@@ -1185,7 +1178,7 @@ export default function PurchaseDetailModal({
         <div className="relative px-6 pt-6 pb-4">
           <button
             onClick={onClose}
-            className="absolute right-6 top-6 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-all duration-200"
+            className="button-base button-action-secondary absolute right-6 top-6 w-8 h-8 rounded-full"
           >
             <X className="w-4 h-4 text-gray-500" />
           </button>
@@ -1193,20 +1186,18 @@ export default function PurchaseDetailModal({
           <div className="pr-16">
             <div className="flex items-start gap-4 mb-3">
               <div className="min-w-0 flex-1">
-                <h1 className="modal-title mb-1">
+                <h1 className="page-title mb-1">
                   발주 기본정보
                 </h1>
-                <p className="modal-subtitle">{purchase?.vendor?.vendor_name || '업체명 없음'}</p>
               </div>
               <div className="flex items-center gap-3">
-                {purchase && !isEditing && getStatusBadge()}
                 {!isEditing && canEdit && (
                   <>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => setIsEditing(true)}
-                      className="border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-400 rounded-lg px-4 py-2 transition-all duration-200"
+                      className="button-base button-action-secondary"
                     >
                       <Edit2 className="w-4 h-4 mr-2" />
                       수정
@@ -1216,7 +1207,7 @@ export default function PurchaseDetailModal({
                         size="sm"
                         variant="outline"
                         onClick={() => purchase && onDelete(purchase)}
-                        className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 rounded-lg px-4 py-2 transition-all duration-200"
+                        className="button-base button-action-danger"
                       >
                         <Trash2 className="w-4 h-4 mr-2" />
                         삭제
@@ -1235,7 +1226,7 @@ export default function PurchaseDetailModal({
                         setEditedItems(purchase?.items || [])
                         setDeletedItemIds([])
                       }}
-                      className="border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-400 rounded-lg px-4 py-2 transition-all duration-200"
+                      className="button-base button-action-secondary"
                     >
                       <X className="w-4 h-4 mr-2" />
                       취소
@@ -1243,7 +1234,7 @@ export default function PurchaseDetailModal({
                     <Button
                       size="sm"
                       onClick={handleSave}
-                      className="bg-gray-900 hover:bg-gray-800 text-white rounded-lg px-6 py-2 shadow-sm transition-all duration-200"
+                      className="button-base button-action-primary"
                     >
                       <Save className="w-4 h-4 mr-2" />
                       저장
