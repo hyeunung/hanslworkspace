@@ -1292,7 +1292,7 @@ export default function PurchaseDetailModal({
                 </div>
                 
                 {/* 합계 */}
-                <div className="bg-gray-50 px-2 sm:px-3 py-2 border-t border-gray-100">
+                <div className="bg-gray-50 px-2 sm:px-3 border-t border-gray-100">
                   <div className="hidden sm:grid grid-cols-12 gap-2">
                     <div className="col-span-6"></div>
                     <div className="col-span-1 text-right">
