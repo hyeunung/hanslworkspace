@@ -804,13 +804,13 @@ export default function PurchaseDetailModal({
                   </Button>
                 )}
                 {purchase.middle_manager_status === 'approved' && (
-                  <div className="button-approved shadow-sm">
+                  <div className="button-approved badge-text shadow-sm">
                     <Check className="w-3 h-3" />
                     1차 승인완료
                   </div>
                 )}
                 {purchase.middle_manager_status === 'rejected' && (
-                  <div className="button-rejected">
+                  <div className="button-rejected badge-text">
                     <X className="w-3 h-3" />
                     1차 반려
                   </div>
@@ -827,20 +827,20 @@ export default function PurchaseDetailModal({
                     size="sm"
                     variant="outline"
                     onClick={() => handleApprove('final')}
-                    className="button-action"
+                    className={`${approvalButtonClass} border border-gray-400 bg-white hover:bg-gray-50 hover:border-gray-500`}
                   >
                     <Check className="w-3 h-3" />
                     최종 승인
                   </Button>
                 )}
                 {purchase.final_manager_status === 'approved' && (
-                  <div className="button-approved">
+                  <div className="button-approved badge-text">
                     <Check className="w-3 h-3" />
                     최종 승인완료
                   </div>
                 )}
                 {purchase.final_manager_status === 'rejected' && (
-                  <div className="button-rejected">
+                  <div className="button-rejected badge-text">
                     <X className="w-3 h-3" />
                     최종 반려
                   </div>

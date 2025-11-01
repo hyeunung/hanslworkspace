@@ -192,8 +192,8 @@
   
   /* Badge Typography System */
   .badge-text {
-    @apply text-xs font-medium truncate;
-    letter-spacing: 0.01em;
+    @apply text-xs font-medium truncate !important;
+    letter-spacing: 0.01em !important;
   }
   
   /* Standardized Badge System - Same size as buttons */

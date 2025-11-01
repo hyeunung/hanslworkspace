@@ -283,7 +283,7 @@ const ProgressTypeBadge = memo(({ type }: { type?: string }) => {
   }
   
   return (
-    <Badge className="bg-gray-200 text-gray-700 card-title px-2 py-0.5">
+    <Badge className="bg-gray-200 text-gray-700 badge-text px-2 py-0.5">
       일반
     </Badge>
   );
@@ -396,7 +396,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       {/* 승인대기, 입고현황, 전체항목 탭에서만 결제종류 표시 */}
       {(activeTab === 'pending' || activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
         <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>
-          <Badge className={`card-title business-radius-badge ${
+          <Badge className={`badge-text business-radius-badge ${
             purchase.payment_category === '구매요청' || purchase.payment_category === '구매 요청' ? 'bg-blue-100 text-blue-800' :
             purchase.payment_category === '발주' ? 'bg-green-100 text-green-800' :
             purchase.payment_category === '현장결제' || purchase.payment_category === '현장 결제' ? 'bg-purple-100 text-purple-800' :
@@ -606,9 +606,9 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
           </td>
           <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.paymentStatus}`}>
             {purchase.is_payment_completed ? (
-              <Badge className="bg-green-100 text-green-800 card-title">완료</Badge>
+              <Badge className="bg-green-100 text-green-800 badge-text">완료</Badge>
             ) : (
-              <Badge className="bg-gray-100 text-gray-800 card-title">대기</Badge>
+              <Badge className="bg-gray-100 text-gray-800 badge-text">대기</Badge>
             )}
           </td>
         </>
