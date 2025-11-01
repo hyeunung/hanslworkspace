@@ -32,24 +32,6 @@
         }
       ]
     },
-    {
-      "source": "/src/(.*)\\.tsx?$",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/javascript; charset=utf-8"
-        }
-      ]
-    },
-    {
-      "source": "/@vite/(.*)",
-      "headers": [
-        {
-          "key": "Content-Type",
-          "value": "application/javascript; charset=utf-8"
-        }
-      ]
-    }
   ],
   "buildCommand": "npm run build",
   "outputDirectory": "dist"
