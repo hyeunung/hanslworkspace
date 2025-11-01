@@ -639,7 +639,7 @@ export default function PurchaseDetailModal({
   }
 
   const content = (
-    <div className="space-y-2 sm:space-y-4">
+    <div className="space-y-1 sm:space-y-4">
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-hansl-600"></div>
@@ -647,7 +647,7 @@ export default function PurchaseDetailModal({
       ) : purchase ? (
         <div>
           {/* Compact Info Header */}
-          <div className="bg-gray-50 rounded-lg p-2 sm:p-3 mb-2 border border-gray-100">
+          <div className="bg-gray-50 rounded-lg p-2 sm:p-3 mb-1 sm:mb-2 border border-gray-100">
             <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-3 sm:gap-0">
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4">
                 <div className="flex items-center gap-3">
@@ -734,7 +734,7 @@ export default function PurchaseDetailModal({
           {/* Main 2-Column Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-7 gap-3 sm:gap-6">
             {/* Left Column - Basic Info (29%) */}
-            <div className="lg:col-span-2 space-y-2 sm:space-y-4 relative">
+            <div className="lg:col-span-2 space-y-1 sm:space-y-4 relative">
               
               {/* 발주 기본정보 */}
               <div className="bg-white rounded-lg p-2 sm:p-3 border border-gray-100 shadow-sm">
@@ -1345,18 +1345,18 @@ export default function PurchaseDetailModal({
         showCloseButton={false}
       >
         {/* Apple-style Header */}
-        <div className="relative px-3 sm:px-6 pt-1 sm:pt-3 lg:pt-4 pb-1 sm:pb-2 lg:pb-3">
+        <div className="relative px-3 sm:px-6 pt-0 sm:pt-3 lg:pt-4 pb-0 sm:pb-2 lg:pb-3">
           <button
             onClick={onClose}
-            className="button-base button-action-secondary absolute right-3 sm:right-6 top-1 sm:top-3 lg:top-4 w-6 h-6 sm:w-8 sm:h-8 rounded-full"
+            className="button-base button-action-secondary absolute right-3 sm:right-6 top-0 sm:top-3 lg:top-4 w-6 h-6 sm:w-8 sm:h-8 rounded-full"
           >
             <X className="w-4 h-4 text-gray-500" />
           </button>
           
           <div className="pr-8 sm:pr-16">
-            <div className="flex items-start gap-4 mb-1 sm:mb-3">
+            <div className="flex items-start gap-4 mb-0 sm:mb-3">
               <div className="min-w-0 flex-1">
-                <h1 className="page-title mb-1">
+                <h1 className="page-title mb-0 sm:mb-1">
                   발주 기본정보
                 </h1>
               </div>
@@ -1417,7 +1417,7 @@ export default function PurchaseDetailModal({
         </div>
 
         {/* Apple-style Content */}
-        <div className="overflow-y-auto flex-1 px-3 sm:px-6 pb-2 sm:pb-6">
+        <div className="overflow-y-auto flex-1 px-3 sm:px-6 pb-1 sm:pb-6 -mt-2 sm:mt-0">
           {content}
         </div>
       </DialogContent>
