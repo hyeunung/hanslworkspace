@@ -250,22 +250,32 @@ export default function PurchaseDetailModal({
   }
 
   const handleSave = async () => {
-    if (!purchase || !editedPurchase) return
+    if (!purchase || !editedPurchase) {
+      toast.error('저장할 데이터가 없습니다.')
+      return
+    }
     
     try {
+      logger.debug('저장 시작', { 
+        purchaseId: purchase.id, 
+        editedItemsCount: editedItems.length,
+        deletedItemsCount: deletedItemIds.length 
+      });
+      
       // 발주 기본 정보 업데이트
       const totalAmount = editedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
+      logger.debug('계산된 총액', { totalAmount });
       
       const { error: updateError } = await supabase
         .from('purchase_requests')
         .update({
-          purchase_order_number: editedPurchase.purchase_order_number,
-          requester_name: editedPurchase.requester_name,
-          delivery_request_date: editedPurchase.delivery_request_date,
-          revised_delivery_request_date: editedPurchase.revised_delivery_request_date,
-          payment_category: editedPurchase.payment_category,
-          project_vendor: editedPurchase.project_vendor,
-          total_amount: totalAmount,
+          purchase_order_number: editedPurchase.purchase_order_number || null,
+          requester_name: editedPurchase.requester_name || null,
+          delivery_request_date: editedPurchase.delivery_request_date || null,
+          revised_delivery_request_date: editedPurchase.revised_delivery_request_date || null,
+          payment_category: editedPurchase.payment_category || null,
+          project_vendor: editedPurchase.project_vendor || null,
+          total_amount: Number(totalAmount),
           updated_at: new Date().toISOString()
         })
         .eq('id', purchase.id)
@@ -286,7 +296,27 @@ export default function PurchaseDetailModal({
       logger.debug('저장할 editedItems', { count: editedItems.length });
       
       for (const item of editedItems) {
-        logger.debug('처리 중인 item', { itemId: item.id });
+        logger.debug('처리 중인 item', { 
+          itemId: item.id, 
+          itemName: item.item_name,
+          quantity: item.quantity,
+          unitPrice: item.unit_price_value,
+          amount: item.amount_value
+        });
+        
+        // 필수 필드 검증
+        if (!item.item_name || !item.item_name.trim()) {
+          throw new Error('품목명은 필수입니다.');
+        }
+        if (!item.quantity || item.quantity <= 0) {
+          throw new Error('수량은 0보다 커야 합니다.');
+        }
+        if (!item.unit_price_value || item.unit_price_value < 0) {
+          throw new Error('단가는 0 이상이어야 합니다.');
+        }
+        if (!item.amount_value || item.amount_value < 0) {
+          throw new Error('합계는 0 이상이어야 합니다.');
+        }
         
         if (item.id) {
           // 기존 항목 업데이트
@@ -294,14 +324,14 @@ export default function PurchaseDetailModal({
           const { error } = await supabase
             .from('purchase_request_items')
             .update({
-              item_name: item.item_name,
-              specification: item.specification,
-              quantity: item.quantity,
-              unit_price_value: item.unit_price_value,
+              item_name: item.item_name.trim(),
+              specification: item.specification || null,
+              quantity: Number(item.quantity),
+              unit_price_value: Number(item.unit_price_value),
               unit_price_currency: purchase.currency || 'KRW',
-              amount_value: item.amount_value,
+              amount_value: Number(item.amount_value),
               amount_currency: purchase.currency || 'KRW',
-              remark: item.remark,
+              remark: item.remark || null,
               updated_at: new Date().toISOString()
             })
             .eq('id', item.id)
@@ -315,14 +345,14 @@ export default function PurchaseDetailModal({
           logger.debug('새 항목 생성', { itemName: item.item_name });
           const insertData = {
             purchase_request_id: purchase.id,
-            item_name: item.item_name,
-            specification: item.specification,
-            quantity: item.quantity,
-            unit_price_value: item.unit_price_value,
+            item_name: item.item_name.trim(),
+            specification: item.specification || null,
+            quantity: Number(item.quantity),
+            unit_price_value: Number(item.unit_price_value),
             unit_price_currency: purchase.currency || 'KRW',
-            amount_value: item.amount_value,
+            amount_value: Number(item.amount_value),
             amount_currency: purchase.currency || 'KRW',
-            remark: item.remark,
+            remark: item.remark || null,
             line_number: item.line_number || editedItems.indexOf(item) + 1,
             created_at: new Date().toISOString()
           };
@@ -341,16 +371,17 @@ export default function PurchaseDetailModal({
         }
       }
 
-      toast.success('발주 내역이 수정되었습니다.')
+      logger.debug('저장 완료');
+      toast.success('발주 내역이 성공적으로 저장되었습니다.')
       setIsEditing(false)
       setDeletedItemIds([])
-      onRefresh?.(true)
       
-      // 수정된 데이터 다시 로드
+      // 수정된 데이터 다시 로드 (모달은 열린 상태 유지)
       await loadPurchaseDetail(purchaseId?.toString() || '')
     } catch (error) {
       logger.error('저장 중 전체 오류', error);
-      toast.error('저장 중 오류가 발생했습니다: ' + (error instanceof Error ? error.message : '알 수 없는 오류'));
+      const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다'
+      toast.error(`저장 실패: ${errorMessage}`)
     }
   }
 
@@ -412,6 +443,23 @@ export default function PurchaseDetailModal({
       return
     }
 
+    // 해당 품목 정보 찾기
+    const targetItem = purchase?.items?.find(item => item.id === itemId)
+    if (!targetItem) return
+
+    const itemInfo = `품명: ${targetItem.item_name}
+규격: ${targetItem.specification || '미입력'}
+수량: ${targetItem.quantity?.toLocaleString() || 0}${targetItem.unit || ''}
+단가: ₩${targetItem.unit_price_value?.toLocaleString() || 0}
+합계: ₩${targetItem.amount_value?.toLocaleString() || 0}`
+
+    const confirmMessage = isCompleted 
+      ? `다음 품목을 구매완료 처리하시겠습니까?\n\n${itemInfo}` 
+      : `다음 품목의 구매완료를 취소하시겠습니까?\n\n${itemInfo}`
+    
+    const confirm = window.confirm(confirmMessage)
+    if (!confirm) return
+
     try {
       const { error } = await supabase
         .from('purchase_request_items')
@@ -423,15 +471,18 @@ export default function PurchaseDetailModal({
 
       if (error) throw error
 
+      // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
+      setPurchase(prev => {
+        if (!prev) return null
+        const updatedItems = prev.items?.map(item => 
+          item.id === itemId 
+            ? { ...item, is_payment_completed: isCompleted, payment_completed_at: isCompleted ? new Date().toISOString() : null }
+            : item
+        )
+        return { ...prev, items: updatedItems }
+      })
+      
       toast.success(isCompleted ? '구매완료 처리되었습니다.' : '구매완료가 취소되었습니다.')
-      
-      // 데이터 새로고침
-      if (purchaseId) {
-        await loadPurchaseDetail(purchaseId.toString())
-      }
-      
-      // 부모 컴포넌트 새로고침
-      onRefresh?.(true)
     } catch (error) {
       toast.error('구매완료 처리 중 오류가 발생했습니다.')
     }
@@ -443,6 +494,23 @@ export default function PurchaseDetailModal({
       toast.error('입고 처리 권한이 없습니다.')
       return
     }
+
+    // 해당 품목 정보 찾기
+    const targetItem = purchase?.items?.find(item => item.id === itemId)
+    if (!targetItem) return
+
+    const itemInfo = `품명: ${targetItem.item_name}
+규격: ${targetItem.specification || '미입력'}
+수량: ${targetItem.quantity?.toLocaleString() || 0}${targetItem.unit || ''}
+단가: ₩${targetItem.unit_price_value?.toLocaleString() || 0}
+합계: ₩${targetItem.amount_value?.toLocaleString() || 0}`
+
+    const confirmMessage = isReceived 
+      ? `다음 품목을 입고완료 처리하시겠습니까?\n\n${itemInfo}` 
+      : `다음 품목의 입고완료를 취소하시겠습니까?\n\n${itemInfo}`
+    
+    const confirm = window.confirm(confirmMessage)
+    if (!confirm) return
 
     try {
       // purchase_request_items 테이블 업데이트 (필요한 컬럼만)
@@ -456,15 +524,18 @@ export default function PurchaseDetailModal({
 
       if (error) throw error
 
+      // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
+      setPurchase(prev => {
+        if (!prev) return null
+        const updatedItems = prev.items?.map(item => 
+          item.id === itemId 
+            ? { ...item, is_received: isReceived, received_at: isReceived ? new Date().toISOString() : null }
+            : item
+        )
+        return { ...prev, items: updatedItems }
+      })
+      
       toast.success(isReceived ? '입고 처리되었습니다.' : '입고가 취소되었습니다.')
-      
-      // 데이터 새로고침
-      if (purchaseId) {
-        await loadPurchaseDetail(purchaseId.toString())
-      }
-      
-      // 부모 컴포넌트 새로고침
-      onRefresh?.(true)
     } catch (error) {
       toast.error('입고 처리 중 오류가 발생했습니다.')
     }
@@ -473,6 +544,11 @@ export default function PurchaseDetailModal({
   // 승인 처리
   const handleApprove = async (type: 'middle' | 'final') => {
     if (!purchase) return
+    
+    const approvalType = type === 'middle' ? '1차 승인' : '최종 승인'
+    const confirmMessage = `발주번호: ${purchase.purchase_order_number}\n\n${approvalType}을 진행하시겠습니까?`
+    const confirm = window.confirm(confirmMessage)
+    if (!confirm) return
     
     try {
       const updateData = type === 'middle' 
@@ -492,10 +568,14 @@ export default function PurchaseDetailModal({
         throw error
       }
       
+      // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
+      if (type === 'middle') {
+        setPurchase(prev => prev ? { ...prev, middle_manager_status: 'approved' } : null)
+      } else {
+        setPurchase(prev => prev ? { ...prev, final_manager_status: 'approved' } : null)
+      }
+      
       toast.success(`${type === 'middle' ? '중간' : '최종'} 승인이 완료되었습니다.`)
-      // 승인 완료 후 강제로 데이터 새로고침 (캐시 무시)
-      onRefresh?.(true)
-      await loadPurchaseDetail(purchaseId?.toString() || '')
     } catch (error) {
       toast.error('승인 처리 중 오류가 발생했습니다.')
     }
@@ -505,7 +585,8 @@ export default function PurchaseDetailModal({
   const handleCompleteAllPayment = async () => {
     if (!purchase || !canPurchase) return
     
-    const confirm = window.confirm('모든 품목을 구매완료 처리하시겠습니까?')
+    const confirmMessage = `발주번호: ${purchase.purchase_order_number}\n\n모든 품목을 구매완료 처리하시겠습니까?`
+    const confirm = window.confirm(confirmMessage)
     if (!confirm) return
     
     try {
@@ -522,9 +603,18 @@ export default function PurchaseDetailModal({
       
       if (error) throw error
       
+      // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
+      setPurchase(prev => {
+        if (!prev) return null
+        const updatedItems = prev.items?.map(item => 
+          !item.is_payment_completed 
+            ? { ...item, is_payment_completed: true, payment_completed_at: new Date().toISOString() }
+            : item
+        )
+        return { ...prev, items: updatedItems }
+      })
+      
       toast.success('모든 품목이 구매완료 처리되었습니다.')
-      onRefresh?.(true)
-      await loadPurchaseDetail(purchaseId?.toString() || '')
     } catch (error) {
       logger.error('전체 구매완료 처리 오류', error);
       toast.error('구매완료 처리 중 오류가 발생했습니다.')
@@ -535,7 +625,8 @@ export default function PurchaseDetailModal({
   const handleCompleteAllReceipt = async () => {
     if (!purchase || !canReceiveItems) return
     
-    const confirm = window.confirm('모든 품목을 입고완료 처리하시겠습니까?')
+    const confirmMessage = `발주번호: ${purchase.purchase_order_number}\n\n모든 품목을 입고완료 처리하시겠습니까?`
+    const confirm = window.confirm(confirmMessage)
     if (!confirm) return
     
     try {
@@ -560,9 +651,25 @@ export default function PurchaseDetailModal({
       
       if (error) throw error
       
+      // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
+      setPurchase(prev => {
+        if (!prev) return null
+        const updatedItems = prev.items?.map(item => 
+          !item.is_received 
+            ? { 
+                ...item, 
+                is_received: true, 
+                delivery_status: 'received',
+                received_date: new Date().toISOString(),
+                received_by: user.id,
+                received_by_name: currentUserName
+              }
+            : item
+        )
+        return { ...prev, items: updatedItems }
+      })
+      
       toast.success('모든 품목이 입고완료 처리되었습니다.')
-      onRefresh?.(true)
-      await loadPurchaseDetail(purchaseId?.toString() || '')
     } catch (error) {
       logger.error('전체 입고완료 처리 오류', error);
       toast.error('입고완료 처리 중 오류가 발생했습니다.')
@@ -595,9 +702,25 @@ export default function PurchaseDetailModal({
       
       if (error) throw error
       
+      // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
+      setPurchase(prev => {
+        if (!prev) return null
+        const updatedItems = prev.items?.map(item => 
+          item.id === itemId 
+            ? { 
+                ...item, 
+                is_received: true, 
+                delivery_status: 'received',
+                received_date: new Date().toISOString(),
+                received_by: user.id,
+                received_by_name: currentUserName
+              }
+            : item
+        )
+        return { ...prev, items: updatedItems }
+      })
+      
       toast.success(`"${itemName}" 품목이 입고완료 처리되었습니다.`)
-      onRefresh?.(true)
-      await loadPurchaseDetail(purchaseId?.toString() || '')
     } catch (error) {
       logger.error('개별 입고완료 처리 오류', error);
       toast.error('입고완료 처리 중 오류가 발생했습니다.')
@@ -629,10 +752,14 @@ export default function PurchaseDetailModal({
         throw error
       }
       
+      // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
+      if (type === 'middle') {
+        setPurchase(prev => prev ? { ...prev, middle_manager_status: 'rejected' } : null)
+      } else {
+        setPurchase(prev => prev ? { ...prev, final_manager_status: 'rejected' } : null)
+      }
+      
       toast.success(`${type === 'middle' ? '중간' : '최종'} 반려가 완료되었습니다.`)
-      // 반려 완료 후 강제로 데이터 새로고침 (캐시 무시)
-      onRefresh?.(true)
-      await loadPurchaseDetail(purchaseId?.toString() || '')
     } catch (error) {
       toast.error('반려 처리 중 오류가 발생했습니다.')
     }
@@ -921,7 +1048,7 @@ export default function PurchaseDetailModal({
                         <Button
                           size="sm"
                           onClick={handleCompleteAllPayment}
-                          className="button-base button-action-primary"
+                          className="button-base bg-orange-500 hover:bg-orange-600 text-white"
                         >
                           <CreditCard className="w-3 h-3 mr-1" />
                           전체 구매완료
@@ -931,7 +1058,7 @@ export default function PurchaseDetailModal({
                         <Button
                           size="sm"
                           onClick={handleCompleteAllReceipt}
-                          className="button-base button-action-success"
+                          className="button-base button-action-primary"
                         >
                           <Truck className="w-3 h-3 mr-1" />
                           전체 입고완료
@@ -943,15 +1070,27 @@ export default function PurchaseDetailModal({
                 
                 {/* Items Table Header */}
                 <div className="bg-gray-50 px-2 sm:px-3 py-1 border-b border-gray-100">
-                  <div className="hidden sm:grid grid-cols-12 gap-2 modal-label">
-                    <div className="col-span-2">품목명</div>
-                    <div className="col-span-3">규격</div>
-                    <div className="col-span-1 text-center">수량</div>
-                    <div className="col-span-1 text-right">단가</div>
-                    <div className="col-span-2 text-right">합계</div>
-                    <div className="col-span-2 text-center">비고</div>
-                    <div className="col-span-1 text-center">상태</div>
-                  </div>
+                  {isEditing ? (
+                    <div className="hidden sm:grid grid-cols-10 gap-3 modal-label">
+                      <div className="col-span-2">품목명</div>
+                      <div className="col-span-2">규격</div>
+                      <div className="col-span-1 text-center">수량</div>
+                      <div className="col-span-1 text-right">단가</div>
+                      <div className="col-span-2 text-right">합계</div>
+                      <div className="col-span-1 text-center">비고</div>
+                      <div className="col-span-1 text-center">삭제</div>
+                    </div>
+                  ) : (
+                    <div className="hidden sm:grid grid-cols-12 gap-2 modal-label">
+                      <div className="col-span-2">품목명</div>
+                      <div className="col-span-3">규격</div>
+                      <div className="col-span-1 text-center">수량</div>
+                      <div className="col-span-1 text-right">단가</div>
+                      <div className="col-span-2 text-right">합계</div>
+                      <div className="col-span-2 text-center">비고</div>
+                      <div className="col-span-1 text-center">상태</div>
+                    </div>
+                  )}
                 </div>
                 
                 {/* Mobile Table Header */}
@@ -964,15 +1103,16 @@ export default function PurchaseDetailModal({
                   {(isEditing ? editedItems : purchase.items)?.map((item, index) => (
                     <div key={index} className="px-2 sm:px-3 py-1.5 border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                       {/* Desktop Layout */}
-                      <div className="hidden sm:grid grid-cols-12 gap-2 items-center">
+                      <div className={`hidden sm:grid items-center ${isEditing ? 'grid-cols-10 gap-3' : 'grid-cols-12 gap-2'}`}>
                         {/* 품목명 */}
                         <div className="col-span-2">
                           {isEditing ? (
                             <Input
                               value={item.item_name}
                               onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
-                              className="modal-label border-gray-200 rounded-lg"
+                              className="modal-label border-gray-200 rounded-lg relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[300px] focus:w-auto focus:max-w-[500px]"
                               placeholder="품목명"
+                              style={{ minWidth: item.item_name ? `${Math.max(100, item.item_name.length * 8 + 40)}px` : '100px' }}
                             />
                           ) : (
                             <span className="modal-value">{item.item_name || '품목명 없음'}</span>
@@ -980,13 +1120,14 @@ export default function PurchaseDetailModal({
                         </div>
                         
                         {/* 규격 */}
-                        <div className="col-span-3">
+                        <div className={isEditing ? "col-span-2" : "col-span-3"}>
                           {isEditing ? (
                             <Input
                               value={item.specification}
                               onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
-                              className="modal-label border-gray-200 rounded-lg"
+                              className="modal-label border-gray-200 rounded-lg relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[300px] focus:w-auto focus:max-w-[500px]"
                               placeholder="규격"
+                              style={{ minWidth: item.specification ? `${Math.max(120, item.specification.length * 8 + 40)}px` : '120px' }}
                             />
                           ) : (
                             <span className="modal-subtitle">{item.specification || '-'}</span>
@@ -1000,9 +1141,10 @@ export default function PurchaseDetailModal({
                               type="number"
                               value={item.quantity}
                               onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
-                              className="modal-label border-gray-200 rounded-lg text-center w-14"
-                              placeholder="10000"
+                              className="modal-label border-gray-200 rounded-lg text-center relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[120px] focus:w-auto"
+                              placeholder="수량"
                               max="99999"
+                              style={{ minWidth: `${Math.max(80, String(item.quantity || '').length * 12 + 40)}px` }}
                             />
                           ) : (
                             <span className="modal-subtitle">{item.quantity || 0}</span>
@@ -1016,9 +1158,10 @@ export default function PurchaseDetailModal({
                               type="number"
                               value={item.unit_price_value}
                               onChange={(e) => handleItemChange(index, 'unit_price_value', Number(e.target.value))}
-                              className="modal-label border-gray-200 rounded-lg text-right w-20"
-                              placeholder="1000억"
+                              className="modal-label border-gray-200 rounded-lg text-right relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[150px] focus:w-auto"
+                              placeholder="단가"
                               max="100000000000"
+                              style={{ minWidth: `${Math.max(100, String(item.unit_price_value || '').length * 12 + 40)}px` }}
                             />
                           ) : (
                             <span className="modal-subtitle">₩{formatCurrency(item.unit_price_value)}</span>
@@ -1032,9 +1175,10 @@ export default function PurchaseDetailModal({
                               type="number"
                               value={item.amount_value}
                               onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
-                              className="modal-label border-gray-200 rounded-lg text-right"
-                              placeholder="100억"
+                              className="modal-label border-gray-200 rounded-lg text-right relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[150px] focus:w-auto"
+                              placeholder="합계"
                               max="10000000000"
+                              style={{ minWidth: `${Math.max(100, String(item.amount_value || '').length * 12 + 40)}px` }}
                             />
                           ) : (
                             <span className="modal-value">₩{formatCurrency(item.amount_value || 0)}</span>
@@ -1042,13 +1186,14 @@ export default function PurchaseDetailModal({
                         </div>
                         
                         {/* 비고 */}
-                        <div className="col-span-2 text-center">
+                        <div className={isEditing ? "col-span-1 text-center" : "col-span-2 text-center"}>
                           {isEditing ? (
                             <Input
                               value={item.remark || ''}
                               onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
-                              className="modal-label border-gray-200 rounded-lg text-center"
+                              className="modal-label border-gray-200 rounded-lg text-center relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[200px] focus:w-auto focus:max-w-[400px]"
                               placeholder="비고"
+                              style={{ minWidth: item.remark ? `${Math.max(80, item.remark.length * 8 + 40)}px` : '80px' }}
                             />
                           ) : (
                             <span className="modal-subtitle text-center">{item.remark || '-'}</span>
@@ -1076,7 +1221,7 @@ export default function PurchaseDetailModal({
                                       onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
                                       className={`transition-colors ${
                                         item.is_payment_completed
-                                          ? 'button-toggle-active'
+                                          ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
                                           : 'button-toggle-inactive'
                                       }`}
                                     >
@@ -1085,7 +1230,7 @@ export default function PurchaseDetailModal({
                                   ) : (
                                     <span className={`${
                                       item.is_payment_completed 
-                                        ? 'button-toggle-active' 
+                                        ? 'button-toggle-active bg-orange-500 text-white' 
                                         : 'button-waiting-inactive'
                                     }`}>
                                       {item.is_payment_completed ? '구매완료' : '구매대기'}
@@ -1102,7 +1247,7 @@ export default function PurchaseDetailModal({
                                       onClick={() => handleReceiptToggle(item.id, !item.is_received)}
                                       className={`transition-colors ${
                                         item.is_received
-                                          ? 'button-toggle-success'
+                                          ? 'button-action-primary'
                                           : 'button-toggle-inactive'
                                       }`}
                                     >
@@ -1111,7 +1256,7 @@ export default function PurchaseDetailModal({
                                   ) : (
                                     <span className={`${
                                       item.is_received 
-                                        ? 'button-toggle-success' 
+                                        ? 'button-action-primary' 
                                         : 'button-waiting-inactive'
                                     }`}>
                                       {item.is_received ? '입고완료' : '입고대기'}
@@ -1137,8 +1282,9 @@ export default function PurchaseDetailModal({
                               <Input
                                 value={item.item_name}
                                 onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
-                                className="modal-label border-gray-200 rounded-lg"
+                                className="modal-label border-gray-200 rounded-lg relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[250px] focus:w-auto focus:max-w-[400px]"
                                 placeholder="품목명"
+                                style={{ minWidth: item.item_name ? `${Math.max(120, item.item_name.length * 8 + 40)}px` : '120px' }}
                               />
                             ) : (
                               <div className="modal-value font-medium">{item.item_name || '품목명 없음'}</div>
@@ -1147,8 +1293,9 @@ export default function PurchaseDetailModal({
                               <Input
                                 value={item.specification}
                                 onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
-                                className="modal-label border-gray-200 rounded-lg mt-1"
+                                className="modal-label border-gray-200 rounded-lg mt-1 relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[250px] focus:w-auto focus:max-w-[400px]"
                                 placeholder="규격"
+                                style={{ minWidth: item.specification ? `${Math.max(120, item.specification.length * 8 + 40)}px` : '120px' }}
                               />
                             ) : (
                               <div className="modal-subtitle text-gray-500">{item.specification || '-'}</div>
@@ -1160,8 +1307,9 @@ export default function PurchaseDetailModal({
                                 type="number"
                                 value={item.amount_value}
                                 onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
-                                className="modal-label border-gray-200 rounded-lg text-right w-24"
+                                className="modal-label border-gray-200 rounded-lg text-right relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[150px] focus:w-auto"
                                 placeholder="합계"
+                                style={{ minWidth: `${Math.max(96, String(item.amount_value || '').length * 12 + 40)}px` }}
                               />
                             ) : (
                               <div className="modal-value font-semibold">₩{formatCurrency(item.amount_value || 0)}</div>
@@ -1177,8 +1325,9 @@ export default function PurchaseDetailModal({
                                 type="number"
                                 value={item.quantity}
                                 onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
-                                className="modal-label border-gray-200 rounded-lg mt-1"
+                                className="modal-label border-gray-200 rounded-lg mt-1 relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[100px] focus:w-auto"
                                 placeholder="수량"
+                                style={{ minWidth: `${Math.max(80, String(item.quantity || '').length * 12 + 40)}px` }}
                               />
                             ) : (
                               <div className="modal-subtitle">{item.quantity || 0}</div>
@@ -1191,8 +1340,9 @@ export default function PurchaseDetailModal({
                                 type="number"
                                 value={item.unit_price_value}
                                 onChange={(e) => handleItemChange(index, 'unit_price_value', Number(e.target.value))}
-                                className="modal-label border-gray-200 rounded-lg mt-1"
+                                className="modal-label border-gray-200 rounded-lg mt-1 relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[120px] focus:w-auto"
                                 placeholder="단가"
+                                style={{ minWidth: `${Math.max(80, String(item.unit_price_value || '').length * 12 + 40)}px` }}
                               />
                             ) : (
                               <div className="modal-subtitle">₩{formatCurrency(item.unit_price_value)}</div>
@@ -1219,7 +1369,7 @@ export default function PurchaseDetailModal({
                                           onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
                                           className={`text-xs px-2 py-1 rounded transition-colors ${
                                             item.is_payment_completed
-                                              ? 'bg-blue-100 text-blue-700'
+                                              ? 'bg-orange-500 text-white hover:bg-orange-600'
                                               : 'bg-gray-100 text-gray-600'
                                           }`}
                                         >
@@ -1228,7 +1378,7 @@ export default function PurchaseDetailModal({
                                       ) : (
                                         <span className={`text-xs px-2 py-1 rounded ${
                                           item.is_payment_completed 
-                                            ? 'bg-blue-100 text-blue-700' 
+                                            ? 'bg-orange-500 text-white' 
                                             : 'bg-gray-100 text-gray-400'
                                         }`}>
                                           {item.is_payment_completed ? '구매완료' : '구매대기'}
@@ -1244,7 +1394,7 @@ export default function PurchaseDetailModal({
                                           onClick={() => handleReceiptToggle(item.id, !item.is_received)}
                                           className={`text-xs px-2 py-1 rounded transition-colors ${
                                             item.is_received
-                                              ? 'bg-green-100 text-green-700'
+                                              ? 'button-action-primary'
                                               : 'bg-gray-100 text-gray-600'
                                           }`}
                                         >
@@ -1253,7 +1403,7 @@ export default function PurchaseDetailModal({
                                       ) : (
                                         <span className={`text-xs px-2 py-1 rounded ${
                                           item.is_received 
-                                            ? 'bg-green-100 text-green-700' 
+                                            ? 'button-action-primary' 
                                             : 'bg-gray-100 text-gray-400'
                                         }`}>
                                           {item.is_received ? '입고완료' : '입고대기'}
@@ -1278,8 +1428,9 @@ export default function PurchaseDetailModal({
                               <Input
                                 value={item.remark || ''}
                                 onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
-                                className="modal-label border-gray-200 rounded-lg mt-1"
+                                className="modal-label border-gray-200 rounded-lg mt-1 relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[200px] focus:w-auto focus:max-w-[350px]"
                                 placeholder="비고"
+                                style={{ minWidth: item.remark ? `${Math.max(100, item.remark.length * 8 + 40)}px` : '100px' }}
                               />
                             ) : (
                               <div className="modal-subtitle text-gray-500 mt-1">{item.remark || '-'}</div>

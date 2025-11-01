@@ -397,13 +397,17 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       {(activeTab === 'pending' || activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
         <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>
           <Badge className={`card-title business-radius-badge ${
+            purchase.payment_category === '구매요청' || purchase.payment_category === '구매 요청' ? 'bg-blue-100 text-blue-800' :
             purchase.payment_category === '발주' ? 'bg-green-100 text-green-800' :
+            purchase.payment_category === '현장결제' || purchase.payment_category === '현장 결제' ? 'bg-purple-100 text-purple-800' :
             purchase.payment_category === '경비 청구' ? 'bg-yellow-100 text-yellow-800' :
             'bg-gray-100 text-gray-800'
           }`}>
             {(() => {
               // 표시 텍스트 통일
               if (purchase.payment_category === '발주') return '발주요청';
+              if (purchase.payment_category === '구매 요청') return '구매요청';
+              if (purchase.payment_category === '현장 결제') return '현장결제';
               return purchase.payment_category || '-';
             })()}
           </Badge>

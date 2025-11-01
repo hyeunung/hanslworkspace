@@ -279,6 +279,10 @@
     @apply button-base bg-green-500 hover:bg-green-600 text-white;
   }
   
+  .button-action-warning {
+    @apply button-base bg-orange-500 hover:bg-orange-600 text-white;
+  }
+  
   .button-action-secondary {
     @apply button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400;
   }
