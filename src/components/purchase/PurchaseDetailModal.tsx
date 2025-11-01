@@ -1293,8 +1293,8 @@ export default function PurchaseDetailModal({
                 
                 {/* 합계 */}
                 <div className="bg-gray-50 p-2 sm:p-3 border-t border-gray-100">
-                  <div className="flex flex-col items-end">
-                    <span className="modal-section-title">합계</span>
+                  <div className="flex justify-between items-center">
+                    <span className="modal-section-title">총액</span>
                     <span className="modal-value-large">
                       ₩{formatCurrency(
                         (isEditing ? editedItems : purchase.items)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
