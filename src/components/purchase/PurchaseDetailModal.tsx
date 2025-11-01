@@ -1341,11 +1341,11 @@ export default function PurchaseDetailModal({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent 
-        className="overflow-hidden bg-white rounded-lg shadow-sm border-0 w-[100vw] h-[100vh] sm:w-[95vw] sm:max-w-4xl lg:max-w-6xl sm:max-h-[90vh] lg:max-h-[85vh] sm:rounded-lg" 
+        className="overflow-hidden bg-white rounded-lg shadow-sm border-0 w-[100vw] h-[100vh] sm:w-[95vw] sm:max-w-4xl lg:max-w-6xl sm:max-h-[90vh] lg:max-h-[85vh] sm:rounded-lg flex flex-col" 
         showCloseButton={false}
       >
         {/* Apple-style Header */}
-        <div className="relative px-3 sm:px-6 pt-0 sm:pt-3 lg:pt-4 pb-0 sm:pb-2 lg:pb-3">
+        <div className="relative px-3 sm:px-6 pt-0 sm:pt-3 lg:pt-4 pb-0 sm:pb-2 lg:pb-3 flex-shrink-0">
           <button
             onClick={onClose}
             className="button-base button-action-secondary absolute right-3 sm:right-6 top-0 sm:top-3 lg:top-4 w-6 h-6 sm:w-8 sm:h-8 rounded-full"
@@ -1417,7 +1417,7 @@ export default function PurchaseDetailModal({
         </div>
 
         {/* Apple-style Content */}
-        <div className="overflow-y-auto flex-1 px-3 sm:px-6 pb-1 sm:pb-6 -mt-2 sm:mt-0">
+        <div className="overflow-y-auto flex-1 px-3 sm:px-6 pb-1 sm:pb-6 mt-0">
           {content}
         </div>
       </DialogContent>
