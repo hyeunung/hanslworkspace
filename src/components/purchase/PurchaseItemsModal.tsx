@@ -162,7 +162,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
       <DialogContent className="w-full max-w-[95vw] sm:max-w-6xl max-h-[80vh] overflow-hidden flex flex-col bg-white">
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
-            <DialogTitle className="text-xl font-bold">
+            <DialogTitle className="modal-title">
               발주 상세 항목 - {purchase.purchase_order_number}
             </DialogTitle>
             <div className="flex items-center gap-2">
@@ -217,22 +217,22 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
         
         <div className="flex-shrink-0 grid grid-cols-2 md:grid-cols-4 gap-4 py-4 border-b">
           <div>
-            <p className="text-sm text-gray-500">업체명</p>
-            <p className="font-medium">{purchase.vendor_name}</p>
+            <p className="modal-label">업체명</p>
+            <p className="modal-value">{purchase.vendor_name}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-500">요청자</p>
-            <p className="font-medium">{purchase.requester_name}</p>
+            <p className="modal-label">요청자</p>
+            <p className="modal-value">{purchase.requester_name}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-500">프로젝트</p>
-            <p className="font-medium truncate" title={purchase.project_vendor}>
+            <p className="modal-label">프로젝트</p>
+            <p className="modal-value truncate" title={purchase.project_vendor}>
               {purchase.project_vendor}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-500">납기일</p>
-            <p className="font-medium">
+            <p className="modal-label">납기일</p>
+            <p className="modal-value">
               {purchase.delivery_request_date && 
                 format(new Date(purchase.delivery_request_date), 'yyyy-MM-dd')}
             </p>
@@ -258,17 +258,17 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
             <TableBody>
               {items.map((item, index) => (
                 <TableRow key={item.id || index}>
-                  <TableCell className="font-medium">{item.line_number || index + 1}</TableCell>
+                  <TableCell className="modal-value">{item.line_number || index + 1}</TableCell>
                   <TableCell>
                     {isEditing ? (
                       <Input
                         value={item.item_name}
                         onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
-                        className="h-8 text-sm"
+                        className="h-8 modal-label"
                       />
                     ) : (
                       <div className="sm:max-w-[200px]">
-                        <p className="font-medium truncate" title={item.item_name}>
+                        <p className="modal-value truncate" title={item.item_name}>
                           {item.item_name}
                         </p>
                       </div>
@@ -279,7 +279,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                       <Input
                         value={item.specification}
                         onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
-                        className="h-8 text-sm"
+                        className="h-8 modal-label"
                       />
                     ) : (
                       <div className="sm:max-w-[150px] truncate" title={item.specification}>
@@ -296,7 +296,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                         className="h-8 text-sm text-right"
                       />
                     ) : (
-                      <span className="font-medium">{item.quantity.toLocaleString()}</span>
+                      <span className="modal-value">{item.quantity.toLocaleString()}</span>
                     )}
                   </TableCell>
                   <TableCell className="text-right">
@@ -308,7 +308,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                         className="h-8 text-sm text-right"
                       />
                     ) : (
-                      <span>{(item.unit_price_value || 0).toLocaleString()} {purchase.currency}</span>
+                      <span className="modal-subtitle">{(item.unit_price_value || 0).toLocaleString()} {purchase.currency}</span>
                     )}
                   </TableCell>
                   <TableCell className="text-right">
@@ -317,17 +317,17 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                         type="number"
                         value={item.amount_value}
                         onChange={(e) => handleItemChange(index, 'amount_value', e.target.value)}
-                        className="h-8 text-sm text-right font-medium"
+                        className="h-8 modal-label text-right"
                       />
                     ) : (
-                      <span className="font-medium">{(item.amount_value || 0).toLocaleString()} {purchase.currency}</span>
+                      <span className="modal-value">{(item.amount_value || 0).toLocaleString()} {purchase.currency}</span>
                     )}
                   </TableCell>
                   <TableCell>
                     {item.is_received ? (
-                      <Badge className="bg-green-100 text-green-800">입고완료</Badge>
+                      <Badge className="bg-green-100 text-green-800 badge-text">입고완료</Badge>
                     ) : (
-                      <Badge variant="outline">대기</Badge>
+                      <Badge variant="outline" className="badge-text">대기</Badge>
                     )}
                   </TableCell>
                   <TableCell>
@@ -335,12 +335,12 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                       <Input
                         value={item.remark || ''}
                         onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
-                        className="h-8 text-sm"
+                        className="h-8 modal-label"
                         placeholder="비고"
                       />
                     ) : (
                       <div className="sm:max-w-[150px]">
-                        <span className="text-sm text-gray-500 truncate block" title={item.remark}>
+                        <span className="modal-subtitle truncate block" title={item.remark}>
                           {item.remark || '-'}
                         </span>
                       </div>
@@ -365,10 +365,10 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
         </div>
         
         <div className="flex-shrink-0 border-t pt-4 flex justify-between items-center">
-          <div className="text-sm text-gray-500">
+          <div className="modal-subtitle">
             총 {items.length}개 품목
           </div>
-          <div className="text-lg font-bold">
+          <div className="modal-value-large">
             총 금액: {totalAmount.toLocaleString()} {purchase.currency}
           </div>
         </div>

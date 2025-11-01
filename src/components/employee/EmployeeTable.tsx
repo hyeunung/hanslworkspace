@@ -397,19 +397,19 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
           <table className="w-full min-w-[700px]">
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left p-3 font-medium text-gray-900 text-sm w-16">사번</th>
-                <th className="text-left p-3 font-medium text-gray-900 text-sm w-20">이름</th>
-                <th className="text-left p-3 font-medium text-gray-900 text-sm w-20">직급</th>
-                <th className="text-left p-3 font-medium text-gray-900 text-sm w-24">부서</th>
-                <th className="text-left p-3 font-medium text-gray-900 text-sm">연락처</th>
-                <th className="text-left p-3 font-medium text-gray-900 text-sm">이메일</th>
+                <th className="text-left p-3 header-title text-gray-900 w-16">사번</th>
+                <th className="text-left p-3 header-title text-gray-900 w-20">이름</th>
+                <th className="text-left p-3 header-title text-gray-900 w-20">직급</th>
+                <th className="text-left p-3 header-title text-gray-900 w-24">부서</th>
+                <th className="text-left p-3 header-title text-gray-900">연락처</th>
+                <th className="text-left p-3 header-title text-gray-900">이메일</th>
                 {isHRorAdmin && (
                   <>
-                    <th className="text-left p-3 font-medium text-gray-900 text-sm w-24">권한</th>
-                    <th className="text-center p-3 font-medium text-gray-900 text-sm w-16">상태</th>
+                    <th className="text-left p-3 header-title text-gray-900 w-24">권한</th>
+                    <th className="text-center p-3 header-title text-gray-900 w-16">상태</th>
                   </>
                 )}
-                <th className="text-center p-3 font-medium text-gray-900 text-sm w-16">작업</th>
+                <th className="text-center p-3 header-title text-gray-900 w-16">작업</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -422,14 +422,14 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
               ) : (
                 sortedData.map((employee) => (
                   <tr key={employee.id} className="hover:bg-gray-50">
-                    <td className="p-3 text-sm">
+                    <td className="p-3 modal-subtitle">
                       {employee.employeeID || employee.employee_number || employee.id.slice(0, 8)}
                     </td>
-                    <td className="p-3 text-sm font-medium">{employee.name}</td>
-                    <td className="p-3 text-sm">{employee.position || '-'}</td>
-                    <td className="p-3 text-sm">{employee.department || '-'}</td>
-                    <td className="p-3 text-sm">{employee.phone || '-'}</td>
-                    <td className="p-3 text-sm">{employee.email || '-'}</td>
+                    <td className="p-3 modal-value">{employee.name}</td>
+                    <td className="p-3 modal-subtitle">{employee.position || '-'}</td>
+                    <td className="p-3 modal-subtitle">{employee.department || '-'}</td>
+                    <td className="p-3 modal-subtitle">{employee.phone || '-'}</td>
+                    <td className="p-3 modal-subtitle">{employee.email || '-'}</td>
                     {isHRorAdmin && (
                       <>
                         <td className="p-3">

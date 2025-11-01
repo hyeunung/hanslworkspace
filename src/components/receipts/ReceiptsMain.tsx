@@ -454,7 +454,7 @@ export default function ReceiptsMain() {
             <Plus className="w-4 h-4 mr-2" />
             영수증 업로드
           </Button>
-          <Badge variant="secondary" className="text-sm">
+          <Badge variant="secondary" className="modal-subtitle">
             총 {filteredReceipts.length}건
           </Badge>
         </div>
@@ -463,7 +463,7 @@ export default function ReceiptsMain() {
       {/* 필터 섹션 */}
       <Card className="mb-4 border border-gray-200">
         <CardHeader className="bg-white border-b border-gray-200 py-3">
-          <CardTitle className="flex items-center text-gray-900 text-sm font-medium">
+          <CardTitle className="flex items-center text-gray-900 modal-subtitle font-medium">
             <Filter className="w-4 h-4 mr-2" />
             검색 필터
           </CardTitle>
@@ -471,25 +471,25 @@ export default function ReceiptsMain() {
         <CardContent className="py-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">검색</label>
+              <label className="block modal-label text-gray-600 mb-1">검색</label>
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400" />
                 <Input
                   placeholder="파일명, 메모, 업로드일..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-7 text-sm h-9"
+                  className="pl-7 modal-subtitle h-9"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">업로드 날짜</label>
+              <label className="block modal-label text-gray-600 mb-1">업로드 날짜</label>
               <Input
                 type="date"
                 value={dateFilter}
                 onChange={(e) => setDateFilter(e.target.value)}
-                className="text-sm h-9"
+                className="modal-subtitle h-9"
               />
             </div>
 
@@ -500,7 +500,7 @@ export default function ReceiptsMain() {
                   setSearchTerm("");
                   setDateFilter("");
                 }}
-                className="h-9 text-sm"
+                className="h-9 modal-subtitle"
               >
                 초기화
               </Button>
@@ -520,13 +520,13 @@ export default function ReceiptsMain() {
           ) : !permissions.canView ? (
             <div className="text-center py-12">
               <div className="w-12 h-12 text-red-400 mx-auto mb-4">🔒</div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">접근 권한 없음</h3>
+              <h3 className="modal-section-title text-gray-900 mb-2">접근 권한 없음</h3>
               <p className="text-gray-600">영수증 관리에 접근할 권한이 없습니다.</p>
             </div>
           ) : filteredReceipts.length === 0 ? (
             <div className="text-center py-12">
               <Receipt className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">영수증이 없습니다</h3>
+              <h3 className="modal-section-title text-gray-900 mb-2">영수증이 없습니다</h3>
               <p className="text-gray-600">업로드된 영수증이 없거나 검색 조건에 맞는 결과가 없습니다.</p>
             </div>
           ) : (
@@ -536,17 +536,17 @@ export default function ReceiptsMain() {
                 <table className="w-full min-w-fit">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">인쇄완료</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">업로드일</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">파일명</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">메모</th>
+                    <th className="px-4 py-3 text-center header-title text-gray-600 uppercase tracking-wider">인쇄완료</th>
+                    <th className="px-4 py-3 text-center header-title text-gray-600 uppercase tracking-wider">업로드일</th>
+                    <th className="px-4 py-3 text-left header-title text-gray-600 uppercase tracking-wider">파일명</th>
+                    <th className="px-4 py-3 text-left header-title text-gray-600 uppercase tracking-wider">메모</th>
                     {permissions.canViewUploaderInfo && (
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">등록인</th>
+                      <th className="px-4 py-3 text-left header-title text-gray-600 uppercase tracking-wider">등록인</th>
                     )}
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">크기</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">액션</th>
+                    <th className="px-4 py-3 text-center header-title text-gray-600 uppercase tracking-wider">크기</th>
+                    <th className="px-4 py-3 text-center header-title text-gray-600 uppercase tracking-wider">액션</th>
                     {permissions.canDelete && (
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">삭제</th>
+                      <th className="px-4 py-3 text-center header-title text-gray-600 uppercase tracking-wider">삭제</th>
                     )}
                   </tr>
                 </thead>
@@ -557,7 +557,7 @@ export default function ReceiptsMain() {
                       className="hover:bg-gray-50 transition-colors cursor-pointer"
                       onClick={() => handleViewReceipt(receipt)}
                     >
-                      <td className="px-4 py-3 text-sm text-center">
+                      <td className="px-4 py-3 modal-subtitle text-center">
                         {receipt.is_printed ? (
                           <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
                             ✓ 완료
@@ -568,24 +568,24 @@ export default function ReceiptsMain() {
                           </Badge>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-center text-gray-600">
+                      <td className="px-4 py-3 modal-subtitle text-center text-gray-600">
                         {formatDate(receipt.uploaded_at)}
                       </td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                      <td className="px-4 py-3 modal-subtitle font-medium text-gray-900">
                         {receipt.file_name}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
+                      <td className="px-4 py-3 modal-subtitle text-gray-900">
                         {receipt.memo || '-'}
                       </td>
                       {permissions.canViewUploaderInfo && (
-                        <td className="px-4 py-3 text-sm text-gray-600">
+                        <td className="px-4 py-3 modal-subtitle text-gray-600">
                           {receipt.uploaded_by_name || receipt.uploaded_by}
                         </td>
                       )}
-                      <td className="px-4 py-3 text-sm text-center text-gray-600">
+                      <td className="px-4 py-3 modal-subtitle text-center text-gray-600">
                         {formatFileSize(receipt.file_size)}
                       </td>
-                      <td className="px-4 py-3 text-sm text-center">
+                      <td className="px-4 py-3 modal-subtitle text-center">
                         <div className="flex items-center justify-center gap-1">
                           <Button
                             size="sm"
@@ -614,7 +614,7 @@ export default function ReceiptsMain() {
                         </div>
                       </td>
                       {permissions.canDelete && (
-                        <td className="px-4 py-3 text-sm text-center">
+                        <td className="px-4 py-3 modal-subtitle text-center">
                           <Button
                             size="sm"
                             variant="ghost"

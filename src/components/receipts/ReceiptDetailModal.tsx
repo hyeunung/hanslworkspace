@@ -364,7 +364,7 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
                 >
                   <ZoomOut className="w-4 h-4" />
                 </Button>
-                <span className="text-sm min-w-[40px] text-center">
+                <span className="modal-subtitle min-w-[40px] text-center">
                   {Math.round(imageScale * 100)}%
                 </span>
                 <Button

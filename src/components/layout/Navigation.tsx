@@ -91,7 +91,7 @@ export default function Navigation({ role }: NavigationProps) {
                 )}
               >
                 <Icon className="w-5 h-5" />
-                <span className="font-medium">{item.label}</span>
+                <span className="header-title">{item.label}</span>
               </Link>
             </li>
           )

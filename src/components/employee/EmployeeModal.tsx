@@ -330,10 +330,10 @@ export default function EmployeeModal({ isOpen, onClose, employee, onSave, mode 
 
             {mode === 'view' && employee && (
               <div className="pt-4 border-t">
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-2 gap-4 modal-subtitle">
                   <div>
                     <span className="text-gray-500">상태:</span>
-                    <span className={`ml-2 px-2 py-1 rounded text-xs ${
+                    <span className={`ml-2 px-2 py-1 rounded badge-text ${
                       employee.is_active 
                         ? 'bg-green-100 text-green-800' 
                         : 'bg-gray-100 text-gray-600'

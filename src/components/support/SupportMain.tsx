@@ -385,8 +385,8 @@ ${purchaseInfo}`;
       <div className="w-full">
         {/* 헤더 */}
         <div className="mb-4">
-          <h1 className="text-2xl font-bold text-gray-900">문의하기</h1>
-          <p className="text-sm text-gray-600 mt-1">
+          <h1 className="page-title text-gray-900">문의하기</h1>
+          <p className="page-subtitle text-gray-600 mt-1">
             {isAdmin 
               ? '모든 문의를 관리하고 답변할 수 있습니다'
               : '시스템 사용 중 궁금하신 점이나 개선사항을 알려주세요'}
@@ -406,7 +406,7 @@ ${purchaseInfo}`;
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block modal-label text-gray-700 mb-1">
                     문의 유형 <span className="text-red-500">*</span>
                   </label>
                   <Select value={inquiryType} onValueChange={setInquiryType}>
@@ -425,13 +425,13 @@ ${purchaseInfo}`;
                 {/* 수정/삭제 요청 시 발주요청 선택 */}
                 {showPurchaseSelect && (
                   <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <div className="text-sm font-medium text-blue-900">
+                    <div className="modal-label text-blue-900">
                       수정/삭제할 발주요청 선택
                     </div>
                     
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-xs text-gray-600">시작일</label>
+                        <label className="modal-label text-gray-600">시작일</label>
                         <Input
                           type="date"
                           value={startDate}
@@ -440,7 +440,7 @@ ${purchaseInfo}`;
                         />
                       </div>
                       <div>
-                        <label className="text-xs text-gray-600">종료일</label>
+                        <label className="modal-label text-gray-600">종료일</label>
                         <Input
                           type="date"
                           value={endDate}
@@ -472,7 +472,7 @@ ${purchaseInfo}`;
                     
                     {purchaseRequests.length > 0 && (
                       <div className="space-y-3">
-                        <div className="text-xs text-gray-600">
+                        <div className="modal-label text-gray-600">
                           발주요청 선택 (총 {purchaseRequests.length}건)
                         </div>
                         
@@ -482,7 +482,7 @@ ${purchaseInfo}`;
                             <div key={pr.id} className="border rounded overflow-hidden">
                               <div
                                 onClick={() => setSelectedPurchase(pr)}
-                                className={`px-3 py-2 cursor-pointer transition-all text-xs ${
+                                className={`px-3 py-2 cursor-pointer transition-all badge-text ${
                                   selectedPurchase?.id === pr.id
                                     ? 'border-blue-500 bg-blue-50'
                                     : 'hover:bg-gray-50'
@@ -490,7 +490,7 @@ ${purchaseInfo}`;
                               >
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                                    <span className="font-medium whitespace-nowrap">
+                                    <span className="modal-value whitespace-nowrap">
                                       {pr.purchase_order_number || 'N/A'}
                                     </span>
                                     <span className="text-gray-600 truncate">
@@ -499,7 +499,7 @@ ${purchaseInfo}`;
                                     <span className="text-gray-500">
                                       {pr.purchase_request_items?.[0]?.item_name || '품목 없음'}
                                       {pr.purchase_request_items?.length > 1 && (
-                                        <span className="font-medium text-blue-600">
+                                        <span className="modal-value text-blue-600">
                                           {` 외 ${pr.purchase_request_items.length - 1}건`}
                                         </span>
                                       )}
@@ -534,9 +534,9 @@ ${purchaseInfo}`;
                               
                               {/* 상세 품목 목록 */}
                               {expandedPurchase === pr.id && pr.purchase_request_items?.length > 0 && (
-                                <div className="px-3 py-2 bg-gray-50 border-t text-xs">
+                                <div className="px-3 py-2 bg-gray-50 border-t badge-text">
                                   <div className="space-y-1">
-                                    <div className="font-medium text-gray-700 mb-1">품목 상세</div>
+                                    <div className="modal-value text-gray-700 mb-1">품목 상세</div>
                                     {pr.purchase_request_items.map((item: any, index: number) => (
                                       <div key={index} className="flex items-center gap-2 text-gray-600 pl-2">
                                         <span className="text-gray-400">{index + 1}.</span>
@@ -599,7 +599,7 @@ ${purchaseInfo}`;
                 )}
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block modal-label text-gray-700 mb-1">
                     제목 <span className="text-red-500">*</span>
                   </label>
                   <Input
@@ -611,7 +611,7 @@ ${purchaseInfo}`;
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block modal-label text-gray-700 mb-1">
                     내용 <span className="text-red-500">*</span>
                   </label>
                   <Textarea
@@ -621,7 +621,7 @@ ${purchaseInfo}`;
                     rows={6}
                     maxLength={1000}
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="badge-text text-gray-500 mt-1">
                     {message.length}/1000
                   </p>
                 </div>
@@ -684,24 +684,24 @@ ${purchaseInfo}`;
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <Badge variant="outline" className="text-xs whitespace-nowrap">
+                            <Badge variant="outline" className="badge-text whitespace-nowrap">
                               {getInquiryTypeLabel(inquiry.inquiry_type)}
                             </Badge>
                             {getStatusBadge(inquiry.status)}
-                            <span className="text-sm font-medium truncate">
+                            <span className="modal-label truncate">
                               {inquiry.subject}
                             </span>
                             {isAdmin && (
-                              <span className="text-xs text-gray-500">
+                              <span className="badge-text text-gray-500">
                                 {inquiry.user_name || inquiry.user_email}
                               </span>
                             )}
                             {inquiry.purchase_order_number && (
-                              <span className="text-xs text-blue-600">
+                              <span className="badge-text text-blue-600">
                                 [{inquiry.purchase_order_number}]
                               </span>
                             )}
-                            <span className="text-xs text-gray-400 ml-auto whitespace-nowrap">
+                            <span className="badge-text text-gray-400 ml-auto whitespace-nowrap">
                               {inquiry.created_at && format(new Date(inquiry.created_at), 'MM/dd HH:mm')}
                             </span>
                           </div>
@@ -714,7 +714,7 @@ ${purchaseInfo}`;
                                   e.stopPropagation()
                                   handleStatusUpdate(inquiry.id!, 'in_progress')
                                 }}
-                                className="h-6 text-xs px-2"
+                                className="h-6 badge-text px-2"
                               >
                                 처리중
                               </Button>
@@ -726,7 +726,7 @@ ${purchaseInfo}`;
                                   e.stopPropagation()
                                   handleStatusUpdate(inquiry.id!, 'resolved')
                                 }}
-                                className="h-6 text-xs px-2 bg-green-600 hover:bg-green-700"
+                                className="h-6 badge-text px-2 bg-green-600 hover:bg-green-700"
                               >
                                 완료
                               </Button>
@@ -765,18 +765,18 @@ ${purchaseInfo}`;
                         <div className="px-3 py-3 bg-gray-50 border-t text-sm">
                           <div className="space-y-2">
                             <div>
-                              <span className="font-medium text-gray-700">내용:</span>
+                              <span className="modal-value text-gray-700">내용:</span>
                               <p className="text-gray-600 mt-1 whitespace-pre-wrap">{inquiry.message}</p>
                             </div>
                             {inquiry.purchase_order_number && (
                               <div>
-                                <span className="font-medium text-gray-700">관련 발주번호:</span>
+                                <span className="modal-value text-gray-700">관련 발주번호:</span>
                                 <span className="text-blue-600 ml-2">{inquiry.purchase_order_number}</span>
                               </div>
                             )}
                             {inquiry.handled_by && (
                               <div>
-                                <span className="font-medium text-gray-700">처리자:</span>
+                                <span className="modal-value text-gray-700">처리자:</span>
                                 <span className="text-green-600 ml-2">
                                   {inquiry.handled_by}
                                   {inquiry.processed_at && ` (${format(new Date(inquiry.processed_at), 'yyyy-MM-dd HH:mm')})`}
@@ -785,7 +785,7 @@ ${purchaseInfo}`;
                             )}
                             {inquiry.resolution_note && (
                               <div>
-                                <span className="font-medium text-gray-700">처리 내용:</span>
+                                <span className="modal-value text-gray-700">처리 내용:</span>
                                 <p className="text-gray-600 mt-1">{inquiry.resolution_note}</p>
                               </div>
                             )}
@@ -837,19 +837,19 @@ ${purchaseInfo}`;
               {/* 기본 정보 */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
                 <div>
-                  <span className="text-xs text-gray-500 uppercase tracking-wider">발주번호</span>
+                  <span className="badge-text text-gray-500 uppercase tracking-wider">발주번호</span>
                   <p className="font-semibold text-sm mt-1">{selectedInquiryDetail.purchase_order_number || 'N/A'}</p>
                 </div>
                 <div>
-                  <span className="text-xs text-gray-500 uppercase tracking-wider">업체명</span>
+                  <span className="badge-text text-gray-500 uppercase tracking-wider">업체명</span>
                   <p className="font-semibold text-sm mt-1">{selectedInquiryDetail.vendor_name}</p>
                 </div>
                 <div>
-                  <span className="text-xs text-gray-500 uppercase tracking-wider">요청자</span>
+                  <span className="badge-text text-gray-500 uppercase tracking-wider">요청자</span>
                   <p className="font-semibold text-sm mt-1">{selectedInquiryDetail.requester_name}</p>
                 </div>
                 <div>
-                  <span className="text-xs text-gray-500 uppercase tracking-wider">요청일</span>
+                  <span className="badge-text text-gray-500 uppercase tracking-wider">요청일</span>
                   <p className="font-semibold text-sm mt-1">
                     {selectedInquiryDetail.request_date && 
                       format(new Date(selectedInquiryDetail.request_date), 'yyyy-MM-dd')}
@@ -864,21 +864,21 @@ ${purchaseInfo}`;
                   <table className="w-full">
                     <thead className="bg-gray-50 border-b">
                       <tr>
-                        <th className="text-left text-xs font-medium text-gray-700 px-3 py-3 w-12">번호</th>
-                        <th className="text-left text-xs font-medium text-gray-700 px-3 py-3 min-w-[180px]">품명</th>
-                        <th className="text-left text-xs font-medium text-gray-700 px-3 py-3 min-w-[150px]">규격</th>
-                        <th className="text-center text-xs font-medium text-gray-700 px-3 py-3 w-20">수량</th>
-                        <th className="text-right text-xs font-medium text-gray-700 px-3 py-3 w-28">단가</th>
-                        <th className="text-right text-xs font-medium text-gray-700 px-3 py-3 w-32">금액</th>
-                        <th className="text-left text-xs font-medium text-gray-700 px-3 py-3 min-w-[150px]">비고</th>
-                        <th className="text-center text-xs font-medium text-gray-700 px-3 py-3 w-16">링크</th>
-                        {isAdmin && <th className="text-center text-xs font-medium text-gray-700 px-3 py-3 w-24">작업</th>}
+                        <th className="text-left badge-text modal-value text-gray-700 px-3 py-3 w-12">번호</th>
+                        <th className="text-left badge-text modal-value text-gray-700 px-3 py-3 min-w-[180px]">품명</th>
+                        <th className="text-left badge-text modal-value text-gray-700 px-3 py-3 min-w-[150px]">규격</th>
+                        <th className="text-center badge-text modal-value text-gray-700 px-3 py-3 w-20">수량</th>
+                        <th className="text-right badge-text modal-value text-gray-700 px-3 py-3 w-28">단가</th>
+                        <th className="text-right badge-text modal-value text-gray-700 px-3 py-3 w-32">금액</th>
+                        <th className="text-left badge-text modal-value text-gray-700 px-3 py-3 min-w-[150px]">비고</th>
+                        <th className="text-center badge-text modal-value text-gray-700 px-3 py-3 w-16">링크</th>
+                        {isAdmin && <th className="text-center badge-text modal-value text-gray-700 px-3 py-3 w-24">작업</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
                       {selectedInquiryDetail.purchase_request_items?.map((item: any, index: number) => (
                         <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="text-sm px-3 py-3 text-center font-medium text-gray-600">
+                          <td className="text-sm px-3 py-3 text-center modal-value text-gray-600">
                             {item.line_number || index + 1}
                           </td>
                           <td className="text-sm px-3 py-3">
@@ -890,7 +890,7 @@ ${purchaseInfo}`;
                                 autoFocus
                               />
                             ) : (
-                              <span className="font-medium text-gray-900">{item.item_name}</span>
+                              <span className="modal-value text-gray-900">{item.item_name}</span>
                             )}
                           </td>
                           <td className="text-sm px-3 py-3">
@@ -913,7 +913,7 @@ ${purchaseInfo}`;
                                 className="h-9 text-sm text-center w-full"
                               />
                             ) : (
-                              <span className="font-medium">{item.quantity}</span>
+                              <span className="modal-value">{item.quantity}</span>
                             )}
                           </td>
                           <td className="text-sm text-right px-3 py-3">
@@ -925,7 +925,7 @@ ${purchaseInfo}`;
                                 className="h-9 text-sm text-right w-full"
                               />
                             ) : (
-                              <span className="font-medium">
+                              <span className="modal-value">
                                 {item.unit_price_value ? `${parseFloat(item.unit_price_value).toLocaleString()}` : '-'}
                               </span>
                             )}
@@ -950,7 +950,7 @@ ${purchaseInfo}`;
                                 rows={1}
                               />
                             ) : (
-                              <span className="text-gray-600 text-xs">{item.remark || '-'}</span>
+                              <span className="text-gray-600 badge-text">{item.remark || '-'}</span>
                             )}
                           </td>
                           <td className="text-sm text-center px-3 py-3">
@@ -1033,8 +1033,8 @@ ${purchaseInfo}`;
               {/* 비고 */}
               {selectedInquiryDetail.notes && (
                 <div>
-                  <h3 className="font-medium mb-2">비고</h3>
-                  <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">
+                  <h3 className="modal-value mb-2">비고</h3>
+                  <p className="page-subtitle text-gray-600 p-3 bg-gray-50 rounded-lg">
                     {selectedInquiryDetail.notes}
                   </p>
                 </div>

@@ -98,7 +98,7 @@ export default function ApprovalModal({
           {/* 발주 기본 정보 */}
           <div className="bg-gray-50 p-4 business-radius-card space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-lg">
+              <h3 className="modal-section-title">
                 {approval.purchase_order_number || `발주 #${approval.id?.toString().slice(-8)}`}
               </h3>
               <div className="flex gap-2">
@@ -115,24 +115,24 @@ export default function ApprovalModal({
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-gray-500" />
                 <div>
-                  <p className="text-xs text-gray-500">요청자</p>
-                  <p className="font-medium">{approval.requester_name}</p>
+                  <p className="modal-label text-gray-500">요청자</p>
+                  <p className="modal-value">{approval.requester_name}</p>
                 </div>
               </div>
               
               <div className="flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-gray-500" />
                 <div>
-                  <p className="text-xs text-gray-500">업체</p>
-                  <p className="font-medium">{approval.vendor?.vendor_name || '알 수 없음'}</p>
+                  <p className="modal-label text-gray-500">업체</p>
+                  <p className="modal-value">{approval.vendor?.vendor_name || '알 수 없음'}</p>
                 </div>
               </div>
               
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-gray-500" />
                 <div>
-                  <p className="text-xs text-gray-500">요청일</p>
-                  <p className="font-medium">
+                  <p className="modal-label text-gray-500">요청일</p>
+                  <p className="modal-value">
                     {format(new Date(approval.request_date), 'yyyy년 MM월 dd일', { locale: ko })}
                   </p>
                 </div>
@@ -141,7 +141,7 @@ export default function ApprovalModal({
               <div className="flex items-center gap-2">
                 <DollarSign className="w-4 h-4 text-gray-500" />
                 <div>
-                  <p className="text-xs text-gray-500">총액</p>
+                  <p className="modal-label text-gray-500">총액</p>
                   <p className="font-medium text-lg">
                     {formatCurrency(approval.total_amount, approval.currency as 'KRW' | 'USD')}
                   </p>
@@ -152,7 +152,7 @@ export default function ApprovalModal({
             {approval.delivery_request_date && (
               <div className="pt-2 border-t border-gray-200">
                 <p className="text-sm">
-                  <span className="font-medium">납기 요청일:</span>{' '}
+                  <span className="modal-value">납기 요청일:</span>{' '}
                   {format(new Date(approval.delivery_request_date), 'yyyy년 MM월 dd일', { locale: ko })}
                 </p>
               </div>
@@ -169,14 +169,14 @@ export default function ApprovalModal({
               <div className="bg-hansl-50 p-3 business-radius-card space-y-2">
                 {approval.project_vendor && (
                   <div>
-                    <p className="text-xs text-gray-500">프로젝트 업체</p>
-                    <p className="font-medium">{approval.project_vendor}</p>
+                    <p className="modal-label text-gray-500">프로젝트 업체</p>
+                    <p className="modal-value">{approval.project_vendor}</p>
                   </div>
                 )}
                 {approval.project_item && (
                   <div>
-                    <p className="text-xs text-gray-500">프로젝트 품목</p>
-                    <p className="font-medium">{approval.project_item}</p>
+                    <p className="modal-label text-gray-500">프로젝트 품목</p>
+                    <p className="modal-value">{approval.project_item}</p>
                   </div>
                 )}
               </div>
@@ -194,7 +194,7 @@ export default function ApprovalModal({
                 <div key={item.id || index} className="p-3 border-b border-gray-100 last:border-b-0">
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
-                      <p className="font-medium">{item.item_name}</p>
+                      <p className="modal-value">{item.item_name}</p>
                       {item.specification && (
                         <p className="text-sm text-gray-600 mt-1">{item.specification}</p>
                       )}
@@ -209,7 +209,7 @@ export default function ApprovalModal({
                       )}
                     </div>
                     <div className="text-right">
-                      <p className="font-medium">
+                      <p className="modal-value">
                         {item.amount_value ? formatCurrency(item.amount_value, (item.amount_currency || 'KRW') as 'KRW' | 'USD') : '-'}
                       </p>
                     </div>

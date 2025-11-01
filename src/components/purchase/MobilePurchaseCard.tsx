@@ -38,7 +38,7 @@ const StatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
   }
   
   const { text, className } = config[status]
-  return <Badge className={`${className} text-xs`}>{text}</Badge>
+  return <Badge className={`${className} badge-text`}>{text}</Badge>
 })
 
 StatusBadge.displayName = 'StatusBadge'
@@ -57,19 +57,19 @@ const MobilePurchaseCard = memo(({ purchase, onClick }: MobilePurchaseCardProps)
         <div>
           <div className="flex items-center gap-2">
             {isAdvance ? (
-              <Badge className="bg-red-500 text-white font-bold text-xs px-2 py-0.5">
+              <Badge className="bg-red-500 text-white badge-text px-2 py-0.5">
                 선진행
               </Badge>
             ) : (
-              <Badge className="bg-gray-200 text-gray-700 text-xs px-2 py-0.5">
+              <Badge className="bg-gray-200 text-gray-700 badge-text px-2 py-0.5">
                 일반
               </Badge>
             )}
-            <span className="font-semibold text-sm text-gray-900">
+            <span className="card-title text-gray-900">
               {purchase.purchase_order_number || '-'}
             </span>
           </div>
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="badge-text text-gray-500 mt-1">
             {formatDateShort(purchase.request_date)} 요청
           </div>
         </div>
@@ -78,39 +78,39 @@ const MobilePurchaseCard = memo(({ purchase, onClick }: MobilePurchaseCardProps)
 
       {/* 중간 정보 */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between text-sm">
+        <div className="flex items-center justify-between card-subtitle">
           <span className="text-gray-600">요청자</span>
-          <span className="font-medium">{purchase.requester_name}</span>
+          <span className="card-title">{purchase.requester_name}</span>
         </div>
-        <div className="flex items-center justify-between text-sm">
+        <div className="flex items-center justify-between card-subtitle">
           <span className="text-gray-600">업체</span>
-          <span className="font-medium">{purchase.vendor_name}</span>
+          <span className="card-title">{purchase.vendor_name}</span>
         </div>
         {purchase.project_vendor && (
-          <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center justify-between card-subtitle">
             <span className="text-gray-600">PJ업체</span>
-            <span className="font-medium truncate max-w-[150px]">{purchase.project_vendor}</span>
+            <span className="card-title truncate max-w-[150px]">{purchase.project_vendor}</span>
           </div>
         )}
         {purchase.project_item && (
-          <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center justify-between card-subtitle">
             <span className="text-gray-600">PJ ITEM</span>
-            <span className="font-medium truncate max-w-[150px]">{purchase.project_item}</span>
+            <span className="card-title truncate max-w-[150px]">{purchase.project_item}</span>
           </div>
         )}
         {purchase.sales_order_number && (
-          <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center justify-between card-subtitle">
             <span className="text-gray-600">수주번호</span>
-            <span className="font-medium truncate max-w-[150px]">{purchase.sales_order_number}</span>
+            <span className="card-title truncate max-w-[150px]">{purchase.sales_order_number}</span>
           </div>
         )}
         {purchase.item_name && (
-          <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center justify-between card-subtitle">
             <span className="text-gray-600">품목</span>
-            <span className="font-medium truncate max-w-[150px]">{purchase.item_name}</span>
+            <span className="card-title truncate max-w-[150px]">{purchase.item_name}</span>
           </div>
         )}
-        <div className="flex items-center justify-between text-sm">
+        <div className="flex items-center justify-between card-subtitle">
           <span className="text-gray-600">금액</span>
           <span className="font-semibold text-gray-900">
             {(purchase.amount_value || purchase.total_amount)?.toLocaleString()} {purchase.currency}
@@ -120,7 +120,7 @@ const MobilePurchaseCard = memo(({ purchase, onClick }: MobilePurchaseCardProps)
 
       {/* 입고 현황 */}
       <div className="space-y-1">
-        <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center justify-between badge-text">
           <span className="text-gray-600">입고현황</span>
           <span className="text-gray-700">
             {receiptProgress.received}/{receiptProgress.total} ({receiptProgress.percentage}%)
@@ -139,19 +139,19 @@ const MobilePurchaseCard = memo(({ purchase, onClick }: MobilePurchaseCardProps)
 
       {/* 결제 상태 */}
       {purchase.is_payment_completed !== undefined && (
-        <div className="flex items-center justify-between text-sm">
+        <div className="flex items-center justify-between card-subtitle">
           <span className="text-gray-600">결제</span>
           {purchase.is_payment_completed ? (
-            <Badge className="bg-green-100 text-green-800 text-xs">완료</Badge>
+            <Badge className="bg-green-100 text-green-800 badge-text">완료</Badge>
           ) : (
-            <Badge className="bg-gray-100 text-gray-800 text-xs">대기</Badge>
+            <Badge className="bg-gray-100 text-gray-800 badge-text">대기</Badge>
           )}
         </div>
       )}
 
       {/* 카드 전체가 클릭 가능하므로 버튼 제거 */}
       <div className="pt-2 border-t">
-        <div className="flex items-center justify-center text-xs text-gray-500">
+        <div className="flex items-center justify-center badge-text text-gray-500">
           <Eye className="w-3 h-3 mr-1" />
           클릭하여 상세보기
         </div>

@@ -128,7 +128,7 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
           ) : (
             sortedData.map((vendor) => (
               <TableRow key={vendor.id}>
-                <TableCell className="font-medium text-[11px] px-2 py-1.5">
+                <TableCell className="modal-value px-2 py-1.5">
                   {vendor.vendor_name}
                 </TableCell>
                 <TableCell className="text-center text-[11px] px-1 py-1.5">
@@ -141,7 +141,7 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                     {vendor.vendor_contacts && vendor.vendor_contacts.length > 0 ? (
                       vendor.vendor_contacts.slice(0, 2).map((contact: any, idx: number) => (
                         <div key={idx} className="text-[10px]">
-                          <span className="font-medium">{contact.contact_name}</span>
+                          <span className="modal-value">{contact.contact_name}</span>
                           <span className="text-gray-500 ml-1">{contact.contact_phone}</span>
                           {contact.contact_email && (
                             <span className="text-gray-500 ml-1 truncate inline-block max-w-[180px]">{contact.contact_email}</span>
@@ -214,11 +214,11 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
           <table className="w-full min-w-[600px]">
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left p-3 font-medium text-gray-900 text-sm">업체명</th>
-                <th className="text-center p-3 font-medium text-gray-900 text-sm w-20">담당자</th>
-                <th className="text-left p-3 font-medium text-gray-900 text-sm">연락처</th>
-                <th className="text-left p-3 font-medium text-gray-900 text-sm w-24">등록일</th>
-                <th className="text-center p-3 font-medium text-gray-900 text-sm w-16">작업</th>
+                <th className="text-left p-3 header-title text-gray-900">업체명</th>
+                <th className="text-center p-3 header-title text-gray-900 w-20">담당자</th>
+                <th className="text-left p-3 header-title text-gray-900">연락처</th>
+                <th className="text-left p-3 header-title text-gray-900 w-24">등록일</th>
+                <th className="text-center p-3 header-title text-gray-900 w-16">작업</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -231,23 +231,23 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
               ) : (
                 sortedData.map((vendor) => (
                   <tr key={vendor.id} className="hover:bg-gray-50">
-                    <td className="p-3 font-medium text-sm">{vendor.vendor_name}</td>
+                    <td className="p-3 modal-value">{vendor.vendor_name}</td>
                     <td className="p-3 text-center">
-                      <Badge variant="outline" className="text-xs">
+                      <Badge variant="outline" className="badge-text">
                         {vendor.vendor_contacts?.length || 0}명
                       </Badge>
                     </td>
-                    <td className="p-3 text-sm">
+                    <td className="p-3 modal-subtitle">
                       {vendor.vendor_contacts && vendor.vendor_contacts.length > 0 ? (
                         <div>
-                          <div className="font-medium">{vendor.vendor_contacts[0].contact_name}</div>
-                          <div className="text-gray-500 text-xs">{vendor.vendor_contacts[0].contact_phone}</div>
+                          <div className="modal-value">{vendor.vendor_contacts[0].contact_name}</div>
+                          <div className="text-gray-500 badge-text">{vendor.vendor_contacts[0].contact_phone}</div>
                         </div>
                       ) : (
                         <span className="text-gray-400">담당자 없음</span>
                       )}
                     </td>
-                    <td className="p-3 text-sm">{formatDate(vendor.created_at)}</td>
+                    <td className="p-3 modal-subtitle">{formatDate(vendor.created_at)}</td>
                     <td className="p-3 text-center">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -319,11 +319,11 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                   <div className="space-y-1">
                     {vendor.vendor_contacts && vendor.vendor_contacts.length > 0 ? (
                       vendor.vendor_contacts.slice(0, 2).map((contact: any, idx: number) => (
-                        <div key={idx} className="text-sm">
-                          <div className="font-medium">{contact.contact_name}</div>
-                          <div className="text-gray-500 text-xs">{contact.contact_phone}</div>
+                        <div key={idx} className="modal-subtitle">
+                          <div className="modal-value">{contact.contact_name}</div>
+                          <div className="text-gray-500 badge-text">{contact.contact_phone}</div>
                           {contact.contact_email && (
-                            <div className="text-gray-500 text-xs">{contact.contact_email}</div>
+                            <div className="text-gray-500 badge-text">{contact.contact_email}</div>
                           )}
                         </div>
                       ))
@@ -331,7 +331,7 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                       <span className="text-gray-400">담당자 없음</span>
                     )}
                     {vendor.vendor_contacts && vendor.vendor_contacts.length > 2 && (
-                      <span className="text-sm text-gray-500">외 {vendor.vendor_contacts.length - 2}명</span>
+                      <span className="modal-subtitle text-gray-500">외 {vendor.vendor_contacts.length - 2}명</span>
                     )}
                   </div>
                 } 

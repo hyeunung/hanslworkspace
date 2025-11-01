@@ -23,15 +23,15 @@ export default function MobileReceiptCard({ receipt, onView, onPrint, onDownload
           {/* 상단: 인쇄 상태 + 업로드일 */}
           <div className="flex items-center justify-between">
             {receipt.is_printed ? (
-              <Badge className="bg-green-100 text-green-700 hover:bg-green-100 text-xs">
+              <Badge className="bg-green-100 text-green-700 hover:bg-green-100 badge-text">
                 ✓ 인쇄완료
               </Badge>
             ) : (
-              <Badge variant="secondary" className="bg-gray-100 text-gray-600 text-xs">
+              <Badge variant="secondary" className="bg-gray-100 text-gray-600 badge-text">
                 미완료
               </Badge>
             )}
-            <div className="flex items-center gap-1 text-xs text-gray-500">
+            <div className="flex items-center gap-1 badge-text text-gray-500">
               <Calendar className="w-3 h-3" />
               <span>{formatDate(receipt.uploaded_at)}</span>
             </div>
@@ -40,20 +40,20 @@ export default function MobileReceiptCard({ receipt, onView, onPrint, onDownload
           {/* 파일명 */}
           <div className="flex items-center gap-2">
             <FileText className="w-4 h-4 text-hansl-600" />
-            <span className="font-semibold text-gray-900">
+            <span className="card-title text-gray-900">
               {receipt.file_name}
             </span>
           </div>
 
           {/* 메모 */}
           {receipt.memo && (
-            <div className="text-sm text-gray-900 bg-gray-50 rounded p-2">
+            <div className="card-subtitle text-gray-900 bg-gray-50 rounded p-2">
               {receipt.memo}
             </div>
           )}
 
           {/* 업로드 정보 */}
-          <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center justify-between card-subtitle">
             <div className="flex items-center gap-1 text-gray-600">
               <User className="w-3 h-3" />
               <span>{receipt.uploaded_by_name || receipt.uploaded_by}</span>

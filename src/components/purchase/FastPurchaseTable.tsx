@@ -113,7 +113,7 @@ const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
         <div className="flex items-center gap-0.5">
           <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
         </div>
-        <Badge className="bg-red-100 text-red-800 text-[11px] font-medium px-1.5 py-0">
+        <Badge className="bg-red-100 text-red-800 badge-text px-1.5 py-0">
           반려
         </Badge>
       </div>
@@ -127,7 +127,7 @@ const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
         <div className="flex items-center gap-0.5">
           <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
         </div>
-        <Badge className="bg-green-100 text-green-800 text-[11px] font-medium px-1.5 py-0">
+        <Badge className="bg-green-100 text-green-800 badge-text px-1.5 py-0">
           승인완료
         </Badge>
       </div>
@@ -143,7 +143,7 @@ const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
           <div className="w-3 h-0.5 bg-gray-300"></div>
           <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
         </div>
-        <Badge className="bg-yellow-100 text-yellow-800 text-[11px] font-medium px-1.5 py-0">
+        <Badge className="bg-yellow-100 text-yellow-800 badge-text px-1.5 py-0">
           1차 승인
         </Badge>
       </div>
@@ -158,7 +158,7 @@ const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
         <div className="w-3 h-0.5 bg-gray-300"></div>
         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
       </div>
-      <Badge className="bg-gray-100 text-gray-600 text-[11px] font-medium px-1.5 py-0">
+      <Badge className="bg-gray-100 text-gray-600 badge-text px-1.5 py-0">
         승인대기
       </Badge>
     </div>
@@ -276,14 +276,14 @@ const ProgressTypeBadge = memo(({ type }: { type?: string }) => {
   
   if (isAdvance) {
     return (
-      <Badge className="bg-red-500 text-white font-bold text-[11px] px-2 py-0.5">
+      <Badge className="bg-red-500 text-white font-bold card-title px-2 py-0.5">
         선진행
       </Badge>
     );
   }
   
   return (
-    <Badge className="bg-gray-200 text-gray-700 text-[11px] px-2 py-0.5">
+    <Badge className="bg-gray-200 text-gray-700 card-title px-2 py-0.5">
       일반
     </Badge>
   );
@@ -330,7 +330,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
                 style={{ width: `${paymentProgress.percentage}%` }}
               />
             </div>
-            <span className="text-[11px] text-gray-600">
+            <span className="card-title text-gray-600">
               {paymentProgress.percentage}%
             </span>
           </div>
@@ -349,13 +349,13 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
                 style={{ width: `${receiptProgress.percentage}%` }}
               />
             </div>
-            <span className="text-[11px] text-gray-600">
+            <span className="card-title text-gray-600">
               {receiptProgress.percentage}%
             </span>
           </div>
         </td>
       )}
-      <td className={`px-2 py-1.5 font-medium text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>
+      <td className={`px-2 py-1.5 font-medium card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>
         <div className="flex items-center gap-1">
           {/* 엑셀 다운로드 아이콘 - 항상 표시, 조건에 따라 활성화/비활성화 */}
           {onExcelDownload && (
@@ -395,8 +395,8 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       </td>
       {/* 승인대기, 입고현황, 전체항목 탭에서만 결제종류 표시 */}
       {(activeTab === 'pending' || activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
-        <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>
-          <Badge className={`text-[11px] ${
+        <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>
+          <Badge className={`card-title ${
             purchase.payment_category === '구매 요청' ? 'bg-blue-100 text-blue-800' : 
             purchase.payment_category === '발주' ? 'bg-green-100 text-green-800' :
             purchase.payment_category === '경비 청구' ? 'bg-yellow-100 text-yellow-800' :
@@ -411,69 +411,69 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
           </Badge>
         </td>
       )}
-      <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.requesterName}`}>
+      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.requesterName}`}>
         <span className="block truncate" title={purchase.requester_name || ''}>
           {purchase.requester_name || '-'}
         </span>
       </td>
-      <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.requestDate}`}>
+      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.requestDate}`}>
         {formatDateShort(purchase.request_date)}
       </td>
-      <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.vendorName}`}>
+      <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.vendorName}`}>
         <span className="block truncate" title={purchase.vendor_name || ''}>
           {purchase.vendor_name || '-'}
         </span>
       </td>
-      <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.contactName}`}>
+      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.contactName}`}>
         <span className="block truncate" title={purchase.contact_name || ''}>
           {purchase.contact_name || '-'}
         </span>
       </td>
-      <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>
+      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>
         {formatDateShort(purchase.delivery_request_date)}
       </td>
-      <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>
+      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>
         {formatDateShort(purchase.revised_delivery_request_date)}
       </td>
-      <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.itemName}`}>
+      <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.itemName}`}>
         <span className="block truncate" title={purchase.item_name || ''}>
           {purchase.item_name || '-'}
         </span>
       </td>
-      <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.specification}`}>
+      <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.specification}`}>
         <span className="block truncate" title={purchase.specification || ''}>
           {purchase.specification || '-'}
         </span>
       </td>
-      <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>
+      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>
         {purchase.quantity || 0}
       </td>
-      <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>
+      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>
         {purchase.unit_price_value ? `${purchase.unit_price_value.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.currency || 'KRW')}`}
       </td>
-      <td className={`px-2 py-1.5 text-[11px] font-medium whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>
+      <td className={`px-2 py-1.5 card-title font-medium whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>
         {purchase.amount_value ? `${purchase.amount_value.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : purchase.total_amount ? `${purchase.total_amount.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.currency || 'KRW')}`}
       </td>
       
       {/* 탭별 다른 칼럼 표시 */}
       {activeTab === 'pending' && (
         <>
-          <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.remark}`}>
+          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
             <span className="block truncate" title={purchase.remark || ''}>
               {purchase.remark || '-'}
             </span>
           </td>
-          <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.projectVendor}`}>
+          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectVendor}`}>
             <span className="block truncate" title={purchase.project_vendor || ''}>
               {purchase.project_vendor || '-'}
             </span>
           </td>
-          <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.projectItem}`}>
+          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectItem}`}>
             <span className="block truncate" title={purchase.project_item || ''}>
               {purchase.project_item || '-'}
             </span>
           </td>
-          <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>
+          <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>
             <span className="block truncate" title={purchase.sales_order_number || ''}>
               {purchase.sales_order_number || '-'}
             </span>
@@ -483,12 +483,12 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       
       {activeTab === 'purchase' && (
         <>
-          <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.remark}`}>
+          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
             <span className="block truncate" title={purchase.remark || ''}>
               {purchase.remark || '-'}
             </span>
           </td>
-          <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.link}`}>
+          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.link}`}>
             {purchase.link ? (
               <a 
                 href={purchase.link} 
@@ -503,7 +503,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
               <span className="text-gray-400">-</span>
             )}
           </td>
-          <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>
+          <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>
             <span className="block truncate" title={purchase.vendor_payment_schedule || ''}>
               {purchase.vendor_payment_schedule || '-'}
             </span>
@@ -513,27 +513,27 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       
       {activeTab === 'receipt' && (
         <>
-          <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.remark}`}>
+          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
             <span className="block truncate" title={purchase.remark || ''}>
               {purchase.remark || '-'}
             </span>
           </td>
-          <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.projectVendor}`}>
+          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectVendor}`}>
             <span className="block truncate" title={purchase.project_vendor || ''}>
               {purchase.project_vendor || '-'}
             </span>
           </td>
-          <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.projectItem}`}>
+          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectItem}`}>
             <span className="block truncate" title={purchase.project_item || ''}>
               {purchase.project_item || '-'}
             </span>
           </td>
-          <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>
+          <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>
             <span className="block truncate" title={purchase.sales_order_number || ''}>
               {purchase.sales_order_number || '-'}
             </span>
           </td>
-          <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>
+          <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>
             <span className="block truncate" title={purchase.vendor_payment_schedule || ''}>
               {purchase.vendor_payment_schedule || '-'}
             </span>
@@ -543,12 +543,12 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       
       {(activeTab === 'done' || !activeTab) && (
         <>
-          <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.remark}`}>
+          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
             <span className="block truncate" title={purchase.remark || ''}>
               {purchase.remark || '-'}
             </span>
           </td>
-          <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.link}`}>
+          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.link}`}>
             {purchase.link ? (
               <a 
                 href={purchase.link} 
@@ -563,22 +563,22 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
               <span className="text-gray-400">-</span>
             )}
           </td>
-          <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.projectVendor}`}>
+          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectVendor}`}>
             <span className="block truncate" title={purchase.project_vendor || ''}>
               {purchase.project_vendor || '-'}
             </span>
           </td>
-          <td className={`px-2 py-1.5 text-[11px] ${COMMON_COLUMN_CLASSES.projectItem}`}>
+          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectItem}`}>
             <span className="block truncate" title={purchase.project_item || ''}>
               {purchase.project_item || '-'}
             </span>
           </td>
-          <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>
+          <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>
             <span className="block truncate" title={purchase.sales_order_number || ''}>
               {purchase.sales_order_number || '-'}
             </span>
           </td>
-          <td className={`px-2 py-1.5 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>
+          <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>
             <span className="block truncate" title={purchase.vendor_payment_schedule || ''}>
               {purchase.vendor_payment_schedule || '-'}
             </span>
@@ -597,12 +597,12 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
                     style={{ width: `${purchaseProgress.percentage}%` }}
                   />
                 </div>
-                <span className="text-[11px] text-gray-600">
+                <span className="card-title text-gray-600">
                   {purchaseProgress.percentage}%
                 </span>
               </div>
             ) : (
-              <span className="text-gray-400 text-[11px]">-</span>
+              <span className="text-gray-400 card-title">-</span>
             )}
           </td>
           <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receipt}`}>
@@ -616,16 +616,16 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
                   style={{ width: `${receiptProgress.percentage}%` }}
                 />
               </div>
-              <span className="text-[11px] text-gray-600">
+              <span className="card-title text-gray-600">
                 {receiptProgress.percentage}%
               </span>
             </div>
           </td>
           <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.paymentStatus}`}>
             {purchase.is_payment_completed ? (
-              <Badge className="bg-green-100 text-green-800 text-[11px]">완료</Badge>
+              <Badge className="bg-green-100 text-green-800 card-title">완료</Badge>
             ) : (
-              <Badge className="bg-gray-100 text-gray-800 text-[11px]">대기</Badge>
+              <Badge className="bg-gray-100 text-gray-800 card-title">대기</Badge>
             )}
           </td>
         </>
@@ -952,24 +952,24 @@ const FastPurchaseTable = memo(({
       return (
         <thead className="bg-gray-50">
           <tr>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.approvalStatus}`}>승인상태</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>변경 입고일</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] text-left ${COMMON_COLUMN_CLASSES.itemName}`}>품명</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.approvalStatus}`}>승인상태</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>변경 입고일</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title text-left ${COMMON_COLUMN_CLASSES.itemName}`}>품명</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
           </tr>
         </thead>
       );
@@ -977,21 +977,21 @@ const FastPurchaseTable = memo(({
     
     const baseHeaders = (
       <>
-        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
+        <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
         {(activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
         )}
-        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
-        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
-        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
-        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
-        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
-        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>변경 입고일</th>
-        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] text-left ${COMMON_COLUMN_CLASSES.itemName}`}>품명</th>
-        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
-        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
-        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
-        <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
+        <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
+        <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
+        <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
+        <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
+        <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
+        <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>변경 입고일</th>
+        <th className={`px-2 py-1.5 font-medium text-gray-900 card-title text-left ${COMMON_COLUMN_CLASSES.itemName}`}>품명</th>
+        <th className={`px-2 py-1.5 font-medium text-gray-900 card-title text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
+        <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
+        <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
+        <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
       </>
     );
 
@@ -1000,34 +1000,34 @@ const FastPurchaseTable = memo(({
     if (activeTab === 'purchase') {
       additionalHeaders = (
         <>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.link}`}>링크</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>지출예정일</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.link}`}>링크</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>지출예정일</th>
         </>
       );
     } else if (activeTab === 'receipt') {
       additionalHeaders = (
         <>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>지출예정일</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>지출예정일</th>
         </>
       );
     } else {
       // done 또는 기본
       additionalHeaders = (
         <>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.link}`}>링크</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>지출예정일</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.status}`}>구매진행</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.receipt}`}>입고진행</th>
-          <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentStatus}`}>결제</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.link}`}>링크</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>지출예정일</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.status}`}>구매진행</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.receipt}`}>입고진행</th>
+          <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentStatus}`}>결제</th>
         </>
       );
     }
@@ -1037,11 +1037,11 @@ const FastPurchaseTable = memo(({
         <tr>
           {/* 구매현황 탭에서는 구매완료 진행률을 맨 앞에 */}
           {activeTab === 'purchase' && (
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>구매진행</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>구매진행</th>
           )}
           {/* 입고현황 탭에서는 입고진행을 맨 앞에 */}
           {activeTab === 'receipt' && (
-            <th className={`px-2 py-1.5 font-medium text-gray-900 text-[11px] whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>입고진행</th>
+            <th className={`px-2 py-1.5 font-medium text-gray-900 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>입고진행</th>
           )}
           {baseHeaders}
           {additionalHeaders}
@@ -1078,7 +1078,7 @@ const FastPurchaseTable = memo(({
       {/* 태블릿 컴팩트 뷰 */}
       <div className="hidden sm:block md:hidden w-full">
         <div className="overflow-x-auto border rounded-lg">
-          <table className="w-full min-w-[600px] text-[11px]">
+          <table className="w-full min-w-[600px] card-title">
             <thead className="bg-gray-50">
               <tr>
                 <th className="text-left p-2 font-medium text-gray-900 w-24">발주번호</th>
