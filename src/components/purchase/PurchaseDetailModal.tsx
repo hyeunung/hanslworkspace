@@ -673,7 +673,6 @@ export default function PurchaseDetailModal({
                     onClick={() => handleApprove('middle')}
                     className={`${approvalButtonClass} border border-gray-400 bg-white hover:bg-gray-50 hover:border-gray-500`}
                   >
-                    <Check className="w-3 h-3" />
                     1차 승인 대기
                   </Button>
                 )}
