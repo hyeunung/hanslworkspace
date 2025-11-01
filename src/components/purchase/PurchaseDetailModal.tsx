@@ -943,14 +943,14 @@ export default function PurchaseDetailModal({
                 </div>
                 
                 {/* Items Table Header */}
-                <div className="bg-gray-50 px-3 py-1.5 border-b border-gray-100">
+                <div className="bg-gray-50 px-3 py-1 border-b border-gray-100">
                   <div className="grid grid-cols-12 gap-2 modal-label">
-                    <div className="col-span-3">품목명</div>
-                    <div className="col-span-2">규격</div>
+                    <div className="col-span-2">품목명</div>
+                    <div className="col-span-3">규격</div>
                     <div className="col-span-1 text-center">수량</div>
-                    <div className="col-span-2 text-right">단가</div>
-                    <div className="col-span-2 text-right">금액</div>
-                    <div className="col-span-1">비고</div>
+                    <div className="col-span-1 text-right">단가</div>
+                    <div className="col-span-2 text-right">합계</div>
+                    <div className="col-span-2 text-center">비고</div>
                     <div className="col-span-1 text-center">상태</div>
                   </div>
                 </div>
@@ -958,10 +958,10 @@ export default function PurchaseDetailModal({
                 {/* Items List */}
                 <div className="max-h-[40vh] overflow-y-auto">
                   {(isEditing ? editedItems : purchase.items)?.map((item, index) => (
-                    <div key={index} className="px-3 py-2 border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                    <div key={index} className="px-3 py-1.5 border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                       <div className="grid grid-cols-12 gap-2 items-center">
                         {/* 품목명 */}
-                        <div className="col-span-3">
+                        <div className="col-span-2">
                           {isEditing ? (
                             <Input
                               value={item.item_name}
@@ -975,7 +975,7 @@ export default function PurchaseDetailModal({
                         </div>
                         
                         {/* 규격 */}
-                        <div className="col-span-2">
+                        <div className="col-span-3">
                           {isEditing ? (
                             <Input
                               value={item.specification}
@@ -995,7 +995,9 @@ export default function PurchaseDetailModal({
                               type="number"
                               value={item.quantity}
                               onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
-                              className="modal-label border-gray-200 rounded-lg text-center"
+                              className="modal-label border-gray-200 rounded-lg text-center w-14"
+                              placeholder="10000"
+                              max="99999"
                             />
                           ) : (
                             <span className="modal-subtitle">{item.quantity || 0}</span>
@@ -1003,20 +1005,22 @@ export default function PurchaseDetailModal({
                         </div>
                         
                         {/* 단가 */}
-                        <div className="col-span-2 text-right">
+                        <div className="col-span-1 text-right">
                           {isEditing ? (
                             <Input
                               type="number"
                               value={item.unit_price_value}
                               onChange={(e) => handleItemChange(index, 'unit_price_value', Number(e.target.value))}
-                              className="modal-label border-gray-200 rounded-lg text-right"
+                              className="modal-label border-gray-200 rounded-lg text-right w-20"
+                              placeholder="1000억"
+                              max="100000000000"
                             />
                           ) : (
                             <span className="modal-subtitle">₩{formatCurrency(item.unit_price_value)}</span>
                           )}
                         </div>
                         
-                        {/* 금액 */}
+                        {/* 합계 */}
                         <div className="col-span-2 text-right">
                           {isEditing ? (
                             <Input
@@ -1024,6 +1028,8 @@ export default function PurchaseDetailModal({
                               value={item.amount_value}
                               onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
                               className="modal-label border-gray-200 rounded-lg text-right"
+                              placeholder="100억"
+                              max="10000000000"
                             />
                           ) : (
                             <span className="modal-value">₩{formatCurrency(item.amount_value || 0)}</span>
@@ -1031,16 +1037,16 @@ export default function PurchaseDetailModal({
                         </div>
                         
                         {/* 비고 */}
-                        <div className="col-span-1">
+                        <div className="col-span-2 text-center">
                           {isEditing ? (
                             <Input
                               value={item.remark || ''}
                               onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
-                              className="modal-label border-gray-200 rounded-lg"
+                              className="modal-label border-gray-200 rounded-lg text-center"
                               placeholder="비고"
                             />
                           ) : (
-                            <span className="modal-subtitle">{item.remark || '-'}</span>
+                            <span className="modal-subtitle text-center">{item.remark || '-'}</span>
                           )}
                         </div>
                         
