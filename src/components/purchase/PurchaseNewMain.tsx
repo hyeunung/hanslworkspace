@@ -779,7 +779,7 @@ export default function PurchaseNewMain() {
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
-                      <SelectItem value="구매요청">구매요청</SelectItem>
+                      <SelectItem value="구매 요청">구매 요청</SelectItem>
                       <SelectItem value="발주">발주</SelectItem>
                       <SelectItem value="현장 결제">현장 결제</SelectItem>
                     </SelectContent>
@@ -1080,7 +1080,7 @@ export default function PurchaseNewMain() {
                       <th className="px-2 py-2 text-right font-medium text-gray-700 min-w-[110px] sm:min-w-[140px]">
                         합계 ({currency})
                       </th>
-                      {paymentCategory === "구매요청" && (
+                      {paymentCategory === "구매 요청" && (
                         <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[120px] sm:min-w-[150px]">링크</th>
                       )}
                       <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[100px] sm:min-w-[150px]">비고</th>
@@ -1174,7 +1174,7 @@ export default function PurchaseNewMain() {
                         </td>
 
                         {/* 링크 (구매요청일 때만) */}
-                        {paymentCategory === "구매요청" && (
+                        {paymentCategory === "구매 요청" && (
                           <td className="px-2 py-1">
                             <Input
                               value={item.link || ''}
