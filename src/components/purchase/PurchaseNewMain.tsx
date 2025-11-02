@@ -779,6 +779,7 @@ export default function PurchaseNewMain() {
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
+                      <SelectItem value="구매요청">구매요청</SelectItem>
                       <SelectItem value="발주">발주</SelectItem>
                       <SelectItem value="현장 결제">현장 결제</SelectItem>
                     </SelectContent>
