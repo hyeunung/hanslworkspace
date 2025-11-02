@@ -282,6 +282,22 @@ export function formatDateShort(dateStr?: string | null): string {
 }
 
 /**
+ * Format date as ISO format (YYYY-MM-DD)
+ */
+export function formatDateISO(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr || '';
+    
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  } catch {
+    return dateStr || '';
+  }
+}
+
+/**
  * Calculate relative time (e.g., "2시간 전", "3일 전")
  */
 export function formatRelativeTime(dateStr?: string | null): string {

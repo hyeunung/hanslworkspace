@@ -380,7 +380,7 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex-1 flex items-center justify-center space-x-2 py-2.5 px-3 sm:px-4 business-radius-button text-xs sm:text-sm font-medium transition-colors ${
+              className={`flex-1 flex items-center justify-center space-x-2 py-1.5 px-3 sm:px-4 business-radius-button button-text font-medium transition-colors ${
                 activeTab === tab.key
                   ? 'text-hansl-600 bg-white shadow-sm border border-gray-200'
                   : 'text-gray-600 bg-transparent hover:text-gray-900 hover:bg-white/50'
@@ -389,11 +389,11 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
               <span className="whitespace-nowrap">{tab.label}</span>
               <Badge 
                 variant="secondary" 
-                className={`text-[10px] sm:text-xs business-radius-badge ${
+                className={
                   activeTab === tab.key 
-                    ? 'bg-hansl-50 text-hansl-700' 
-                    : 'bg-gray-100 text-gray-600'
-                }`}
+                    ? 'badge-stats-active' 
+                    : 'badge-stats-secondary'
+                }
               >
                 {tabCounts[tab.key as keyof typeof tabCounts]}
               </Badge>
@@ -407,13 +407,13 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="w-8 h-8 border-2 border-hansl-500 border-t-transparent rounded-full animate-spin" />
-                <span className="ml-3 text-gray-600">로딩 중...</span>
+                <span className="ml-3 card-subtitle">로딩 중...</span>
               </div>
             ) : filteredPurchases.length === 0 ? (
               <div className="text-center py-12">
                 <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">발주요청서가 없습니다</h3>
-                <p className="text-gray-600">새로운 발주요청서를 작성해보세요.</p>
+                <p className="card-subtitle">새로운 발주요청서를 작성해보세요.</p>
               </div>
             ) : (
               <LazyPurchaseTable 

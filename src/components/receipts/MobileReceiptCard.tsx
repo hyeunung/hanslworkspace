@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Printer, Download, Calendar, User, FileText, Trash2 } from "lucide-react";
 import type { ReceiptItem } from "@/types/receipt";
-import { formatDate, formatFileSize } from "@/utils/receipt";
+import { formatDate, formatFileSize } from "@/utils/helpers";
 
 interface MobileReceiptCardProps {
   receipt: ReceiptItem;

@@ -147,6 +147,33 @@ const badgeBaseClass = 'inline-flex items-center gap-1 business-radius-badge px-
 - **Same text size**: `badge-text` (12px, font-medium)
 - **Visual harmony**: Badges and buttons have identical dimensions
 
+#### Statistics Badge System (Tab Buttons & Counters)
+**Smaller badges for tab buttons, statistics counters, and compact UI elements**
+
+**Statistics Badge Base Structure:**
+```tsx
+// Use this base class for all statistics badges
+const badgeStatsClass = 'inline-flex items-center gap-0.5 business-radius-badge px-1.5 py-0.5 text-[10px] font-medium leading-tight'
+```
+
+**Statistics Badge Classes:**
+- `.badge-stats` - Base statistics badge class (10px text, compact padding)
+- `.badge-stats-primary` - Blue statistics badge (bg-blue-50 text-blue-700)
+- `.badge-stats-secondary` - Gray statistics badge (bg-gray-100 text-gray-600)
+- `.badge-stats-active` - Active tab badge (bg-hansl-50 text-hansl-700)
+
+**Usage Guidelines:**
+- **Tab Buttons**: Use `badge-stats-active` for active tab, `badge-stats-secondary` for inactive
+- **Statistics Counters**: Use `badge-stats-primary` for important counts
+- **Compact Areas**: Use when standard badges are too large for the context
+- **Text Size**: 10px font-medium for minimal visual weight
+
+**Key Features:**
+- **Compact size**: `px-1.5 py-0.5` padding (smaller than standard badges)
+- **10px text**: Smaller than standard `badge-text` (12px)
+- **Same border radius**: `business-radius-badge` for consistency
+- **Minimal visual weight**: Perfect for tab counters and statistics
+
 #### Page Title & Subtitle System (hanslwebapp Standard)
 - `.page-title` - Main page titles (19px, font-semibold, text-foreground)
 - `.page-subtitle` - Page subtitles (12.3px, font-normal, text-muted-foreground)

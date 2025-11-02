@@ -221,6 +221,24 @@
   .badge-secondary {
     @apply badge-base bg-gray-500 text-white !important;
   }
+
+  /* Statistics Badge System - Smaller size for tab buttons and stats */
+  .badge-stats {
+    @apply inline-flex items-center gap-0.5 business-radius-badge px-1.5 py-0.5 text-[10px] font-medium leading-tight;
+    letter-spacing: 0.01em;
+  }
+
+  .badge-stats-primary {
+    @apply badge-stats bg-blue-50 text-blue-700 !important;
+  }
+
+  .badge-stats-secondary {
+    @apply badge-stats bg-gray-100 text-gray-600 !important;
+  }
+
+  .badge-stats-active {
+    @apply badge-stats bg-hansl-50 text-hansl-700 !important;
+  }
   
   
   /* Button Typography System */

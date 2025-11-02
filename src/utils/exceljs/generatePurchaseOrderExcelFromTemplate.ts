@@ -1,4 +1,5 @@
 // 템플릿 기반 엑셀 발주서 생성 (hanslwebapp과 동일한 양식)
+import { formatDateISO } from '@/utils/helpers';
 
 export interface PurchaseOrderData {
   purchase_order_number: string;
@@ -26,12 +27,7 @@ export interface PurchaseOrderItem {
   currency: string;
 }
 
-function formatDate(dateStr: string): string {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return dateStr;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+const formatDate = formatDateISO;
 
 /**
  * 템플릿 기반 엑셀 발주서 생성 (hanslwebapp과 동일한 양식)

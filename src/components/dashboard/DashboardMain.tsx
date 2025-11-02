@@ -16,6 +16,7 @@ import PurchaseStatusModal from '@/components/dashboard/PurchaseStatusModal'
 import { toast } from 'sonner'
 import type { DashboardData } from '@/types/purchase'
 import { useNavigate } from 'react-router-dom'
+import { logger } from '@/lib/logger'
 
 export default function DashboardMain() {
   const [data, setData] = useState<DashboardData | null>(null)
@@ -87,7 +88,14 @@ export default function DashboardMain() {
           const dashboardData = await dashboardService.getDashboardData(defaultEmployee as any)
           setData(dashboardData)
         } catch (_err) {
-          // 대시보드 데이터 로딩 실패 시 빈 상태 유지
+          // 대시보드 데이터 로딩 실패 시에도 기본 employee 정보는 설정
+          setData({
+            employee: defaultEmployee,
+            stats: { pending: 0, purchase: 0, delivery: 0, completed: 0 },
+            pendingApprovals: [],
+            urgentRequests: [],
+            myPurchaseStatus: { waitingPurchase: [], waitingDelivery: [] }
+          } as any)
         }
         
         setLoading(false)
@@ -99,8 +107,8 @@ export default function DashboardMain() {
       try {
         const dashboardData = await dashboardService.getDashboardData(employee)
         
-        // 디버깅: 승인대기 데이터 확인
-        console.log('🔍 대시보드 데이터 로딩 완료', {
+        // 대시보드 데이터 로딩 완료 로깅
+        logger.debug('대시보드 데이터 로딩 완료', {
           employeeName: employee.name,
           employeeEmail: employee.email,
           purchaseRole: employee.purchase_role,
@@ -153,7 +161,7 @@ export default function DashboardMain() {
   }, [loadDashboardData])
 
   const handleQuickApprove = async (requestId: string) => {
-    console.log('Quick approve:', {
+    logger.debug('빠른 승인 처리 시작', {
       requestId: requestId,
       hasData: !!data,
       hasEmployee: !!data?.employee,

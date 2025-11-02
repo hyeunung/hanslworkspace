@@ -105,7 +105,7 @@ export default function VendorMain() {
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-2 text-gray-600">업체 목록을 불러오는 중...</p>
+          <p className="mt-2 card-subtitle">업체 목록을 불러오는 중...</p>
         </div>
       </div>
     )
@@ -128,11 +128,11 @@ export default function VendorMain() {
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
               <h3 className="modal-title">업체 목록</h3>
-              <span className="px-3 py-1 bg-blue-50 text-blue-600 text-sm font-semibold rounded-full">
+              <span className="badge-base bg-blue-50 text-blue-600">
                 총 {filteredVendors.length}개
               </span>
             </div>
-            <div className="text-sm text-gray-500">
+            <div className="card-description">
               {loading && '업데이트 중...'}
             </div>
           </div>

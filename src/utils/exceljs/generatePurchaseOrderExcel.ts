@@ -1,4 +1,5 @@
 // hanslwebapp과 동일한 코드 기반 Excel 생성
+import { formatDateISO } from '@/utils/helpers';
 
 export interface PurchaseOrderData {
   purchase_order_number: string;
@@ -27,12 +28,9 @@ export interface PurchaseOrderItem {
   currency: string;
 }
 
-function formatDate(dateStr: string): string {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return dateStr;
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
+import { formatDateISO } from '@/utils/helpers';
+
+const formatDate = formatDateISO;
 
 // Helper: currency code to symbol
 function getCurrencySymbol(currency: string) {

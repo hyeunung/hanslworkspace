@@ -11,7 +11,8 @@ import MobileReceiptCard from "./MobileReceiptCard";
 import ReceiptUploadModal from "./ReceiptUploadModal";
 import { useReceiptPermissions } from "@/hooks/useReceiptPermissions";
 import type { ReceiptItem } from "@/types/receipt";
-import { formatDate, formatFileSize, extractStoragePathFromUrl } from "@/utils/receipt";
+import { formatDate, formatFileSize } from "@/utils/helpers";
+import { extractStoragePathFromUrl } from "@/utils/receipt";
 import { logger } from "@/lib/logger";
 
 /**
@@ -463,7 +464,7 @@ export default function ReceiptsMain() {
       {/* 필터 섹션 */}
       <Card className="mb-4 border border-gray-200">
         <CardHeader className="bg-white border-b border-gray-200 py-3">
-          <CardTitle className="flex items-center text-gray-900 modal-section-title">
+          <CardTitle className="flex items-center modal-section-title">
             <Filter className="w-4 h-4 mr-2" />
             검색 필터
           </CardTitle>
@@ -471,7 +472,7 @@ export default function ReceiptsMain() {
         <CardContent className="py-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
             <div>
-              <label className="block modal-label text-gray-600 mb-1">검색</label>
+              <label className="block modal-label mb-1">검색</label>
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400" />
                 <Input
@@ -484,7 +485,7 @@ export default function ReceiptsMain() {
             </div>
 
             <div>
-              <label className="block modal-label text-gray-600 mb-1">업로드 날짜</label>
+              <label className="block modal-label mb-1">업로드 날짜</label>
               <Input
                 type="date"
                 value={dateFilter}
@@ -515,19 +516,19 @@ export default function ReceiptsMain() {
           {(loading || permissionsLoading) ? (
             <div className="flex items-center justify-center py-12">
               <div className="w-8 h-8 border-2 border-hansl-500 border-t-transparent rounded-full animate-spin" />
-              <span className="ml-3 text-gray-600">로딩 중...</span>
+              <span className="ml-3 card-subtitle">로딩 중...</span>
             </div>
           ) : !permissions.canView ? (
             <div className="text-center py-12">
               <div className="w-12 h-12 text-red-400 mx-auto mb-4">🔒</div>
-              <h3 className="modal-section-title text-gray-900 mb-2">접근 권한 없음</h3>
-              <p className="text-gray-600">영수증 관리에 접근할 권한이 없습니다.</p>
+              <h3 className="modal-section-title mb-2">접근 권한 없음</h3>
+              <p className="card-subtitle">영수증 관리에 접근할 권한이 없습니다.</p>
             </div>
           ) : filteredReceipts.length === 0 ? (
             <div className="text-center py-12">
               <Receipt className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="modal-section-title text-gray-900 mb-2">영수증이 없습니다</h3>
-              <p className="text-gray-600">업로드된 영수증이 없거나 검색 조건에 맞는 결과가 없습니다.</p>
+              <h3 className="modal-section-title mb-2">영수증이 없습니다</h3>
+              <p className="card-subtitle">업로드된 영수증이 없거나 검색 조건에 맞는 결과가 없습니다.</p>
             </div>
           ) : (
             <>

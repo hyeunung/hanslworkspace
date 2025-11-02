@@ -114,7 +114,7 @@ export default function EmployeeMain() {
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-2 text-gray-600">직원 목록을 불러오는 중...</p>
+          <p className="mt-2 card-subtitle">직원 목록을 불러오는 중...</p>
         </div>
       </div>
     )
@@ -136,8 +136,8 @@ export default function EmployeeMain() {
       <div className="bg-white rounded-lg border">
         <div className="p-4 border-b">
           <div className="flex justify-between items-center">
-            <h3 className="text-lg font-medium">직원 목록</h3>
-            <div className="text-sm text-gray-600">
+            <h3 className="modal-title">직원 목록</h3>
+            <div className="card-description">
               {loading ? '로딩 중...' : `총 ${filteredEmployees.length}명의 직원`}
             </div>
           </div>

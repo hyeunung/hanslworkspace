@@ -2,61 +2,6 @@
  * 영수증 관리 관련 유틸리티 함수들
  */
 
-// 파일 크기를 읽기 쉬운 형태로 변환
-export function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
-
-// 날짜를 한국어 형식으로 포맷
-export function formatDate(dateStr?: string): string {
-  if (!dateStr) return '-';
-  
-  try {
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return '-';
-    
-    return date.toLocaleDateString('ko-KR', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-  } catch {
-    return '-';
-  }
-}
-
-// 상대적 시간 표시 (예: "2시간 전", "3일 전")
-export function formatRelativeTime(dateStr?: string): string {
-  if (!dateStr) return '-';
-  
-  try {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    
-    const diffMinutes = Math.floor(diffMs / (1000 * 60));
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    
-    if (diffMinutes < 60) {
-      return diffMinutes < 1 ? '방금 전' : `${diffMinutes}분 전`;
-    } else if (diffHours < 24) {
-      return `${diffHours}시간 전`;
-    } else if (diffDays < 7) {
-      return `${diffDays}일 전`;
-    } else {
-      return formatDate(dateStr);
-    }
-  } catch {
-    return '-';
-  }
-}
 
 // 파일 타입 검증
 export function isValidImageFile(file: File): boolean {
