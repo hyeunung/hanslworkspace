@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, X, Save, Calculator, Pencil, Trash2 } from "lucide-react";
+import { Plus, X, Save, Calculator, Pencil, Trash2, Package } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -973,110 +973,110 @@ export default function PurchaseNewMain() {
 
         {/* Professional Items Section - 모바일: 전체폭, 데스크톱: 3/4 폭 */}
         <div className="w-full lg:w-3/4 space-y-4">
-          <div className="flex items-center mb-2">
-            <div className="flex flex-col justify-center">
-              <h4 className="font-semibold text-foreground">품목 목록</h4>
-              <p className="text-xs text-muted-foreground mt-0.5">Purchase Items</p>
-            </div>
-            <div className="ml-[15px]">
-              <Select value={currency} onValueChange={setCurrency}>
-                <SelectTrigger className="w-20 h-8 text-xs border-border rounded-md shadow-sm hover:shadow-md transition-shadow duration-200 bg-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="rounded-md">
-                  <SelectItem value="KRW">KRW</SelectItem>
-                  <SelectItem value="USD">USD</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-            <div>
-              <h4 className="text-sm sm:text-base font-semibold text-gray-900">품목 정보</h4>
-              <p className="text-xs text-gray-500 mt-1">품목 입력 가능</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="secondary" className="text-hansl-500">
-                총 금액: {totalAmount.toLocaleString('ko-KR')} {currency}
-              </Badge>
-              <Button 
-                type="button" 
-                size="sm" 
-                variant="outline" 
-                className="bg-white text-gray-600 hover:text-red-600 hover:bg-red-50" 
-                onClick={() => { 
-                  if (confirm('모든 품목을 삭제하시겠습니까?')) {
-                    fields.forEach((_idx, index) => remove(fields.length - 1 - index)); 
-                    append({ 
-                      line_number: 1, 
-                      item_name: '', 
-                      specification: '', 
-                      quantity: 1, 
-                      unit_price_value: 0, 
-                      unit_price_currency: currency, 
-                      amount_value: 0, 
-                      amount_currency: currency, 
-                      remark: '', 
-                      link: '' 
-                    });
-                  }
-                }}
-              >
-                전체삭제
-              </Button>
-              <Input
-                type="number"
-                min={1}
-                value={addCount}
-                onChange={e => setAddCount(Math.max(1, Number(e.target.value.replace(/[^0-9]/g, ''))))}
-                className="w-16 sm:w-20 h-8 text-xs"
-              />
-              <Button
-                type="button"
-                onClick={() => {
-                  for (let i = 0; i < addCount; i++) {
-                    append({
-                      line_number: fields.length + 1 + i,
-                      item_name: '',
-                      specification: '',
-                      quantity: 1,
-                      unit_price_value: 0,
-                      unit_price_currency: currency,
-                      amount_value: 0,
-                      amount_currency: currency,
-                      remark: '',
-                      link: ''
-                    });
-                  }
-                }}
-                size="sm"
-                className="bg-hansl-500 hover:bg-hansl-600 text-white"
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                품목 추가
-              </Button>
-            </div>
-          </div>
 
           {/* 테이블 형태의 품목 리스트 */}
           <div className="relative border border-gray-200 rounded-lg overflow-hidden">
+            <div className="bg-gray-50 border-b border-gray-100 px-2 sm:px-3 py-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Package className="w-4 h-4 text-gray-600" />
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-foreground leading-tight">품목 목록</span>
+                    <span className="text-xs text-muted-foreground leading-tight">Purchase Items</span>
+                  </div>
+                  <span className="badge-secondary whitespace-nowrap">
+                    {fields.length}개
+                  </span>
+                </div>
+                <Select value={currency} onValueChange={setCurrency}>
+                  <SelectTrigger className="w-20 h-8 text-xs border-border rounded-md shadow-sm hover:shadow-md transition-shadow duration-200 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-md">
+                    <SelectItem value="KRW">KRW</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center justify-end gap-2 flex-wrap sm:flex-nowrap">
+                <Badge variant="secondary" className="text-hansl-500 text-[10px] px-1.5 py-0.5 whitespace-nowrap flex-shrink-0 max-w-[120px] truncate">
+                  총액: {totalAmount.toLocaleString('ko-KR')} {currency}
+                </Badge>
+                <Button 
+                  type="button" 
+                  size="sm" 
+                  variant="outline" 
+                  className="bg-white text-gray-600 hover:text-red-600 hover:bg-red-50 whitespace-nowrap text-[10px] px-2 py-1 h-7 flex-shrink-0" 
+                  onClick={() => { 
+                    if (confirm('모든 품목을 삭제하시겠습니까?')) {
+                      fields.forEach((_idx, index) => remove(fields.length - 1 - index)); 
+                      append({ 
+                        line_number: 1, 
+                        item_name: '', 
+                        specification: '', 
+                        quantity: 1, 
+                        unit_price_value: 0, 
+                        unit_price_currency: currency, 
+                        amount_value: 0, 
+                        amount_currency: currency, 
+                        remark: '', 
+                        link: '' 
+                      });
+                    }
+                  }}
+                >
+                  전체삭제
+                </Button>
+                <Input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={addCount}
+                  onChange={e => setAddCount(Math.max(1, Number(e.target.value.replace(/[^0-9]/g, ''))))}
+                  className="w-16 h-7 text-[10px] flex-shrink-0 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <Button
+                  type="button"
+                  onClick={() => {
+                    for (let i = 0; i < addCount; i++) {
+                      append({
+                        line_number: fields.length + 1 + i,
+                        item_name: '',
+                        specification: '',
+                        quantity: 1,
+                        unit_price_value: 0,
+                        unit_price_currency: currency,
+                        amount_value: 0,
+                        amount_currency: currency,
+                        remark: '',
+                        link: ''
+                      });
+                    }
+                  }}
+                  className="bg-hansl-500 hover:bg-hansl-600 text-white whitespace-nowrap text-[10px] px-2 py-1 h-7 flex-shrink-0"
+                >
+                  <Plus className="w-3 h-3 mr-0.5" />
+                  추가
+                </Button>
+              </div>
+            </div>
             <div className="overflow-x-auto">
               <div className="max-h-[500px] overflow-y-auto">
                 <table className="w-full text-xs">
                   <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr className="border-b border-gray-200">
                       <th className="px-2 py-2 text-left font-medium text-gray-700 w-10">#</th>
-                      <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[120px] sm:min-w-[150px]">
+                      <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[100px] sm:min-w-[120px]">
                         품목<span className="text-red-500">*</span>
                       </th>
-                      <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[140px] sm:min-w-[180px]">규격</th>
+                      <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[250px] sm:min-w-[320px]">규격</th>
                       <th className="px-2 py-2 text-center font-medium text-gray-700 w-20">
                         수량<span className="text-red-500">*</span>
                       </th>
-                      <th className="px-2 py-2 text-right font-medium text-gray-700 min-w-[110px] sm:min-w-[120px]">
+                      <th className="px-2 py-2 text-right font-medium text-gray-700 w-[140px] sm:w-[160px]">
                         단가 ({currency})
                       </th>
-                      <th className="px-2 py-2 text-right font-medium text-gray-700 min-w-[100px] sm:min-w-[120px]">
+                      <th className="px-2 py-2 text-right font-medium text-gray-700 min-w-[110px] sm:min-w-[140px]">
                         합계 ({currency})
                       </th>
                       {paymentCategory === "구매요청" && (
@@ -1116,7 +1116,7 @@ export default function PurchaseNewMain() {
                             type="number"
                             min="1"
                             value={item.quantity || ''}
-                            className="h-7 w-20 bg-white border border-gray-200 text-xs text-center"
+                            className="h-7 w-20 bg-white border border-gray-200 text-xs text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             placeholder="0"
                             onChange={(e) => {
                               const newQuantity = parseInt(e.target.value) || 0;
@@ -1155,7 +1155,7 @@ export default function PurchaseNewMain() {
                                   return newState;
                                 });
                               }}
-                              className="h-7 w-full bg-white border border-gray-200 text-xs text-right"
+                              className="h-7 w-32 bg-white border border-gray-200 text-xs text-right"
                               placeholder="0"
                             />
                             <span className="ml-1 text-xs text-gray-500">{currency === "KRW" ? "₩" : "$"}</span>
