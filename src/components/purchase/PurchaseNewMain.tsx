@@ -751,7 +751,7 @@ export default function PurchaseNewMain() {
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">요청 유형<span className="text-red-500 ml-0.5">*</span></Label>
                   <Select value={watch('request_type')} onValueChange={(value) => setValue('request_type', value)}>
-                    <SelectTrigger className="h-7 sm:h-8 lg:h-9 bg-white border border-[#d2d2d7] rounded-md text-[11px] sm:text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -763,7 +763,7 @@ export default function PurchaseNewMain() {
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">진행 종류<span className="text-red-500 ml-0.5">*</span></Label>
                   <Select value={watch('progress_type')} onValueChange={(value) => setValue('progress_type', value)}>
-                    <SelectTrigger className="h-7 sm:h-8 lg:h-9 bg-white border border-[#d2d2d7] rounded-md text-[11px] sm:text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -775,7 +775,7 @@ export default function PurchaseNewMain() {
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">결제 종류<span className="text-red-500 ml-0.5">*</span></Label>
                   <Select value={watch('payment_category')} onValueChange={(value) => setValue('payment_category', value)}>
-                    <SelectTrigger className="h-7 sm:h-8 lg:h-9 bg-white border border-[#d2d2d7] rounded-md text-[11px] sm:text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -845,7 +845,7 @@ export default function PurchaseNewMain() {
                       setValue('contact_id', val ? Number(val) : undefined);
                     }}
                   >
-                    <SelectTrigger className="h-7 sm:h-8 lg:h-9 bg-white border border-[#d2d2d7] rounded-md text-[11px] sm:text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="담당자 선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -990,7 +990,7 @@ export default function PurchaseNewMain() {
                   </span>
                 </div>
                 <Select value={currency} onValueChange={setCurrency}>
-                  <SelectTrigger className="w-20 h-8 text-xs border-border rounded-md shadow-sm hover:shadow-md transition-shadow duration-200 bg-white">
+                  <SelectTrigger className="w-20 h-9 text-xs border-border rounded-md shadow-sm hover:shadow-md transition-shadow duration-200 bg-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-md">
@@ -1007,7 +1007,7 @@ export default function PurchaseNewMain() {
                   type="button" 
                   size="sm" 
                   variant="outline" 
-                  className="bg-white text-gray-600 hover:text-red-600 hover:bg-red-50 whitespace-nowrap text-[10px] px-2 py-1 h-7 flex-shrink-0" 
+                  className="bg-white text-gray-600 hover:text-red-600 hover:bg-red-50 whitespace-nowrap text-xs px-2 py-1 h-9 flex-shrink-0" 
                   onClick={() => { 
                     if (confirm('모든 품목을 삭제하시겠습니까?')) {
                       fields.forEach((_idx, index) => remove(fields.length - 1 - index)); 
@@ -1034,7 +1034,7 @@ export default function PurchaseNewMain() {
                   max={1000}
                   value={addCount}
                   onChange={e => setAddCount(Math.max(1, Number(e.target.value.replace(/[^0-9]/g, ''))))}
-                  className="w-16 h-7 text-[10px] flex-shrink-0 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="w-16 h-9 text-xs flex-shrink-0 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
                 <Button
                   type="button"
@@ -1054,7 +1054,7 @@ export default function PurchaseNewMain() {
                       });
                     }
                   }}
-                  className="bg-hansl-500 hover:bg-hansl-600 text-white whitespace-nowrap text-[10px] px-2 py-1 h-7 flex-shrink-0"
+                  className="bg-hansl-500 hover:bg-hansl-600 text-white whitespace-nowrap text-xs px-2 py-1 h-9 flex-shrink-0"
                 >
                   <Plus className="w-3 h-3 mr-0.5" />
                   추가
