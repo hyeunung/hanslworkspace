@@ -1005,7 +1005,7 @@ export default function PurchaseNewMain() {
                 </Badge>
                 <Button 
                   type="button" 
-                  className="button-action-danger" 
+                  className="inline-flex items-center gap-1 business-radius-badge px-2.5 py-0.5 badge-text leading-tight border border-gray-300 text-gray-600 bg-white hover:bg-red-50 hover:text-red-600" 
                   onClick={() => { 
                     if (confirm('모든 품목을 삭제하시겠습니까?')) {
                       fields.forEach((_idx, index) => remove(fields.length - 1 - index)); 
@@ -1052,7 +1052,7 @@ export default function PurchaseNewMain() {
                       });
                     }
                   }}
-                  className="button-action-primary"
+                  className="inline-flex items-center gap-1 business-radius-badge px-2.5 py-0.5 badge-text leading-tight bg-blue-500 hover:bg-blue-600 text-white"
                 >
                   <Plus className="w-3 h-3 mr-0.5" />
                   추가
