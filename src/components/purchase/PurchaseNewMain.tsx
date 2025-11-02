@@ -990,7 +990,7 @@ export default function PurchaseNewMain() {
                   </span>
                 </div>
                 <Select value={currency} onValueChange={setCurrency}>
-                  <SelectTrigger className="w-20 h-9 text-xs border-border rounded-md shadow-sm hover:shadow-md transition-shadow duration-200 bg-white">
+                  <SelectTrigger className="w-20 h-8 text-xs border-border rounded-md shadow-sm hover:shadow-md transition-shadow duration-200 bg-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-md">
@@ -1007,7 +1007,7 @@ export default function PurchaseNewMain() {
                   type="button" 
                   size="sm" 
                   variant="outline" 
-                  className="bg-white text-gray-600 hover:text-red-600 hover:bg-red-50 whitespace-nowrap text-xs px-2 py-1 h-9 flex-shrink-0" 
+                  className="bg-white text-gray-600 hover:text-red-600 hover:bg-red-50 whitespace-nowrap text-[10px] px-2 py-1 h-7 flex-shrink-0" 
                   onClick={() => { 
                     if (confirm('모든 품목을 삭제하시겠습니까?')) {
                       fields.forEach((_idx, index) => remove(fields.length - 1 - index)); 
@@ -1034,7 +1034,7 @@ export default function PurchaseNewMain() {
                   max={1000}
                   value={addCount}
                   onChange={e => setAddCount(Math.max(1, Number(e.target.value.replace(/[^0-9]/g, ''))))}
-                  className="w-16 h-9 text-xs flex-shrink-0 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="w-16 h-7 text-[10px] flex-shrink-0 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
                 <Button
                   type="button"
@@ -1054,7 +1054,7 @@ export default function PurchaseNewMain() {
                       });
                     }
                   }}
-                  className="bg-hansl-500 hover:bg-hansl-600 text-white whitespace-nowrap text-xs px-2 py-1 h-9 flex-shrink-0"
+                  className="bg-hansl-500 hover:bg-hansl-600 text-white whitespace-nowrap text-[10px] px-2 py-1 h-7 flex-shrink-0"
                 >
                   <Plus className="w-3 h-3 mr-0.5" />
                   추가
