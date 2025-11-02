@@ -990,7 +990,7 @@ export default function PurchaseNewMain() {
                   </span>
                 </div>
                 <Select value={currency} onValueChange={setCurrency}>
-                  <SelectTrigger className="w-20 h-8 text-xs border-border rounded-md shadow-sm hover:shadow-md transition-shadow duration-200 bg-white">
+                  <SelectTrigger className="w-20 text-xs border-border business-radius-badge shadow-sm hover:shadow-md transition-shadow duration-200 bg-white" style={{ height: 'auto', padding: '2.5px 10px', minHeight: 'auto' }}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-md">
@@ -1005,7 +1005,7 @@ export default function PurchaseNewMain() {
                 </Badge>
                 <Button 
                   type="button" 
-                  className="inline-flex items-center gap-1 business-radius-badge px-2 py-1 text-[10px] font-medium leading-tight border border-gray-300 text-gray-600 bg-white hover:bg-red-50 hover:text-red-600" 
+                  className="button-base border border-gray-300 text-gray-600 bg-white hover:bg-red-50 hover:text-red-600" 
                   onClick={() => { 
                     if (confirm('모든 품목을 삭제하시겠습니까?')) {
                       fields.forEach((_idx, index) => remove(fields.length - 1 - index)); 
@@ -1032,7 +1032,14 @@ export default function PurchaseNewMain() {
                   max={1000}
                   value={addCount}
                   onChange={e => setAddCount(Math.max(1, Number(e.target.value.replace(/[^0-9]/g, ''))))}
-                  className="w-16 h-7 text-[10px] flex-shrink-0 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="w-12 text-center flex-shrink-0 business-radius-badge border border-gray-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&]:!text-[12px] [&]:!font-medium [&]:!leading-tight"
+                  style={{ 
+                    height: 'auto',
+                    padding: '2px 6px', 
+                    minHeight: 'auto',
+                    maxHeight: 'none',
+                    lineHeight: '1.25'
+                  }}
                 />
                 <Button
                   type="button"
@@ -1052,7 +1059,7 @@ export default function PurchaseNewMain() {
                       });
                     }
                   }}
-                  className="inline-flex items-center gap-1 business-radius-badge px-2 py-1 text-[10px] font-medium leading-tight bg-blue-500 hover:bg-blue-600 text-white"
+                  className="button-base bg-blue-500 hover:bg-blue-600 text-white"
                 >
                   <Plus className="w-3 h-3 mr-0.5" />
                   추가
@@ -1214,9 +1221,34 @@ export default function PurchaseNewMain() {
               </div>
             </div>
           </div>
-          {/* 품목 수 표시 */}
-          <div className="mt-2 text-xs text-gray-500 text-right">
-            총 {fields.length}개 품목
+          
+          {/* 제출 버튼 */}
+          <div className="flex justify-end gap-3 mt-2">
+            <Button 
+              type="button" 
+              variant="outline"
+              onClick={() => navigate(-1)}
+              className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400"
+            >
+              취소
+            </Button>
+            <Button 
+              type="submit"
+              disabled={loading || !isFormValid}
+              className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
+            >
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  처리 중...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  발주요청
+                </>
+              )}
+            </Button>
           </div>
         </div>
       </div>
@@ -1227,34 +1259,6 @@ export default function PurchaseNewMain() {
           {error}
         </div>
       )}
-
-      {/* 제출 버튼 */}
-      <div className="flex justify-end gap-3 mt-6">
-        <Button 
-          type="button" 
-          variant="outline"
-          onClick={() => navigate(-1)}
-        >
-          취소
-        </Button>
-        <Button 
-          type="submit"
-          disabled={loading || !isFormValid}
-          className="bg-hansl-600 hover:bg-hansl-700 text-white"
-        >
-          {loading ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-              처리 중...
-            </>
-          ) : (
-            <>
-              <Save className="w-4 h-4 mr-2" />
-              발주요청
-            </>
-          )}
-        </Button>
-      </div>
 
       {/* 담당자 관리 모달 */}
       <Dialog open={isContactDialogOpen} onOpenChange={setIsContactDialogOpen}>

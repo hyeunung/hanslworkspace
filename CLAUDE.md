@@ -94,35 +94,93 @@ npm run watch                     # Watch mode for all servers
 - `.header-title` - Main headers (12px, font-bold, truncated)
 - `.link-text` - Link text (10px, truncated)
 
-#### Standardized Button System (3-State Button Classification)
-**Based on 1차 승인대기 button as default active waiting state - ALL buttons follow this 3-state system**
+#### Standardized Button System (MANDATORY FOR ALL BUTTONS)
+**CRITICAL**: ALL buttons in the application MUST use the `.button-base` class from globals.css
 
-**Button Base Structure:**
+### Core Button Class (MANDATORY)
+**ALL buttons must use the `.button-base` class:**
 ```tsx
-// Use this base class for all approval-related buttons
-const buttonBaseClass = 'inline-flex items-center gap-1 business-radius-badge px-2.5 py-0.5 badge-text leading-tight'
+// ✅ CORRECT - Always use button-base class
+<Button className="button-base bg-blue-500 text-white">저장</Button>
+<Button className="button-base border border-gray-300 text-gray-600 bg-white">취소</Button>
+
+// ❌ WRONG - Never use custom sizing
+<Button className="px-4 py-2 text-sm">저장</Button>
+<Button className="h-8 px-3 text-xs">취소</Button>
 ```
+
+### Button-Base Specifications
+The `.button-base` class provides standardized sizing:
+- **padding**: 2px 10px !important
+- **font-size**: 12px !important  
+- **font-weight**: 500 !important
+- **border-radius**: business-radius-badge (8px)
+- **height**: auto !important
+- **line-height**: leading-tight
+- **white-space**: nowrap !important
+
+### Standard Button Types
+
+#### 1. Action Buttons (Primary Actions)
+```tsx
+// Primary actions (save, submit, confirm)
+<Button className="button-base bg-blue-500 hover:bg-blue-600 text-white">저장</Button>
+<Button className="button-base bg-green-500 hover:bg-green-600 text-white">승인</Button>
+<Button className="button-base bg-hansl-600 hover:bg-hansl-700 text-white">발주요청</Button>
+```
+
+#### 2. Secondary Buttons (Cancel, Delete)
+```tsx
+// Cancel and secondary actions
+<Button className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">취소</Button>
+<Button className="button-base border border-red-200 bg-white text-red-600 hover:bg-red-50">삭제</Button>
+```
+
+#### 3. Approval Workflow Buttons (3-State System)
+**Based on 1차 승인대기 button as default active waiting state**
 
 **3-State Button System:**
 1. **대기중 (Active Waiting)** - User can take action
-   - **Style**: `${buttonBaseClass} border border-gray-300 text-gray-600 bg-white`
-   - **Default**: Based on 1차 승인대기 button
+   - **Style**: `button-base border border-gray-300 text-gray-600 bg-white`
    - **Usage**: When user can actually perform the approval action
 
 2. **완료 (Completed)** - Action already finished
-   - **Style**: `${buttonBaseClass} bg-green-500 text-white` (approved)
-   - **Style**: `${buttonBaseClass} bg-red-500 text-white` (rejected)
+   - **Style**: `button-base bg-green-500 text-white` (approved)
+   - **Style**: `button-base bg-red-500 text-white` (rejected)
    - **Usage**: When approval/rejection is already completed
 
 3. **비활성화 (Inactive/Disabled)** - Waiting but not ready
-   - **Style**: `${buttonBaseClass} border border-gray-300 text-gray-400 bg-white`
+   - **Style**: `button-base border border-gray-300 text-gray-400 bg-white`
    - **Difference**: Uses `text-gray-400` (lighter) instead of `text-gray-600`
    - **Usage**: When waiting but prerequisites not met (e.g., 최종승인 waiting for 1차승인)
 
-**Mandatory Usage:**
-- ALL approval buttons MUST use one of these 3 states
-- NO custom button styles for approval workflows
-- Use lighter text (`text-gray-400`) to indicate inactive/disabled waiting states
+### Usage Examples
+```tsx
+// ✅ CORRECT - All buttons use button-base
+<Button className="button-base bg-blue-500 hover:bg-blue-600 text-white">
+  <Save className="w-4 h-4 mr-2" />
+  저장
+</Button>
+
+<Button className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">
+  취소
+</Button>
+
+<Button className="button-base bg-green-500 text-white" disabled={!canApprove}>
+  승인
+</Button>
+
+// ❌ WRONG - Custom sizing, missing button-base
+<Button className="px-4 py-2 text-sm bg-blue-500 text-white">저장</Button>
+<Button className="h-8 px-3 text-xs border">취소</Button>
+```
+
+**Mandatory Usage Rules:**
+- **ALL buttons MUST use `.button-base` class** - No exceptions
+- **NO custom padding, font-size, or height** - button-base handles all sizing
+- **Consistent sizing across entire application** - 12px font, 2px-10px padding
+- **Apply color/background styling AFTER button-base** - `button-base bg-blue-500 text-white`
+- **Icons remain standard size** - Use `w-4 h-4` for button icons
 
 #### Standardized Badge System (Button-Consistent Sizing)
 **Same dimensions as buttons (px-2.5 py-0.5, business-radius-badge) for visual consistency**
