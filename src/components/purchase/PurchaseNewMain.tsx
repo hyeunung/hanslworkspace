@@ -1000,7 +1000,7 @@ export default function PurchaseNewMain() {
                 </Select>
               </div>
               <div className="flex items-center justify-end gap-2 flex-wrap sm:flex-nowrap">
-                <Badge variant="secondary" className="text-hansl-500 text-[10px] px-1.5 py-0.5 whitespace-nowrap flex-shrink-0 max-w-[120px] truncate">
+                <Badge variant="secondary" className="text-hansl-500 text-[10px] px-1.5 py-0.5 whitespace-nowrap flex-shrink-0">
                   총액: {totalAmount.toLocaleString('ko-KR')} {currency}
                 </Badge>
                 <Button 
