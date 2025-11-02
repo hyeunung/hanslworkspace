@@ -114,8 +114,8 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
                             <Icon className="w-4 h-4" />
                           </Link>
                         </TooltipTrigger>
-                        <TooltipContent side="right" className="ml-2">
-                          <p className="font-medium">{item.label}</p>
+                        <TooltipContent side="right" className="ml-2 bg-white border border-gray-200 text-gray-900 shadow-md">
+                          <p className="modal-subtitle">{item.label}</p>
                         </TooltipContent>
                       </Tooltip>
                     </li>
@@ -140,8 +140,8 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
                     <MessageCircle className="w-4 h-4" />
                   </Link>
                 </TooltipTrigger>
-                <TooltipContent side="right" className="ml-2">
-                  <p className="font-medium">문의하기</p>
+                <TooltipContent side="right" className="ml-2 bg-white border border-gray-200 text-gray-900 shadow-md">
+                  <p className="modal-subtitle">문의하기</p>
                 </TooltipContent>
               </Tooltip>
             </div>
