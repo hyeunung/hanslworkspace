@@ -125,6 +125,8 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       return filterCache.get(cacheKey);
     }
     
+    // 오늘 날짜 계산 (한국 시간 기준)
+    const today = new Date().toISOString().split('T')[0];
     
     const result = visiblePurchases.filter((purchase: Purchase) => {
       let matches = false;
@@ -141,6 +143,18 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
           
           if (middleRejected || finalRejected) return false;
           
+          // 승인 완료된 경우 당일까지만 표시
+          const middleApproved = purchase.middle_manager_status === 'approved';
+          const finalApproved = purchase.final_manager_status === 'approved';
+          
+          if (middleApproved && finalApproved) {
+            // 최종 승인 완료된 경우 - updated_at 기준으로 당일까지만 표시
+            const approvalDate = purchase.updated_at ? purchase.updated_at.split('T')[0] : null;
+            if (approvalDate && approvalDate < today) {
+              return false; // 어제 이전에 완료된 항목은 제거
+            }
+          }
+          
           // 중간승인 대기 또는 최종승인 대기
           matches = middlePending || finalPending;
           
@@ -149,12 +163,21 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
         case 'purchase': {
           // DB 확인 결과: '구매 요청' (띄어쓰기 있음) 또는 '발주'
           const isRequest = purchase.payment_category === '구매 요청';
-          const notPaid = !purchase.is_payment_completed;
           const isSeonJin = (purchase.progress_type || '').includes('선진행');
           const isIlban = (purchase.progress_type || '').includes('일반');
           const finalApproved = purchase.final_manager_status === 'approved';
           
-          if (!isRequest || !notPaid) {
+          // 구매 완료된 경우 당일까지만 표시, 다음날부터 제거
+          if (purchase.is_payment_completed) {
+            const paymentDate = purchase.payment_completed_at ? purchase.payment_completed_at.split('T')[0] : null;
+            if (paymentDate && paymentDate < today) {
+              return false; // 어제 이전에 완료된 항목은 제거
+            }
+            // 당일 완료된 항목은 계속 표시 (확인용)
+          }
+          
+          // 기본 구매현황 조건: 요청 유형이고 아직 결제되지 않음
+          if (!isRequest) {
             matches = false;
           } else {
             matches = (isSeonJin) || (isIlban && finalApproved);
@@ -165,10 +188,20 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
         
         case 'receipt': {
           // 입고현황: 미입고 & (선진행 or 최종승인)
-          const notReceived = !purchase.is_received;
           const isSeonJin = (purchase.progress_type || '').includes('선진행');
           const finalApproved = purchase.final_manager_status === 'approved';
-          matches = notReceived && (isSeonJin || finalApproved);
+          
+          // 입고 완료된 경우 당일까지만 표시, 다음날부터 제거
+          if (purchase.is_received) {
+            const receivedDate = purchase.received_at ? purchase.received_at.split('T')[0] : null;
+            if (receivedDate && receivedDate < today) {
+              return false; // 어제 이전에 완료된 항목은 제거
+            }
+            // 당일 완료된 항목은 계속 표시 (확인용)
+          }
+          
+          // 기본 입고현황 조건: (선진행 or 최종승인)
+          matches = (isSeonJin || finalApproved);
           return matches;
         }
         
@@ -363,6 +396,9 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     const doneData = getFilteredDataForTab('done');
     
     const pendingFiltered = pendingData.filter((p: Purchase) => {
+      // 오늘 날짜
+      const today = new Date().toISOString().split('T')[0];
+      
       // 중간승인자나 최종승인자 중 하나라도 pending이면 승인대기
       const middlePending = ['pending', '대기', '', null, undefined].includes(p.middle_manager_status as any);
       const finalPending = ['pending', '대기', '', null, undefined].includes(p.final_manager_status as any);
@@ -373,25 +409,61 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       
       if (middleRejected || finalRejected) return false;
       
+      // 승인 완료된 경우 당일까지만 표시
+      const middleApproved = p.middle_manager_status === 'approved';
+      const finalApproved = p.final_manager_status === 'approved';
+      
+      if (middleApproved && finalApproved) {
+        // 최종 승인 완료된 경우 - updated_at 기준으로 당일까지만 표시
+        const approvalDate = p.updated_at ? p.updated_at.split('T')[0] : null;
+        if (approvalDate && approvalDate < today) {
+          return false; // 어제 이전에 완료된 항목은 제거
+        }
+      }
+      
       // 중간승인 대기 또는 최종승인 대기
       return middlePending || finalPending;
     });
     
     const purchaseFiltered = purchaseData.filter((p: Purchase) => {
+      // 오늘 날짜
+      const today = new Date().toISOString().split('T')[0];
+      
       const isRequest = p.payment_category === '구매 요청';
-      const notPaid = !p.is_payment_completed;
-      if (!isRequest || !notPaid) return false;
       const isSeonJin = (p.progress_type || '').includes('선진행');
       const isIlban = (p.progress_type || '').includes('일반');
       const finalApproved = p.final_manager_status === 'approved';
+      
+      // 구매 완료된 경우 당일까지만 표시, 다음날부터 제거
+      if (p.is_payment_completed) {
+        const paymentDate = p.payment_completed_at ? p.payment_completed_at.split('T')[0] : null;
+        if (paymentDate && paymentDate < today) {
+          return false; // 어제 이전에 완료된 항목은 제거
+        }
+        // 당일 완료된 항목은 계속 표시 (확인용)
+      }
+      
+      if (!isRequest) return false;
       return (isSeonJin) || (isIlban && finalApproved);
     });
     
     const receiptFiltered = receiptData.filter((p: Purchase) => {
-      const notReceived = !p.is_received;
+      // 오늘 날짜
+      const today = new Date().toISOString().split('T')[0];
+      
       const isSeonJin = (p.progress_type || '').includes('선진행');
       const finalApproved = p.final_manager_status === 'approved';
-      return notReceived && (isSeonJin || finalApproved);
+      
+      // 입고 완료된 경우 당일까지만 표시, 다음날부터 제거
+      if (p.is_received) {
+        const receivedDate = p.received_at ? p.received_at.split('T')[0] : null;
+        if (receivedDate && receivedDate < today) {
+          return false; // 어제 이전에 완료된 항목은 제거
+        }
+        // 당일 완료된 항목은 계속 표시 (확인용)
+      }
+      
+      return (isSeonJin || finalApproved);
     });
     
     const counts = {
