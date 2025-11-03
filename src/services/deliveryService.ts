@@ -6,12 +6,14 @@ export interface DeliveryUpdateData {
   deliveryNotes?: string;
   receivedBy: string;
   receivedByName: string;
+  actualReceivedDate?: string; // 실제 입고 날짜 (사용자가 선택한 날짜)
 }
 
 export interface DeliveryBatchUpdateData {
   itemId: number;
   receivedQuantity: number;
   deliveryNotes?: string;
+  actualReceivedDate?: string; // 실제 입고 날짜 (사용자가 선택한 날짜)
 }
 
 class DeliveryService {
@@ -37,18 +39,18 @@ class DeliveryService {
       if (fetchError) throw fetchError;
       if (!item) throw new Error('품목을 찾을 수 없습니다.');
 
-      // 입고 수량이 주문 수량과 같거나 크면 완전 입고로 처리
-      const isFullyReceived = data.receivedQuantity >= item.quantity;
-
+      // 입고완료 버튼을 눌렀으므로 무조건 입고 완료 처리
       const updateData = {
         received_quantity: data.receivedQuantity,
         delivery_notes: data.deliveryNotes,
         received_by: data.receivedBy,
         received_by_name: data.receivedByName,
         received_date: new Date().toISOString(),
-        is_received: isFullyReceived,
-        received_at: isFullyReceived ? new Date().toISOString() : null,
-        delivery_status: isFullyReceived ? 'received' : 'partial'
+        is_received: true,  // 입고완료 버튼을 눌렀으므로 true
+        received_at: new Date().toISOString(),
+        delivery_status: 'received',  // 입고 완료 상태
+        // 실제 입고 날짜 (사용자가 선택한 날짜)
+        actual_received_date: data.actualReceivedDate || new Date().toISOString()
       };
 
       const { error } = await this.supabase
@@ -71,7 +73,8 @@ class DeliveryService {
   async batchUpdateItemsDeliveryStatus(
     items: DeliveryBatchUpdateData[],
     receivedBy: string,
-    receivedByName: string
+    receivedByName: string,
+    actualReceivedDate?: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
       // 먼저 모든 품목의 주문 수량을 조회
@@ -88,9 +91,7 @@ class DeliveryService {
       const quantityMap = new Map(existingItems.map(item => [item.id, item.quantity]));
 
       const updates = items.map(item => {
-        const orderedQuantity = quantityMap.get(item.itemId) || 0;
-        const isFullyReceived = item.receivedQuantity >= orderedQuantity;
-
+        // 배치 입고완료 처리이므로 모든 품목을 입고 완료로 처리
         return {
           id: item.itemId,
           received_quantity: item.receivedQuantity,
@@ -98,9 +99,11 @@ class DeliveryService {
           received_by: receivedBy,
           received_by_name: receivedByName,
           received_date: new Date().toISOString(),
-          is_received: isFullyReceived,
-          received_at: isFullyReceived ? new Date().toISOString() : null,
-          delivery_status: isFullyReceived ? 'received' : 'partial'
+          is_received: true,  // 입고완료 처리이므로 true
+          received_at: new Date().toISOString(),
+          delivery_status: 'received',  // 입고 완료 상태
+          // 실제 입고 날짜 (사용자가 선택한 날짜)
+          actual_received_date: item.actualReceivedDate || actualReceivedDate || new Date().toISOString()
         };
       });
 
@@ -125,15 +128,16 @@ class DeliveryService {
     purchaseRequestId: number,
     receivedBy: string,
     receivedByName: string,
-    deliveryNotes?: string
+    deliveryNotes?: string,
+    actualReceivedDate?: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // 해당 발주의 모든 품목을 조회
+      // 해당 발주의 모든 품목을 조회 (입고 완료되지 않은 품목만)
       const { data: items, error: fetchError } = await this.supabase
         .from('purchase_request_items')
         .select('id, quantity')
         .eq('purchase_request_id', purchaseRequestId)
-        .eq('delivery_status', 'pending');
+        .or('is_received.is.null,is_received.eq.false');
 
       if (fetchError) throw fetchError;
       if (!items || items.length === 0) {
@@ -149,7 +153,9 @@ class DeliveryService {
         received_by_name: receivedByName,
         received_date: new Date().toISOString(),
         delivery_status: 'received',
-        is_received: true
+        is_received: true,
+        // 실제 입고 날짜 (사용자가 선택한 날짜)
+        actual_received_date: actualReceivedDate || new Date().toISOString()
       }));
 
       const { error: updateError } = await this.supabase

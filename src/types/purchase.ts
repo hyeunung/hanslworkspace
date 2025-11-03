@@ -113,6 +113,7 @@ export interface PurchaseRequestItem {
   receipt_uploaded_by?: string | null
   is_payment_completed?: boolean
   payment_completed_at?: string | null
+  actual_received_date?: string
   created_at: string
   updated_at: string
 }
