@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails } from '@/types/purchase'
 import { formatDate } from '@/utils/helpers'
@@ -58,6 +58,8 @@ export default function PurchaseDetailModal({
   const [deletedItemIds, setDeletedItemIds] = useState<number[]>([])
   const [userRoles, setUserRoles] = useState<string[]>([])
   const [currentUserName, setCurrentUserName] = useState<string>('')
+  const [columnWidths, setColumnWidths] = useState<number[]>([])
+  const headerRowRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
   
   // 사용자 권한 및 이름 직접 로드
@@ -185,6 +187,36 @@ export default function PurchaseDetailModal({
       setIsEditing(false) // 모달 열 때마다 편집 모드 초기화
     }
   }, [purchaseId, isOpen])
+
+  // 칼럼 너비 측정 및 저장
+  const measureColumnWidths = () => {
+    if (headerRowRef.current && !isEditing) {
+      const cells = headerRowRef.current.children
+      const widths = Array.from(cells).map(cell => {
+        const rect = cell.getBoundingClientRect()
+        return rect.width
+      })
+      setColumnWidths(widths)
+      logger.debug('Column widths measured:', widths)
+    }
+  }
+
+  // View 모드에서 칼럼 너비 측정 (데이터 로드 후)
+  useEffect(() => {
+    if (purchase && purchase.items && purchase.items.length > 0 && !isEditing) {
+      // 다음 렌더링 사이클에서 측정 (DOM이 완전히 렌더링된 후)
+      setTimeout(measureColumnWidths, 100)
+    }
+  }, [purchase, isEditing, activeTab])
+
+  // Edit 모드 전환 시 너비 측정
+  const handleEditToggle = (editing: boolean) => {
+    if (editing && !isEditing) {
+      // Edit 모드로 전환하기 전에 현재 너비 측정
+      measureColumnWidths()
+    }
+    setIsEditing(editing)
+  }
 
   const loadPurchaseDetail = async (id: string) => {
     try {
@@ -374,7 +406,7 @@ export default function PurchaseDetailModal({
 
       logger.debug('저장 완료');
       toast.success('발주 내역이 성공적으로 저장되었습니다.')
-      setIsEditing(false)
+      handleEditToggle(false)
       setDeletedItemIds([])
       
       // 수정된 데이터 다시 로드 (모달은 열린 상태 유지)
@@ -846,7 +878,7 @@ export default function PurchaseDetailModal({
                         <Input
                           value={editedPurchase?.request_type || ''}
                           onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, request_type: e.target.value } : null)}
-                          className="mt-1 rounded-lg border-gray-200 focus:border-gray-400 modal-label"
+                          className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
                           placeholder="일반"
                         />
                       ) : (
@@ -859,7 +891,7 @@ export default function PurchaseDetailModal({
                         <Input
                           value={editedPurchase?.payment_category || ''}
                           onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, payment_category: e.target.value } : null)}
-                          className="mt-1 rounded-lg border-gray-200 focus:border-gray-400 modal-label"
+                          className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
                           placeholder="발주/구매요청/현장결제"
                         />
                       ) : (
@@ -875,7 +907,7 @@ export default function PurchaseDetailModal({
                         <DatePicker
                           date={editedPurchase?.delivery_request_date ? new Date(editedPurchase.delivery_request_date) : undefined}
                           onDateChange={(date: Date | undefined) => setEditedPurchase(prev => prev ? { ...prev, delivery_request_date: date?.toISOString().split('T')[0] || '' } : null)}
-                          className="mt-1 rounded-lg border-gray-200 focus:border-gray-400 modal-label"
+                          className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
                         />
                       ) : (
                         <p className="modal-subtitle">{formatDate(purchase.delivery_request_date)}</p>
@@ -887,7 +919,7 @@ export default function PurchaseDetailModal({
                         <DatePicker
                           date={editedPurchase?.revised_delivery_request_date ? new Date(editedPurchase.revised_delivery_request_date) : undefined}
                           onDateChange={(date: Date | undefined) => setEditedPurchase(prev => prev ? { ...prev, revised_delivery_request_date: date?.toISOString().split('T')[0] || '' } : null)}
-                          className="mt-1 rounded-lg border-gray-200 focus:border-gray-400 modal-label"
+                          className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
                         />
                       ) : (
                         <p className="modal-subtitle text-orange-700">
@@ -914,7 +946,7 @@ export default function PurchaseDetailModal({
                         <Input
                           value={editedPurchase?.vendor?.vendor_name || editedPurchase?.vendor_name || ''}
                           onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, vendor_name: e.target.value } : null)}
-                          className="mt-1 rounded-lg border-gray-200 focus:border-gray-400 modal-label"
+                          className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
                           placeholder="업체 선택"
                         />
                       ) : (
@@ -939,7 +971,7 @@ export default function PurchaseDetailModal({
                               return { ...prev, vendor_contacts: updatedContacts };
                             })
                           }}
-                          className="mt-1 rounded-lg border-gray-200 focus:border-gray-400 modal-label"
+                          className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
                           placeholder="담당자 선택"
                         />
                       ) : (
@@ -955,7 +987,7 @@ export default function PurchaseDetailModal({
                         <Input
                           value={editedPurchase?.project_vendor || ''}
                           onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, project_vendor: e.target.value } : null)}
-                          className="mt-1 rounded-lg border-gray-200 focus:border-gray-400 modal-label"
+                          className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
                           placeholder="입력"
                         />
                       ) : (
@@ -968,7 +1000,7 @@ export default function PurchaseDetailModal({
                         <Input
                           value={editedPurchase?.project_item || ''}
                           onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, project_item: e.target.value } : null)}
-                          className="mt-1 rounded-lg border-gray-200 focus:border-gray-400 modal-label"
+                          className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
                           placeholder="입력"
                         />
                       ) : (
@@ -977,14 +1009,14 @@ export default function PurchaseDetailModal({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
+                  <div className="grid grid-cols-1 sm:flex sm:gap-8">
+                    <div className="w-32">
                       <span className="modal-label">수주번호</span>
                       {isEditing ? (
                         <Input
                           value={editedPurchase?.order_number || ''}
                           onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, order_number: e.target.value } : null)}
-                          className="mt-1 rounded-lg border-gray-200 focus:border-gray-400 modal-label"
+                          className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
                           placeholder="입력"
                         />
                       ) : (
@@ -1050,37 +1082,46 @@ export default function PurchaseDetailModal({
                 <div className="max-h-[50vh] sm:max-h-[40vh] overflow-y-auto overflow-x-auto min-w-fit">
                   {/* Items Table Header - Sticky inside scroll container */}
                   <div className="bg-gray-50 px-2 sm:px-3 py-1 border-b border-gray-100 sticky top-0 z-10">
-                    {isEditing ? (
-                      <div className="hidden sm:grid gap-3 modal-label" style={{gridTemplateColumns: 'minmax(120px, 1fr) minmax(150px, 1fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(60px, auto)'}}>
-                        <div>품목명</div>
-                        <div>규격</div>
-                        <div className="text-center">수량</div>
-                        <div className="text-right">단가</div>
-                        <div className="text-right">합계</div>
-                        <div className="text-center">비고</div>
-                        <div className="text-center">삭제</div>
-                      </div>
-                    ) : (
-                      <div className="hidden sm:grid gap-3 modal-label" style={{gridTemplateColumns: activeTab === 'receipt' ? 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(100px, auto)' : 'minmax(120px, 1fr) minmax(250px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(120px, 1fr) minmax(80px, auto)'}}>
-                        <div>품목명</div>
-                        <div>규격</div>
-                        <div className="text-center">수량</div>
-                        <div className="text-right">단가</div>
-                        <div className="text-right">합계</div>
-                        <div className="text-center">비고</div>
-                        <div className="text-center">상태</div>
-                        {activeTab === 'receipt' && (
-                          <div className="text-center">실제입고일</div>
-                        )}
-                      </div>
-                    )}
+                    <div 
+                      ref={headerRowRef}
+                      className="hidden sm:grid gap-3 modal-label" 
+                      style={{
+                        gridTemplateColumns: isEditing && columnWidths.length > 0
+                          ? columnWidths.map(width => `${width}px`).join(' ')
+                          : activeTab === 'receipt' 
+                            ? 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(100px, auto)'
+                            : 'minmax(120px, 1fr) minmax(250px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(120px, 1fr) minmax(80px, auto)'
+                      }}
+                    >
+                      <div>품목명</div>
+                      <div>규격</div>
+                      <div className="text-center">수량</div>
+                      <div className="text-right">단가</div>
+                      <div className="text-right">합계</div>
+                      <div className="text-center">비고</div>
+                      {isEditing ? (
+                        <>
+                          <div className="text-center">삭제</div>
+                          {activeTab === 'receipt' && (
+                            <div className="text-center">실제입고일</div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-center">상태</div>
+                          {activeTab === 'receipt' && (
+                            <div className="text-center">실제입고일</div>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                   {(isEditing ? editedItems : purchase.items)?.map((item, index) => (
                     <div key={index} className="px-2 sm:px-3 py-1.5 border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                       {/* Desktop Layout */}
                       <div className={`hidden sm:grid items-center gap-3`} style={{
-                        gridTemplateColumns: isEditing 
-                          ? 'minmax(120px, 1fr) minmax(150px, 1fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(60px, auto)'
+                        gridTemplateColumns: isEditing && columnWidths.length > 0
+                          ? columnWidths.map(width => `${width}px`).join(' ')
                           : activeTab === 'receipt' 
                             ? 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(100px, auto)'
                             : 'minmax(120px, 1fr) minmax(250px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(120px, 1fr) minmax(80px, auto)'
@@ -1260,7 +1301,7 @@ export default function PurchaseDetailModal({
                         </div>
                         
                         {/* 실제 입고 날짜 - 입고 탭에서만 표시 (상태 컬럼 오른쪽) */}
-                        {!isEditing && activeTab === 'receipt' && (
+                        {activeTab === 'receipt' && (
                           <div className="text-center flex justify-center items-start pt-1 pl-2">
                             {item.actual_received_date ? (
                               <div className="modal-subtitle text-green-700">
@@ -1472,26 +1513,42 @@ export default function PurchaseDetailModal({
                 
                 {/* 합계 */}
                 <div className="bg-gray-50 px-2 sm:px-3 border-t border-gray-100">
-                  <div className="hidden sm:grid grid-cols-12 gap-2">
-                    <div className="col-span-6"></div>
-                    <div className="col-span-1 text-right">
-                      <span className="modal-section-title">총액</span>
+                  <div className="hidden sm:grid items-center gap-3 py-0.5" style={{
+                    gridTemplateColumns: isEditing && columnWidths.length > 0
+                      ? columnWidths.map(width => `${width}px`).join(' ')
+                      : activeTab === 'receipt' 
+                        ? 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(100px, auto)'
+                        : 'minmax(120px, 1fr) minmax(250px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(120px, 1fr) minmax(80px, auto)'
+                  }}>
+                    {/* 품목명 */}
+                    <div></div>
+                    {/* 규격 */}
+                    <div></div>
+                    {/* 수량 */}
+                    <div></div>
+                    {/* 단가 */}
+                    <div className="text-right">
+                      <span className="text-[12px] font-bold text-gray-900">총액</span>
                     </div>
-                    <div className="col-span-2 text-right">
-                      <span className="modal-value-large">
+                    {/* 합계 */}
+                    <div className="text-right">
+                      <span className="text-[12px] font-bold text-gray-900">
                         ₩{formatCurrency(
                           (isEditing ? editedItems : purchase.items)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
                         )}
                       </span>
                     </div>
-                    <div className="col-span-3"></div>
+                    {/* 나머지 칼럼들 */}
+                    <div></div>
+                    <div></div>
+                    {activeTab === 'receipt' && <div></div>}
                   </div>
                   
                   {/* Mobile 총액 */}
-                  <div className="block sm:hidden">
+                  <div className="block sm:hidden py-0.5">
                     <div className="flex justify-between items-center">
-                      <span className="modal-section-title">총액</span>
-                      <span className="modal-value-large">
+                      <span className="text-[13px] font-bold text-gray-900">총액</span>
+                      <span className="text-[13px] font-bold text-gray-900">
                         ₩{formatCurrency(
                           (isEditing ? editedItems : purchase.items)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
                         )}
@@ -1562,7 +1619,7 @@ export default function PurchaseDetailModal({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setIsEditing(true)}
+                      onClick={() => handleEditToggle(true)}
                       className="button-base button-action-secondary"
                     >
                       <Edit2 className="w-4 h-4 mr-2" />
@@ -1587,7 +1644,7 @@ export default function PurchaseDetailModal({
                       size="sm"
                       variant="outline"
                       onClick={() => {
-                        setIsEditing(false)
+                        handleEditToggle(false)
                         setEditedPurchase(purchase)
                         setEditedItems(purchase?.items || [])
                         setDeletedItemIds([])
