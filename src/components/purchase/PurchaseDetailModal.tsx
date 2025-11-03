@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DatePicker } from '@/components/ui/datepicker'
+import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 
@@ -488,56 +489,87 @@ export default function PurchaseDetailModal({
     }
   }
 
-  // 입고 처리 함수
-  const handleReceiptToggle = async (itemId: number, isReceived: boolean) => {
+  // 개별 품목 입고완료 처리 (날짜 선택)
+  const handleItemReceiptToggle = async (itemId: number, selectedDate: Date) => {
     if (!canReceiptCheck) {
       toast.error('입고 처리 권한이 없습니다.')
       return
     }
 
-    // 해당 품목 정보 찾기
-    const targetItem = purchase?.items?.find(item => item.id === itemId)
-    if (!targetItem) return
-
-    const itemInfo = `품명: ${targetItem.item_name}
-규격: ${targetItem.specification || '미입력'}
-수량: ${targetItem.quantity?.toLocaleString() || 0}${targetItem.unit || ''}
-단가: ₩${targetItem.unit_price_value?.toLocaleString() || 0}
-합계: ₩${targetItem.amount_value?.toLocaleString() || 0}`
-
-    const confirmMessage = isReceived 
-      ? `다음 품목을 입고완료 처리하시겠습니까?\n\n${itemInfo}` 
-      : `다음 품목의 입고완료를 취소하시겠습니까?\n\n${itemInfo}`
-    
-    const confirm = window.confirm(confirmMessage)
-    if (!confirm) return
-
     try {
-      // purchase_request_items 테이블 업데이트 (필요한 컬럼만)
       const { error } = await supabase
         .from('purchase_request_items')
         .update({
-          is_received: isReceived,
-          received_at: isReceived ? new Date().toISOString() : null
+          is_received: true,
+          received_at: new Date().toISOString(),
+          actual_received_date: selectedDate.toISOString()
         })
         .eq('id', itemId)
 
       if (error) throw error
 
-      // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
+      // 로컬 상태 즉시 업데이트
       setPurchase(prev => {
         if (!prev) return null
         const updatedItems = prev.items?.map(item => 
           item.id === itemId 
-            ? { ...item, is_received: isReceived, received_at: isReceived ? new Date().toISOString() : null }
+            ? { 
+                ...item, 
+                is_received: true, 
+                received_at: new Date().toISOString(),
+                actual_received_date: selectedDate.toISOString()
+              }
             : item
         )
         return { ...prev, items: updatedItems }
       })
       
-      toast.success(isReceived ? '입고 처리되었습니다.' : '입고가 취소되었습니다.')
+      const targetItem = purchase?.items?.find(item => item.id === itemId)
+      toast.success(`"${targetItem?.item_name}" 품목이 입고완료 처리되었습니다.`)
     } catch (error) {
-      toast.error('입고 처리 중 오류가 발생했습니다.')
+      toast.error('입고완료 처리 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 입고완료 취소 처리
+  const handleReceiptCancel = async (itemId: number) => {
+    if (!canReceiptCheck) {
+      toast.error('입고 처리 권한이 없습니다.')
+      return
+    }
+
+    const targetItem = purchase?.items?.find(item => item.id === itemId)
+    if (!targetItem) return
+
+    const confirm = window.confirm(`"${targetItem.item_name}" 품목의 입고완료를 취소하시겠습니까?`)
+    if (!confirm) return
+
+    try {
+      const { error } = await supabase
+        .from('purchase_request_items')
+        .update({
+          is_received: false,
+          received_at: null,
+          actual_received_date: null
+        })
+        .eq('id', itemId)
+
+      if (error) throw error
+
+      // 로컬 상태 즉시 업데이트
+      setPurchase(prev => {
+        if (!prev) return null
+        const updatedItems = prev.items?.map(item => 
+          item.id === itemId 
+            ? { ...item, is_received: false, received_at: null, actual_received_date: null }
+            : item
+        )
+        return { ...prev, items: updatedItems }
+      })
+      
+      toast.success('입고완료가 취소되었습니다.')
+    } catch (error) {
+      toast.error('입고완료 취소 중 오류가 발생했습니다.')
     }
   }
 
@@ -621,111 +653,46 @@ export default function PurchaseDetailModal({
     }
   }
 
-  // 전체 입고완료 처리
-  const handleCompleteAllReceipt = async () => {
+  // 전체 입고완료 처리 (날짜 선택)
+  const handleCompleteAllReceipt = async (selectedDate: Date) => {
     if (!purchase || !canReceiveItems) return
-    
-    const confirmMessage = `발주번호: ${purchase.purchase_order_number}\n\n모든 품목을 입고완료 처리하시겠습니까?`
-    const confirm = window.confirm(confirmMessage)
-    if (!confirm) return
-    
+
     try {
-      // 모든 품목을 입고완료로 업데이트
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('사용자 인증이 필요합니다')
-      
-      const updateData = {
-        is_received: true,
-        delivery_status: 'received',
-        received_quantity: null, // 트리거에서 quantity로 설정됨
-        received_date: new Date().toISOString(),
-        received_by: user.id,
-        received_by_name: currentUserName
-      }
-      
       const { error } = await supabase
         .from('purchase_request_items')
-        .update(updateData)
+        .update({
+          is_received: true,
+          received_at: new Date().toISOString(),
+          actual_received_date: selectedDate.toISOString()
+        })
         .eq('purchase_request_id', purchase.id)
-        .eq('is_received', false) // 아직 입고되지 않은 항목만
-      
+        .is('actual_received_date', null) // 아직 실제 입고되지 않은 항목만
+
       if (error) throw error
-      
-      // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
+
+      // 로컬 상태 즉시 업데이트
       setPurchase(prev => {
         if (!prev) return null
         const updatedItems = prev.items?.map(item => 
-          !item.is_received 
+          !item.actual_received_date 
             ? { 
                 ...item, 
                 is_received: true, 
-                delivery_status: 'received',
-                received_date: new Date().toISOString(),
-                received_by: user.id,
-                received_by_name: currentUserName
+                received_at: new Date().toISOString(),
+                actual_received_date: selectedDate.toISOString()
               }
             : item
         )
         return { ...prev, items: updatedItems }
       })
-      
+
       toast.success('모든 품목이 입고완료 처리되었습니다.')
     } catch (error) {
-      logger.error('전체 입고완료 처리 오류', error);
+      logger.error('전체 입고완료 처리 오류', error)
       toast.error('입고완료 처리 중 오류가 발생했습니다.')
     }
   }
   
-  // 개별 품목 입고완료 처리
-  const handleCompleteItemReceipt = async (itemId: number, itemName: string) => {
-    if (!purchase || !canReceiveItems) return
-    
-    const confirm = window.confirm(`"${itemName}" 품목을 입고완료 처리하시겠습니까?`)
-    if (!confirm) return
-    
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('사용자 인증이 필요합니다')
-      
-      const updateData = {
-        is_received: true,
-        delivery_status: 'received',
-        received_date: new Date().toISOString(),
-        received_by: user.id,
-        received_by_name: currentUserName
-      }
-      
-      const { error } = await supabase
-        .from('purchase_request_items')
-        .update(updateData)
-        .eq('id', itemId)
-      
-      if (error) throw error
-      
-      // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
-      setPurchase(prev => {
-        if (!prev) return null
-        const updatedItems = prev.items?.map(item => 
-          item.id === itemId 
-            ? { 
-                ...item, 
-                is_received: true, 
-                delivery_status: 'received',
-                received_date: new Date().toISOString(),
-                received_by: user.id,
-                received_by_name: currentUserName
-              }
-            : item
-        )
-        return { ...prev, items: updatedItems }
-      })
-      
-      toast.success(`"${itemName}" 품목이 입고완료 처리되었습니다.`)
-    } catch (error) {
-      logger.error('개별 입고완료 처리 오류', error);
-      toast.error('입고완료 처리 중 오류가 발생했습니다.')
-    }
-  }
 
   // 반려 처리
   const handleReject = async (type: 'middle' | 'final') => {
@@ -858,9 +825,9 @@ export default function PurchaseDetailModal({
           </div>
 
           {/* Main 2-Column Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-7 gap-3 sm:gap-6">
-            {/* Left Column - Basic Info (29%) */}
-            <div className="lg:col-span-2 space-y-1 sm:space-y-4 relative">
+          <div className="flex flex-col lg:flex-row gap-3 sm:gap-6">
+            {/* Left Column - Basic Info (Fixed Width) */}
+            <div className="lg:w-80 lg:flex-shrink-0 space-y-1 sm:space-y-4 relative">
               
               {/* 발주 기본정보 */}
               <div className="bg-white rounded-lg p-2 sm:p-3 border border-gray-100 shadow-sm">
@@ -1030,8 +997,8 @@ export default function PurchaseDetailModal({
 
             </div>
 
-            {/* Right Column - Items List (71%) */}
-            <div className="lg:col-span-5 relative">
+            {/* Right Column - Items List (Flexible Width) */}
+            <div className="lg:flex-1 lg:min-w-0 relative overflow-visible">
               
               <div className="bg-white rounded-lg border border-gray-100 overflow-hidden shadow-sm">
                 <div className="p-2 sm:p-3 bg-gray-50 border-b border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
@@ -1055,41 +1022,22 @@ export default function PurchaseDetailModal({
                         </Button>
                       )}
                       {activeTab === 'receipt' && canReceiveItems && (
-                        <Button
-                          size="sm"
-                          onClick={handleCompleteAllReceipt}
-                          className="button-base button-action-primary"
+                        <DatePickerPopover
+                          onDateSelect={handleCompleteAllReceipt}
+                          placeholder="전체 입고완료 날짜를 선택하세요"
+                          align="end"
+                          side="bottom"
                         >
-                          <Truck className="w-3 h-3 mr-1" />
-                          전체 입고완료
-                        </Button>
+                          <Button
+                            size="sm"
+                            className="button-base button-action-primary"
+                          >
+                            <Truck className="w-3 h-3 mr-1" />
+                            전체 입고완료
+                          </Button>
+                        </DatePickerPopover>
                       )}
                     </>
-                  )}
-                </div>
-                
-                {/* Items Table Header */}
-                <div className="bg-gray-50 px-2 sm:px-3 py-1 border-b border-gray-100">
-                  {isEditing ? (
-                    <div className="hidden sm:grid grid-cols-10 gap-3 modal-label">
-                      <div className="col-span-2">품목명</div>
-                      <div className="col-span-2">규격</div>
-                      <div className="col-span-1 text-center">수량</div>
-                      <div className="col-span-1 text-right">단가</div>
-                      <div className="col-span-2 text-right">합계</div>
-                      <div className="col-span-1 text-center">비고</div>
-                      <div className="col-span-1 text-center">삭제</div>
-                    </div>
-                  ) : (
-                    <div className="hidden sm:grid grid-cols-12 gap-2 modal-label">
-                      <div className="col-span-2">품목명</div>
-                      <div className="col-span-3">규격</div>
-                      <div className="col-span-1 text-center">수량</div>
-                      <div className="col-span-1 text-right">단가</div>
-                      <div className="col-span-2 text-right">합계</div>
-                      <div className="col-span-2 text-center">비고</div>
-                      <div className="col-span-1 text-center">상태</div>
-                    </div>
                   )}
                 </div>
                 
@@ -1098,21 +1046,53 @@ export default function PurchaseDetailModal({
                   <div className="text-xs font-medium text-gray-600">품목 목록 (터치하여 스크롤)</div>
                 </div>
                 
-                {/* Items List */}
-                <div className="max-h-[50vh] sm:max-h-[40vh] overflow-y-auto overflow-x-auto">
+                {/* Items List with Header Inside Scrollable Container */}
+                <div className="max-h-[50vh] sm:max-h-[40vh] overflow-y-auto overflow-x-auto min-w-fit">
+                  {/* Items Table Header - Sticky inside scroll container */}
+                  <div className="bg-gray-50 px-2 sm:px-3 py-1 border-b border-gray-100 sticky top-0 z-10">
+                    {isEditing ? (
+                      <div className="hidden sm:grid gap-3 modal-label" style={{gridTemplateColumns: 'minmax(120px, 1fr) minmax(150px, 1fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(60px, auto)'}}>
+                        <div>품목명</div>
+                        <div>규격</div>
+                        <div className="text-center">수량</div>
+                        <div className="text-right">단가</div>
+                        <div className="text-right">합계</div>
+                        <div className="text-center">비고</div>
+                        <div className="text-center">삭제</div>
+                      </div>
+                    ) : (
+                      <div className="hidden sm:grid gap-3 modal-label" style={{gridTemplateColumns: activeTab === 'receipt' ? 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(100px, auto)' : 'minmax(120px, 1fr) minmax(250px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(120px, 1fr) minmax(80px, auto)'}}>
+                        <div>품목명</div>
+                        <div>규격</div>
+                        <div className="text-center">수량</div>
+                        <div className="text-right">단가</div>
+                        <div className="text-right">합계</div>
+                        <div className="text-center">비고</div>
+                        <div className="text-center">상태</div>
+                        {activeTab === 'receipt' && (
+                          <div className="text-center">실제입고일</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   {(isEditing ? editedItems : purchase.items)?.map((item, index) => (
                     <div key={index} className="px-2 sm:px-3 py-1.5 border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                       {/* Desktop Layout */}
-                      <div className={`hidden sm:grid items-center ${isEditing ? 'grid-cols-10 gap-3' : 'grid-cols-12 gap-2'}`}>
+                      <div className={`hidden sm:grid items-center gap-3`} style={{
+                        gridTemplateColumns: isEditing 
+                          ? 'minmax(120px, 1fr) minmax(150px, 1fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(60px, auto)'
+                          : activeTab === 'receipt' 
+                            ? 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(100px, auto)'
+                            : 'minmax(120px, 1fr) minmax(250px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(120px, 1fr) minmax(80px, auto)'
+                      }}>
                         {/* 품목명 */}
-                        <div className="col-span-2">
+                        <div className="min-w-0">
                           {isEditing ? (
                             <Input
                               value={item.item_name}
                               onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
-                              className="modal-label border-gray-200 rounded-lg relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[300px] focus:w-auto focus:max-w-[500px]"
+                              className="modal-label border-gray-200 rounded-lg w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                               placeholder="품목명"
-                              style={{ minWidth: item.item_name ? `${Math.max(100, item.item_name.length * 8 + 40)}px` : '100px' }}
                             />
                           ) : (
                             <span className="modal-value">{item.item_name || '품목명 없음'}</span>
@@ -1120,14 +1100,13 @@ export default function PurchaseDetailModal({
                         </div>
                         
                         {/* 규격 */}
-                        <div className={isEditing ? "col-span-2" : "col-span-3"}>
+                        <div className="min-w-0">
                           {isEditing ? (
                             <Input
                               value={item.specification}
                               onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
-                              className="modal-label border-gray-200 rounded-lg relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[300px] focus:w-auto focus:max-w-[500px]"
+                              className="modal-label border-gray-200 rounded-lg w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                               placeholder="규격"
-                              style={{ minWidth: item.specification ? `${Math.max(120, item.specification.length * 8 + 40)}px` : '120px' }}
                             />
                           ) : (
                             <span className="modal-subtitle">{item.specification || '-'}</span>
@@ -1135,16 +1114,15 @@ export default function PurchaseDetailModal({
                         </div>
                         
                         {/* 수량 */}
-                        <div className="col-span-1 text-center">
+                        <div className="text-center min-w-0">
                           {isEditing ? (
                             <Input
                               type="number"
                               value={item.quantity}
                               onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
-                              className="modal-label border-gray-200 rounded-lg text-center relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[120px] focus:w-auto"
+                              className="modal-label border-gray-200 rounded-lg text-center w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                               placeholder="수량"
                               max="99999"
-                              style={{ minWidth: `${Math.max(80, String(item.quantity || '').length * 12 + 40)}px` }}
                             />
                           ) : (
                             <span className="modal-subtitle">{item.quantity || 0}</span>
@@ -1152,16 +1130,15 @@ export default function PurchaseDetailModal({
                         </div>
                         
                         {/* 단가 */}
-                        <div className="col-span-1 text-right">
+                        <div className="text-right min-w-0">
                           {isEditing ? (
                             <Input
                               type="number"
                               value={item.unit_price_value}
                               onChange={(e) => handleItemChange(index, 'unit_price_value', Number(e.target.value))}
-                              className="modal-label border-gray-200 rounded-lg text-right relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[150px] focus:w-auto"
+                              className="modal-label border-gray-200 rounded-lg text-right w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                               placeholder="단가"
                               max="100000000000"
-                              style={{ minWidth: `${Math.max(100, String(item.unit_price_value || '').length * 12 + 40)}px` }}
                             />
                           ) : (
                             <span className="modal-subtitle">₩{formatCurrency(item.unit_price_value)}</span>
@@ -1169,16 +1146,15 @@ export default function PurchaseDetailModal({
                         </div>
                         
                         {/* 합계 */}
-                        <div className="col-span-2 text-right">
+                        <div className="text-right min-w-0">
                           {isEditing ? (
                             <Input
                               type="number"
                               value={item.amount_value}
                               onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
-                              className="modal-label border-gray-200 rounded-lg text-right relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[150px] focus:w-auto"
+                              className="modal-label border-gray-200 rounded-lg text-right w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                               placeholder="합계"
                               max="10000000000"
-                              style={{ minWidth: `${Math.max(100, String(item.amount_value || '').length * 12 + 40)}px` }}
                             />
                           ) : (
                             <span className="modal-value">₩{formatCurrency(item.amount_value || 0)}</span>
@@ -1186,14 +1162,13 @@ export default function PurchaseDetailModal({
                         </div>
                         
                         {/* 비고 */}
-                        <div className={isEditing ? "col-span-1 text-center" : "col-span-2 text-center"}>
+                        <div className="min-w-0 flex justify-center items-start pt-1 text-center">
                           {isEditing ? (
                             <Input
                               value={item.remark || ''}
                               onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
-                              className="modal-label border-gray-200 rounded-lg text-center relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[200px] focus:w-auto focus:max-w-[400px]"
+                              className="modal-label border-gray-200 rounded-lg text-center w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                               placeholder="비고"
-                              style={{ minWidth: item.remark ? `${Math.max(80, item.remark.length * 8 + 40)}px` : '80px' }}
                             />
                           ) : (
                             <span className="modal-subtitle text-center">{item.remark || '-'}</span>
@@ -1201,7 +1176,7 @@ export default function PurchaseDetailModal({
                         </div>
                         
                         {/* 상태/액션 */}
-                        <div className="col-span-1 text-center">
+                        <div className="text-center flex justify-center items-start pt-1">
                           {isEditing ? (
                             <Button
                               size="sm"
@@ -1215,7 +1190,7 @@ export default function PurchaseDetailModal({
                             <>
                               {/* 구매 탭에서의 구매완료 상태 */}
                               {activeTab === 'purchase' && (
-                                <>
+                                <div className="flex justify-center">
                                   {canPurchase ? (
                                     <button
                                       onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
@@ -1236,42 +1211,70 @@ export default function PurchaseDetailModal({
                                       {item.is_payment_completed ? '구매완료' : '구매대기'}
                                     </span>
                                   )}
-                                </>
+                                </div>
                               )}
                               
                               {/* 입고 탭에서의 입고완료 상태 */}
                               {activeTab === 'receipt' && (
-                                <>
+                                <div className="flex justify-center">
                                   {canReceiptCheck ? (
-                                    <button
-                                      onClick={() => handleReceiptToggle(item.id, !item.is_received)}
-                                      className={`transition-colors ${
-                                        item.is_received
-                                          ? 'button-action-primary'
-                                          : 'button-toggle-inactive'
-                                      }`}
-                                    >
-                                      {item.is_received ? '입고완료' : '입고대기'}
-                                    </button>
+                                    item.actual_received_date ? (
+                                      <button
+                                        onClick={() => handleReceiptCancel(item.id)}
+                                        className="button-action-primary"
+                                      >
+                                        입고완료
+                                      </button>
+                                    ) : (
+                                      <DatePickerPopover
+                                        onDateSelect={(date) => handleItemReceiptToggle(item.id, date)}
+                                        placeholder="실제 입고된 날짜를 선택하세요"
+                                        align="center"
+                                        side="bottom"
+                                      >
+                                        <button className="button-toggle-inactive">
+                                          입고대기
+                                        </button>
+                                      </DatePickerPopover>
+                                    )
                                   ) : (
                                     <span className={`${
-                                      item.is_received 
+                                      item.actual_received_date 
                                         ? 'button-action-primary' 
                                         : 'button-waiting-inactive'
                                     }`}>
-                                      {item.is_received ? '입고완료' : '입고대기'}
+                                      {item.actual_received_date ? '입고완료' : '입고대기'}
                                     </span>
                                   )}
-                                </>
+                                </div>
                               )}
                               
                               {/* 기타 탭에서는 기본 상태 표시 */}
                               {activeTab !== 'purchase' && activeTab !== 'receipt' && (
-                                <span className="badge-text">-</span>
+                                <div className="flex justify-center">
+                                  <span className="badge-text">-</span>
+                                </div>
                               )}
                             </>
                           )}
                         </div>
+                        
+                        {/* 실제 입고 날짜 - 입고 탭에서만 표시 (상태 컬럼 오른쪽) */}
+                        {!isEditing && activeTab === 'receipt' && (
+                          <div className="text-center flex justify-center items-start pt-1 pl-2">
+                            {item.actual_received_date ? (
+                              <div className="modal-subtitle text-green-700">
+                                {new Date(item.actual_received_date).toLocaleDateString('ko-KR', {
+                                  year: 'numeric',
+                                  month: '2-digit',
+                                  day: '2-digit'
+                                })}
+                              </div>
+                            ) : (
+                              <span className="modal-subtitle text-gray-400">-</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                       
                       {/* Mobile Layout */}
@@ -1282,9 +1285,8 @@ export default function PurchaseDetailModal({
                               <Input
                                 value={item.item_name}
                                 onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
-                                className="modal-label border-gray-200 rounded-lg relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[250px] focus:w-auto focus:max-w-[400px]"
+                                className="modal-label border-gray-200 rounded-lg w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                                 placeholder="품목명"
-                                style={{ minWidth: item.item_name ? `${Math.max(120, item.item_name.length * 8 + 40)}px` : '120px' }}
                               />
                             ) : (
                               <div className="modal-value font-medium">{item.item_name || '품목명 없음'}</div>
@@ -1293,9 +1295,8 @@ export default function PurchaseDetailModal({
                               <Input
                                 value={item.specification}
                                 onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
-                                className="modal-label border-gray-200 rounded-lg mt-1 relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[250px] focus:w-auto focus:max-w-[400px]"
+                                className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                                 placeholder="규격"
-                                style={{ minWidth: item.specification ? `${Math.max(120, item.specification.length * 8 + 40)}px` : '120px' }}
                               />
                             ) : (
                               <div className="modal-subtitle text-gray-500">{item.specification || '-'}</div>
@@ -1307,9 +1308,8 @@ export default function PurchaseDetailModal({
                                 type="number"
                                 value={item.amount_value}
                                 onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
-                                className="modal-label border-gray-200 rounded-lg text-right relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[150px] focus:w-auto"
+                                className="modal-label border-gray-200 rounded-lg text-right w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                                 placeholder="합계"
-                                style={{ minWidth: `${Math.max(96, String(item.amount_value || '').length * 12 + 40)}px` }}
                               />
                             ) : (
                               <div className="modal-value font-semibold">₩{formatCurrency(item.amount_value || 0)}</div>
@@ -1325,9 +1325,8 @@ export default function PurchaseDetailModal({
                                 type="number"
                                 value={item.quantity}
                                 onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
-                                className="modal-label border-gray-200 rounded-lg mt-1 relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[100px] focus:w-auto"
+                                className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                                 placeholder="수량"
-                                style={{ minWidth: `${Math.max(80, String(item.quantity || '').length * 12 + 40)}px` }}
                               />
                             ) : (
                               <div className="modal-subtitle">{item.quantity || 0}</div>
@@ -1340,9 +1339,8 @@ export default function PurchaseDetailModal({
                                 type="number"
                                 value={item.unit_price_value}
                                 onChange={(e) => handleItemChange(index, 'unit_price_value', Number(e.target.value))}
-                                className="modal-label border-gray-200 rounded-lg mt-1 relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[120px] focus:w-auto"
+                                className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                                 placeholder="단가"
-                                style={{ minWidth: `${Math.max(80, String(item.unit_price_value || '').length * 12 + 40)}px` }}
                               />
                             ) : (
                               <div className="modal-subtitle">₩{formatCurrency(item.unit_price_value)}</div>
@@ -1390,23 +1388,32 @@ export default function PurchaseDetailModal({
                                   {activeTab === 'receipt' && (
                                     <>
                                       {canReceiptCheck ? (
-                                        <button
-                                          onClick={() => handleReceiptToggle(item.id, !item.is_received)}
-                                          className={`text-xs px-2 py-1 rounded transition-colors ${
-                                            item.is_received
-                                              ? 'button-action-primary'
-                                              : 'bg-gray-100 text-gray-600'
-                                          }`}
-                                        >
-                                          {item.is_received ? '입고완료' : '입고대기'}
-                                        </button>
+                                        item.actual_received_date ? (
+                                          <button
+                                            onClick={() => handleReceiptCancel(item.id)}
+                                            className="text-xs px-2 py-1 rounded button-action-primary"
+                                          >
+                                            입고완료
+                                          </button>
+                                        ) : (
+                                          <DatePickerPopover
+                                            onDateSelect={(date) => handleItemReceiptToggle(item.id, date)}
+                                            placeholder="실제 입고된 날짜를 선택하세요"
+                                            align="center"
+                                            side="bottom"
+                                          >
+                                            <button className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600">
+                                              입고대기
+                                            </button>
+                                          </DatePickerPopover>
+                                        )
                                       ) : (
                                         <span className={`text-xs px-2 py-1 rounded ${
-                                          item.is_received 
+                                          item.actual_received_date 
                                             ? 'button-action-primary' 
                                             : 'bg-gray-100 text-gray-400'
                                         }`}>
-                                          {item.is_received ? '입고완료' : '입고대기'}
+                                          {item.actual_received_date ? '입고완료' : '입고대기'}
                                         </span>
                                       )}
                                     </>
@@ -1428,13 +1435,34 @@ export default function PurchaseDetailModal({
                               <Input
                                 value={item.remark || ''}
                                 onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
-                                className="modal-label border-gray-200 rounded-lg mt-1 relative focus:z-50 focus:shadow-xl focus:border-blue-400 transition-all duration-300 focus:min-w-[200px] focus:w-auto focus:max-w-[350px]"
+                                className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                                 placeholder="비고"
-                                style={{ minWidth: item.remark ? `${Math.max(100, item.remark.length * 8 + 40)}px` : '100px' }}
                               />
                             ) : (
                               <div className="modal-subtitle text-gray-500 mt-1">{item.remark || '-'}</div>
                             )}
+                          </div>
+                        )}
+                        
+                        {/* 모바일에서 실제 입고 날짜 표시 */}
+                        {!isEditing && activeTab === 'receipt' && item.actual_received_date && (
+                          <div>
+                            <span className="text-gray-500 text-xs">실제입고일:</span>
+                            <div className="mt-1">
+                              <div className="modal-subtitle text-green-700">
+                                {new Date(item.actual_received_date).toLocaleDateString('ko-KR', {
+                                  year: 'numeric',
+                                  month: '2-digit',
+                                  day: '2-digit'
+                                })}
+                              </div>
+                              <div className="text-[9px] text-gray-500">
+                                {new Date(item.actual_received_date).toLocaleTimeString('ko-KR', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </div>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1509,7 +1537,7 @@ export default function PurchaseDetailModal({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent 
-        className="overflow-hidden bg-white rounded-lg shadow-sm border-0 w-[100vw] h-[100vh] sm:w-[95vw] sm:max-w-4xl lg:max-w-6xl sm:max-h-[90vh] lg:max-h-[85vh] sm:rounded-lg flex flex-col" 
+        className="overflow-hidden bg-white rounded-lg shadow-sm border-0 w-[100vw] h-[100vh] sm:w-auto sm:min-w-[1000px] sm:max-w-none sm:max-h-[90vh] lg:max-h-[85vh] sm:rounded-lg flex flex-col" 
         showCloseButton={false}
       >
         {/* Apple-style Header */}
@@ -1589,6 +1617,7 @@ export default function PurchaseDetailModal({
           {content}
         </div>
       </DialogContent>
+      
     </Dialog>
   )
 }

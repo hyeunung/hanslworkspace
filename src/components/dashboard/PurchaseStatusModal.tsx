@@ -4,6 +4,7 @@ import {
   DialogContent
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { 
   ShoppingCart, 
   Truck, 
@@ -70,6 +71,40 @@ export default function PurchaseStatusModal({
     }
     fetchUserRoles()
   }, [type])
+
+  // 날짜 선택 후 입고완료 처리 함수
+  const handleDateSelect = async (selectedDate: Date, itemId: string) => {
+    try {
+      const { error } = await supabase
+        .from('purchase_request_items')
+        .update({ 
+          is_received: true,
+          received_at: new Date().toISOString(),
+          actual_received_date: selectedDate.toISOString()
+        })
+        .eq('id', itemId)
+
+      if (error) throw error
+      
+      // 로컬 상태 업데이트
+      setLocalItem(prev => ({
+        ...prev,
+        purchase_request_items: prev.purchase_request_items?.map((item: any) =>
+          item.id === itemId ? { 
+            ...item, 
+            is_received: true, 
+            received_at: new Date().toISOString(),
+            actual_received_date: selectedDate.toISOString()
+          } : item
+        ) || []
+      }))
+      
+      toast.success('입고완료 처리되었습니다.')
+      if (onRefresh) onRefresh()
+    } catch (error) {
+      toast.error('처리 중 오류가 발생했습니다.')
+    }
+  }
 
   if (!localItem) return null
 
@@ -242,7 +277,7 @@ export default function PurchaseStatusModal({
                         <td className="p-2 text-right modal-value">₩{(Number(pItem.amount_value) || 0).toLocaleString()}</td>
                         {type === 'delivery' && (
                           <td className="p-2 text-center">
-                            {pItem.is_received ? (
+                            {pItem.actual_received_date ? (
                               <span className="inline-flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 business-radius-badge text-xs border border-green-200">
                                 <CheckCircle2 className="w-3 h-3" />
                                 완료
@@ -250,40 +285,19 @@ export default function PurchaseStatusModal({
                             ) : (
                               (currentUserRoles.includes('app_admin') || 
                                currentUserRoles.includes('requester')) && (
-                                <Button
-                                  size="sm"
-                                  onClick={async () => {
-                                    if (!confirm('이 품목을 입고완료 처리하시겠습니까?')) return
-                                    
-                                    try {
-                                      const { error } = await supabase
-                                        .from('purchase_request_items')
-                                        .update({ 
-                                          is_received: true,
-                                          received_at: new Date().toISOString()
-                                        })
-                                        .eq('id', pItem.id)
-
-                                      if (error) throw error
-                                      
-                                      // 로컬 상태 업데이트
-                                      setLocalItem(prev => ({
-                                        ...prev,
-                                        purchase_request_items: prev.purchase_request_items?.map((item: any) =>
-                                          item.id === pItem.id ? { ...item, is_received: true, received_at: new Date().toISOString() } : item
-                                        ) || []
-                                      }))
-                                      
-                                      toast.success('입고완료 처리되었습니다.')
-                                      if (onRefresh) onRefresh()
-                                    } catch (error) {
-                                      toast.error('처리 중 오류가 발생했습니다.')
-                                    }
-                                  }}
-                                  className="bg-blue-600 hover:bg-blue-700 text-white h-6 px-2 text-xs"
+                                <DatePickerPopover
+                                  onDateSelect={(date) => handleDateSelect(date, pItem.id)}
+                                  placeholder="실제 입고된 날짜를 선택하세요"
+                                  align="center"
+                                  side="bottom"
                                 >
-                                  입고완료
-                                </Button>
+                                  <Button
+                                    size="sm"
+                                    className="button-base bg-blue-600 hover:bg-blue-700 text-white"
+                                  >
+                                    입고완료
+                                  </Button>
+                                </DatePickerPopover>
                               )
                             )}
                           </td>
@@ -350,7 +364,7 @@ export default function PurchaseStatusModal({
           {type === 'delivery' && items.length > 1 && (
             <div className="bg-blue-50 rounded-xl p-3 border border-blue-100">
               {(() => {
-                const receivedCount = items.filter((i: any) => i.is_received).length
+                const receivedCount = items.filter((i: any) => i.actual_received_date).length
                 const totalCount = items.length
                 const percentage = (receivedCount / totalCount) * 100
                 
@@ -441,6 +455,7 @@ export default function PurchaseStatusModal({
           </div>
         </div>
       </DialogContent>
+      
     </Dialog>
   )
 }

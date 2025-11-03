@@ -14,6 +14,7 @@ import {
   DialogTrigger,
   DialogFooter
 } from '@/components/ui/dialog';
+import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { useToast } from '@/hooks/use-toast';
 import { deliveryService } from '@/services/deliveryService';
 import { PurchaseRequestWithDetails, PurchaseRequestItem } from '@/types/purchase';
@@ -57,6 +58,7 @@ export function DeliveryManagement({
   const [selectAll, setSelectAll] = useState(false);
   const [showBatchDialog, setShowBatchDialog] = useState(false);
   const [batchNotes, setBatchNotes] = useState('');
+;
 
   // 초기 상태 설정
   useEffect(() => {
@@ -74,15 +76,12 @@ export function DeliveryManagement({
     setItemStates(initialStates);
   }, [purchaseRequest.items]);
 
-  // 입고 상태에 따른 배지 컴포넌트
-  const getStatusBadge = (status: string | undefined, receivedQty: number, totalQty: number) => {
-    switch (status) {
-      case 'received':
-        return <Badge variant={null} className="badge-success">입고완료</Badge>;
-      case 'partial':
-        return <Badge variant={null} className="badge-warning">부분입고</Badge>;
-      default:
-        return <Badge variant={null} className="badge-secondary">입고대기</Badge>;
+  // 입고 상태에 따른 배지 컴포넌트 (actual_received_date 기준)
+  const getStatusBadge = (actualReceivedDate: string | null) => {
+    if (actualReceivedDate) {
+      return <Badge variant={null} className="badge-success">입고완료</Badge>;
+    } else {
+      return <Badge variant={null} className="badge-secondary">입고대기</Badge>;
     }
   };
 
@@ -128,8 +127,8 @@ export function DeliveryManagement({
       Object.keys(updated).forEach(key => {
         const itemId = key;
         const item = purchaseRequest.items?.find(i => i.id === itemId);
-        // 입고 완료되지 않은 품목만 선택
-        if (item && item.delivery_status !== 'received') {
+        // 실제 입고 완료되지 않은 품목만 선택
+        if (item && !item.actual_received_date) {
           updated[itemId] = {
             ...updated[itemId],
             isSelected: newSelectAll
@@ -249,8 +248,8 @@ export function DeliveryManagement({
     }
   };
 
-  // 전체 입고 처리
-  const handleCompleteAllDelivery = async () => {
+  // 전체 입고 처리 (날짜 선택 후 실행)
+  const handleCompleteAllDelivery = async (selectedDate: Date) => {
     if (!currentUser) return;
     if (!purchaseRequest.id) return;
 
@@ -260,7 +259,8 @@ export function DeliveryManagement({
         parseInt(purchaseRequest.id),
         currentUser.id,
         currentUser.name,
-        "전체 품목 일괄 입고 처리"
+        "전체 품목 일괄 입고 처리",
+        selectedDate.toISOString()
       );
 
       if (result.success) {
@@ -317,12 +317,12 @@ export function DeliveryManagement({
     }
   };
 
-  // 통계 계산
+  // 통계 계산 (actual_received_date 기준)
   const stats = {
     total: purchaseRequest.items?.length || 0,
-    completed: purchaseRequest.items?.filter(item => item.delivery_status === 'received').length || 0,
-    partial: purchaseRequest.items?.filter(item => item.delivery_status === 'partial').length || 0,
-    pending: purchaseRequest.items?.filter(item => item.delivery_status === 'pending').length || 0
+    completed: purchaseRequest.items?.filter(item => item.actual_received_date).length || 0,
+    partial: 0, // 부분 입고는 actual_received_date 시스템에서는 사용하지 않음
+    pending: purchaseRequest.items?.filter(item => !item.actual_received_date).length || 0
   };
 
   const selectedCount = Object.values(itemStates).filter(state => state.isSelected).length;
@@ -403,13 +403,21 @@ export function DeliveryManagement({
                   </DialogContent>
                 </Dialog>
                 
-                <Button
-                  onClick={handleCompleteAllDelivery}
-                  size="sm"
+                <DatePickerPopover
+                  onDateSelect={handleCompleteAllDelivery}
+                  placeholder="전체 입고완료 날짜를 선택하세요"
                   disabled={isProcessing}
+                  align="end"
+                  side="bottom"
                 >
-                  전체 완료
-                </Button>
+                  <Button
+                    size="sm"
+                    disabled={isProcessing}
+                    className="button-base bg-green-500 hover:bg-green-600 text-white"
+                  >
+                    전체 완료
+                  </Button>
+                </DatePickerPopover>
               </>
             )}
           </div>
@@ -442,7 +450,7 @@ export function DeliveryManagement({
                 isSelected: false
               };
 
-              const canReceive = item.delivery_status !== 'received';
+              const canReceive = !item.actual_received_date;
               const completionPercentage = item.quantity > 0 
                 ? Math.round(((item.received_quantity || 0) / item.quantity) * 100) 
                 : 0;
@@ -461,7 +469,7 @@ export function DeliveryManagement({
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{item.line_number}.</span>
                           <span className="font-medium">{item.item_name}</span>
-                          {getStatusBadge(item.delivery_status, item.received_quantity || 0, item.quantity)}
+                          {getStatusBadge(item.actual_received_date)}
                         </div>
                         <div className="text-sm text-muted-foreground">
                           규격: {item.specification || '없음'}
@@ -470,9 +478,9 @@ export function DeliveryManagement({
                           주문수량: {item.quantity.toLocaleString()} | 
                           입고수량: {(item.received_quantity || 0).toLocaleString()} ({completionPercentage}%)
                         </div>
-                        {item.received_date && (
+                        {item.actual_received_date && (
                           <div className="text-sm text-muted-foreground">
-                            입고일: {format(new Date(item.received_date), 'yyyy-MM-dd HH:mm', { locale: ko })}
+                            실제입고일: {format(new Date(item.actual_received_date), 'yyyy-MM-dd', { locale: ko })}
                             {item.received_by && ` (${item.received_by})`}
                           </div>
                         )}
@@ -521,6 +529,7 @@ export function DeliveryManagement({
           </div>
         </CardContent>
       )}
+      
     </Card>
   );
 }
