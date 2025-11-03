@@ -732,7 +732,7 @@ export default function PurchaseNewMain() {
             <div className="flex flex-col items-start">
               <Label className="mb-1 block text-xs">발주서 종류<span className="text-red-500 ml-1">*</span></Label>
               <Select value={watch('po_template_type')} onValueChange={value => setValue('po_template_type', value)}>
-                <SelectTrigger className="h-9 w-28 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                <SelectTrigger className="!h-9 !py-0 w-28 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                   <SelectValue placeholder="종류 선택" />
                 </SelectTrigger>
                 <SelectContent position="popper" className="z-[9999]">
@@ -751,7 +751,7 @@ export default function PurchaseNewMain() {
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">요청 유형<span className="text-red-500 ml-0.5">*</span></Label>
                   <Select value={watch('request_type')} onValueChange={(value) => setValue('request_type', value)}>
-                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="!h-9 !py-0 !leading-none bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -763,7 +763,7 @@ export default function PurchaseNewMain() {
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">진행 종류<span className="text-red-500 ml-0.5">*</span></Label>
                   <Select value={watch('progress_type')} onValueChange={(value) => setValue('progress_type', value)}>
-                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="!h-9 !py-0 !leading-none bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -775,7 +775,7 @@ export default function PurchaseNewMain() {
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">결제 종류<span className="text-red-500 ml-0.5">*</span></Label>
                   <Select value={watch('payment_category')} onValueChange={(value) => setValue('payment_category', value)}>
-                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="!h-9 !py-0 !leading-none bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -817,19 +817,85 @@ export default function PurchaseNewMain() {
                       pageSize={20}
                       styles={{
                         container: base => ({ ...base, width: '100%' }),
-                        control: base => ({ ...base, height: 36, minHeight: 36, background: '#fff', border: '1px solid #d2d2d7', borderRadius: 6, fontSize: '0.75rem', boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)', '&:hover': { boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' } }),
-                        valueContainer: base => ({ ...base, height: 34, padding: '0 8px', fontSize: '0.75rem' }),
-                        input: base => ({ ...base, margin: 0, padding: 0, fontSize: '0.75rem' }),
-                        indicatorsContainer: base => ({ ...base, height: 36 }),
+                        control: base => ({ 
+                          ...base, 
+                          height: '36px !important',
+                          minHeight: '36px !important',
+                          maxHeight: '36px !important',
+                          background: '#fff',
+                          border: '1px solid #d2d2d7',
+                          borderRadius: '6px',
+                          fontSize: '0.75rem',
+                          boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+                          padding: '0 !important',
+                          margin: '0 !important',
+                          alignItems: 'center',
+                          display: 'flex',
+                          position: 'relative',
+                          verticalAlign: 'top',
+                          lineHeight: '1',
+                          '&:hover': { 
+                            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' 
+                          }
+                        }),
+                        valueContainer: base => ({ 
+                          ...base, 
+                          height: '36px !important',
+                          minHeight: '36px !important',
+                          maxHeight: '36px !important',
+                          padding: '0 14px !important',
+                          margin: '0 !important',
+                          fontSize: '0.75rem',
+                          alignItems: 'center',
+                          display: 'flex',
+                          lineHeight: '1',
+                          justifyContent: 'flex-start'
+                        }),
+                        input: base => ({ 
+                          ...base, 
+                          margin: '0 !important', 
+                          padding: '0 !important', 
+                          fontSize: '0.75rem',
+                          lineHeight: '1',
+                          position: 'relative',
+                          top: '0'
+                        }),
+                        singleValue: base => ({
+                          ...base,
+                          margin: '0 !important',
+                          padding: '0 !important',
+                          fontSize: '0.75rem',
+                          lineHeight: '1',
+                          position: 'relative',
+                          top: '0',
+                          transform: 'none'
+                        }),
+                        placeholder: base => ({
+                          ...base,
+                          margin: '0 !important',
+                          padding: '0 !important',
+                          fontSize: '0.75rem',
+                          lineHeight: '1',
+                          position: 'relative',
+                          top: '0',
+                          transform: 'none'
+                        }),
+                        indicatorsContainer: base => ({ 
+                          ...base, 
+                          height: '36px !important',
+                          padding: '0 8px !important',
+                          alignItems: 'center',
+                          display: 'flex'
+                        }),
                         indicatorSeparator: () => ({ display: 'none' }),
-                        dropdownIndicator: base => ({ ...base, padding: 6 }),
-                        clearIndicator: base => ({ ...base, padding: 6 }),
+                        dropdownIndicator: base => ({ ...base, padding: '4px !important' }),
+                        clearIndicator: base => ({ ...base, padding: '4px !important' }),
                         menuPortal: base => ({ ...base, zIndex: 1400 })
                       }}
                     />
                 </div>
                 <div>
-                  <div className="flex items-center justify-between mb-0.5 sm:mb-1">
+                  <div className="flex items-center justify-between mb-0.5">
                     <Label className="text-[10px] sm:text-xs">업체 담당자</Label>
                     <span
                       className="text-primary text-[9px] sm:text-[10px] cursor-pointer hover:underline select-none flex items-center"
@@ -845,7 +911,7 @@ export default function PurchaseNewMain() {
                       setValue('contact_id', val ? Number(val) : undefined);
                     }}
                   >
-                    <SelectTrigger className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="!h-9 !py-0 !leading-none bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                       <SelectValue placeholder="담당자 선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -888,12 +954,21 @@ export default function PurchaseNewMain() {
                       styles={{
                         control: (base) => ({
                           ...base,
-                          minHeight: '36px',
-                          height: '36px',
-                          fontSize: '0.75rem',
-                          borderColor: '#d2d2d7',
+                          height: '36px !important',
+                          minHeight: '36px !important',
+                          maxHeight: '36px !important',
+                          background: '#fff',
+                          border: '1px solid #d2d2d7',
                           borderRadius: '6px',
-                          boxShadow: '0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)',
+                          fontSize: '0.75rem',
+                          boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+                          padding: '0 !important',
+                          margin: '0 !important',
+                          alignItems: 'center',
+                          display: 'flex',
+                          position: 'relative',
+                          verticalAlign: 'top',
+                          lineHeight: '1',
                           '&:hover': {
                             borderColor: '#d2d2d7',
                             boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'
@@ -901,15 +976,56 @@ export default function PurchaseNewMain() {
                         }),
                         valueContainer: (base) => ({
                           ...base,
-                          height: '34px',
-                          padding: '0 8px',
-                          fontSize: '0.75rem'
+                          height: '36px !important',
+                          minHeight: '36px !important',
+                          maxHeight: '36px !important',
+                          padding: '0 14px !important',
+                          margin: '0 !important',
+                          fontSize: '0.75rem',
+                          alignItems: 'center',
+                          display: 'flex',
+                          lineHeight: '1',
+                          justifyContent: 'flex-start'
                         }),
-                        input: (base) => ({ ...base, margin: '0px', padding: '0px', fontSize: '0.75rem' }),
+                        input: (base) => ({ 
+                          ...base, 
+                          margin: '0 !important', 
+                          padding: '0 !important', 
+                          fontSize: '0.75rem',
+                          lineHeight: '1',
+                          position: 'relative',
+                          top: '0'
+                        }),
+                        singleValue: base => ({
+                          ...base,
+                          margin: '0 !important',
+                          padding: '0 !important',
+                          fontSize: '0.75rem',
+                          lineHeight: '1',
+                          position: 'relative',
+                          top: '0',
+                          transform: 'none'
+                        }),
+                        placeholder: base => ({
+                          ...base,
+                          margin: '0 !important',
+                          padding: '0 !important',
+                          fontSize: '0.75rem',
+                          lineHeight: '1',
+                          position: 'relative',
+                          top: '0',
+                          transform: 'none'
+                        }),
+                        indicatorsContainer: (base) => ({ 
+                          ...base, 
+                          height: '36px !important',
+                          padding: '0 8px !important',
+                          alignItems: 'center',
+                          display: 'flex'
+                        }),
                         indicatorSeparator: () => ({ display: 'none' }),
-                        indicatorsContainer: (base) => ({ ...base, height: '36px' }),
-                        dropdownIndicator: base => ({ ...base, padding: 6 }),
-                        clearIndicator: base => ({ ...base, padding: 6 }),
+                        dropdownIndicator: base => ({ ...base, padding: '4px !important' }),
+                        clearIndicator: base => ({ ...base, padding: '4px !important' }),
                         menu: (base) => ({ ...base, fontSize: '0.75rem', zIndex: 9999 }),
                         option: (base) => ({ ...base, fontSize: '0.75rem', padding: '6px 10px' })
                       }}

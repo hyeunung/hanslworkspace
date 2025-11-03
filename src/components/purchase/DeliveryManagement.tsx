@@ -336,7 +336,7 @@ export function DeliveryManagement({
               variant="ghost"
               size="sm"
               onClick={() => setIsExpanded(!isExpanded)}
-              className="p-2"
+              className="button-base p-2"
             >
               {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </Button>
@@ -362,7 +362,7 @@ export function DeliveryManagement({
               variant="outline"
               size="sm"
               onClick={handleExcelDownload}
-              className="border-2 border-hansl-500 hover:border-hansl-600 hover:bg-hansl-50"
+              className="button-base border-2 border-hansl-500 hover:border-hansl-600 hover:bg-hansl-50"
             >
               <Download className="h-4 w-4 mr-2" />
               엑셀 다운로드
@@ -371,7 +371,7 @@ export function DeliveryManagement({
               <>
                 <Dialog open={showBatchDialog} onOpenChange={setShowBatchDialog}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="sm">
+                    <Button variant="outline" size="sm" className="button-base">
                       배치 처리 ({selectedCount})
                     </Button>
                   </DialogTrigger>
@@ -393,10 +393,10 @@ export function DeliveryManagement({
                       </div>
                     </div>
                     <DialogFooter>
-                      <Button variant="outline" onClick={() => setShowBatchDialog(false)}>
+                      <Button variant="outline" onClick={() => setShowBatchDialog(false)} className="button-base">
                         취소
                       </Button>
-                      <Button onClick={handleBatchDelivery} disabled={isProcessing}>
+                      <Button onClick={handleBatchDelivery} disabled={isProcessing} className="button-base bg-blue-500 hover:bg-blue-600 text-white">
                         처리
                       </Button>
                     </DialogFooter>
@@ -515,7 +515,7 @@ export function DeliveryManagement({
                           onClick={() => handleSingleItemDelivery(item.id!)}
                           disabled={isProcessing || itemState.receivedQuantity <= 0}
                           size="sm"
-                          className="w-full"
+                          className="button-base bg-blue-500 hover:bg-blue-600 text-white w-full"
                         >
                           <CheckCircle className="h-4 w-4 mr-2" />
                           입고 처리
