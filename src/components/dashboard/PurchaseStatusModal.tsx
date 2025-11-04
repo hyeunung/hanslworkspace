@@ -72,6 +72,50 @@ export default function PurchaseStatusModal({
     fetchUserRoles()
   }, [type])
 
+  // 구매완료 처리 함수 (작동하는 버전)
+  const handlePurchaseComplete = async (itemId: string) => {
+    logger.debug('🖱️ 구매완료 버튼 클릭됨', {
+      itemId: itemId,
+      timestamp: new Date().toISOString()
+    })
+    
+    if (!confirm('이 품목을 구매완료 처리하시겠습니까?')) {
+      logger.debug('❌ 사용자가 구매완료 확인 취소')
+      return
+    }
+    
+    logger.debug('✅ 구매완료 처리 시작', { itemId: itemId })
+    
+    try {
+      const { error } = await supabase
+        .from('purchase_request_items')
+        .update({ 
+          is_payment_completed: true,
+          payment_completed_at: new Date().toISOString()
+        })
+        .eq('id', itemId)
+
+      if (error) throw error
+      
+      // 로컬 상태 업데이트
+      setLocalItem((prev: any) => ({
+        ...prev,
+        purchase_request_items: prev.purchase_request_items?.map((item: any) =>
+          item.id === itemId 
+            ? { ...item, is_payment_completed: true, payment_completed_at: new Date().toISOString() }
+            : item
+        )
+      }))
+      
+      logger.debug('✅ 구매완료 처리 성공', { itemId: itemId })
+      toast.success('품목 구매완료 처리되었습니다.')
+      onRefresh?.()
+    } catch (error) {
+      logger.error('❌ 구매완료 처리 실패', error, { itemId: itemId })
+      toast.error('처리 중 오류가 발생했습니다.')
+    }
+  }
+
   // 날짜 선택 후 입고완료 처리 함수
   const handleDateSelect = async (selectedDate: Date, itemId: string) => {
     try {
@@ -116,19 +160,23 @@ export default function PurchaseStatusModal({
     return sum + (Number(i.quantity) || 0)
   }, 0)
   
-  // 디버깅
-  logger.debug('PurchaseStatusModal 디버깅', {
-    type,
+  // 🚨 긴급 디버깅 - 모달 진입 시점
+  logger.debug('🚨 PurchaseStatusModal 긴급 디버깅', {
+    type: `"${type}"`,
+    typeType: typeof type,
     currentUserRoles,
     item: localItem.purchase_order_number,
     showPurchaseButton: type === 'purchase',
     showDeliveryButton: type === 'delivery',
     hasAdminPermission: currentUserRoles.includes('app_admin'),
     hasLeadBuyerPermission: currentUserRoles.includes('lead buyer'),
+    leadBuyerCheck: currentUserRoles.some(role => role.trim().toLowerCase() === 'lead buyer'),
     itemData: {
       is_payment_completed: localItem.is_payment_completed,
       is_received: localItem.is_received
-    }
+    },
+    shouldShowPurchaseColumn: type === 'purchase',
+    actualTypeValue: JSON.stringify(type)
   })
 
   const getTypeInfo = () => {
@@ -311,40 +359,11 @@ export default function PurchaseStatusModal({
                               </span>
                             ) : (
                               (currentUserRoles.includes('app_admin') || 
-                               currentUserRoles.includes('lead buyer')) && (
+                               currentUserRoles.some(role => role.trim().toLowerCase() === 'lead buyer')) && (
                                 <Button
                                   size="sm"
-                                  onClick={async () => {
-                                    if (!confirm('이 품목을 구매완료 처리하시겠습니까?')) return
-                                    
-                                    try {
-                                      const { error } = await supabase
-                                        .from('purchase_request_items')
-                                        .update({ 
-                                          is_payment_completed: true,
-                                          payment_completed_at: new Date().toISOString()
-                                        })
-                                        .eq('id', pItem.id)
-
-                                      if (error) throw error
-                                      
-                                      // 로컬 상태 업데이트
-                                      setLocalItem((prev: any) => ({
-                                        ...prev,
-                                        purchase_request_items: prev.purchase_request_items?.map((item: any) =>
-                                          item.id === pItem.id 
-                                            ? { ...item, is_payment_completed: true, payment_completed_at: new Date().toISOString() }
-                                            : item
-                                        )
-                                      }))
-                                      
-                                      toast.success('품목 구매완료 처리되었습니다.')
-                                      onRefresh?.()
-                                    } catch (error) {
-                                      toast.error('처리 중 오류가 발생했습니다.')
-                                    }
-                                  }}
-                                  className="bg-yellow-600 hover:bg-yellow-700 text-white px-2 py-1 badge-text"
+                                  onClick={() => handlePurchaseComplete(pItem.id)}
+                                  className="button-base bg-yellow-600 hover:bg-yellow-700 text-white"
                                 >
                                   구매완료
                                 </Button>
@@ -392,7 +411,7 @@ export default function PurchaseStatusModal({
             {/* Purchase Complete Button - for purchase type with permissions */}
             {type === 'purchase' && 
              (currentUserRoles.includes('app_admin') || 
-              currentUserRoles.includes('lead buyer')) && (
+              currentUserRoles.some(role => role.trim().toLowerCase() === 'lead buyer')) && (
               <Button
                 onClick={async () => {
                   setProcessing(true)
