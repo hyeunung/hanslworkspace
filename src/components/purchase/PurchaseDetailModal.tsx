@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails } from '@/types/purchase'
 import { formatDate } from '@/utils/helpers'
@@ -148,6 +148,49 @@ export default function PurchaseDetailModal({
   const isRequester = purchase?.requester_name === currentUserName
   const canReceiptCheck = isAdmin || isRequester
   
+  console.log('🔐 권한 체크 정보:', {
+    currentUserName,
+    effectiveRoles,
+    isAdmin,
+    isRequester,
+    canReceiptCheck,
+    purchaseRequesterName: purchase?.requester_name
+  })
+
+  // 모달 내부 데이터만 새로고침하는 함수 (모달 닫지 않음)
+  const refreshModalData = useCallback(async () => {
+    if (!purchaseId) return
+    
+    try {
+      // 최신 구매 요청 데이터 로드
+      const { data: freshPurchase } = await supabase
+        .from('purchase_requests')
+        .select(`
+          *,
+          items:purchase_request_items (
+            *
+          )
+        `)
+        .eq('id', purchaseId)
+        .single()
+      
+      if (freshPurchase) {
+        setPurchase(freshPurchase)
+        setEditedPurchase(freshPurchase)
+        setEditedItems(freshPurchase.items || [])
+        
+        // 외부 진행률 업데이트는 별도의 이벤트로 처리 (모달 상태에 영향 주지 않음)
+        // 필요시 부모 컴포넌트에서 실시간 데이터 폴링 등으로 처리
+        logger.debug('모달 데이터 새로고침 완료 - 모달 상태 유지')
+      }
+    } catch (error) {
+      logger.error('모달 데이터 새로고침 실패', error)
+    }
+  }, [purchaseId, supabase])
+  
+  // 컴포넌트가 마운트될 때 외부 새로고침을 방지하는 플래그
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
+  
   // 커스텀 훅 설정
   const statementReceivedAction = useConfirmDateAction({
     config: {
@@ -165,11 +208,7 @@ export default function PurchaseDetailModal({
     },
     currentUserName,
     canPerformAction: canReceiptCheck,
-    onUpdate: () => {
-      if (onRefresh) {
-        onRefresh(true)
-      }
-    }
+    onUpdate: refreshModalData
   })
 
   const actualReceivedAction = useConfirmDateAction({
@@ -188,11 +227,7 @@ export default function PurchaseDetailModal({
     },
     currentUserName,
     canPerformAction: canReceiptCheck,
-    onUpdate: () => {
-      if (onRefresh) {
-        onRefresh(true)
-      }
-    }
+    onUpdate: refreshModalData
   })
   
   // 권한 디버깅 로그
@@ -248,32 +283,165 @@ export default function PurchaseDetailModal({
     }
   }, [purchaseId, isOpen])
 
-  // 칼럼 너비 측정 및 저장
-  const measureColumnWidths = () => {
-    if (headerRowRef.current && !isEditing) {
-      const cells = headerRowRef.current.children
-      const widths = Array.from(cells).map(cell => {
-        const rect = cell.getBoundingClientRect()
-        return rect.width
-      })
-      setColumnWidths(widths)
-      logger.debug('Column widths measured', { widths })
+  // 칼럼 너비 계산 (텍스트 길이 기반)
+  const calculateOptimalColumnWidths = useCallback(() => {
+    if (!purchase?.items || purchase.items.length === 0) return []
+
+    const columnConfigs = [
+      { key: 'item_name', minWidth: 80, maxWidth: 500, baseWidth: 80 },
+      { key: 'specification', minWidth: 120, maxWidth: 700, baseWidth: 120 },
+      { key: 'quantity', minWidth: 70, maxWidth: 100, baseWidth: 70 },
+      { key: 'unit_price', minWidth: 90, maxWidth: 150, baseWidth: 90 },
+      { key: 'total_price', minWidth: 100, maxWidth: 180, baseWidth: 100 },
+      { key: 'remarks', minWidth: 80, maxWidth: 240, baseWidth: 80 },
+      { key: 'status', minWidth: 80, maxWidth: 120, baseWidth: 80 }
+    ]
+
+    // 추가 칼럼들 (탭별)
+    if (activeTab === 'receipt') {
+      columnConfigs.push({ key: 'actual_receipt_date', minWidth: 100, maxWidth: 160, baseWidth: 100 })
     }
+    if (activeTab === 'done') {
+      columnConfigs.push(
+        { key: 'transaction_confirm', minWidth: 100, maxWidth: 160, baseWidth: 100 },
+        { key: 'accounting_date', minWidth: 100, maxWidth: 160, baseWidth: 100 },
+        { key: 'processor', minWidth: 80, maxWidth: 120, baseWidth: 80 }
+      )
+    }
+
+    const calculatedWidths = columnConfigs.map((config, index) => {
+      let maxLength = 4 // 최소 4자
+
+      // 헤더 텍스트 길이 고려 (탭별)
+      const getHeaders = () => {
+        const baseHeaders = ['품목명', '규격', '수량', '단가', '합계', '비고', '상태']
+        if (activeTab === 'receipt') {
+          return [...baseHeaders, '실제입고일']
+        } else if (activeTab === 'done') {
+          return [...baseHeaders, '거래명세서 확인', '회계상 입고일', '처리자']
+        }
+        return baseHeaders
+      }
+      
+      const headers = getHeaders()
+      if (headers[index]) {
+        maxLength = Math.max(maxLength, headers[index].length)
+      }
+
+      // 실제 데이터에서 최대 길이 찾기
+      purchase.items.forEach(item => {
+        let cellValue = ''
+        switch (config.key) {
+          case 'item_name':
+            cellValue = item.item_name || ''
+            break
+          case 'specification':
+            cellValue = item.specification || ''
+            break
+          case 'quantity':
+            cellValue = item.quantity?.toString() || ''
+            break
+          case 'unit_price':
+            cellValue = item.unit_price?.toLocaleString() || ''
+            break
+          case 'total_price':
+            cellValue = (item.quantity * item.unit_price)?.toLocaleString() || ''
+            break
+          case 'remarks':
+            cellValue = item.remarks || ''
+            break
+          case 'status':
+            cellValue = getStatusDisplay(item) || ''
+            break
+          case 'actual_receipt_date':
+            cellValue = item.actual_receipt_date ? formatDate(item.actual_receipt_date) : ''
+            break
+          case 'transaction_confirm':
+            cellValue = item.transaction_confirmed ? '확인완료' : '미확인'
+            break
+          case 'accounting_date':
+            cellValue = item.accounting_receipt_date ? formatDate(item.accounting_receipt_date) : ''
+            break
+          case 'processor':
+            cellValue = item.processor_name || ''
+            break
+        }
+        
+        // 한글/영문 혼합 텍스트 길이 계산 (한글은 1.5배 가중치)
+        const adjustedLength = cellValue.split('').reduce((acc, char) => {
+          return acc + (/[가-힣]/.test(char) ? 1.5 : 1)
+        }, 0)
+        
+        maxLength = Math.max(maxLength, Math.ceil(adjustedLength))
+      })
+
+      // 길이를 픽셀로 변환 (글자당 약 7px + 여백 20px)
+      const calculatedWidth = Math.max(
+        config.minWidth,
+        Math.min(config.maxWidth, maxLength * 7 + 20)
+      )
+
+      logger.debug(`Column ${config.key} calculated:`, { 
+        maxLength, 
+        calculatedWidth, 
+        range: `${config.minWidth}-${config.maxWidth}px` 
+      })
+
+      return calculatedWidth
+    })
+
+    setColumnWidths(calculatedWidths)
+    logger.debug('Optimal column widths calculated', { calculatedWidths })
+    return calculatedWidths
+  }, [purchase, activeTab])
+
+  // 상태 표시 텍스트 반환 함수
+  const getStatusDisplay = (item: any) => {
+    if (activeTab === 'purchase') {
+      return item.purchase_status === 'ordered' ? '발주' : '구매요청'
+    } else if (activeTab === 'receipt') {
+      return item.receipt_status === 'received' ? '입고' : '입고대기'
+    }
+    return item.purchase_status === 'ordered' ? '발주' : '구매요청'
   }
 
-  // View 모드에서 칼럼 너비 측정 (데이터 로드 후)
+  // 동적 gridTemplateColumns 생성
+  const getGridTemplateColumns = () => {
+    if (columnWidths.length > 0) {
+      return columnWidths.map(width => `${width}px`).join(' ')
+    }
+    
+    // 기본값 (데이터 로드 전)
+    const baseColumns = ['80px', '120px', '70px', '90px', '100px', '80px', '80px']
+    
+    // 탭별 추가 칼럼
+    if (activeTab === 'receipt') {
+      return [...baseColumns, '100px'].join(' ')
+    } else if (activeTab === 'done') {
+      return [...baseColumns, '100px', '100px', '80px'].join(' ')
+    }
+    
+    return baseColumns.join(' ')
+  }
+
+  // 레거시 measureColumnWidths 함수 (호환성 유지)
+  const measureColumnWidths = () => {
+    calculateOptimalColumnWidths()
+  }
+
+  // View 모드에서 칼럼 너비 계산 (데이터 로드 후)
   useEffect(() => {
     if (purchase && purchase.items && purchase.items.length > 0 && !isEditing) {
-      // 다음 렌더링 사이클에서 측정 (DOM이 완전히 렌더링된 후)
-      setTimeout(measureColumnWidths, 100)
+      // 즉시 계산 (DOM 측정 불필요)
+      calculateOptimalColumnWidths()
     }
-  }, [purchase, isEditing, activeTab])
+  }, [purchase, isEditing, activeTab, calculateOptimalColumnWidths])
 
-  // Edit 모드 전환 시 너비 측정
+  // Edit 모드 전환 시 너비 계산
   const handleEditToggle = (editing: boolean) => {
     if (editing && !isEditing) {
-      // Edit 모드로 전환하기 전에 현재 너비 측정
-      measureColumnWidths()
+      // Edit 모드로 전환하기 전에 현재 너비 계산
+      calculateOptimalColumnWidths()
     }
     setIsEditing(editing)
   }
@@ -404,10 +572,10 @@ export default function PurchaseDetailModal({
         if (!item.quantity || item.quantity <= 0) {
           throw new Error('수량은 0보다 커야 합니다.');
         }
-        if (!item.unit_price_value || item.unit_price_value < 0) {
+        if (item.unit_price_value !== null && item.unit_price_value !== undefined && item.unit_price_value < 0) {
           throw new Error('단가는 0 이상이어야 합니다.');
         }
-        if (!item.amount_value || item.amount_value < 0) {
+        if (item.amount_value !== null && item.amount_value !== undefined && item.amount_value < 0) {
           throw new Error('합계는 0 이상이어야 합니다.');
         }
         
@@ -666,7 +834,8 @@ export default function PurchaseDetailModal({
         .update({
           is_received: false,
           received_at: null,
-          actual_received_date: null
+          actual_received_date: null,
+          actual_received_by_name: null
         })
         .eq('id', numericId)
 
@@ -677,7 +846,7 @@ export default function PurchaseDetailModal({
         if (!prev) return null
         const updatedItems = prev.items?.map(item => 
           item.id === itemIdStr 
-            ? { ...item, is_received: false, received_at: null, actual_received_date: undefined }
+            ? { ...item, is_received: false, received_at: null, actual_received_date: undefined, actual_received_by_name: undefined }
             : item
         )
         return { ...prev, items: updatedItems }
@@ -772,18 +941,38 @@ export default function PurchaseDetailModal({
 
   // 전체 입고완료 처리 (날짜 선택)
   const handleCompleteAllReceipt = async (selectedDate: Date) => {
-    if (!purchase || !canReceiveItems) return
+    console.log('🔥 전체 입고완료 처리 시작', { purchase: purchase?.id, canReceiveItems, currentUserName })
+    if (!purchase || !canReceiveItems) {
+      console.log('❌ 전체 입고완료 처리 조건 미충족', { purchase: !!purchase, canReceiveItems })
+      return
+    }
+
+    // 확인 다이얼로그 표시
+    const confirmMessage = `발주번호: ${purchase.purchase_order_number}
+
+전체 입고완료 처리하시겠습니까?`
+    
+    if (!window.confirm(confirmMessage)) {
+      return
+    }
 
     try {
-      const { error } = await supabase
+      const updateData = {
+        is_received: true,
+        received_at: new Date().toISOString(),
+        actual_received_date: selectedDate.toISOString()
+      }
+      
+      console.log('🔥 전체 입고완료 업데이트 데이터:', updateData)
+
+      const { data, error } = await supabase
         .from('purchase_request_items')
-        .update({
-          is_received: true,
-          received_at: new Date().toISOString(),
-          actual_received_date: selectedDate.toISOString()
-        })
+        .update(updateData)
         .eq('purchase_request_id', purchase.id)
         .is('actual_received_date', null) // 아직 실제 입고되지 않은 항목만
+        .select()
+
+      console.log('🔥 전체 입고완료 DB 결과:', { data, error })
 
       if (error) throw error
 
@@ -1171,11 +1360,7 @@ export default function PurchaseDetailModal({
                       ref={headerRowRef}
                       className="hidden sm:grid gap-3 modal-label" 
                       style={{
-                        gridTemplateColumns: isEditing && columnWidths.length > 0
-                          ? columnWidths.map(width => `${width}px`).join(' ')
-                          : activeTab === 'receipt' 
-                            ? 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(100px, auto) minmax(100px, auto) minmax(80px, auto) minmax(120px, auto)'
-                            : 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(100px, auto) minmax(100px, auto) minmax(80px, auto)'
+                        gridTemplateColumns: getGridTemplateColumns()
                       }}
                     >
                       <div>품목명</div>
@@ -1225,13 +1410,7 @@ export default function PurchaseDetailModal({
                     <div key={index} className="px-2 sm:px-3 py-1.5 border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                       {/* Desktop Layout */}
                       <div className={`hidden sm:grid items-center gap-3`} style={{
-                        gridTemplateColumns: isEditing && columnWidths.length > 0
-                          ? columnWidths.map(width => `${width}px`).join(' ')
-                          : activeTab === 'receipt' 
-                            ? 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(120px, auto)'
-                            : activeTab === 'done'
-                            ? 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(100px, auto) minmax(100px, auto) minmax(80px, auto)'
-                            : 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto)'
+                        gridTemplateColumns: getGridTemplateColumns()
                       }}>
                         {/* 품목명 */}
                         <div className="min-w-0">
@@ -1415,8 +1594,21 @@ export default function PurchaseDetailModal({
                                 </div>
                               )}
                               
+                              {/* 전체 항목 탭에서는 입고 상태만 표시 (클릭 불가) */}
+                              {activeTab === 'done' && (
+                                <div className="flex justify-center">
+                                  <span className={`button-base ${
+                                    actualReceivedAction.isCompleted(item)
+                                      ? 'bg-green-500 hover:bg-green-600 text-white' 
+                                      : 'border border-gray-300 text-gray-600 bg-white hover:bg-gray-50'
+                                  }`}>
+                                    {actualReceivedAction.isCompleted(item) ? '입고완료' : '입고대기'}
+                                  </span>
+                                </div>
+                              )}
+                              
                               {/* 기타 탭에서는 기본 상태 표시 */}
-                              {activeTab !== 'purchase' && activeTab !== 'receipt' && (
+                              {activeTab !== 'purchase' && activeTab !== 'receipt' && activeTab !== 'done' && (
                                 <div className="flex justify-center">
                                   <span className="badge-text">-</span>
                                 </div>
@@ -1689,7 +1881,20 @@ export default function PurchaseDetailModal({
                                     </>
                                   )}
                                   
-                                  {activeTab !== 'purchase' && activeTab !== 'receipt' && (
+                                  {activeTab === 'done' && (
+                                    <>
+                                      {/* 전체 항목 탭에서는 입고 상태만 표시 (클릭 불가) */}
+                                      <span className={`button-base ${
+                                        actualReceivedAction.isCompleted(item)
+                                          ? 'bg-green-500 text-white' 
+                                          : 'border border-gray-300 text-gray-600 bg-white'
+                                      }`}>
+                                        {actualReceivedAction.isCompleted(item) ? '입고완료' : '입고대기'}
+                                      </span>
+                                    </>
+                                  )}
+                                  
+                                  {activeTab !== 'purchase' && activeTab !== 'receipt' && activeTab !== 'done' && (
                                     <span className="text-xs text-gray-400">-</span>
                                   )}
                                 </>
@@ -1830,11 +2035,7 @@ export default function PurchaseDetailModal({
                 {/* 합계 */}
                 <div className="bg-gray-50 px-2 sm:px-3 border-t border-gray-100">
                   <div className="hidden sm:grid items-center gap-3 py-0.5" style={{
-                    gridTemplateColumns: isEditing && columnWidths.length > 0
-                      ? columnWidths.map(width => `${width}px`).join(' ')
-                      : activeTab === 'receipt' 
-                        ? 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(100px, auto)'
-                        : 'minmax(120px, 1fr) minmax(250px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(120px, 1fr) minmax(80px, auto)'
+                    gridTemplateColumns: getGridTemplateColumns()
                   }}>
                     {/* 품목명 */}
                     <div></div>
