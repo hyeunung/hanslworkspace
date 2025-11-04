@@ -13,6 +13,7 @@ import { ReceiptDownloadButton } from "./ReceiptDownloadButton";
 import { DatePickerPopover } from "@/components/ui/date-picker-popover";
 import { useEffect } from "react";
 import { useConfirmDateAction } from '@/hooks/useConfirmDateAction';
+import { logger } from '@/lib/logger';
 
 interface PurchaseItem {
   id?: number | string;
@@ -96,7 +97,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
           }
         }
       } catch (error) {
-        console.error('데이터 로드 실패:', error);
+        logger.error('데이터 로드 실패', error);
         setCurrentUserName('사용자');
       }
     };

@@ -249,6 +249,7 @@ ${config.confirmMessage.cancel}`
   }, [config.field])
 
   return {
+    config,
     handleConfirm,
     handleCancel,
     isCompleted,
