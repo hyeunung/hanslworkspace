@@ -143,16 +143,12 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
           
           if (middleRejected || finalRejected) return false;
           
-          // 승인 완료된 경우 당일까지만 표시
+          // 승인 완료된 경우 즉시 제거
           const middleApproved = purchase.middle_manager_status === 'approved';
           const finalApproved = purchase.final_manager_status === 'approved';
           
           if (middleApproved && finalApproved) {
-            // 최종 승인 완료된 경우 - updated_at 기준으로 당일까지만 표시
-            const approvalDate = purchase.updated_at ? purchase.updated_at.split('T')[0] : null;
-            if (approvalDate && approvalDate < today) {
-              return false; // 어제 이전에 완료된 항목은 제거
-            }
+            return false; // 최종 승인 완료된 항목은 즉시 제거
           }
           
           // 중간승인 대기 또는 최종승인 대기
@@ -167,13 +163,9 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
           const isIlban = (purchase.progress_type || '').includes('일반');
           const finalApproved = purchase.final_manager_status === 'approved';
           
-          // 구매 완료된 경우 당일까지만 표시, 다음날부터 제거
+          // 구매 완료된 경우 즉시 제거
           if (purchase.is_payment_completed) {
-            const paymentDate = purchase.payment_completed_at ? purchase.payment_completed_at.split('T')[0] : null;
-            if (paymentDate && paymentDate < today) {
-              return false; // 어제 이전에 완료된 항목은 제거
-            }
-            // 당일 완료된 항목은 계속 표시 (확인용)
+            return false; // 구매완료된 항목은 즉시 제거
           }
           
           // 기본 구매현황 조건: 요청 유형이고 아직 결제되지 않음
@@ -191,13 +183,9 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
           const isSeonJin = (purchase.progress_type || '').includes('선진행');
           const finalApproved = purchase.final_manager_status === 'approved';
           
-          // 입고 완료된 경우 당일까지만 표시, 다음날부터 제거
+          // 입고 완료된 경우 즉시 제거
           if (purchase.is_received) {
-            const receivedDate = purchase.received_at ? purchase.received_at.split('T')[0] : null;
-            if (receivedDate && receivedDate < today) {
-              return false; // 어제 이전에 완료된 항목은 제거
-            }
-            // 당일 완료된 항목은 계속 표시 (확인용)
+            return false; // 입고완료된 항목은 즉시 제거
           }
           
           // 기본 입고현황 조건: (선진행 or 최종승인)
@@ -409,16 +397,12 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       
       if (middleRejected || finalRejected) return false;
       
-      // 승인 완료된 경우 당일까지만 표시
+      // 승인 완료된 경우 즉시 제거
       const middleApproved = p.middle_manager_status === 'approved';
       const finalApproved = p.final_manager_status === 'approved';
       
       if (middleApproved && finalApproved) {
-        // 최종 승인 완료된 경우 - updated_at 기준으로 당일까지만 표시
-        const approvalDate = p.updated_at ? p.updated_at.split('T')[0] : null;
-        if (approvalDate && approvalDate < today) {
-          return false; // 어제 이전에 완료된 항목은 제거
-        }
+        return false; // 최종 승인 완료된 항목은 즉시 제거
       }
       
       // 중간승인 대기 또는 최종승인 대기
@@ -434,13 +418,9 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       const isIlban = (p.progress_type || '').includes('일반');
       const finalApproved = p.final_manager_status === 'approved';
       
-      // 구매 완료된 경우 당일까지만 표시, 다음날부터 제거
+      // 구매 완료된 경우 즉시 제거
       if (p.is_payment_completed) {
-        const paymentDate = p.payment_completed_at ? p.payment_completed_at.split('T')[0] : null;
-        if (paymentDate && paymentDate < today) {
-          return false; // 어제 이전에 완료된 항목은 제거
-        }
-        // 당일 완료된 항목은 계속 표시 (확인용)
+        return false; // 구매완료된 항목은 즉시 제거
       }
       
       if (!isRequest) return false;
@@ -454,13 +434,9 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
       const isSeonJin = (p.progress_type || '').includes('선진행');
       const finalApproved = p.final_manager_status === 'approved';
       
-      // 입고 완료된 경우 당일까지만 표시, 다음날부터 제거
+      // 입고 완료된 경우 즉시 제거
       if (p.is_received) {
-        const receivedDate = p.received_at ? p.received_at.split('T')[0] : null;
-        if (receivedDate && receivedDate < today) {
-          return false; // 어제 이전에 완료된 항목은 제거
-        }
-        // 당일 완료된 항목은 계속 표시 (확인용)
+        return false; // 입고완료된 항목은 즉시 제거
       }
       
       return (isSeonJin || finalApproved);
