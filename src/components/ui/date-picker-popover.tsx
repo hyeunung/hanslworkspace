@@ -89,18 +89,6 @@ export function DatePickerPopover({
             modifiersClassNames={{
               today: "bg-blue-500 text-white font-semibold cursor-pointer hover:bg-blue-600 rounded-md"
             }}
-            onDayClick={(day, modifiers) => {
-              console.log('🔘 onDayClick 호출:', { 
-                day, 
-                modifiers, 
-                isToday: modifiers.today,
-                dayString: day.toDateString(),
-                todayString: new Date().toDateString()
-              });
-              
-              // 모든 날짜에 대해 handleDateSelect 호출
-              handleDateSelect(day);
-            }}
           />
         </div>
       </PopoverContent>
