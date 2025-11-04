@@ -68,23 +68,40 @@ export interface Employee {
   full_name?: string;
 }
 
-// 캐시 관리
+// 향상된 캐시 관리
 const globalCache = {
   purchases: null as Purchase[] | null,
   vendors: null as Vendor[] | null,
   employees: null as Employee[] | null,
   lastFetch: 0,
   userInfo: null as any,
-  CACHE_DURATION: 2 * 60 * 1000 // 2분 캐싱으로 성능 향상
+  CACHE_DURATION: 5 * 60 * 1000, // 5분 캐싱으로 연장
+  // 탭별 필터링 결과 캐시
+  filteredData: new Map<string, { data: Purchase[]; timestamp: number }>(),
+  FILTER_CACHE_DURATION: 30 * 1000 // 30초 필터 캐시
 };
 
-// 캐시 강제 초기화 함수 (디버깅용)
+// 향상된 캐시 관리 함수들
 export const clearPurchaseCache = () => {
   globalCache.purchases = null;
   globalCache.vendors = null;
   globalCache.employees = null;
   globalCache.userInfo = null;
   globalCache.lastFetch = 0;
+  globalCache.filteredData.clear();
+};
+
+// 부분 캐시 무효화 (탭별)
+export const invalidateFilterCache = (tabKey?: string) => {
+  if (tabKey) {
+    for (const [key] of globalCache.filteredData.entries()) {
+      if (key.includes(tabKey)) {
+        globalCache.filteredData.delete(key);
+      }
+    }
+  } else {
+    globalCache.filteredData.clear();
+  }
 };
 
 export const usePurchaseData = () => {
@@ -216,7 +233,7 @@ export const usePurchaseData = () => {
     loadInitialData();
   }, []);
 
-  // 발주 목록 로드 - 캐싱 및 최적화 적용
+  // 발주 목록 로드 - 향상된 캐싱 및 최적화
   const loadPurchases = useCallback(async (forceRefresh?: boolean) => {
     setLoading(true);
     
@@ -225,6 +242,12 @@ export const usePurchaseData = () => {
       const now = Date.now();
       const cacheValid = globalCache.lastFetch && (now - globalCache.lastFetch) < globalCache.CACHE_DURATION;
       
+      // 강제 새로고침 시 필터 캐시도 무효화
+      if (forceRefresh) {
+        invalidateFilterCache();
+        globalCache.purchases = null;
+        globalCache.lastFetch = 0;
+      }
       
       if (!forceRefresh && cacheValid && globalCache.purchases) {
         try {
@@ -236,6 +259,7 @@ export const usePurchaseData = () => {
           // 캐시 초기화
           globalCache.purchases = null;
           globalCache.lastFetch = 0;
+          invalidateFilterCache();
         }
       }
       

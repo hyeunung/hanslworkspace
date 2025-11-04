@@ -1,5 +1,5 @@
 
-import { useState, lazy, Suspense, useEffect } from "react";
+import { useState, lazy, Suspense, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { usePurchaseData, clearPurchaseCache } from "@/hooks/usePurchaseData";
 import { useFastPurchaseFilters } from "@/hooks/useFastPurchaseFilters";
@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Purchase } from "@/hooks/usePurchaseData";
+import { measureTabSwitch, measureModalLoad, useRenderPerformance } from "@/utils/performance";
 
 interface PurchaseListMainProps {
   onEmailToggle?: () => void;
@@ -40,6 +41,9 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
   const [editingData, setEditingData] = useState<any>({});
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // 성능 모니터링
+  const { measureRender } = useRenderPerformance('PurchaseListMain');
   
   // 발주 데이터 및 사용자 정보
   const {
@@ -91,8 +95,8 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
   }, [location.search, setActiveTab]);
   
 
-  // 상태에 따른 배지 생성
-  const getStatusBadge = (purchase: Purchase) => {
+  // 상태에 따른 배지 생성 - 메모이제이션 적용
+  const getStatusBadge = useCallback((purchase: Purchase) => {
     if (purchase.is_received) {
       return <Badge variant={null} className="badge-success">입고완료</Badge>;
     } else if (purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'approved') {
@@ -102,7 +106,7 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
     } else {
       return <Badge variant={null} className="badge-warning">승인대기</Badge>;
     }
-  };
+  }, []);
 
   // 입고 현황 계산
   const getReceiptProgress = (purchase: Purchase) => {
@@ -293,66 +297,88 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
     }
   };
 
-  // 최적화된 핸들러들
-  const handleReceiptComplete = async (purchaseId: number) => {
+  // 최적화된 핸들러들 - 메모이제이션 및 배치 처리
+  const handleReceiptComplete = useCallback(async (purchaseId: number) => {
     try {
-      const { error } = await supabase
-        .from('purchase_requests')
-        .update({ 
-          is_received: true,
-          received_at: new Date().toISOString()
-        })
-        .eq('id', purchaseId);
-
-      if (error) throw error;
+      const currentTime = new Date().toISOString();
       
-      // 개별 품목도 모두 입고완료 처리
-      await supabase
-        .from('purchase_request_items')
-        .update({ 
-          is_received: true,
-          delivery_status: 'received'
-        })
-        .eq('purchase_request_id', purchaseId);
+      // 병렬 처리로 성능 개선
+      const [requestResult, itemsResult] = await Promise.all([
+        supabase
+          .from('purchase_requests')
+          .update({ 
+            is_received: true,
+            received_at: currentTime
+          })
+          .eq('id', purchaseId),
+        supabase
+          .from('purchase_request_items')
+          .update({ 
+            is_received: true,
+            delivery_status: 'received'
+          })
+          .eq('purchase_request_id', purchaseId)
+      ]);
+
+      if (requestResult.error) throw requestResult.error;
+      if (itemsResult.error) throw itemsResult.error;
       
       toast.success('입고완료 처리되었습니다.');
       await loadPurchases();
     } catch (error) {
       toast.error('처리 중 오류가 발생했습니다.');
     }
-  };
+  }, [supabase, loadPurchases]);
 
-  const handlePaymentComplete = async (purchaseId: number) => {
+  const handlePaymentComplete = useCallback(async (purchaseId: number) => {
     try {
-      const { error } = await supabase
-        .from('purchase_requests')
-        .update({ 
-          is_payment_completed: true,
-          payment_completed_at: new Date().toISOString()
-        })
-        .eq('id', purchaseId);
-
-      if (error) throw error;
+      const currentTime = new Date().toISOString();
       
-      // 개별 품목도 모두 구매완료 처리
-      await supabase
-        .from('purchase_request_items')
-        .update({ 
-          is_payment_completed: true
-        })
-        .eq('purchase_request_id', purchaseId);
+      // 병렬 처리로 성능 개선
+      const [requestResult, itemsResult] = await Promise.all([
+        supabase
+          .from('purchase_requests')
+          .update({ 
+            is_payment_completed: true,
+            payment_completed_at: currentTime
+          })
+          .eq('id', purchaseId),
+        supabase
+          .from('purchase_request_items')
+          .update({ 
+            is_payment_completed: true
+          })
+          .eq('purchase_request_id', purchaseId)
+      ]);
+
+      if (requestResult.error) throw requestResult.error;
+      if (itemsResult.error) throw itemsResult.error;
       
       toast.success('구매완료 처리되었습니다.');
       await loadPurchases();
     } catch (error) {
       toast.error('처리 중 오류가 발생했습니다.');
     }
-  };
+  }, [supabase, loadPurchases]);
 
-  const handleItemsClick = (purchase: Purchase) => {
-    setSelectedPurchase(purchase);
-    setIsModalOpen(true);
-  };
+  const handleItemsClick = useCallback((purchase: Purchase) => {
+    measureModalLoad('PurchaseItems', () => {
+      setSelectedPurchase(purchase);
+      setIsModalOpen(true);
+    });
+  }, []);
+  
+  // 모달 데이터 메모이제이션 - 불필요한 재계산 방지
+  const modalPurchaseData = useMemo(() => {
+    if (!selectedPurchase) return null;
+    return {
+      ...selectedPurchase,
+      vendor_name: selectedPurchase.vendor_name || '',
+      project_vendor: selectedPurchase.project_vendor || '',
+      sales_order_number: selectedPurchase.sales_order_number || '',
+      project_item: selectedPurchase.project_item || ''
+    };
+  }, [selectedPurchase]);
 
   return (
     <div className="w-full">
@@ -379,7 +405,7 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
           {NAV_TABS.map((tab) => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => measureTabSwitch(tab.key, () => setActiveTab(tab.key))}
               className={`flex-1 flex items-center justify-center space-x-2 py-1.5 px-3 sm:px-4 business-radius-button button-text font-medium transition-colors ${
                 activeTab === tab.key
                   ? 'text-hansl-600 bg-white shadow-sm border border-gray-200'
@@ -429,8 +455,8 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
         </Card>
       </div>
       
-      {/* 세부항목 모달 */}
-      {selectedPurchase && (
+      {/* 세부항목 모달 - 성능 최적화된 데이터 사용 */}
+      {modalPurchaseData && (
         <Suspense fallback={<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div></div>}>
           <PurchaseItemsModal
             isOpen={isModalOpen}
@@ -438,13 +464,7 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
               setIsModalOpen(false);
               setSelectedPurchase(null);
             }}
-            purchase={{
-              ...selectedPurchase,
-              vendor_name: selectedPurchase.vendor_name || '',
-              project_vendor: selectedPurchase.project_vendor || '',
-              sales_order_number: selectedPurchase.sales_order_number || '',
-              project_item: selectedPurchase.project_item || ''
-            }}
+            purchase={modalPurchaseData}
             isAdmin={isAdmin || false}
             onUpdate={loadPurchases}
           />

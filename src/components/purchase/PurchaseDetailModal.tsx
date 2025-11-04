@@ -199,7 +199,7 @@ export default function PurchaseDetailModal({
         return rect.width
       })
       setColumnWidths(widths)
-      logger.debug('Column widths measured:', widths)
+      logger.debug('Column widths measured', { widths })
     }
   }
 
@@ -472,14 +472,22 @@ export default function PurchaseDetailModal({
   }
 
   // 구매완료 처리 함수
-  const handlePaymentToggle = async (itemId: number, isCompleted: boolean) => {
+  const handlePaymentToggle = async (itemId: number | string, isCompleted: boolean) => {
     if (!canPurchase) {
       toast.error('구매완료 처리 권한이 없습니다.')
       return
     }
 
+    const itemIdStr = String(itemId)
+    const numericId = typeof itemId === 'number' ? itemId : Number(itemId)
+
+    if (Number.isNaN(numericId)) {
+      toast.error('유효하지 않은 항목 ID 입니다.')
+      return
+    }
+
     // 해당 품목 정보 찾기
-    const targetItem = purchase?.items?.find(item => item.id === itemId)
+    const targetItem = purchase?.items?.find(item => item.id === itemIdStr)
     if (!targetItem) return
 
     const itemInfo = `품명: ${targetItem.item_name}
@@ -502,7 +510,7 @@ export default function PurchaseDetailModal({
           is_payment_completed: isCompleted,
           payment_completed_at: isCompleted ? new Date().toISOString() : null
         })
-        .eq('id', itemId)
+        .eq('id', numericId)
 
       if (error) throw error
 
@@ -510,7 +518,7 @@ export default function PurchaseDetailModal({
       setPurchase(prev => {
         if (!prev) return null
         const updatedItems = prev.items?.map(item => 
-          item.id === itemId 
+          item.id === itemIdStr 
             ? { ...item, is_payment_completed: isCompleted, payment_completed_at: isCompleted ? new Date().toISOString() : null }
             : item
         )
@@ -524,9 +532,17 @@ export default function PurchaseDetailModal({
   }
 
   // 개별 품목 입고완료 처리 (날짜 선택)
-  const handleItemReceiptToggle = async (itemId: number, selectedDate: Date) => {
+  const handleItemReceiptToggle = async (itemId: number | string, selectedDate: Date) => {
     if (!canReceiptCheck) {
       toast.error('입고 처리 권한이 없습니다.')
+      return
+    }
+
+    const itemIdStr = String(itemId)
+    const numericId = typeof itemId === 'number' ? itemId : Number(itemId)
+
+    if (Number.isNaN(numericId)) {
+      toast.error('유효하지 않은 항목 ID 입니다.')
       return
     }
 
@@ -538,7 +554,7 @@ export default function PurchaseDetailModal({
           received_at: new Date().toISOString(),
           actual_received_date: selectedDate.toISOString()
         })
-        .eq('id', itemId)
+        .eq('id', numericId)
 
       if (error) throw error
 
@@ -546,7 +562,7 @@ export default function PurchaseDetailModal({
       setPurchase(prev => {
         if (!prev) return null
         const updatedItems = prev.items?.map(item => 
-          item.id === itemId 
+          item.id === itemIdStr 
             ? { 
                 ...item, 
                 is_received: true, 
@@ -558,7 +574,7 @@ export default function PurchaseDetailModal({
         return { ...prev, items: updatedItems }
       })
       
-      const targetItem = purchase?.items?.find(item => item.id === itemId)
+      const targetItem = purchase?.items?.find(item => item.id === itemIdStr)
       toast.success(`"${targetItem?.item_name}" 품목이 입고완료 처리되었습니다.`)
     } catch (error) {
       toast.error('입고완료 처리 중 오류가 발생했습니다.')
@@ -566,13 +582,21 @@ export default function PurchaseDetailModal({
   }
 
   // 입고완료 취소 처리
-  const handleReceiptCancel = async (itemId: number) => {
+  const handleReceiptCancel = async (itemId: number | string) => {
     if (!canReceiptCheck) {
       toast.error('입고 처리 권한이 없습니다.')
       return
     }
 
-    const targetItem = purchase?.items?.find(item => item.id === itemId)
+    const itemIdStr = String(itemId)
+    const numericId = typeof itemId === 'number' ? itemId : Number(itemId)
+
+    if (Number.isNaN(numericId)) {
+      toast.error('유효하지 않은 항목 ID 입니다.')
+      return
+    }
+
+    const targetItem = purchase?.items?.find(item => item.id === itemIdStr)
     if (!targetItem) return
 
     const confirm = window.confirm(`"${targetItem.item_name}" 품목의 입고완료를 취소하시겠습니까?`)
@@ -586,7 +610,7 @@ export default function PurchaseDetailModal({
           received_at: null,
           actual_received_date: null
         })
-        .eq('id', itemId)
+        .eq('id', numericId)
 
       if (error) throw error
 
@@ -594,8 +618,8 @@ export default function PurchaseDetailModal({
       setPurchase(prev => {
         if (!prev) return null
         const updatedItems = prev.items?.map(item => 
-          item.id === itemId 
-            ? { ...item, is_received: false, received_at: null, actual_received_date: null }
+          item.id === itemIdStr 
+            ? { ...item, is_received: false, received_at: null, actual_received_date: undefined }
             : item
         )
         return { ...prev, items: updatedItems }
