@@ -644,6 +644,7 @@ const FastPurchaseTable = memo(({
   // 권한 체크 - lead buyer와 app_admin만 구매완료/입고완료 버튼 사용 가능
   const isLeadBuyer = currentUserRoles && (
     currentUserRoles.includes('lead buyer') ||
+    currentUserRoles.includes('lead_buyer') ||
     currentUserRoles.includes('app_admin')
   );
   
@@ -780,7 +781,10 @@ const FastPurchaseTable = memo(({
       
       // DB에 다운로드 완료 플래그(is_po_download) 업데이트 - lead buyer만 해당
       try {
-        const canUpdateFlag = currentUserRoles && currentUserRoles.includes('lead buyer');
+        const canUpdateFlag = currentUserRoles && (
+          currentUserRoles.includes('lead buyer') || 
+          currentUserRoles.includes('lead_buyer')
+        );
 
         if (canUpdateFlag) {
           const { error: downloadFlagErr } = await supabase

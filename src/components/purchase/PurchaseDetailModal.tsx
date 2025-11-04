@@ -130,8 +130,10 @@ export default function PurchaseDetailModal({
     ? canEdit  // 승인된 요청은 관리자만 삭제 가능
     : (canEdit || (purchase?.requester_name === currentUserName))  // 미승인 요청은 요청자도 삭제 가능
   
-  // 구매 권한 체크: app_admin + lead_buyer만 (요청자 본인 제외)
-  const canPurchase = effectiveRoles.includes('app_admin') || effectiveRoles.includes('lead_buyer')
+  // 구매 권한 체크: app_admin + lead buyer만 (요청자 본인 제외)
+  const canPurchase = effectiveRoles.includes('app_admin') || 
+                     effectiveRoles.includes('lead_buyer') || 
+                     effectiveRoles.includes('lead buyer')
   
   // 입고 권한 체크 
   // 1. 관리자는 모든 건 입고 처리 가능
