@@ -95,6 +95,7 @@ const COMMON_COLUMN_CLASSES = {
   status: "text-center w-20 min-w-[85px] max-w-[85px]",
   receipt: "text-center w-16 min-w-[70px] max-w-[70px]",
   paymentStatus: "text-center w-16 min-w-[70px] max-w-[70px]",
+  paymentCompletedBy: "text-center w-20 min-w-[85px] max-w-[85px]",
   link: "w-20 min-w-[85px] max-w-[85px]"
 };
 
@@ -611,6 +612,11 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
               <Badge variant={null} className="badge-secondary">대기</Badge>
             )}
           </td>
+          <td className={`px-2 py-1.5 card-title text-center ${COMMON_COLUMN_CLASSES.paymentCompletedBy}`}>
+            <span className="block truncate" title={purchase.payment_completed_by_name || ''}>
+              {purchase.payment_completed_by_name || '-'}
+            </span>
+          </td>
         </>
       )}
       
@@ -1011,6 +1017,7 @@ const FastPurchaseTable = memo(({
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.status}`}>구매진행</th>
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receipt}`}>입고진행</th>
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentStatus}`}>결제</th>
+          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCompletedBy}`}>구매완료자</th>
         </>
       );
     }

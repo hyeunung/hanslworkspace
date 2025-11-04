@@ -410,6 +410,7 @@ export type Database = {
           line_number: number
           link: string | null
           payment_completed_at: string | null
+          payment_completed_by_name: string | null
           purchase_order_number: string | null
           purchase_request_id: number
           quantity: number
@@ -440,6 +441,7 @@ export type Database = {
           line_number: number
           link?: string | null
           payment_completed_at?: string | null
+          payment_completed_by_name?: string | null
           purchase_order_number?: string | null
           purchase_request_id: number
           quantity: number
@@ -470,6 +472,7 @@ export type Database = {
           line_number?: number
           link?: string | null
           payment_completed_at?: string | null
+          payment_completed_by_name?: string | null
           purchase_order_number?: string | null
           purchase_request_id?: number
           quantity?: number
@@ -537,6 +540,7 @@ export type Database = {
           middle_manager_status: string | null
           payment_category: string
           payment_completed_at: string | null
+          payment_completed_by_name: string | null
           po_template_type: string
           progress_type: string
           project_item: string | null
@@ -577,6 +581,7 @@ export type Database = {
           middle_manager_status?: string | null
           payment_category: string
           payment_completed_at?: string | null
+          payment_completed_by_name?: string | null
           po_template_type: string
           progress_type: string
           project_item?: string | null
@@ -617,6 +622,7 @@ export type Database = {
           middle_manager_status?: string | null
           payment_category?: string
           payment_completed_at?: string | null
+          payment_completed_by_name?: string | null
           po_template_type?: string
           progress_type?: string
           project_item?: string | null

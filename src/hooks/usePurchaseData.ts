@@ -12,6 +12,7 @@ export interface Purchase {
   is_payment_completed: boolean;
   payment_category: string;
   payment_completed_at?: string;
+  payment_completed_by_name?: string;
   currency: string;
   request_type: string;
   vendor?: {
@@ -295,6 +296,7 @@ export const usePurchaseData = () => {
           delivery_request_date: request.delivery_request_date as string,
           progress_type: request.progress_type as string,
           payment_completed_at: request.payment_completed_at as string,
+          payment_completed_by_name: request.payment_completed_by_name as string,
           payment_category: request.payment_category as string,
           currency: request.currency as string,
           request_type: request.request_type as string,
