@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
+import { useConfirmDateAction } from '@/hooks/useConfirmDateAction'
 
 interface PurchaseDetailModalProps {
   purchaseId: number | null
@@ -146,6 +147,53 @@ export default function PurchaseDetailModal({
                   effectiveRoles.includes('ceo')
   const isRequester = purchase?.requester_name === currentUserName
   const canReceiptCheck = isAdmin || isRequester
+  
+  // 커스텀 훅 설정
+  const statementReceivedAction = useConfirmDateAction({
+    config: {
+      field: 'statement_received',
+      confirmMessage: {
+        confirm: '거래명세서 확인을 처리하시겠습니까?',
+        cancel: '거래명세서 확인을 취소하시겠습니까?'
+      },
+      successMessage: {
+        confirm: '거래명세서 확인이 완료되었습니다.',
+        cancel: '거래명세서 확인이 취소되었습니다.'
+      },
+      completedText: '✓ 완료',
+      waitingText: '대기'
+    },
+    currentUserName,
+    canPerformAction: canReceiptCheck,
+    onUpdate: () => {
+      if (onRefresh) {
+        onRefresh(true)
+      }
+    }
+  })
+
+  const actualReceivedAction = useConfirmDateAction({
+    config: {
+      field: 'actual_received',
+      confirmMessage: {
+        confirm: '실제 입고 처리를 진행하시겠습니까?',
+        cancel: '실제 입고 처리를 취소하시겠습니까?'
+      },
+      successMessage: {
+        confirm: '실제 입고 처리가 완료되었습니다.',
+        cancel: '실제 입고 처리가 취소되었습니다.'
+      },
+      completedText: '입고완료',
+      waitingText: '입고대기'
+    },
+    currentUserName,
+    canPerformAction: canReceiptCheck,
+    onUpdate: () => {
+      if (onRefresh) {
+        onRefresh(true)
+      }
+    }
+  })
   
   // 권한 디버깅 로그
   console.log('🔐 권한 체크:', {
@@ -641,168 +689,6 @@ export default function PurchaseDetailModal({
     }
   }
 
-  // 거래명세서 확인 처리 함수
-  const handleStatementCheck = async (itemId: number | string, selectedDate: Date) => {
-    console.log('🔍 거래명세서 확인 시작:', { itemId, selectedDate, canReceiptCheck, currentUserName })
-    
-    if (!canReceiptCheck) {
-      console.error('❌ 권한 없음:', { canReceiptCheck, currentUserRoles })
-      toast.error('거래명세서 확인 권한이 없습니다.')
-      return
-    }
-
-    // DatePickerPopover에서 이미 확인했으므로 여기서는 확인 다이얼로그 제거
-
-    const itemIdStr = String(itemId)
-    const numericId = typeof itemId === 'number' ? itemId : Number(itemId)
-    
-    console.log('🔢 ID 변환 확인:', { 
-      originalItemId: itemId, 
-      itemIdStr, 
-      numericId,
-      itemIdType: typeof itemId 
-    })
-
-    if (Number.isNaN(numericId)) {
-      console.error('❌ 잘못된 ID:', { itemId, numericId })
-      toast.error('유효하지 않은 항목 ID 입니다.')
-      return
-    }
-
-    console.log('📝 데이터베이스 업데이트 시작:', { numericId, selectedDate: selectedDate.toISOString() })
-
-    try {
-      const { error } = await supabase
-        .from('purchase_request_items')
-        .update({
-          is_statement_received: true,
-          statement_received_date: selectedDate.toISOString(),
-          statement_received_by_name: currentUserName
-        })
-        .eq('id', numericId)
-
-      if (error) {
-        console.error('❌ DB 업데이트 실패:', error)
-        throw error
-      }
-
-      console.log('✅ DB 업데이트 성공')
-
-      // 데이터베이스에서 최신 데이터 다시 로드
-      console.log('📥 최신 데이터 로드 시작')
-      const { data: updatedPurchase, error: fetchError } = await supabase
-        .from('purchase_requests')
-        .select(`
-          *,
-          purchase_request_items(*)
-        `)
-        .eq('id', purchase?.id)
-        .single()
-
-      if (fetchError) {
-        console.error('❌ 최신 데이터 로드 실패:', fetchError)
-      } else if (updatedPurchase) {
-        console.log('📥 최신 데이터 로드 성공:', updatedPurchase.purchase_request_items?.length)
-        
-        // 최신 데이터로 로컬 상태 업데이트
-        setPurchase(prev => ({
-          ...prev,
-          ...updatedPurchase,
-          items: updatedPurchase.purchase_request_items?.sort((a: any, b: any) => 
-            (a.line_number || 0) - (b.line_number || 0)
-          ) || []
-        }))
-      }
-      
-      // 강제 새로고침을 위해 onUpdate 호출
-      if (onUpdate) {
-        console.log('🔄 부모 컴포넌트 새로고침 호출')
-        onUpdate()
-      }
-      
-      // 성공 메시지는 간단하게 표시
-      toast.success('거래명세서 확인이 완료되었습니다.')
-    } catch (error) {
-      console.error('❌ 전체 처리 실패:', error)
-      toast.error('거래명세서 확인 처리 중 오류가 발생했습니다.')
-    }
-  }
-
-  // 거래명세서 확인 취소 처리 함수
-  const handleStatementCancel = async (itemId: number | string) => {
-    if (!canReceiptCheck) {
-      toast.error('거래명세서 확인 권한이 없습니다.')
-      return
-    }
-
-    const itemIdStr = String(itemId)
-    const numericId = typeof itemId === 'number' ? itemId : Number(itemId)
-
-    if (Number.isNaN(numericId)) {
-      toast.error('유효하지 않은 항목 ID 입니다.')
-      return
-    }
-
-    // 버튼 클릭 시 이미 확인했으므로 여기서는 확인 다이얼로그 제거
-
-    try {
-      const targetItem = purchase?.purchase_request_items?.find(item => String(item.id) === itemIdStr);
-      console.log('🔄 거래명세서 확인 취소 시작:', { itemId, itemName: targetItem?.item_name })
-
-      const { error } = await supabase
-        .from('purchase_request_items')
-        .update({
-          is_statement_received: false,
-          statement_received_date: null,
-          statement_received_by_name: null
-        })
-        .eq('id', numericId)
-
-      if (error) {
-        console.error('❌ DB 업데이트 실패:', error)
-        throw error
-      }
-
-      console.log('✅ 거래명세서 확인 취소 성공')
-
-      // 데이터베이스에서 최신 데이터 다시 로드
-      console.log('📥 최신 데이터 로드 시작 (취소)')
-      const { data: updatedPurchase, error: fetchError } = await supabase
-        .from('purchase_requests')
-        .select(`
-          *,
-          purchase_request_items(*)
-        `)
-        .eq('id', purchase?.id)
-        .single()
-
-      if (fetchError) {
-        console.error('❌ 최신 데이터 로드 실패:', fetchError)
-      } else if (updatedPurchase) {
-        console.log('📥 최신 데이터 로드 성공 (취소):', updatedPurchase.purchase_request_items?.length)
-        
-        // 최신 데이터로 로컬 상태 업데이트
-        setPurchase(prev => ({
-          ...prev,
-          ...updatedPurchase,
-          items: updatedPurchase.purchase_request_items?.sort((a: any, b: any) => 
-            (a.line_number || 0) - (b.line_number || 0)
-          ) || []
-        }))
-      }
-      
-      // 강제 새로고침을 위해 onUpdate 호출
-      if (onUpdate) {
-        console.log('🔄 부모 컴포넌트 새로고침 호출 (취소)')
-        onUpdate()
-      }
-      
-      toast.success('거래명세서 확인이 취소되었습니다.')
-    } catch (error) {
-      console.error('❌ 거래명세서 확인 취소 실패:', error)
-      toast.error('거래명세서 확인 취소 중 오류가 발생했습니다.')
-    }
-  }
 
   // 승인 처리
   const handleApprove = async (type: 'middle' | 'final') => {
@@ -1480,32 +1366,50 @@ export default function PurchaseDetailModal({
                               {activeTab === 'receipt' && (
                                 <div className="flex justify-center">
                                   {canReceiptCheck ? (
-                                    item.actual_received_date ? (
+                                    actualReceivedAction.isCompleted(item) ? (
                                       <button
-                                        onClick={() => handleReceiptCancel(item.id)}
+                                        onClick={() => {
+                                          actualReceivedAction.handleCancel(item.id, {
+                                            item_name: item.item_name,
+                                            specification: item.specification,
+                                            quantity: item.quantity,
+                                            unit_price_value: item.unit_price_value,
+                                            amount_value: item.amount_value,
+                                            remark: item.remark
+                                          })
+                                        }}
                                         className="button-action-primary"
                                       >
-                                        입고완료
+                                        {actualReceivedAction.config.completedText}
                                       </button>
                                     ) : (
                                       <DatePickerPopover
-                                        onDateSelect={(date) => handleItemReceiptToggle(item.id, date)}
+                                        onDateSelect={(date) => {
+                                          actualReceivedAction.handleConfirm(item.id, date, {
+                                            item_name: item.item_name,
+                                            specification: item.specification,
+                                            quantity: item.quantity,
+                                            unit_price_value: item.unit_price_value,
+                                            amount_value: item.amount_value,
+                                            remark: item.remark
+                                          })
+                                        }}
                                         placeholder="실제 입고된 날짜를 선택하세요"
                                         align="center"
                                         side="bottom"
                                       >
                                         <button className="button-toggle-inactive">
-                                          입고대기
+                                          {actualReceivedAction.config.waitingText}
                                         </button>
                                       </DatePickerPopover>
                                     )
                                   ) : (
                                     <span className={`${
-                                      item.actual_received_date 
+                                      actualReceivedAction.isCompleted(item)
                                         ? 'button-action-primary' 
                                         : 'button-waiting-inactive'
                                     }`}>
-                                      {item.actual_received_date ? '입고완료' : '입고대기'}
+                                      {actualReceivedAction.isCompleted(item) ? actualReceivedAction.config.completedText : actualReceivedAction.config.waitingText}
                                     </span>
                                   )}
                                 </div>
@@ -1524,9 +1428,9 @@ export default function PurchaseDetailModal({
                         {/* 실제 입고 날짜 - 입고 탭에서만 표시 (상태 컬럼 오른쪽) */}
                         {activeTab === 'receipt' && (
                           <div className="text-center flex justify-center items-start pt-1 pl-2">
-                            {item.actual_received_date ? (
+                            {actualReceivedAction.getCompletedDate(item) ? (
                               <div className="modal-subtitle text-green-700">
-                                {new Date(item.actual_received_date).toLocaleDateString('ko-KR', {
+                                {new Date(actualReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
                                   year: 'numeric',
                                   month: '2-digit',
                                   day: '2-digit'
@@ -1542,46 +1446,34 @@ export default function PurchaseDetailModal({
                         {activeTab === 'done' && (
                           <div className="text-center flex justify-center items-start pt-1">
                             {canReceiptCheck ? (
-                              item.is_statement_received ? (
+                              statementReceivedAction.isCompleted(item) ? (
                                 <button
                                   onClick={() => {
-                                    // 품목 정보 확인 다이얼로그
-                                    const confirmMessage = `품목명: ${item.item_name || '-'}
-규격: ${item.specification || '-'}
-수량: ${item.quantity?.toLocaleString() || 0}
-단가: ₩${item.unit_price_value?.toLocaleString() || 0}
-합계: ₩${item.amount_value?.toLocaleString() || 0}
-비고: ${item.remark || '-'}
-
-거래명세서 확인을 취소하시겠습니까?`
-                                    
-                                    if (window.confirm(confirmMessage)) {
-                                      handleStatementCancel(item.id)
-                                    }
+                                    statementReceivedAction.handleCancel(item.id, {
+                                      item_name: item.item_name,
+                                      specification: item.specification,
+                                      quantity: item.quantity,
+                                      unit_price_value: item.unit_price_value,
+                                      amount_value: item.amount_value,
+                                      remark: item.remark
+                                    })
                                   }}
                                   className="button-action-primary hover:bg-green-600 transition-colors"
                                   title="클릭하여 거래명세서 확인 취소"
                                 >
-                                  ✓ 완료
+                                  {statementReceivedAction.config.completedText}
                                 </button>
                               ) : (
                                 <DatePickerPopover
                                   onDateSelect={(date) => {
-                                    console.log('📅 DatePicker 날짜 선택:', { itemId: item.id, date, itemName: item.item_name })
-                                    
-                                    // 품목 정보 확인 다이얼로그
-                                    const confirmMessage = `품목명: ${item.item_name || '-'}
-규격: ${item.specification || '-'}
-수량: ${item.quantity?.toLocaleString() || 0}
-단가: ₩${item.unit_price_value?.toLocaleString() || 0}
-합계: ₩${item.amount_value?.toLocaleString() || 0}
-비고: ${item.remark || '-'}
-
-거래명세서 확인을 처리하시겠습니까?`
-                                    
-                                    if (window.confirm(confirmMessage)) {
-                                      handleStatementCheck(item.id, date)
-                                    }
+                                    statementReceivedAction.handleConfirm(item.id, date, {
+                                      item_name: item.item_name,
+                                      specification: item.specification,
+                                      quantity: item.quantity,
+                                      unit_price_value: item.unit_price_value,
+                                      amount_value: item.amount_value,
+                                      remark: item.remark
+                                    })
                                   }}
                                   placeholder="회계상 입고일을 선택하세요"
                                   align="center"
@@ -1591,17 +1483,17 @@ export default function PurchaseDetailModal({
                                     className="button-toggle-inactive"
                                     onClick={() => console.log('🖱️ 거래명세서 확인 버튼 클릭:', { itemId: item.id, itemName: item.item_name })}
                                   >
-                                    대기
+                                    {statementReceivedAction.config.waitingText}
                                   </button>
                                 </DatePickerPopover>
                               )
                             ) : (
                               <span className={`${
-                                item.is_statement_received 
+                                statementReceivedAction.isCompleted(item)
                                   ? 'button-action-primary' 
                                   : 'button-waiting-inactive'
                               }`}>
-                                {item.is_statement_received ? '✓ 완료' : '대기'}
+                                {statementReceivedAction.isCompleted(item) ? statementReceivedAction.config.completedText : statementReceivedAction.config.waitingText}
                               </span>
                             )}
                           </div>
@@ -1610,9 +1502,9 @@ export default function PurchaseDetailModal({
                         {/* 회계상 입고일 - 전체항목 탭에서만 표시 */}
                         {activeTab === 'done' && (
                           <div className="text-center flex justify-center items-start pt-1">
-                            {item.statement_received_date ? (
+                            {statementReceivedAction.getCompletedDate(item) ? (
                               <div className="modal-subtitle text-blue-700">
-                                {new Date(item.statement_received_date).toLocaleDateString('ko-KR', {
+                                {new Date(statementReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
                                   year: 'numeric',
                                   month: '2-digit',
                                   day: '2-digit'
@@ -1626,9 +1518,9 @@ export default function PurchaseDetailModal({
                         {/* 처리자 - 전체항목 탭에서만 표시 */}
                         {activeTab === 'done' && (
                           <div className="text-center flex justify-center items-start pt-1">
-                            {item.statement_received_by_name ? (
+                            {statementReceivedAction.getCompletedByName(item) ? (
                               <span className="modal-subtitle text-gray-600">
-                                {item.statement_received_by_name}
+                                {statementReceivedAction.getCompletedByName(item)}
                               </span>
                             ) : (
                               <span className="modal-subtitle text-gray-400">-</span>
@@ -1748,32 +1640,50 @@ export default function PurchaseDetailModal({
                                   {activeTab === 'receipt' && (
                                     <>
                                       {canReceiptCheck ? (
-                                        item.actual_received_date ? (
+                                        actualReceivedAction.isCompleted(item) ? (
                                           <button
-                                            onClick={() => handleReceiptCancel(item.id)}
+                                            onClick={() => {
+                                              actualReceivedAction.handleCancel(item.id, {
+                                                item_name: item.item_name,
+                                                specification: item.specification,
+                                                quantity: item.quantity,
+                                                unit_price_value: item.unit_price_value,
+                                                amount_value: item.amount_value,
+                                                remark: item.remark
+                                              })
+                                            }}
                                             className="text-xs px-2 py-1 rounded button-action-primary"
                                           >
-                                            입고완료
+                                            {actualReceivedAction.config.completedText}
                                           </button>
                                         ) : (
                                           <DatePickerPopover
-                                            onDateSelect={(date) => handleItemReceiptToggle(item.id, date)}
+                                            onDateSelect={(date) => {
+                                              actualReceivedAction.handleConfirm(item.id, date, {
+                                                item_name: item.item_name,
+                                                specification: item.specification,
+                                                quantity: item.quantity,
+                                                unit_price_value: item.unit_price_value,
+                                                amount_value: item.amount_value,
+                                                remark: item.remark
+                                              })
+                                            }}
                                             placeholder="실제 입고된 날짜를 선택하세요"
                                             align="center"
                                             side="bottom"
                                           >
                                             <button className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600">
-                                              입고대기
+                                              {actualReceivedAction.config.waitingText}
                                             </button>
                                           </DatePickerPopover>
                                         )
                                       ) : (
                                         <span className={`text-xs px-2 py-1 rounded ${
-                                          item.actual_received_date 
+                                          actualReceivedAction.isCompleted(item)
                                             ? 'button-action-primary' 
                                             : 'bg-gray-100 text-gray-400'
                                         }`}>
-                                          {item.actual_received_date ? '입고완료' : '입고대기'}
+                                          {actualReceivedAction.isCompleted(item) ? actualReceivedAction.config.completedText : actualReceivedAction.config.waitingText}
                                         </span>
                                       )}
                                     </>
@@ -1805,19 +1715,19 @@ export default function PurchaseDetailModal({
                         )}
                         
                         {/* 모바일에서 실제 입고 날짜 표시 */}
-                        {!isEditing && activeTab === 'receipt' && item.actual_received_date && (
+                        {!isEditing && activeTab === 'receipt' && actualReceivedAction.getCompletedDate(item) && (
                           <div>
                             <span className="text-gray-500 text-xs">실제입고일:</span>
                             <div className="mt-1">
                               <div className="modal-subtitle text-green-700">
-                                {new Date(item.actual_received_date).toLocaleDateString('ko-KR', {
+                                {new Date(actualReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
                                   year: 'numeric',
                                   month: '2-digit',
                                   day: '2-digit'
                                 })}
                               </div>
                               <div className="text-[9px] text-gray-500">
-                                {new Date(item.actual_received_date).toLocaleTimeString('ko-KR', {
+                                {new Date(actualReceivedAction.getCompletedDate(item)).toLocaleTimeString('ko-KR', {
                                   hour: '2-digit',
                                   minute: '2-digit'
                                 })}
@@ -1832,46 +1742,34 @@ export default function PurchaseDetailModal({
                             <span className="text-gray-500 text-xs">거래명세서 확인:</span>
                             <div className="flex items-center gap-2">
                               {canReceiptCheck ? (
-                                item.is_statement_received ? (
+                                statementReceivedAction.isCompleted(item) ? (
                                   <button
                                     onClick={() => {
-                                      // 품목 정보 확인 다이얼로그
-                                      const confirmMessage = `품목명: ${item.item_name || '-'}
-규격: ${item.specification || '-'}
-수량: ${item.quantity?.toLocaleString() || 0}
-단가: ₩${item.unit_price_value?.toLocaleString() || 0}
-합계: ₩${item.amount_value?.toLocaleString() || 0}
-비고: ${item.remark || '-'}
-
-거래명세서 확인을 취소하시겠습니까?`
-                                      
-                                      if (window.confirm(confirmMessage)) {
-                                        handleStatementCancel(item.id)
-                                      }
+                                      statementReceivedAction.handleCancel(item.id, {
+                                        item_name: item.item_name,
+                                        specification: item.specification,
+                                        quantity: item.quantity,
+                                        unit_price_value: item.unit_price_value,
+                                        amount_value: item.amount_value,
+                                        remark: item.remark
+                                      })
                                     }}
                                     className="text-xs px-2 py-1 rounded button-action-primary hover:bg-green-600 transition-colors"
                                     title="클릭하여 거래명세서 확인 취소"
                                   >
-                                    ✓ 완료
+                                    {statementReceivedAction.config.completedText}
                                   </button>
                                 ) : (
                                   <DatePickerPopover
                                     onDateSelect={(date) => {
-                                      console.log('📅 DatePicker 날짜 선택 (모바일):', { itemId: item.id, date, itemName: item.item_name })
-                                      
-                                      // 품목 정보 확인 다이얼로그
-                                      const confirmMessage = `품목명: ${item.item_name || '-'}
-규격: ${item.specification || '-'}
-수량: ${item.quantity?.toLocaleString() || 0}
-단가: ₩${item.unit_price_value?.toLocaleString() || 0}
-합계: ₩${item.amount_value?.toLocaleString() || 0}
-비고: ${item.remark || '-'}
-
-거래명세서 확인을 처리하시겠습니까?`
-                                      
-                                      if (window.confirm(confirmMessage)) {
-                                        handleStatementCheck(item.id, date)
-                                      }
+                                      statementReceivedAction.handleConfirm(item.id, date, {
+                                        item_name: item.item_name,
+                                        specification: item.specification,
+                                        quantity: item.quantity,
+                                        unit_price_value: item.unit_price_value,
+                                        amount_value: item.amount_value,
+                                        remark: item.remark
+                                      })
                                     }}
                                     placeholder="회계상 입고일을 선택하세요"
                                     align="end"
@@ -1881,17 +1779,17 @@ export default function PurchaseDetailModal({
                                       className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600"
                                       onClick={() => console.log('🖱️ 거래명세서 확인 버튼 클릭 (모바일):', { itemId: item.id, itemName: item.item_name })}
                                     >
-                                      대기
+                                      {statementReceivedAction.config.waitingText}
                                     </button>
                                   </DatePickerPopover>
                                 )
                               ) : (
                                 <span className={`text-xs px-2 py-1 rounded ${
-                                  item.is_statement_received 
+                                  statementReceivedAction.isCompleted(item)
                                     ? 'button-action-primary' 
                                     : 'bg-gray-100 text-gray-400'
                                 }`}>
-                                  {item.is_statement_received ? '✓ 완료' : '대기'}
+                                  {statementReceivedAction.isCompleted(item) ? statementReceivedAction.config.completedText : statementReceivedAction.config.waitingText}
                                 </span>
                               )}
                             </div>
@@ -1899,12 +1797,12 @@ export default function PurchaseDetailModal({
                         )}
 
                         {/* 모바일에서 회계상 입고일 표시 - 전체항목 탭에서만 */}
-                        {!isEditing && activeTab === 'done' && item.statement_received_date && (
+                        {!isEditing && activeTab === 'done' && statementReceivedAction.getCompletedDate(item) && (
                           <div>
                             <span className="text-gray-500 text-xs">회계상 입고일:</span>
                             <div className="mt-1">
                               <div className="modal-subtitle text-blue-700">
-                                {new Date(item.statement_received_date).toLocaleDateString('ko-KR', {
+                                {new Date(statementReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
                                   year: 'numeric',
                                   month: '2-digit',
                                   day: '2-digit'
@@ -1914,12 +1812,12 @@ export default function PurchaseDetailModal({
                           </div>
                         )}
                         {/* 모바일에서 처리자 표시 - 전체항목 탭에서만 */}
-                        {!isEditing && activeTab === 'done' && item.statement_received_by_name && (
+                        {!isEditing && activeTab === 'done' && statementReceivedAction.getCompletedByName(item) && (
                           <div>
                             <span className="text-gray-500 text-xs">처리자:</span>
                             <div className="mt-1">
                               <div className="modal-subtitle text-gray-600">
-                                {item.statement_received_by_name}
+                                {statementReceivedAction.getCompletedByName(item)}
                               </div>
                             </div>
                           </div>

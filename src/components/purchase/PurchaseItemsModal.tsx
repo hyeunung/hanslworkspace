@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { ReceiptDownloadButton } from "./ReceiptDownloadButton";
 import { DatePickerPopover } from "@/components/ui/date-picker-popover";
 import { useEffect } from "react";
+import { useConfirmDateAction } from '@/hooks/useConfirmDateAction';
 
 interface PurchaseItem {
   id?: number | string;
@@ -104,108 +105,88 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
       loadData();
     }
   }, [isOpen, supabase, purchase.id]);
-  
-  // 거래명세서 확인 처리 함수
-  const handleStatementCheck = async (itemId: number | string, selectedDate: Date) => {
-    // DatePickerPopover에서 이미 확인했으므로 여기서는 확인 다이얼로그 제거
 
-    const itemIdStr = String(itemId);
-    const numericId = typeof itemId === 'number' ? itemId : Number(itemId);
+  // 권한 체크
+  const isRequester = purchase?.requester_name === currentUserName
+  const canReceiptCheck = isAdmin || isRequester
 
-    if (Number.isNaN(numericId)) {
-      toast.error('유효하지 않은 항목 ID 입니다.');
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('purchase_request_items')
-        .update({
-          is_statement_received: true,
-          statement_received_date: selectedDate.toISOString(),
-          statement_received_by_name: currentUserName
-        })
-        .eq('id', numericId);
-
-      if (error) throw error;
-
-      console.log('✅ DB 업데이트 성공 (PurchaseItemsModal)')
-
-      // 최신 데이터 다시 로드
-      console.log('📥 최신 데이터 로드 시작 (PurchaseItemsModal)')
-      const { data: freshItems } = await supabase
-        .from('purchase_request_items')
-        .select('*')
-        .eq('purchase_request_id', purchase.id)
-        .order('line_number');
-      
-      if (freshItems) {
-        console.log('📥 최신 데이터 로드 성공 (PurchaseItemsModal):', freshItems.length)
-        setEditingItems(freshItems);
+  // 커스텀 훅 설정
+  const statementReceivedAction = useConfirmDateAction({
+    config: {
+      field: 'statement_received',
+      confirmMessage: {
+        confirm: '거래명세서 확인을 처리하시겠습니까?',
+        cancel: '거래명세서 확인을 취소하시겠습니까?'
+      },
+      successMessage: {
+        confirm: '거래명세서 확인이 완료되었습니다.',
+        cancel: '거래명세서 확인이 취소되었습니다.'
+      },
+      completedText: '✓ 완료',
+      waitingText: '대기'
+    },
+    currentUserName,
+    canPerformAction: canReceiptCheck,
+    onUpdate: () => {
+      if (onUpdate) {
+        onUpdate()
       }
-
-      // 화면 업데이트를 위해 onUpdate 호출
-      console.log('🔄 부모 컴포넌트 새로고침 호출 (PurchaseItemsModal)')
-      onUpdate();
-      
-      toast.success('거래명세서 확인이 완료되었습니다.');
-    } catch (error) {
-      toast.error('거래명세서 확인 처리 중 오류가 발생했습니다.');
-    }
-  };
-
-  // 거래명세서 확인 취소 처리 함수
-  const handleStatementCancel = async (itemId: number | string) => {
-    const itemIdStr = String(itemId);
-    const numericId = typeof itemId === 'number' ? itemId : Number(itemId);
-
-    if (Number.isNaN(numericId)) {
-      toast.error('유효하지 않은 항목 ID 입니다.');
-      return;
-    }
-
-    // 버튼 클릭 시 이미 확인했으므로 여기서는 확인 다이얼로그 제거
-
-    try {
-      const targetItem = editingItems.find(item => String(item.id) === itemIdStr);
-      console.log('🔄 거래명세서 확인 취소 시작 (PurchaseItemsModal):', { itemId, itemName: targetItem?.item_name });
-
-      const { error } = await supabase
-        .from('purchase_request_items')
-        .update({
-          is_statement_received: false,
-          statement_received_date: null,
-          statement_received_by_name: null
-        })
-        .eq('id', numericId);
-
-      if (error) throw error;
-
-      console.log('✅ 거래명세서 확인 취소 성공 (PurchaseItemsModal)');
-
-      // 최신 데이터 다시 로드
-      console.log('📥 최신 데이터 로드 시작 (취소, PurchaseItemsModal)');
-      const { data: freshItems } = await supabase
-        .from('purchase_request_items')
-        .select('*')
-        .eq('purchase_request_id', purchase.id)
-        .order('line_number');
-      
-      if (freshItems) {
-        console.log('📥 최신 데이터 로드 성공 (취소, PurchaseItemsModal):', freshItems.length);
-        setEditingItems(freshItems);
+      // 로컬 데이터도 다시 로드
+      const loadLocalData = async () => {
+        if (purchase.id) {
+          const { data: freshItems } = await supabase
+            .from('purchase_request_items')
+            .select('*')
+            .eq('purchase_request_id', purchase.id)
+            .order('line_number');
+          
+          if (freshItems) {
+            setEditingItems(freshItems);
+          }
+        }
       }
-
-      // 화면 업데이트를 위해 onUpdate 호출
-      console.log('🔄 부모 컴포넌트 새로고침 호출 (취소, PurchaseItemsModal)');
-      onUpdate();
-      
-      toast.success('거래명세서 확인이 취소되었습니다.');
-    } catch (error) {
-      console.error('❌ 거래명세서 확인 취소 실패 (PurchaseItemsModal):', error);
-      toast.error('거래명세서 확인 취소 중 오류가 발생했습니다.');
+      loadLocalData()
     }
-  };
+  })
+
+  // 실제 입고 날짜 커스텀 훅 설정
+  const actualReceivedAction = useConfirmDateAction({
+    config: {
+      field: 'actual_received',
+      confirmMessage: {
+        confirm: '실제 입고 처리를 진행하시겠습니까?',
+        cancel: '실제 입고 처리를 취소하시겠습니까?'
+      },
+      successMessage: {
+        confirm: '실제 입고 처리가 완료되었습니다.',
+        cancel: '실제 입고 처리가 취소되었습니다.'
+      },
+      completedText: '입고완료',
+      waitingText: '입고대기'
+    },
+    currentUserName,
+    canPerformAction: canReceiptCheck,
+    onUpdate: () => {
+      if (onUpdate) {
+        onUpdate()
+      }
+      // 로컬 데이터도 다시 로드
+      const loadLocalData = async () => {
+        if (purchase.id) {
+          const { data: freshItems } = await supabase
+            .from('purchase_request_items')
+            .select('*')
+            .eq('purchase_request_id', purchase.id)
+            .order('line_number');
+          
+          if (freshItems) {
+            setEditingItems(freshItems);
+          }
+        }
+      }
+      loadLocalData()
+    }
+  })
   
   // 품목 수정 시작
   const handleEditStart = () => {
@@ -410,6 +391,13 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                   <>
                     <TableHead className="text-center">거래명세서 확인</TableHead>
                     <TableHead className="text-center">회계상 입고일</TableHead>
+                    <TableHead className="text-center">처리자</TableHead>
+                  </>
+                )}
+                {activeTab === 'receipt' && (
+                  <>
+                    <TableHead className="text-center">실제 입고일</TableHead>
+                    <TableHead className="text-center">처리자</TableHead>
                   </>
                 )}
                 <TableHead>비고</TableHead>
@@ -485,10 +473,65 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                     )}
                   </TableCell>
                   <TableCell>
-                    {item.is_received ? (
-                      <Badge variant={null} className="badge-success">입고완료</Badge>
+                    {/* 입고현황 탭에서는 실제 입고 날짜 기능 사용 */}
+                    {activeTab === 'receipt' ? (
+                      canReceiptCheck ? (
+                        actualReceivedAction.isCompleted(item) ? (
+                          <button
+                            onClick={() => {
+                              actualReceivedAction.handleCancel(item.id!, {
+                                item_name: item.item_name,
+                                specification: item.specification,
+                                quantity: item.quantity,
+                                unit_price_value: item.unit_price_value,
+                                amount_value: item.amount_value,
+                                remark: item.remark
+                              })
+                            }}
+                            className="button-base bg-green-500 hover:bg-green-600 text-white transition-colors"
+                            title="클릭하여 실제 입고 처리 취소"
+                          >
+                            {actualReceivedAction.config.completedText}
+                          </button>
+                        ) : (
+                          <DatePickerPopover
+                            onDateSelect={(date) => {
+                              actualReceivedAction.handleConfirm(item.id!, date, {
+                                item_name: item.item_name,
+                                specification: item.specification,
+                                quantity: item.quantity,
+                                unit_price_value: item.unit_price_value,
+                                amount_value: item.amount_value,
+                                remark: item.remark
+                              })
+                            }}
+                            placeholder="실제 입고 날짜 선택"
+                          >
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              className="button-base border border-gray-300 text-gray-600 bg-white hover:bg-gray-50"
+                            >
+                              {actualReceivedAction.config.waitingText}
+                            </Button>
+                          </DatePickerPopover>
+                        )
+                      ) : (
+                        <span className={`button-base ${
+                          actualReceivedAction.isCompleted(item)
+                            ? 'bg-green-500 text-white' 
+                            : 'border border-gray-300 text-gray-400 bg-white'
+                        }`}>
+                          {actualReceivedAction.isCompleted(item) ? actualReceivedAction.config.completedText : actualReceivedAction.config.waitingText}
+                        </span>
+                      )
                     ) : (
-                      <Badge variant={null} className="badge-secondary">대기</Badge>
+                      /* 다른 탭에서는 기존 배지 표시 */
+                      item.is_received ? (
+                        <Badge variant={null} className="badge-success">입고완료</Badge>
+                      ) : (
+                        <Badge variant={null} className="badge-secondary">대기</Badge>
+                      )
                     )}
                   </TableCell>
                   <TableCell className="text-center">
@@ -503,61 +546,92 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                   {activeTab === 'done' && (
                     <>
                       <TableCell className="text-center">
-                        {item.is_statement_received ? (
-                          <button
-                            onClick={() => {
-                              // 품목 정보 확인 다이얼로그
-                              const confirmMessage = `품목명: ${item.item_name || '-'}
-규격: ${item.specification || '-'}
-수량: ${item.quantity?.toLocaleString() || 0}
-단가: ₩${item.unit_price_value?.toLocaleString() || 0}
-합계: ₩${item.amount_value?.toLocaleString() || 0}
-비고: ${item.remark || '-'}
-
-거래명세서 확인을 취소하시겠습니까?`
-                              
-                              if (window.confirm(confirmMessage)) {
-                                handleStatementCancel(item.id!)
-                              }
-                            }}
-                            className="button-base bg-green-500 hover:bg-green-600 text-white transition-colors"
-                            title="클릭하여 거래명세서 확인 취소"
-                          >
-                            ✓ 완료
-                          </button>
-                        ) : (
-                          <DatePickerPopover
-                            onDateSelect={(date) => {
-                              // 품목 정보 확인 다이얼로그
-                              const confirmMessage = `품목명: ${item.item_name || '-'}
-규격: ${item.specification || '-'}
-수량: ${item.quantity?.toLocaleString() || 0}
-단가: ₩${item.unit_price_value?.toLocaleString() || 0}
-합계: ₩${item.amount_value?.toLocaleString() || 0}
-비고: ${item.remark || '-'}
-
-거래명세서 확인을 처리하시겠습니까?`
-                              
-                              if (window.confirm(confirmMessage)) {
-                                handleStatementCheck(item.id!, date)
-                              }
-                            }}
-                            placeholder="날짜 선택"
-                          >
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              className="button-base border border-gray-300 text-gray-600 bg-white hover:bg-gray-50"
+                        {canReceiptCheck ? (
+                          statementReceivedAction.isCompleted(item) ? (
+                            <button
+                              onClick={() => {
+                                statementReceivedAction.handleCancel(item.id!, {
+                                  item_name: item.item_name,
+                                  specification: item.specification,
+                                  quantity: item.quantity,
+                                  unit_price_value: item.unit_price_value,
+                                  amount_value: item.amount_value,
+                                  remark: item.remark
+                                })
+                              }}
+                              className="button-base bg-green-500 hover:bg-green-600 text-white transition-colors"
+                              title="클릭하여 거래명세서 확인 취소"
                             >
-                              대기
-                            </Button>
-                          </DatePickerPopover>
+                              {statementReceivedAction.config.completedText}
+                            </button>
+                          ) : (
+                            <DatePickerPopover
+                              onDateSelect={(date) => {
+                                statementReceivedAction.handleConfirm(item.id!, date, {
+                                  item_name: item.item_name,
+                                  specification: item.specification,
+                                  quantity: item.quantity,
+                                  unit_price_value: item.unit_price_value,
+                                  amount_value: item.amount_value,
+                                  remark: item.remark
+                                })
+                              }}
+                              placeholder="날짜 선택"
+                            >
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                className="button-base border border-gray-300 text-gray-600 bg-white hover:bg-gray-50"
+                              >
+                                {statementReceivedAction.config.waitingText}
+                              </Button>
+                            </DatePickerPopover>
+                          )
+                        ) : (
+                          <span className={`button-base ${
+                            statementReceivedAction.isCompleted(item)
+                              ? 'bg-green-500 text-white' 
+                              : 'border border-gray-300 text-gray-400 bg-white'
+                          }`}>
+                            {statementReceivedAction.isCompleted(item) ? statementReceivedAction.config.completedText : statementReceivedAction.config.waitingText}
+                          </span>
                         )}
                       </TableCell>
                       <TableCell className="text-center">
-                        {item.statement_received_date ? (
+                        {statementReceivedAction.getCompletedDate(item) ? (
                           <span className="modal-subtitle">
-                            {format(new Date(item.statement_received_date), 'yyyy-MM-dd')}
+                            {format(new Date(statementReceivedAction.getCompletedDate(item)), 'yyyy-MM-dd')}
+                          </span>
+                        ) : (
+                          <span className="modal-subtitle">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {statementReceivedAction.getCompletedByName(item) ? (
+                          <span className="modal-subtitle">
+                            {statementReceivedAction.getCompletedByName(item)}
+                          </span>
+                        ) : (
+                          <span className="modal-subtitle">-</span>
+                        )}
+                      </TableCell>
+                    </>
+                  )}
+                  {activeTab === 'receipt' && (
+                    <>
+                      <TableCell className="text-center">
+                        {actualReceivedAction.getCompletedDate(item) ? (
+                          <span className="modal-subtitle text-green-600">
+                            {format(new Date(actualReceivedAction.getCompletedDate(item)), 'yyyy-MM-dd HH:mm')}
+                          </span>
+                        ) : (
+                          <span className="modal-subtitle">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {actualReceivedAction.getCompletedByName(item) ? (
+                          <span className="modal-subtitle">
+                            {actualReceivedAction.getCompletedByName(item)}
                           </span>
                         ) : (
                           <span className="modal-subtitle">-</span>
