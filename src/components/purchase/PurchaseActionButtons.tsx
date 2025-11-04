@@ -26,14 +26,19 @@ const PurchaseActionButtons = memo(({
   
   const supabase = createClient();
 
-  // 권한 체크: purchase_manager, raw_material_manager, consumable_manager, lead buyer, app_admin
-  const canManagePurchase = currentUserRoles.some(role => 
+  // 구매완료 권한 체크: lead buyer, app_admin만 가능
+  const canManagePayment = currentUserRoles.some(role => 
+    ['lead buyer', 'app_admin'].includes(role)
+  );
+  
+  // 입고완료 권한 체크: purchase_manager, raw_material_manager, consumable_manager, lead buyer, app_admin
+  const canManageReceipt = currentUserRoles.some(role => 
     ['purchase_manager', 'raw_material_manager', 'consumable_manager', 'lead buyer', 'app_admin'].includes(role)
   );
 
   // 결제 완료 처리
   const handlePaymentComplete = async (checked: boolean) => {
-    if (!canManagePurchase || updating) return;
+    if (!canManagePayment || updating) return;
     
     setUpdating(true);
     try {
@@ -59,7 +64,7 @@ const PurchaseActionButtons = memo(({
 
   // 입고 완료 처리
   const handleReceiptComplete = async (checked: boolean) => {
-    if (!canManagePurchase || updating) return;
+    if (!canManageReceipt || updating) return;
     
     setUpdating(true);
     try {
@@ -83,45 +88,50 @@ const PurchaseActionButtons = memo(({
     }
   };
 
-  if (!canManagePurchase) {
+  // 권한이 없으면 아무것도 표시하지 않음
+  if (!canManagePayment && !canManageReceipt) {
     return null;
   }
 
   return (
     <div className="flex items-center gap-4">
-      {/* 결제 완료 체크박스 */}
-      <div className="flex items-center space-x-2">
-        <Checkbox
-          id={`payment-${purchase.id}`}
-          checked={isPaymentCompleted}
-          onCheckedChange={handlePaymentComplete}
-          disabled={updating}
-        />
-        <label
-          htmlFor={`payment-${purchase.id}`}
-          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-        >
-          결제완료
-        </label>
-      </div>
+      {/* 결제 완료 체크박스 - lead buyer, app_admin만 */}
+      {canManagePayment && (
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id={`payment-${purchase.id}`}
+            checked={isPaymentCompleted}
+            onCheckedChange={handlePaymentComplete}
+            disabled={updating}
+          />
+          <label
+            htmlFor={`payment-${purchase.id}`}
+            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+          >
+            결제완료
+          </label>
+        </div>
+      )}
 
-      {/* 입고 완료 체크박스 */}
-      <div className="flex items-center space-x-2">
-        <Checkbox
-          id={`receipt-${purchase.id}`}
-          checked={isReceived}
-          onCheckedChange={handleReceiptComplete}
-          disabled={updating || !isPaymentCompleted}
-        />
-        <label
-          htmlFor={`receipt-${purchase.id}`}
-          className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${
-            !isPaymentCompleted ? 'opacity-50' : ''
-          }`}
-        >
-          입고완료
-        </label>
-      </div>
+      {/* 입고 완료 체크박스 - 구매 관리자들 */}
+      {canManageReceipt && (
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id={`receipt-${purchase.id}`}
+            checked={isReceived}
+            onCheckedChange={handleReceiptComplete}
+            disabled={updating || !isPaymentCompleted}
+          />
+          <label
+            htmlFor={`receipt-${purchase.id}`}
+            className={`text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 ${
+              !isPaymentCompleted ? 'opacity-50' : ''
+            }`}
+          >
+            입고완료
+          </label>
+        </div>
+      )}
     </div>
   );
 });
