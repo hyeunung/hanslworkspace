@@ -2,6 +2,8 @@ import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails } from '@/types/purchase'
 import { formatDate } from '@/utils/helpers'
+import { DatePickerPopover } from '@/components/ui/date-picker-popover'
+import { DatePicker } from '@/components/ui/datepicker'
 import { 
   Calendar, 
   User, 
@@ -24,8 +26,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DatePicker } from '@/components/ui/datepicker'
-import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 
@@ -146,6 +146,16 @@ export default function PurchaseDetailModal({
                   effectiveRoles.includes('ceo')
   const isRequester = purchase?.requester_name === currentUserName
   const canReceiptCheck = isAdmin || isRequester
+  
+  // 권한 디버깅 로그
+  console.log('🔐 권한 체크:', {
+    currentUserName,
+    requesterName: purchase?.requester_name,
+    effectiveRoles,
+    isAdmin,
+    isRequester,
+    canReceiptCheck
+  })
   
   // 디버깅용 로그
   logger.debug('Receipt Check', {
@@ -628,6 +638,169 @@ export default function PurchaseDetailModal({
       toast.success('입고완료가 취소되었습니다.')
     } catch (error) {
       toast.error('입고완료 취소 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 거래명세서 확인 처리 함수
+  const handleStatementCheck = async (itemId: number | string, selectedDate: Date) => {
+    console.log('🔍 거래명세서 확인 시작:', { itemId, selectedDate, canReceiptCheck, currentUserName })
+    
+    if (!canReceiptCheck) {
+      console.error('❌ 권한 없음:', { canReceiptCheck, currentUserRoles })
+      toast.error('거래명세서 확인 권한이 없습니다.')
+      return
+    }
+
+    // DatePickerPopover에서 이미 확인했으므로 여기서는 확인 다이얼로그 제거
+
+    const itemIdStr = String(itemId)
+    const numericId = typeof itemId === 'number' ? itemId : Number(itemId)
+    
+    console.log('🔢 ID 변환 확인:', { 
+      originalItemId: itemId, 
+      itemIdStr, 
+      numericId,
+      itemIdType: typeof itemId 
+    })
+
+    if (Number.isNaN(numericId)) {
+      console.error('❌ 잘못된 ID:', { itemId, numericId })
+      toast.error('유효하지 않은 항목 ID 입니다.')
+      return
+    }
+
+    console.log('📝 데이터베이스 업데이트 시작:', { numericId, selectedDate: selectedDate.toISOString() })
+
+    try {
+      const { error } = await supabase
+        .from('purchase_request_items')
+        .update({
+          is_statement_received: true,
+          statement_received_date: selectedDate.toISOString(),
+          statement_received_by_name: currentUserName
+        })
+        .eq('id', numericId)
+
+      if (error) {
+        console.error('❌ DB 업데이트 실패:', error)
+        throw error
+      }
+
+      console.log('✅ DB 업데이트 성공')
+
+      // 데이터베이스에서 최신 데이터 다시 로드
+      console.log('📥 최신 데이터 로드 시작')
+      const { data: updatedPurchase, error: fetchError } = await supabase
+        .from('purchase_requests')
+        .select(`
+          *,
+          purchase_request_items(*)
+        `)
+        .eq('id', purchase?.id)
+        .single()
+
+      if (fetchError) {
+        console.error('❌ 최신 데이터 로드 실패:', fetchError)
+      } else if (updatedPurchase) {
+        console.log('📥 최신 데이터 로드 성공:', updatedPurchase.purchase_request_items?.length)
+        
+        // 최신 데이터로 로컬 상태 업데이트
+        setPurchase(prev => ({
+          ...prev,
+          ...updatedPurchase,
+          items: updatedPurchase.purchase_request_items?.sort((a: any, b: any) => 
+            (a.line_number || 0) - (b.line_number || 0)
+          ) || []
+        }))
+      }
+      
+      // 강제 새로고침을 위해 onUpdate 호출
+      if (onUpdate) {
+        console.log('🔄 부모 컴포넌트 새로고침 호출')
+        onUpdate()
+      }
+      
+      // 성공 메시지는 간단하게 표시
+      toast.success('거래명세서 확인이 완료되었습니다.')
+    } catch (error) {
+      console.error('❌ 전체 처리 실패:', error)
+      toast.error('거래명세서 확인 처리 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 거래명세서 확인 취소 처리 함수
+  const handleStatementCancel = async (itemId: number | string) => {
+    if (!canReceiptCheck) {
+      toast.error('거래명세서 확인 권한이 없습니다.')
+      return
+    }
+
+    const itemIdStr = String(itemId)
+    const numericId = typeof itemId === 'number' ? itemId : Number(itemId)
+
+    if (Number.isNaN(numericId)) {
+      toast.error('유효하지 않은 항목 ID 입니다.')
+      return
+    }
+
+    // 버튼 클릭 시 이미 확인했으므로 여기서는 확인 다이얼로그 제거
+
+    try {
+      const targetItem = purchase?.purchase_request_items?.find(item => String(item.id) === itemIdStr);
+      console.log('🔄 거래명세서 확인 취소 시작:', { itemId, itemName: targetItem?.item_name })
+
+      const { error } = await supabase
+        .from('purchase_request_items')
+        .update({
+          is_statement_received: false,
+          statement_received_date: null,
+          statement_received_by_name: null
+        })
+        .eq('id', numericId)
+
+      if (error) {
+        console.error('❌ DB 업데이트 실패:', error)
+        throw error
+      }
+
+      console.log('✅ 거래명세서 확인 취소 성공')
+
+      // 데이터베이스에서 최신 데이터 다시 로드
+      console.log('📥 최신 데이터 로드 시작 (취소)')
+      const { data: updatedPurchase, error: fetchError } = await supabase
+        .from('purchase_requests')
+        .select(`
+          *,
+          purchase_request_items(*)
+        `)
+        .eq('id', purchase?.id)
+        .single()
+
+      if (fetchError) {
+        console.error('❌ 최신 데이터 로드 실패:', fetchError)
+      } else if (updatedPurchase) {
+        console.log('📥 최신 데이터 로드 성공 (취소):', updatedPurchase.purchase_request_items?.length)
+        
+        // 최신 데이터로 로컬 상태 업데이트
+        setPurchase(prev => ({
+          ...prev,
+          ...updatedPurchase,
+          items: updatedPurchase.purchase_request_items?.sort((a: any, b: any) => 
+            (a.line_number || 0) - (b.line_number || 0)
+          ) || []
+        }))
+      }
+      
+      // 강제 새로고침을 위해 onUpdate 호출
+      if (onUpdate) {
+        console.log('🔄 부모 컴포넌트 새로고침 호출 (취소)')
+        onUpdate()
+      }
+      
+      toast.success('거래명세서 확인이 취소되었습니다.')
+    } catch (error) {
+      console.error('❌ 거래명세서 확인 취소 실패:', error)
+      toast.error('거래명세서 확인 취소 중 오류가 발생했습니다.')
     }
   }
 
@@ -1115,8 +1288,8 @@ export default function PurchaseDetailModal({
                         gridTemplateColumns: isEditing && columnWidths.length > 0
                           ? columnWidths.map(width => `${width}px`).join(' ')
                           : activeTab === 'receipt' 
-                            ? 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(100px, auto)'
-                            : 'minmax(120px, 1fr) minmax(250px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(120px, 1fr) minmax(80px, auto)'
+                            ? 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(100px, auto) minmax(100px, auto) minmax(80px, auto) minmax(120px, auto)'
+                            : 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(100px, auto) minmax(100px, auto) minmax(80px, auto)'
                       }}
                     >
                       <div>품목명</div>
@@ -1129,14 +1302,34 @@ export default function PurchaseDetailModal({
                         <>
                           <div className="text-center">삭제</div>
                           {activeTab === 'receipt' && (
-                            <div className="text-center">실제입고일</div>
+                            <>
+                              <div className="text-center">실제입고일</div>
+                            </>
+                          )}
+                          {activeTab === 'done' && (
+                            <>
+                              <div className="text-center">거래명세서 확인</div>
+                              <div className="text-center">회계상 입고일</div>
+                              <div className="text-center">처리자</div>
+                            </>
                           )}
                         </>
                       ) : (
                         <>
-                          <div className="text-center">상태</div>
+                          <div className="text-center">
+                            {activeTab === 'purchase' ? '구매상태' : activeTab === 'receipt' ? '입고상태' : '상태'}
+                          </div>
+                          {activeTab === 'done' && (
+                            <>
+                              <div className="text-center">거래명세서 확인</div>
+                              <div className="text-center">회계상 입고일</div>
+                              <div className="text-center">처리자</div>
+                            </>
+                          )}
                           {activeTab === 'receipt' && (
-                            <div className="text-center">실제입고일</div>
+                            <>
+                              <div className="text-center">실제입고일</div>
+                            </>
                           )}
                         </>
                       )}
@@ -1149,8 +1342,10 @@ export default function PurchaseDetailModal({
                         gridTemplateColumns: isEditing && columnWidths.length > 0
                           ? columnWidths.map(width => `${width}px`).join(' ')
                           : activeTab === 'receipt' 
-                            ? 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(100px, auto)'
-                            : 'minmax(120px, 1fr) minmax(250px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(120px, 1fr) minmax(80px, auto)'
+                            ? 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(120px, auto)'
+                            : activeTab === 'done'
+                            ? 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto) minmax(100px, auto) minmax(100px, auto) minmax(80px, auto)'
+                            : 'minmax(120px, 1fr) minmax(200px, 2fr) minmax(70px, auto) minmax(90px, auto) minmax(100px, auto) minmax(80px, 1fr) minmax(80px, auto)'
                       }}>
                         {/* 품목명 */}
                         <div className="min-w-0">
@@ -1342,6 +1537,104 @@ export default function PurchaseDetailModal({
                             )}
                           </div>
                         )}
+
+                        {/* 거래명세서 확인 - 전체항목 탭에서만 표시 */}
+                        {activeTab === 'done' && (
+                          <div className="text-center flex justify-center items-start pt-1">
+                            {canReceiptCheck ? (
+                              item.is_statement_received ? (
+                                <button
+                                  onClick={() => {
+                                    // 품목 정보 확인 다이얼로그
+                                    const confirmMessage = `품목명: ${item.item_name || '-'}
+규격: ${item.specification || '-'}
+수량: ${item.quantity?.toLocaleString() || 0}
+단가: ₩${item.unit_price_value?.toLocaleString() || 0}
+합계: ₩${item.amount_value?.toLocaleString() || 0}
+비고: ${item.remark || '-'}
+
+거래명세서 확인을 취소하시겠습니까?`
+                                    
+                                    if (window.confirm(confirmMessage)) {
+                                      handleStatementCancel(item.id)
+                                    }
+                                  }}
+                                  className="button-action-primary hover:bg-green-600 transition-colors"
+                                  title="클릭하여 거래명세서 확인 취소"
+                                >
+                                  ✓ 완료
+                                </button>
+                              ) : (
+                                <DatePickerPopover
+                                  onDateSelect={(date) => {
+                                    console.log('📅 DatePicker 날짜 선택:', { itemId: item.id, date, itemName: item.item_name })
+                                    
+                                    // 품목 정보 확인 다이얼로그
+                                    const confirmMessage = `품목명: ${item.item_name || '-'}
+규격: ${item.specification || '-'}
+수량: ${item.quantity?.toLocaleString() || 0}
+단가: ₩${item.unit_price_value?.toLocaleString() || 0}
+합계: ₩${item.amount_value?.toLocaleString() || 0}
+비고: ${item.remark || '-'}
+
+거래명세서 확인을 처리하시겠습니까?`
+                                    
+                                    if (window.confirm(confirmMessage)) {
+                                      handleStatementCheck(item.id, date)
+                                    }
+                                  }}
+                                  placeholder="회계상 입고일을 선택하세요"
+                                  align="center"
+                                  side="bottom"
+                                >
+                                  <button 
+                                    className="button-toggle-inactive"
+                                    onClick={() => console.log('🖱️ 거래명세서 확인 버튼 클릭:', { itemId: item.id, itemName: item.item_name })}
+                                  >
+                                    대기
+                                  </button>
+                                </DatePickerPopover>
+                              )
+                            ) : (
+                              <span className={`${
+                                item.is_statement_received 
+                                  ? 'button-action-primary' 
+                                  : 'button-waiting-inactive'
+                              }`}>
+                                {item.is_statement_received ? '✓ 완료' : '대기'}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 회계상 입고일 - 전체항목 탭에서만 표시 */}
+                        {activeTab === 'done' && (
+                          <div className="text-center flex justify-center items-start pt-1">
+                            {item.statement_received_date ? (
+                              <div className="modal-subtitle text-blue-700">
+                                {new Date(item.statement_received_date).toLocaleDateString('ko-KR', {
+                                  year: 'numeric',
+                                  month: '2-digit',
+                                  day: '2-digit'
+                                })}
+                              </div>
+                            ) : (
+                              <span className="modal-subtitle text-gray-400">-</span>
+                            )}
+                          </div>
+                        )}
+                        {/* 처리자 - 전체항목 탭에서만 표시 */}
+                        {activeTab === 'done' && (
+                          <div className="text-center flex justify-center items-start pt-1">
+                            {item.statement_received_by_name ? (
+                              <span className="modal-subtitle text-gray-600">
+                                {item.statement_received_by_name}
+                              </span>
+                            ) : (
+                              <span className="modal-subtitle text-gray-400">-</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                       
                       {/* Mobile Layout */}
@@ -1528,6 +1821,105 @@ export default function PurchaseDetailModal({
                                   hour: '2-digit',
                                   minute: '2-digit'
                                 })}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 모바일에서 거래명세서 확인 표시 - 전체항목 탭에서만 */}
+                        {!isEditing && activeTab === 'done' && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-500 text-xs">거래명세서 확인:</span>
+                            <div className="flex items-center gap-2">
+                              {canReceiptCheck ? (
+                                item.is_statement_received ? (
+                                  <button
+                                    onClick={() => {
+                                      // 품목 정보 확인 다이얼로그
+                                      const confirmMessage = `품목명: ${item.item_name || '-'}
+규격: ${item.specification || '-'}
+수량: ${item.quantity?.toLocaleString() || 0}
+단가: ₩${item.unit_price_value?.toLocaleString() || 0}
+합계: ₩${item.amount_value?.toLocaleString() || 0}
+비고: ${item.remark || '-'}
+
+거래명세서 확인을 취소하시겠습니까?`
+                                      
+                                      if (window.confirm(confirmMessage)) {
+                                        handleStatementCancel(item.id)
+                                      }
+                                    }}
+                                    className="text-xs px-2 py-1 rounded button-action-primary hover:bg-green-600 transition-colors"
+                                    title="클릭하여 거래명세서 확인 취소"
+                                  >
+                                    ✓ 완료
+                                  </button>
+                                ) : (
+                                  <DatePickerPopover
+                                    onDateSelect={(date) => {
+                                      console.log('📅 DatePicker 날짜 선택 (모바일):', { itemId: item.id, date, itemName: item.item_name })
+                                      
+                                      // 품목 정보 확인 다이얼로그
+                                      const confirmMessage = `품목명: ${item.item_name || '-'}
+규격: ${item.specification || '-'}
+수량: ${item.quantity?.toLocaleString() || 0}
+단가: ₩${item.unit_price_value?.toLocaleString() || 0}
+합계: ₩${item.amount_value?.toLocaleString() || 0}
+비고: ${item.remark || '-'}
+
+거래명세서 확인을 처리하시겠습니까?`
+                                      
+                                      if (window.confirm(confirmMessage)) {
+                                        handleStatementCheck(item.id, date)
+                                      }
+                                    }}
+                                    placeholder="회계상 입고일을 선택하세요"
+                                    align="end"
+                                    side="bottom"
+                                  >
+                                    <button 
+                                      className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600"
+                                      onClick={() => console.log('🖱️ 거래명세서 확인 버튼 클릭 (모바일):', { itemId: item.id, itemName: item.item_name })}
+                                    >
+                                      대기
+                                    </button>
+                                  </DatePickerPopover>
+                                )
+                              ) : (
+                                <span className={`text-xs px-2 py-1 rounded ${
+                                  item.is_statement_received 
+                                    ? 'button-action-primary' 
+                                    : 'bg-gray-100 text-gray-400'
+                                }`}>
+                                  {item.is_statement_received ? '✓ 완료' : '대기'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 모바일에서 회계상 입고일 표시 - 전체항목 탭에서만 */}
+                        {!isEditing && activeTab === 'done' && item.statement_received_date && (
+                          <div>
+                            <span className="text-gray-500 text-xs">회계상 입고일:</span>
+                            <div className="mt-1">
+                              <div className="modal-subtitle text-blue-700">
+                                {new Date(item.statement_received_date).toLocaleDateString('ko-KR', {
+                                  year: 'numeric',
+                                  month: '2-digit',
+                                  day: '2-digit'
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {/* 모바일에서 처리자 표시 - 전체항목 탭에서만 */}
+                        {!isEditing && activeTab === 'done' && item.statement_received_by_name && (
+                          <div>
+                            <span className="text-gray-500 text-xs">처리자:</span>
+                            <div className="mt-1">
+                              <div className="modal-subtitle text-gray-600">
+                                {item.statement_received_by_name}
                               </div>
                             </div>
                           </div>

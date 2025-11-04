@@ -467,6 +467,7 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
             purchase={modalPurchaseData}
             isAdmin={isAdmin || false}
             onUpdate={loadPurchases}
+            activeTab={activeTab}
           />
         </Suspense>
       )}

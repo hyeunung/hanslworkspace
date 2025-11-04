@@ -29,13 +29,21 @@ export function DatePickerPopover({
   side = "bottom"
 }: DatePickerPopoverProps) {
   const [open, setOpen] = useState(false)
-  const [selectedDate, setSelectedDate] = useState<Date>()
 
   const handleDateSelect = (date: Date | undefined) => {
+    console.log('📅 DatePickerPopover handleDateSelect 호출:', { 
+      date, 
+      isToday: date && new Date().toDateString() === date.toDateString(),
+      dateString: date?.toDateString(),
+      todayString: new Date().toDateString()
+    });
     if (date) {
-      setSelectedDate(date)
+      console.log('✅ 날짜 선택됨, onDateSelect 호출 예정');
       onDateSelect(date)
       setOpen(false) // 날짜 선택 후 팝오버 닫기
+      console.log('🔚 DatePickerPopover 처리 완료');
+    } else {
+      console.log('❌ 날짜가 undefined임');
     }
   }
 
@@ -58,11 +66,41 @@ export function DatePickerPopover({
           </div>
           <Calendar
             mode="single"
-            selected={selectedDate}
-            onSelect={handleDateSelect}
+            selected={undefined}
+            onSelect={(date) => {
+              console.log('🗓️ Calendar onSelect 직접 호출:', { 
+                date, 
+                isToday: date && new Date().toDateString() === date.toDateString(),
+                dateValue: date?.getTime(),
+                todayValue: new Date().getTime()
+              });
+              handleDateSelect(date);
+            }}
             locale={ko}
             initialFocus
             className="compact-calendar"
+            disabled={false}
+            fromDate={new Date('2020-01-01')}
+            toDate={new Date('2030-12-31')}
+            defaultMonth={new Date()}
+            modifiers={{
+              today: new Date()
+            }}
+            modifiersClassNames={{
+              today: "bg-blue-500 text-white font-semibold cursor-pointer hover:bg-blue-600 rounded-md"
+            }}
+            onDayClick={(day, modifiers) => {
+              console.log('🔘 onDayClick 호출:', { 
+                day, 
+                modifiers, 
+                isToday: modifiers.today,
+                dayString: day.toDateString(),
+                todayString: new Date().toDateString()
+              });
+              
+              // 모든 날짜에 대해 handleDateSelect 호출
+              handleDateSelect(day);
+            }}
           />
         </div>
       </PopoverContent>

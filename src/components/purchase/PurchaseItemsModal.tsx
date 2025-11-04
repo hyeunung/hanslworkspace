@@ -10,6 +10,8 @@ import { format } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { ReceiptDownloadButton } from "./ReceiptDownloadButton";
+import { DatePickerPopover } from "@/components/ui/date-picker-popover";
+import { useEffect } from "react";
 
 interface PurchaseItem {
   id?: number | string;
@@ -26,6 +28,10 @@ interface PurchaseItem {
   receipt_image_url?: string | null;
   receipt_uploaded_at?: string | null;
   receipt_uploaded_by?: string | null;
+  // 거래명세서 확인 관련 필드
+  is_statement_received?: boolean;
+  statement_received_date?: string | null;
+  statement_received_by_name?: string | null;
 }
 
 interface PurchaseItemsModalProps {
@@ -42,17 +48,164 @@ interface PurchaseItemsModalProps {
     request_date: string;
     delivery_request_date?: string;
     currency: string;
+    payment_category?: string;
     items?: PurchaseItem[];
     total_amount: number;
   };
   isAdmin: boolean;
   onUpdate: () => void;
+  activeTab?: string; // 활성 탭 정보 추가
 }
 
-export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin, onUpdate }: PurchaseItemsModalProps) {
+export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin, onUpdate, activeTab = 'done' }: PurchaseItemsModalProps) {
   const [editingItems, setEditingItems] = useState<PurchaseItem[]>(purchase.items || []);
   const [isEditing, setIsEditing] = useState(false);
+  const [currentUserName, setCurrentUserName] = useState<string>('');
   const supabase = createClient();
+  
+  // 사용자 정보 및 최신 데이터 로드
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.email) {
+          const { data: employeeData } = await supabase
+            .from('employees')
+            .select('name')
+            .eq('email', user.email)
+            .single();
+          
+          if (employeeData?.name) {
+            setCurrentUserName(employeeData.name);
+          } else {
+            setCurrentUserName(user.email);
+          }
+        }
+
+        // 최신 구매 요청 아이템 데이터 로드 (거래명세서 확인 필드 포함)
+        if (purchase.id) {
+          const { data: freshItems } = await supabase
+            .from('purchase_request_items')
+            .select('*')
+            .eq('purchase_request_id', purchase.id)
+            .order('line_number');
+          
+          if (freshItems) {
+            setEditingItems(freshItems);
+          }
+        }
+      } catch (error) {
+        console.error('데이터 로드 실패:', error);
+        setCurrentUserName('사용자');
+      }
+    };
+
+    if (isOpen) {
+      loadData();
+    }
+  }, [isOpen, supabase, purchase.id]);
+  
+  // 거래명세서 확인 처리 함수
+  const handleStatementCheck = async (itemId: number | string, selectedDate: Date) => {
+    // DatePickerPopover에서 이미 확인했으므로 여기서는 확인 다이얼로그 제거
+
+    const itemIdStr = String(itemId);
+    const numericId = typeof itemId === 'number' ? itemId : Number(itemId);
+
+    if (Number.isNaN(numericId)) {
+      toast.error('유효하지 않은 항목 ID 입니다.');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('purchase_request_items')
+        .update({
+          is_statement_received: true,
+          statement_received_date: selectedDate.toISOString(),
+          statement_received_by_name: currentUserName
+        })
+        .eq('id', numericId);
+
+      if (error) throw error;
+
+      console.log('✅ DB 업데이트 성공 (PurchaseItemsModal)')
+
+      // 최신 데이터 다시 로드
+      console.log('📥 최신 데이터 로드 시작 (PurchaseItemsModal)')
+      const { data: freshItems } = await supabase
+        .from('purchase_request_items')
+        .select('*')
+        .eq('purchase_request_id', purchase.id)
+        .order('line_number');
+      
+      if (freshItems) {
+        console.log('📥 최신 데이터 로드 성공 (PurchaseItemsModal):', freshItems.length)
+        setEditingItems(freshItems);
+      }
+
+      // 화면 업데이트를 위해 onUpdate 호출
+      console.log('🔄 부모 컴포넌트 새로고침 호출 (PurchaseItemsModal)')
+      onUpdate();
+      
+      toast.success('거래명세서 확인이 완료되었습니다.');
+    } catch (error) {
+      toast.error('거래명세서 확인 처리 중 오류가 발생했습니다.');
+    }
+  };
+
+  // 거래명세서 확인 취소 처리 함수
+  const handleStatementCancel = async (itemId: number | string) => {
+    const itemIdStr = String(itemId);
+    const numericId = typeof itemId === 'number' ? itemId : Number(itemId);
+
+    if (Number.isNaN(numericId)) {
+      toast.error('유효하지 않은 항목 ID 입니다.');
+      return;
+    }
+
+    // 버튼 클릭 시 이미 확인했으므로 여기서는 확인 다이얼로그 제거
+
+    try {
+      const targetItem = editingItems.find(item => String(item.id) === itemIdStr);
+      console.log('🔄 거래명세서 확인 취소 시작 (PurchaseItemsModal):', { itemId, itemName: targetItem?.item_name });
+
+      const { error } = await supabase
+        .from('purchase_request_items')
+        .update({
+          is_statement_received: false,
+          statement_received_date: null,
+          statement_received_by_name: null
+        })
+        .eq('id', numericId);
+
+      if (error) throw error;
+
+      console.log('✅ 거래명세서 확인 취소 성공 (PurchaseItemsModal)');
+
+      // 최신 데이터 다시 로드
+      console.log('📥 최신 데이터 로드 시작 (취소, PurchaseItemsModal)');
+      const { data: freshItems } = await supabase
+        .from('purchase_request_items')
+        .select('*')
+        .eq('purchase_request_id', purchase.id)
+        .order('line_number');
+      
+      if (freshItems) {
+        console.log('📥 최신 데이터 로드 성공 (취소, PurchaseItemsModal):', freshItems.length);
+        setEditingItems(freshItems);
+      }
+
+      // 화면 업데이트를 위해 onUpdate 호출
+      console.log('🔄 부모 컴포넌트 새로고침 호출 (취소, PurchaseItemsModal)');
+      onUpdate();
+      
+      toast.success('거래명세서 확인이 취소되었습니다.');
+    } catch (error) {
+      console.error('❌ 거래명세서 확인 취소 실패 (PurchaseItemsModal):', error);
+      toast.error('거래명세서 확인 취소 중 오류가 발생했습니다.');
+    }
+  };
   
   // 품목 수정 시작
   const handleEditStart = () => {
@@ -154,7 +307,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
     }
   };
   
-  const items = isEditing ? editingItems : (purchase.items || []);
+  const items = isEditing ? editingItems : editingItems;
   const totalAmount = items.reduce((sum, item) => sum + (item.amount_value || 0), 0);
   
   return (
@@ -249,8 +402,16 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                 <TableHead className="text-right">수량</TableHead>
                 <TableHead className="text-right">단가</TableHead>
                 <TableHead className="text-right">금액</TableHead>
-                <TableHead>입고상태</TableHead>
+                <TableHead>
+                  {activeTab === 'purchase' ? '구매상태' : activeTab === 'receipt' ? '입고상태' : '입고상태'}
+                </TableHead>
                 <TableHead>영수증</TableHead>
+                {activeTab === 'done' && (
+                  <>
+                    <TableHead className="text-center">거래명세서 확인</TableHead>
+                    <TableHead className="text-center">회계상 입고일</TableHead>
+                  </>
+                )}
                 <TableHead>비고</TableHead>
                 {isEditing && <TableHead className="w-20">삭제</TableHead>}
               </TableRow>
@@ -330,6 +491,80 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                       <Badge variant={null} className="badge-secondary">대기</Badge>
                     )}
                   </TableCell>
+                  <TableCell className="text-center">
+                    <ReceiptDownloadButton 
+                      itemId={Number(item.id)}
+                      receiptUrl={item.receipt_image_url}
+                      itemName={item.item_name}
+                      paymentCategory={purchase.payment_category}
+                      onUpdate={onUpdate}
+                    />
+                  </TableCell>
+                  {activeTab === 'done' && (
+                    <>
+                      <TableCell className="text-center">
+                        {item.is_statement_received ? (
+                          <button
+                            onClick={() => {
+                              // 품목 정보 확인 다이얼로그
+                              const confirmMessage = `품목명: ${item.item_name || '-'}
+규격: ${item.specification || '-'}
+수량: ${item.quantity?.toLocaleString() || 0}
+단가: ₩${item.unit_price_value?.toLocaleString() || 0}
+합계: ₩${item.amount_value?.toLocaleString() || 0}
+비고: ${item.remark || '-'}
+
+거래명세서 확인을 취소하시겠습니까?`
+                              
+                              if (window.confirm(confirmMessage)) {
+                                handleStatementCancel(item.id!)
+                              }
+                            }}
+                            className="button-base bg-green-500 hover:bg-green-600 text-white transition-colors"
+                            title="클릭하여 거래명세서 확인 취소"
+                          >
+                            ✓ 완료
+                          </button>
+                        ) : (
+                          <DatePickerPopover
+                            onDateSelect={(date) => {
+                              // 품목 정보 확인 다이얼로그
+                              const confirmMessage = `품목명: ${item.item_name || '-'}
+규격: ${item.specification || '-'}
+수량: ${item.quantity?.toLocaleString() || 0}
+단가: ₩${item.unit_price_value?.toLocaleString() || 0}
+합계: ₩${item.amount_value?.toLocaleString() || 0}
+비고: ${item.remark || '-'}
+
+거래명세서 확인을 처리하시겠습니까?`
+                              
+                              if (window.confirm(confirmMessage)) {
+                                handleStatementCheck(item.id!, date)
+                              }
+                            }}
+                            placeholder="날짜 선택"
+                          >
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              className="button-base border border-gray-300 text-gray-600 bg-white hover:bg-gray-50"
+                            >
+                              대기
+                            </Button>
+                          </DatePickerPopover>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {item.statement_received_date ? (
+                          <span className="modal-subtitle">
+                            {format(new Date(item.statement_received_date), 'yyyy-MM-dd')}
+                          </span>
+                        ) : (
+                          <span className="modal-subtitle">-</span>
+                        )}
+                      </TableCell>
+                    </>
+                  )}
                   <TableCell>
                     {isEditing ? (
                       <Input

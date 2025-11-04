@@ -115,6 +115,10 @@ export interface PurchaseRequestItem {
   payment_completed_at?: string | null
   payment_completed_by_name?: string
   actual_received_date?: string
+  // 거래명세서 확인 관련 필드
+  is_statement_received?: boolean
+  statement_received_date?: string | null
+  statement_received_by_name?: string | null
   created_at: string
   updated_at: string
 }
