@@ -415,7 +415,8 @@ export default function PurchaseDetailModal({
     if (activeTab === 'done') {
       columnConfigs.push(
         { key: 'transaction_confirm', minWidth: 100, maxWidth: 160, baseWidth: 100 },
-        { key: 'accounting_date', minWidth: 100, maxWidth: 160, baseWidth: 100 }
+        { key: 'accounting_date', minWidth: 100, maxWidth: 160, baseWidth: 100 },
+        { key: 'processor', minWidth: 80, maxWidth: 120, baseWidth: 80 }
       )
     }
 
@@ -434,7 +435,7 @@ export default function PurchaseDetailModal({
         if (activeTab === 'receipt') {
           return [...baseHeaders, '실제입고일']
         } else if (activeTab === 'done') {
-          return [...baseHeaders, '거래명세서 확인', '회계상 입고일']
+          return [...baseHeaders, '거래명세서 확인', '회계상 입고일', '처리자']
         }
         return baseHeaders
       }
@@ -483,6 +484,9 @@ export default function PurchaseDetailModal({
             break
           case 'accounting_date':
             cellValue = item.statement_received_date ? formatDate(item.statement_received_date) : ''
+            break
+          case 'processor':
+            cellValue = item.statement_received_by_name || ''
             break
         }
         
@@ -1663,6 +1667,7 @@ export default function PurchaseDetailModal({
                             <>
                               <div className="text-center">거래명세서 확인</div>
                               <div className="text-center">회계상 입고일</div>
+                              <div className="text-center">처리자</div>
                             </>
                           )}
                         </>
@@ -1679,6 +1684,7 @@ export default function PurchaseDetailModal({
                             <>
                               <div className="text-center">거래명세서 확인</div>
                               <div className="text-center">회계상 입고일</div>
+                              <div className="text-center">처리자</div>
                             </>
                           )}
                           {activeTab === 'receipt' && (
@@ -1991,6 +1997,18 @@ export default function PurchaseDetailModal({
                             )}
                           </div>
                         )}
+                        {/* 처리자 - 전체항목 탭에서만 표시 */}
+                        {activeTab === 'done' && (
+                          <div className="text-center flex justify-center items-start pt-1">
+                            {statementReceivedAction.getCompletedByName(item) ? (
+                              <span className="modal-subtitle text-gray-600">
+                                {statementReceivedAction.getCompletedByName(item)}
+                              </span>
+                            ) : (
+                              <span className="modal-subtitle text-gray-400">-</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                       
                       {/* Mobile Layout */}
@@ -2284,6 +2302,17 @@ export default function PurchaseDetailModal({
                                   month: '2-digit',
                                   day: '2-digit'
                                 })}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {/* 모바일에서 처리자 표시 - 전체항목 탭에서만 */}
+                        {!isEditing && activeTab === 'done' && statementReceivedAction.getCompletedByName(item) && (
+                          <div>
+                            <span className="text-gray-500 text-xs">처리자:</span>
+                            <div className="mt-1">
+                              <div className="modal-subtitle text-gray-600">
+                                {statementReceivedAction.getCompletedByName(item)}
                               </div>
                             </div>
                           </div>
