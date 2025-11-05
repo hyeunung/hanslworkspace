@@ -1202,7 +1202,7 @@ export default function FilterToolbar({
             }}
             className="button-base border border-gray-300 bg-white text-blue-600 hover:bg-blue-50 hover:border-blue-300"
           >
-            ♻️ <span className="button-text">초기화</span>
+            ↻ <span className="button-text">초기화</span>
           </Button>
         </div>
       </div>
