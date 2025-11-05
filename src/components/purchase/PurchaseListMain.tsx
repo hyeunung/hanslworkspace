@@ -408,7 +408,11 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
           {NAV_TABS.map((tab) => (
             <button
               key={tab.key}
-              onClick={() => measureTabSwitch(tab.key, () => setActiveTab(tab.key))}
+              onClick={() => measureTabSwitch(tab.key, () => {
+                setActiveTab(tab.key);
+                // 탭 변경 시 조용히 최신 데이터 로드 (silent: true로 로딩 스피너 방지)
+                loadPurchases(false, { silent: true });
+              })}
               className={`flex-1 flex items-center justify-center space-x-2 py-1.5 px-3 sm:px-4 business-radius-button button-text font-medium transition-colors ${
                 activeTab === tab.key
                   ? 'text-hansl-600 bg-white shadow-sm border border-gray-200'
