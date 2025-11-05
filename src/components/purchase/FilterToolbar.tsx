@@ -1189,6 +1189,7 @@ export default function FilterToolbar({
 
           {/* 전체 초기화 버튼 */}
           <Button
+            variant="outline"
             onClick={() => {
               onSearchChange('')
               onFiltersChange([])
@@ -1199,9 +1200,9 @@ export default function FilterToolbar({
               })
               setIsSearchExpanded(false)
             }}
-            className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+            className="button-base border border-gray-300 bg-white text-blue-600 hover:bg-blue-50 hover:border-blue-300"
           >
-            초기화
+            ♻️ <span className="button-text">초기화</span>
           </Button>
         </div>
       </div>
