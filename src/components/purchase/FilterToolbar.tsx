@@ -7,7 +7,9 @@ import {
   Search, 
   X, 
   Calendar,
-  Check
+  Check,
+  User,
+  Building
 } from 'lucide-react'
 import {
   Popover,
