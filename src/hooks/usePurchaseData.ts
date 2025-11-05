@@ -228,22 +228,6 @@ export const usePurchaseData = () => {
         }
       }
       
-      // 필요시에만 employees와 vendors 데이터 조회 (캐시된 데이터 우선 사용)
-      let employeeList: any[] = [];
-      let vendorList: any[] = [];
-      
-      // 데이터 변환에서 필요한 경우에만 조회
-      if (data && data.length > 0) {
-        // 병렬로 조회하여 성능 개선
-        const [employeesResult, vendorsResult] = await Promise.all([
-          supabase.from('employees').select('id, name, full_name, email'),
-          supabase.from('vendors').select('id, vendor_name, vendor_payment_schedule')
-        ]);
-        
-        employeeList = employeesResult.data || [];
-        vendorList = vendorsResult.data || [];
-      }
-      
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError || !user) {
@@ -269,6 +253,22 @@ export const usePurchaseData = () => {
 
       if (error) {
         throw error;
+      }
+
+      // 필요시에만 employees와 vendors 데이터 조회 (캐시된 데이터 우선 사용)
+      let employeeList: any[] = [];
+      let vendorList: any[] = [];
+      
+      // 데이터 변환에서 필요한 경우에만 조회
+      if (data && data.length > 0) {
+        // 병렬로 조회하여 성능 개선
+        const [employeesResult, vendorsResult] = await Promise.all([
+          supabase.from('employees').select('id, name, full_name, email'),
+          supabase.from('vendors').select('id, vendor_name, vendor_payment_schedule')
+        ]);
+        
+        employeeList = employeesResult.data || [];
+        vendorList = vendorsResult.data || [];
       }
 
       
