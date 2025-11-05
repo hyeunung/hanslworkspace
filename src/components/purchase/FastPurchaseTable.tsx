@@ -371,7 +371,9 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
           {purchase.contact_name || '-'}
         </span>
       </td>
-      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>
+      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.deliveryRequestDate} ${
+        purchase.revised_delivery_request_date ? 'text-gray-400' : ''
+      }`}>
         {formatDateShort(purchase.delivery_request_date)}
       </td>
       {(activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (

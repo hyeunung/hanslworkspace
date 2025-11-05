@@ -770,6 +770,11 @@ export default function PurchaseDetailModal({
       
       // 수정된 데이터 다시 로드 (모달은 열린 상태 유지)
       await loadPurchaseDetail(purchaseId?.toString() || '')
+
+      const refreshResult = onRefresh?.(true, { silent: true })
+      if (refreshResult instanceof Promise) {
+        await refreshResult
+      }
     } catch (error) {
       logger.error('저장 중 전체 오류', error);
       const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다'

@@ -7,7 +7,8 @@ export interface Purchase {
   id: number;
   purchase_order_number?: string;
   request_date: string;
-  delivery_request_date?: string;
+  delivery_request_date?: string | null;
+  revised_delivery_request_date?: string | null;
   progress_type: string;
   is_payment_completed: boolean;
   payment_category: string;
@@ -340,7 +341,8 @@ export const usePurchaseData = () => {
           id: Number(request.id),
           purchase_order_number: request.purchase_order_number as string,
           request_date: request.request_date as string,
-          delivery_request_date: request.delivery_request_date as string,
+          delivery_request_date: request.delivery_request_date ?? null,
+          revised_delivery_request_date: request.revised_delivery_request_date ?? null,
           progress_type: request.progress_type as string,
           payment_completed_at: request.payment_completed_at as string,
           payment_completed_by_name: request.payment_completed_by_name as string,
