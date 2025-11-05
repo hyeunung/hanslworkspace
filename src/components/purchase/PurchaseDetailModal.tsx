@@ -425,7 +425,13 @@ export default function PurchaseDetailModal({
 
       // 헤더 텍스트 길이 고려 (탭별)
       const getHeaders = () => {
-        const baseHeaders = ['품목명', '규격', '수량', '단가', '합계', '비고', '상태']
+        const statusHeader = activeTab === 'purchase'
+          ? '구매상태'
+          : (activeTab === 'receipt' || activeTab === 'done')
+          ? '입고상태'
+          : '상태'
+
+        const baseHeaders = ['품목명', '규격', '수량', '단가', '합계', '비고', statusHeader]
         if (activeTab === 'receipt') {
           return [...baseHeaders, '실제입고일']
         } else if (activeTab === 'done') {
@@ -1668,7 +1674,11 @@ export default function PurchaseDetailModal({
                       ) : (
                         <>
                           <div className="text-center">
-                            {activeTab === 'purchase' ? '구매상태' : activeTab === 'receipt' ? '입고상태' : '상태'}
+                            {activeTab === 'purchase'
+                              ? '구매상태'
+                              : (activeTab === 'receipt' || activeTab === 'done')
+                              ? '입고상태'
+                              : '상태'}
                           </div>
                           {activeTab === 'done' && (
                             <>
