@@ -389,8 +389,8 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
           </span>
         </div>
       </td>
-      {/* 승인대기, 입고현황, 전체항목 탭에서만 결제종류 표시 */}
-      {(activeTab === 'pending' || activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
+      {/* 모든 탭에서 결제종류 표시 */}
+      {(activeTab === 'pending' || activeTab === 'purchase' || activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
         <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>
           <Badge variant={null} className={
             purchase.payment_category === '구매요청' || purchase.payment_category === '구매 요청' ? 'badge-primary' :
@@ -962,7 +962,7 @@ const FastPurchaseTable = memo(({
     const baseHeaders = (
       <>
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
-        {(activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
+        {(activeTab === 'purchase' || activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
         )}
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
