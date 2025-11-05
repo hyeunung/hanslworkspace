@@ -55,7 +55,8 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
     currentUserName,
     currentUserEmail,
     currentUserId,
-    refreshPurchases: loadPurchases
+    refreshPurchases: loadPurchases,
+    updatePurchaseOptimistic
   } = usePurchaseData();
   
   const isAdmin = currentUserRoles?.includes('app_admin');
@@ -113,7 +114,9 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
     if (!purchase.items || purchase.items.length === 0) return { received: 0, total: 0, percentage: 0 };
     
     const total = purchase.items.length;
-    const received = purchase.items.filter(item => item.is_received || item.delivery_status === 'received').length;
+    const received = purchase.items.filter(item => 
+      item.actual_received_date !== null && item.actual_received_date !== undefined
+    ).length;
     const percentage = total > 0 ? Math.round((received / total) * 100) : 0;
     
     return { received, total, percentage };
@@ -447,6 +450,7 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
                 activeTab={activeTab}
                 currentUserRoles={currentUserRoles}
                 onRefresh={loadPurchases}
+                onOptimisticUpdate={updatePurchaseOptimistic}
                 onPaymentComplete={handlePaymentComplete}
                 onReceiptComplete={handleReceiptComplete}
               />

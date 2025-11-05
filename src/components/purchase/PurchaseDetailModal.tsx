@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { PurchaseRequestWithDetails } from '@/types/purchase'
+import { PurchaseRequestWithDetails, Purchase } from '@/types/purchase'
 import { formatDate } from '@/utils/helpers'
 import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { DatePicker } from '@/components/ui/datepicker'
@@ -37,7 +37,8 @@ interface PurchaseDetailModalProps {
   embedded?: boolean  // Dialog 없이 내용만 렌더링
   currentUserRoles?: string[]
   activeTab?: string
-  onRefresh?: (forceRefresh?: boolean) => void
+  onRefresh?: (forceRefresh?: boolean, options?: { silent?: boolean }) => void | Promise<void>
+  onOptimisticUpdate?: (purchaseId: number, updater: (prev: Purchase) => Purchase) => void
   onDelete?: (purchase: PurchaseRequestWithDetails) => void
 }
 
@@ -49,6 +50,7 @@ export default function PurchaseDetailModal({
   currentUserRoles = [],
   activeTab,
   onRefresh,
+  onOptimisticUpdate,
   onDelete
 }: PurchaseDetailModalProps) {
   const [loading, setLoading] = useState(false)
@@ -175,14 +177,14 @@ export default function PurchaseDetailModal({
         .single()
       
       if (freshPurchase) {
-        setPurchase(freshPurchase)
-        setEditedPurchase(freshPurchase)
-        setEditedItems(freshPurchase.items || [])
-        
-        // 외부 진행률 업데이트는 별도의 이벤트로 처리 (모달 상태에 영향 주지 않음)
-        // 필요시 부모 컴포넌트에서 실시간 데이터 폴링 등으로 처리
-        logger.debug('모달 데이터 새로고침 완료 - 모달 상태 유지')
-      }
+          setPurchase(freshPurchase as PurchaseRequestWithDetails)
+          setEditedPurchase(freshPurchase as PurchaseRequestWithDetails)
+          setEditedItems((freshPurchase as PurchaseRequestWithDetails).items || [])
+          
+          // 외부 진행률 업데이트는 별도의 이벤트로 처리 (모달 상태에 영향 주지 않음)
+          // 필요시 부모 컴포넌트에서 실시간 데이터 폴링 등으로 처리
+          logger.debug('모달 데이터 새로고침 완료 - 모달 상태 유지')
+        }
     } catch (error) {
       logger.error('모달 데이터 새로고침 실패', error)
     }
@@ -192,6 +194,112 @@ export default function PurchaseDetailModal({
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   
   // 커스텀 훅 설정
+  const purchaseIdNumber = purchaseId ? Number(purchaseId) : (purchase ? Number(purchase.id) : NaN)
+
+  const handleActualReceiptOptimisticUpdate = useCallback(({ itemId, selectedDate, action }: {
+    itemId: number
+    selectedDate?: Date
+    action: 'confirm' | 'cancel'
+    itemInfo?: {
+      item_name?: string
+      specification?: string
+      quantity?: number
+      unit_price_value?: number
+      amount_value?: number
+      remark?: string
+    }
+  }) => {
+    const itemIdStr = String(itemId)
+    const nowIso = new Date().toISOString()
+    const selectedDateIso = selectedDate ? selectedDate.toISOString() : undefined
+
+    const updateItems = (items?: any[]) => {
+      if (!items) return items
+      return items.map(item => {
+        if (String(item.id) !== itemIdStr) return item
+
+        if (action === 'confirm') {
+          return {
+            ...item,
+            is_received: true,
+            actual_received_date: selectedDateIso,
+            received_at: nowIso
+          }
+        }
+
+        return {
+          ...item,
+          is_received: false,
+          actual_received_date: undefined,
+          received_at: undefined
+        }
+      })
+    }
+
+    setPurchase(prev => {
+      if (!prev) return prev
+      const updatedItems = updateItems(prev.items) || []
+      const total = updatedItems.length
+      const completed = updatedItems.filter(item => item.is_received).length
+      const allReceived = total > 0 && completed === total
+
+      return {
+        ...prev,
+        items: updatedItems,
+        is_received: allReceived,
+        received_at: allReceived ? (prev.received_at || nowIso) : undefined
+      }
+    })
+
+    setEditedPurchase(prev => {
+      if (!prev) return prev
+      const updatedItems = updateItems(prev.items) || []
+      return {
+        ...prev,
+        items: updatedItems
+      }
+    })
+
+    setEditedItems(prevItems => {
+      if (!prevItems || prevItems.length === 0) return prevItems
+      return prevItems.map(item => {
+        if (!item.id || String(item.id) !== itemIdStr) return item
+
+        if (action === 'confirm') {
+          return {
+            ...item,
+            is_received: true,
+            actual_received_date: selectedDateIso,
+            received_at: nowIso
+          }
+        }
+
+        return {
+          ...item,
+          is_received: false,
+          actual_received_date: undefined,
+          received_at: undefined
+        }
+      })
+    })
+
+    if (!Number.isNaN(purchaseIdNumber)) {
+      onOptimisticUpdate?.(purchaseIdNumber, prevPurchase => {
+        const updatedItems = updateItems(prevPurchase.items) || prevPurchase.items || []
+        const total = updatedItems.length || prevPurchase.items?.length || 0
+        const completed = updatedItems.filter(item => item.is_received).length
+        const allReceived = total > 0 && completed === total
+
+        return {
+          ...prevPurchase,
+          items: updatedItems,
+          is_received: allReceived,
+          received_at: allReceived ? (prevPurchase.received_at || nowIso) : undefined
+        }
+      })
+    }
+  }, [onOptimisticUpdate, purchaseIdNumber])
+
   const statementReceivedAction = useConfirmDateAction({
     config: {
       field: 'statement_received',
@@ -227,7 +335,8 @@ export default function PurchaseDetailModal({
     },
     currentUserName,
     canPerformAction: canReceiptCheck,
-    onUpdate: refreshModalData
+    onUpdate: refreshModalData,
+    onOptimisticUpdate: handleActualReceiptOptimisticUpdate
   })
   
   // 권한 디버깅 로그
@@ -287,6 +396,8 @@ export default function PurchaseDetailModal({
   const calculateOptimalColumnWidths = useCallback(() => {
     if (!purchase?.items || purchase.items.length === 0) return []
 
+    const items = purchase.items ?? []
+
     const columnConfigs = [
       { key: 'item_name', minWidth: 80, maxWidth: 500, baseWidth: 80 },
       { key: 'specification', minWidth: 120, maxWidth: 700, baseWidth: 120 },
@@ -329,7 +440,7 @@ export default function PurchaseDetailModal({
       }
 
       // 실제 데이터에서 최대 길이 찾기
-      purchase.items.forEach(item => {
+      items.forEach(item => {
         let cellValue = ''
         switch (config.key) {
           case 'item_name':
@@ -342,28 +453,34 @@ export default function PurchaseDetailModal({
             cellValue = item.quantity?.toString() || ''
             break
           case 'unit_price':
-            cellValue = item.unit_price?.toLocaleString() || ''
+            cellValue = item.unit_price_value != null ? item.unit_price_value.toLocaleString() : ''
             break
           case 'total_price':
-            cellValue = (item.quantity * item.unit_price)?.toLocaleString() || ''
+            if (item.amount_value != null) {
+              cellValue = item.amount_value.toLocaleString()
+            } else if (item.quantity != null && item.unit_price_value != null) {
+              cellValue = (Number(item.quantity) * Number(item.unit_price_value)).toLocaleString()
+            } else {
+              cellValue = ''
+            }
             break
           case 'remarks':
-            cellValue = item.remarks || ''
+            cellValue = item.remark || ''
             break
           case 'status':
             cellValue = getStatusDisplay(item) || ''
             break
           case 'actual_receipt_date':
-            cellValue = item.actual_receipt_date ? formatDate(item.actual_receipt_date) : ''
+            cellValue = item.actual_received_date ? formatDate(item.actual_received_date) : ''
             break
           case 'transaction_confirm':
-            cellValue = item.transaction_confirmed ? '확인완료' : '미확인'
+            cellValue = item.is_statement_received ? '확인완료' : '미확인'
             break
           case 'accounting_date':
-            cellValue = item.accounting_receipt_date ? formatDate(item.accounting_receipt_date) : ''
+            cellValue = item.statement_received_date ? formatDate(item.statement_received_date) : ''
             break
           case 'processor':
-            cellValue = item.processor_name || ''
+            cellValue = item.statement_received_by_name || ''
             break
         }
         
@@ -713,7 +830,7 @@ export default function PurchaseDetailModal({
     }
 
     // 해당 품목 정보 찾기
-    const targetItem = purchase?.items?.find(item => item.id === itemIdStr)
+    const targetItem = purchase?.items?.find(item => String(item.id) === itemIdStr)
     if (!targetItem) return
 
     const itemInfo = `품명: ${targetItem.item_name}
@@ -744,14 +861,44 @@ export default function PurchaseDetailModal({
       setPurchase(prev => {
         if (!prev) return null
         const updatedItems = prev.items?.map(item => 
-          item.id === itemIdStr 
+          String(item.id) === itemIdStr 
             ? { ...item, is_payment_completed: isCompleted, payment_completed_at: isCompleted ? new Date().toISOString() : null }
             : item
         )
         return { ...prev, items: updatedItems }
       })
+
+      if (purchase) {
+        const purchaseIdNumber = Number(purchase.id)
+        if (!Number.isNaN(purchaseIdNumber)) {
+          onOptimisticUpdate?.(purchaseIdNumber, prev => {
+            const updatedItems = (prev.items || []).map(item =>
+              String(item.id) === itemIdStr
+                ? { ...item, is_payment_completed: isCompleted }
+                : item
+            )
+            const total = updatedItems.length || prev.items?.length || 0
+            const completed = updatedItems.filter(item => item.is_payment_completed).length
+            const allCompleted = total > 0 && completed === total
+            return {
+              ...prev,
+              items: updatedItems,
+              is_payment_completed: allCompleted,
+              payment_completed_at: allCompleted ? new Date().toISOString() : null,
+              payment_completed_by_name: allCompleted ? (currentUserName || prev.payment_completed_by_name) : prev.payment_completed_by_name
+            }
+          })
+        }
+      }
       
       toast.success(isCompleted ? '구매완료 처리되었습니다.' : '구매완료가 취소되었습니다.')
+
+      // 상세 모달 및 상위 리스트 모두 최신 상태로 동기화
+      await refreshModalData()
+      const refreshResult = onRefresh?.(true, { silent: true })
+      if (refreshResult instanceof Promise) {
+        await refreshResult
+      }
     } catch (error) {
       toast.error('구매완료 처리 중 오류가 발생했습니다.')
     }
@@ -772,6 +919,34 @@ export default function PurchaseDetailModal({
       return
     }
 
+    const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
+
+    const applyOptimisticUpdate = () => {
+      if (!Number.isNaN(purchaseIdNumber)) {
+        onOptimisticUpdate?.(purchaseIdNumber, prev => {
+          const updatedItems = (prev.items || []).map(item =>
+            String(item.id) === itemIdStr
+              ? {
+                  ...item,
+                  is_received: true,
+                  actual_received_date: selectedDate.toISOString()
+                }
+              : item
+          )
+          const total = updatedItems.length || prev.items?.length || 0
+          const completed = updatedItems.filter(item => item.is_received).length
+          const allReceived = total > 0 && completed === total
+
+          return {
+            ...prev,
+            items: updatedItems,
+            is_received: allReceived,
+            received_at: allReceived ? new Date().toISOString() : prev.received_at
+          }
+        })
+      }
+    }
+
     try {
       const { error } = await supabase
         .from('purchase_request_items')
@@ -788,7 +963,7 @@ export default function PurchaseDetailModal({
       setPurchase(prev => {
         if (!prev) return null
         const updatedItems = prev.items?.map(item => 
-          item.id === itemIdStr 
+          String(item.id) === itemIdStr 
             ? { 
                 ...item, 
                 is_received: true, 
@@ -799,9 +974,19 @@ export default function PurchaseDetailModal({
         )
         return { ...prev, items: updatedItems }
       })
+
+      applyOptimisticUpdate()
       
-      const targetItem = purchase?.items?.find(item => item.id === itemIdStr)
+      const targetItem = purchase?.items?.find(item => String(item.id) === itemIdStr)
       toast.success(`"${targetItem?.item_name}" 품목이 입고완료 처리되었습니다.`)
+
+      await refreshModalData()
+      const refreshResult = onRefresh?.(true, { silent: true })
+      if (refreshResult instanceof Promise) {
+        await refreshResult
+      }
+
+      applyOptimisticUpdate()
     } catch (error) {
       toast.error('입고완료 처리 중 오류가 발생했습니다.')
     }
@@ -822,11 +1007,39 @@ export default function PurchaseDetailModal({
       return
     }
 
-    const targetItem = purchase?.items?.find(item => item.id === itemIdStr)
+    const targetItem = purchase?.items?.find(item => String(item.id) === itemIdStr)
     if (!targetItem) return
 
     const confirm = window.confirm(`"${targetItem.item_name}" 품목의 입고완료를 취소하시겠습니까?`)
     if (!confirm) return
+
+    const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
+
+    const applyOptimisticUpdate = () => {
+      if (!Number.isNaN(purchaseIdNumber)) {
+        onOptimisticUpdate?.(purchaseIdNumber, prev => {
+          const updatedItems = (prev.items || []).map(item =>
+            String(item.id) === itemIdStr
+              ? {
+                  ...item,
+                  is_received: false,
+                  actual_received_date: undefined
+                }
+              : item
+          )
+          const total = updatedItems.length || prev.items?.length || 0
+          const completed = updatedItems.filter(item => item.is_received).length
+          const allReceived = total > 0 && completed === total
+
+          return {
+            ...prev,
+            items: updatedItems,
+            is_received: allReceived,
+            received_at: allReceived ? prev.received_at : null
+          }
+        })
+      }
+    }
 
     try {
       const { error } = await supabase
@@ -845,14 +1058,24 @@ export default function PurchaseDetailModal({
       setPurchase(prev => {
         if (!prev) return null
         const updatedItems = prev.items?.map(item => 
-          item.id === itemIdStr 
+          String(item.id) === itemIdStr 
             ? { ...item, is_received: false, received_at: null, actual_received_date: undefined, actual_received_by_name: undefined }
             : item
         )
         return { ...prev, items: updatedItems }
       })
       
+      applyOptimisticUpdate()
+
       toast.success('입고완료가 취소되었습니다.')
+
+      await refreshModalData()
+      const refreshResult = onRefresh?.(true, { silent: true })
+      if (refreshResult instanceof Promise) {
+        await refreshResult
+      }
+
+      applyOptimisticUpdate()
     } catch (error) {
       toast.error('입고완료 취소 중 오류가 발생했습니다.')
     }
@@ -931,8 +1154,34 @@ export default function PurchaseDetailModal({
         )
         return { ...prev, items: updatedItems }
       })
+
+      if (purchase) {
+        const purchaseIdNumber = Number(purchase.id)
+        if (!Number.isNaN(purchaseIdNumber)) {
+          onOptimisticUpdate?.(purchaseIdNumber, prev => {
+            const updatedItems = (prev.items || []).map(item => ({
+              ...item,
+              is_payment_completed: true
+            }))
+            return {
+              ...prev,
+              items: updatedItems,
+              is_payment_completed: true,
+              payment_completed_at: new Date().toISOString(),
+              payment_completed_by_name: currentUserName || prev.payment_completed_by_name
+            }
+          })
+        }
+      }
       
       toast.success('모든 품목이 구매완료 처리되었습니다.')
+
+      // 상세 모달 및 리스트 모두 새로고침
+      await refreshModalData()
+      const refreshResult = onRefresh?.(true, { silent: true })
+      if (refreshResult instanceof Promise) {
+        await refreshResult
+      }
     } catch (error) {
       logger.error('전체 구매완료 처리 오류', error);
       toast.error('구매완료 처리 중 오류가 발생했습니다.')
@@ -954,6 +1203,27 @@ export default function PurchaseDetailModal({
     
     if (!window.confirm(confirmMessage)) {
       return
+    }
+
+    const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
+
+    const applyOptimisticUpdate = () => {
+      if (!Number.isNaN(purchaseIdNumber)) {
+        onOptimisticUpdate?.(purchaseIdNumber, prev => {
+          const updatedItems = (prev.items || []).map(item => ({
+            ...item,
+            is_received: true,
+            actual_received_date: item.actual_received_date || selectedDate.toISOString()
+          }))
+
+          return {
+            ...prev,
+            items: updatedItems,
+            is_received: true,
+            received_at: new Date().toISOString()
+          }
+        })
+      }
     }
 
     try {
@@ -992,7 +1262,17 @@ export default function PurchaseDetailModal({
         return { ...prev, items: updatedItems }
       })
 
+      applyOptimisticUpdate()
+
       toast.success('모든 품목이 입고완료 처리되었습니다.')
+
+      await refreshModalData()
+      const refreshResult = onRefresh?.(true, { silent: true })
+      if (refreshResult instanceof Promise) {
+        await refreshResult
+      }
+
+      applyOptimisticUpdate()
     } catch (error) {
       logger.error('전체 입고완료 처리 오류', error)
       toast.error('입고완료 처리 중 오류가 발생했습니다.')

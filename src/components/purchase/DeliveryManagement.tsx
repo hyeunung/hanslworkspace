@@ -253,6 +253,15 @@ export function DeliveryManagement({
     if (!currentUser) return;
     if (!purchaseRequest.id) return;
 
+    // 확인 다이얼로그 표시
+    const confirmMessage = `발주번호: ${purchaseRequest.purchase_order_number}
+
+전체 입고완료 처리하시겠습니까?`
+    
+    if (!window.confirm(confirmMessage)) {
+      return
+    }
+
     setIsProcessing(true);
     try {
       const result = await deliveryService.markAllItemsAsReceived(
@@ -469,7 +478,7 @@ export function DeliveryManagement({
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{item.line_number}.</span>
                           <span className="font-medium">{item.item_name}</span>
-                          {getStatusBadge(item.actual_received_date)}
+                          {getStatusBadge(item.actual_received_date || null)}
                         </div>
                         <div className="text-sm text-muted-foreground">
                           규격: {item.specification || '없음'}

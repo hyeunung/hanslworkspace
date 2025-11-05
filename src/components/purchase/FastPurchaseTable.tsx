@@ -23,7 +23,8 @@ interface FastPurchaseTableProps {
   purchases: Purchase[];
   activeTab?: string; // 현재 활성 탭
   currentUserRoles?: string[];
-  onRefresh?: () => void;
+  onRefresh?: (forceRefresh?: boolean, options?: { silent?: boolean }) => void | Promise<void>;
+  onOptimisticUpdate?: (purchaseId: number, updater: (prev: Purchase) => Purchase) => void;
   onPaymentComplete?: (purchaseId: number) => Promise<void>;
   onReceiptComplete?: (purchaseId: number) => Promise<void>;
 }
@@ -168,22 +169,17 @@ const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
 
 ApprovalStatusBadge.displayName = 'ApprovalStatusBadge';
 
-// 입고 현황 계산 함수
+// 입고 현황 계산 함수 (actual_received_date 기준)
 const getReceiptProgress = (purchase: Purchase) => {
-  // purchase_requests 테이블의 is_received 필드 우선 체크
-  if (purchase.is_received) {
-    return { received: 1, total: 1, percentage: 100 };
-  }
-  
   // items 배열이 없으면 전체 미입고로 처리
   if (!purchase.items || purchase.items.length === 0) {
     return { received: 0, total: 1, percentage: 0 };
   }
   
-  // 개별 아이템 입고 상태 계산
+  // 개별 아이템 실제 입고 상태 계산 (actual_received_date 기준)
   const total = purchase.items.length;
   const received = purchase.items.filter((item: any) => 
-    item.is_received === true
+    item.actual_received_date !== null && item.actual_received_date !== undefined
   ).length;
   const percentage = total > 0 ? Math.round((received / total) * 100) : 0;
   
@@ -632,6 +628,7 @@ const FastPurchaseTable = memo(({
   activeTab = 'done', 
   currentUserRoles = [], 
   onRefresh,
+  onOptimisticUpdate,
   onPaymentComplete,
   onReceiptComplete 
 }: FastPurchaseTableProps) => {
@@ -1126,6 +1123,7 @@ const FastPurchaseTable = memo(({
         currentUserRoles={currentUserRoles}
         activeTab={activeTab}
         onRefresh={onRefresh}
+        onOptimisticUpdate={onOptimisticUpdate}
         onDelete={(purchase) => {
           setPurchaseToDelete(purchase as unknown as Purchase);
           setDeleteConfirmOpen(true);

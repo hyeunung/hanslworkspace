@@ -6,12 +6,6 @@ import { Purchase } from './usePurchaseData';
 // 상수 정의 - 특정 직원의 발주요청 숨김 (본인이 아닌 경우에만)
 const HIDDEN_EMPLOYEES = ['정희웅'];  // 정현웅 제거
 
-// 향상된 메모이제이션 캐시 시스템
-const filterCache = new Map();
-const resultCache = new Map(); // 최종 결과 캐시
-const CACHE_SIZE_LIMIT = 200;
-const RESULT_CACHE_DURATION = 15 * 1000; // 15초 결과 캐시
-
 export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: string[], currentUserName: string, currentUserId?: string, currentUserEmail?: string) => {
   const supabase = createClient();
   const [activeTab, setActiveTab] = useState('pending');
@@ -27,7 +21,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
   
   
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
-  
+
   // 권한별 로직 계산
   const isAdmin = currentUserRoles?.includes('app_admin');
   const isFinalApprover = currentUserRoles?.includes('final_approver');
@@ -84,39 +78,20 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     setSelectedEmployee(defaultEmployee);
   }, [activeTab, currentUserName, roleCase, computeDefaultEmployee]);
   
-  // 1단계: 권한별 필터링 (향상된 캐싱)
+  // 1단계: 권한별 필터링 (실시간 반영)
   const visiblePurchases = useMemo(() => {
-    const cacheKey = `visible_${purchases.length}_${currentUserRoles.join(',')}`;
-    
-    // 캐시 확인
-    if (filterCache.has(cacheKey)) {
-      return filterCache.get(cacheKey);
-    }
-    
     // 권한 체크 최적화 - 한 번만 계산
     const hasManagerRole = currentUserRoles.includes('purchase_manager') || currentUserRoles.includes('app_admin');
     
     const result = hasManagerRole 
       ? purchases 
       : purchases.filter(p => !HIDDEN_EMPLOYEES.includes(p.requester_name));
-    
-    // 캐시 관리
-    if (filterCache.size >= CACHE_SIZE_LIMIT) {
-      const firstKey = filterCache.keys().next().value;
-      filterCache.delete(firstKey);
-    }
-    filterCache.set(cacheKey, result);
     return result;
   }, [purchases, currentUserRoles]);
 
 
-  // 2단계: 탭별 필터링 (최적화 적용)
+  // 2단계: 탭별 필터링
   const tabFilteredPurchases = useMemo(() => {
-    const cacheKey = `tab_${visiblePurchases.length}_${activeTab}`;
-    if (filterCache.has(cacheKey)) {
-      return filterCache.get(cacheKey);
-    }
-    
     // 오늘 날짜 계산 (한국 시간 기준)
     const today = new Date().toISOString().split('T')[0];
     
@@ -193,34 +168,17 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
           return true;
       }
     });
-    
-    if (filterCache.size >= CACHE_SIZE_LIMIT) {
-      const firstKey = filterCache.keys().next().value;
-      filterCache.delete(firstKey);
-    }
-    filterCache.set(cacheKey, result);
     return result;
   }, [visiblePurchases, activeTab]);
 
-  // 3단계: 직원 필터링 (최적화 적용)
+  // 3단계: 직원 필터링
   const employeeFilteredPurchases = useMemo(() => {
-    const cacheKey = `employee_${tabFilteredPurchases.length}_${selectedEmployee}`;
-    if (filterCache.has(cacheKey)) {
-      return filterCache.get(cacheKey);
-    }
-    
     let result;
     if (selectedEmployee && selectedEmployee !== 'all' && selectedEmployee !== '전체') {
       result = tabFilteredPurchases.filter((purchase: Purchase) => purchase.requester_name === selectedEmployee);
     } else {
       result = tabFilteredPurchases;
     }
-    
-    if (filterCache.size >= CACHE_SIZE_LIMIT) {
-      const firstKey = filterCache.keys().next().value;
-      filterCache.delete(firstKey);
-    }
-    filterCache.set(cacheKey, result);
     return result;
   }, [tabFilteredPurchases, selectedEmployee]);
 
@@ -325,37 +283,12 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
 
   // 7단계: 최종 정렬 및 결과 캐싱 - 최신순 (내림차순)
   const filteredPurchases = useMemo(() => {
-    // 결과 캐시 키 생성
-    const resultKey = `final_${searchFilteredPurchases.length}_${activeTab}_${Date.now()}`;
-    
-    // 최근 결과 캐시 확인 (15초 내)
-    const now = Date.now();
-    for (const [key, value] of resultCache.entries()) {
-      if (key.includes(`${searchFilteredPurchases.length}_${activeTab}`) && 
-          (now - value.timestamp) < RESULT_CACHE_DURATION) {
-        return value.data;
-      }
-    }
-    
-    // 새로 계산
-    const result = [...searchFilteredPurchases].sort((a, b) => {
-      // request_date를 기준으로 내림차순 정렬 (최신이 위로)
-      const dateA = a.request_date ? new Date(a.request_date).getTime() : 0;
-      const dateB = b.request_date ? new Date(b.request_date).getTime() : 0;
-      return dateB - dateA;
-    });
-    
-    // 결과 캐시 저장
-    resultCache.set(resultKey, { data: result, timestamp: now });
-    
-    // 결과 캐시 크기 제한
-    if (resultCache.size > 10) {
-      const oldestKey = resultCache.keys().next().value;
-      resultCache.delete(oldestKey);
-    }
-    
-    return result;
-  }, [searchFilteredPurchases, activeTab]);
+    return [...searchFilteredPurchases].sort((a, b) => {
+      const dateA = a.request_date ? new Date(a.request_date).getTime() : 0
+      const dateB = b.request_date ? new Date(b.request_date).getTime() : 0
+      return dateB - dateA
+    })
+  }, [searchFilteredPurchases]);
 
   // 탭 카운트 (hanslwebapp과 동일한 조건)
   const tabCounts = useMemo(() => {

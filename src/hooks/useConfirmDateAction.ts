@@ -22,13 +22,27 @@ export interface UseConfirmDateActionProps {
   currentUserName: string | null
   canPerformAction: boolean
   onUpdate?: () => void
+  onOptimisticUpdate?: (params: {
+    itemId: number
+    selectedDate?: Date
+    action: 'confirm' | 'cancel'
+    itemInfo?: {
+      item_name?: string
+      specification?: string
+      quantity?: number
+      unit_price_value?: number
+      amount_value?: number
+      remark?: string
+    }
+  }) => void
 }
 
 export function useConfirmDateAction({
   config,
   currentUserName,
   canPerformAction,
-  onUpdate
+  onUpdate,
+  onOptimisticUpdate
 }: UseConfirmDateActionProps) {
   const supabase = createClient()
 
@@ -44,6 +58,12 @@ export function useConfirmDateAction({
       remark?: string
     }
   ) => {
+    console.log(`🔍 ${config.field} 확인 시작`, { 
+      itemId, 
+      selectedDate, 
+      canPerformAction, 
+      currentUserName 
+    })
     logger.debug(`🔍 ${config.field} 확인 시작`, { 
       itemId, 
       selectedDate, 
@@ -52,6 +72,7 @@ export function useConfirmDateAction({
     })
     
     if (!canPerformAction) {
+      console.log(`❌ 권한 없음`, { canPerformAction, currentUserName })
       logger.warn(`❌ 권한 없음`, { canPerformAction })
       toast.error(`${config.field === 'statement_received' ? '거래명세서' : '입고'} 확인 권한이 없습니다.`)
       return
@@ -105,22 +126,37 @@ ${config.confirmMessage.confirm}`
         }
       } else if (config.field === 'actual_received') {
         updateData = {
-          actual_received_date: selectedDate.toISOString(),
-          actual_received_by_name: currentUserName
+          actual_received_date: selectedDate.toISOString()
         }
       }
 
-      const { error } = await supabase
+      console.log('📝 업데이트할 데이터:', updateData)
+
+      const { data, error } = await supabase
         .from('purchase_request_items')
         .update(updateData)
         .eq('id', numericId)
+        .select()
+
+      console.log('📝 DB 업데이트 결과:', { data, error })
 
       if (error) {
+        console.error('❌ DB 업데이트 실패:', error)
         logger.error('❌ DB 업데이트 실패', error)
         throw error
       }
 
+      console.log('✅ DB 업데이트 성공:', data)
       logger.info('✅ DB 업데이트 성공')
+
+      if (onOptimisticUpdate) {
+        onOptimisticUpdate({
+          itemId: numericId,
+          selectedDate,
+          action: 'confirm',
+          itemInfo
+        })
+      }
 
       // 강제 새로고침을 위해 onUpdate 호출
       if (onUpdate) {
@@ -133,7 +169,7 @@ ${config.confirmMessage.confirm}`
       logger.error('❌ 전체 처리 실패', error)
       toast.error(`${config.field === 'statement_received' ? '거래명세서' : '입고'} 확인 처리 중 오류가 발생했습니다.`)
     }
-  }, [config, currentUserName, canPerformAction, onUpdate, supabase])
+  }, [config, currentUserName, canPerformAction, onUpdate, onOptimisticUpdate, supabase])
 
   const handleCancel = useCallback(async (
     itemId: number | string,
@@ -147,6 +183,7 @@ ${config.confirmMessage.confirm}`
     }
   ) => {
     if (!canPerformAction) {
+      console.log(`❌ 취소 권한 없음`, { canPerformAction, currentUserName })
       toast.error(`${config.field === 'statement_received' ? '거래명세서' : '입고'} 확인 권한이 없습니다.`)
       return
     }
@@ -176,6 +213,10 @@ ${config.confirmMessage.cancel}`
     }
 
     try {
+      console.log(`🔄 ${config.field} 확인 취소 시작`, { 
+        itemId, 
+        itemName: itemInfo?.item_name 
+      })
       logger.debug(`🔄 ${config.field} 확인 취소 시작`, { 
         itemId, 
         itemName: itemInfo?.item_name 
@@ -191,22 +232,36 @@ ${config.confirmMessage.cancel}`
         }
       } else if (config.field === 'actual_received') {
         updateData = {
-          actual_received_date: null,
-          actual_received_by_name: null
+          actual_received_date: null
         }
       }
 
-      const { error } = await supabase
+      console.log('🔄 취소 업데이트할 데이터:', updateData)
+
+      const { data, error } = await supabase
         .from('purchase_request_items')
         .update(updateData)
         .eq('id', numericId)
+        .select()
+
+      console.log('🔄 취소 DB 업데이트 결과:', { data, error })
 
       if (error) {
+        console.error('❌ 취소 DB 업데이트 실패:', error)
         logger.error('❌ DB 업데이트 실패', error)
         throw error
       }
 
+      console.log(`✅ ${config.field} 확인 취소 성공:`, data)
       logger.info(`✅ ${config.field} 확인 취소 성공`)
+
+      if (onOptimisticUpdate) {
+        onOptimisticUpdate({
+          itemId: numericId,
+          action: 'cancel',
+          itemInfo
+        })
+      }
 
       // 강제 새로고침을 위해 onUpdate 호출
       if (onUpdate) {
@@ -219,7 +274,7 @@ ${config.confirmMessage.cancel}`
       logger.error(`❌ ${config.field} 확인 취소 실패`, error)
       toast.error(`${config.field === 'statement_received' ? '거래명세서' : '입고'} 확인 취소 중 오류가 발생했습니다.`)
     }
-  }, [config, canPerformAction, onUpdate, supabase])
+  }, [config, canPerformAction, onUpdate, onOptimisticUpdate, supabase])
 
   const isCompleted = useCallback((item: any) => {
     if (config.field === 'statement_received') {
@@ -243,7 +298,8 @@ ${config.confirmMessage.cancel}`
     if (config.field === 'statement_received') {
       return item.statement_received_by_name
     } else if (config.field === 'actual_received') {
-      return item.actual_received_by_name
+      // 입고완료는 처리자 정보를 기록하지 않음
+      return null
     }
     return null
   }, [config.field])

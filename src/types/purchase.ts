@@ -299,6 +299,7 @@ export interface Purchase {
   final_manager_status?: string;
   total_amount: number;
   is_received: boolean;
+  received_at?: string | null;
   is_po_download?: boolean;
   items?: PurchaseRequestItem[];
   // Item level fields (for single item purchases)

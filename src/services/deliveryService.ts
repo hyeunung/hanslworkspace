@@ -132,12 +132,12 @@ class DeliveryService {
     actualReceivedDate?: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // 해당 발주의 모든 품목을 조회 (입고 완료되지 않은 품목만)
+      // 해당 발주의 모든 품목을 조회 (실제 입고 완료되지 않은 품목만)
       const { data: items, error: fetchError } = await this.supabase
         .from('purchase_request_items')
         .select('id, quantity')
         .eq('purchase_request_id', purchaseRequestId)
-        .or('is_received.is.null,is_received.eq.false');
+        .is('actual_received_date', null);
 
       if (fetchError) throw fetchError;
       if (!items || items.length === 0) {
@@ -154,6 +154,7 @@ class DeliveryService {
         received_date: new Date().toISOString(),
         delivery_status: 'received',
         is_received: true,
+        received_at: new Date().toISOString(),
         // 실제 입고 날짜 (사용자가 선택한 날짜)
         actual_received_date: actualReceivedDate || new Date().toISOString()
       }));

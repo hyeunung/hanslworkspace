@@ -8,7 +8,8 @@ interface LazyPurchaseTableProps {
   purchases: Purchase[];
   activeTab: string;
   currentUserRoles: string[];
-  onRefresh: () => Promise<void>;
+  onRefresh: (forceRefresh?: boolean, options?: { silent?: boolean }) => Promise<void> | void;
+  onOptimisticUpdate: (purchaseId: number, updater: (prev: Purchase) => Purchase) => void;
   onPaymentComplete: (id: number) => Promise<void>;
   onReceiptComplete: (id: number) => Promise<void>;
 }
@@ -34,6 +35,7 @@ const LazyPurchaseTable = memo<LazyPurchaseTableProps>(({
   activeTab,
   currentUserRoles,
   onRefresh,
+  onOptimisticUpdate,
   onPaymentComplete,
   onReceiptComplete
 }) => (
@@ -43,6 +45,7 @@ const LazyPurchaseTable = memo<LazyPurchaseTableProps>(({
       activeTab={activeTab}
       currentUserRoles={currentUserRoles}
       onRefresh={onRefresh}
+      onOptimisticUpdate={onOptimisticUpdate}
       onPaymentComplete={onPaymentComplete}
       onReceiptComplete={onReceiptComplete}
     />

@@ -234,8 +234,12 @@ export const usePurchaseData = () => {
   }, []);
 
   // 발주 목록 로드 - 향상된 캐싱 및 최적화
-  const loadPurchases = useCallback(async (forceRefresh?: boolean) => {
-    setLoading(true);
+  const loadPurchases = useCallback(async (forceRefresh?: boolean, options?: { silent?: boolean }) => {
+    const showSpinner = !options?.silent;
+
+    if (showSpinner) {
+      setLoading(true);
+    }
     
     try {
       // 캐시 확인
@@ -252,7 +256,9 @@ export const usePurchaseData = () => {
       if (!forceRefresh && cacheValid && globalCache.purchases) {
         try {
           setPurchases(globalCache.purchases);
-          setLoading(false);
+          if (showSpinner) {
+            setLoading(false);
+          }
           return;
         } catch (error) {
           logger.error('발주 데이터 캐시 사용 중 오류', error);
@@ -280,7 +286,9 @@ export const usePurchaseData = () => {
       if (authError || !user) {
         logger.error('사용자 인증 실패', authError);
         toast.error('로그인이 필요합니다.');
-        setLoading(false);
+        if (showSpinner) {
+          setLoading(false);
+        }
         return;
       }
 
@@ -368,9 +376,19 @@ export const usePurchaseData = () => {
       logger.error('발주 목록 로드 실패', error);
       toast.error('발주 목록을 불러올 수 없습니다.');
     } finally {
-      setLoading(false);
+      if (showSpinner) {
+        setLoading(false);
+      }
     }
   }, [employees]);
+
+  const updatePurchaseOptimistic = useCallback((purchaseId: number, updater: (prev: Purchase) => Purchase) => {
+    setPurchases(prev => {
+      const next = prev.map(purchase => (purchase.id === purchaseId ? updater(purchase) : purchase));
+      globalCache.purchases = next;
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     loadPurchases();
@@ -385,6 +403,7 @@ export const usePurchaseData = () => {
     currentUserName,
     currentUserEmail,
     currentUserId,
-    refreshPurchases: loadPurchases
+    refreshPurchases: loadPurchases,
+    updatePurchaseOptimistic
   };
 };
