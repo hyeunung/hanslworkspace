@@ -105,6 +105,9 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
             </TableHead>
             <TableHead className="w-16 min-w-[50px] text-center">담당자</TableHead>
             <TableHead className="min-w-[200px]">담당자 정보</TableHead>
+            <TableHead className="w-28 min-w-[110px]">전화번호</TableHead>
+            <TableHead className="w-28 min-w-[110px]">팩스번호</TableHead>
+            <TableHead className="w-24 min-w-[100px]">지출예정일</TableHead>
             <TableHead className="w-20 min-w-[60px]">
               <SortableHeader
                 sortKey="created_at"
@@ -121,7 +124,7 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
         <TableBody>
           {vendors.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={5} className="text-center py-8 text-gray-500">
+              <TableCell colSpan={8} className="text-center py-8 text-gray-500">
                 등록된 업체가 없습니다.
               </TableCell>
             </TableRow>
@@ -155,6 +158,21 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                       <span className="text-[10px] text-gray-500">외 {vendor.vendor_contacts.length - 2}명</span>
                     )}
                   </div>
+                </TableCell>
+                <TableCell className="text-[11px] px-2 py-1.5">
+                  <span className="block truncate" title={vendor.vendor_phone || ''}>
+                    {vendor.vendor_phone || '-'}
+                  </span>
+                </TableCell>
+                <TableCell className="text-[11px] px-2 py-1.5">
+                  <span className="block truncate" title={vendor.vendor_fax || ''}>
+                    {vendor.vendor_fax || '-'}
+                  </span>
+                </TableCell>
+                <TableCell className="text-[11px] px-2 py-1.5">
+                  <span className="block truncate" title={vendor.vendor_payment_schedule || ''}>
+                    {vendor.vendor_payment_schedule || '-'}
+                  </span>
                 </TableCell>
                 <TableCell className="text-[11px] px-2 py-1.5">{formatDate(vendor.created_at)}</TableCell>
                 <TableCell className="px-1 py-1.5 text-center">
@@ -211,12 +229,15 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
       {/* Tablet View */}
       <div className="hidden md:block lg:hidden">
         <div className="overflow-x-auto border rounded-lg">
-          <table className="w-full min-w-[600px]">
+          <table className="w-full min-w-[900px]">
             <thead className="bg-gray-50">
               <tr>
                 <th className="text-left p-3 header-title text-gray-900">업체명</th>
                 <th className="text-center p-3 header-title text-gray-900 w-20">담당자</th>
                 <th className="text-left p-3 header-title text-gray-900">연락처</th>
+                <th className="text-left p-3 header-title text-gray-900 w-28">전화번호</th>
+                <th className="text-left p-3 header-title text-gray-900 w-28">팩스번호</th>
+                <th className="text-left p-3 header-title text-gray-900 w-24">지출예정일</th>
                 <th className="text-left p-3 header-title text-gray-900 w-24">등록일</th>
                 <th className="text-center p-3 header-title text-gray-900 w-16">작업</th>
               </tr>
@@ -224,7 +245,7 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
             <tbody className="bg-white divide-y divide-gray-200">
               {sortedData.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-8 text-gray-500">
+                  <td colSpan={8} className="text-center py-8 text-gray-500">
                     등록된 업체가 없습니다.
                   </td>
                 </tr>
@@ -246,6 +267,21 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                       ) : (
                         <span className="text-gray-400">담당자 없음</span>
                       )}
+                    </td>
+                    <td className="p-3 modal-subtitle">
+                      <span className="block truncate" title={vendor.vendor_phone || ''}>
+                        {vendor.vendor_phone || '-'}
+                      </span>
+                    </td>
+                    <td className="p-3 modal-subtitle">
+                      <span className="block truncate" title={vendor.vendor_fax || ''}>
+                        {vendor.vendor_fax || '-'}
+                      </span>
+                    </td>
+                    <td className="p-3 modal-subtitle">
+                      <span className="block truncate" title={vendor.vendor_payment_schedule || ''}>
+                        {vendor.vendor_payment_schedule || '-'}
+                      </span>
                     </td>
                     <td className="p-3 modal-subtitle">{formatDate(vendor.created_at)}</td>
                     <td className="p-3 text-center">
@@ -336,6 +372,9 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                   </div>
                 } 
               />
+              <MobileCardItem label="전화번호" value={vendor.vendor_phone || '-'} />
+              <MobileCardItem label="팩스번호" value={vendor.vendor_fax || '-'} />
+              <MobileCardItem label="지출예정일" value={vendor.vendor_payment_schedule || '-'} />
               <MobileCardItem label="등록일" value={formatDate(vendor.created_at)} />
               
               <MobileCardActions>
