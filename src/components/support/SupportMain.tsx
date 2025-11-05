@@ -12,6 +12,8 @@ import { toast } from 'sonner'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
+import { DateRange } from 'react-day-picker'
 
 export default function SupportMain() {
   const [inquiryType, setInquiryType] = useState('')
@@ -21,8 +23,7 @@ export default function SupportMain() {
   
   // 발주요청 선택 관련
   const [showPurchaseSelect, setShowPurchaseSelect] = useState(false)
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  const [dateRange, setDateRange] = useState<DateRange | undefined>()
   const [purchaseRequests, setPurchaseRequests] = useState<any[]>([])
   const [selectedPurchase, setSelectedPurchase] = useState<any>(null)
   const [searchingPurchase, setSearchingPurchase] = useState(false)
@@ -144,6 +145,9 @@ export default function SupportMain() {
     setSearchingPurchase(true)
     setCurrentPage(1) // 검색 시 첫 페이지로 리셋
     
+    const startDate = dateRange?.from ? dateRange.from.toISOString().split('T')[0] : undefined
+    const endDate = dateRange?.to ? dateRange.to.toISOString().split('T')[0] : undefined
+    
     const result = await supportService.getMyPurchaseRequests(startDate, endDate)
     
     if (result.success) {
@@ -217,8 +221,7 @@ ${purchaseInfo}`;
       setMessage('')
       setSelectedPurchase(null)
       setPurchaseRequests([])
-      setStartDate('')
-      setEndDate('')
+      setDateRange(undefined)
       // 목록 새로고침
       loadInquiries()
     } else {
@@ -445,25 +448,14 @@ ${purchaseInfo}`;
                       수정/삭제할 발주요청 선택
                     </div>
                     
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="modal-label text-gray-600">시작일</label>
-                        <Input
-                          type="date"
-                          value={startDate}
-                          onChange={(e) => setStartDate(e.target.value)}
-                          className="h-9"
-                        />
-                      </div>
-                      <div>
-                        <label className="modal-label text-gray-600">종료일</label>
-                        <Input
-                          type="date"
-                          value={endDate}
-                          onChange={(e) => setEndDate(e.target.value)}
-                          className="h-9"
-                        />
-                      </div>
+                    <div>
+                      <label className="modal-label text-gray-600 mb-2 block">기간 선택</label>
+                      <DateRangePicker
+                        date={dateRange}
+                        onDateChange={setDateRange}
+                        placeholder="발주요청 기간을 선택하세요"
+                        className="w-full"
+                      />
                     </div>
                     
                     <Button
