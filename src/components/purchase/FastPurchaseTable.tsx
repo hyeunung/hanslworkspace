@@ -208,62 +208,6 @@ const getPaymentProgress = (purchase: Purchase) => {
   return { completed, total, percentage };
 };
 
-// 구매진행 현황 계산 함수 (purchase_request_items 기반)
-const getPurchaseProgress = (purchase: Purchase) => {
-  // items 배열이 없으면 전체 상태로 판단
-  if (!purchase.items || purchase.items.length === 0) {
-    if (purchase.is_received) return { percentage: 100 };
-    if (purchase.is_payment_completed) return { percentage: 80 };
-    
-    const middleRejected = purchase.middle_manager_status === 'rejected';
-    const finalRejected = purchase.final_manager_status === 'rejected';
-    if (middleRejected || finalRejected) return { percentage: 0 };
-    
-    const middleApproved = purchase.middle_manager_status === 'approved';
-    const finalApproved = purchase.final_manager_status === 'approved';
-    if (middleApproved && finalApproved) return { percentage: 40 };
-    
-    return { percentage: 20 };
-  }
-  
-  // 개별 아이템 기반 진행률 계산
-  const total = purchase.items.length;
-  const receivedItems = purchase.items.filter((item: any) => item.is_received === true).length;
-  const paymentCompletedItems = purchase.items.filter((item: any) => item.is_payment_completed === true).length;
-  
-  // 모든 아이템이 입고완료된 경우 100%
-  if (receivedItems === total) {
-    return { percentage: 100 };
-  }
-  
-  // 일부 아이템이라도 입고완료된 경우 80% + (입고완료율 * 20%)
-  if (receivedItems > 0) {
-    const receiptPercentage = Math.round((receivedItems / total) * 100);
-    return { percentage: Math.min(80 + Math.round(receiptPercentage * 0.2), 99) };
-  }
-  
-  // 모든 아이템이 구매완료된 경우 80%
-  if (paymentCompletedItems === total) {
-    return { percentage: 80 };
-  }
-  
-  // 일부 아이템이라도 구매완료된 경우 40% + (구매완료율 * 40%)
-  if (paymentCompletedItems > 0) {
-    const paymentPercentage = Math.round((paymentCompletedItems / total) * 100);
-    return { percentage: Math.min(40 + Math.round(paymentPercentage * 0.4), 79) };
-  }
-  
-  // 승인 상태에 따른 기본 진행률
-  const middleRejected = purchase.middle_manager_status === 'rejected';
-  const finalRejected = purchase.final_manager_status === 'rejected';
-  if (middleRejected || finalRejected) return { percentage: 0 };
-  
-  const middleApproved = purchase.middle_manager_status === 'approved';
-  const finalApproved = purchase.final_manager_status === 'approved';
-  if (middleApproved && finalApproved) return { percentage: 40 };
-  
-  return { percentage: 20 };
-};
 
 // formatDateShort는 utils/helpers.ts에서 import
 
@@ -300,7 +244,6 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
 }) => {
   const receiptProgress = getReceiptProgress(purchase);
   const paymentProgress = getPaymentProgress(purchase);
-  const purchaseProgress = getPurchaseProgress(purchase);
   const isAdvance = purchase.progress_type === '선진행' || purchase.progress_type?.includes('선진행');
   
   return (
@@ -597,22 +540,6 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
               </div>
               <span className="card-title text-gray-600">
                 {receiptProgress.percentage}%
-              </span>
-            </div>
-          </td>
-          <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.paymentStatus}`}>
-            <div className="flex items-center justify-center gap-1">
-              <div className="bg-gray-200 rounded-full h-1.5 w-8">
-                <div 
-                  className={`h-1.5 rounded-full ${
-                    paymentProgress.percentage === 100 ? 'bg-blue-500' : 
-                    paymentProgress.percentage > 0 ? 'bg-blue-400' : 'bg-gray-300'
-                  }`}
-                  style={{ width: `${paymentProgress.percentage}%` }}
-                />
-              </div>
-              <span className="card-title text-gray-600">
-                {paymentProgress.percentage}%
               </span>
             </div>
           </td>
@@ -1020,7 +947,6 @@ const FastPurchaseTable = memo(({
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>지출예정일</th>
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.status}`}>구매진행</th>
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receipt}`}>입고진행</th>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentStatus}`}>구매진행률</th>
         </>
       );
     }
