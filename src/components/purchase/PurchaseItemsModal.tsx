@@ -48,7 +48,8 @@ interface PurchaseItemsModalProps {
     sales_order_number: string;
     project_item: string;
     request_date: string;
-    delivery_request_date?: string;
+    delivery_request_date?: string | null;
+    revised_delivery_request_date?: string | null;
     currency: string;
     payment_category?: string;
     items?: PurchaseItem[];

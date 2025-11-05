@@ -300,6 +300,7 @@ export default function FilterToolbar({
   const [tempDateRange, setTempDateRange] = useState<{from?: Date, to?: Date}>({})
   const [tempMonth, setTempMonth] = useState<Date | undefined>()
   const [tempMonthRange, setTempMonthRange] = useState<{from?: Date, to?: Date}>({})
+  const [tempSort, setTempSort] = useState<{field?: string, direction?: 'asc' | 'desc'}>({})
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // 검색 확장 시 포커스
@@ -308,6 +309,16 @@ export default function FilterToolbar({
       searchInputRef.current.focus()
     }
   }, [isSearchExpanded])
+
+  // 정렬 팝오버 열 때 현재 설정 불러오기
+  useEffect(() => {
+    if (isSortOpen) {
+      setTempSort({
+        field: sortConfig?.field || '',
+        direction: sortConfig?.direction || 'asc'
+      })
+    }
+  }, [isSortOpen, sortConfig])
 
   const handleAddFilter = (field: string) => {
     const fieldConfig = FILTER_FIELDS.find(f => f.key === field)
@@ -370,15 +381,32 @@ export default function FilterToolbar({
     setIsFilterOpen(false)
   }
 
-  const handleSortChange = (field: string, direction: 'asc' | 'desc') => {
-    const fieldConfig = SORT_FIELDS.find(f => f.value === field)
-    if (!fieldConfig) return
+  const handleSortFieldChange = (field: string) => {
+    setTempSort(prev => ({ ...prev, field }))
+  }
 
-    onSortChange({
-      field,
-      direction,
-      label: fieldConfig.label
-    })
+  const handleSortDirectionChange = (direction: 'asc' | 'desc') => {
+    setTempSort(prev => ({ ...prev, direction }))
+  }
+
+  const handleApplySort = () => {
+    if (tempSort.field && tempSort.direction) {
+      const fieldConfig = SORT_FIELDS.find(f => f.value === tempSort.field)
+      if (fieldConfig) {
+        onSortChange({
+          field: tempSort.field,
+          direction: tempSort.direction,
+          label: fieldConfig.label
+        })
+      }
+    }
+    setIsSortOpen(false)
+    setTempSort({})
+  }
+
+  const handleClearSort = () => {
+    onSortChange(null)
+    setTempSort({})
     setIsSortOpen(false)
   }
 
@@ -1044,37 +1072,70 @@ export default function FilterToolbar({
                 )}
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-64 p-3" align="start">
+            <PopoverContent className="w-56 p-3" align="start">
               <div className="space-y-3">
-                <h4 className="card-title">정렬</h4>
+                <h4 className="card-title">정렬 설정</h4>
                 
-                <div className="space-y-1">
-                  {SORT_FIELDS.map(field => (
-                    <div key={field.value} className="space-y-1">
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleSortChange(field.value, 'asc')}
-                        className={`button-base w-full justify-start ${
-                          sortConfig?.field === field.value && sortConfig?.direction === 'asc'
-                            ? 'bg-blue-50 text-blue-700'
-                            : 'text-gray-700 hover:bg-gray-50'
-                        }`}
+                <div className="space-y-2">
+                  {/* 정렬 필드 선택 */}
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">정렬 기준</label>
+                    <Select 
+                      value={tempSort.field || ''} 
+                      onValueChange={handleSortFieldChange}
+                    >
+                      <SelectTrigger className="button-base business-radius-button border border-gray-300 bg-white text-gray-700 [&>svg]:hidden">
+                        <SelectValue placeholder="선택하세요" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SORT_FIELDS.map(field => (
+                          <SelectItem key={field.value} value={field.value}>
+                            <span className="card-description">{field.label}</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* 정렬 방향 선택 */}
+                  {tempSort.field && (
+                    <div>
+                      <label className="text-xs text-gray-500 mb-1 block">정렬 방향</label>
+                      <Select 
+                        value={tempSort.direction || ''} 
+                        onValueChange={handleSortDirectionChange}
                       >
-                        <span className="button-text">{field.label} (오름차순) ↑</span>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => handleSortChange(field.value, 'desc')}
-                        className={`button-base w-full justify-start ${
-                          sortConfig?.field === field.value && sortConfig?.direction === 'desc'
-                            ? 'bg-blue-50 text-blue-700'
-                            : 'text-gray-700 hover:bg-gray-50'
-                        }`}
-                      >
-                        <span className="button-text">{field.label} (내림차순) ↓</span>
-                      </Button>
+                        <SelectTrigger className="button-base business-radius-button border border-gray-300 bg-white text-gray-700 [&>svg]:hidden">
+                          <SelectValue placeholder="선택하세요" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="asc">
+                            <span className="card-description">오름차순 ↑</span>
+                          </SelectItem>
+                          <SelectItem value="desc">
+                            <span className="card-description">내림차순 ↓</span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                  ))}
+                  )}
+
+                  {/* 적용/초기화 버튼 */}
+                  <div className="flex gap-2 pt-2">
+                    <Button 
+                      onClick={handleApplySort}
+                      disabled={!tempSort.field || !tempSort.direction}
+                      className="button-base bg-blue-500 hover:bg-blue-600 text-white flex-1"
+                    >
+                      적용
+                    </Button>
+                    <Button 
+                      onClick={handleClearSort}
+                      className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                    >
+                      초기화
+                    </Button>
+                  </div>
                 </div>
 
                 {sortConfig && (
