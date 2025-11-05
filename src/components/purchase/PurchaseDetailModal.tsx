@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails, Purchase } from '@/types/purchase'
 import { formatDate } from '@/utils/helpers'
@@ -62,6 +62,40 @@ export default function PurchaseDetailModal({
   const [userRoles, setUserRoles] = useState<string[]>([])
   const [currentUserName, setCurrentUserName] = useState<string>('')
   const [columnWidths, setColumnWidths] = useState<number[]>([])
+  const tableMinWidth = useMemo(() => {
+    if (columnWidths.length > 0) {
+      const columnGap = columnWidths.length > 1 ? (columnWidths.length - 1) * 12 : 0
+      const padding = 48
+      const total = columnWidths.reduce((sum, width) => sum + width, 0) + columnGap + padding
+      return Math.max(total, 720)
+    }
+
+    const baseColumns: number[] = [120, 140, 80, 110, 130, 110, 120]
+
+    if (activeTab === 'purchase') {
+      baseColumns.push(120)
+    }
+
+    if (activeTab === 'receipt' || activeTab === 'done') {
+      baseColumns.push(120)
+    }
+
+    if (activeTab === 'receipt') {
+      baseColumns.push(140)
+    }
+
+    if (activeTab === 'done') {
+      baseColumns.push(140, 140, 110)
+    }
+
+    if (isEditing) {
+      baseColumns.push(110)
+    }
+
+    const columnGap = baseColumns.length > 1 ? (baseColumns.length - 1) * 12 : 0
+    const total = baseColumns.reduce((sum, width) => sum + width, 0) + columnGap + 48
+    return Math.max(total, 720)
+  }, [columnWidths, activeTab, isEditing])
   const headerRowRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
   
@@ -1692,450 +1726,163 @@ export default function PurchaseDetailModal({
                 </div>
                 
                 {/* Items List with Header Inside Scrollable Container */}
-                <div className="max-h-[50vh] sm:max-h-[40vh] overflow-y-auto overflow-x-auto min-w-fit">
-                  {/* Items Table Header - Sticky inside scroll container */}
-                  <div className="bg-gray-50 px-2 sm:px-3 py-1 border-b border-gray-100 sticky top-0 z-10">
-                    <div 
-                      ref={headerRowRef}
-                      className="hidden sm:grid gap-3 modal-label" 
-                      style={{
-                        gridTemplateColumns: getGridTemplateColumns()
-                      }}
-                    >
-                      <div>품목명</div>
-                      <div>규격</div>
-                      <div className="text-center">수량</div>
-                      <div className="text-right">단가</div>
-                      <div className="text-right">합계</div>
-                      <div className="text-center">비고</div>
-                      {isEditing ? (
-                        <>
-                          <div className="text-center">삭제</div>
-                          {activeTab === 'receipt' && (
-                            <>
-                              <div className="text-center">실제입고일</div>
-                            </>
-                          )}
-                          {activeTab === 'done' && (
-                            <>
-                              <div className="text-center">거래명세서 확인</div>
-                              <div className="text-center">회계상 입고일</div>
-                              <div className="text-center">처리자</div>
-                            </>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <div className="text-center">
-                            {activeTab === 'purchase'
-                              ? '구매상태'
-                              : (activeTab === 'receipt' || activeTab === 'done')
-                              ? '입고상태'
-                              : '상태'}
-                          </div>
-                          {activeTab === 'done' && (
-                            <>
-                              <div className="text-center">거래명세서 확인</div>
-                              <div className="text-center">회계상 입고일</div>
-                              <div className="text-center">처리자</div>
-                            </>
-                          )}
-                          {activeTab === 'receipt' && (
-                            <>
-                              <div className="text-center">실제입고일</div>
-                            </>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  {(isEditing ? editedItems : purchase.items)?.map((item, index) => (
-                    <div key={index} className="px-2 sm:px-3 py-1.5 border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                      {/* Desktop Layout */}
-                      <div className={`hidden sm:grid items-center gap-3`} style={{
-                        gridTemplateColumns: getGridTemplateColumns()
-                      }}>
-                        {/* 품목명 */}
-                        <div className="min-w-0">
-                          {isEditing ? (
-                            <Input
-                              value={item.item_name}
-                              onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
-                              className="modal-label border-gray-200 rounded-lg w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
-                              placeholder="품목명"
-                            />
-                          ) : (
-                            <span className="modal-value">{item.item_name || '품목명 없음'}</span>
-                          )}
-                        </div>
-                        
-                        {/* 규격 */}
-                        <div className="min-w-0">
-                          {isEditing ? (
-                            <Input
-                              value={item.specification}
-                              onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
-                              className="modal-label border-gray-200 rounded-lg w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
-                              placeholder="규격"
-                            />
-                          ) : (
-                            <span className="modal-subtitle">{item.specification || '-'}</span>
-                          )}
-                        </div>
-                        
-                        {/* 수량 */}
-                        <div className="text-center min-w-0">
-                          {isEditing ? (
-                            <Input
-                              type="number"
-                              value={item.quantity}
-                              onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
-                              className="modal-label border-gray-200 rounded-lg text-center w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
-                              placeholder="수량"
-                              max="99999"
-                            />
-                          ) : (
-                            <span className="modal-subtitle">{item.quantity || 0}</span>
-                          )}
-                        </div>
-                        
-                        {/* 단가 */}
-                        <div className="text-right min-w-0">
-                          {isEditing ? (
-                            <Input
-                              type="number"
-                              value={item.unit_price_value}
-                              onChange={(e) => handleItemChange(index, 'unit_price_value', Number(e.target.value))}
-                              className="modal-label border-gray-200 rounded-lg text-right w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
-                              placeholder="단가"
-                              max="100000000000"
-                            />
-                          ) : (
-                            <span className="modal-subtitle">₩{formatCurrency(item.unit_price_value)}</span>
-                          )}
-                        </div>
-                        
-                        {/* 합계 */}
-                        <div className="text-right min-w-0">
-                          {isEditing ? (
-                            <Input
-                              type="number"
-                              value={item.amount_value}
-                              onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
-                              className="modal-label border-gray-200 rounded-lg text-right w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
-                              placeholder="합계"
-                              max="10000000000"
-                            />
-                          ) : (
-                            <span className="modal-value">₩{formatCurrency(item.amount_value || 0)}</span>
-                          )}
-                        </div>
-                        
-                        {/* 비고 */}
-                        <div className="min-w-0 flex justify-center items-start pt-1 text-center">
-                          {isEditing ? (
-                            <Input
-                              value={item.remark || ''}
-                              onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
-                              className="modal-label border-gray-200 rounded-lg text-center w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
-                              placeholder="비고"
-                            />
-                          ) : (
-                            <span className="modal-subtitle text-center">{item.remark || '-'}</span>
-                          )}
-                        </div>
-                        
-                        {/* 상태/액션 */}
-                        <div className="text-center flex justify-center items-start pt-1">
-                          {isEditing ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleRemoveItem(index)}
-                              className="text-red-600 hover:bg-red-50 rounded-lg p-1 h-6 w-6"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </Button>
-                          ) : (
-                            <>
-                              {/* 구매 탭에서의 구매완료 상태 */}
-                              {activeTab === 'purchase' && (
-                                <div className="flex justify-center">
-                                  {canPurchase ? (
-                                    <button
-                                      onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
-                                      className={`transition-colors ${
-                                        item.is_payment_completed
-                                          ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
-                                          : 'button-toggle-inactive'
-                                      }`}
-                                    >
-                                      {item.is_payment_completed ? '구매완료' : '구매대기'}
-                                    </button>
-                                  ) : (
-                                    <span className={`${
-                                      item.is_payment_completed 
-                                        ? 'button-toggle-active bg-orange-500 text-white' 
-                                        : 'button-waiting-inactive'
-                                    }`}>
-                                      {item.is_payment_completed ? '구매완료' : '구매대기'}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                              
-                              {/* 입고 탭에서의 입고완료 상태 */}
-                              {activeTab === 'receipt' && (
-                                <div className="flex justify-center">
-                                  {canReceiptCheck ? (
-                                    actualReceivedAction.isCompleted(item) ? (
-                                      <button
-                                        onClick={() => {
-                                          actualReceivedAction.handleCancel(item.id, {
-                                            item_name: item.item_name,
-                                            specification: item.specification,
-                                            quantity: item.quantity,
-                                            unit_price_value: item.unit_price_value,
-                                            amount_value: item.amount_value,
-                                            remark: item.remark
-                                          })
-                                        }}
-                                        className="button-action-primary"
-                                      >
-                                        {actualReceivedAction.config.completedText}
-                                      </button>
-                                    ) : (
-                                      <DatePickerPopover
-                                        onDateSelect={(date) => {
-                                          actualReceivedAction.handleConfirm(item.id, date, {
-                                            item_name: item.item_name,
-                                            specification: item.specification,
-                                            quantity: item.quantity,
-                                            unit_price_value: item.unit_price_value,
-                                            amount_value: item.amount_value,
-                                            remark: item.remark
-                                          })
-                                        }}
-                                        placeholder="실제 입고된 날짜를 선택하세요"
-                                        align="center"
-                                        side="bottom"
-                                      >
-                                        <button className="button-toggle-inactive">
-                                          {actualReceivedAction.config.waitingText}
-                                        </button>
-                                      </DatePickerPopover>
-                                    )
-                                  ) : (
-                                    <span className={`${
-                                      actualReceivedAction.isCompleted(item)
-                                        ? 'button-action-primary' 
-                                        : 'button-waiting-inactive'
-                                    }`}>
-                                      {actualReceivedAction.isCompleted(item) ? actualReceivedAction.config.completedText : actualReceivedAction.config.waitingText}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                              
-                              {/* 전체 항목 탭에서는 입고 상태만 표시 (클릭 불가) */}
-                              {activeTab === 'done' && (
-                                <div className="flex justify-center">
-                                  <span className={`button-base ${
-                                    actualReceivedAction.isCompleted(item)
-                                      ? 'bg-green-500 hover:bg-green-600 text-white' 
-                                      : 'border border-gray-300 text-gray-600 bg-white hover:bg-gray-50'
-                                  }`}>
-                                    {actualReceivedAction.isCompleted(item) ? '입고완료' : '입고대기'}
-                                  </span>
-                                </div>
-                              )}
-                              
-                              {/* 기타 탭에서는 기본 상태 표시 */}
-                              {activeTab !== 'purchase' && activeTab !== 'receipt' && activeTab !== 'done' && (
-                                <div className="flex justify-center">
-                                  <span className="badge-text">-</span>
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </div>
-                        
-                        {/* 실제 입고 날짜 - 입고 탭에서만 표시 (상태 컬럼 오른쪽) */}
-                        {activeTab === 'receipt' && (
-                          <div className="text-center flex justify-center items-start pt-1 pl-2">
-                            {actualReceivedAction.getCompletedDate(item) ? (
-                              <div className="modal-subtitle text-green-700">
-                                {new Date(actualReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
-                                  year: 'numeric',
-                                  month: '2-digit',
-                                  day: '2-digit'
-                                })}
-                              </div>
-                            ) : (
-                              <span className="modal-subtitle text-gray-400">-</span>
+                <div className="max-h-[50vh] sm:max-h-[40vh] w-full min-w-0 overflow-auto">
+                  <div style={{ minWidth: `${tableMinWidth}px` }}>
+                    {/* Items Table Header - Sticky inside scroll container */}
+                    <div className="bg-gray-50 px-2 sm:px-3 py-1 border-b border-gray-100 sticky top-0 z-10">
+                      <div 
+                        ref={headerRowRef}
+                        className="hidden sm:grid gap-3 modal-label" 
+                        style={{
+                          gridTemplateColumns: getGridTemplateColumns()
+                        }}
+                      >
+                        <div>품목명</div>
+                        <div>규격</div>
+                        <div className="text-center">수량</div>
+                        <div className="text-right">단가</div>
+                        <div className="text-right">합계</div>
+                        <div className="text-center">비고</div>
+                        {isEditing ? (
+                          <>
+                            <div className="text-center">삭제</div>
+                            {activeTab === 'receipt' && (
+                              <>
+                                <div className="text-center">실제입고일</div>
+                              </>
                             )}
-                          </div>
-                        )}
-
-                        {/* 거래명세서 확인 - 전체항목 탭에서만 표시 */}
-                        {activeTab === 'done' && (
-                          <div className="text-center flex justify-center items-start pt-1">
-                            {canReceiptCheck ? (
-                              statementReceivedAction.isCompleted(item) ? (
-                                <button
-                                  onClick={() => {
-                                    statementReceivedAction.handleCancel(item.id, {
-                                      item_name: item.item_name,
-                                      specification: item.specification,
-                                      quantity: item.quantity,
-                                      unit_price_value: item.unit_price_value,
-                                      amount_value: item.amount_value,
-                                      remark: item.remark
-                                    })
-                                  }}
-                                  className="button-action-primary hover:bg-green-600 transition-colors"
-                                  title="클릭하여 거래명세서 확인 취소"
-                                >
-                                  {statementReceivedAction.config.completedText}
-                                </button>
-                              ) : (
-                                <DatePickerPopover
-                                  onDateSelect={(date) => {
-                                    statementReceivedAction.handleConfirm(item.id, date, {
-                                      item_name: item.item_name,
-                                      specification: item.specification,
-                                      quantity: item.quantity,
-                                      unit_price_value: item.unit_price_value,
-                                      amount_value: item.amount_value,
-                                      remark: item.remark
-                                    })
-                                  }}
-                                  placeholder="회계상 입고일을 선택하세요"
-                                  align="center"
-                                  side="bottom"
-                                >
-                                  <button 
-                                    className="button-toggle-inactive"
-                                    onClick={() => {}}
-                                  >
-                                    {statementReceivedAction.config.waitingText}
-                                  </button>
-                                </DatePickerPopover>
-                              )
-                            ) : (
-                              <span className={`${
-                                statementReceivedAction.isCompleted(item)
-                                  ? 'button-action-primary' 
-                                  : 'button-waiting-inactive'
-                              }`}>
-                                {statementReceivedAction.isCompleted(item) ? statementReceivedAction.config.completedText : statementReceivedAction.config.waitingText}
-                              </span>
+                            {activeTab === 'done' && (
+                              <>
+                                <div className="text-center">거래명세서 확인</div>
+                                <div className="text-center">회계상 입고일</div>
+                                <div className="text-center">처리자</div>
+                              </>
                             )}
-                          </div>
-                        )}
-
-                        {/* 회계상 입고일 - 전체항목 탭에서만 표시 */}
-                        {activeTab === 'done' && (
-                          <div className="text-center flex justify-center items-start pt-1">
-                            {statementReceivedAction.getCompletedDate(item) ? (
-                              <div className="modal-subtitle text-blue-700">
-                                {new Date(statementReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
-                                  year: 'numeric',
-                                  month: '2-digit',
-                                  day: '2-digit'
-                                })}
-                              </div>
-                            ) : (
-                              <span className="modal-subtitle text-gray-400">-</span>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-center">
+                              {activeTab === 'purchase'
+                                ? '구매상태'
+                                : (activeTab === 'receipt' || activeTab === 'done')
+                                ? '입고상태'
+                                : '상태'}
+                            </div>
+                            {activeTab === 'done' && (
+                              <>
+                                <div className="text-center">거래명세서 확인</div>
+                                <div className="text-center">회계상 입고일</div>
+                                <div className="text-center">처리자</div>
+                              </>
                             )}
-                          </div>
-                        )}
-                        {/* 처리자 - 전체항목 탭에서만 표시 */}
-                        {activeTab === 'done' && (
-                          <div className="text-center flex justify-center items-start pt-1">
-                            {statementReceivedAction.getCompletedByName(item) ? (
-                              <span className="modal-subtitle text-gray-600">
-                                {statementReceivedAction.getCompletedByName(item)}
-                              </span>
-                            ) : (
-                              <span className="modal-subtitle text-gray-400">-</span>
+                            {activeTab === 'receipt' && (
+                              <>
+                                <div className="text-center">실제입고일</div>
+                              </>
                             )}
-                          </div>
+                          </>
                         )}
                       </div>
-                      
-                      {/* Mobile Layout */}
-                      <div className="block sm:hidden space-y-2">
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1 min-w-0">
-                            {isEditing ? (
-                              <Input
-                                value={item.item_name}
-                                onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
-                                className="modal-label border-gray-200 rounded-lg w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
-                                placeholder="품목명"
-                              />
-                            ) : (
-                              <div className="modal-value font-medium">{item.item_name || '품목명 없음'}</div>
-                            )}
-                            {isEditing ? (
-                              <Input
-                                value={item.specification}
-                                onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
-                                className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
-                                placeholder="규격"
-                              />
-                            ) : (
-                              <div className="modal-subtitle text-gray-500">{item.specification || '-'}</div>
-                            )}
-                          </div>
-                          <div className="ml-3 text-right flex-shrink-0">
-                            {isEditing ? (
-                              <Input
-                                type="number"
-                                value={item.amount_value}
-                                onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
-                                className="modal-label border-gray-200 rounded-lg text-right w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
-                                placeholder="합계"
-                              />
-                            ) : (
-                              <div className="modal-value font-semibold">₩{formatCurrency(item.amount_value || 0)}</div>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div className="grid grid-cols-3 gap-2 text-sm">
-                          <div>
-                            <span className="text-gray-500 text-xs">수량:</span>
-                            {isEditing ? (
-                              <Input
-                                type="number"
-                                value={item.quantity}
-                                onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
-                                className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
-                                placeholder="수량"
-                              />
-                            ) : (
-                              <div className="modal-subtitle">{item.quantity || 0}</div>
-                            )}
-                          </div>
-                          <div>
-                            <span className="text-gray-500 text-xs">단가:</span>
-                            {isEditing ? (
-                              <Input
-                                type="number"
-                                value={item.unit_price_value}
-                                onChange={(e) => handleItemChange(index, 'unit_price_value', Number(e.target.value))}
-                                className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
-                                placeholder="단가"
-                              />
-                            ) : (
-                              <div className="modal-subtitle">₩{formatCurrency(item.unit_price_value)}</div>
-                            )}
-                          </div>
-                          <div>
-                            <span className="text-gray-500 text-xs">상태:</span>
-                            <div className="mt-1">
+                    </div>
+                    <div className="divide-y divide-gray-100">
+                      {(isEditing ? editedItems : purchase.items)?.map((item, index) => (
+                        <div key={index} className="px-2 sm:px-3 py-1.5 border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                          {/* Desktop Layout */}
+                          <div className={`hidden sm:grid items-center gap-3`} style={{
+                            gridTemplateColumns: getGridTemplateColumns()
+                          }}>
+                            {/* 품목명 */}
+                            <div className="min-w-0">
+                              {isEditing ? (
+                                <Input
+                                  value={item.item_name}
+                                  onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
+                                  className="modal-label border-gray-200 rounded-lg w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                  placeholder="품목명"
+                                />
+                              ) : (
+                                <span className="modal-value">{item.item_name || '품목명 없음'}</span>
+                              )}
+                            </div>
+                            
+                            {/* 규격 */}
+                            <div className="min-w-0">
+                              {isEditing ? (
+                                <Input
+                                  value={item.specification}
+                                  onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
+                                  className="modal-label border-gray-200 rounded-lg w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                  placeholder="규격"
+                                />
+                              ) : (
+                                <span className="modal-subtitle">{item.specification || '-'}</span>
+                              )}
+                            </div>
+                            
+                            {/* 수량 */}
+                            <div className="text-center min-w-0">
+                              {isEditing ? (
+                                <Input
+                                  type="number"
+                                  value={item.quantity}
+                                  onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
+                                  className="modal-label border-gray-200 rounded-lg text-center w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                  placeholder="수량"
+                                  max="99999"
+                                />
+                              ) : (
+                                <span className="modal-subtitle">{item.quantity || 0}</span>
+                              )}
+                            </div>
+                            
+                            {/* 단가 */}
+                            <div className="text-right min-w-0">
+                              {isEditing ? (
+                                <Input
+                                  type="number"
+                                  value={item.unit_price_value}
+                                  onChange={(e) => handleItemChange(index, 'unit_price_value', Number(e.target.value))}
+                                  className="modal-label border-gray-200 rounded-lg text-right w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                  placeholder="단가"
+                                  max="100000000000"
+                                />
+                              ) : (
+                                <span className="modal-subtitle">₩{formatCurrency(item.unit_price_value)}</span>
+                              )}
+                            </div>
+                            
+                            {/* 합계 */}
+                            <div className="text-right min-w-0">
+                              {isEditing ? (
+                                <Input
+                                  type="number"
+                                  value={item.amount_value}
+                                  onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
+                                  className="modal-label border-gray-200 rounded-lg text-right w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                  placeholder="합계"
+                                  max="10000000000"
+                                />
+                              ) : (
+                                <span className="modal-value">₩{formatCurrency(item.amount_value || 0)}</span>
+                              )}
+                            </div>
+                            
+                            {/* 비고 */}
+                            <div className="min-w-0 flex justify-center items-start pt-1 text-center">
+                              {isEditing ? (
+                                <Input
+                                  value={item.remark || ''}
+                                  onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
+                                  className="modal-label border-gray-200 rounded-lg text-center w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                  placeholder="비고"
+                                />
+                              ) : (
+                                <span className="modal-subtitle text-center">{item.remark || '-'}</span>
+                              )}
+                            </div>
+                            
+                            {/* 상태/액션 */}
+                            <div className="text-center flex justify-center items-start pt-1">
                               {isEditing ? (
                                 <Button
                                   size="sm"
@@ -2147,33 +1894,35 @@ export default function PurchaseDetailModal({
                                 </Button>
                               ) : (
                                 <>
+                                  {/* 구매 탭에서의 구매완료 상태 */}
                                   {activeTab === 'purchase' && (
-                                    <>
+                                    <div className="flex justify-center">
                                       {canPurchase ? (
                                         <button
                                           onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
-                                          className={`text-xs px-2 py-1 rounded transition-colors ${
+                                          className={`transition-colors ${
                                             item.is_payment_completed
-                                              ? 'bg-orange-500 text-white hover:bg-orange-600'
-                                              : 'bg-gray-100 text-gray-600'
+                                              ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
+                                              : 'button-toggle-inactive'
                                           }`}
                                         >
                                           {item.is_payment_completed ? '구매완료' : '구매대기'}
                                         </button>
                                       ) : (
-                                        <span className={`text-xs px-2 py-1 rounded ${
+                                        <span className={`${
                                           item.is_payment_completed 
-                                            ? 'bg-orange-500 text-white' 
-                                            : 'bg-gray-100 text-gray-400'
+                                            ? 'button-toggle-active bg-orange-500 text-white' 
+                                            : 'button-waiting-inactive'
                                         }`}>
                                           {item.is_payment_completed ? '구매완료' : '구매대기'}
                                         </span>
                                       )}
-                                    </>
+                                    </div>
                                   )}
                                   
+                                  {/* 입고 탭에서의 입고완료 상태 */}
                                   {activeTab === 'receipt' && (
-                                    <>
+                                    <div className="flex justify-center">
                                       {canReceiptCheck ? (
                                         actualReceivedAction.isCompleted(item) ? (
                                           <button
@@ -2187,7 +1936,7 @@ export default function PurchaseDetailModal({
                                                 remark: item.remark
                                               })
                                             }}
-                                            className="text-xs px-2 py-1 rounded button-action-primary"
+                                            className="button-action-primary"
                                           >
                                             {actualReceivedAction.config.completedText}
                                           </button>
@@ -2207,172 +1956,461 @@ export default function PurchaseDetailModal({
                                             align="center"
                                             side="bottom"
                                           >
-                                            <button className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600">
+                                            <button className="button-toggle-inactive">
                                               {actualReceivedAction.config.waitingText}
                                             </button>
                                           </DatePickerPopover>
                                         )
                                       ) : (
-                                        <span className={`text-xs px-2 py-1 rounded ${
+                                        <span className={`${
                                           actualReceivedAction.isCompleted(item)
                                             ? 'button-action-primary' 
-                                            : 'bg-gray-100 text-gray-400'
+                                            : 'button-waiting-inactive'
                                         }`}>
                                           {actualReceivedAction.isCompleted(item) ? actualReceivedAction.config.completedText : actualReceivedAction.config.waitingText}
                                         </span>
                                       )}
-                                    </>
+                                    </div>
                                   )}
                                   
+                                  {/* 전체 항목 탭에서는 입고 상태만 표시 (클릭 불가) */}
                                   {activeTab === 'done' && (
-                                    <>
-                                      {/* 전체 항목 탭에서는 입고 상태만 표시 (클릭 불가) */}
+                                    <div className="flex justify-center">
                                       <span className={`button-base ${
                                         actualReceivedAction.isCompleted(item)
-                                          ? 'bg-green-500 text-white' 
-                                          : 'border border-gray-300 text-gray-600 bg-white'
+                                          ? 'bg-green-500 hover:bg-green-600 text-white' 
+                                          : 'border border-gray-300 text-gray-600 bg-white hover:bg-gray-50'
                                       }`}>
                                         {actualReceivedAction.isCompleted(item) ? '입고완료' : '입고대기'}
                                       </span>
-                                    </>
+                                    </div>
                                   )}
                                   
+                                  {/* 기타 탭에서는 기본 상태 표시 */}
                                   {activeTab !== 'purchase' && activeTab !== 'receipt' && activeTab !== 'done' && (
-                                    <span className="text-xs text-gray-400">-</span>
+                                    <div className="flex justify-center">
+                                      <span className="badge-text">-</span>
+                                    </div>
                                   )}
                                 </>
                               )}
                             </div>
-                          </div>
-                        </div>
-                        
-                        {(item.remark || isEditing) && (
-                          <div>
-                            <span className="text-gray-500 text-xs">비고:</span>
-                            {isEditing ? (
-                              <Input
-                                value={item.remark || ''}
-                                onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
-                                className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
-                                placeholder="비고"
-                              />
-                            ) : (
-                              <div className="modal-subtitle text-gray-500 mt-1">{item.remark || '-'}</div>
+                            
+                            {/* 실제 입고 날짜 - 입고 탭에서만 표시 (상태 컬럼 오른쪽) */}
+                            {activeTab === 'receipt' && (
+                              <div className="text-center flex justify-center items-start pt-1 pl-2">
+                                {actualReceivedAction.getCompletedDate(item) ? (
+                                  <div className="modal-subtitle text-green-700">
+                                    {new Date(actualReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
+                                      year: 'numeric',
+                                      month: '2-digit',
+                                      day: '2-digit'
+                                    })}
+                                  </div>
+                                ) : (
+                                  <span className="modal-subtitle text-gray-400">-</span>
+                                )}
+                              </div>
+                            )}
+
+                            {/* 거래명세서 확인 - 전체항목 탭에서만 표시 */}
+                            {activeTab === 'done' && (
+                              <div className="text-center flex justify-center items-start pt-1">
+                                {canReceiptCheck ? (
+                                  statementReceivedAction.isCompleted(item) ? (
+                                    <button
+                                      onClick={() => {
+                                        statementReceivedAction.handleCancel(item.id, {
+                                          item_name: item.item_name,
+                                          specification: item.specification,
+                                          quantity: item.quantity,
+                                          unit_price_value: item.unit_price_value,
+                                          amount_value: item.amount_value,
+                                          remark: item.remark
+                                        })
+                                      }}
+                                      className="button-action-primary hover:bg-green-600 transition-colors"
+                                      title="클릭하여 거래명세서 확인 취소"
+                                    >
+                                      {statementReceivedAction.config.completedText}
+                                    </button>
+                                  ) : (
+                                    <DatePickerPopover
+                                      onDateSelect={(date) => {
+                                        statementReceivedAction.handleConfirm(item.id, date, {
+                                          item_name: item.item_name,
+                                          specification: item.specification,
+                                          quantity: item.quantity,
+                                          unit_price_value: item.unit_price_value,
+                                          amount_value: item.amount_value,
+                                          remark: item.remark
+                                        })
+                                      }}
+                                      placeholder="회계상 입고일을 선택하세요"
+                                      align="center"
+                                      side="bottom"
+                                    >
+                                      <button 
+                                        className="button-toggle-inactive"
+                                        onClick={() => {}}
+                                      >
+                                        {statementReceivedAction.config.waitingText}
+                                      </button>
+                                    </DatePickerPopover>
+                                  )
+                                ) : (
+                                  <span className={`${
+                                    statementReceivedAction.isCompleted(item)
+                                      ? 'button-action-primary' 
+                                      : 'button-waiting-inactive'
+                                  }`}>
+                                    {statementReceivedAction.isCompleted(item) ? statementReceivedAction.config.completedText : statementReceivedAction.config.waitingText}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {/* 회계상 입고일 - 전체항목 탭에서만 표시 */}
+                            {activeTab === 'done' && (
+                              <div className="text-center flex justify-center items-start pt-1">
+                                {statementReceivedAction.getCompletedDate(item) ? (
+                                  <div className="modal-subtitle text-blue-700">
+                                    {new Date(statementReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
+                                      year: 'numeric',
+                                      month: '2-digit',
+                                      day: '2-digit'
+                                    })}
+                                  </div>
+                                ) : (
+                                  <span className="modal-subtitle text-gray-400">-</span>
+                                )}
+                              </div>
+                            )}
+                            {/* 처리자 - 전체항목 탭에서만 표시 */}
+                            {activeTab === 'done' && (
+                              <div className="text-center flex justify-center items-start pt-1">
+                                {statementReceivedAction.getCompletedByName(item) ? (
+                                  <span className="modal-subtitle text-gray-600">
+                                    {statementReceivedAction.getCompletedByName(item)}
+                                  </span>
+                                ) : (
+                                  <span className="modal-subtitle text-gray-400">-</span>
+                                )}
+                              </div>
                             )}
                           </div>
-                        )}
-                        
-                        {/* 모바일에서 실제 입고 날짜 표시 */}
-                        {!isEditing && activeTab === 'receipt' && actualReceivedAction.getCompletedDate(item) && (
-                          <div>
-                            <span className="text-gray-500 text-xs">실제입고일:</span>
-                            <div className="mt-1">
-                              <div className="modal-subtitle text-green-700">
-                                {new Date(actualReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
-                                  year: 'numeric',
-                                  month: '2-digit',
-                                  day: '2-digit'
-                                })}
-                              </div>
-                              <div className="text-[9px] text-gray-500">
-                                {new Date(actualReceivedAction.getCompletedDate(item)).toLocaleTimeString('ko-KR', {
-                                  hour: '2-digit',
-                                  minute: '2-digit'
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* 모바일에서 거래명세서 확인 표시 - 전체항목 탭에서만 */}
-                        {!isEditing && activeTab === 'done' && (
-                          <div className="flex items-center justify-between">
-                            <span className="text-gray-500 text-xs">거래명세서 확인:</span>
-                            <div className="flex items-center gap-2">
-                              {canReceiptCheck ? (
-                                statementReceivedAction.isCompleted(item) ? (
-                                  <button
-                                    onClick={() => {
-                                      statementReceivedAction.handleCancel(item.id, {
-                                        item_name: item.item_name,
-                                        specification: item.specification,
-                                        quantity: item.quantity,
-                                        unit_price_value: item.unit_price_value,
-                                        amount_value: item.amount_value,
-                                        remark: item.remark
-                                      })
-                                    }}
-                                    className="text-xs px-2 py-1 rounded button-action-primary hover:bg-green-600 transition-colors"
-                                    title="클릭하여 거래명세서 확인 취소"
-                                  >
-                                    {statementReceivedAction.config.completedText}
-                                  </button>
+                          
+                          {/* Mobile Layout */}
+                          <div className="block sm:hidden space-y-2">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1 min-w-0">
+                                {isEditing ? (
+                                  <Input
+                                    value={item.item_name}
+                                    onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
+                                    className="modal-label border-gray-200 rounded-lg w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                    placeholder="품목명"
+                                  />
                                 ) : (
-                                  <DatePickerPopover
-                                    onDateSelect={(date) => {
-                                      statementReceivedAction.handleConfirm(item.id, date, {
-                                        item_name: item.item_name,
-                                        specification: item.specification,
-                                        quantity: item.quantity,
-                                        unit_price_value: item.unit_price_value,
-                                        amount_value: item.amount_value,
-                                        remark: item.remark
-                                      })
-                                    }}
-                                    placeholder="회계상 입고일을 선택하세요"
-                                    align="end"
-                                    side="bottom"
-                                  >
-                                    <button 
-                                      className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600"
-                                      onClick={() => {}}
+                                  <div className="modal-value font-medium">{item.item_name || '품목명 없음'}</div>
+                                )}
+                                {isEditing ? (
+                                  <Input
+                                    value={item.specification}
+                                    onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
+                                    className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                    placeholder="규격"
+                                  />
+                                ) : (
+                                  <div className="modal-subtitle text-gray-500">{item.specification || '-'}</div>
+                                )}
+                              </div>
+                              <div className="ml-3 text-right flex-shrink-0">
+                                {isEditing ? (
+                                  <Input
+                                    type="number"
+                                    value={item.amount_value}
+                                    onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
+                                    className="modal-label border-gray-200 rounded-lg text-right w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                    placeholder="합계"
+                                  />
+                                ) : (
+                                  <div className="modal-value font-semibold">₩{formatCurrency(item.amount_value || 0)}</div>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-3 gap-2 text-sm">
+                              <div>
+                                <span className="text-gray-500 text-xs">수량:</span>
+                                {isEditing ? (
+                                  <Input
+                                    type="number"
+                                    value={item.quantity}
+                                    onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
+                                    className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                    placeholder="수량"
+                                  />
+                                ) : (
+                                  <div className="modal-subtitle">{item.quantity || 0}</div>
+                                )}
+                              </div>
+                              <div>
+                                <span className="text-gray-500 text-xs">단가:</span>
+                                {isEditing ? (
+                                  <Input
+                                    type="number"
+                                    value={item.unit_price_value}
+                                    onChange={(e) => handleItemChange(index, 'unit_price_value', Number(e.target.value))}
+                                    className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                    placeholder="단가"
+                                  />
+                                ) : (
+                                  <div className="modal-subtitle">₩{formatCurrency(item.unit_price_value)}</div>
+                                )}
+                              </div>
+                              <div>
+                                <span className="text-gray-500 text-xs">상태:</span>
+                                <div className="mt-1">
+                                  {isEditing ? (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => handleRemoveItem(index)}
+                                      className="text-red-600 hover:bg-red-50 rounded-lg p-1 h-6 w-6"
                                     >
-                                      {statementReceivedAction.config.waitingText}
-                                    </button>
-                                  </DatePickerPopover>
-                                )
-                              ) : (
-                                <span className={`text-xs px-2 py-1 rounded ${
-                                  statementReceivedAction.isCompleted(item)
-                                    ? 'button-action-primary' 
-                                    : 'bg-gray-100 text-gray-400'
-                                }`}>
-                                  {statementReceivedAction.isCompleted(item) ? statementReceivedAction.config.completedText : statementReceivedAction.config.waitingText}
-                                </span>
-                              )}
+                                      <Trash2 className="w-3 h-3" />
+                                    </Button>
+                                  ) : (
+                                    <>
+                                      {activeTab === 'purchase' && (
+                                        <>
+                                          {canPurchase ? (
+                                            <button
+                                              onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
+                                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                                item.is_payment_completed
+                                                  ? 'bg-orange-500 text-white hover:bg-orange-600'
+                                                  : 'bg-gray-100 text-gray-600'
+                                              }`}
+                                            >
+                                              {item.is_payment_completed ? '구매완료' : '구매대기'}
+                                            </button>
+                                          ) : (
+                                            <span className={`text-xs px-2 py-1 rounded ${
+                                              item.is_payment_completed 
+                                                ? 'bg-orange-500 text-white' 
+                                                : 'bg-gray-100 text-gray-400'
+                                            }`}>
+                                              {item.is_payment_completed ? '구매완료' : '구매대기'}
+                                            </span>
+                                          )}
+                                        </>
+                                      )}
+                                      
+                                      {activeTab === 'receipt' && (
+                                        <>
+                                          {canReceiptCheck ? (
+                                            actualReceivedAction.isCompleted(item) ? (
+                                              <button
+                                                onClick={() => {
+                                                  actualReceivedAction.handleCancel(item.id, {
+                                                    item_name: item.item_name,
+                                                    specification: item.specification,
+                                                    quantity: item.quantity,
+                                                    unit_price_value: item.unit_price_value,
+                                                    amount_value: item.amount_value,
+                                                    remark: item.remark
+                                                  })
+                                                }}
+                                                className="text-xs px-2 py-1 rounded button-action-primary"
+                                              >
+                                                {actualReceivedAction.config.completedText}
+                                              </button>
+                                            ) : (
+                                              <DatePickerPopover
+                                                onDateSelect={(date) => {
+                                                  actualReceivedAction.handleConfirm(item.id, date, {
+                                                    item_name: item.item_name,
+                                                    specification: item.specification,
+                                                    quantity: item.quantity,
+                                                    unit_price_value: item.unit_price_value,
+                                                    amount_value: item.amount_value,
+                                                    remark: item.remark
+                                                  })
+                                                }}
+                                                placeholder="실제 입고된 날짜를 선택하세요"
+                                                align="center"
+                                                side="bottom"
+                                              >
+                                                <button className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600">
+                                                  {actualReceivedAction.config.waitingText}
+                                                </button>
+                                              </DatePickerPopover>
+                                            )
+                                          ) : (
+                                            <span className={`text-xs px-2 py-1 rounded ${
+                                              actualReceivedAction.isCompleted(item)
+                                                ? 'button-action-primary' 
+                                                : 'bg-gray-100 text-gray-400'
+                                            }`}>
+                                              {actualReceivedAction.isCompleted(item) ? actualReceivedAction.config.completedText : actualReceivedAction.config.waitingText}
+                                            </span>
+                                          )}
+                                        </>
+                                      )}
+                                      
+                                      {activeTab === 'done' && (
+                                        <>
+                                          {/* 전체 항목 탭에서는 입고 상태만 표시 (클릭 불가) */}
+                                          <span className={`button-base ${
+                                            actualReceivedAction.isCompleted(item)
+                                              ? 'bg-green-500 text-white' 
+                                              : 'border border-gray-300 text-gray-600 bg-white'
+                                          }`}>
+                                            {actualReceivedAction.isCompleted(item) ? '입고완료' : '입고대기'}
+                                          </span>
+                                        </>
+                                      )}
+                                      
+                                      {activeTab !== 'purchase' && activeTab !== 'receipt' && activeTab !== 'done' && (
+                                        <span className="text-xs text-gray-400">-</span>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        )}
+                            
+                            {(item.remark || isEditing) && (
+                              <div>
+                                <span className="text-gray-500 text-xs">비고:</span>
+                                {isEditing ? (
+                                  <Input
+                                    value={item.remark || ''}
+                                    onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
+                                    className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                    placeholder="비고"
+                                  />
+                                ) : (
+                                  <div className="modal-subtitle text-gray-500 mt-1">{item.remark || '-'}</div>
+                                )}
+                              </div>
+                            )}
+                            
+                            {/* 모바일에서 실제 입고 날짜 표시 */}
+                            {!isEditing && activeTab === 'receipt' && actualReceivedAction.getCompletedDate(item) && (
+                              <div>
+                                <span className="text-gray-500 text-xs">실제입고일:</span>
+                                <div className="mt-1">
+                                  <div className="modal-subtitle text-green-700">
+                                    {new Date(actualReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
+                                      year: 'numeric',
+                                      month: '2-digit',
+                                      day: '2-digit'
+                                    })}
+                                  </div>
+                                  <div className="text-[9px] text-gray-500">
+                                    {new Date(actualReceivedAction.getCompletedDate(item)).toLocaleTimeString('ko-KR', {
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
 
-                        {/* 모바일에서 회계상 입고일 표시 - 전체항목 탭에서만 */}
-                        {!isEditing && activeTab === 'done' && statementReceivedAction.getCompletedDate(item) && (
-                          <div>
-                            <span className="text-gray-500 text-xs">회계상 입고일:</span>
-                            <div className="mt-1">
-                              <div className="modal-subtitle text-blue-700">
-                                {new Date(statementReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
-                                  year: 'numeric',
-                                  month: '2-digit',
-                                  day: '2-digit'
-                                })}
+                            {/* 모바일에서 거래명세서 확인 표시 - 전체항목 탭에서만 */}
+                            {!isEditing && activeTab === 'done' && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-gray-500 text-xs">거래명세서 확인:</span>
+                                <div className="flex items-center gap-2">
+                                  {canReceiptCheck ? (
+                                    statementReceivedAction.isCompleted(item) ? (
+                                      <button
+                                        onClick={() => {
+                                          statementReceivedAction.handleCancel(item.id, {
+                                            item_name: item.item_name,
+                                            specification: item.specification,
+                                            quantity: item.quantity,
+                                            unit_price_value: item.unit_price_value,
+                                            amount_value: item.amount_value,
+                                            remark: item.remark
+                                          })
+                                        }}
+                                        className="text-xs px-2 py-1 rounded button-action-primary hover:bg-green-600 transition-colors"
+                                        title="클릭하여 거래명세서 확인 취소"
+                                      >
+                                        {statementReceivedAction.config.completedText}
+                                      </button>
+                                    ) : (
+                                      <DatePickerPopover
+                                        onDateSelect={(date) => {
+                                          statementReceivedAction.handleConfirm(item.id, date, {
+                                            item_name: item.item_name,
+                                            specification: item.specification,
+                                            quantity: item.quantity,
+                                            unit_price_value: item.unit_price_value,
+                                            amount_value: item.amount_value,
+                                            remark: item.remark
+                                          })
+                                        }}
+                                        placeholder="회계상 입고일을 선택하세요"
+                                        align="end"
+                                        side="bottom"
+                                      >
+                                        <button 
+                                          className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600"
+                                          onClick={() => {}}
+                                        >
+                                          {statementReceivedAction.config.waitingText}
+                                        </button>
+                                      </DatePickerPopover>
+                                    )
+                                  ) : (
+                                    <span className={`text-xs px-2 py-1 rounded ${
+                                      statementReceivedAction.isCompleted(item)
+                                        ? 'button-action-primary' 
+                                        : 'bg-gray-100 text-gray-400'
+                                    }`}>
+                                      {statementReceivedAction.isCompleted(item) ? statementReceivedAction.config.completedText : statementReceivedAction.config.waitingText}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          </div>
-                        )}
-                        {/* 모바일에서 처리자 표시 - 전체항목 탭에서만 */}
-                        {!isEditing && activeTab === 'done' && statementReceivedAction.getCompletedByName(item) && (
-                          <div>
-                            <span className="text-gray-500 text-xs">처리자:</span>
-                            <div className="mt-1">
-                              <div className="modal-subtitle text-gray-600">
-                                {statementReceivedAction.getCompletedByName(item)}
+                            )}
+
+                            {/* 모바일에서 회계상 입고일 표시 - 전체항목 탭에서만 */}
+                            {!isEditing && activeTab === 'done' && statementReceivedAction.getCompletedDate(item) && (
+                              <div>
+                                <span className="text-gray-500 text-xs">회계상 입고일:</span>
+                                <div className="mt-1">
+                                  <div className="modal-subtitle text-blue-700">
+                                    {new Date(statementReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
+                                      year: 'numeric',
+                                      month: '2-digit',
+                                      day: '2-digit'
+                                    })}
+                                  </div>
+                                </div>
                               </div>
-                            </div>
+                            )}
+                            {/* 모바일에서 처리자 표시 - 전체항목 탭에서만 */}
+                            {!isEditing && activeTab === 'done' && statementReceivedAction.getCompletedByName(item) && (
+                              <div>
+                                <span className="text-gray-500 text-xs">처리자:</span>
+                                <div className="mt-1">
+                                  <div className="modal-subtitle text-gray-600">
+                                    {statementReceivedAction.getCompletedByName(item)}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
                 </div>
                 
                 {/* 합계 */}
@@ -2454,7 +2492,7 @@ export default function PurchaseDetailModal({
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent 
-        className="overflow-hidden bg-white rounded-lg shadow-sm border-0 w-[100vw] h-[100vh] sm:w-auto sm:min-w-[1000px] sm:max-w-none sm:max-h-[90vh] lg:max-h-[85vh] sm:rounded-lg flex flex-col" 
+        className="overflow-hidden bg-white rounded-lg shadow-sm border-0 w-full sm:w-auto max-w-[calc(100vw-48px)] sm:max-w-[calc(100vw-80px)] lg:max-w-[90vw] xl:max-w-[85vw] h-[95vh] sm:h-auto sm:max-h-[90vh] lg:max-h-[85vh] sm:rounded-lg flex flex-col" 
         showCloseButton={false}
       >
         {/* Apple-style Header */}

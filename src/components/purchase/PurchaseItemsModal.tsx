@@ -2,7 +2,6 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { X, Edit2, Save, Trash2, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +10,6 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { ReceiptDownloadButton } from "./ReceiptDownloadButton";
 import { DatePickerPopover } from "@/components/ui/date-picker-popover";
-import { useEffect } from "react";
 import { useConfirmDateAction } from '@/hooks/useConfirmDateAction';
 import { logger } from '@/lib/logger';
 
@@ -27,6 +25,7 @@ interface PurchaseItem {
   link?: string;
   is_received?: boolean;
   delivery_status?: string;
+  is_payment_completed?: boolean;
   receipt_image_url?: string | null;
   receipt_uploaded_at?: string | null;
   receipt_uploaded_by?: string | null;
@@ -64,48 +63,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
   const [editingItems, setEditingItems] = useState<PurchaseItem[]>(purchase.items || []);
   const [isEditing, setIsEditing] = useState(false);
   const [currentUserName, setCurrentUserName] = useState<string>('');
-  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const supabase = createClient();
-
-  // 화면 크기 감지
-  useEffect(() => {
-    const updateViewportSize = () => {
-      setViewportSize({
-        width: window.innerWidth,
-        height: window.innerHeight
-      });
-    };
-
-    // 초기값 설정
-    updateViewportSize();
-
-    // 리사이즈 이벤트 리스너 등록
-    window.addEventListener('resize', updateViewportSize);
-    
-    return () => {
-      window.removeEventListener('resize', updateViewportSize);
-    };
-  }, []);
-
-  // 테이블 컨테이너의 동적 최대 너비 계산
-  const tableMaxWidth = useMemo(() => {
-    const { width } = viewportSize;
-    
-    if (width === 0) return '800px'; // 초기값
-    
-    // 모달 패딩과 여백을 고려한 가용 너비 계산
-    // 모달 좌우 패딩: 24px (sm:p-6), 브라우저 여백: 20px, 안전 여백: 40px
-    const modalPadding = 48; // 좌우 패딩
-    const browserMargin = 20; // 브라우저 여백
-    const safetyMargin = 40; // 안전 여백
-    const availableWidth = width - modalPadding - browserMargin - safetyMargin;
-    
-    // 최소 너비 보장 (800px) 및 최대 너비 제한
-    const minWidth = 800;
-    const maxWidth = Math.max(minWidth, Math.min(availableWidth, width * 0.95));
-    
-    return `${maxWidth}px`;
-  }, [viewportSize]);
   
   // 사용자 정보 및 최신 데이터 로드
   useEffect(() => {
@@ -162,13 +120,6 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
     activeTab
   })
 
-  // 반응형 디버깅 정보
-  logger.debug('📱 PurchaseItemsModal 반응형 정보', {
-    viewportWidth: viewportSize.width,
-    viewportHeight: viewportSize.height,
-    tableMaxWidth,
-    modalWidth: `min(98vw, ${tableMaxWidth})`
-  })
 
   // 모달 내부 데이터만 새로고침하는 함수 (모달 닫지 않음)
   const refreshModalData = useCallback(async () => {
@@ -341,7 +292,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
         item_name: item.item_name.trim(),
         specification: item.specification || '',
         quantity: Number(item.quantity) || 0,
-        unit_price_value: (item.unit_price_value !== null && item.unit_price_value !== undefined && item.unit_price_value !== '') ? Number(item.unit_price_value) : null,
+        unit_price_value: item.unit_price_value !== null && item.unit_price_value !== undefined ? Number(item.unit_price_value) : null,
         amount_value: Number(item.amount_value) || 0,
         remark: item.remark || '',
         link: item.link || null,
@@ -383,12 +334,74 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
     }
   };
   
-  const items = isEditing ? editingItems : editingItems;
+  const baseItems = editingItems.length > 0 ? editingItems : (purchase.items || []);
+  const items = isEditing ? editingItems : baseItems;
+
+  const tableMinWidth = useMemo(() => {
+    const data = items.length > 0 ? items : baseItems;
+    if (!data || data.length === 0) {
+      return 960;
+    }
+
+    const columnDefs = [
+      { key: 'index', base: 64, header: 'No.', accessor: (_item: PurchaseItem, index: number) => `${index + 1}` },
+      { key: 'item_name', base: 150, max: 320, header: '품목', accessor: (item: PurchaseItem) => item.item_name },
+      { key: 'specification', base: 150, max: 320, header: '규격', accessor: (item: PurchaseItem) => item.specification },
+      { key: 'quantity', base: 90, header: '수량', accessor: (item: PurchaseItem) => item.quantity != null ? item.quantity.toLocaleString() : '' },
+      { key: 'unit_price_value', base: 120, header: '단가', accessor: (item: PurchaseItem) => item.unit_price_value != null ? item.unit_price_value.toLocaleString() : '' },
+      { key: 'amount_value', base: 140, header: '금액', accessor: (item: PurchaseItem) => item.amount_value != null ? item.amount_value.toLocaleString() : '' },
+      { key: 'remark', base: 140, max: 320, header: '비고', accessor: (item: PurchaseItem) => item.remark }
+    ];
+
+    const widths = columnDefs.map((col, index) => {
+      const values = data.map((item, rowIndex) => {
+        if (col.accessor) {
+          return col.accessor(item, rowIndex) ?? '';
+        }
+        return '';
+      });
+      const headerLength = col.header ? col.header.length : 0;
+      const maxLen = Math.max(headerLength, ...values.map(value => (value ? String(value).length : 0)));
+      const computed = maxLen * 8 + 32;
+      const limited = col.max ? Math.min(col.max, computed) : computed;
+      return Math.max(col.base, limited);
+    });
+
+    if (activeTab === 'purchase') {
+      widths.push(120);
+    }
+
+    if (activeTab === 'receipt' || activeTab === 'done') {
+      widths.push(120);
+    }
+
+    if (activeTab === 'receipt') {
+      widths.push(140);
+    }
+
+    if (activeTab === 'done') {
+      widths.push(140, 140, 110);
+    }
+
+    if (isEditing) {
+      widths.push(100);
+    }
+
+    const gap = widths.length > 1 ? (widths.length - 1) * 16 : 0;
+    const padding = 48;
+    const total = widths.reduce((sum, width) => sum + width, 0) + gap + padding;
+    return Math.max(total, 960);
+  }, [items, baseItems, activeTab, isEditing]);
+
   const totalAmount = items.reduce((sum, item) => sum + (item.amount_value || 0), 0);
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-full max-w-[95vw] max-h-[90vh] overflow-hidden flex flex-col bg-white p-3 sm:p-6">
+      <DialogContent 
+        className="w-full sm:w-auto max-w-[92vw] sm:max-w-[88vw] lg:max-w-[90vw] xl:max-w-[85vw] h-[95vh] sm:h-auto max-h-[90vh] flex flex-col bg-white p-3 sm:p-6"
+        maxWidth="max-w-none"
+        showCloseButton={false}
+      >
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <DialogTitle className="modal-title">
@@ -468,113 +481,115 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
           </div>
         </div>
         
-        <div className="flex-1 overflow-hidden">
-          <div className="w-full h-full overflow-x-auto overflow-y-auto" style={{ maxHeight: '60vh' }}>
-            <Table className="min-w-[800px] w-full">
-            <TableHeader className="sticky top-0 bg-white z-10">
-              <TableRow>
-                <TableHead className="w-12">No.</TableHead>
-                <TableHead>품목</TableHead>
-                <TableHead>규격</TableHead>
-                <TableHead className="text-right">수량</TableHead>
-                <TableHead className="text-right">단가</TableHead>
-                <TableHead className="text-right">금액</TableHead>
+        <div className="flex-1 min-h-0">
+          <div className="h-full overflow-x-auto">
+            <div className="inline-block align-top" style={{ minWidth: `${tableMinWidth}px` }}>
+              <div className="max-h-[60vh] overflow-y-auto">
+                <table className="w-full text-[13px] leading-[1.6] border-collapse" style={{ minWidth: `${tableMinWidth}px` }}>
+              <thead className="sticky top-0 bg-white z-10 shadow-sm">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600 w-16 min-w-[64px]">No.</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600 min-w-[140px]">품목</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600 min-w-[120px]">규격</th>
+                  <th className="px-3 py-2 text-right font-medium text-gray-600 min-w-[80px]">수량</th>
+                  <th className="px-3 py-2 text-right font-medium text-gray-600 min-w-[110px]">단가</th>
+                  <th className="px-3 py-2 text-right font-medium text-gray-600 min-w-[130px]">금액</th>
                 {activeTab === 'purchase' && (
-                  <TableHead>구매상태</TableHead>
+                    <th className="px-3 py-2 text-left font-medium text-gray-600 min-w-[110px]">구매상태</th>
                 )}
                 {(activeTab === 'receipt' || activeTab === 'done') && (
-                  <TableHead>입고상태</TableHead>
+                    <th className="px-3 py-2 text-left font-medium text-gray-600 min-w-[110px]">입고상태</th>
                 )}
                 {activeTab === 'done' && (
                   <>
-                    <TableHead className="text-center">거래명세서 확인</TableHead>
-                    <TableHead className="text-center">회계상 입고일</TableHead>
-                    <TableHead className="text-center">처리자</TableHead>
+                      <th className="px-3 py-2 text-center font-medium text-gray-600 min-w-[130px]">거래명세서 확인</th>
+                      <th className="px-3 py-2 text-center font-medium text-gray-600 min-w-[130px]">회계상 입고일</th>
+                      <th className="px-3 py-2 text-center font-medium text-gray-600 min-w-[90px]">처리자</th>
                   </>
                 )}
                 {activeTab === 'receipt' && (
-                  <TableHead className="text-center">실제 입고일</TableHead>
+                    <th className="px-3 py-2 text-center font-medium text-gray-600 min-w-[130px]">실제 입고일</th>
                 )}
-                <TableHead>비고</TableHead>
-                {isEditing && <TableHead className="w-20">삭제</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600 min-w-[110px]">비고</th>
+                  {isEditing && <th className="px-3 py-2 text-left font-medium text-gray-600 w-20 min-w-[90px]">삭제</th>}
+                </tr>
+              </thead>
+              <tbody>
               {(isEditing ? editingItems : items).map((item, index) => (
-                <TableRow key={item.id || index}>
-                  <TableCell className="modal-value">{item.line_number || index + 1}</TableCell>
-                  <TableCell>
+                  <tr key={item.id || index} className="border-b last:border-b-0">
+                    <td className="px-3 py-2 text-center align-top modal-value">{item.line_number || index + 1}</td>
+                    <td className="px-3 py-2 align-top min-w-[140px]">
                     {isEditing ? (
                       <Input
                         value={item.item_name}
                         onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
-                        className="h-7 modal-label"
+                        className="h-7 modal-label w-full"
                       />
                     ) : (
-                      <div className="sm:max-w-[200px]">
+                      <div className="max-w-[200px]">
                         <p className="modal-value truncate" title={item.item_name}>
                           {item.item_name}
                         </p>
                       </div>
                     )}
-                  </TableCell>
-                  <TableCell>
+                  </td>
+                  <td className="px-3 py-2 align-top min-w-[120px]">
                     {isEditing ? (
                       <Input
                         value={item.specification}
                         onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
-                        className="h-7 modal-label"
+                        className="h-7 modal-label w-full"
                       />
                     ) : (
-                      <div className="sm:max-w-[150px] truncate" title={item.specification}>
+                      <div className="max-w-[150px] truncate" title={item.specification}>
                         {item.specification}
                       </div>
                     )}
-                  </TableCell>
-                  <TableCell className="text-right">
+                  </td>
+                  <td className="px-3 py-2 text-right align-top min-w-[80px]">
                     {isEditing ? (
                       <Input
                         type="number"
                         value={item.quantity}
                         onChange={(e) => handleItemChange(index, 'quantity', e.target.value)}
-                        className="h-7 text-xs text-right"
+                        className="h-7 text-xs text-right w-full"
                       />
                     ) : (
                       <div className="text-right">
-                        <span className="modal-value text-right" style={{display: 'block', textAlign: 'right'}}>{item.quantity.toLocaleString()}</span>
+                        <span className="modal-value" style={{display: 'block', textAlign: 'right'}}>{item.quantity.toLocaleString()}</span>
                       </div>
                     )}
-                  </TableCell>
-                  <TableCell className="text-right">
+                  </td>
+                  <td className="px-3 py-2 text-right align-top min-w-[110px]">
                     {isEditing ? (
                       <Input
                         type="number"
                         value={item.unit_price_value}
                         onChange={(e) => handleItemChange(index, 'unit_price_value', e.target.value)}
-                        className="h-7 text-xs text-right"
+                        className="h-7 text-xs text-right w-full"
                       />
                     ) : (
                       <div className="text-right">
-                        <span className="modal-subtitle text-right" style={{display: 'block', textAlign: 'right'}}>{(item.unit_price_value || 0).toLocaleString()} {purchase.currency}</span>
+                        <span className="modal-subtitle" style={{display: 'block', textAlign: 'right'}}>{(item.unit_price_value || 0).toLocaleString()} {purchase.currency}</span>
                       </div>
                     )}
-                  </TableCell>
-                  <TableCell className="text-right">
+                  </td>
+                  <td className="px-3 py-2 text-right align-top min-w-[130px]">
                     {isEditing ? (
                       <Input
                         type="number"
                         value={item.amount_value}
                         onChange={(e) => handleItemChange(index, 'amount_value', e.target.value)}
-                        className="h-7 modal-label text-right"
+                        className="h-7 modal-label text-right w-full"
                       />
                     ) : (
                       <div className="text-right">
-                        <span className="modal-value text-right" style={{display: 'block', textAlign: 'right'}}>{(item.amount_value || 0).toLocaleString()} {purchase.currency}</span>
+                        <span className="modal-value" style={{display: 'block', textAlign: 'right'}}>{(item.amount_value || 0).toLocaleString()} {purchase.currency}</span>
                       </div>
                     )}
-                  </TableCell>
+                  </td>
                   {activeTab === 'purchase' && (
-                    <TableCell>
+                    <td className="px-3 py-2 align-top min-w-[110px]">
                       {/* 구매상태 - 구매완료/취소 버튼 */}
                       {canReceiptCheck ? (
                         item.is_payment_completed ? (
@@ -662,10 +677,10 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                           {item.is_payment_completed ? '구매완료' : '구매대기'}
                         </span>
                       )}
-                    </TableCell>
+                    </td>
                   )}
                   {(activeTab === 'receipt' || activeTab === 'done') && (
-                    <TableCell>
+                    <td className="px-3 py-2 align-top min-w-[110px]">
                       {/* 입고현황 탭에서는 실제 입고 날짜 기능 사용 */}
                       {activeTab === 'receipt' ? (
                         canReceiptCheck ? (
@@ -728,10 +743,10 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                           {actualReceivedAction.isCompleted(item) ? actualReceivedAction.config.completedText : actualReceivedAction.config.waitingText}
                         </span>
                       )}
-                    </TableCell>
+                    </td>
                   )}
                   {activeTab === 'receipt' && (
-                    <TableCell className="text-center">
+                    <td className="px-3 py-2 text-center align-top min-w-[130px]">
                       {actualReceivedAction.getCompletedDate(item) ? (
                         <span className="modal-subtitle text-green-600">
                           {format(new Date(actualReceivedAction.getCompletedDate(item)), 'yyyy-MM-dd HH:mm')}
@@ -739,11 +754,11 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                       ) : (
                         <span className="modal-subtitle">-</span>
                       )}
-                    </TableCell>
+                    </td>
                   )}
                   {activeTab === 'done' && (
                     <>
-                      <TableCell className="text-center">
+                      <td className="px-3 py-2 text-center align-top min-w-[130px]">
                         {canReceiptCheck ? (
                           statementReceivedAction.isCompleted(item) ? (
                             <button
@@ -794,8 +809,8 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                             {statementReceivedAction.isCompleted(item) ? statementReceivedAction.config.completedText : statementReceivedAction.config.waitingText}
                           </span>
                         )}
-                      </TableCell>
-                      <TableCell className="text-center">
+                      </td>
+                      <td className="px-3 py-2 text-center align-top min-w-[130px]">
                         {statementReceivedAction.getCompletedDate(item) ? (
                           <span className="modal-subtitle">
                             {format(new Date(statementReceivedAction.getCompletedDate(item)), 'yyyy-MM-dd')}
@@ -803,8 +818,8 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                         ) : (
                           <span className="modal-subtitle">-</span>
                         )}
-                      </TableCell>
-                      <TableCell className="text-center">
+                      </td>
+                      <td className="px-3 py-2 text-center align-top min-w-[90px]">
                         {statementReceivedAction.getCompletedByName(item) ? (
                           <span className="modal-subtitle">
                             {statementReceivedAction.getCompletedByName(item)}
@@ -812,27 +827,27 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                         ) : (
                           <span className="modal-subtitle">-</span>
                         )}
-                      </TableCell>
+                      </td>
                     </>
                   )}
-                  <TableCell>
+                  <td className="px-3 py-2 align-top min-w-[110px]">
                     {isEditing ? (
                       <Input
                         value={item.remark || ''}
                         onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
-                        className="h-7 modal-label"
+                        className="h-7 modal-label w-full"
                         placeholder="비고"
                       />
                     ) : (
-                      <div className="sm:max-w-[150px]">
+                      <div className="max-w-[150px]">
                         <span className="modal-subtitle truncate block" title={item.remark}>
                           {item.remark || '-'}
                         </span>
                       </div>
                     )}
-                  </TableCell>
+                  </td>
                   {isEditing && (
-                    <TableCell>
+                    <td className="px-3 py-2 align-top min-w-[90px]">
                       <Button
                         variant="ghost"
                         size="icon"
@@ -841,12 +856,14 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
-                    </TableCell>
+                    </td>
                   )}
-                </TableRow>
+                </tr>
               ))}
-            </TableBody>
-            </Table>
+              </tbody>
+            </table>
+              </div>
+            </div>
           </div>
         </div>
         
