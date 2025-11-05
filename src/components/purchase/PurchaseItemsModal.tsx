@@ -1,6 +1,6 @@
 
-import { useState, useCallback } from "react";
-import { X, Edit2, Save, Trash2 } from "lucide-react";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import { X, Edit2, Save, Trash2, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -64,7 +64,48 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
   const [editingItems, setEditingItems] = useState<PurchaseItem[]>(purchase.items || []);
   const [isEditing, setIsEditing] = useState(false);
   const [currentUserName, setCurrentUserName] = useState<string>('');
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const supabase = createClient();
+
+  // 화면 크기 감지
+  useEffect(() => {
+    const updateViewportSize = () => {
+      setViewportSize({
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    };
+
+    // 초기값 설정
+    updateViewportSize();
+
+    // 리사이즈 이벤트 리스너 등록
+    window.addEventListener('resize', updateViewportSize);
+    
+    return () => {
+      window.removeEventListener('resize', updateViewportSize);
+    };
+  }, []);
+
+  // 테이블 컨테이너의 동적 최대 너비 계산
+  const tableMaxWidth = useMemo(() => {
+    const { width } = viewportSize;
+    
+    if (width === 0) return '800px'; // 초기값
+    
+    // 모달 패딩과 여백을 고려한 가용 너비 계산
+    // 모달 좌우 패딩: 24px (sm:p-6), 브라우저 여백: 20px, 안전 여백: 40px
+    const modalPadding = 48; // 좌우 패딩
+    const browserMargin = 20; // 브라우저 여백
+    const safetyMargin = 40; // 안전 여백
+    const availableWidth = width - modalPadding - browserMargin - safetyMargin;
+    
+    // 최소 너비 보장 (800px) 및 최대 너비 제한
+    const minWidth = 800;
+    const maxWidth = Math.max(minWidth, Math.min(availableWidth, width * 0.95));
+    
+    return `${maxWidth}px`;
+  }, [viewportSize]);
   
   // 사용자 정보 및 최신 데이터 로드
   useEffect(() => {
@@ -119,6 +160,14 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
     canReceiptCheck,
     purchaseRequesterName: purchase?.requester_name,
     activeTab
+  })
+
+  // 반응형 디버깅 정보
+  logger.debug('📱 PurchaseItemsModal 반응형 정보', {
+    viewportWidth: viewportSize.width,
+    viewportHeight: viewportSize.height,
+    tableMaxWidth,
+    modalWidth: `min(98vw, ${tableMaxWidth})`
   })
 
   // 모달 내부 데이터만 새로고침하는 함수 (모달 닫지 않음)
@@ -339,7 +388,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-full max-w-[98vw] max-h-[90vh] overflow-hidden flex flex-col bg-white p-3 sm:p-6">
+      <DialogContent className="w-full max-w-[98vw] max-h-[90vh] overflow-hidden flex flex-col bg-white p-3 sm:p-6" style={{ width: `min(98vw, ${tableMaxWidth})` }}>
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <DialogTitle className="modal-title">
@@ -419,9 +468,10 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
           </div>
         </div>
         
-        <div className="flex-1 overflow-auto">
-          <div className="min-w-[800px] overflow-x-auto">
-          <Table>
+        <div className="flex-1 overflow-hidden">
+          <div className="h-full overflow-auto">
+            <div className="min-w-[800px]" style={{ width: '100%' }}>
+              <Table>
             <TableHeader className="sticky top-0 bg-white z-10">
               <TableRow>
                 <TableHead className="w-12">No.</TableHead>
@@ -797,7 +847,8 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
+              </Table>
+            </div>
           </div>
         </div>
         
