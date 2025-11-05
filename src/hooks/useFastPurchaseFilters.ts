@@ -33,6 +33,9 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
   const isLeadBuyer = currentUserRoles?.includes('raw_material_manager') || 
                       currentUserRoles?.includes('consumable_manager') || 
                       currentUserRoles?.includes('purchase_manager');
+                      
+  // HR 권한 체크 추가
+  const isHr = currentUserRoles?.includes('hr');
 
   // hanslwebapp과 동일한 로직 - roleCase 계산 (lead buyer 추가)
   const roleCase = useMemo(() => {
@@ -42,14 +45,22 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     return 1;
   }, [currentUserRoles, isPurchaseManager]);
   
-  // 탭별 기본 직원 필터 계산 (구매현황은 lead buyer와 app_admin만 전체 보기)
+  // 탭별 기본 직원 필터 계산 (구매현황, 입고현황은 lead buyer, HR, app_admin만 전체 보기)
   const computeDefaultEmployee = useCallback(
     (tabKey: string): string => {
       if (!currentUserName) return 'all';
       
-      // 구매현황 탭은 lead buyer와 app_admin만 전체 보기
+      // 구매현황 탭은 lead buyer, HR, app_admin만 전체 보기
       if (tabKey === 'purchase') {
-        if (isLeadBuyer || isAdmin) {
+        if (isLeadBuyer || isHr || isAdmin) {
+          return 'all';
+        }
+        return currentUserName;
+      }
+      
+      // 입고현황 탭은 lead buyer, HR, app_admin만 전체 보기
+      if (tabKey === 'receipt') {
+        if (isLeadBuyer || isHr || isAdmin) {
           return 'all';
         }
         return currentUserName;
@@ -68,7 +79,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
           return currentUserName;
       }
     },
-    [currentUserName, roleCase, isLeadBuyer, isAdmin]
+    [currentUserName, roleCase, isLeadBuyer, isHr, isAdmin]
   );
   
   // 탭 변경 또는 사용자/역할 로딩 시 기본값 설정 (hanslwebapp과 동일)
@@ -307,7 +318,16 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     const getFilteredDataForTab = (tabKey: string) => {
       // 구매현황 탭은 특별 처리
       if (tabKey === 'purchase') {
-        if (isLeadBuyer || isAdmin) {
+        if (isLeadBuyer || isHr || isAdmin) {
+          return countPurchases;
+        } else {
+          return countPurchases.filter((p: Purchase) => p.requester_name === currentUserName);
+        }
+      }
+      
+      // 입고현황 탭은 특별 처리
+      if (tabKey === 'receipt') {
+        if (isLeadBuyer || isHr || isAdmin) {
           return countPurchases;
         } else {
           return countPurchases.filter((p: Purchase) => p.requester_name === currentUserName);
@@ -396,7 +416,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     };
     
     return counts;
-  }, [visiblePurchases, roleCase, currentUserName, computeDefaultEmployee, isLeadBuyer, isAdmin]);
+  }, [visiblePurchases, roleCase, currentUserName, computeDefaultEmployee, isLeadBuyer, isHr, isAdmin]);
 
 
   return {

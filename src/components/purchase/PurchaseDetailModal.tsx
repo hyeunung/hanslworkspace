@@ -3,8 +3,6 @@ import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails, Purchase } from '@/types/purchase'
 import { formatDate } from '@/utils/helpers'
 import { DatePickerPopover } from '@/components/ui/date-picker-popover'
-import { DatePicker } from '@/components/ui/datepicker'
-import { DatePickerDialog } from '@/components/ui/date-picker-dialog'
 import { 
   Calendar, 
   User, 
@@ -30,6 +28,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { useConfirmDateAction } from '@/hooks/useConfirmDateAction'
+import { format as formatDateInput } from 'date-fns'
 
 interface PurchaseDetailModalProps {
   purchaseId: number | null
@@ -65,10 +64,6 @@ export default function PurchaseDetailModal({
   const [columnWidths, setColumnWidths] = useState<number[]>([])
   const headerRowRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
-  
-  // 날짜 다이얼로그 상태
-  const [showDeliveryDateDialog, setShowDeliveryDateDialog] = useState(false)
-  const [showRevisedDateDialog, setShowRevisedDateDialog] = useState(false)
   
   // 사용자 권한 및 이름 직접 로드
   useEffect(() => {
@@ -345,20 +340,6 @@ export default function PurchaseDetailModal({
   })
   
   // 날짜 선택 핸들러들
-  const handleDeliveryDateSelect = (date: Date) => {
-    setEditedPurchase(prev => prev ? { 
-      ...prev, 
-      delivery_request_date: date.toISOString().split('T')[0] 
-    } : null)
-  }
-  
-  const handleRevisedDateSelect = (date: Date) => {
-    setEditedPurchase(prev => prev ? { 
-      ...prev, 
-      revised_delivery_request_date: date.toISOString().split('T')[0] 
-    } : null)
-  }
-  
   // 권한 디버깅 로그
   console.log('🔐 권한 체크:', {
     currentUserName,
@@ -1509,17 +1490,28 @@ export default function PurchaseDetailModal({
                     <div className="w-32">
                       <span className="modal-label">입고 요청일</span>
                       {isEditing ? (
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowDeliveryDateDialog(true)}
-                          className="mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] justify-start text-left font-normal business-radius-input"
+                        <DatePickerPopover
+                          onDateSelect={(date) => {
+                            setEditedPurchase(prev => prev ? {
+                              ...prev,
+                              delivery_request_date: formatDateInput(date, 'yyyy-MM-dd')
+                            } : null)
+                          }}
+                          placeholder="입고 요청일을 선택하세요"
+                          align="start"
+                          side="bottom"
                         >
-                          <Calendar className="mr-1 h-3 w-3" />
-                          {editedPurchase?.delivery_request_date ? 
-                            formatDate(editedPurchase.delivery_request_date) : 
-                            '날짜 선택'
-                          }
-                        </Button>
+                          <Button
+                            variant="outline"
+                            className="mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] justify-start text-left font-normal business-radius-input"
+                          >
+                            <Calendar className="mr-1 h-3 w-3" />
+                            {editedPurchase?.delivery_request_date ? 
+                              formatDate(editedPurchase.delivery_request_date) : 
+                              '날짜 선택'
+                            }
+                          </Button>
+                        </DatePickerPopover>
                       ) : (
                         <p className="modal-subtitle">{formatDate(purchase.delivery_request_date)}</p>
                       )}
@@ -1527,17 +1519,28 @@ export default function PurchaseDetailModal({
                     <div className="w-32">
                       <span className="modal-label text-orange-500">변경 입고일</span>
                       {isEditing ? (
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowRevisedDateDialog(true)}
-                          className="mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] justify-start text-left font-normal business-radius-input"
+                        <DatePickerPopover
+                          onDateSelect={(date) => {
+                            setEditedPurchase(prev => prev ? {
+                              ...prev,
+                              revised_delivery_request_date: formatDateInput(date, 'yyyy-MM-dd')
+                            } : null)
+                          }}
+                          placeholder="변경 입고일을 선택하세요"
+                          align="start"
+                          side="bottom"
                         >
-                          <Calendar className="mr-1 h-3 w-3" />
-                          {editedPurchase?.revised_delivery_request_date ? 
-                            formatDate(editedPurchase.revised_delivery_request_date) : 
-                            '날짜 선택'
-                          }
-                        </Button>
+                          <Button
+                            variant="outline"
+                            className="mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] justify-start text-left font-normal business-radius-input"
+                          >
+                            <Calendar className="mr-1 h-3 w-3" />
+                            {editedPurchase?.revised_delivery_request_date ? 
+                              formatDate(editedPurchase.revised_delivery_request_date) : 
+                              '날짜 선택'
+                            }
+                          </Button>
+                        </DatePickerPopover>
                       ) : (
                         <p className="modal-subtitle text-orange-700">
                           {purchase.revised_delivery_request_date ? formatDate(purchase.revised_delivery_request_date) : '미설정'}
@@ -2538,26 +2541,6 @@ export default function PurchaseDetailModal({
           {content}
         </div>
       </DialogContent>
-      
-      {/* 입고 요청일 날짜 선택 다이얼로그 */}
-      <DatePickerDialog
-        isOpen={showDeliveryDateDialog}
-        onClose={() => setShowDeliveryDateDialog(false)}
-        onDateSelect={handleDeliveryDateSelect}
-        title="입고 요청일 선택"
-        description="입고 요청 날짜를 선택해주세요"
-        defaultDate={editedPurchase?.delivery_request_date ? new Date(editedPurchase.delivery_request_date) : new Date()}
-      />
-      
-      {/* 변경 입고일 날짜 선택 다이얼로그 */}
-      <DatePickerDialog
-        isOpen={showRevisedDateDialog}
-        onClose={() => setShowRevisedDateDialog(false)}
-        onDateSelect={handleRevisedDateSelect}
-        title="변경 입고일 선택"
-        description="변경된 입고 요청 날짜를 선택해주세요"
-        defaultDate={editedPurchase?.revised_delivery_request_date ? new Date(editedPurchase.revised_delivery_request_date) : new Date()}
-      />
       
     </Dialog>
   )
