@@ -431,9 +431,11 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>
         {formatDateShort(purchase.delivery_request_date)}
       </td>
-      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>
-        {formatDateShort(purchase.revised_delivery_request_date)}
-      </td>
+      {(activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
+        <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>
+          {formatDateShort(purchase.revised_delivery_request_date)}
+        </td>
+      )}
       <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.itemName}`}>
         <span className="block truncate" title={purchase.item_name || ''}>
           {purchase.item_name || '-'}
@@ -502,11 +504,13 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
               <span className="text-gray-400">-</span>
             )}
           </td>
-          <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>
-            <span className="block truncate" title={purchase.vendor_payment_schedule || ''}>
-              {purchase.vendor_payment_schedule || '-'}
-            </span>
-          </td>
+          {activeTab !== 'receipt' && (
+            <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>
+              <span className="block truncate" title={purchase.vendor_payment_schedule || ''}>
+                {purchase.vendor_payment_schedule || '-'}
+              </span>
+            </td>
+          )}
         </>
       )}
       
@@ -530,11 +534,6 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
           <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>
             <span className="block truncate" title={purchase.sales_order_number || ''}>
               {purchase.sales_order_number || '-'}
-            </span>
-          </td>
-          <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>
-            <span className="block truncate" title={purchase.vendor_payment_schedule || ''}>
-              {purchase.vendor_payment_schedule || '-'}
             </span>
           </td>
         </>
@@ -602,11 +601,20 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
             </div>
           </td>
           <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.paymentStatus}`}>
-            {purchase.is_payment_completed ? (
-              <Badge variant={null} className="badge-success">완료</Badge>
-            ) : (
-              <Badge variant={null} className="badge-secondary">대기</Badge>
-            )}
+            <div className="flex items-center justify-center gap-1">
+              <div className="bg-gray-200 rounded-full h-1.5 w-8">
+                <div 
+                  className={`h-1.5 rounded-full ${
+                    paymentProgress.percentage === 100 ? 'bg-blue-500' : 
+                    paymentProgress.percentage > 0 ? 'bg-blue-400' : 'bg-gray-300'
+                  }`}
+                  style={{ width: `${paymentProgress.percentage}%` }}
+                />
+              </div>
+              <span className="card-title text-gray-600">
+                {paymentProgress.percentage}%
+              </span>
+            </div>
           </td>
         </>
       )}
@@ -945,7 +953,6 @@ const FastPurchaseTable = memo(({
             <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
             <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
             <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>변경 입고일</th>
             <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.itemName}`}>품명</th>
             <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
             <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
@@ -971,7 +978,9 @@ const FastPurchaseTable = memo(({
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
-        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>변경 입고일</th>
+        {(activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
+          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>변경 입고일</th>
+        )}
         <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.itemName}`}>품명</th>
         <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
@@ -997,7 +1006,6 @@ const FastPurchaseTable = memo(({
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>지출예정일</th>
         </>
       );
     } else {
@@ -1012,7 +1020,7 @@ const FastPurchaseTable = memo(({
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>지출예정일</th>
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.status}`}>구매진행</th>
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receipt}`}>입고진행</th>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentStatus}`}>결제</th>
+          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentStatus}`}>구매진행률</th>
         </>
       );
     }
