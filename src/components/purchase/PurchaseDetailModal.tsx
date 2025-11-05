@@ -587,15 +587,22 @@ export default function PurchaseDetailModal({
       if (error) throw error
 
       if (data) {
+        // 라인넘버 순서대로 정렬
+        const sortedItems = (data.purchase_request_items || []).sort((a: any, b: any) => {
+          const lineA = a.line_number || 999999;
+          const lineB = b.line_number || 999999;
+          return lineA - lineB;
+        });
+
         const purchaseData = {
           ...data,
-          items: data.purchase_request_items || [],
+          items: sortedItems,
           vendor: data.vendors || { id: 0, vendor_name: '알 수 없음' },
           vendor_contacts: []
         } as PurchaseRequestWithDetails
         setPurchase(purchaseData)
         setEditedPurchase(purchaseData)
-        setEditedItems(purchaseData.items || [])
+        setEditedItems(sortedItems)
       }
     } catch (error) {
       toast.error('발주 상세 정보를 불러오는데 실패했습니다.')
@@ -799,6 +806,12 @@ export default function PurchaseDetailModal({
   }
 
   const handleAddItem = () => {
+    // 현재 최대 라인넘버 찾기
+    const maxLineNumber = editedItems.reduce((max, item) => {
+      const lineNum = item.line_number || 0;
+      return lineNum > max ? lineNum : max;
+    }, 0);
+
     const newItem = {
       item_name: '',
       specification: '',
@@ -806,9 +819,17 @@ export default function PurchaseDetailModal({
       unit_price_value: 0,
       amount_value: 0,
       remark: '',
-      line_number: editedItems.length + 1
+      line_number: maxLineNumber + 1
     }
-    setEditedItems([...editedItems, newItem])
+    
+    // 새 아이템 추가 후 라인넘버 순서대로 정렬
+    const newItems = [...editedItems, newItem].sort((a, b) => {
+      const lineA = a.line_number || 999999;
+      const lineB = b.line_number || 999999;
+      return lineA - lineB;
+    });
+    
+    setEditedItems(newItems)
   }
 
   const handleRemoveItem = (index: number) => {
@@ -816,7 +837,11 @@ export default function PurchaseDetailModal({
     if (item.id) {
       setDeletedItemIds([...deletedItemIds, item.id])
     }
-    const newItems = editedItems.filter((_, i) => i !== index)
+    const newItems = editedItems.filter((_, i) => i !== index).sort((a, b) => {
+      const lineA = a.line_number || 999999;
+      const lineB = b.line_number || 999999;
+      return lineA - lineB;
+    });
     setEditedItems(newItems)
   }
 

@@ -217,8 +217,14 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
 
   // 새 품목 추가
   const handleAddItem = () => {
+    // 현재 최대 라인넘버 찾기
+    const maxLineNumber = editingItems.reduce((max, item) => {
+      const lineNum = item.line_number || 0;
+      return lineNum > max ? lineNum : max;
+    }, 0);
+
     const newItem: PurchaseItem = {
-      line_number: editingItems.length + 1,
+      line_number: maxLineNumber + 1,
       item_name: '',
       specification: '',
       quantity: 1,
@@ -227,15 +233,23 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
       remark: '',
       is_received: false
     };
-    setEditingItems([...editingItems, newItem]);
+    
+    // 새 아이템 추가 후 라인넘버 순서대로 정렬
+    const newItems = [...editingItems, newItem].sort((a, b) => {
+      const lineA = a.line_number || 999999;
+      const lineB = b.line_number || 999999;
+      return lineA - lineB;
+    });
+    
+    setEditingItems(newItems);
   };
 
   // 품목 삭제
   const handleDeleteItem = (index: number) => {
-    const newItems = editingItems.filter((_, i) => i !== index);
-    // line_number 재정렬
-    newItems.forEach((item, i) => {
-      item.line_number = i + 1;
+    const newItems = editingItems.filter((_, i) => i !== index).sort((a, b) => {
+      const lineA = a.line_number || 999999;
+      const lineB = b.line_number || 999999;
+      return lineA - lineB;
     });
     setEditingItems(newItems);
   };
