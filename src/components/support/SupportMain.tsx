@@ -229,14 +229,32 @@ ${purchaseInfo}`;
   }
 
   // 문의 상태 업데이트 (관리자용)
-  const handleStatusUpdate = async (inquiryId: number, newStatus: 'in_progress' | 'resolved' | 'closed') => {
-    const result = await supportService.updateInquiryStatus(inquiryId, newStatus)
-    
-    if (result.success) {
-      toast.success('상태가 업데이트되었습니다.')
-      loadInquiries()
+  const handleStatusUpdate = async (inquiryId: number, newStatus: 'in_progress' | 'resolved' | 'closed', resolutionNote?: string) => {
+    // resolved 상태로 변경 시 답변 내용 확인
+    if (newStatus === 'resolved') {
+      const note = resolutionNote || prompt('처리 완료 답변을 입력해주세요:')
+      if (!note || note.trim() === '') {
+        toast.error('답변 내용을 입력해야 완료 처리할 수 있습니다.')
+        return
+      }
+      
+      const result = await supportService.updateInquiryStatus(inquiryId, newStatus, note.trim())
+      
+      if (result.success) {
+        toast.success('문의가 완료 처리되었습니다.')
+        loadInquiries()
+      } else {
+        toast.error(result.error || '완료 처리 실패')
+      }
     } else {
-      toast.error(result.error || '상태 업데이트 실패')
+      const result = await supportService.updateInquiryStatus(inquiryId, newStatus)
+      
+      if (result.success) {
+        toast.success('상태가 업데이트되었습니다.')
+        loadInquiries()
+      } else {
+        toast.error(result.error || '상태 업데이트 실패')
+      }
     }
   }
 
