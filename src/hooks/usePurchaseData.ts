@@ -255,20 +255,23 @@ export const usePurchaseData = () => {
         throw error;
       }
 
-      // 필요시에만 employees와 vendors 데이터 조회 (캐시된 데이터 우선 사용)
+      // 필요시에만 employees와 vendors, vendor_contacts 데이터 조회 (캐시된 데이터 우선 사용)
       let employeeList: any[] = [];
       let vendorList: any[] = [];
+      let contactList: any[] = [];
       
       // 데이터 변환에서 필요한 경우에만 조회
       if (data && data.length > 0) {
         // 병렬로 조회하여 성능 개선 (쿼리 필드명 수정)
-        const [employeesResult, vendorsResult] = await Promise.all([
+        const [employeesResult, vendorsResult, contactsResult] = await Promise.all([
           supabase.from('employees').select('id, name, email'),
-          supabase.from('vendors').select('id, vendor_name, vendor_payment_schedule')
+          supabase.from('vendors').select('id, vendor_name, vendor_payment_schedule'),
+          supabase.from('vendor_contacts').select('id, contact_name')
         ]);
         
         employeeList = employeesResult.data || [];
         vendorList = vendorsResult.data || [];
+        contactList = contactsResult.data || [];
       }
 
       
@@ -286,6 +289,9 @@ export const usePurchaseData = () => {
         
         // vendor_id로 vendor 찾기
         const vendorInfo = vendorList.find(vendor => vendor.id === request.vendor_id);
+        
+        // contact_id로 담당자 찾기
+        const contactInfo = contactList.find(contact => contact.id === request.contact_id);
         
         return {
           id: Number(request.id),
@@ -316,7 +322,7 @@ export const usePurchaseData = () => {
           sales_order_number: request.sales_order_number as string,
           project_item: request.project_item as string,
           line_number: Number(firstItem.line_number) || 1,
-          contact_name: '', // vendor_contacts JOIN 없으므로 빈값
+          contact_name: contactInfo?.contact_name || '', // contact_id로 담당자 정보 조회
           middle_manager_status: request.middle_manager_status,
           final_manager_status: request.final_manager_status,
           is_received: !!request.is_received,

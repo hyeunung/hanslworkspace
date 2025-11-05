@@ -339,7 +339,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-full max-w-[95vw] sm:max-w-6xl max-h-[80vh] overflow-hidden flex flex-col bg-white">
+      <DialogContent className="w-full max-w-[98vw] max-h-[90vh] overflow-hidden flex flex-col bg-white p-3 sm:p-6">
         <DialogHeader className="flex-shrink-0">
           <div className="flex items-center justify-between">
             <DialogTitle className="modal-title">
@@ -420,6 +420,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
         </div>
         
         <div className="flex-1 overflow-auto">
+          <div className="min-w-[800px] overflow-x-auto">
           <Table>
             <TableHeader className="sticky top-0 bg-white z-10">
               <TableRow>
@@ -797,6 +798,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
               ))}
             </TableBody>
           </Table>
+          </div>
         </div>
         
         <div className="flex-shrink-0 border-t pt-4 flex justify-between items-center">
