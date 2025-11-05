@@ -107,20 +107,6 @@ export default function DashboardMain() {
       try {
         const dashboardData = await dashboardService.getDashboardData(employee)
         
-        // 대시보드 데이터 로딩 완료 로깅
-        logger.debug('대시보드 데이터 로딩 완료', {
-          employeeName: employee.name,
-          employeeEmail: employee.email,
-          purchaseRole: employee.purchase_role,
-          pendingApprovalsCount: dashboardData.pendingApprovals?.length || 0,
-          pendingApprovals: dashboardData.pendingApprovals?.map(item => ({
-            id: item.id,
-            purchase_order_number: item.purchase_order_number,
-            middle_manager_status: item.middle_manager_status,
-            final_manager_status: item.final_manager_status,
-            vendor_name: item.vendor_name
-          })) || []
-        })
         
         // 전체 입고대기 건수 조회 추가
         const _totalDeliveryWaiting = await dashboardService.getTotalDeliveryWaitingCount()
@@ -161,13 +147,6 @@ export default function DashboardMain() {
   }, [loadDashboardData])
 
   const handleQuickApprove = async (requestId: string) => {
-    logger.debug('빠른 승인 처리 시작', {
-      requestId: requestId,
-      hasData: !!data,
-      hasEmployee: !!data?.employee,
-      employee: data?.employee
-    })
-    
     if (!data?.employee) {
       toast.error('사용자 정보를 찾을 수 없습니다.')
       return

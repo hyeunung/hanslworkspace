@@ -1,6 +1,14 @@
 import { createBrowserClient } from '@supabase/ssr'
 
+// 싱글톤 패턴으로 클라이언트 중복 생성 방지
+let supabaseClient: ReturnType<typeof createBrowserClient> | null = null
+
 export function createClient() {
+  // 이미 생성된 클라이언트가 있으면 재사용
+  if (supabaseClient) {
+    return supabaseClient
+  }
+
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
   const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
@@ -35,8 +43,11 @@ export function createClient() {
     }
     
     // Return a dummy client to prevent crashes
-    return createBrowserClient('https://placeholder.supabase.co', 'placeholder-key')
+    supabaseClient = createBrowserClient('https://placeholder.supabase.co', 'placeholder-key')
+    return supabaseClient
   }
 
-  return createBrowserClient(supabaseUrl, supabaseAnonKey)
+  // 정상적인 클라이언트 생성 및 캐싱
+  supabaseClient = createBrowserClient(supabaseUrl, supabaseAnonKey)
+  return supabaseClient
 }

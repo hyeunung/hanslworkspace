@@ -144,15 +144,6 @@ export const usePurchaseData = () => {
         }
         
         // 캐시가 없거나 만료된 경우 새로 로드
-        // Supabase 환경 변수 확인
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-        
-        if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder')) {
-          logger.warn('Supabase 환경 변수가 설정되지 않음 - 초기 데이터 로딩 중단');
-          return;
-        }
-
         const userResult = await supabase.auth.getUser();
 
         // 사용자 권한 및 이름 로드
@@ -237,18 +228,6 @@ export const usePurchaseData = () => {
         }
       }
       
-      // Supabase 환경 변수 확인
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      
-      if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder')) {
-        logger.warn('Supabase 환경 변수가 설정되지 않음');
-        if (showSpinner) {
-          setLoading(false);
-        }
-        return;
-      }
-
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError || !user) {
@@ -282,9 +261,9 @@ export const usePurchaseData = () => {
       
       // 데이터 변환에서 필요한 경우에만 조회
       if (data && data.length > 0) {
-        // 병렬로 조회하여 성능 개선
+        // 병렬로 조회하여 성능 개선 (쿼리 필드명 수정)
         const [employeesResult, vendorsResult] = await Promise.all([
-          supabase.from('employees').select('id, name, full_name, email'),
+          supabase.from('employees').select('id, name, email'),
           supabase.from('vendors').select('id, vendor_name, vendor_payment_schedule')
         ]);
         
@@ -326,7 +305,7 @@ export const usePurchaseData = () => {
           vendor_contacts: [], // vendors JOIN 없으므로 빈배열
           requester_id: request.requester_id as string,
           requester_name: request.requester_name as string,
-          requester_full_name: requesterEmployee?.full_name || requesterEmployee?.name || request.requester_name || '',
+          requester_full_name: requesterEmployee?.name || request.requester_name || '',
           item_name: firstItem.item_name as string || '',
           specification: firstItem.specification as string || '',
           quantity: Number(firstItem.quantity) || 0,

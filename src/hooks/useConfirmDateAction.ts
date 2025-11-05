@@ -58,18 +58,6 @@ export function useConfirmDateAction({
       remark?: string
     }
   ) => {
-    console.log(`🔍 ${config.field} 확인 시작`, { 
-      itemId, 
-      selectedDate, 
-      canPerformAction, 
-      currentUserName 
-    })
-    logger.debug(`🔍 ${config.field} 확인 시작`, { 
-      itemId, 
-      selectedDate, 
-      canPerformAction, 
-      currentUserName 
-    })
     
     if (!canPerformAction) {
       console.log(`❌ 권한 없음`, { canPerformAction, currentUserName })
@@ -80,13 +68,6 @@ export function useConfirmDateAction({
 
     const itemIdStr = String(itemId)
     const numericId = typeof itemId === 'number' ? itemId : Number(itemId)
-    
-    logger.debug('🔢 ID 변환 확인', { 
-      originalItemId: itemId, 
-      itemIdStr, 
-      numericId,
-      itemIdType: typeof itemId 
-    })
 
     if (Number.isNaN(numericId)) {
       logger.error('❌ 잘못된 ID', { itemId, numericId })
@@ -109,11 +90,6 @@ ${config.confirmMessage.confirm}`
         return
       }
     }
-
-    logger.debug('📝 데이터베이스 업데이트 시작', { 
-      numericId, 
-      selectedDate: selectedDate.toISOString() 
-    })
 
     try {
       let updateData: any
@@ -160,7 +136,6 @@ ${config.confirmMessage.confirm}`
 
       // 강제 새로고침을 위해 onUpdate 호출
       if (onUpdate) {
-        logger.debug('🔄 부모 컴포넌트 새로고침 호출')
         onUpdate()
       }
       
@@ -217,10 +192,6 @@ ${config.confirmMessage.cancel}`
         itemId, 
         itemName: itemInfo?.item_name 
       })
-      logger.debug(`🔄 ${config.field} 확인 취소 시작`, { 
-        itemId, 
-        itemName: itemInfo?.item_name 
-      })
 
       let updateData: any
 
@@ -265,7 +236,6 @@ ${config.confirmMessage.cancel}`
 
       // 강제 새로고침을 위해 onUpdate 호출
       if (onUpdate) {
-        logger.debug(`🔄 부모 컴포넌트 새로고침 호출 (취소)`)
         onUpdate()
       }
       
