@@ -72,6 +72,7 @@ const COMMON_COLUMN_CLASSES = {
   
   // 모든 탭 공통 컬럼들 (고정 너비)
   purchaseOrderNumber: "pl-2 w-38 min-w-[155px] max-w-[155px]",      // 발주번호 + 품목갯수 + 엑셀아이콘
+  purchaseOrderNumberCompact: "pl-2 w-36 min-w-[140px] max-w-[140px]", // 구매현황 탭용 (추가 컬럼 보상)
   paymentCategory: "text-center w-20 min-w-[85px] max-w-[85px]",
   requesterName: "w-16 min-w-[68px] max-w-[68px]",
   requestDate: "w-20 min-w-[85px] max-w-[85px]",
@@ -351,7 +352,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
           </div>
         </td>
       )}
-      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>
+      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${activeTab === 'purchase' ? COMMON_COLUMN_CLASSES.purchaseOrderNumberCompact : COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>
         <div className="flex items-center gap-1">
           {/* 엑셀 다운로드 아이콘 - 항상 표시, 조건에 따라 활성화/비활성화 */}
           {onExcelDownload && (
@@ -961,7 +962,7 @@ const FastPurchaseTable = memo(({
     
     const baseHeaders = (
       <>
-        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
+        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${activeTab === 'purchase' ? COMMON_COLUMN_CLASSES.purchaseOrderNumberCompact : COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
         {(activeTab === 'purchase' || activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
         )}
