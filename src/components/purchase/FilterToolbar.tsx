@@ -1174,20 +1174,6 @@ export default function FilterToolbar({
                   className="w-64 business-radius-input button-base border border-gray-300 bg-white text-gray-700"
                 />
                 <Button
-                  onClick={() => {
-                    onSearchChange('')
-                    onFiltersChange([])
-                    onSortChange({
-                      field: 'created_at',
-                      direction: 'desc',
-                      label: '생성일'
-                    })
-                  }}
-                  className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                >
-                  초기화
-                </Button>
-                <Button
                   variant="ghost"
                   onClick={() => {
                     setIsSearchExpanded(false)
@@ -1200,6 +1186,23 @@ export default function FilterToolbar({
               </div>
             )}
           </div>
+
+          {/* 전체 초기화 버튼 */}
+          <Button
+            onClick={() => {
+              onSearchChange('')
+              onFiltersChange([])
+              onSortChange({
+                field: 'created_at',
+                direction: 'desc',
+                label: '생성일'
+              })
+              setIsSearchExpanded(false)
+            }}
+            className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+          >
+            초기화
+          </Button>
         </div>
       </div>
 
