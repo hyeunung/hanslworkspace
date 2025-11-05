@@ -69,6 +69,15 @@ export default function PurchaseDetailModal({
   useEffect(() => {
     const loadUserRoles = async () => {
       try {
+        // Supabase 환경 변수 확인
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        
+        if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder')) {
+          logger.warn('Supabase 환경 변수가 설정되지 않음 - PurchaseDetailModal');
+          return;
+        }
+
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
           // 먼저 ID로 시도

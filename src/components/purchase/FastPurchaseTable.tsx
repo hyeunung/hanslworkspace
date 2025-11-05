@@ -745,6 +745,16 @@ const FastPurchaseTable = memo(({
     });
 
     try {
+      // Supabase 환경 변수 확인
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder')) {
+        logger.warn('Supabase 환경 변수가 설정되지 않음 - FastPurchaseTable');
+        toast.error("환경 설정 오류가 발생했습니다.");
+        return;
+      }
+
       // 현재 사용자 정보 확인
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
