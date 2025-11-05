@@ -228,7 +228,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         
         // 필터 필드 타입 감지
         const filterFieldType = filter.field === 'date_month' ? 'date_month' : 
-                               filter.field === 'date_range' ? 'date_range' : null;
+                               filter.field === 'date_range' ? 'date_range' : undefined;
         
         const result = applyFilterCondition(fieldValue, filter.condition, filter.value, filterFieldType);
         
@@ -289,7 +289,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       case 'received_at':
         return purchase.received_at;
       case 'created_at':
-        return purchase.created_at;
+        return (purchase as any).created_at;
       case 'statement_received_at':
         return (purchase as any).statement_received_at;
       default:
