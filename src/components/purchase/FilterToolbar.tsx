@@ -9,7 +9,10 @@ import {
   Calendar,
   Check,
   User,
-  Building
+  Building,
+  Package,
+  DollarSign,
+  CheckCircle
 } from 'lucide-react'
 import {
   Popover,
