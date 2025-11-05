@@ -150,14 +150,6 @@ export default function PurchaseDetailModal({
   const isRequester = purchase?.requester_name === currentUserName
   const canReceiptCheck = isAdmin || isRequester
   
-  console.log('🔐 권한 체크 정보:', {
-    currentUserName,
-    effectiveRoles,
-    isAdmin,
-    isRequester,
-    canReceiptCheck,
-    purchaseRequesterName: purchase?.requester_name
-  })
 
   // 모달 내부 데이터만 새로고침하는 함수 (모달 닫지 않음)
   const refreshModalData = useCallback(async () => {
@@ -340,15 +332,6 @@ export default function PurchaseDetailModal({
   })
   
   // 날짜 선택 핸들러들
-  // 권한 디버깅 로그
-  console.log('🔐 권한 체크:', {
-    currentUserName,
-    requesterName: purchase?.requester_name,
-    effectiveRoles,
-    isAdmin,
-    isRequester,
-    canReceiptCheck
-  })
   
   // 디버깅용 로그
   logger.debug('Receipt Check', {
