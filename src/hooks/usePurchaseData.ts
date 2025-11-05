@@ -56,24 +56,10 @@ export interface Purchase {
   purchase_status?: string;
 }
 
-export interface Vendor {
-  id: number;
-  vendor_name: string;
-  vendor_contacts?: any[];
-}
-
-export interface Employee {
-  id: string;
-  name: string;
-  email: string;
-  full_name?: string;
-}
 
 // 향상된 캐시 관리
 const globalCache = {
   purchases: null as Purchase[] | null,
-  vendors: null as Vendor[] | null,
-  employees: null as Employee[] | null,
   lastFetch: 0,
   userInfo: null as any,
   CACHE_DURATION: 5 * 60 * 1000, // 5분 캐싱으로 연장
@@ -85,8 +71,6 @@ const globalCache = {
 // 향상된 캐시 관리 함수들
 export const clearPurchaseCache = () => {
   globalCache.purchases = null;
-  globalCache.vendors = null;
-  globalCache.employees = null;
   globalCache.userInfo = null;
   globalCache.lastFetch = 0;
   globalCache.filteredData.clear();
@@ -107,8 +91,6 @@ export const invalidateFilterCache = (tabKey?: string) => {
 
 export const usePurchaseData = () => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentUserRoles, setCurrentUserRoles] = useState<string[]>([]);
   const [currentUserName, setCurrentUserName] = useState<string>('');
@@ -129,11 +111,8 @@ export const usePurchaseData = () => {
       
       try {
         // 캐시된 데이터가 유효한 경우 사용
-        if (cacheValid && globalCache.vendors && globalCache.employees && globalCache.userInfo) {
+        if (cacheValid && globalCache.userInfo) {
           try {
-            setVendors(globalCache.vendors);
-            setEmployees(globalCache.employees);
-            
             const employeeData = globalCache.userInfo;
             if (employeeData) {
               let roles: string[] = [];
@@ -159,33 +138,13 @@ export const usePurchaseData = () => {
             logger.error('캐시 데이터 사용 중 오류', error);
             // 캐시 초기화
             globalCache.purchases = null;
-            globalCache.vendors = null;
-            globalCache.employees = null;
             globalCache.userInfo = null;
             globalCache.lastFetch = 0;
           }
         }
         
         // 캐시가 없거나 만료된 경우 새로 로드
-        const [vendorResult, employeeResult, userResult] = await Promise.all([
-          supabase.from('vendors').select('*'),
-          supabase.from('employees').select('*'),
-          supabase.auth.getUser()
-        ]);
-
-        if (vendorResult.error) {
-          throw vendorResult.error;
-        }
-        const vendorData = vendorResult.data || [];
-        setVendors(vendorData);
-        globalCache.vendors = vendorData;
-        
-        if (employeeResult.error) {
-          throw employeeResult.error;
-        }
-        const employeeData = employeeResult.data || [];
-        setEmployees(employeeData);
-        globalCache.employees = employeeData;
+        const userResult = await supabase.auth.getUser();
 
         // 사용자 권한 및 이름 로드
         if (userResult.data.user && !userResult.error) {
@@ -216,7 +175,6 @@ export const usePurchaseData = () => {
                   .filter((r: string) => r.length > 0);
               }
             }
-            
             
             setCurrentUserRoles(roles);
             setCurrentUserName(employeeData.name || employeeData.full_name || '');
@@ -270,28 +228,20 @@ export const usePurchaseData = () => {
         }
       }
       
-      // employees 데이터 준비
-      let employeeList = employees;
-      if (employeeList.length === 0) {
-        employeeList = globalCache.employees || [];
-        if (employeeList.length === 0) {
-          const { data: empData } = await supabase
-            .from('employees')
-            .select('*');
-          employeeList = empData || [];
-        }
-      }
+      // 필요시에만 employees와 vendors 데이터 조회 (캐시된 데이터 우선 사용)
+      let employeeList: any[] = [];
+      let vendorList: any[] = [];
       
-      // vendors 데이터 준비
-      let vendorList = vendors;
-      if (vendorList.length === 0) {
-        vendorList = globalCache.vendors || [];
-        if (vendorList.length === 0) {
-          const { data: vendorData } = await supabase
-            .from('vendors')
-            .select('*');
-          vendorList = vendorData || [];
-        }
+      // 데이터 변환에서 필요한 경우에만 조회
+      if (data && data.length > 0) {
+        // 병렬로 조회하여 성능 개선
+        const [employeesResult, vendorsResult] = await Promise.all([
+          supabase.from('employees').select('id, name, full_name, email'),
+          supabase.from('vendors').select('id, vendor_name, vendor_payment_schedule')
+        ]);
+        
+        employeeList = employeesResult.data || [];
+        vendorList = vendorsResult.data || [];
       }
       
       const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -397,7 +347,7 @@ export const usePurchaseData = () => {
         setLoading(false);
       }
     }
-  }, [employees]);
+  }, []);
 
   const updatePurchaseOptimistic = useCallback((purchaseId: number, updater: (prev: Purchase) => Purchase) => {
     setPurchases(prev => {
@@ -413,8 +363,6 @@ export const usePurchaseData = () => {
 
   return {
     purchases,
-    vendors,
-    employees,
     loading,
     currentUserRoles,
     currentUserName,

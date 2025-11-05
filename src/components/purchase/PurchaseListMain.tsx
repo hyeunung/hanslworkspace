@@ -17,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Purchase } from "@/hooks/usePurchaseData";
-import { measureTabSwitch, measureModalLoad, useRenderPerformance } from "@/utils/performance";
 
 interface PurchaseListMainProps {
   onEmailToggle?: () => void;
@@ -37,19 +36,13 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
   const navigate = useNavigate();
   const location = useLocation();
   const supabase = createClient();
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editingData, setEditingData] = useState<any>({});
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   
-  // 성능 모니터링
-  const { measureRender } = useRenderPerformance('PurchaseListMain');
   
   // 발주 데이터 및 사용자 정보
   const {
     purchases,
-    vendors,
-    employees,
     loading,
     currentUserRoles,
     currentUserName,
@@ -113,47 +106,6 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
     return progress_type === '선진행' || progress_type?.trim() === '선진행' || progress_type?.includes('선진행');
   };
 
-  // 편집 시작
-  const handleEditStart = (purchase: Purchase) => {
-    if (!currentUserRoles || !currentUserRoles.includes('app_admin')) return;
-    setEditingId(purchase.id);
-    setEditingData({
-      vendor_name: purchase.vendor_name,
-      project_vendor: purchase.project_vendor,
-      sales_order_number: purchase.sales_order_number,
-      project_item: purchase.project_item,
-      delivery_request_date: purchase.delivery_request_date ? 
-        purchase.delivery_request_date.split('T')[0] : '',
-      total_amount: purchase.total_amount,
-    });
-  };
-
-  // 편집 저장
-  const handleEditSave = async () => {
-    if (!currentUserRoles || !currentUserRoles.includes('app_admin') || !editingId) return;
-    
-    try {
-      const { error } = await supabase
-        .from('purchase_requests')
-        .update(editingData)
-        .eq('id', editingId);
-
-      if (error) throw error;
-
-      toast.success('수정이 완료되었습니다.');
-      setEditingId(null);
-      setEditingData({});
-      await loadPurchases();
-    } catch (error) {
-      toast.error('수정 중 오류가 발생했습니다.');
-    }
-  };
-
-  // 편집 취소
-  const handleEditCancel = () => {
-    setEditingId(null);
-    setEditingData({});
-  };
 
   // 엑셀 다운로드
   const handleExcelDownload = async (purchase: Purchase) => {
@@ -351,10 +303,8 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
   }, [supabase, loadPurchases]);
 
   const handleItemsClick = useCallback((purchase: Purchase) => {
-    measureModalLoad('PurchaseItems', () => {
-      setSelectedPurchase(purchase);
-      setIsModalOpen(true);
-    });
+    setSelectedPurchase(purchase);
+    setIsModalOpen(true);
   }, []);
   
   // 모달 데이터 메모이제이션 - 불필요한 재계산 방지
@@ -394,11 +344,9 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
           {NAV_TABS.map((tab) => (
             <button
               key={tab.key}
-              onClick={() => measureTabSwitch(tab.key, () => {
+              onClick={() => {
                 setActiveTab(tab.key);
-                // 탭 변경 시 조용히 최신 데이터 로드 (silent: true로 로딩 스피너 방지)
-                loadPurchases(false, { silent: true });
-              })}
+              }}
               className={`flex-1 flex items-center justify-center space-x-2 py-1.5 px-3 sm:px-4 business-radius-button button-text font-medium transition-colors ${
                 activeTab === tab.key
                   ? 'text-hansl-600 bg-white shadow-sm border border-gray-200'
