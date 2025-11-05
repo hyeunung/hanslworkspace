@@ -6,13 +6,7 @@ import {
   ArrowUpDown, 
   Search, 
   X, 
-  Plus,
   Calendar,
-  User,
-  Building,
-  Package,
-  DollarSign,
-  CheckCircle,
   Check
 } from 'lucide-react'
 import {
@@ -39,12 +33,15 @@ import {
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 
+// 필터 조건 타입
+type FilterCondition = 'contains' | 'equals' | 'starts_with' | 'ends_with' | 'is_empty' | 'is_not_empty' | 'greater_than' | 'less_than' | 'after' | 'before' | 'not_equals'
+
 // 필터 타입 정의
 export interface FilterRule {
   id: string
   field: string
-  condition: string
-  value: any
+  condition: FilterCondition
+  value: string | number | Date
   label: string
   dateField?: string // 기간별/월별 필터에서 실제 날짜 필드
 }
@@ -203,7 +200,7 @@ const FILTER_FIELDS = [
     key: 'is_payment_completed', 
     label: '구매현황', 
     type: 'select',
-    icon: CheckCircle,
+    icon: Check,
     category: '상태',
     options: ['대기', '완료']
   },
@@ -211,7 +208,7 @@ const FILTER_FIELDS = [
     key: 'is_received', 
     label: '입고현황', 
     type: 'select',
-    icon: CheckCircle,
+    icon: Check,
     category: '상태',
     options: ['대기', '완료']
   },
@@ -219,7 +216,7 @@ const FILTER_FIELDS = [
     key: 'is_statement_received', 
     label: '거래명세서 확인', 
     type: 'select',
-    icon: CheckCircle,
+    icon: Check,
     category: '상태',
     options: ['대기', '완료']
   }

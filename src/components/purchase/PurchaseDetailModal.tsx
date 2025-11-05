@@ -1219,9 +1219,7 @@ export default function PurchaseDetailModal({
 
   // 전체 입고완료 처리 (날짜 선택)
   const handleCompleteAllReceipt = async (selectedDate: Date) => {
-    console.log('🔥 전체 입고완료 처리 시작', { purchase: purchase?.id, canReceiveItems, currentUserName })
     if (!purchase || !canReceiveItems) {
-      console.log('❌ 전체 입고완료 처리 조건 미충족', { purchase: !!purchase, canReceiveItems })
       return
     }
 
@@ -1262,7 +1260,6 @@ export default function PurchaseDetailModal({
         actual_received_date: selectedDate.toISOString()
       }
       
-      console.log('🔥 전체 입고완료 업데이트 데이터:', updateData)
 
       const { data, error } = await supabase
         .from('purchase_request_items')
@@ -1271,7 +1268,6 @@ export default function PurchaseDetailModal({
         .is('actual_received_date', null) // 아직 실제 입고되지 않은 항목만
         .select()
 
-      console.log('🔥 전체 입고완료 DB 결과:', { data, error })
 
       if (error) throw error
 
@@ -2020,7 +2016,7 @@ export default function PurchaseDetailModal({
                                 >
                                   <button 
                                     className="button-toggle-inactive"
-                                    onClick={() => console.log('🖱️ 거래명세서 확인 버튼 클릭:', { itemId: item.id, itemName: item.item_name })}
+                                    onClick={() => {}}
                                   >
                                     {statementReceivedAction.config.waitingText}
                                   </button>
@@ -2329,7 +2325,7 @@ export default function PurchaseDetailModal({
                                   >
                                     <button 
                                       className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600"
-                                      onClick={() => console.log('🖱️ 거래명세서 확인 버튼 클릭 (모바일):', { itemId: item.id, itemName: item.item_name })}
+                                      onClick={() => {}}
                                     >
                                       {statementReceivedAction.config.waitingText}
                                     </button>

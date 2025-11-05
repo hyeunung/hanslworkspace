@@ -1,7 +1,7 @@
 
 import { useState, lazy, Suspense, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { usePurchaseData, clearPurchaseCache } from "@/hooks/usePurchaseData";
+import { usePurchaseData } from "@/hooks/usePurchaseData";
 import { useFastPurchaseFilters } from "@/hooks/useFastPurchaseFilters";
 import LazyPurchaseTable from "@/components/purchase/LazyPurchaseTable";
 import FilterToolbar, { FilterRule, SortRule } from "@/components/purchase/FilterToolbar";
@@ -12,7 +12,7 @@ import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs
 // Lazy load modal for better performance
 const PurchaseItemsModal = lazy(() => import("@/components/purchase/PurchaseItemsModal"));
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 // Tabs 컴포넌트를 제거하고 직접 구현 (hanslwebapp 방식)
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
@@ -21,6 +21,7 @@ import { Purchase } from "@/hooks/usePurchaseData";
 import { logger } from "@/lib/logger";
 
 interface PurchaseListMainProps {
+  // 현재 사용하지 않지만 확장성을 위해 유지
   onEmailToggle?: () => void;
   showEmailButton?: boolean;
 }
@@ -34,7 +35,7 @@ const NAV_TABS: { key: string; label: string }[] = [
 ];
 
 // 발주 목록 메인 컴포넌트
-export default function PurchaseListMain({ onEmailToggle, showEmailButton = true }: PurchaseListMainProps) {
+export default function PurchaseListMain({ showEmailButton = true }: PurchaseListMainProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const supabase = createClient();
@@ -155,7 +156,7 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
       try {
         await loadPurchases(true, { silent: true });
       } catch (error) {
-        console.error('탭 전환 시 발주 데이터 새로고침 실패', error);
+        logger.error('탭 전환 시 발주 데이터 새로고침 실패', error);
       }
     };
 
@@ -216,13 +217,6 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
 
     // 개별 필터 적용
     activeFilters.forEach(filter => {
-      console.log('🔍 필터 적용:', {
-        field: filter.field,
-        dateField: filter.dateField,
-        condition: filter.condition,
-        value: filter.value,
-        label: filter.label
-      });
       
       filtered = filtered.filter(purchase => {
         // 날짜 필터의 경우 실제 날짜 필드 사용
@@ -238,21 +232,10 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
         
         const result = applyFilterCondition(fieldValue, filter.condition, filter.value, filterFieldType);
         
-        // 첫 번째 항목만 디버깅 로그 출력
-        if (purchase === filtered[0]) {
-          console.log('📝 필터 결과:', {
-            actualField,
-            fieldValue,
-            filterValue: filter.value,
-            filterFieldType,
-            result
-          });
-        }
         
         return result;
       });
       
-      console.log(`✅ 필터 적용 후 결과: ${filtered.length}개 항목`);
     });
 
     return filtered;
@@ -373,7 +356,7 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
             const filterDate = filterValue.split('T')[0];
             return fieldDate === filterDate;
           } catch (error) {
-            console.error('날짜 비교 오류:', error);
+            logger.error('날짜 비교 오류:', error);
             return false;
           }
         }
