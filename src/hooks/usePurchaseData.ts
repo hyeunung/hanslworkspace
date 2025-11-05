@@ -281,6 +281,18 @@ export const usePurchaseData = () => {
         }
       }
       
+      // vendors 데이터 준비
+      let vendorList = vendors;
+      if (vendorList.length === 0) {
+        vendorList = globalCache.vendors || [];
+        if (vendorList.length === 0) {
+          const { data: vendorData } = await supabase
+            .from('vendors')
+            .select('*');
+          vendorList = vendorData || [];
+        }
+      }
+      
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError || !user) {
@@ -321,6 +333,9 @@ export const usePurchaseData = () => {
         // requester_id로 employee 찾기
         const requesterEmployee = employeeList.find(emp => emp.id === request.requester_id);
         
+        // vendor_id로 vendor 찾기
+        const vendorInfo = vendorList.find(vendor => vendor.id === request.vendor_id);
+        
         return {
           id: Number(request.id),
           purchase_order_number: request.purchase_order_number as string,
@@ -334,7 +349,7 @@ export const usePurchaseData = () => {
           request_type: request.request_type as string,
           vendor: undefined, // vendors JOIN 제거됨
           vendor_name: request.vendor_name || '', // purchase_requests 테이블의 vendor_name 사용
-          vendor_payment_schedule: '', // vendors JOIN 없으므로 빈값
+          vendor_payment_schedule: vendorInfo?.vendor_payment_schedule || '', // vendors 테이블에서 조회
           vendor_contacts: [], // vendors JOIN 없으므로 빈배열
           requester_id: request.requester_id as string,
           requester_name: request.requester_name as string,
