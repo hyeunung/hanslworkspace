@@ -413,6 +413,7 @@ ${purchaseInfo}`;
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="bug">오류 신고</SelectItem>
+                      <SelectItem value="modify">수정 요청</SelectItem>
                       <SelectItem value="delete">삭제 요청</SelectItem>
                       <SelectItem value="other">기타 문의</SelectItem>
                     </SelectContent>
