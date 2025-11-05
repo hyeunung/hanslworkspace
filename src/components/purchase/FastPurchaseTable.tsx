@@ -95,7 +95,7 @@ const COMMON_COLUMN_CLASSES = {
   projectItem: "w-44 min-w-[180px] max-w-[180px]",                    // 평균 11.1자 + 여유 (조금 더 길게)
   receiptProgress: "text-center w-20 min-w-[85px] max-w-[85px]",
   status: "text-center w-20 min-w-[85px] max-w-[85px]",
-  receipt: "text-center w-16 min-w-[70px] max-w-[70px]",
+  receipt: "text-center w-24 min-w-[100px] max-w-[100px]",           // 진행바 + 퍼센트 표시
   paymentStatus: "text-center w-16 min-w-[70px] max-w-[70px]",
   link: "w-20 min-w-[85px] max-w-[85px]"
 };
@@ -986,7 +986,7 @@ const FastPurchaseTable = memo(({
       {/* 데스크톱 테이블 뷰 - 실제 데이터 1,979건 분석 기반 최적 너비 */}
       <div className="hidden md:block w-full">
         <div className="overflow-x-auto border rounded-lg">
-          <table className="w-full min-w-[1760px]">
+          <table className="w-full min-w-[1790px]">
             {tableHeader}
             <tbody>
               {purchases.map((purchase) => (

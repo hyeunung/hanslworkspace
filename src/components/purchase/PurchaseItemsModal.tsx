@@ -451,7 +451,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item, index) => (
+              {(isEditing ? editingItems : items).map((item, index) => (
                 <TableRow key={item.id || index}>
                   <TableCell className="modal-value">{item.line_number || index + 1}</TableCell>
                   <TableCell>
