@@ -347,7 +347,7 @@ export const usePurchaseData = () => {
         setLoading(false);
       }
     }
-  }, []);
+  }, [supabase]);
 
   const updatePurchaseOptimistic = useCallback((purchaseId: number, updater: (prev: Purchase) => Purchase) => {
     setPurchases(prev => {
