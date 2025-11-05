@@ -65,23 +65,9 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
   // 필터링 및 탭 관리
   const {
     activeTab,
-    searchTerm,
-    vendorFilter,
     selectedEmployee,
-    purchaseNumberFilter,
-    itemNameFilter,
-    specificationFilter,
-    approvalStatusFilter,
-    remarkFilter,
     setActiveTab,
-    setSearchTerm,
-    setVendorFilter,
     setSelectedEmployee,
-    setPurchaseNumberFilter,
-    setItemNameFilter,
-    setSpecificationFilter,
-    setApprovalStatusFilter,
-    setRemarkFilter,
     filteredPurchases,
     tabCounts
   } = useFastPurchaseFilters(purchases, currentUserRoles, currentUserName, currentUserId, currentUserEmail);

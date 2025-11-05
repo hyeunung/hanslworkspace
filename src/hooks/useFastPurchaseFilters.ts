@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useDebounce } from '@/hooks/useDebounce';
 import { createClient } from '@/lib/supabase/client';
 import { Purchase } from './usePurchaseData';
 
@@ -9,18 +8,8 @@ const HIDDEN_EMPLOYEES = ['정희웅'];  // 정현웅 제거
 export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: string[], currentUserName: string, currentUserId?: string, currentUserEmail?: string) => {
   const supabase = createClient();
   const [activeTab, setActiveTab] = useState('pending');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [vendorFilter, setVendorFilter] = useState('');
   // 초기값 설정 - hanslwebapp과 동일하게 빈 문자열로 시작
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
-  const [purchaseNumberFilter, setPurchaseNumberFilter] = useState('');
-  const [itemNameFilter, setItemNameFilter] = useState('');
-  const [specificationFilter, setSpecificationFilter] = useState('');
-  const [approvalStatusFilter, setApprovalStatusFilter] = useState('');
-  const [remarkFilter, setRemarkFilter] = useState('');
-  
-  
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   // 권한별 로직 계산
   const isAdmin = currentUserRoles?.includes('app_admin');
@@ -193,113 +182,14 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     return result;
   }, [tabFilteredPurchases, selectedEmployee]);
 
-  // 4단계: 업체 필터링 (업체 선택시만 실행)
-  const vendorFilteredPurchases = useMemo(() => {
-    if (!vendorFilter) {
-      return employeeFilteredPurchases;
-    }
-    return employeeFilteredPurchases.filter((purchase: Purchase) => purchase.vendor_name === vendorFilter);
-  }, [employeeFilteredPurchases, vendorFilter]);
-
-  // 5단계: 추가 필터 적용
-  const additionalFilteredPurchases = useMemo(() => {
-    let filtered = vendorFilteredPurchases;
-    
-    // 발주요청번호 필터
-    if (purchaseNumberFilter) {
-      const term = purchaseNumberFilter.trim().toLowerCase();
-      filtered = filtered.filter((p: Purchase) => p.purchase_order_number?.toLowerCase().includes(term));
-    }
-    
-    // 품명 필터
-    if (itemNameFilter) {
-      const term = itemNameFilter.trim().toLowerCase();
-      filtered = filtered.filter((p: Purchase) => {
-        if (p.items && p.items.length > 0) {
-          return p.items.some((item: any) => item.item_name?.toLowerCase().includes(term));
-        }
-        return false;
-      });
-    }
-    
-    // 규격 필터
-    if (specificationFilter) {
-      const term = specificationFilter.trim().toLowerCase();
-      filtered = filtered.filter((p: Purchase) => {
-        if (p.items && p.items.length > 0) {
-          return p.items.some((item: any) => item.specification?.toLowerCase().includes(term));
-        }
-        return false;
-      });
-    }
-    
-    // 승인상태 필터
-    if (approvalStatusFilter && approvalStatusFilter !== 'all') {
-      filtered = filtered.filter((p: Purchase) => {
-        switch (approvalStatusFilter) {
-          case 'pending':
-            return !p.final_manager_status || p.final_manager_status === 'pending' || p.final_manager_status === '대기';
-          case 'approved':
-            return p.final_manager_status === 'approved';
-          case 'rejected':
-            return p.final_manager_status === 'rejected' || p.middle_manager_status === 'rejected';
-          default:
-            return true;
-        }
-      });
-    }
-    
-    // 비고 필터
-    if (remarkFilter) {
-      const term = remarkFilter.trim().toLowerCase();
-      filtered = filtered.filter((p: Purchase) => {
-        if (p.items && p.items.length > 0) {
-          return p.items.some((item: any) => item.remark?.toLowerCase().includes(term));
-        }
-        return false;
-      });
-    }
-    
-    return filtered;
-  }, [vendorFilteredPurchases, purchaseNumberFilter, itemNameFilter, specificationFilter, approvalStatusFilter, remarkFilter]);
-
-  // 6단계: 검색 필터링 (검색어 변경시만 실행)
-  const searchFilteredPurchases = useMemo(() => {
-    if (!debouncedSearchTerm) {
-      return additionalFilteredPurchases;
-    }
-    
-    const term = debouncedSearchTerm.trim().toLowerCase();
-    
-    return additionalFilteredPurchases.filter((purchase: Purchase) => {
-      // 빠른 검색 (기본 필드만)
-      if (purchase.purchase_order_number?.toLowerCase().includes(term) ||
-          purchase.vendor_name?.toLowerCase().includes(term) ||
-          purchase.requester_name?.toLowerCase().includes(term) ||
-          purchase.project_vendor?.toLowerCase().includes(term)) {
-        return true;
-      }
-      
-      // 품목 검색 (필요할 때만)
-      if (purchase.items && purchase.items.length > 0) {
-        return purchase.items.some((item: any) => 
-          (item.item_name && item.item_name.toLowerCase().includes(term)) ||
-          (item.specification && item.specification.toLowerCase().includes(term))
-        );
-      }
-      
-      return false;
-    });
-  }, [additionalFilteredPurchases, debouncedSearchTerm]);
-
-  // 7단계: 최종 정렬 및 결과 캐싱 - 최신순 (내림차순)
+  // 4단계: 최종 정렬 및 결과 캐싱 - 최신순 (내림차순)
   const filteredPurchases = useMemo(() => {
-    return [...searchFilteredPurchases].sort((a, b) => {
+    return [...employeeFilteredPurchases].sort((a, b) => {
       const dateA = a.request_date ? new Date(a.request_date).getTime() : 0
       const dateB = b.request_date ? new Date(b.request_date).getTime() : 0
       return dateB - dateA
     })
-  }, [searchFilteredPurchases]);
+  }, [employeeFilteredPurchases]);
 
   // 탭 카운트 (hanslwebapp과 동일한 조건)
   const tabCounts = useMemo(() => {
@@ -422,25 +312,11 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
   return {
     // States
     activeTab,
-    searchTerm,
-    vendorFilter,
     selectedEmployee,
-    purchaseNumberFilter,
-    itemNameFilter,
-    specificationFilter,
-    approvalStatusFilter,
-    remarkFilter,
     
     // Setters
     setActiveTab,
-    setSearchTerm,
-    setVendorFilter,
     setSelectedEmployee,
-    setPurchaseNumberFilter,
-    setItemNameFilter,
-    setSpecificationFilter,
-    setApprovalStatusFilter,
-    setRemarkFilter,
     
     // Computed values
     filteredPurchases,
