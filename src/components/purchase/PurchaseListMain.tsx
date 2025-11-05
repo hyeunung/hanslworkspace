@@ -43,7 +43,11 @@ export default function PurchaseListMain({ onEmailToggle, showEmailButton = true
   
   // 고급 필터 상태 관리
   const [activeFilters, setActiveFilters] = useState<FilterRule[]>([]);
-  const [sortConfig, setSortConfig] = useState<SortRule | null>(null);
+  const [sortConfig, setSortConfig] = useState<SortRule | null>({
+    field: 'created_at',
+    direction: 'desc',
+    label: '생성일'
+  });
   const [searchTerm, setSearchTerm] = useState('');
   const [availableEmployees, setAvailableEmployees] = useState<string[]>([]);
   const [availableVendors, setAvailableVendors] = useState<string[]>([]);
