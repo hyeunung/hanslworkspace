@@ -144,6 +144,15 @@ export const usePurchaseData = () => {
         }
         
         // 캐시가 없거나 만료된 경우 새로 로드
+        // Supabase 환경 변수 확인
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        
+        if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder')) {
+          logger.warn('Supabase 환경 변수가 설정되지 않음 - 초기 데이터 로딩 중단');
+          return;
+        }
+
         const userResult = await supabase.auth.getUser();
 
         // 사용자 권한 및 이름 로드
@@ -228,6 +237,18 @@ export const usePurchaseData = () => {
         }
       }
       
+      // Supabase 환경 변수 확인
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder')) {
+        logger.warn('Supabase 환경 변수가 설정되지 않음');
+        if (showSpinner) {
+          setLoading(false);
+        }
+        return;
+      }
+
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError || !user) {
