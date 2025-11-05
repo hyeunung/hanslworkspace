@@ -71,7 +71,7 @@ const COMMON_COLUMN_CLASSES = {
   approvalStatus: "text-center w-20 min-w-[85px] max-w-[85px]",
   
   // 모든 탭 공통 컬럼들 (고정 너비)
-  purchaseOrderNumber: "pl-2 w-40 min-w-[165px] max-w-[165px]",      // 발주번호 + 품목갯수 + 엑셀아이콘
+  purchaseOrderNumber: "pl-2 w-38 min-w-[155px] max-w-[155px]",      // 발주번호 + 품목갯수 + 엑셀아이콘
   paymentCategory: "text-center w-20 min-w-[85px] max-w-[85px]",
   requesterName: "w-16 min-w-[68px] max-w-[68px]",
   requestDate: "w-20 min-w-[85px] max-w-[85px]",
