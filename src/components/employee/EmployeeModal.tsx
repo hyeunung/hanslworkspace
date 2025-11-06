@@ -60,7 +60,6 @@ export default function EmployeeModal({ isOpen, onClose, employee, onSave, mode 
       position: '',
       department: '',
       purchase_role: [],
-      slack_id: '',
     }
   })
 
@@ -93,7 +92,6 @@ export default function EmployeeModal({ isOpen, onClose, employee, onSave, mode 
         position: employee.position || '',
         department: employee.department || '',
         purchase_role: employee.purchase_role ? employee.purchase_role.split(',') : [],
-        slack_id: employee.slack_id || '',
       })
     } else if (!employee && isOpen) {
       form.reset({
@@ -103,7 +101,6 @@ export default function EmployeeModal({ isOpen, onClose, employee, onSave, mode 
         position: '',
         department: '',
         purchase_role: [],
-        slack_id: '',
       })
     }
   }, [employee, isOpen, form])
@@ -211,24 +208,6 @@ export default function EmployeeModal({ isOpen, onClose, employee, onSave, mode 
                       <Input 
                         {...field} 
                         placeholder="010-0000-0000"
-                        disabled={isReadOnly}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="slack_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Slack ID</FormLabel>
-                    <FormControl>
-                      <Input 
-                        {...field} 
-                        placeholder="U01234567890"
                         disabled={isReadOnly}
                       />
                     </FormControl>

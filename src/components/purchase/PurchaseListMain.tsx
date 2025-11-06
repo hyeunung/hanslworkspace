@@ -96,8 +96,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         // 요청자 목록 (employees 테이블)
         const { data: employees } = await supabase
           .from('employees')
-          .select('name')
-          .not('name', 'is', null);
+          .select('name');
         
         if (employees) {
           const employeeNames = [...new Set(employees.map((e: any) => e.name).filter(Boolean))];
@@ -107,8 +106,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         // 업체 목록 (vendors 테이블)
         const { data: vendors } = await supabase
           .from('vendors')
-          .select('vendor_name')
-          .not('vendor_name', 'is', null);
+          .select('vendor_name');
         
         if (vendors) {
           const vendorNames = [...new Set(vendors.map((v: any) => v.vendor_name).filter(Boolean))];
@@ -118,22 +116,20 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         // 담당자 목록 (vendor_contacts 테이블)
         const { data: contacts } = await supabase
           .from('vendor_contacts')
-          .select('contact_name')
-          .not('contact_name', 'is', null);
+          .select('contact_name');
         
         if (contacts) {
           const contactNames = [...new Set(contacts.map((c: any) => c.contact_name).filter(Boolean))];
           setAvailableContacts(contactNames as string[]);
         }
 
-        // 지출예정일 목록 (vendors 테이블의 payment_schedule)
+        // 지출예정일 목록 (vendors 테이블의 vendor_payment_schedule)
         const { data: schedules } = await supabase
           .from('vendors')
-          .select('payment_schedule')
-          .not('payment_schedule', 'is', null);
+          .select('vendor_payment_schedule');
         
         if (schedules) {
-          const scheduleNames = [...new Set(schedules.map((s: any) => s.payment_schedule).filter(Boolean))];
+          const scheduleNames = [...new Set(schedules.map((s: any) => s.vendor_payment_schedule).filter(Boolean))];
           setAvailablePaymentSchedules(scheduleNames as string[]);
         }
       } catch (error) {
@@ -273,7 +269,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       case 'sales_order_number':
         return purchase.sales_order_number;
       case 'payment_schedule':
-        return (purchase as any).payment_schedule;
+        return (purchase as any).vendor_payment_schedule;
       case 'is_payment_completed':
         return purchase.is_payment_completed ? '완료' : '대기';
       case 'is_received':

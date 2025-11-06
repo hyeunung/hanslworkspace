@@ -3017,6 +3017,9 @@ export default function PurchaseDetailModal({
         className="overflow-hidden bg-white rounded-lg shadow-sm border-0 w-full sm:w-auto max-w-[calc(100vw-48px)] sm:max-w-[calc(100vw-80px)] lg:max-w-[90vw] xl:max-w-[85vw] h-[95vh] sm:h-auto sm:max-h-[90vh] lg:max-h-[85vh] sm:rounded-lg flex flex-col" 
         showCloseButton={false}
       >
+        <DialogHeader className="sr-only">
+          <DialogTitle>발주 상세 정보</DialogTitle>
+        </DialogHeader>
         {/* Apple-style Header */}
         <div className="relative px-3 sm:px-6 pt-0 sm:pt-3 lg:pt-4 pb-0 sm:pb-2 lg:pb-3 flex-shrink-0">
           <button

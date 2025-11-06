@@ -95,8 +95,6 @@ async function checkDatabaseFunctions() {
 
   console.log('\nChecking Edge Functions...');
   const edgeFunctions = [
-    'slack-dm-sender',
-    'slack-interaction-handler',
     'middle-manager-notification'
   ];
 

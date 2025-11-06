@@ -24,8 +24,7 @@ class EmployeeService {
           email.ilike.%${filters.search}%,
           phone.ilike.%${filters.search}%,
           position.ilike.%${filters.search}%,
-          department.ilike.%${filters.search}%,
-          slack_id.ilike.%${filters.search}%
+          department.ilike.%${filters.search}%
         `);
       }
 
@@ -100,19 +99,6 @@ class EmployeeService {
         }
       }
 
-      // Slack ID 중복 체크
-      if (employeeData.slack_id) {
-        const { data: existingSlackEmployee } = await this.supabase
-          .from('employees')
-          .select('id')
-          .eq('slack_id', employeeData.slack_id)
-          .single();
-
-        if (existingSlackEmployee) {
-          return { success: false, error: '이미 등록된 Slack ID입니다.' };
-        }
-      }
-
       // ID 생성 (UUID 형태)
       const employeeId = crypto.randomUUID();
 
@@ -153,20 +139,6 @@ class EmployeeService {
 
         if (existingEmployee) {
           return { success: false, error: '이미 등록된 이메일입니다.' };
-        }
-      }
-
-      // Slack ID 중복 체크 (자신 제외)
-      if (employeeData.slack_id) {
-        const { data: existingSlackEmployee } = await this.supabase
-          .from('employees')
-          .select('id')
-          .eq('slack_id', employeeData.slack_id)
-          .neq('id', id)
-          .single();
-
-        if (existingSlackEmployee) {
-          return { success: false, error: '이미 등록된 Slack ID입니다.' };
         }
       }
 
@@ -300,14 +272,15 @@ class EmployeeService {
     try {
       const { data, error } = await this.supabase
         .from('employees')
-        .select('department')
-        .not('department', 'is', null)
-        .not('department', 'eq', '');
+        .select('department');
 
       if (error) throw error;
 
-      // 중복 제거하고 정렬
-      const departments = [...new Set((data || []).map(emp => emp.department))].sort();
+      // 클라이언트 사이드에서 null과 빈 문자열 필터링 후 중복 제거하고 정렬
+      const departments = [...new Set((data || [])
+        .map((emp: any) => emp.department)
+        .filter((dept: any) => dept != null && dept !== '')
+      )].sort() as string[];
 
       return { success: true, data: departments };
     } catch (error) {
@@ -324,14 +297,15 @@ class EmployeeService {
     try {
       const { data, error } = await this.supabase
         .from('employees')
-        .select('position')
-        .not('position', 'is', null)
-        .not('position', 'eq', '');
+        .select('position');
 
       if (error) throw error;
 
-      // 중복 제거하고 정렬
-      const positions = [...new Set((data || []).map(emp => emp.position))].sort();
+      // 클라이언트 사이드에서 null과 빈 문자열 필터링 후 중복 제거하고 정렬
+      const positions = [...new Set((data || [])
+        .map((emp: any) => emp.position)
+        .filter((pos: any) => pos != null && pos !== '')
+      )].sort() as string[];
 
       return { success: true, data: positions };
     } catch (error) {
@@ -354,7 +328,7 @@ class EmployeeService {
       if (error) throw error;
 
       // Excel 형식에 맞게 데이터 변환
-      const exportData = (data || []).map(employee => ({
+      const exportData = (data || []).map((employee: any) => ({
         '이름': employee.name,
         '이메일': employee.email || '',
         '전화번호': employee.phone || '',
@@ -362,7 +336,6 @@ class EmployeeService {
         '부서': employee.department || '',
         '직급': employee.position || '',
         '권한': this.getRoleDisplayName(employee.purchase_role),
-        'Slack ID': employee.slack_id || '',
         '상태': employee.is_active ? '활성' : '비활성',
         '등록일': employee.created_at ? new Date(employee.created_at).toLocaleDateString('ko-KR') : ''
       }));

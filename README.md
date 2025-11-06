@@ -8,7 +8,6 @@ HANSL Workspace는 기업의 구매 요청부터 발주, 승인, 입고까지 �
 - 📝 구매 요청 생성 및 관리
 - ✅ 다단계 승인 프로세스 (중간/최종 승인)
 - 📊 Excel 발주서 생성 및 다운로드
-- 🔔 Slack 연동 실시간 알림
 - 📦 입고 관리 및 추적
 - 👥 직원 및 거래처 관리
 
@@ -18,7 +17,6 @@ HANSL Workspace는 기업의 구매 요청부터 발주, 승인, 입고까지 �
 - Node.js 18.0 이상
 - npm 또는 yarn
 - Supabase 계정
-- Slack 앱 (선택사항)
 
 ### 설치
 
@@ -36,11 +34,6 @@ cd hanslworkspace
 # Supabase Configuration (필수)
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key-here
-
-# Slack Configuration (선택)
-SLACK_USER_TOKEN=xoxp-your-user-token
-SLACK_BOT_TOKEN=xoxb-your-bot-token
-SLACK_SIGNING_SECRET=your-signing-secret
 ```
 
 **Supabase 키 가져오기:**
@@ -68,11 +61,6 @@ npm install
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-
-# Slack (선택사항)
-SLACK_USER_TOKEN=your_user_token
-SLACK_BOT_TOKEN=your_bot_token
-SLACK_SIGNING_SECRET=your_signing_secret
 ```
 
 4. **개발 서버 실행**
@@ -109,7 +97,6 @@ hanslworkspace/
 │   └── utils/                # 유틸리티 함수
 ├── scripts/                  # 유틸리티 스크립트
 │   ├── test-purchase.js      # 발주 테스트
-│   ├── test-slack.js         # Slack 테스트
 │   ├── test-excel.js         # Excel 테스트
 │   └── health-check.js       # 시스템 점검
 └── public/                   # 정적 파일
@@ -137,12 +124,7 @@ hanslworkspace/
 - 품목별 상세 내역
 - 자동 합계 계산
 
-### 4. Slack 알림
-- 승인 요청 시 자동 알림
-- 승인/반려 결과 통보
-- 입고 완료 알림
-
-### 5. 입고 관리
+### 4. 입고 관리
 - 부분 입고 지원
 - 입고 수량 추적
 - 입고 완료 자동 처리
@@ -174,9 +156,6 @@ hanslworkspace/
 ```bash
 # 발주 기능 테스트
 node scripts/test-purchase.js
-
-# Slack 알림 테스트  
-node scripts/test-slack.js
 
 # Excel 다운로드 테스트
 node scripts/test-excel.js
@@ -216,9 +195,6 @@ npm run build
 #### 승인 관리
 - `POST /api/approval` - 개별 승인 처리
 - `POST /api/approval/batch` - 일괄 승인 처리
-
-#### 알림
-- `POST /api/slack/notify` - Slack 알림 전송
 
 ## 🚀 배포
 
@@ -281,7 +257,6 @@ CMD ["npm", "start"]
 
 문제가 발생하거나 도움이 필요한 경우:
 - 이메일: support@hansl.com
-- Slack: #hansl-workspace-support
 
 ---
 

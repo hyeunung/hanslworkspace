@@ -250,16 +250,6 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                 </TableHead>
                 <TableHead>
                   <SortableHeader
-                    sortKey="slack_id"
-                    currentSortKey={sortConfig.key as string | null}
-                    sortDirection={sortConfig.direction}
-                    onSort={() => handleSort('slack_id' as keyof Employee)}
-                  >
-                    Slack ID
-                  </SortableHeader>
-                </TableHead>
-                <TableHead>
-                  <SortableHeader
                     sortKey="is_active"
                     currentSortKey={sortConfig.key as string | null}
                     sortDirection={sortConfig.direction}
@@ -325,7 +315,6 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                         {getRoleDisplayName(employee.purchase_role)}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-[11px] px-2 py-1.5">{employee.slack_id || '-'}</TableCell>
                     <TableCell className="px-2 py-1.5">
                       <Badge
                         variant={employee.is_active ? 'default' : 'secondary'}
@@ -535,7 +524,6 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                       </Badge>
                     } 
                   />
-                  <MobileCardItem label="Slack ID" value={employee.slack_id || '-'} />
                   <MobileCardItem label="주소" value={employee.adress || '-'} />
                   <MobileCardItem label="은행" value={employee.bank || '-'} />
                   <MobileCardItem label="계좌번호" value={employee.bank_account || '-'} />

@@ -5,7 +5,7 @@ import { dashboardService } from '@/services/dashboardService'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { AlertTriangle, Clock, CheckCircle, ArrowRight, Eye, ThumbsUp, X, Package, Truck, ShoppingCart, Download, Search } from 'lucide-react'
 import ExcelJS from 'exceljs'
@@ -894,6 +894,9 @@ export default function DashboardMain() {
             style={{ maxWidth: '1280px', width: '90vw', maxHeight: '50vh' }}
             showCloseButton={false}
           >
+            <DialogHeader className="sr-only">
+              <DialogTitle>발주 요청 세부사항</DialogTitle>
+            </DialogHeader>
             {/* Apple-style Header */}
             <div className="relative px-6 pt-6 pb-4">
               <button

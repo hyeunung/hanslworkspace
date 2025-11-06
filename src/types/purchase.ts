@@ -54,7 +54,6 @@ export interface EmployeeFormData {
   department?: string
   position?: string
   phone?: string
-  slack_id?: string
   purchase_role?: string[]
 }
 
@@ -69,7 +68,6 @@ export interface Employee {
   department?: string
   position?: string
   phone?: string
-  slack_id?: string
   purchase_role?: string  // 발주 관련 권한 (app_admin, ceo, middle_manager 등)
   role?: string  // 직원 관리 권한 (hr, admin)
   is_active: boolean

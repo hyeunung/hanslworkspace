@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Download, X, ZoomIn, ZoomOut, RotateCcw, Printer, Trash2 } from "lucide-react";
@@ -324,6 +326,9 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="w-[100vw] max-w-none h-[100vh] p-0 overflow-hidden m-0 border-0 rounded-none">
+        <DialogHeader className="sr-only">
+          <DialogTitle>영수증 상세 보기</DialogTitle>
+        </DialogHeader>
         <div className="flex h-full">
           {/* 이미지 영역 */}
           <div className="flex-1 bg-white relative overflow-hidden">

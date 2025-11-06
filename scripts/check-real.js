@@ -19,9 +19,6 @@ async function checkReal() {
   
   if (emp && emp[0]) {
     console.log('컬럼들:', Object.keys(emp[0]));
-    if (emp[0].slack_id || emp[0].slack_user_id) {
-      console.log('✅ Slack ID 컬럼 있음!');
-    }
   }
   
   // 2. Excel 다운로드 테스트
@@ -53,7 +50,6 @@ async function checkReal() {
   const { data: roles, error: roleErr } = await supabase
     .from('employees')
     .select('name, purchase_role')
-    .not('purchase_role', 'is', null)
     .limit(5);
   
   if (roleErr) {

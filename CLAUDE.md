@@ -43,7 +43,7 @@ npm run watch                     # Watch mode for all servers
 
 ### HANSL Flutter App Architecture
 - **MVC + Provider Pattern**: Uses Provider for state management
-- **Services Layer**: Handles external APIs (Supabase, Firebase, Slack)
+- **Services Layer**: Handles external APIs (Supabase, Firebase)
 - **Key Integrations**: 
   - Supabase (backend database)
   - Firebase (push notifications)
@@ -55,11 +55,10 @@ npm run watch                     # Watch mode for all servers
 - **Shadcn/ui Components**: Radix UI-based component library
 - **Supabase Integration**: Database and authentication
 - **Excel Generation**: ExcelJS for purchase order documents
-- **Slack Integration**: Direct messages and notifications
 
 ### Key Data Flow
 1. **Flutter App**: Employee attendance tracking → Supabase
-2. **Web App**: Purchase requests/approvals → Supabase → Slack notifications
+2. **Web App**: Purchase requests/approvals → Supabase
 3. **Supabase Functions**: Handle business logic and integrations
 
 ## Typography System (MANDATORY USAGE)
@@ -258,11 +257,6 @@ const badgeStatsClass = 'inline-flex items-center gap-0.5 business-radius-badge 
 - **Process**: Always use migration files, never direct DB changes
 - **Purpose**: Version control, tracking, rollback capability
 
-### Slack Messaging System
-- **Reuse Existing**: Use `slack-dm-sender` edge function
-- **Async Required**: Use `PERFORM net.http_post()`, not `SELECT http_post()`
-- **Role-Based**: Target users via `employees.purchase_role` field
-
 ### Logging Guidelines (MANDATORY)
 **NEVER use `console.log`, `console.error`, etc. directly in code!**
 
@@ -311,10 +305,9 @@ console.error('에러:', error);  // DON'T DO THIS
 - `scripts/migrations/` - SQL migration files
 
 ### Database Schema
-- **Employees**: User management with roles and Slack integration
+- **Employees**: User management with roles
 - **Purchase Requests**: Multi-step approval workflow
 - **Attendance**: Location-tracked time management
-- **Notifications**: Slack message queueing system
 
 ## Testing and Quality
 - Flutter: Uses `flutter_test` for widget and unit testing

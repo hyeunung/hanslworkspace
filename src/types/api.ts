@@ -53,7 +53,6 @@ export const ErrorCodes = {
   DUPLICATE_RESOURCE: 'DUPLICATE_RESOURCE',
   
   // External service errors
-  SLACK_API_ERROR: 'SLACK_API_ERROR',
   EXCEL_GENERATION_ERROR: 'EXCEL_GENERATION_ERROR',
   
   // Generic errors

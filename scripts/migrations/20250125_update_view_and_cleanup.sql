@@ -44,8 +44,6 @@ SELECT
     unit_price_currency,
     po_template_type,
     is_po_download,
-    is_slack_request_sent,
-    slack_ts,
     is_received,
     received_at,
     created_at,

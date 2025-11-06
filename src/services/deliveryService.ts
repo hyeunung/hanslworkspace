@@ -88,7 +88,7 @@ class DeliveryService {
       if (!existingItems) throw new Error('품목을 찾을 수 없습니다.');
 
       // 품목별 주문 수량 맵 생성
-      const quantityMap = new Map(existingItems.map(item => [item.id, item.quantity]));
+      const quantityMap = new Map(existingItems.map((item: any) => [item.id, item.quantity]));
 
       const updates = items.map(item => {
         // 배치 입고완료 처리이므로 모든 품목을 입고 완료로 처리
@@ -145,7 +145,7 @@ class DeliveryService {
       }
 
       // 모든 품목을 완전 입고로 업데이트
-      const updates = items.map(item => ({
+      const updates = items.map((item: any) => ({
         id: item.id,
         received_quantity: item.quantity, // 주문 수량과 동일하게 설정
         delivery_notes: deliveryNotes,
@@ -222,13 +222,15 @@ class DeliveryService {
       const { data, error } = await this.supabase
         .from('purchase_request_items')
         .select('*,purchase_request:purchase_requests(id,purchase_order_number,requester_name,vendor:vendors(vendor_name))')
-        .not('received_date', 'is', null)
         .order('received_date', { ascending: false })
         .limit(limit);
 
       if (error) throw error;
+      
+      // 클라이언트 사이드에서 null 필터링
+      const filteredData = (data || []).filter((item: any) => item.received_date != null);
 
-      return { success: true, data: data || [] };
+      return { success: true, data: filteredData };
     } catch (error) {
       return { 
         success: false, 

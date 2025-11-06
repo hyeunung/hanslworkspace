@@ -41,7 +41,6 @@ interface ApproveDetailAccordionProps {
 
 /**
  * hanslwebapp의 ApproveDetailAccordion 컴포넌트
- * Slack 메시지 동기화 기능 포함
  */
 const ApproveDetailAccordion: React.FC<ApproveDetailAccordionProps> = ({
   id,
@@ -75,14 +74,14 @@ const ApproveDetailAccordion: React.FC<ApproveDetailAccordionProps> = ({
   // 총합 계산
   const totalAmount = items.reduce((sum, item) => sum + (item.amountValue || 0), 0);
 
-  // 최종 승인 처리 (Slack 동기화 포함)
+  // 최종 승인 처리
   const handleApprove = async () => {
     if (!id) {
       toast.error("ID가 없습니다.");
       return;
     }
     
-    // 1. DB 업데이트
+    // DB 업데이트
     const { error } = await supabase
       .from('purchase_requests')
       .update({ final_manager_status: 'approved' })
@@ -93,22 +92,7 @@ const ApproveDetailAccordion: React.FC<ApproveDetailAccordionProps> = ({
       return;
     }
     
-    // 2. Slack 메시지 동기화 (최종승인 → Lead Buyer 알림)
-    if (purchaseOrderNumber) {
-      try {
-        // Supabase Edge Function 직접 호출
-        const { error } = await supabase.functions.invoke('final-approval-slack-sync', {
-          body: { purchase_order_number: purchaseOrderNumber }
-        });
-        
-        if (error) {
-        }
-      } catch (_syncError) {
-        // Slack 실패는 승인 성공에 영향 없음
-      }
-    }
-    
-    // 3. UI 상태 업데이트
+    // UI 상태 업데이트
     setFinalManagerStatus('approved');
     onFinalManagerStatusChange?.('approved');
     await onApproveListRefresh?.();
@@ -143,14 +127,14 @@ const ApproveDetailAccordion: React.FC<ApproveDetailAccordionProps> = ({
     toast.success("반려되었습니다.");
   };
 
-  // 1차 승인(검증) 처리 (Slack 동기화 포함)
+  // 1차 승인(검증) 처리
   const handleVerify = async () => {
     if (!id) {
       toast.error("ID가 없습니다.");
       return;
     }
     
-    // 1. DB 업데이트
+    // DB 업데이트
     const { error } = await supabase
       .from('purchase_requests')
       .update({ middle_manager_status: 'approved' })
@@ -161,22 +145,7 @@ const ApproveDetailAccordion: React.FC<ApproveDetailAccordionProps> = ({
       return;
     }
     
-    // 2. Slack 메시지 동기화 (1차 승인 → 최종승인자 알림)
-    if (purchaseOrderNumber) {
-      try {
-        // Supabase Edge Function 직접 호출
-        const { error } = await supabase.functions.invoke('slack-message-sync', {
-          body: { purchase_order_number: purchaseOrderNumber }
-        });
-        
-        if (error) {
-        }
-      } catch (_syncError) {
-        // Slack 실패는 승인 성공에 영향 없음
-      }
-    }
-    
-    // 3. UI 상태 업데이트
+    // UI 상태 업데이트
     setMiddleManagerStatus('approved');
     onMiddleManagerStatusChange?.('approved');
     await onApproveListRefresh?.();

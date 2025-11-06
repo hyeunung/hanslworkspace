@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { 
   Dialog, 
-  DialogContent
+  DialogContent,
+  DialogHeader,
+  DialogTitle
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { DatePickerPopover } from '@/components/ui/date-picker-popover'
@@ -228,6 +230,9 @@ export default function PurchaseStatusModal({
         style={{ maxWidth: '1280px', width: '90vw', maxHeight: '50vh' }}
         showCloseButton={false}
       >
+        <DialogHeader className="sr-only">
+          <DialogTitle>발주 진행 상태</DialogTitle>
+        </DialogHeader>
         {/* Apple-style Header */}
         <div className="relative px-6 pt-6 pb-4">
           <button
