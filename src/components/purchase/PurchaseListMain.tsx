@@ -12,7 +12,7 @@ import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs
 // Lazy load modal for better performance
 const PurchaseItemsModal = lazy(() => import("@/components/purchase/PurchaseItemsModal"));
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 // Tabs 컴포넌트를 제거하고 직접 구현 (hanslwebapp 방식)
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
@@ -416,6 +416,92 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     return result;
   }, [filteredPurchases, applyAdvancedFilters, applySorting]);
 
+  // 월간 필터 감지 및 합계금액 계산
+  const monthlyFilterSummary = useMemo(() => {
+    // 월간 필터가 활성화되어 있는지 확인
+    const monthFilters = activeFilters.filter(filter => 
+      filter.field === 'date_month' || 
+      (filter.field === 'date_range' && filter.dateField && filter.dateField.includes('_month'))
+    );
+    
+    if (monthFilters.length === 0) return null;
+    
+    const monthFilter = monthFilters[0];
+    const filterValue = monthFilter.value;
+    
+    // 월간 범위 필터인지 단일 월 필터인지 확인
+    if (filterValue && filterValue.includes('~')) {
+      // 범위 필터 (예: "2024-04~2024-09")
+      const [startMonth, endMonth] = filterValue.split('~');
+      const startDate = new Date(`${startMonth}-01`);
+      const endDate = new Date(`${endMonth}-01`);
+      
+      const monthlyTotals = [];
+      let totalSum = 0;
+      
+      // 각 월별 계산
+      const currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth() + 1;
+        const monthStr = `${year}-${month.toString().padStart(2, '0')}`;
+        
+        // 해당 월의 데이터 필터링
+        const monthData = advancedFilteredPurchases.filter(purchase => {
+          const purchaseDate = new Date(purchase.request_date);
+          return purchaseDate.getFullYear() === year && 
+                 (purchaseDate.getMonth() + 1) === month;
+        });
+        
+        // 해당 월의 합계 계산
+        const monthTotal = monthData.reduce((sum, purchase) => {
+          const amount = purchase.amount_value || purchase.total_amount || 0;
+          return sum + amount;
+        }, 0);
+        
+        monthlyTotals.push({
+          year,
+          month,
+          monthStr,
+          total: monthTotal,
+          count: monthData.length
+        });
+        
+        totalSum += monthTotal;
+        
+        // 다음 월로 이동
+        currentDate.setMonth(currentDate.getMonth() + 1);
+      }
+      
+      return {
+        type: 'range',
+        months: monthlyTotals,
+        grandTotal: totalSum
+      };
+    } else {
+      // 단일 월 필터 (예: "2024-10")
+      const [year, month] = filterValue.split('-');
+      const monthData = advancedFilteredPurchases.filter(purchase => {
+        const purchaseDate = new Date(purchase.request_date);
+        return purchaseDate.getFullYear() === parseInt(year) && 
+               (purchaseDate.getMonth() + 1) === parseInt(month);
+      });
+      
+      const monthTotal = monthData.reduce((sum, purchase) => {
+        const amount = purchase.amount_value || purchase.total_amount || 0;
+        return sum + amount;
+      }, 0);
+      
+      return {
+        type: 'single',
+        year: parseInt(year),
+        month: parseInt(month),
+        total: monthTotal,
+        count: monthData.length
+      };
+    }
+  }, [activeFilters, advancedFilteredPurchases]);
+
 
   // 엑셀 다운로드
   const handleExcelDownload = async (purchase: Purchase) => {
@@ -692,6 +778,75 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
             </button>
           ))}
         </div>
+
+        {/* 월간 필터 적용 시 합계금액 표시 */}
+        {monthlyFilterSummary && (
+          <div className="mb-3">
+            {monthlyFilterSummary.type === 'single' ? (
+              // 단일 월 표시 - 컴팩트한 인라인 배지 스타일
+              <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 business-radius-badge px-3 py-2 shadow-sm">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                  <span className="card-subtitle text-gray-700">
+                    {monthlyFilterSummary.year}년 {monthlyFilterSummary.month}월
+                  </span>
+                  <span className="badge-text text-gray-500">
+                    {monthlyFilterSummary.count}건
+                  </span>
+                </div>
+                <div className="h-4 w-px bg-blue-300"></div>
+                <span className="modal-value text-blue-700 font-semibold">
+                  ₩{monthlyFilterSummary.total.toLocaleString()}
+                </span>
+              </div>
+            ) : (
+              // 월간 범위 표시
+              <Card className="business-radius-card border border-gray-200 shadow-sm">
+                <CardHeader className="pb-3 pt-4 px-4">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+                      <CardTitle className="section-title text-gray-800">월별 발주요청 총액</CardTitle>
+                    </div>
+                    {/* 총합계를 제목 바로 옆에 표시 */}
+                    <div className="flex items-center gap-2">
+                      <span className="badge-text text-gray-600">
+                        ({monthlyFilterSummary.months.reduce((sum, m) => sum + m.count, 0)}건)
+                      </span>
+                      <div className="h-4 w-px bg-gray-300"></div>
+                      <span className="modal-value text-gray-500 font-bold">
+                        ₩{monthlyFilterSummary.grandTotal.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  {/* 월별 데이터 - 가로 스크롤 한 행 */}
+                  <div className="flex gap-2 overflow-x-auto pb-2">
+                    {monthlyFilterSummary.months.map((monthData) => (
+                      <div 
+                        key={monthData.monthStr} 
+                        className="bg-gray-50 business-radius-card px-3 py-1.5 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all flex-shrink-0"
+                      >
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="modal-value font-bold text-gray-800 whitespace-nowrap">
+                            {monthData.month}월
+                          </span>
+                          <span className="text-[9px] text-gray-500 whitespace-nowrap">
+                            ({monthData.count})
+                          </span>
+                          <span className="modal-value text-gray-500 font-bold whitespace-nowrap ml-1">
+                            ₩{monthData.total.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
 
         {/* 탭 콘텐츠 */}
         <Card className="overflow-hidden border border-gray-200">

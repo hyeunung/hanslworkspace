@@ -178,7 +178,7 @@ export default function PurchaseDetailModal({
   
   // 구매 권한 체크: app_admin + lead buyer만 (요청자 본인 제외)
   const canPurchase = effectiveRoles.includes('app_admin') || 
-                     effectiveRoles.includes('lead_buyer') || 
+                     effectiveRoles.includes('lead buyer') || 
                      effectiveRoles.includes('lead buyer')
   
   // 입고 권한 체크 
@@ -191,7 +191,10 @@ export default function PurchaseDetailModal({
                   effectiveRoles.includes('app_admin') || 
                   effectiveRoles.includes('ceo')
   const isRequester = purchase?.requester_name === currentUserName
-  const canReceiptCheck = isAdmin || isRequester
+  
+  // 거래명세서 확인 & UTK 확인 권한: app_admin과 lead buyer만 가능
+  const canReceiptCheck = effectiveRoles.includes('app_admin') || 
+                         effectiveRoles.includes('lead buyer')
   
 
   // 모달 내부 데이터만 새로고침하는 함수 (모달 닫지 않음)
