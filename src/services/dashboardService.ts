@@ -140,7 +140,7 @@ export class DashboardService {
 
     // 역할별 긴급 요청 필터링
     if (roles.includes('app_admin')) {
-      query = query.or('middle_manager_status.eq.pending,final_manager_status.eq.pending,purchase_status.eq.pending')
+      query = query.or('middle_manager_status.eq.pending,final_manager_status.eq.pending,is_payment_completed.eq.false')
     } else if (roles.includes('middle_manager')) {
       query = query.eq('middle_manager_status', 'pending')
     } else if (roles.includes('final_approver') || roles.includes('ceo')) {
@@ -150,7 +150,7 @@ export class DashboardService {
     } else if (roles.includes('lead buyer')) {
       query = query
         .eq('final_manager_status', 'approved')
-        .eq('purchase_status', 'pending')
+        .eq('is_payment_completed', false)
     } else {
       // 다른 역할은 긴급 요청 없음
       return []
@@ -177,7 +177,7 @@ export class DashboardService {
       .select('*,vendors(vendor_name),purchase_request_items(id)')
       .eq('requester_name', employee.name)
       // 승인이 진행중인 항목만 (1차 승인됨 + 최종 대기중 OR 모든 승인 완료 + 구매 대기중)
-      .or('and(middle_manager_status.eq.approved,final_manager_status.eq.pending),and(final_manager_status.eq.approved,purchase_status.eq.pending)')
+      .or('and(middle_manager_status.eq.approved,final_manager_status.eq.pending),and(final_manager_status.eq.approved,is_payment_completed.eq.false)')
       .order('created_at', { ascending: false })
       .limit(5)
 
@@ -347,7 +347,7 @@ export class DashboardService {
       // 구매담당자: 최종승인 완료 + 구매 대기 항목만
       roleFilteredData = filteredData.filter(item => {
         const finalApproved = item.final_manager_status === 'approved'
-        const purchasePending = isPending(item.purchase_status)
+        const purchasePending = !item.is_payment_completed
         return finalApproved && purchasePending
       })
       logger.debug('🔑 lead buyer 권한으로 구매 대기 항목만 표시', {
@@ -449,7 +449,7 @@ export class DashboardService {
         .from('purchase_requests')
         .select('id', { count: 'exact', head: true })
         .eq('final_manager_status', 'approved')
-        .eq('purchase_status', 'pending')
+        .eq('is_payment_completed', false)
 
       if (purchaseCount && purchaseCount > 0) {
         actions.push({
@@ -695,7 +695,7 @@ export class DashboardService {
           .from('purchase_requests')
           .select('id', { count: 'exact', head: true })
           .eq('final_manager_status', 'approved')
-          .or(`purchase_status.in.(pending,대기),purchase_status.is.null`)
+          .eq('is_payment_completed', false)
       ])
 
       const total = (mid.count || 0) + (fin.count || 0) + (pur.count || 0)
@@ -734,7 +734,7 @@ export class DashboardService {
         .from('purchase_requests')
         .select('id', { count: 'exact', head: true })
         .eq('final_manager_status', 'approved')
-        .or(`purchase_status.in.(pending,대기),purchase_status.is.null`)
+        .eq('is_payment_completed', false)
 
       if (error) {
         // Count error for lead buyer - will use 0
@@ -760,7 +760,7 @@ export class DashboardService {
       .lt('created_at', threeDaysAgo)
 
     if (roles.includes('app_admin')) {
-      query = query.or('middle_manager_status.eq.pending,final_manager_status.eq.pending,purchase_status.eq.pending')
+      query = query.or('middle_manager_status.eq.pending,final_manager_status.eq.pending,is_payment_completed.eq.false')
     } else if (roles.includes('middle_manager')) {
       query = query.eq('middle_manager_status', 'pending')
     } else if (roles.includes('final_approver') || roles.includes('ceo')) {
@@ -770,7 +770,7 @@ export class DashboardService {
     } else if (roles.includes('lead buyer')) {
       query = query
         .eq('final_manager_status', 'approved')
-        .eq('purchase_status', 'pending')
+        .eq('is_payment_completed', false)
     } else {
       return 0
     }
@@ -780,6 +780,8 @@ export class DashboardService {
   }
 
   private async getTodayActionsCount(employee: Employee, today: string): Promise<number> {
+    // middle_manager_id와 final_manager_id 컬럼이 존재하지 않으므로
+    // 오늘 업데이트된 요청 중 해당 직원이 요청한 요청만 카운트
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     
     const { count } = await this.supabase
@@ -787,7 +789,7 @@ export class DashboardService {
       .select('id', { count: 'exact', head: true })
       .gte('updated_at', today)
       .lt('updated_at', tomorrow)
-      .or(`middle_manager_id.eq.${employee.id},final_manager_id.eq.${employee.id}`)
+      .eq('requester_name', employee.name)
 
     return count || 0
   }

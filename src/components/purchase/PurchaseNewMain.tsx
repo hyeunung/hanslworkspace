@@ -46,7 +46,7 @@ export default function PurchaseNewMain() {
       try {
         const { data, error } = await supabase
           .from('employees')
-          .select('id, name, email, phone, address, position, department')
+          .select('id, name, email, phone, adress, position, department')
           .order('name');
         
         

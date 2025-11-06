@@ -10,6 +10,7 @@ export const isProduction = import.meta.env.PROD || import.meta.env.NODE_ENV ===
  */
 export const devLog = (...args: any[]) => {
   if (isDevelopment) {
+    // eslint-disable-next-line no-console
     console.log(...args);
   }
 };

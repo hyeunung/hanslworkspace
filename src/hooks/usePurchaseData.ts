@@ -55,7 +55,6 @@ export interface Purchase {
   remark?: string;
   line_number?: number;
   link?: string;
-  purchase_status?: string;
 }
 
 
@@ -339,8 +338,7 @@ export const usePurchaseData = () => {
             (a.line_number || 0) - (b.line_number || 0)),
           // 총 금액 계산
           total_amount: request.purchase_request_items?.reduce((sum: number, item: any) => 
-            sum + (Number(item.amount_value) || 0), 0) || 0,
-          purchase_status: request.purchase_status || 'pending'
+            sum + (Number(item.amount_value) || 0), 0) || 0
         };
       });
 

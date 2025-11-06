@@ -46,8 +46,6 @@ class PurchaseService {
         po_template_type: data.po_template_type,
         middle_manager_status: 'pending',
         final_manager_status: 'pending',
-        purchase_status: 'pending',
-        delivery_status: 'pending',
         is_po_generated: false,
         is_received: false
       };

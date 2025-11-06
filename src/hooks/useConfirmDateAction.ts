@@ -60,8 +60,7 @@ export function useConfirmDateAction({
   ) => {
     
     if (!canPerformAction) {
-      console.log(`❌ 권한 없음`, { canPerformAction, currentUserName })
-      logger.warn(`❌ 권한 없음`, { canPerformAction })
+      logger.warn(`❌ 권한 없음`, { canPerformAction, currentUserName })
       toast.error(`${config.field === 'statement_received' ? '거래명세서' : '입고'} 확인 권한이 없습니다.`)
       return
     }
@@ -106,7 +105,7 @@ ${config.confirmMessage.confirm}`
         }
       }
 
-      console.log('📝 업데이트할 데이터:', updateData)
+      logger.debug('📝 업데이트할 데이터:', updateData)
 
       const { data, error } = await supabase
         .from('purchase_request_items')
@@ -114,16 +113,14 @@ ${config.confirmMessage.confirm}`
         .eq('id', numericId)
         .select()
 
-      console.log('📝 DB 업데이트 결과:', { data, error })
+      logger.debug('📝 DB 업데이트 결과:', { data, error })
 
       if (error) {
-        console.error('❌ DB 업데이트 실패:', error)
         logger.error('❌ DB 업데이트 실패', error)
         throw error
       }
 
-      console.log('✅ DB 업데이트 성공:', data)
-      logger.info('✅ DB 업데이트 성공')
+      logger.info('✅ DB 업데이트 성공', data)
 
       if (onOptimisticUpdate) {
         onOptimisticUpdate({
@@ -158,7 +155,7 @@ ${config.confirmMessage.confirm}`
     }
   ) => {
     if (!canPerformAction) {
-      console.log(`❌ 취소 권한 없음`, { canPerformAction, currentUserName })
+      logger.warn(`❌ 취소 권한 없음`, { canPerformAction, currentUserName })
       toast.error(`${config.field === 'statement_received' ? '거래명세서' : '입고'} 확인 권한이 없습니다.`)
       return
     }
@@ -188,7 +185,7 @@ ${config.confirmMessage.cancel}`
     }
 
     try {
-      console.log(`🔄 ${config.field} 확인 취소 시작`, { 
+      logger.debug(`🔄 ${config.field} 확인 취소 시작`, { 
         itemId, 
         itemName: itemInfo?.item_name 
       })
@@ -207,7 +204,7 @@ ${config.confirmMessage.cancel}`
         }
       }
 
-      console.log('🔄 취소 업데이트할 데이터:', updateData)
+      logger.debug('🔄 취소 업데이트할 데이터:', updateData)
 
       const { data, error } = await supabase
         .from('purchase_request_items')
@@ -215,16 +212,14 @@ ${config.confirmMessage.cancel}`
         .eq('id', numericId)
         .select()
 
-      console.log('🔄 취소 DB 업데이트 결과:', { data, error })
+      logger.debug('🔄 취소 DB 업데이트 결과:', { data, error })
 
       if (error) {
-        console.error('❌ 취소 DB 업데이트 실패:', error)
         logger.error('❌ DB 업데이트 실패', error)
         throw error
       }
 
-      console.log(`✅ ${config.field} 확인 취소 성공:`, data)
-      logger.info(`✅ ${config.field} 확인 취소 성공`)
+      logger.info(`✅ ${config.field} 확인 취소 성공`, data)
 
       if (onOptimisticUpdate) {
         onOptimisticUpdate({

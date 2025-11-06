@@ -57,7 +57,7 @@ export default function ApprovalCard({
     
     if (approval.middle_manager_status === 'approved' && 
         approval.final_manager_status === 'approved' && 
-        approval.purchase_status === 'pending') {
+        !approval.is_payment_completed) {
       return (
         <Badge variant="default" className="flex items-center gap-1">
           <Package className="w-3 h-3" />

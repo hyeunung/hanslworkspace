@@ -1,8 +1,7 @@
 
-import { useState, useEffect } from 'react'
-import { Employee, PurchaseRole } from '@/types/purchase'
+import { useState } from 'react'
+import { Employee } from '@/types/purchase'
 import { formatDate } from '@/utils/helpers'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { 
@@ -43,33 +42,7 @@ interface EmployeeTableProps {
 
 export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: EmployeeTableProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null)
-  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null)
-  const supabase = createClient()
   const { sortedData, sortConfig, handleSort } = useTableSort(employees, 'name', 'asc')
-
-  // 현재 사용자 권한 확인
-  useEffect(() => {
-    const checkUserRole = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: employee } = await supabase
-          .from('employees')
-          .select('role, purchase_role')  // role 필드도 가져오기
-          .eq('id', user.id)
-          .single()
-        
-        if (employee) {
-          setCurrentUserRole(employee.role || '')  // role 필드 사용 (hr, admin)
-        }
-      }
-    }
-    checkUserRole()
-  }, [])
-
-  // 민감한 정보 볼 수 있는 권한 체크 (hr, admin만) - hanslwebapp과 동일
-  const isHRorAdmin = currentUserRole === 'hr' || currentUserRole === 'admin'
-  const canViewSensitive = isHRorAdmin
-  const canEdit = isHRorAdmin
 
   const handleToggleStatus = async (employee: Employee) => {
     setLoadingId(employee.id)
@@ -232,13 +205,11 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                 생년월일
               </SortableHeader>
             </TableHead>
-            {/* HR/Admin만 볼 수 있는 민감한 정보 */}
-            {isHRorAdmin && (
-              <>
-                <TableHead className="hidden xl:table-cell w-14 min-w-[45px]">은행</TableHead>
-                <TableHead className="hidden xl:table-cell w-24 min-w-[80px]">계좌번호</TableHead>
-                <TableHead className="hidden 2xl:table-cell min-w-[120px]">주소</TableHead>
-                <TableHead>
+            {/* 민감한 정보 */}
+            <TableHead className="hidden xl:table-cell w-14 min-w-[45px]">은행</TableHead>
+            <TableHead className="hidden xl:table-cell w-24 min-w-[80px]">계좌번호</TableHead>
+            <TableHead className="hidden 2xl:table-cell min-w-[120px]">주소</TableHead>
+            <TableHead>
                   <SortableHeader
                     sortKey="purchase_role"
                     currentSortKey={sortConfig.key as string | null}
@@ -258,15 +229,13 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                     상태
                   </SortableHeader>
                 </TableHead>
-              </>
-            )}
                 <TableHead className="w-16 min-w-[50px]">작업</TableHead>
               </TableRow>
             </TableHeader>
         <TableBody>
           {employees.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={canViewSensitive ? 14 : 7} className="text-center py-8 text-gray-500">
+              <TableCell colSpan={14} className="text-center py-8 text-gray-500">
                 등록된 직원이 없습니다.
               </TableCell>
             </TableRow>
@@ -302,29 +271,25 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                 <TableCell className="hidden lg:table-cell text-[11px] px-2 py-1.5">
                   {formatDate(employee.birthday)}
                 </TableCell>
-                {/* HR/Admin만 볼 수 있는 민감한 정보 */}
-                {isHRorAdmin && (
-                  <>
-                    <TableCell className="hidden xl:table-cell text-[11px] px-2 py-1.5">{employee.bank || '-'}</TableCell>
-                    <TableCell className="hidden xl:table-cell text-[11px] px-2 py-1.5">{employee.bank_account || '-'}</TableCell>
-                    <TableCell className="hidden 2xl:table-cell text-[11px] px-2 py-1.5">{employee.adress || '-'}</TableCell>
-                    <TableCell className="px-2 py-1.5">
-                      <Badge
-                        className={`text-[10px] px-1.5 py-0.5 ${getRoleBadgeColor(employee.purchase_role)}`}
-                      >
-                        {getRoleDisplayName(employee.purchase_role)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="px-2 py-1.5">
-                      <Badge
-                        variant={employee.is_active ? 'default' : 'secondary'}
-                        className={`text-[10px] px-1.5 py-0.5 ${employee.is_active ? 'bg-green-100 text-green-800' : ''}`}
-                      >
-                        {employee.is_active ? '활성' : '비활성'}
-                      </Badge>
-                    </TableCell>
-                  </>
-                )}
+                {/* 민감한 정보 */}
+                <TableCell className="hidden xl:table-cell text-[11px] px-2 py-1.5">{employee.bank || '-'}</TableCell>
+                <TableCell className="hidden xl:table-cell text-[11px] px-2 py-1.5">{employee.bank_account || '-'}</TableCell>
+                <TableCell className="hidden 2xl:table-cell text-[11px] px-2 py-1.5">{employee.adress || '-'}</TableCell>
+                <TableCell className="px-2 py-1.5">
+                  <Badge
+                    className={`text-[10px] px-1.5 py-0.5 ${getRoleBadgeColor(employee.purchase_role)}`}
+                  >
+                    {getRoleDisplayName(employee.purchase_role)}
+                  </Badge>
+                </TableCell>
+                <TableCell className="px-2 py-1.5">
+                  <Badge
+                    variant={employee.is_active ? 'default' : 'secondary'}
+                    className={`text-[10px] px-1.5 py-0.5 ${employee.is_active ? 'bg-green-100 text-green-800' : ''}`}
+                  >
+                    {employee.is_active ? '활성' : '비활성'}
+                  </Badge>
+                </TableCell>
                 <TableCell className="px-1 py-1.5">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -341,8 +306,101 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                         <Eye className="mr-2 h-4 w-4" />
                         상세 보기
                       </DropdownMenuItem>
-                      {canEdit && (
-                        <>
+                      <DropdownMenuItem onClick={() => onEdit(employee)}>
+                        <Edit className="mr-2 h-4 w-4" />
+                        수정
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleToggleStatus(employee)}>
+                        {employee.is_active ? (
+                          <>
+                            <ToggleLeft className="mr-2 h-4 w-4" />
+                            비활성화
+                          </>
+                        ) : (
+                          <>
+                            <ToggleRight className="mr-2 h-4 w-4" />
+                            활성화
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        onClick={() => handleDelete(employee)}
+                        className="text-red-600"
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        삭제
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+          </Table>
+        </div>
+      </div>
+
+      {/* Tablet View */}
+      <div className="hidden md:block lg:hidden">
+        <div className="overflow-x-auto border rounded-lg">
+          <table className="w-full min-w-[700px]">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="text-left p-3 header-title text-gray-900 w-16">사번</th>
+                <th className="text-left p-3 header-title text-gray-900 w-20">이름</th>
+                <th className="text-left p-3 header-title text-gray-900 w-20">직급</th>
+                <th className="text-left p-3 header-title text-gray-900 w-24">부서</th>
+                <th className="text-left p-3 header-title text-gray-900">연락처</th>
+                <th className="text-left p-3 header-title text-gray-900">이메일</th>
+                <th className="text-left p-3 header-title text-gray-900 w-24">권한</th>
+                <th className="text-center p-3 header-title text-gray-900 w-16">상태</th>
+                <th className="text-center p-3 header-title text-gray-900 w-16">작업</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {sortedData.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="text-center py-8 text-gray-500">
+                    등록된 직원이 없습니다.
+                  </td>
+                </tr>
+              ) : (
+                sortedData.map((employee) => (
+                  <tr key={employee.id} className="hover:bg-gray-50">
+                    <td className="p-3 modal-subtitle">
+                      {employee.employeeID || employee.employee_number || employee.id.slice(0, 8)}
+                    </td>
+                    <td className="p-3 modal-value">{employee.name}</td>
+                    <td className="p-3 modal-subtitle">{employee.position || '-'}</td>
+                    <td className="p-3 modal-subtitle">{employee.department || '-'}</td>
+                    <td className="p-3 modal-subtitle">{employee.phone || '-'}</td>
+                    <td className="p-3 modal-subtitle">{employee.email || '-'}</td>
+                    <td className="p-3">
+                      <Badge className={`text-xs ${getRoleBadgeColor(employee.purchase_role)}`}>
+                        {getRoleDisplayName(employee.purchase_role)}
+                      </Badge>
+                    </td>
+                    <td className="p-3 text-center">
+                      <Badge
+                        variant={employee.is_active ? 'default' : 'secondary'}
+                        className={`text-xs ${employee.is_active ? 'bg-green-100 text-green-800' : ''}`}
+                      >
+                        {employee.is_active ? '활성' : '비활성'}
+                      </Badge>
+                    </td>
+                    <td className="p-3 text-center">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => onView(employee)}>
+                            <Eye className="mr-2 h-4 w-4" />
+                            상세 보기
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => onEdit(employee)}>
                             <Edit className="mr-2 h-4 w-4" />
                             수정
@@ -367,115 +425,6 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                             <Trash2 className="mr-2 h-4 w-4" />
                             삭제
                           </DropdownMenuItem>
-                        </>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-          </Table>
-        </div>
-      </div>
-
-      {/* Tablet View */}
-      <div className="hidden md:block lg:hidden">
-        <div className="overflow-x-auto border rounded-lg">
-          <table className="w-full min-w-[700px]">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="text-left p-3 header-title text-gray-900 w-16">사번</th>
-                <th className="text-left p-3 header-title text-gray-900 w-20">이름</th>
-                <th className="text-left p-3 header-title text-gray-900 w-20">직급</th>
-                <th className="text-left p-3 header-title text-gray-900 w-24">부서</th>
-                <th className="text-left p-3 header-title text-gray-900">연락처</th>
-                <th className="text-left p-3 header-title text-gray-900">이메일</th>
-                {isHRorAdmin && (
-                  <>
-                    <th className="text-left p-3 header-title text-gray-900 w-24">권한</th>
-                    <th className="text-center p-3 header-title text-gray-900 w-16">상태</th>
-                  </>
-                )}
-                <th className="text-center p-3 header-title text-gray-900 w-16">작업</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {sortedData.length === 0 ? (
-                <tr>
-                  <td colSpan={isHRorAdmin ? 9 : 7} className="text-center py-8 text-gray-500">
-                    등록된 직원이 없습니다.
-                  </td>
-                </tr>
-              ) : (
-                sortedData.map((employee) => (
-                  <tr key={employee.id} className="hover:bg-gray-50">
-                    <td className="p-3 modal-subtitle">
-                      {employee.employeeID || employee.employee_number || employee.id.slice(0, 8)}
-                    </td>
-                    <td className="p-3 modal-value">{employee.name}</td>
-                    <td className="p-3 modal-subtitle">{employee.position || '-'}</td>
-                    <td className="p-3 modal-subtitle">{employee.department || '-'}</td>
-                    <td className="p-3 modal-subtitle">{employee.phone || '-'}</td>
-                    <td className="p-3 modal-subtitle">{employee.email || '-'}</td>
-                    {isHRorAdmin && (
-                      <>
-                        <td className="p-3">
-                          <Badge className={`text-xs ${getRoleBadgeColor(employee.purchase_role)}`}>
-                            {getRoleDisplayName(employee.purchase_role)}
-                          </Badge>
-                        </td>
-                        <td className="p-3 text-center">
-                          <Badge
-                            variant={employee.is_active ? 'default' : 'secondary'}
-                            className={`text-xs ${employee.is_active ? 'bg-green-100 text-green-800' : ''}`}
-                          >
-                            {employee.is_active ? '활성' : '비활성'}
-                          </Badge>
-                        </td>
-                      </>
-                    )}
-                    <td className="p-3 text-center">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => onView(employee)}>
-                            <Eye className="mr-2 h-4 w-4" />
-                            상세 보기
-                          </DropdownMenuItem>
-                          {canEdit && (
-                            <>
-                              <DropdownMenuItem onClick={() => onEdit(employee)}>
-                                <Edit className="mr-2 h-4 w-4" />
-                                수정
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleToggleStatus(employee)}>
-                                {employee.is_active ? (
-                                  <>
-                                    <ToggleLeft className="mr-2 h-4 w-4" />
-                                    비활성화
-                                  </>
-                                ) : (
-                                  <>
-                                    <ToggleRight className="mr-2 h-4 w-4" />
-                                    활성화
-                                  </>
-                                )}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem 
-                                onClick={() => handleDelete(employee)}
-                                className="text-red-600"
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                삭제
-                              </DropdownMenuItem>
-                            </>
-                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
@@ -514,25 +463,21 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
               <MobileCardItem label="연락처" value={employee.phone || '-'} />
               <MobileCardItem label="이메일" value={employee.email || '-'} />
               
-              {canViewSensitive && (
-                <>
-                  <MobileCardItem 
-                    label="권한" 
-                    value={
-                      <Badge className={getRoleBadgeColor(employee.purchase_role)}>
-                        {getRoleDisplayName(employee.purchase_role)}
-                      </Badge>
-                    } 
-                  />
-                  <MobileCardItem label="주소" value={employee.adress || '-'} />
-                  <MobileCardItem label="은행" value={employee.bank || '-'} />
-                  <MobileCardItem label="계좌번호" value={employee.bank_account || '-'} />
-                  <MobileCardItem 
-                    label="연차" 
-                    value={employee.remaining_annual_leave !== undefined ? `${employee.remaining_annual_leave}일` : '-'} 
-                  />
-                </>
-              )}
+              <MobileCardItem 
+                label="권한" 
+                value={
+                  <Badge className={getRoleBadgeColor(employee.purchase_role)}>
+                    {getRoleDisplayName(employee.purchase_role)}
+                  </Badge>
+                } 
+              />
+              <MobileCardItem label="주소" value={employee.adress || '-'} />
+              <MobileCardItem label="은행" value={employee.bank || '-'} />
+              <MobileCardItem label="계좌번호" value={employee.bank_account || '-'} />
+              <MobileCardItem 
+                label="연차" 
+                value={employee.remaining_annual_leave !== undefined ? `${employee.remaining_annual_leave}일` : '-'} 
+              />
               
               <MobileCardActions>
                 <Button
@@ -542,38 +487,34 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                 >
                   <Eye className="w-4 h-4" />
                 </Button>
-                {canEdit && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => onEdit(employee)}
-                    >
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleToggleStatus(employee)}
-                      disabled={loadingId === employee.id}
-                    >
-                      {employee.is_active ? (
-                        <ToggleLeft className="w-4 h-4" />
-                      ) : (
-                        <ToggleRight className="w-4 h-4" />
-                      )}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-red-600"
-                      onClick={() => handleDelete(employee)}
-                      disabled={loadingId === employee.id}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </>
-                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onEdit(employee)}
+                >
+                  <Edit className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleToggleStatus(employee)}
+                  disabled={loadingId === employee.id}
+                >
+                  {employee.is_active ? (
+                    <ToggleLeft className="w-4 h-4" />
+                  ) : (
+                    <ToggleRight className="w-4 h-4" />
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-red-600"
+                  onClick={() => handleDelete(employee)}
+                  disabled={loadingId === employee.id}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
               </MobileCardActions>
             </MobileCard>
           ))

@@ -7,7 +7,7 @@ export function getPurchaseStatus(request: PurchaseRequest): PurchaseStatus {
   if (request.final_manager_status === 'rejected' || request.middle_manager_status === 'rejected') {
     return 'rejected'
   }
-  if (request.purchase_status === 'in_progress' || request.purchase_status === 'completed') {
+  if (request.is_payment_completed) {
     return 'inProgress'
   }
   return 'pending'

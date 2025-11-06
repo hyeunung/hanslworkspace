@@ -49,14 +49,14 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
           <img
             src="/logo_symbol.svg"
             alt="HANSL Logo"
-            className="w-7 h-7"
+            className="w-12 h-12"
             style={{ objectFit: 'contain' }}
           />
-          <div className="ml-3">
-            <h1 className="text-base font-semibold text-gray-900">
+          <div className="ml-3 leading-none flex flex-col items-start">
+            <h1 className="text-[28px] font-bold text-gray-600 leading-none mb-0.5">
               HANSL
             </h1>
-            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide leading-none ml-[1px]">
               Purchase System
             </span>
           </div>

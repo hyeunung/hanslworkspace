@@ -729,11 +729,11 @@ export default function PurchaseDetailModal({
   // 상태 표시 텍스트 반환 함수
   const getStatusDisplay = (item: any) => {
     if (activeTab === 'purchase') {
-      return item.purchase_status === 'ordered' ? '발주' : '구매요청'
+      return item.is_payment_completed ? '구매완료' : '구매요청'
     } else if (activeTab === 'receipt') {
-      return item.receipt_status === 'received' ? '입고' : '입고대기'
+      return item.is_received ? '입고' : '입고대기'
     }
-    return item.purchase_status === 'ordered' ? '발주' : '구매요청'
+    return item.is_payment_completed ? '구매완료' : '구매요청'
   }
 
   // 동적 gridTemplateColumns 생성

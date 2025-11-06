@@ -10,6 +10,7 @@ import { Calendar as CalendarIcon } from 'lucide-react'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
+import { logger } from '@/lib/logger'
 
 interface DatePickerPopoverProps {
   children: React.ReactNode
@@ -31,19 +32,19 @@ export function DatePickerPopover({
   const [open, setOpen] = useState(false)
 
   const handleDateSelect = (date: Date | undefined) => {
-    console.log('📅 DatePickerPopover handleDateSelect 호출:', { 
+    logger.debug('📅 DatePickerPopover handleDateSelect 호출:', { 
       date, 
       isToday: date && new Date().toDateString() === date.toDateString(),
       dateString: date?.toDateString(),
       todayString: new Date().toDateString()
     });
     if (date) {
-      console.log('✅ 날짜 선택됨, onDateSelect 호출 예정');
+      logger.debug('✅ 날짜 선택됨, onDateSelect 호출 예정');
       onDateSelect(date)
       setOpen(false) // 날짜 선택 후 팝오버 닫기
-      console.log('🔚 DatePickerPopover 처리 완료');
+      logger.debug('🔚 DatePickerPopover 처리 완료');
     } else {
-      console.log('❌ 날짜가 undefined임');
+      logger.debug('❌ 날짜가 undefined임');
     }
   }
 
@@ -68,7 +69,7 @@ export function DatePickerPopover({
             mode="single"
             selected={undefined}
             onSelect={(date) => {
-              console.log('🗓️ Calendar onSelect 직접 호출:', { 
+              logger.debug('🗓️ Calendar onSelect 직접 호출:', { 
                 date, 
                 isToday: date && new Date().toDateString() === date.toDateString(),
                 dateValue: date?.getTime(),

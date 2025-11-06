@@ -2,6 +2,7 @@ import { useState, useEffect, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useLocation } from 'react-router-dom'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import { logger } from '@/lib/logger'
 
 // 즉시 로딩할 핵심 컴포넌트들 (자주 사용되는 페이지)
 import DashboardMain from '@/components/dashboard/DashboardMain'
@@ -63,7 +64,7 @@ export default function OptimizedRoutes() {
             }
             setPreloadedComponents(prev => new Set([...prev, page]))
           } catch (error) {
-            console.warn(`Failed to preload ${page}:`, error)
+            logger.warn(`Failed to preload ${page}:`, error)
           }
         })
       }, { timeout: 1000 })

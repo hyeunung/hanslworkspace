@@ -126,7 +126,7 @@ export default function PurchaseDetailMain() {
         </div>
         <div className="bg-white p-4 rounded-lg border">
           <p className="text-sm text-gray-600 mb-1">구매 처리</p>
-          {getStatusBadge(purchase.purchase_status || 'pending')}
+          {getStatusBadge(purchase.is_payment_completed ? 'completed' : 'pending')}
         </div>
         <div className="bg-white p-4 rounded-lg border">
           <p className="text-sm text-gray-600 mb-1">납품 상태</p>

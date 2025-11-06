@@ -157,7 +157,6 @@ export interface PurchaseRequest {
   shipping_address?: string
   middle_manager_status: 'pending' | 'approved' | 'rejected'
   final_manager_status: 'pending' | 'approved' | 'rejected'
-  purchase_status?: 'pending' | 'in_progress' | 'completed'
   purchase_completed_at?: string
   delivery_status?: 'pending' | 'partial' | 'completed'
   delivery_completed_at?: string

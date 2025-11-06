@@ -1,4 +1,5 @@
 // 네비게이션 성능 최적화 유틸리티
+import { logger } from '@/lib/logger'
 
 interface NavigationCache {
   [key: string]: {
@@ -53,9 +54,9 @@ class NavigationOptimizer {
         const module = await importFn()
         this.setCachedComponent(path, module, true)
         this.preloadTimeouts.delete(path)
-        console.debug(`✅ Pre-loaded: ${path}`)
+        logger.debug(`✅ Pre-loaded: ${path}`)
       } catch (error) {
-        console.warn(`❌ Failed to preload ${path}:`, error)
+        logger.warn(`❌ Failed to preload ${path}:`, error)
         this.preloadTimeouts.delete(path)
       }
     }, delay)
