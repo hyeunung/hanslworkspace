@@ -705,8 +705,8 @@ export default function FilterToolbar({
                   <div className="text-xs font-medium text-gray-600 mb-3">월 선택</div>
                   
                   {/* 월 선택기 - 년도별 12개월 그리드 */}
-                  <div className="space-y-3">
-                    <div>
+                  <div className="flex gap-4">
+                    <div className="flex-1">
                       <div className="text-xs text-gray-500 mb-2">시작 월 선택</div>
                       {/* 년도 선택 */}
                       <div className="mb-3">
@@ -771,7 +771,7 @@ export default function FilterToolbar({
                     </div>
                     
                     {tempMonthRange.from && (
-                      <div>
+                      <div className="flex-1">
                         <div className="text-xs text-gray-500 mb-2">종료 월 선택 (선택사항)</div>
                         {/* 종료 월 년도 선택 */}
                         <div className="mb-3">

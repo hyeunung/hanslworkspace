@@ -416,6 +416,80 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     return result;
   }, [filteredPurchases, applyAdvancedFilters, applySorting]);
 
+  // 필터가 적용된 경우 각 탭별 필터링된 개수 계산
+  const filteredTabCounts = useMemo(() => {
+    // 필터가 없으면 원래 tabCounts 반환
+    const hasFilters = activeFilters.length > 0 || searchTerm.trim() !== '';
+    if (!hasFilters) {
+      return tabCounts;
+    }
+
+    // 권한별 필터링 적용 (useFastPurchaseFilters와 동일한 로직)
+    const HIDDEN_EMPLOYEES = ['정희웅'];
+    const hasManagerRole = currentUserRoles?.includes('purchase_manager') || currentUserRoles?.includes('app_admin');
+    const visiblePurchases = hasManagerRole 
+      ? purchases 
+      : purchases.filter(p => !HIDDEN_EMPLOYEES.includes(p.requester_name));
+
+    // 전체 visiblePurchases 데이터에 고급 필터만 먼저 적용 (탭 필터링 전)
+    const advancedFiltered = applyAdvancedFilters(visiblePurchases);
+    
+    // 각 탭 조건에 맞게 필터링
+    const getUniqueOrderCount = (filtered: Purchase[]) => {
+      return new Set(filtered.map(p => p.purchase_order_number)).size;
+    };
+
+    const pendingFiltered = advancedFiltered.filter((p: Purchase) => {
+      const middlePending = ['pending', '대기', '', null, undefined].includes(p.middle_manager_status as any);
+      const finalPending = ['pending', '대기', '', null, undefined].includes(p.final_manager_status as any);
+      const middleRejected = p.middle_manager_status === 'rejected';
+      const finalRejected = p.final_manager_status === 'rejected';
+      
+      if (middleRejected || finalRejected) return false;
+      
+      const middleApproved = p.middle_manager_status === 'approved';
+      const finalApproved = p.final_manager_status === 'approved';
+      
+      if (middleApproved && finalApproved) {
+        return false;
+      }
+      
+      return middlePending || finalPending;
+    });
+
+    const purchaseFiltered = advancedFiltered.filter((p: Purchase) => {
+      const isRequest = p.payment_category === '구매 요청';
+      const isSeonJin = (p.progress_type || '').includes('선진행');
+      const isIlban = (p.progress_type || '').includes('일반');
+      const finalApproved = p.final_manager_status === 'approved';
+      
+      if (p.is_payment_completed) {
+        return false;
+      }
+      
+      if (!isRequest) return false;
+      return (isSeonJin) || (isIlban && finalApproved);
+    });
+
+    const receiptFiltered = advancedFiltered.filter((p: Purchase) => {
+      const isSeonJin = (p.progress_type || '').includes('선진행');
+      const finalApproved = p.final_manager_status === 'approved';
+      
+      if (p.is_received) {
+        return false;
+      }
+      
+      return (isSeonJin || finalApproved);
+    });
+
+    return {
+      pending: getUniqueOrderCount(pendingFiltered),
+      purchase: getUniqueOrderCount(purchaseFiltered),
+      receipt: getUniqueOrderCount(receiptFiltered),
+      done: getUniqueOrderCount(advancedFiltered)
+    };
+  }, [activeFilters, searchTerm, purchases, applyAdvancedFilters, tabCounts, currentUserRoles]);
+
   // 월간 필터 감지 및 합계금액 계산
   const monthlyFilterSummary = useMemo(() => {
     // 월간 필터가 활성화되어 있는지 확인
@@ -773,7 +847,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
                     : 'badge-stats-secondary'
                 }
               >
-                {tabCounts[tab.key as keyof typeof tabCounts]}
+                {filteredTabCounts[tab.key as keyof typeof filteredTabCounts]}
               </Badge>
             </button>
           ))}
