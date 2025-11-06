@@ -6,7 +6,7 @@ import { useFastPurchaseFilters } from "@/hooks/useFastPurchaseFilters";
 import LazyPurchaseTable from "@/components/purchase/LazyPurchaseTable";
 import FilterToolbar, { FilterRule, SortRule } from "@/components/purchase/FilterToolbar";
 
-import { Plus, Package } from "lucide-react";
+import { Plus, Package, Info } from "lucide-react";
 import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs/generatePurchaseOrderExcel";
 
 // Lazy load modal for better performance
@@ -194,6 +194,20 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   // 고급 필터링 로직
   const applyAdvancedFilters = useCallback((purchases: Purchase[]) => {
     let filtered = [...purchases];
+
+    // 필터가 없을 때만 기본 60일 필터 적용
+    // 필터가 있으면(기간/월별 포함) 60일 제한 없이 전체 데이터 표시
+    const hasAnyFilter = activeFilters.length > 0 || searchTerm.trim() !== '';
+    
+    if (!hasAnyFilter) {
+      const sixtyDaysAgo = new Date();
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+      filtered = filtered.filter(purchase => {
+        if (!purchase.request_date) return false;
+        const requestDate = new Date(purchase.request_date);
+        return requestDate >= sixtyDaysAgo;
+      });
+    }
 
     // 검색어 필터링
     if (searchTerm.trim()) {
@@ -418,12 +432,6 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
 
   // 필터가 적용된 경우 각 탭별 필터링된 개수 계산
   const filteredTabCounts = useMemo(() => {
-    // 필터가 없으면 원래 tabCounts 반환
-    const hasFilters = activeFilters.length > 0 || searchTerm.trim() !== '';
-    if (!hasFilters) {
-      return tabCounts;
-    }
-
     // 권한별 필터링 적용 (useFastPurchaseFilters와 동일한 로직)
     const HIDDEN_EMPLOYEES = ['정희웅'];
     const hasManagerRole = currentUserRoles?.includes('purchase_manager') || currentUserRoles?.includes('app_admin');
@@ -432,6 +440,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       : purchases.filter(p => !HIDDEN_EMPLOYEES.includes(p.requester_name));
 
     // 전체 visiblePurchases 데이터에 고급 필터만 먼저 적용 (탭 필터링 전)
+    // 필터가 없으면 기본 60일 필터가 자동 적용됨
     const advancedFiltered = applyAdvancedFilters(visiblePurchases);
     
     // 각 탭 조건에 맞게 필터링
@@ -488,7 +497,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       receipt: getUniqueOrderCount(receiptFiltered),
       done: getUniqueOrderCount(advancedFiltered)
     };
-  }, [activeFilters, searchTerm, purchases, applyAdvancedFilters, tabCounts, currentUserRoles]);
+  }, [activeFilters, searchTerm, purchases, applyAdvancedFilters, currentUserRoles]);
 
   // 월간 필터 감지 및 합계금액 계산
   const monthlyFilterSummary = useMemo(() => {
@@ -820,6 +829,13 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
           availableContacts={availableContacts}
           availablePaymentSchedules={availablePaymentSchedules}
         />
+        {/* 필터가 없을 때만 표시되는 안내 메시지 */}
+        {activeFilters.length === 0 && !searchTerm.trim() && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+            <Info className="w-3.5 h-3.5" />
+            <span>최근 60일 데이터만 표시됩니다. 더 오래된 데이터를 보려면 필터를 적용해주세요.</span>
+          </div>
+        )}
       </div>
 
       {/* 직접 구현한 탭 (hanslwebapp 방식) - 빠른 성능 */}
