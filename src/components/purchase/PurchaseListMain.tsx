@@ -1,9 +1,8 @@
 
-import { useState, lazy, Suspense, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, lazy, Suspense, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { usePurchaseData } from "@/hooks/usePurchaseData";
-import { useFastPurchaseFilters } from "@/hooks/useFastPurchaseFilters";
-import LazyPurchaseTable from "@/components/purchase/LazyPurchaseTable";
+import FastPurchaseTable from "@/components/purchase/FastPurchaseTable";
 import FilterToolbar, { FilterRule, SortRule } from "@/components/purchase/FilterToolbar";
 
 import { Plus, Package, Info } from "lucide-react";
@@ -61,33 +60,65 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     loading,
     currentUserRoles,
     currentUserName,
-    currentUserEmail,
-    currentUserId,
     refreshPurchases: loadPurchases,
     updatePurchaseOptimistic
   } = usePurchaseData();
   
   const isAdmin = currentUserRoles?.includes('app_admin');
   
+  // 탭 상태 관리 (hanslwebapp 방식 - 단순 상태)
+  const [activeTab, setActiveTab] = useState('pending');
+  const [selectedEmployee, setSelectedEmployee] = useState<string>('');
 
-  // 필터링 및 탭 관리
-  const {
-    activeTab,
-    selectedEmployee,
-    setActiveTab,
-    setSelectedEmployee,
-    filteredPurchases,
-    tabCounts
-  } = useFastPurchaseFilters(purchases, currentUserRoles, currentUserName, currentUserId, currentUserEmail);
-  
+  // 권한별 필터링된 데이터 (한 번만 계산)
+  const visiblePurchases = useMemo(() => {
+    const HIDDEN_EMPLOYEES = ['정희웅'];
+    const hasManagerRole = currentUserRoles?.includes('purchase_manager') || currentUserRoles?.includes('app_admin');
+    return hasManagerRole 
+      ? purchases 
+      : purchases.filter(p => !HIDDEN_EMPLOYEES.includes(p.requester_name));
+  }, [purchases, currentUserRoles]);
+
+  // roleCase 계산 (탭별 기본 직원 필터용)
+  const roleCase = useMemo(() => {
+    if (!currentUserRoles || currentUserRoles.length === 0) return 1;
+    if (currentUserRoles.includes('purchase_manager')) return 2;
+    if (currentUserRoles.some(r => ['final_approver', 'app_admin', 'ceo', 'middle_manager', 'hr'].includes(r))) return 3;
+    return 1;
+  }, [currentUserRoles]);
+
+  // 탭별 기본 직원 필터 계산
+  const computeDefaultEmployee = useCallback((tabKey: string): string => {
+    if (!currentUserName) return 'all';
+    switch (roleCase) {
+      case 1:
+        if (tabKey === 'done') return 'all';
+        return currentUserName;
+      case 2:
+        if (tabKey === 'done') return 'all';
+        return currentUserName;
+      case 3:
+        return 'all';
+      default:
+        return currentUserName;
+    }
+  }, [currentUserName, roleCase]);
+
+  // 탭 변경 시 기본 직원 필터 설정
+  useEffect(() => {
+    if (!currentUserName) return;
+    const defaultEmployee = computeDefaultEmployee(activeTab);
+    setSelectedEmployee(defaultEmployee);
+  }, [activeTab, currentUserName, computeDefaultEmployee]);
+
   // URL 쿼리 파라미터에서 탭 설정
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     const tab = searchParams.get('tab');
-    if (tab === 'purchase') {
-      setActiveTab('purchase');
+    if (tab && ['pending', 'purchase', 'receipt', 'done'].includes(tab)) {
+      setActiveTab(tab);
     }
-  }, [location.search, setActiveTab]);
+  }, [location.search]);
 
   // 필터 옵션 데이터 로드
   useEffect(() => {
@@ -139,25 +170,6 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
 
     loadFilterOptions();
   }, [supabase]);
-  
-  // 탭 이동 시 최신 데이터 무음 새로고침
-  const hasInitializedTabRefresh = useRef(false);
-  useEffect(() => {
-    if (!hasInitializedTabRefresh.current) {
-      hasInitializedTabRefresh.current = true;
-      return;
-    }
-
-    const refreshLatestData = async () => {
-      try {
-        await loadPurchases(true, { silent: true });
-      } catch (error) {
-        logger.error('탭 전환 시 발주 데이터 새로고침 실패', error);
-      }
-    };
-
-    refreshLatestData();
-  }, [activeTab, loadPurchases]);
 
 
   // 상태에 따른 배지 생성 - 메모이제이션 적용
@@ -301,7 +313,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         return fieldStr.includes(filterStr);
       case 'equals':
         // 날짜 필드의 경우 정확한 날짜 비교
-        if (filterField === 'date_range' || filterValue.match(/^\d{4}-\d{2}-\d{2}/)) {
+        if (filterField === 'date_range' || filterValue.match(/^[0-9]{4}-[0-9]{2}-[0-9]{2}/)) {
           if (!fieldValue) return false;
           try {
             const fieldDate = new Date(fieldValue).toISOString().split('T')[0];
@@ -339,14 +351,86 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     }
   }, []);
 
-  // 고급 필터링 로직 - useMemo로 최적화하여 탭 전환 시 즉시 반영
-  const applyAdvancedFilters = useCallback((purchases: Purchase[]) => {
-    let filtered = purchases;
+  const matchesTabCondition = useCallback((item: Purchase, tabKey: string) => {
+    switch (tabKey) {
+      case 'pending': {
+        if (currentUserRoles && currentUserRoles.includes('consumable_manager')) {
+          if (item.payment_category !== '구매 요청') return false;
+        }
 
-    // 필터가 없을 때만 기본 60일 필터 적용
-    // 필터가 있으면(기간/월별 포함) 60일 제한 없이 전체 데이터 표시
+        const isMiddlePending = ['pending', '대기', '', null, undefined].includes(item.middle_manager_status as any);
+        const isFinalPending = (item.middle_manager_status === '승인' || item.middle_manager_status === 'approved') &&
+                               item.final_manager_status !== 'approved' && item.final_manager_status !== '승인';
+        const isApprovedToday = (item.final_manager_status === 'approved' || item.final_manager_status === '승인') &&
+                                item.final_manager_approved_at && (() => {
+          const approvedDate = new Date(item.final_manager_approved_at);
+          const today = new Date();
+          return approvedDate.getFullYear() === today.getFullYear() &&
+                 approvedDate.getMonth() === today.getMonth() &&
+                 approvedDate.getDate() === today.getDate();
+        })();
+
+        if (item.middle_manager_status === 'rejected' || item.final_manager_status === 'rejected') return false;
+
+        return isMiddlePending || isFinalPending || isApprovedToday;
+      }
+      case 'purchase': {
+        const isRequest = item.payment_category === '구매 요청';
+        const notPaid = !item.is_payment_completed;
+        if (!isRequest || !notPaid) return false;
+
+        const isSeonJin = (item.progress_type || '').includes('선진행');
+        const isIlban = (item.progress_type || '').includes('일반');
+        const finalApproved = item.final_manager_status === 'approved';
+
+        return isSeonJin || (isIlban && finalApproved);
+      }
+      case 'receipt': {
+        if (item.is_received) return false;
+        const isSeonJin = (item.progress_type || '').includes('선진행');
+        const finalApproved = item.final_manager_status === 'approved';
+        return isSeonJin || finalApproved;
+      }
+      case 'done':
+        return true;
+      default:
+        return true;
+    }
+  }, [currentUserRoles]);
+
+  // 공통 필터링 (검색어, 직원, 고급 필터, 60일 제한)
+  const baseFilteredPurchases = useMemo(() => {
+    const matchesSearchAndEmployee = (item: Purchase) => {
+      if (selectedEmployee && selectedEmployee !== 'all' && selectedEmployee !== '전체' && item.requester_name !== selectedEmployee) {
+        return false;
+      }
+
+      if (searchTerm && searchTerm.trim() !== '') {
+        const term = searchTerm.trim().toLowerCase();
+        const searchable = [
+          item.purchase_order_number,
+          item.vendor_name,
+          item.item_name,
+          item.specification,
+          item.requester_name,
+          item.remark,
+          item.project_vendor,
+          item.project_item,
+          item.sales_order_number,
+          item.unit_price_value?.toString(),
+          item.amount_value?.toString(),
+        ].map(v => (v || '').toLowerCase()).join(' ');
+
+        if (!searchable.includes(term)) return false;
+      }
+
+      return true;
+    };
+
+    let filtered = visiblePurchases.filter(matchesSearchAndEmployee);
+
     const hasAnyFilter = activeFilters.length > 0 || searchTerm.trim() !== '';
-    
+
     if (!hasAnyFilter) {
       const sixtyDaysAgo = new Date();
       sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
@@ -357,141 +441,137 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       });
     }
 
-    // 검색어 필터링
-    if (searchTerm.trim()) {
-      const searchLower = searchTerm.toLowerCase().trim();
-      filtered = filtered.filter(purchase => 
-        purchase.purchase_order_number?.toLowerCase().includes(searchLower) ||
-        purchase.vendor_name?.toLowerCase().includes(searchLower) ||
-        purchase.requester_name?.toLowerCase().includes(searchLower) ||
-        purchase.item_name?.toLowerCase().includes(searchLower) ||
-        purchase.specification?.toLowerCase().includes(searchLower) ||
-        purchase.remark?.toLowerCase().includes(searchLower) ||
-        purchase.project_vendor?.toLowerCase().includes(searchLower) ||
-        purchase.project_item?.toLowerCase().includes(searchLower) ||
-        purchase.sales_order_number?.toLowerCase().includes(searchLower)
-      );
+    if (activeFilters.length > 0) {
+      filtered = filtered.filter(purchase => {
+        return activeFilters.every(filter => {
+          const actualField = (filter.field === 'date_range' || filter.field === 'date_month')
+            ? filter.dateField || filter.field
+            : filter.field;
+
+          const fieldValue = getFieldValue(purchase, actualField);
+          const filterFieldType = filter.field === 'date_month' ? 'date_month' :
+                                 filter.field === 'date_range' ? 'date_range' : undefined;
+
+          return applyFilterCondition(fieldValue, filter.condition, filter.value, filterFieldType);
+        });
+      });
     }
 
-    // 개별 필터 적용
-    activeFilters.forEach(filter => {
-      filtered = filtered.filter(purchase => {
-        // 날짜 필터의 경우 실제 날짜 필드 사용
-        const actualField = (filter.field === 'date_range' || filter.field === 'date_month') 
-          ? filter.dateField || filter.field 
-          : filter.field;
-        
-        const fieldValue = getFieldValue(purchase, actualField);
-        
-        // 필터 필드 타입 감지
-        const filterFieldType = filter.field === 'date_month' ? 'date_month' : 
-                               filter.field === 'date_range' ? 'date_range' : undefined;
-        
-        return applyFilterCondition(fieldValue, filter.condition, filter.value, filterFieldType);
+    return filtered;
+  }, [visiblePurchases, selectedEmployee, searchTerm, activeFilters, getFieldValue, applyFilterCondition]);
+
+  // 탭별 필터 적용 및 정렬
+  const tabFilteredPurchases = useMemo(() => {
+    let filtered = baseFilteredPurchases.filter(item => matchesTabCondition(item, activeTab));
+
+    if (sortConfig) {
+      filtered = [...filtered].sort((a, b) => {
+        const aValue = getFieldValue(a, sortConfig.field);
+        const bValue = getFieldValue(b, sortConfig.field);
+
+        if (aValue === null || aValue === undefined) return 1;
+        if (bValue === null || bValue === undefined) return -1;
+
+        let comparison = 0;
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          comparison = aValue - bValue;
+        } else if (aValue instanceof Date && bValue instanceof Date) {
+          comparison = aValue.getTime() - bValue.getTime();
+        } else {
+          comparison = String(aValue).localeCompare(String(bValue));
+        }
+
+        return sortConfig.direction === 'desc' ? -comparison : comparison;
       });
-    });
+    } else if (activeTab === 'pending') {
+      filtered = [...filtered].sort((a, b) => {
+        const getPriority = (item: Purchase) => {
+          if (item.middle_manager_status !== '승인' && item.middle_manager_status !== 'approved') {
+            return 1;
+          }
+          if (item.middle_manager_status === '승인' || item.middle_manager_status === 'approved') {
+            if (item.final_manager_status !== 'approved' && item.final_manager_status !== '승인') {
+              return 2;
+            }
+          }
+          if (item.final_manager_status === 'approved' || item.final_manager_status === '승인') {
+            return 3;
+          }
+          return 4;
+        };
+
+        const priorityA = getPriority(a);
+        const priorityB = getPriority(b);
+
+        if (priorityA !== priorityB) {
+          return priorityA - priorityB;
+        }
+
+        const dateA = a.request_date ? new Date(a.request_date).getTime() : 0;
+        const dateB = b.request_date ? new Date(b.request_date).getTime() : 0;
+        return dateB - dateA;
+      });
+    } else {
+      filtered = [...filtered].sort((a, b) => {
+        const dateA = a.request_date ? new Date(a.request_date).getTime() : 0;
+        const dateB = b.request_date ? new Date(b.request_date).getTime() : 0;
+        return dateB - dateA;
+      });
+    }
 
     return filtered;
-  }, [searchTerm, activeFilters, getFieldValue, applyFilterCondition]);
+  }, [baseFilteredPurchases, activeTab, sortConfig, matchesTabCondition, getFieldValue]);
 
-  // 정렬 적용 함수
-  const applySorting = useCallback((purchases: Purchase[]) => {
-    if (!sortConfig) return purchases;
-
-    return [...purchases].sort((a, b) => {
-      const aValue = getFieldValue(a, sortConfig.field);
-      const bValue = getFieldValue(b, sortConfig.field);
-
-      if (aValue === null || aValue === undefined) return 1;
-      if (bValue === null || bValue === undefined) return -1;
-
-      let comparison = 0;
-      if (typeof aValue === 'number' && typeof bValue === 'number') {
-        comparison = aValue - bValue;
-      } else if (aValue instanceof Date && bValue instanceof Date) {
-        comparison = aValue.getTime() - bValue.getTime();
-      } else {
-        comparison = String(aValue).localeCompare(String(bValue));
-      }
-
-      return sortConfig.direction === 'desc' ? -comparison : comparison;
-    });
-  }, [sortConfig, getFieldValue]);
-
-  // 고급 필터가 적용된 최종 구매 목록 - 캐싱 최적화
-  const advancedFilteredPurchases = useMemo(() => {
-    const filtered = applyAdvancedFilters(filteredPurchases);
-    return applySorting(filtered);
-  }, [filteredPurchases, applyAdvancedFilters, applySorting]);
-
-  // 필터가 적용된 경우 각 탭별 필터링된 개수 계산 - 성능 최적화
-  const filteredTabCounts = useMemo(() => {
-    // 권한별 필터링 적용 (useFastPurchaseFilters와 동일한 로직)
-    const HIDDEN_EMPLOYEES = ['정희웅'];
-    const hasManagerRole = currentUserRoles?.includes('purchase_manager') || currentUserRoles?.includes('app_admin');
-    const visiblePurchases = hasManagerRole 
-      ? purchases 
-      : purchases.filter(p => !HIDDEN_EMPLOYEES.includes(p.requester_name));
-
-    // 전체 visiblePurchases 데이터에 고급 필터만 먼저 적용 (탭 필터링 전)
-    // 필터가 없으면 기본 60일 필터가 자동 적용됨
-    const advancedFiltered = applyAdvancedFilters(visiblePurchases);
-    
-    // 각 탭 조건에 맞게 필터링
+  // 탭별 카운트 계산 (기본 카운트)
+  const tabCounts = useMemo(() => {
     const getUniqueOrderCount = (filtered: Purchase[]) => {
       return new Set(filtered.map(p => p.purchase_order_number)).size;
     };
 
-    const pendingFiltered = advancedFiltered.filter((p: Purchase) => {
-      const middlePending = ['pending', '대기', '', null, undefined].includes(p.middle_manager_status as any);
-      const finalPending = ['pending', '대기', '', null, undefined].includes(p.final_manager_status as any);
-      const middleRejected = p.middle_manager_status === 'rejected';
-      const finalRejected = p.final_manager_status === 'rejected';
-      
-      if (middleRejected || finalRejected) return false;
-      
-      const middleApproved = p.middle_manager_status === 'approved';
-      const finalApproved = p.final_manager_status === 'approved';
-      
-      if (middleApproved && finalApproved) {
-        return false;
-      }
-      
-      return middlePending || finalPending;
-    });
+    const pendingFiltered = visiblePurchases.filter((p: Purchase) => matchesTabCondition(p, 'pending'));
 
-    const purchaseFiltered = advancedFiltered.filter((p: Purchase) => {
+    const purchaseFiltered = visiblePurchases.filter((p: Purchase) => {
       const isRequest = p.payment_category === '구매 요청';
+      const notPaid = !p.is_payment_completed;
+      if (!isRequest || !notPaid) return false;
       const isSeonJin = (p.progress_type || '').includes('선진행');
       const isIlban = (p.progress_type || '').includes('일반');
       const finalApproved = p.final_manager_status === 'approved';
-      
-      if (p.is_payment_completed) {
-        return false;
-      }
-      
-      if (!isRequest) return false;
-      return (isSeonJin) || (isIlban && finalApproved);
+      return isSeonJin || (isIlban && finalApproved);
     });
 
-    const receiptFiltered = advancedFiltered.filter((p: Purchase) => {
+    const receiptFiltered = visiblePurchases.filter((p: Purchase) => {
+      if (p.is_received) return false;
       const isSeonJin = (p.progress_type || '').includes('선진행');
       const finalApproved = p.final_manager_status === 'approved';
-      
-      if (p.is_received) {
-        return false;
-      }
-      
-      return (isSeonJin || finalApproved);
+      return isSeonJin || finalApproved;
     });
 
     return {
       pending: getUniqueOrderCount(pendingFiltered),
       purchase: getUniqueOrderCount(purchaseFiltered),
       receipt: getUniqueOrderCount(receiptFiltered),
-      done: getUniqueOrderCount(advancedFiltered)
+      done: getUniqueOrderCount(visiblePurchases)
     };
-  }, [purchases, applyAdvancedFilters, currentUserRoles]);  // 전체 purchases 기준으로 계산
+  }, [visiblePurchases, matchesTabCondition]);
+
+  // 필터가 적용된 경우 각 탭별 필터링된 개수 계산
+  const filteredTabCounts = useMemo(() => {
+    const getUniqueOrderCount = (filtered: Purchase[]) => {
+      return new Set(filtered.map(p => p.purchase_order_number)).size;
+    };
+
+    const pendingFiltered = baseFilteredPurchases.filter((p: Purchase) => matchesTabCondition(p, 'pending'));
+    const purchaseFiltered = baseFilteredPurchases.filter((p: Purchase) => matchesTabCondition(p, 'purchase'));
+    const receiptFiltered = baseFilteredPurchases.filter((p: Purchase) => matchesTabCondition(p, 'receipt'));
+
+    return {
+      pending: getUniqueOrderCount(pendingFiltered),
+      purchase: getUniqueOrderCount(purchaseFiltered),
+      receipt: getUniqueOrderCount(receiptFiltered),
+      done: getUniqueOrderCount(baseFilteredPurchases)
+    };
+  }, [baseFilteredPurchases, matchesTabCondition]);
 
   // 월간 필터 감지 및 합계금액 계산
   const monthlyFilterSummary = useMemo(() => {
@@ -524,7 +604,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         const monthStr = `${year}-${month.toString().padStart(2, '0')}`;
         
         // 해당 월의 데이터 필터링
-        const monthData = advancedFilteredPurchases.filter(purchase => {
+        const monthData = tabFilteredPurchases.filter(purchase => {
           const purchaseDate = new Date(purchase.request_date);
           return purchaseDate.getFullYear() === year && 
                  (purchaseDate.getMonth() + 1) === month;
@@ -558,7 +638,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     } else {
       // 단일 월 필터 (예: "2024-10")
       const [year, month] = filterValue.split('-');
-      const monthData = advancedFilteredPurchases.filter(purchase => {
+      const monthData = tabFilteredPurchases.filter(purchase => {
         const purchaseDate = new Date(purchase.request_date);
         return purchaseDate.getFullYear() === parseInt(year) && 
                (purchaseDate.getMonth() + 1) === parseInt(month);
@@ -577,7 +657,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         count: monthData.length
       };
     }
-  }, [activeFilters, advancedFilteredPurchases]);
+  }, [activeFilters, tabFilteredPurchases]);
 
 
   // 엑셀 다운로드
@@ -857,7 +937,9 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
                     : 'badge-stats-secondary'
                 }
               >
-                {filteredTabCounts[tab.key as keyof typeof filteredTabCounts]}
+                {(activeFilters.length > 0 || searchTerm.trim() !== '') 
+                  ? filteredTabCounts[tab.key as keyof typeof filteredTabCounts]
+                  : tabCounts[tab.key as keyof typeof tabCounts]}
               </Badge>
             </button>
           ))}
@@ -940,15 +1022,15 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
                 <div className="w-8 h-8 border-2 border-hansl-500 border-t-transparent rounded-full animate-spin" />
                 <span className="ml-3 card-subtitle">로딩 중...</span>
               </div>
-            ) : advancedFilteredPurchases.length === 0 ? (
+            ) : tabFilteredPurchases.length === 0 ? (
               <div className="text-center py-12">
                 <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">발주요청서가 없습니다</h3>
                 <p className="card-subtitle">새로운 발주요청서를 작성해보세요.</p>
               </div>
             ) : (
-              <LazyPurchaseTable 
-                purchases={advancedFilteredPurchases} 
+              <FastPurchaseTable 
+                purchases={tabFilteredPurchases} 
                 activeTab={activeTab}
                 currentUserRoles={currentUserRoles}
                 onRefresh={loadPurchases}
