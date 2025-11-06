@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails, Purchase } from '@/types/purchase'
 import { formatDate } from '@/utils/helpers'
@@ -42,7 +42,7 @@ interface PurchaseDetailModalProps {
   onDelete?: (purchase: PurchaseRequestWithDetails) => void
 }
 
-export default function PurchaseDetailModal({ 
+function PurchaseDetailModal({ 
   purchaseId, 
   isOpen, 
   onClose, 
@@ -3104,3 +3104,5 @@ export default function PurchaseDetailModal({
     </Dialog>
   )
 }
+
+export default memo(PurchaseDetailModal)

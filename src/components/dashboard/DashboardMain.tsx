@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { AlertTriangle, Clock, CheckCircle, ArrowRight, Eye, ThumbsUp, X, Package, Truck, ShoppingCart, Download, Search } from 'lucide-react'
+import { Clock, CheckCircle, ArrowRight, X, Package, Truck, ShoppingCart, Download, Search } from 'lucide-react'
 import ExcelJS from 'exceljs'
 
 // Import modals
@@ -46,15 +46,8 @@ export default function DashboardMain() {
   const navigate = useNavigate()
   const supabase = createClient()
 
-  const loadDashboardData = useCallback(async (showLoading = true) => {
+  const loadDashboardData = useCallback(async (showLoading = true, forceRefresh = false) => {
     try {
-      if (showLoading) {
-        setLoading(true)
-      } else {
-        // 로딩 표시 없이 새로고침할 때는 기존 data를 유지
-        // data가 null이 되는 것을 방지
-      }
-      
       const supabase = createClient()
       
       const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -85,8 +78,9 @@ export default function DashboardMain() {
         }
         
         try {
-          const dashboardData = await dashboardService.getDashboardData(defaultEmployee as any)
+          const dashboardData = await dashboardService.getDashboardData(defaultEmployee as any, forceRefresh)
           setData(dashboardData)
+          setLoading(false)
         } catch (_err) {
           // 대시보드 데이터 로딩 실패 시에도 기본 employee 정보는 설정
           setData({
@@ -96,42 +90,84 @@ export default function DashboardMain() {
             urgentRequests: [],
             myPurchaseStatus: { waitingPurchase: [], waitingDelivery: [] }
           } as any)
+          setLoading(false)
         }
-        
-        setLoading(false)
         return
       }
 
-
+      if (showLoading && !forceRefresh && !data) {
+        // 초기 로드 시 캐시 확인 - getDashboardData가 캐시를 확인하므로 즉시 반환됨
+        // 하지만 로딩 상태를 먼저 false로 설정하지 않으므로, 캐시가 있어도 로딩이 표시됨
+        // 따라서 캐시가 있으면 즉시 표시하도록 별도 처리
+        try {
+          const cachedData = await dashboardService.getDashboardData(employee, false)
+          if (cachedData) {
+            setData(cachedData)
+            setLoading(false)
+            
+            // 백그라운드에서 최신 데이터 업데이트
+            setTimeout(async () => {
+              try {
+                const freshData = await dashboardService.getDashboardData(employee, true)
+                setData(freshData)
+              } catch (_err) {
+                // 백그라운드 업데이트 실패는 무시
+              }
+            }, 100)
+            
+            // role 설정 및 미다운로드 항목 조회
+            if (employee.purchase_role) {
+              const roles = Array.isArray(employee.purchase_role)
+                ? employee.purchase_role.map((r: any) => String(r).trim())
+                : String(employee.purchase_role)
+                    .split(',')
+                    .map((r: string) => r.trim())
+                    .filter((r: string) => r.length > 0)
+              setCurrentUserRoles(roles)
+              
+              if (roles.includes('lead buyer') || roles.includes('lead buyer')) {
+                const undownloaded = await dashboardService.getUndownloadedOrders(employee)
+                setUndownloadedOrders(undownloaded)
+              }
+            }
+            
+            return
+          }
+        } catch (_err) {
+          // 캐시 확인 실패 시 정상 로드 진행
+        }
+      }
+      
+      if (showLoading) {
+        setLoading(true)
+      }
       
       try {
-        const dashboardData = await dashboardService.getDashboardData(employee)
-        
+        const dashboardData = await dashboardService.getDashboardData(employee, forceRefresh)
         
         // 전체 입고대기 건수 조회 추가
         const _totalDeliveryWaiting = await dashboardService.getTotalDeliveryWaitingCount()
         
-        
         setData(dashboardData)
+        
+        // 사용자 role 설정
+        if (employee.purchase_role) {
+          const roles = Array.isArray(employee.purchase_role)
+            ? employee.purchase_role.map((r: any) => String(r).trim())
+            : String(employee.purchase_role)
+                .split(',')
+                .map((r: string) => r.trim())
+                .filter((r: string) => r.length > 0)
+          setCurrentUserRoles(roles)
+          
+          // lead buyer 또는 "lead buyer" (공백 포함)인 경우 미다운로드 항목 조회
+          if (roles.includes('lead buyer') || roles.includes('lead buyer')) {
+            const undownloaded = await dashboardService.getUndownloadedOrders(employee)
+            setUndownloadedOrders(undownloaded)
+          }
+        }
       } catch (_err) {
         toast.error('대시보드 데이터를 불러오는데 실패했습니다.')
-      }
-      
-      // 사용자 role 설정
-      if (employee.purchase_role) {
-        const roles = Array.isArray(employee.purchase_role)
-          ? employee.purchase_role.map((r: any) => String(r).trim())
-          : String(employee.purchase_role)
-              .split(',')
-              .map((r: string) => r.trim())
-              .filter((r: string) => r.length > 0)
-        setCurrentUserRoles(roles)
-        
-        // lead buyer 또는 "lead buyer" (공백 포함)인 경우 미다운로드 항목 조회
-        if (roles.includes('lead buyer') || roles.includes('lead buyer')) {
-          const undownloaded = await dashboardService.getUndownloadedOrders(employee)
-          setUndownloadedOrders(undownloaded)
-        }
       }
     } catch (_error) {
       // 전체 대시보드 로딩 실패
@@ -298,15 +334,6 @@ export default function DashboardMain() {
     }
   }
 
-  const getPriorityColor = (priority: 'high' | 'medium' | 'low') => {
-    switch (priority) {
-      case 'high': return 'bg-red-100 text-red-800 border-red-200'
-      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-      case 'low': return 'bg-green-100 text-green-800 border-green-200'
-      default: return 'bg-gray-100 text-gray-800 border-gray-200'
-    }
-  }
-
   const getStepColor = (step: string) => {
     switch (step) {
       case 'approval': return 'bg-yellow-100 text-yellow-800'
@@ -372,67 +399,6 @@ export default function DashboardMain() {
             </div>
           </div>
         </div>
-
-        {/* 긴급 알림 섹션 */}
-        {data.urgentRequests.length > 0 && (
-          <Card className="mb-3 border-red-200 bg-red-50">
-            <CardHeader className="pb-2 pt-3">
-              <CardTitle className="flex items-center gap-2 text-red-800 card-title">
-                <AlertTriangle className="w-4 h-4" />
-                긴급 처리 필요 ({data.urgentRequests.length}건)
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-3">
-              <div className="flex gap-2 overflow-x-auto pb-2">
-              {data.urgentRequests.slice(0, 5).map((request) => (
-                <div key={request.id} className="bg-white rounded-lg p-2 border border-red-200 min-w-[280px] flex-shrink-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-1 mb-1">
-                        <Badge className={`${getPriorityColor(request.priority)} badge-text h-4 px-1`}>
-                          {request.priority === 'high' ? '높음' : request.priority === 'medium' ? '보통' : '낮음'}
-                        </Badge>
-                        <span className="card-subtitle truncate max-w-[120px]">
-                          {request.vendor_name || '업체명 없음'}
-                        </span>
-                        <span className="card-date">
-                          {request.daysOverdue}일 지연
-                        </span>
-                      </div>
-                      <div className="card-description">
-                        <span>발주: {request.purchase_order_number || request.id.slice(0, 8)}</span>
-                        <span className="ml-1">• {request.total_items}개</span>
-                      </div>
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => navigate(`/purchase?highlight=${request.id}`)}
-                        className="h-6 px-2 badge-text"
-                      >
-                        <Eye className="w-3 h-3 mr-0.5" />
-                        보기
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => handleQuickApprove(request.id)}
-                        disabled={actionLoading === request.id}
-                        className="bg-red-600 hover:bg-red-700 h-6 px-2 badge-text"
-                      >
-                        <ThumbsUp className="w-3 h-3 mr-0.5" />
-                        {actionLoading === request.id ? '처리중' : '승인'}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-
 
         {/* 통합 대시보드 그리드 */}
         <div className="mb-2">

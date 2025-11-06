@@ -10,6 +10,14 @@ import type {
   PurchaseRequestWithDetails 
 } from '@/types/purchase'
 
+// 대시보드 데이터 캐시
+const dashboardCache = {
+  data: null as DashboardData | null,
+  lastFetch: 0,
+  CACHE_DURATION: 30 * 1000, // 30초 캐시
+  employeeId: null as string | null
+}
+
 export class DashboardService {
   private supabase = createClient()
 
@@ -37,10 +45,20 @@ export class DashboardService {
   }
 
   // 메인 대시보드 데이터 로드
-  async getDashboardData(employee: Employee): Promise<DashboardData> {
+  async getDashboardData(employee: Employee, forceRefresh = false): Promise<DashboardData> {
+    const now = Date.now()
+    const cacheValid = !forceRefresh && 
+                       dashboardCache.data && 
+                       dashboardCache.employeeId === employee.id &&
+                       (now - dashboardCache.lastFetch) < dashboardCache.CACHE_DURATION
+
+    // 캐시가 유효하면 즉시 반환
+    if (cacheValid && dashboardCache.data) {
+      return dashboardCache.data
+    }
+
     const [
       stats,
-      urgentRequests,
       myRecentRequests,
       pendingApprovals,
       quickActions,
@@ -48,7 +66,6 @@ export class DashboardService {
       myPurchaseStatus
     ] = await Promise.all([
       this.getDashboardStats(employee),
-      this.getUrgentRequests(employee),
       this.getMyRecentRequests(employee),
       this.getPendingApprovals(employee),
       this.getQuickActions(employee),
@@ -56,16 +73,23 @@ export class DashboardService {
       this.getMyPurchaseStatus(employee)
     ])
 
-    return {
+    const dashboardData: DashboardData = {
       employee,
       stats,
-      urgentRequests,
+      urgentRequests: [],
       myRecentRequests,
       pendingApprovals,
       quickActions,
       todaySummary,
       myPurchaseStatus
     }
+
+    // 캐시 업데이트
+    dashboardCache.data = dashboardData
+    dashboardCache.lastFetch = now
+    dashboardCache.employeeId = employee.id
+
+    return dashboardData
   }
 
   // 통계 정보 (우선순위 재정렬)
@@ -121,53 +145,6 @@ export class DashboardService {
     }
 
     return stats
-  }
-
-  // 긴급 요청 목록 (우선순위 최상위)
-  async getUrgentRequests(employee: Employee): Promise<UrgentRequest[]> {
-    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
-    const roles = this.parseRoles(employee.purchase_role)
-
-    // 역할이 없으면 긴급 요청도 없음
-    if (roles.length === 0) {
-      return []
-    }
-
-    let query = this.supabase
-      .from('purchase_requests')
-      .select('*,vendors(vendor_name),purchase_request_items(id)')
-      .lt('created_at', threeDaysAgo)
-
-    // 역할별 긴급 요청 필터링
-    if (roles.includes('app_admin')) {
-      query = query.or('middle_manager_status.eq.pending,final_manager_status.eq.pending,is_payment_completed.eq.false')
-    } else if (roles.includes('middle_manager')) {
-      query = query.eq('middle_manager_status', 'pending')
-    } else if (roles.includes('final_approver') || roles.includes('ceo')) {
-      query = query
-        .eq('middle_manager_status', 'approved')
-        .eq('final_manager_status', 'pending')
-    } else if (roles.includes('lead buyer')) {
-      query = query
-        .eq('final_manager_status', 'approved')
-        .eq('is_payment_completed', false)
-    } else {
-      // 다른 역할은 긴급 요청 없음
-      return []
-    }
-
-    const { data } = await query
-      .order('created_at', { ascending: true })
-      .limit(5)
-
-    return (data || []).map(item => ({
-      ...item,
-      vendor_name: item.vendors?.vendor_name,
-      total_items: item.purchase_request_items?.length || 0,
-      daysOverdue: Math.floor((Date.now() - new Date(item.created_at).getTime()) / (1000 * 60 * 60 * 24)),
-      priority: this.calculatePriority(item),
-      urgentReason: this.getUrgentReason(item, roles)
-    })) as UrgentRequest[]
   }
 
   // 내 최근 요청 상태 (승인 진행중인 항목만 - 승인 대기는 제외)
@@ -803,27 +780,6 @@ export class DashboardService {
       .or('is_payment_completed.eq.true,progress_type.ilike.%선진행%')
 
     return count || 0
-  }
-
-  private calculatePriority(request: any): 'high' | 'medium' | 'low' {
-    const daysPending = Math.floor((Date.now() - new Date(request.created_at).getTime()) / (1000 * 60 * 60 * 24))
-    
-    if (daysPending >= 7) return 'high'
-    if (daysPending >= 5) return 'medium'
-    return 'low'
-  }
-
-  private getUrgentReason(request: any, roles: string[]): 'overdue_approval' | 'delivery_delay' | 'payment_pending' {
-    if (roles.includes('middle_manager') && request.middle_manager_status === 'pending') {
-      return 'overdue_approval'
-    }
-    if ((roles.includes('final_approver') || roles.includes('ceo')) && request.final_manager_status === 'pending') {
-      return 'overdue_approval'
-    }
-    if (!request.is_received) {
-      return 'delivery_delay'
-    }
-    return 'payment_pending'
   }
 
   private calculateProgress(request: any): number {

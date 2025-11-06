@@ -1,8 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { memo } from "react";
 
-export default function PurchaseHeader() {
+const PurchaseHeader = memo(function PurchaseHeader() {
   const navigate = useNavigate();
   
   return (
@@ -20,4 +21,8 @@ export default function PurchaseHeader() {
       </Button>
     </div>
   );
-}
+})
+
+PurchaseHeader.displayName = 'PurchaseHeader'
+
+export default PurchaseHeader

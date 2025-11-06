@@ -11,20 +11,44 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
   // 초기값 설정 - hanslwebapp과 동일하게 빈 문자열로 시작
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
 
-  // 권한별 로직 계산
-  const isAdmin = currentUserRoles?.includes('app_admin');
-  const isFinalApprover = currentUserRoles?.includes('final_approver');
-  const isMiddleManager = currentUserRoles?.includes('middle_manager');
-  const isPurchaseManager = currentUserRoles?.includes('purchase_manager');
-  const hasApprovalRole = isAdmin || isFinalApprover || isMiddleManager;
-  
-  // lead buyer 권한 체크 추가
-  const isLeadBuyer = currentUserRoles?.includes('raw_material_manager') || 
-                      currentUserRoles?.includes('consumable_manager') || 
-                      currentUserRoles?.includes('purchase_manager');
-                      
-  // HR 권한 체크 추가
-  const isHr = currentUserRoles?.includes('hr');
+  // 권한별 로직 계산 - 메모이제이션으로 최적화
+  const rolePermissions = useMemo(() => {
+    if (!currentUserRoles || currentUserRoles.length === 0) {
+      return {
+        isAdmin: false,
+        isFinalApprover: false,
+        isMiddleManager: false,
+        isPurchaseManager: false,
+        hasApprovalRole: false,
+        isLeadBuyer: false,
+        isHr: false
+      };
+    }
+
+    const isAdmin = currentUserRoles.includes('app_admin');
+    const isFinalApprover = currentUserRoles.includes('final_approver');
+    const isMiddleManager = currentUserRoles.includes('middle_manager');
+    const isPurchaseManager = currentUserRoles.includes('purchase_manager');
+    const hasApprovalRole = isAdmin || isFinalApprover || isMiddleManager;
+    
+    const isLeadBuyer = currentUserRoles.includes('raw_material_manager') || 
+                        currentUserRoles.includes('consumable_manager') || 
+                        currentUserRoles.includes('purchase_manager');
+    
+    const isHr = currentUserRoles.includes('hr');
+
+    return {
+      isAdmin,
+      isFinalApprover,
+      isMiddleManager,
+      isPurchaseManager,
+      hasApprovalRole,
+      isLeadBuyer,
+      isHr
+    };
+  }, [currentUserRoles]);
+
+  const { isAdmin, isFinalApprover, isMiddleManager, isPurchaseManager, hasApprovalRole, isLeadBuyer, isHr } = rolePermissions;
 
   // hanslwebapp과 동일한 로직 - roleCase 계산 (lead buyer 추가)
   const roleCase = useMemo(() => {
@@ -78,98 +102,74 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     setSelectedEmployee(defaultEmployee);
   }, [activeTab, currentUserName, roleCase, computeDefaultEmployee]);
   
-  // 1단계: 권한별 필터링 (실시간 반영)
+  // 1단계: 권한별 필터링 (실시간 반영) - 최적화
   const visiblePurchases = useMemo(() => {
-    // 권한 체크 최적화 - 한 번만 계산
-    const hasManagerRole = currentUserRoles.includes('purchase_manager') || currentUserRoles.includes('app_admin');
+    const hasManagerRole = isPurchaseManager || isAdmin;
     
-    const result = hasManagerRole 
+    return hasManagerRole 
       ? purchases 
       : purchases.filter(p => !HIDDEN_EMPLOYEES.includes(p.requester_name));
-    return result;
-  }, [purchases, currentUserRoles]);
+  }, [purchases, isPurchaseManager, isAdmin]);
 
 
-  // 2단계: 탭별 필터링
-  const tabFilteredPurchases = useMemo(() => {
-    // 오늘 날짜 계산 (한국 시간 기준)
-    const today = new Date().toISOString().split('T')[0];
-    
-    const result = visiblePurchases.filter((purchase: Purchase) => {
-      let matches = false;
+  // 오늘 날짜 캐싱 (한 번만 계산)
+  const today = useMemo(() => {
+    return new Date().toISOString().split('T')[0];
+  }, []);
+
+  // 공통 필터 함수들 - 메모이제이션
+  const filterFunctions = useMemo(() => ({
+    isPending: (purchase: Purchase) => {
+      const middleStatus = purchase.middle_manager_status;
+      const finalStatus = purchase.final_manager_status;
       
-      switch (activeTab) {
-        case 'pending':
-          // 중간승인자나 최종승인자 중 하나라도 pending이면 승인대기
-          const middlePending = ['pending', '대기', '', null, undefined].includes(purchase.middle_manager_status as any);
-          const finalPending = ['pending', '대기', '', null, undefined].includes(purchase.final_manager_status as any);
-          
-          // 반려된 경우는 제외
-          const middleRejected = purchase.middle_manager_status === 'rejected';
-          const finalRejected = purchase.final_manager_status === 'rejected';
-          
-          if (middleRejected || finalRejected) return false;
-          
-          // 승인 완료된 경우 즉시 제거
-          const middleApproved = purchase.middle_manager_status === 'approved';
-          const finalApproved = purchase.final_manager_status === 'approved';
-          
-          if (middleApproved && finalApproved) {
-            return false; // 최종 승인 완료된 항목은 즉시 제거
-          }
-          
-          // 중간승인 대기 또는 최종승인 대기
-          matches = middlePending || finalPending;
-          
-          return matches;
-          
-        case 'purchase': {
-          // DB 확인 결과: '구매 요청' (띄어쓰기 있음) 또는 '발주'
-          const isRequest = purchase.payment_category === '구매 요청';
-          const isSeonJin = (purchase.progress_type || '').includes('선진행');
-          const isIlban = (purchase.progress_type || '').includes('일반');
-          const finalApproved = purchase.final_manager_status === 'approved';
-          
-          // 구매 완료된 경우 즉시 제거
-          if (purchase.is_payment_completed) {
-            return false; // 구매완료된 항목은 즉시 제거
-          }
-          
-          // 기본 구매현황 조건: 요청 유형이고 아직 결제되지 않음
-          if (!isRequest) {
-            matches = false;
-          } else {
-            matches = (isSeonJin) || (isIlban && finalApproved);
-          }
-          
-          return matches;
-        }
-        
-        case 'receipt': {
-          // 입고현황: 미입고 & (선진행 or 최종승인)
-          const isSeonJin = (purchase.progress_type || '').includes('선진행');
-          const finalApproved = purchase.final_manager_status === 'approved';
-          
-          // 입고 완료된 경우 즉시 제거
-          if (purchase.is_received) {
-            return false; // 입고완료된 항목은 즉시 제거
-          }
-          
-          // 기본 입고현황 조건: (선진행 or 최종승인)
-          matches = (isSeonJin || finalApproved);
-          return matches;
-        }
-        
-        case 'done':
-          matches = true;
-          return matches;
-          
-        default:
-          return true;
-      }
-    });
-    return result;
-  }, [visiblePurchases, activeTab]);
+      if (middleStatus === 'rejected' || finalStatus === 'rejected') return false;
+      if (middleStatus === 'approved' && finalStatus === 'approved') return false;
+      
+      const middlePending = ['pending', '대기', '', null, undefined].includes(middleStatus as any);
+      const finalPending = ['pending', '대기', '', null, undefined].includes(finalStatus as any);
+      
+      return middlePending || finalPending;
+    },
+    
+    isPurchase: (purchase: Purchase) => {
+      if (purchase.is_payment_completed) return false;
+      if (purchase.payment_category !== '구매 요청') return false;
+      
+      const progressType = purchase.progress_type || '';
+      const isSeonJin = progressType.includes('선진행');
+      const isIlban = progressType.includes('일반');
+      const finalApproved = purchase.final_manager_status === 'approved';
+      
+      return isSeonJin || (isIlban && finalApproved);
+    },
+    
+    isReceipt: (purchase: Purchase) => {
+      if (purchase.is_received) return false;
+      
+      const progressType = purchase.progress_type || '';
+      const isSeonJin = progressType.includes('선진행');
+      const finalApproved = purchase.final_manager_status === 'approved';
+      
+      return isSeonJin || finalApproved;
+    }
+  }), []);
+
+  // 2단계: 탭별 필터링 - 최적화된 버전
+  const tabFilteredPurchases = useMemo(() => {
+    switch (activeTab) {
+      case 'pending':
+        return visiblePurchases.filter(filterFunctions.isPending);
+      case 'purchase':
+        return visiblePurchases.filter(filterFunctions.isPurchase);
+      case 'receipt':
+        return visiblePurchases.filter(filterFunctions.isReceipt);
+      case 'done':
+        return visiblePurchases;
+      default:
+        return visiblePurchases;
+    }
+  }, [visiblePurchases, activeTab, filterFunctions]);
 
   // 3단계: 직원 필터링
   const employeeFilteredPurchases = useMemo(() => {
@@ -306,7 +306,7 @@ export const useFastPurchaseFilters = (purchases: Purchase[], currentUserRoles: 
     };
     
     return counts;
-  }, [visiblePurchases, roleCase, currentUserName, computeDefaultEmployee, isLeadBuyer, isHr, isAdmin]);
+  }, [visiblePurchases, roleCase, currentUserName, computeDefaultEmployee, isLeadBuyer, isHr, isAdmin, today]);
 
 
   return {

@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo, useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import PurchaseDetailModal from "./PurchaseDetailModal";
 import MobilePurchaseCard from "./MobilePurchaseCard";
@@ -634,18 +634,18 @@ const FastPurchaseTable = memo(({
   
   const canDelete = canEdit;
 
-  const handleRowClick = (purchase: Purchase) => {
+  const handleRowClick = useCallback((purchase: Purchase) => {
     setSelectedPurchaseId(purchase.id);
     setIsModalOpen(true);
-  };
+  }, []);
 
-  const handleCloseModal = () => {
+  const handleCloseModal = useCallback(() => {
     setIsModalOpen(false);
     setSelectedPurchaseId(null);
-  };
+  }, []);
 
   // 엑셀 다운로드 핸들러
-  const handleExcelDownload = async (purchase: Purchase) => {
+  const handleExcelDownload = useCallback(async (purchase: Purchase) => {
     try {
       // DB에서 직접 모든 품목 조회
       const { data: purchaseRequest, error: requestError } = await supabase
@@ -780,9 +780,9 @@ const FastPurchaseTable = memo(({
     } catch (error) {
       toast.error('엑셀 다운로드에 실패했습니다.');
     }
-  };
+  }, [supabase]);
 
-  const handleConfirmDelete = async () => {
+  const handleConfirmDelete = useCallback(async () => {
     if (!purchaseToDelete) return;
 
     logger.debug('발주 삭제 확인', {
@@ -924,7 +924,7 @@ const FastPurchaseTable = memo(({
     
     setDeleteConfirmOpen(false);
     setPurchaseToDelete(null);
-  };
+  }, [supabase, purchaseToDelete, onRefresh]);
 
   // 탭별 테이블 헤더 메모화
   const tableHeader = useMemo(() => {

@@ -191,68 +191,8 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     return progress_type === '선진행' || progress_type?.trim() === '선진행' || progress_type?.includes('선진행');
   };
 
-  // 고급 필터링 로직
-  const applyAdvancedFilters = useCallback((purchases: Purchase[]) => {
-    let filtered = [...purchases];
-
-    // 필터가 없을 때만 기본 60일 필터 적용
-    // 필터가 있으면(기간/월별 포함) 60일 제한 없이 전체 데이터 표시
-    const hasAnyFilter = activeFilters.length > 0 || searchTerm.trim() !== '';
-    
-    if (!hasAnyFilter) {
-      const sixtyDaysAgo = new Date();
-      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-      filtered = filtered.filter(purchase => {
-        if (!purchase.request_date) return false;
-        const requestDate = new Date(purchase.request_date);
-        return requestDate >= sixtyDaysAgo;
-      });
-    }
-
-    // 검색어 필터링
-    if (searchTerm.trim()) {
-      const searchLower = searchTerm.toLowerCase().trim();
-      filtered = filtered.filter(purchase => 
-        purchase.purchase_order_number?.toLowerCase().includes(searchLower) ||
-        purchase.vendor_name?.toLowerCase().includes(searchLower) ||
-        purchase.requester_name?.toLowerCase().includes(searchLower) ||
-        purchase.item_name?.toLowerCase().includes(searchLower) ||
-        purchase.specification?.toLowerCase().includes(searchLower) ||
-        purchase.remark?.toLowerCase().includes(searchLower) ||
-        purchase.project_vendor?.toLowerCase().includes(searchLower) ||
-        purchase.project_item?.toLowerCase().includes(searchLower) ||
-        purchase.sales_order_number?.toLowerCase().includes(searchLower)
-      );
-    }
-
-    // 개별 필터 적용
-    activeFilters.forEach(filter => {
-      
-      filtered = filtered.filter(purchase => {
-        // 날짜 필터의 경우 실제 날짜 필드 사용
-        const actualField = (filter.field === 'date_range' || filter.field === 'date_month') 
-          ? filter.dateField || filter.field 
-          : filter.field;
-        
-        const fieldValue = getFieldValue(purchase, actualField);
-        
-        // 필터 필드 타입 감지
-        const filterFieldType = filter.field === 'date_month' ? 'date_month' : 
-                               filter.field === 'date_range' ? 'date_range' : undefined;
-        
-        const result = applyFilterCondition(fieldValue, filter.condition, filter.value, filterFieldType);
-        
-        
-        return result;
-      });
-      
-    });
-
-    return filtered;
-  }, [searchTerm, activeFilters]);
-
-  // 필드 값 추출 함수
-  const getFieldValue = (purchase: Purchase, field: string): any => {
+  // 필드 값 추출 함수 - useCallback으로 최적화
+  const getFieldValue = useCallback((purchase: Purchase, field: string): any => {
     switch (field) {
       case 'purchase_order_number':
         return purchase.purchase_order_number;
@@ -307,10 +247,10 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       default:
         return null;
     }
-  };
+  }, []);
 
-  // 필터 조건 적용 함수
-  const applyFilterCondition = (fieldValue: any, condition: string, filterValue: any, filterField?: string): boolean => {
+  // 필터 조건 적용 함수 - useCallback으로 최적화
+  const applyFilterCondition = useCallback((fieldValue: any, condition: string, filterValue: any, filterField?: string): boolean => {
     if (fieldValue === null || fieldValue === undefined) {
       return condition === 'is_empty';
     }
@@ -397,7 +337,62 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       default:
         return true;
     }
-  };
+  }, []);
+
+  // 고급 필터링 로직 - useMemo로 최적화하여 탭 전환 시 즉시 반영
+  const applyAdvancedFilters = useCallback((purchases: Purchase[]) => {
+    let filtered = purchases;
+
+    // 필터가 없을 때만 기본 60일 필터 적용
+    // 필터가 있으면(기간/월별 포함) 60일 제한 없이 전체 데이터 표시
+    const hasAnyFilter = activeFilters.length > 0 || searchTerm.trim() !== '';
+    
+    if (!hasAnyFilter) {
+      const sixtyDaysAgo = new Date();
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+      filtered = filtered.filter(purchase => {
+        if (!purchase.request_date) return false;
+        const requestDate = new Date(purchase.request_date);
+        return requestDate >= sixtyDaysAgo;
+      });
+    }
+
+    // 검색어 필터링
+    if (searchTerm.trim()) {
+      const searchLower = searchTerm.toLowerCase().trim();
+      filtered = filtered.filter(purchase => 
+        purchase.purchase_order_number?.toLowerCase().includes(searchLower) ||
+        purchase.vendor_name?.toLowerCase().includes(searchLower) ||
+        purchase.requester_name?.toLowerCase().includes(searchLower) ||
+        purchase.item_name?.toLowerCase().includes(searchLower) ||
+        purchase.specification?.toLowerCase().includes(searchLower) ||
+        purchase.remark?.toLowerCase().includes(searchLower) ||
+        purchase.project_vendor?.toLowerCase().includes(searchLower) ||
+        purchase.project_item?.toLowerCase().includes(searchLower) ||
+        purchase.sales_order_number?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    // 개별 필터 적용
+    activeFilters.forEach(filter => {
+      filtered = filtered.filter(purchase => {
+        // 날짜 필터의 경우 실제 날짜 필드 사용
+        const actualField = (filter.field === 'date_range' || filter.field === 'date_month') 
+          ? filter.dateField || filter.field 
+          : filter.field;
+        
+        const fieldValue = getFieldValue(purchase, actualField);
+        
+        // 필터 필드 타입 감지
+        const filterFieldType = filter.field === 'date_month' ? 'date_month' : 
+                               filter.field === 'date_range' ? 'date_range' : undefined;
+        
+        return applyFilterCondition(fieldValue, filter.condition, filter.value, filterFieldType);
+      });
+    });
+
+    return filtered;
+  }, [searchTerm, activeFilters, getFieldValue, applyFilterCondition]);
 
   // 정렬 적용 함수
   const applySorting = useCallback((purchases: Purchase[]) => {
@@ -421,16 +416,15 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
 
       return sortConfig.direction === 'desc' ? -comparison : comparison;
     });
-  }, [sortConfig]);
+  }, [sortConfig, getFieldValue]);
 
-  // 고급 필터가 적용된 최종 구매 목록
+  // 고급 필터가 적용된 최종 구매 목록 - 캐싱 최적화
   const advancedFilteredPurchases = useMemo(() => {
-    let result = applyAdvancedFilters(filteredPurchases);
-    result = applySorting(result);
-    return result;
+    const filtered = applyAdvancedFilters(filteredPurchases);
+    return applySorting(filtered);
   }, [filteredPurchases, applyAdvancedFilters, applySorting]);
 
-  // 필터가 적용된 경우 각 탭별 필터링된 개수 계산
+  // 필터가 적용된 경우 각 탭별 필터링된 개수 계산 - 성능 최적화
   const filteredTabCounts = useMemo(() => {
     // 권한별 필터링 적용 (useFastPurchaseFilters와 동일한 로직)
     const HIDDEN_EMPLOYEES = ['정희웅'];
@@ -497,7 +491,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       receipt: getUniqueOrderCount(receiptFiltered),
       done: getUniqueOrderCount(advancedFiltered)
     };
-  }, [activeFilters, searchTerm, purchases, applyAdvancedFilters, currentUserRoles]);
+  }, [purchases, applyAdvancedFilters, currentUserRoles]);  // 전체 purchases 기준으로 계산
 
   // 월간 필터 감지 및 합계금액 계산
   const monthlyFilterSummary = useMemo(() => {
