@@ -280,6 +280,8 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         return purchase.is_received ? '완료' : '대기';
       case 'is_statement_received':
         return (purchase as any).is_statement_received ? '완료' : '대기';
+      case 'is_utk_checked':
+        return (purchase as any).is_utk_checked ? '완료' : '대기';
       case 'request_date':
         return purchase.request_date;
       case 'delivery_request_date':

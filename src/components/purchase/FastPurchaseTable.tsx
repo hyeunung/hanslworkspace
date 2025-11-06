@@ -208,6 +208,23 @@ const getPaymentProgress = (purchase: Purchase) => {
   return { completed, total, percentage };
 };
 
+// 거래명세서 완료 현황 계산 함수
+const getStatementProgress = (purchase: Purchase) => {
+  // items 배열이 없으면 전체 미완료로 처리
+  if (!purchase.items || purchase.items.length === 0) {
+    return { completed: 0, total: 1, percentage: 0 };
+  }
+  
+  // 개별 아이템 거래명세서 확인 상태 계산 (is_statement_received 기준)
+  const total = purchase.items.length;
+  const completed = purchase.items.filter((item: any) => 
+    item.is_statement_received === true
+  ).length;
+  const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+  
+  return { completed, total, percentage };
+};
+
 
 // formatDateShort는 utils/helpers.ts에서 import
 
@@ -244,6 +261,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
 }) => {
   const receiptProgress = getReceiptProgress(purchase);
   const paymentProgress = getPaymentProgress(purchase);
+  const statementProgress = getStatementProgress(purchase);
   const isAdvance = purchase.progress_type === '선진행' || purchase.progress_type?.includes('선진행');
   
   return (
@@ -291,6 +309,25 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
             </div>
             <span className="card-title text-gray-600">
               {receiptProgress.percentage}%
+            </span>
+          </div>
+        </td>
+      )}
+      {/* 전체항목 탭에서는 거래명세서 진행률을 맨 앞에 표시 */}
+      {activeTab === 'done' && (
+        <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receiptProgress}`}>
+          <div className="flex items-center justify-center gap-1">
+            <div className="bg-gray-200 rounded-full h-1.5 w-8">
+              <div 
+                className={`h-1.5 rounded-full ${
+                  statementProgress.percentage === 100 ? 'bg-green-500' : 
+                  statementProgress.percentage > 0 ? 'bg-hansl-500' : 'bg-gray-300'
+                }`}
+                style={{ width: `${statementProgress.percentage}%` }}
+              />
+            </div>
+            <span className="card-title text-gray-600">
+              {statementProgress.percentage}%
             </span>
           </div>
         </td>
@@ -361,6 +398,18 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.requestDate}`}>
         {formatDateShort(purchase.request_date)}
       </td>
+      {/* 전체항목 탭에서만 UTK 확인 칼럼 표시 (업체와 청구일 사이) */}
+      {activeTab === 'done' && (
+        <td className={`px-2 py-1.5 card-title whitespace-nowrap text-center ${COMMON_COLUMN_CLASSES.paymentCategory}`}>
+          <Badge variant={null} className={
+            (purchase as any).is_utk_checked 
+              ? 'bg-orange-500 text-white' 
+              : 'bg-white border border-gray-300 text-gray-600'
+          }>
+            {(purchase as any).is_utk_checked ? '완료' : '대기'}
+          </Badge>
+        </td>
+      )}
       <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.vendorName}`}>
         <span className="block truncate" title={purchase.vendor_name || ''}>
           {purchase.vendor_name || '-'}
@@ -914,6 +963,10 @@ const FastPurchaseTable = memo(({
         )}
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
+        {/* 전체항목 탭에서만 UTK 확인 칼럼 헤더 표시 */}
+        {activeTab === 'done' && (
+          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center ${COMMON_COLUMN_CLASSES.paymentCategory}`}>UTK</th>
+        )}
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
@@ -973,6 +1026,10 @@ const FastPurchaseTable = memo(({
           {/* 입고현황 탭에서는 입고진행을 맨 앞에 */}
           {activeTab === 'receipt' && (
             <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>입고진행</th>
+          )}
+          {/* 전체항목 탭에서는 거래명세서 진행률을 맨 앞에 */}
+          {activeTab === 'done' && (
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>거래명세서</th>
           )}
           {baseHeaders}
           {additionalHeaders}

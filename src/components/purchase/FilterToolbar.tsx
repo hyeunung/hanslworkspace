@@ -224,6 +224,14 @@ const FILTER_FIELDS = [
     icon: Check,
     category: '상태',
     options: ['대기', '완료']
+  },
+  { 
+    key: 'is_utk_checked', 
+    label: 'UTK 확인', 
+    type: 'select',
+    icon: CheckCircle,
+    category: '상태',
+    options: ['대기', '완료']
   }
 ]
 

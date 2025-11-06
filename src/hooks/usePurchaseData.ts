@@ -43,6 +43,8 @@ export interface Purchase {
   received_at?: string;
 
   is_po_download?: boolean;
+  is_utk_checked?: boolean;
+  is_statement_received?: boolean;
   items?: any[];
   purchase_request_items?: any[];
   item_name?: string;
@@ -328,6 +330,8 @@ export const usePurchaseData = () => {
           is_received: !!request.is_received,
           received_at: request.received_at as string,
           is_payment_completed: !!request.is_payment_completed,
+          is_utk_checked: !!request.is_utk_checked,
+          is_statement_received: !!request.is_statement_received,
           is_po_download: !!request.is_po_download,
           link: firstItem.link as string | undefined,
           // 전체 품목 리스트 추가 (hanslwebapp과 동일하게 items로 통일) - line_number로 정렬

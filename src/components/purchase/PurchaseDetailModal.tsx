@@ -199,31 +199,45 @@ export default function PurchaseDetailModal({
     if (!purchaseId) return
     
     try {
+      const supabase = createClient()
       // 최신 구매 요청 데이터 로드
-      const { data: freshPurchase } = await supabase
+      const { data, error } = await supabase
         .from('purchase_requests')
         .select(`
           *,
-          items:purchase_request_items (
-            *
-          )
+          vendors(id, vendor_name),
+          purchase_request_items(*)
         `)
         .eq('id', purchaseId)
         .single()
       
-      if (freshPurchase) {
-          setPurchase(freshPurchase as PurchaseRequestWithDetails)
-          setEditedPurchase(freshPurchase as PurchaseRequestWithDetails)
-          setEditedItems((freshPurchase as PurchaseRequestWithDetails).items || [])
-          
-          // 외부 진행률 업데이트는 별도의 이벤트로 처리 (모달 상태에 영향 주지 않음)
-          // 필요시 부모 컴포넌트에서 실시간 데이터 폴링 등으로 처리
-          logger.debug('모달 데이터 새로고침 완료 - 모달 상태 유지')
-        }
+      if (error) throw error
+
+      if (data) {
+        // 라인넘버 순서대로 정렬
+        const sortedItems = (data.purchase_request_items || []).sort((a: any, b: any) => {
+          const lineA = a.line_number || 999999;
+          const lineB = b.line_number || 999999;
+          return lineA - lineB;
+        });
+
+        const purchaseData = {
+          ...data,
+          items: sortedItems,
+          vendor: data.vendors || { id: 0, vendor_name: '알 수 없음' },
+          vendor_contacts: []
+        } as PurchaseRequestWithDetails
+
+        setPurchase(purchaseData)
+        setEditedPurchase(purchaseData)
+        setEditedItems(sortedItems)
+        
+        logger.debug('모달 데이터 새로고침 완료 - 모달 상태 유지')
+      }
     } catch (error) {
       logger.error('모달 데이터 새로고침 실패', error)
     }
-  }, [purchaseId, supabase])
+  }, [purchaseId])
   
   // 컴포넌트가 마운트될 때 외부 새로고침을 방지하는 플래그
   const [isInitialLoad, setIsInitialLoad] = useState(true)
@@ -335,6 +349,165 @@ export default function PurchaseDetailModal({
     }
   }, [onOptimisticUpdate, purchaseIdNumber])
 
+  const handleStatementReceivedOptimisticUpdate = useCallback(({ itemId, selectedDate, action }: {
+    itemId: number
+    selectedDate?: Date
+    action: 'confirm' | 'cancel'
+    itemInfo?: {
+      item_name?: string
+      specification?: string
+      quantity?: number
+      unit_price_value?: number
+      amount_value?: number
+      remark?: string
+    }
+  }) => {
+    const itemIdStr = String(itemId)
+    const selectedDateIso = selectedDate ? selectedDate.toISOString() : undefined
+
+    let nextAllCompleted = false
+    let nextStatementAt: string | null = null
+
+    setPurchase(prev => {
+      if (!prev) return prev
+
+      const updatedItems = (prev.items || []).map(item => {
+        if (String(item.id) !== itemIdStr) return item
+
+        if (action === 'confirm') {
+          return {
+            ...item,
+            is_statement_received: true,
+            statement_received_date: selectedDateIso,
+            statement_received_by_name: currentUserName
+          }
+        }
+
+        return {
+          ...item,
+          is_statement_received: false,
+          statement_received_date: null,
+          statement_received_by_name: null
+        }
+      })
+
+      nextAllCompleted = updatedItems.length > 0 && updatedItems.every(item => item.is_statement_received)
+      nextStatementAt = nextAllCompleted
+        ? (selectedDateIso || prev.statement_received_at || new Date().toISOString())
+        : null
+
+      return {
+        ...prev,
+        items: updatedItems,
+        is_statement_received: nextAllCompleted,
+        statement_received_at: nextStatementAt
+      }
+    })
+
+    setEditedPurchase(prev => {
+      if (!prev) return prev
+
+      const updatedItems = (prev.items || []).map(item => {
+        if (String(item.id) !== itemIdStr) return item
+
+        if (action === 'confirm') {
+          return {
+            ...item,
+            is_statement_received: true,
+            statement_received_date: selectedDateIso,
+            statement_received_by_name: currentUserName
+          }
+        }
+
+        return {
+          ...item,
+          is_statement_received: false,
+          statement_received_date: null,
+          statement_received_by_name: null
+        }
+      })
+
+      return {
+        ...prev,
+        items: updatedItems,
+        is_statement_received: nextAllCompleted,
+        statement_received_at: nextStatementAt
+      }
+    })
+
+    setEditedItems(prevItems => {
+      if (!prevItems) return prevItems
+      return prevItems.map(item => {
+        if (String(item.id) !== itemIdStr) return item
+
+        if (action === 'confirm') {
+          return {
+            ...item,
+            is_statement_received: true,
+            statement_received_date: selectedDateIso,
+            statement_received_by_name: currentUserName
+          }
+        }
+
+        return {
+          ...item,
+          is_statement_received: false,
+          statement_received_date: null,
+          statement_received_by_name: null
+        }
+      })
+    })
+
+    if (!Number.isNaN(purchaseIdNumber)) {
+      onOptimisticUpdate?.(purchaseIdNumber, prevPurchase => {
+        const updatedItems = (prevPurchase.items || []).map(item => {
+          if (String(item.id) !== itemIdStr) return item
+
+          if (action === 'confirm') {
+            return {
+              ...item,
+              is_statement_received: true,
+              statement_received_date: selectedDateIso,
+              statement_received_by_name: currentUserName
+            }
+          }
+
+          return {
+            ...item,
+            is_statement_received: false,
+            statement_received_date: null,
+            statement_received_by_name: null
+          }
+        })
+
+        const allCompleted = updatedItems.length > 0 && updatedItems.every(item => item.is_statement_received)
+
+        return {
+          ...prevPurchase,
+          items: updatedItems,
+          is_statement_received: allCompleted
+        }
+      })
+    }
+
+    // purchase_requests 레벨 플래그도 업데이트
+    if (purchase && nextAllCompleted !== undefined) {
+      const supabase = createClient()
+      supabase
+        .from('purchase_requests')
+        .update({
+          is_statement_received: nextAllCompleted,
+          statement_received_at: nextStatementAt
+        })
+        .eq('id', purchase.id)
+        .then(({ error }: { error: any }) => {
+          if (error) {
+            logger.error('거래명세서 확인 purchase_requests 업데이트 실패', error)
+          }
+        })
+    }
+  }, [currentUserName, onOptimisticUpdate, purchaseIdNumber, purchase])
+
   const statementReceivedAction = useConfirmDateAction({
     config: {
       field: 'statement_received',
@@ -351,7 +524,8 @@ export default function PurchaseDetailModal({
     },
     currentUserName,
     canPerformAction: canReceiptCheck,
-    onUpdate: refreshModalData
+    onUpdate: refreshModalData,
+    onOptimisticUpdate: handleStatementReceivedOptimisticUpdate
   })
 
   const actualReceivedAction = useConfirmDateAction({
@@ -443,7 +617,8 @@ export default function PurchaseDetailModal({
       columnConfigs.push(
         { key: 'transaction_confirm', minWidth: 100, maxWidth: 160, baseWidth: 100 },
         { key: 'accounting_date', minWidth: 100, maxWidth: 160, baseWidth: 100 },
-        { key: 'processor', minWidth: 80, maxWidth: 120, baseWidth: 80 }
+        { key: 'processor', minWidth: 80, maxWidth: 120, baseWidth: 80 },
+        { key: 'utk_confirm', minWidth: 80, maxWidth: 120, baseWidth: 80 }
       )
     }
 
@@ -462,7 +637,7 @@ export default function PurchaseDetailModal({
         if (activeTab === 'receipt') {
           return [...baseHeaders, '실제입고일']
         } else if (activeTab === 'done') {
-          return [...baseHeaders, '거래명세서 확인', '회계상 입고일', '처리자']
+          return [...baseHeaders, '거래명세서 확인', '회계상 입고일', '처리자', 'UTK']
         }
         return baseHeaders
       }
@@ -514,6 +689,9 @@ export default function PurchaseDetailModal({
             break
           case 'processor':
             cellValue = item.statement_received_by_name || ''
+            break
+          case 'utk_confirm':
+            cellValue = item.is_utk_checked ? '완료' : '대기'
             break
         }
         
@@ -568,7 +746,7 @@ export default function PurchaseDetailModal({
     if (activeTab === 'receipt') {
       return [...baseColumns, '100px'].join(' ')
     } else if (activeTab === 'done') {
-      return [...baseColumns, '100px', '100px', '80px'].join(' ')
+      return [...baseColumns, '100px', '100px', '80px', '80px'].join(' ')
     }
     
     return baseColumns.join(' ')
@@ -1251,6 +1429,295 @@ export default function PurchaseDetailModal({
     }
   }
 
+  // UTK 확인 처리 함수
+  const handleUtkToggle = async (itemId: number | string, isChecked: boolean) => {
+    if (!canReceiptCheck) {
+      toast.error('UTK 확인 처리 권한이 없습니다.')
+      return
+    }
+
+    const itemIdStr = String(itemId)
+    const numericId = typeof itemId === 'number' ? itemId : Number(itemId)
+
+    if (Number.isNaN(numericId)) {
+      toast.error('유효하지 않은 항목 ID 입니다.')
+      return
+    }
+
+    // 해당 품목 정보 찾기
+    const targetItem = purchase?.items?.find(item => String(item.id) === itemIdStr)
+    if (!targetItem) return
+
+    const itemInfo = `품명: ${targetItem.item_name}
+규격: ${targetItem.specification || '미입력'}
+수량: ${targetItem.quantity?.toLocaleString() || 0}${targetItem.unit || ''}
+단가: ₩${targetItem.unit_price_value?.toLocaleString() || 0}
+합계: ₩${targetItem.amount_value?.toLocaleString() || 0}`
+
+    const confirmMessage = isChecked 
+      ? `다음 품목을 UTK 확인 처리하시겠습니까?\n\n${itemInfo}` 
+      : `다음 품목의 UTK 확인을 취소하시겠습니까?\n\n${itemInfo}`
+    
+    const confirm = window.confirm(confirmMessage)
+    if (!confirm) return
+
+    try {
+      const supabase = createClient()
+      logger.debug('UTK 확인 처리 시작', { itemId: numericId, isChecked, itemIdStr })
+      
+      const { data, error } = await supabase
+        .from('purchase_request_items')
+        .update({
+          is_utk_checked: isChecked
+        })
+        .eq('id', numericId)
+        .select()
+
+      if (error) {
+        logger.error('UTK 확인 DB 업데이트 실패', { error, itemId: numericId, isChecked })
+        throw error
+      }
+      
+      logger.debug('UTK 확인 DB 업데이트 성공', { data })
+
+      // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
+      setPurchase(prev => {
+        if (!prev) return null
+        const updatedItems = prev.items?.map(item => 
+          String(item.id) === itemIdStr 
+            ? { ...item, is_utk_checked: isChecked }
+            : item
+        )
+        return { ...prev, items: updatedItems }
+      })
+
+      if (purchase) {
+        const purchaseIdNumber = Number(purchase.id)
+        if (!Number.isNaN(purchaseIdNumber)) {
+          onOptimisticUpdate?.(purchaseIdNumber, prev => {
+            const updatedItems = (prev.items || []).map(item =>
+              String(item.id) === itemIdStr
+                ? { ...item, is_utk_checked: isChecked }
+                : item
+            )
+            const total = updatedItems.length || prev.items?.length || 0
+            const checked = updatedItems.filter(item => item.is_utk_checked).length
+            const allChecked = total > 0 && checked === total
+            return {
+              ...prev,
+              items: updatedItems,
+              is_utk_checked: allChecked
+            }
+          })
+        }
+      }
+
+      // 모든 품목이 확인되면 purchase_requests에도 업데이트
+      const allChecked = purchase?.items?.every(item => {
+        if (String(item.id) === itemIdStr) {
+          return isChecked
+        }
+        return item.is_utk_checked === true
+      })
+
+      if (allChecked !== undefined && purchase) {
+        logger.debug('purchase_requests 업데이트 시작', { purchaseId: purchase.id, allChecked })
+        const { error: updateError } = await supabase
+          .from('purchase_requests')
+          .update({ is_utk_checked: allChecked })
+          .eq('id', purchase.id)
+          .select()
+        
+        if (updateError) {
+          logger.error('purchase_requests 업데이트 실패', { error: updateError, purchaseId: purchase.id, allChecked })
+        } else {
+          logger.debug('purchase_requests 업데이트 성공', { purchaseId: purchase.id, allChecked })
+        }
+      }
+      
+      toast.success(isChecked ? 'UTK 확인이 완료되었습니다.' : 'UTK 확인이 취소되었습니다.')
+
+      // 상세 모달 및 상위 리스트 모두 최신 상태로 동기화
+      await refreshModalData()
+      const refreshResult = onRefresh?.(true, { silent: true })
+      if (refreshResult instanceof Promise) {
+        await refreshResult
+      }
+    } catch (error) {
+      logger.error('UTK 확인 처리 중 오류', error)
+      toast.error('UTK 확인 처리 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 전체 UTK 확인 처리
+  const handleCompleteAllUtk = async () => {
+    if (!purchase || !canReceiptCheck) return
+    
+    const confirmMessage = `발주번호: ${purchase.purchase_order_number}\n\n모든 품목을 UTK 확인 처리하시겠습니까?`
+    const confirm = window.confirm(confirmMessage)
+    if (!confirm) return
+    
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('purchase_request_items')
+        .update({
+          is_utk_checked: true
+        })
+        .eq('purchase_request_id', purchase.id)
+        .eq('is_utk_checked', false) // 아직 확인되지 않은 항목만
+      
+      if (error) throw error
+
+      // purchase_requests도 업데이트
+      await supabase
+        .from('purchase_requests')
+        .update({ is_utk_checked: true })
+        .eq('id', purchase.id)
+      
+      // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
+      setPurchase(prev => {
+        if (!prev) return null
+        const updatedItems = prev.items?.map(item => 
+          !item.is_utk_checked 
+            ? { ...item, is_utk_checked: true }
+            : item
+        )
+        return { 
+          ...prev, 
+          items: updatedItems,
+          is_utk_checked: true
+        }
+      })
+
+      if (purchase) {
+        const purchaseIdNumber = Number(purchase.id)
+        if (!Number.isNaN(purchaseIdNumber)) {
+          onOptimisticUpdate?.(purchaseIdNumber, prev => {
+            const updatedItems = (prev.items || []).map(item => ({
+              ...item,
+              is_utk_checked: true
+            }))
+            return {
+              ...prev,
+              items: updatedItems,
+              is_utk_checked: true
+            }
+          })
+        }
+      }
+      
+      toast.success('모든 품목의 UTK 확인이 완료되었습니다.')
+
+      // 상세 모달 및 리스트 모두 새로고침
+      await refreshModalData()
+      const refreshResult = onRefresh?.(true, { silent: true })
+      if (refreshResult instanceof Promise) {
+        await refreshResult
+      }
+    } catch (error) {
+      logger.error('전체 UTK 확인 처리 오류', error);
+      toast.error('UTK 확인 처리 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 전체 거래명세서 확인 처리 (날짜 선택)
+  const handleCompleteAllStatement = async (selectedDate: Date) => {
+    if (!purchase || !canReceiptCheck) {
+      return
+    }
+
+    const formattedDate = selectedDate.toLocaleDateString('ko-KR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    })
+
+    const confirmMessage = `발주번호: ${purchase.purchase_order_number}
+
+모든 품목의 회계상 입고일을 ${formattedDate}로 등록하시겠습니까?`
+    
+    if (!window.confirm(confirmMessage)) {
+      return
+    }
+
+    const selectedDateIso = selectedDate.toISOString()
+    const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
+
+    try {
+      const { error } = await supabase
+        .from('purchase_request_items')
+        .update({
+          is_statement_received: true,
+          statement_received_date: selectedDateIso,
+          statement_received_by_name: currentUserName || null
+        })
+        .eq('purchase_request_id', purchase.id)
+        .eq('is_statement_received', false) // 아직 확인되지 않은 항목만
+      
+      if (error) throw error
+
+      // purchase_requests도 업데이트
+      await supabase
+        .from('purchase_requests')
+        .update({ 
+          is_statement_received: true,
+          statement_received_at: selectedDateIso
+        })
+        .eq('id', purchase.id)
+
+      // 로컬 상태 즉시 업데이트
+      setPurchase(prev => {
+        if (!prev) return null
+        const updatedItems = prev.items?.map(item => 
+          !item.is_statement_received 
+            ? { 
+                ...item, 
+                is_statement_received: true,
+                statement_received_date: selectedDateIso,
+                statement_received_by_name: currentUserName || null
+              }
+            : item
+        )
+        const allCompleted = updatedItems && updatedItems.length > 0 && updatedItems.every(item => item.is_statement_received)
+        return { 
+          ...prev, 
+          items: updatedItems,
+          is_statement_received: allCompleted,
+          statement_received_at: allCompleted ? selectedDateIso : prev.statement_received_at
+        }
+      })
+
+      if (!Number.isNaN(purchaseIdNumber)) {
+        onOptimisticUpdate?.(purchaseIdNumber, prev => {
+          const updatedItems = (prev.items || []).map(item => ({
+            ...item,
+            is_statement_received: true,
+            statement_received_date: item.statement_received_date || selectedDateIso,
+            statement_received_by_name: item.statement_received_by_name || currentUserName || null
+          }))
+          return {
+            ...prev,
+            items: updatedItems,
+            is_statement_received: true,
+            statement_received_at: selectedDateIso
+          }
+        })
+      }
+
+      toast.success('모든 품목의 회계상 입고일이 등록되었습니다.')
+
+      await refreshModalData()
+      const refreshResult = onRefresh?.(true, { silent: true })
+      if (refreshResult instanceof Promise) {
+        await refreshResult
+      }
+    } catch (error) {
+      logger.error('전체 거래명세서 확인 처리 오류', error)
+      toast.error('거래명세서 확인 처리 중 오류가 발생했습니다.')
+    }
+  }
+
   // 전체 입고완료 처리 (날짜 선택)
   const handleCompleteAllReceipt = async (selectedDate: Date) => {
     if (!purchase || !canReceiveItems) {
@@ -1716,6 +2183,32 @@ export default function PurchaseDetailModal({
                           </Button>
                         </DatePickerPopover>
                       )}
+                      {activeTab === 'done' && canReceiptCheck && (
+                        <div className="flex items-center gap-2">
+                          <DatePickerPopover
+                            onDateSelect={handleCompleteAllStatement}
+                            placeholder="전체 회계상 입고일을 선택하세요"
+                            align="end"
+                            side="bottom"
+                          >
+                            <Button
+                              size="sm"
+                              className="button-base button-action-primary"
+                            >
+                              <FileText className="w-3 h-3 mr-1" />
+                              전체 거래명세서 확인
+                            </Button>
+                          </DatePickerPopover>
+                          <Button
+                            size="sm"
+                            onClick={handleCompleteAllUtk}
+                            className="button-base bg-orange-500 hover:bg-orange-600 text-white"
+                          >
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            UTK 전체 확인 완료
+                          </Button>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -1756,6 +2249,7 @@ export default function PurchaseDetailModal({
                                 <div className="text-center">거래명세서 확인</div>
                                 <div className="text-center">회계상 입고일</div>
                                 <div className="text-center">처리자</div>
+                                <div className="text-center">UTK</div>
                               </>
                             )}
                           </>
@@ -1773,6 +2267,7 @@ export default function PurchaseDetailModal({
                                 <div className="text-center">거래명세서 확인</div>
                                 <div className="text-center">회계상 입고일</div>
                                 <div className="text-center">처리자</div>
+                                <div className="text-center">UTK</div>
                               </>
                             )}
                             {activeTab === 'receipt' && (
@@ -2095,6 +2590,33 @@ export default function PurchaseDetailModal({
                                   </span>
                                 ) : (
                                   <span className="modal-subtitle text-gray-400">-</span>
+                                )}
+                              </div>
+                            )}
+
+                            {/* UTK 확인 - 전체항목 탭에서만 표시 (맨 오른쪽 끝) */}
+                            {activeTab === 'done' && (
+                              <div className="text-center flex justify-center items-start pt-1">
+                                {canReceiptCheck ? (
+                                  <button
+                                    onClick={() => handleUtkToggle(item.id, !item.is_utk_checked)}
+                                    className={`button-base transition-colors ${
+                                      item.is_utk_checked
+                                        ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
+                                        : 'button-toggle-inactive'
+                                    }`}
+                                    title={item.is_utk_checked ? 'UTK 확인 취소' : 'UTK 확인 처리'}
+                                  >
+                                    {item.is_utk_checked ? '완료' : '대기'}
+                                  </button>
+                                ) : (
+                                  <span className={`${
+                                    item.is_utk_checked 
+                                      ? 'button-toggle-active bg-orange-500 text-white' 
+                                      : 'button-waiting-inactive'
+                                  }`}>
+                                    {item.is_utk_checked ? '완료' : '대기'}
+                                  </span>
                                 )}
                               </div>
                             )}

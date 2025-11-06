@@ -119,6 +119,8 @@ export interface PurchaseRequestItem {
   is_statement_received?: boolean
   statement_received_date?: string | null
   statement_received_by_name?: string | null
+  // UTK 확인
+  is_utk_checked?: boolean
   created_at: string
   updated_at: string
 }
@@ -146,6 +148,10 @@ export interface PurchaseRequest {
   is_payment_completed?: boolean
   payment_completed_at?: string
   payment_completed_by_name?: string
+
+  is_statement_received?: boolean
+  is_utk_checked?: boolean
+  statement_received_at?: string | null
   currency: 'KRW' | 'USD'
   total_amount: number
   unit_price_currency?: string
@@ -301,6 +307,8 @@ export interface Purchase {
   is_received: boolean;
   received_at?: string | null;
   is_po_download?: boolean;
+  is_statement_received?: boolean;
+  is_utk_checked?: boolean;
   items?: PurchaseRequestItem[];
   // Item level fields (for single item purchases)
   item_name?: string;
