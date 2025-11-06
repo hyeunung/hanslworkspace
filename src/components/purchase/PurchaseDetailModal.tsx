@@ -2199,7 +2199,7 @@ export default function PurchaseDetailModal({
                               className="button-base button-action-primary"
                             >
                               <FileText className="w-3 h-3 mr-1" />
-                              전체 거래명세서 확인
+                              거래명세서 확인
                             </Button>
                           </DatePickerPopover>
                           <Button
@@ -2208,7 +2208,7 @@ export default function PurchaseDetailModal({
                             className="button-base bg-orange-500 hover:bg-orange-600 text-white"
                           >
                             <CheckCircle className="w-3 h-3 mr-1" />
-                            UTK 전체 확인 완료
+                            UTK 확인
                           </Button>
                         </div>
                       )}
