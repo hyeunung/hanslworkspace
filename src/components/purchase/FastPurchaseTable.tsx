@@ -97,7 +97,8 @@ const COMMON_COLUMN_CLASSES = {
   status: "text-center w-20 min-w-[85px] max-w-[85px]",
   receipt: "text-center w-24 min-w-[100px] max-w-[100px]",           // 진행바 + 퍼센트 표시
   paymentStatus: "text-center w-16 min-w-[70px] max-w-[70px]",
-  link: "w-20 min-w-[85px] max-w-[85px]"
+  link: "w-20 min-w-[85px] max-w-[85px]",
+  utk: "text-center w-12 min-w-[50px] max-w-[50px]"  // UTK 칼럼 전용 (작은 너비)
 };
 
 // 승인 상태 상세 표시 컴포넌트 (승인대기 탭용)
@@ -395,12 +396,12 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
           {purchase.requester_name || '-'}
         </span>
       </td>
-      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.requestDate}`}>
+      <td className={`pl-2 pr-0 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.requestDate}`}>
         {formatDateShort(purchase.request_date)}
       </td>
-      {/* 전체항목 탭에서만 UTK 확인 칼럼 표시 (업체와 청구일 사이) */}
+      {/* 전체항목 탭에서만 UTK 확인 칼럼 표시 (청구일과 업체 사이) */}
       {activeTab === 'done' && (
-        <td className={`px-2 py-1.5 card-title whitespace-nowrap text-center ${COMMON_COLUMN_CLASSES.paymentCategory}`}>
+        <td className={`pl-0 pr-2 py-1.5 card-title whitespace-nowrap text-center ${COMMON_COLUMN_CLASSES.utk}`}>
           <Badge variant={null} className={
             (purchase as any).is_utk_checked 
               ? 'bg-orange-500 text-white' 
@@ -410,7 +411,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
           </Badge>
         </td>
       )}
-      <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.vendorName}`}>
+      <td className={`pl-2 pr-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.vendorName}`}>
         <span className="block truncate" title={purchase.vendor_name || ''}>
           {purchase.vendor_name || '-'}
         </span>
@@ -960,12 +961,12 @@ const FastPurchaseTable = memo(({
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
         )}
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
-        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
+        <th className={`pl-2 pr-0 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
         {/* 전체항목 탭에서만 UTK 확인 칼럼 헤더 표시 */}
         {activeTab === 'done' && (
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center ${COMMON_COLUMN_CLASSES.paymentCategory}`}>UTK</th>
+          <th className={`pl-0 pr-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center ${COMMON_COLUMN_CLASSES.utk}`}>UTK</th>
         )}
-        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
+        <th className={`pl-2 pr-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
         {(activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
@@ -1041,7 +1042,7 @@ const FastPurchaseTable = memo(({
       {/* 데스크톱 테이블 뷰 - 실제 데이터 1,979건 분석 기반 최적 너비 */}
       <div className="hidden md:block w-full">
         <div className="overflow-x-auto border rounded-lg">
-          <table className="w-full min-w-[1790px]">
+          <table className="w-full min-w-[1790px] border-collapse">
             {tableHeader}
             <tbody>
               {purchases.map((purchase) => (

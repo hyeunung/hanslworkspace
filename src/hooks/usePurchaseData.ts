@@ -91,8 +91,13 @@ export const invalidateFilterCache = (tabKey?: string) => {
 };
 
 export const usePurchaseData = () => {
-  const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [loading, setLoading] = useState(true);
+  // 초기 상태에서 캐시 확인하여 즉시 표시
+  const now = Date.now();
+  const cacheValid = globalCache.lastFetch && (now - globalCache.lastFetch) < globalCache.CACHE_DURATION;
+  const hasCache = cacheValid && globalCache.purchases && globalCache.purchases.length > 0;
+  
+  const [purchases, setPurchases] = useState<Purchase[]>(hasCache ? globalCache.purchases : []);
+  const [loading, setLoading] = useState(!hasCache);
   const [currentUserRoles, setCurrentUserRoles] = useState<string[]>([]);
   const [currentUserName, setCurrentUserName] = useState<string>('');
   const [currentUserEmail, setCurrentUserEmail] = useState<string>('');
@@ -100,6 +105,7 @@ export const usePurchaseData = () => {
   
   const supabase = createClient();
   const initializationRef = useRef(false);
+  const hasLoadedCacheRef = useRef(hasCache);
 
   // 초기 데이터 로드 (업체 목록, 사용자 권한) - 캐싱 적용
   useEffect(() => {
@@ -195,11 +201,7 @@ export const usePurchaseData = () => {
 
   // 발주 목록 로드 - 향상된 캐싱 및 최적화
   const loadPurchases = useCallback(async (forceRefresh?: boolean, options?: { silent?: boolean }) => {
-    const showSpinner = !options?.silent;
-
-    if (showSpinner) {
-      setLoading(true);
-    }
+    const showSpinner = !options?.silent && !hasLoadedCacheRef.current;
     
     try {
       // 캐시 확인
@@ -211,21 +213,35 @@ export const usePurchaseData = () => {
         invalidateFilterCache();
         globalCache.purchases = null;
         globalCache.lastFetch = 0;
-      }
-      
-      if (!forceRefresh && cacheValid && globalCache.purchases) {
-        try {
-          setPurchases(globalCache.purchases);
-          if (showSpinner) {
-            setLoading(false);
-          }
-          return;
-        } catch (error) {
-          logger.error('발주 데이터 캐시 사용 중 오류', error);
-          // 캐시 초기화
-          globalCache.purchases = null;
-          globalCache.lastFetch = 0;
-          invalidateFilterCache();
+        hasLoadedCacheRef.current = false;
+        // silent 모드가 아니고 캐시가 없었던 경우에만 로딩 표시
+        if (showSpinner) {
+          setLoading(true);
+        }
+      } else if (cacheValid && globalCache.purchases) {
+        // 캐시가 있으면 즉시 표시
+        setPurchases(globalCache.purchases);
+        setLoading(false);
+        hasLoadedCacheRef.current = true;
+        
+        // silent 모드가 아니면 백그라운드에서 업데이트
+        if (!options?.silent) {
+          setTimeout(async () => {
+            try {
+              // 캐시를 무시하고 최신 데이터 가져오기 (silent 모드)
+              await loadPurchases(true, { silent: true });
+            } catch (error) {
+              // 백그라운드 업데이트 실패는 무시 (캐시된 데이터 사용 중)
+              logger.debug('백그라운드 데이터 업데이트 실패 (무시됨)', error);
+            }
+          }, 100);
+        }
+        
+        return;
+      } else {
+        // 캐시가 없으면 로딩 표시 (이미 캐시가 로드되지 않은 경우에만)
+        if (showSpinner && !hasLoadedCacheRef.current) {
+          setLoading(true);
         }
       }
       
@@ -347,11 +363,15 @@ export const usePurchaseData = () => {
       setPurchases(processedData);
       globalCache.purchases = processedData;
       globalCache.lastFetch = now;
+      hasLoadedCacheRef.current = true;
     } catch (error) {
       logger.error('발주 목록 로드 실패', error);
       toast.error('발주 목록을 불러올 수 없습니다.');
     } finally {
       if (showSpinner) {
+        setLoading(false);
+      } else {
+        // silent 모드여도 로딩 상태는 false로 설정 (이미 표시된 경우)
         setLoading(false);
       }
     }
@@ -365,7 +385,19 @@ export const usePurchaseData = () => {
     });
   }, []);
 
+  // 초기 마운트 시 데이터 로드
   useEffect(() => {
+    if (hasLoadedCacheRef.current) {
+      // 캐시가 이미 로드되었으면 백그라운드에서만 업데이트
+      setTimeout(() => {
+        loadPurchases(true, { silent: true }).catch(() => {
+          // 백그라운드 업데이트 실패는 무시
+        });
+      }, 100);
+      return;
+    }
+    
+    // 캐시가 없으면 정상적으로 로드
     loadPurchases();
   }, [loadPurchases]);
 
