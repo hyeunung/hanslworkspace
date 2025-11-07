@@ -527,9 +527,9 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       return new Set(filtered.map(p => p.purchase_order_number)).size;
     };
 
-    const pendingFiltered = visiblePurchases.filter((p: Purchase) => matchesTabCondition(p, 'pending'));
+    const pendingFiltered = baseFilteredPurchases.filter((p: Purchase) => matchesTabCondition(p, 'pending'));
 
-    const purchaseFiltered = visiblePurchases.filter((p: Purchase) => {
+    const purchaseFiltered = baseFilteredPurchases.filter((p: Purchase) => {
       const isRequest = p.payment_category === '구매 요청';
       const notPaid = !p.is_payment_completed;
       if (!isRequest || !notPaid) return false;
@@ -539,7 +539,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       return isSeonJin || (isIlban && finalApproved);
     });
 
-    const receiptFiltered = visiblePurchases.filter((p: Purchase) => {
+    const receiptFiltered = baseFilteredPurchases.filter((p: Purchase) => {
       if (p.is_received) return false;
       const isSeonJin = (p.progress_type || '').includes('선진행');
       const finalApproved = p.final_manager_status === 'approved';
@@ -550,27 +550,10 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       pending: getUniqueOrderCount(pendingFiltered),
       purchase: getUniqueOrderCount(purchaseFiltered),
       receipt: getUniqueOrderCount(receiptFiltered),
-      done: getUniqueOrderCount(visiblePurchases)
-    };
-  }, [visiblePurchases, matchesTabCondition]);
-
-  // 필터가 적용된 경우 각 탭별 필터링된 개수 계산
-  const filteredTabCounts = useMemo(() => {
-    const getUniqueOrderCount = (filtered: Purchase[]) => {
-      return new Set(filtered.map(p => p.purchase_order_number)).size;
-    };
-
-    const pendingFiltered = baseFilteredPurchases.filter((p: Purchase) => matchesTabCondition(p, 'pending'));
-    const purchaseFiltered = baseFilteredPurchases.filter((p: Purchase) => matchesTabCondition(p, 'purchase'));
-    const receiptFiltered = baseFilteredPurchases.filter((p: Purchase) => matchesTabCondition(p, 'receipt'));
-
-    return {
-      pending: getUniqueOrderCount(pendingFiltered),
-      purchase: getUniqueOrderCount(purchaseFiltered),
-      receipt: getUniqueOrderCount(receiptFiltered),
       done: getUniqueOrderCount(baseFilteredPurchases)
     };
   }, [baseFilteredPurchases, matchesTabCondition]);
+
 
   // 월간 필터 감지 및 합계금액 계산
   const monthlyFilterSummary = useMemo(() => {
@@ -937,9 +920,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
                   }`
                 }
               >
-                {(activeFilters.length > 0 || searchTerm.trim() !== '') 
-                  ? filteredTabCounts[tab.key as keyof typeof filteredTabCounts]
-                  : tabCounts[tab.key as keyof typeof tabCounts]}
+                {tabCounts[tab.key as keyof typeof tabCounts]}
               </span>
             </button>
           ))}

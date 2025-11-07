@@ -10,6 +10,7 @@ export interface DateLimitOption {
 // 날짜 제한 옵션들
 export const DATE_LIMIT_OPTIONS: DateLimitOption[] = [
   { key: '30d', label: '최근 30일', days: 30, description: '최근 30일간 데이터' },
+  { key: '60d', label: '최근 60일', days: 60, description: '최근 60일간 데이터' },
   { key: '90d', label: '최근 90일', days: 90, description: '최근 90일간 데이터' },
   { key: '180d', label: '최근 180일', days: 180, description: '최근 180일간 데이터' },
   { key: 'all', label: '전체', days: null, description: '모든 데이터' }
@@ -25,7 +26,7 @@ export interface UseDateLimitResult {
   getTotalCountMessage: (totalCount: number, filteredCount: number) => string;
 }
 
-export const useDateLimit = (initialLimit: string = '30d'): UseDateLimitResult => {
+export const useDateLimit = (initialLimit: string = '60d'): UseDateLimitResult => {
   const [currentLimitKey, setCurrentLimitKey] = useState(initialLimit);
 
   // 현재 제한 옵션
