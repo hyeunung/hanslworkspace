@@ -5,7 +5,6 @@ import { PurchaseRequestWithDetails } from '@/types/purchase'
 import ApprovalCard from '@/components/approval/ApprovalCard'
 import ApprovalModal from '@/components/approval/ApprovalModal'
 import BatchApprovalButton from '@/components/approval/BatchApprovalButton'
-import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Loader2, AlertCircle, ArrowUpDown } from 'lucide-react'
 import { toast } from 'sonner'
@@ -411,9 +410,9 @@ export default function ApprovalMain() {
                   }`}
                 >
                   1차 승인 대기
-                  <Badge className="ml-2" variant="secondary">
+                  <span className="badge-stats ml-2 bg-gray-100 text-gray-600">
                     {tabCounts.middle}
-                  </Badge>
+                  </span>
                 </button>
               )
             }
@@ -430,9 +429,9 @@ export default function ApprovalMain() {
                   }`}
                 >
                   최종 승인 대기
-                  <Badge className="ml-2" variant="secondary">
+                  <span className="badge-stats ml-2 bg-gray-100 text-gray-600">
                     {tabCounts.final}
-                  </Badge>
+                  </span>
                 </button>
               )
             }

@@ -3,7 +3,6 @@ import { useState } from 'react'
 import { Employee } from '@/types/purchase'
 import { formatDate } from '@/utils/helpers'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { 
   Table, 
   TableBody, 
@@ -276,19 +275,18 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                 <TableCell className="hidden xl:table-cell text-[11px] px-2 py-1.5">{employee.bank_account || '-'}</TableCell>
                 <TableCell className="hidden 2xl:table-cell text-[11px] px-2 py-1.5">{employee.adress || '-'}</TableCell>
                 <TableCell className="px-2 py-1.5">
-                  <Badge
-                    className={`text-[10px] px-1.5 py-0.5 ${getRoleBadgeColor(employee.purchase_role)}`}
+                  <span
+                    className={`badge-stats text-[10px] px-1.5 py-0.5 ${getRoleBadgeColor(employee.purchase_role)}`}
                   >
                     {getRoleDisplayName(employee.purchase_role)}
-                  </Badge>
+                  </span>
                 </TableCell>
                 <TableCell className="px-2 py-1.5">
-                  <Badge
-                    variant={employee.is_active ? 'default' : 'secondary'}
-                    className={`text-[10px] px-1.5 py-0.5 ${employee.is_active ? 'bg-green-100 text-green-800' : ''}`}
+                  <span
+                    className={`badge-stats text-[10px] px-1.5 py-0.5 ${employee.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}
                   >
                     {employee.is_active ? '활성' : '비활성'}
-                  </Badge>
+                  </span>
                 </TableCell>
                 <TableCell className="px-1 py-1.5">
                   <DropdownMenu>
@@ -377,17 +375,16 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
                     <td className="p-3 modal-subtitle">{employee.phone || '-'}</td>
                     <td className="p-3 modal-subtitle">{employee.email || '-'}</td>
                     <td className="p-3">
-                      <Badge className={`text-xs ${getRoleBadgeColor(employee.purchase_role)}`}>
+                      <span className={`badge-stats text-xs ${getRoleBadgeColor(employee.purchase_role)}`}>
                         {getRoleDisplayName(employee.purchase_role)}
-                      </Badge>
+                      </span>
                     </td>
                     <td className="p-3 text-center">
-                      <Badge
-                        variant={employee.is_active ? 'default' : 'secondary'}
-                        className={`text-xs ${employee.is_active ? 'bg-green-100 text-green-800' : ''}`}
+                      <span
+                        className={`badge-stats text-xs ${employee.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}
                       >
                         {employee.is_active ? '활성' : '비활성'}
-                      </Badge>
+                      </span>
                     </td>
                     <td className="p-3 text-center">
                       <DropdownMenu>
@@ -448,12 +445,11 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
               <MobileCardHeader>
                 <div className="flex justify-between items-center">
                   <span>{employee.name}</span>
-                  <Badge
-                    variant={employee.is_active ? 'default' : 'secondary'}
-                    className={employee.is_active ? 'bg-green-100 text-green-800' : ''}
+                  <span
+                    className={`badge-stats ${employee.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}
                   >
                     {employee.is_active ? '활성' : '비활성'}
-                  </Badge>
+                  </span>
                 </div>
               </MobileCardHeader>
               
@@ -466,9 +462,9 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh }: 
               <MobileCardItem 
                 label="권한" 
                 value={
-                  <Badge className={getRoleBadgeColor(employee.purchase_role)}>
+                  <span className={`badge-stats ${getRoleBadgeColor(employee.purchase_role)}`}>
                     {getRoleDisplayName(employee.purchase_role)}
-                  </Badge>
+                  </span>
                 } 
               />
               <MobileCardItem label="주소" value={employee.adress || '-'} />

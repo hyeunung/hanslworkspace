@@ -10,7 +10,6 @@ import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs
 
 // Lazy load modal for better performance
 const PurchaseItemsModal = lazy(() => import("@/components/purchase/PurchaseItemsModal"));
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 // Tabs 컴포넌트를 제거하고 직접 구현 (hanslwebapp 방식)
 import { Button } from "@/components/ui/button";
@@ -175,13 +174,13 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   // 상태에 따른 배지 생성 - 메모이제이션 적용
   const getStatusBadge = useCallback((purchase: Purchase) => {
     if (purchase.is_received) {
-      return <Badge variant={null} className="badge-success">입고완료</Badge>;
+      return <span className="badge-stats bg-green-500 text-white">입고완료</span>;
     } else if (purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'approved') {
-      return <Badge variant={null} className="badge-primary">구매진행</Badge>;
+      return <span className="badge-stats bg-blue-500 text-white">구매진행</span>;
     } else if (purchase.middle_manager_status === 'rejected' || purchase.final_manager_status === 'rejected') {
-      return <Badge variant={null} className="badge-danger">반려</Badge>;
+      return <span className="badge-stats bg-red-500 text-white">반려</span>;
     } else {
-      return <Badge variant={null} className="badge-warning">승인대기</Badge>;
+      return <span className="badge-stats bg-yellow-500 text-white">승인대기</span>;
     }
   }, []);
 
@@ -929,18 +928,19 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
               }`}
             >
               <span className="whitespace-nowrap">{tab.label}</span>
-              <Badge 
-                variant="secondary" 
+              <span 
                 className={
-                  activeTab === tab.key 
-                    ? 'badge-stats-active' 
-                    : 'badge-stats-secondary'
+                  `badge-stats ${
+                    activeTab === tab.key 
+                      ? 'bg-hansl-50 text-hansl-700' 
+                      : 'bg-gray-100 text-gray-600'
+                  }`
                 }
               >
                 {(activeFilters.length > 0 || searchTerm.trim() !== '') 
                   ? filteredTabCounts[tab.key as keyof typeof filteredTabCounts]
                   : tabCounts[tab.key as keyof typeof tabCounts]}
-              </Badge>
+              </span>
             </button>
           ))}
         </div>

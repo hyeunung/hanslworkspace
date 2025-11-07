@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, X, Save, Calculator, Pencil, Trash2, Package } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useForm as useFormRH, Controller, useFieldArray } from "react-hook-form";
@@ -1116,9 +1115,9 @@ export default function PurchaseNewMain() {
                 </Select>
               </div>
               <div className="flex items-center justify-end gap-2 flex-wrap sm:flex-nowrap">
-                <Badge variant="secondary" className="text-hansl-500 text-[10px] px-1.5 py-0.5 whitespace-nowrap flex-shrink-0 business-radius-badge">
+                <span className="badge-stats text-hansl-500 text-[10px] px-1.5 py-0.5 whitespace-nowrap flex-shrink-0 bg-hansl-50 business-radius-badge">
                   총액: {totalAmount.toLocaleString('ko-KR')} {currency}
-                </Badge>
+                </span>
                 <Button 
                   type="button" 
                   className="button-base border border-gray-300 text-gray-600 bg-white hover:bg-red-50 hover:text-red-600" 

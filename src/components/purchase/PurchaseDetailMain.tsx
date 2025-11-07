@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails } from '@/types/purchase'
 import { ArrowLeft, Calendar, User, Building2, Package, CreditCard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 
 export default function PurchaseDetailMain() {
@@ -52,26 +51,26 @@ export default function PurchaseDetailMain() {
   const getStatusBadge = (status: string | null) => {
     switch (status) {
       case 'approved':
-        return <Badge variant={null} className="badge-success">승인</Badge>
+        return <span className="badge-stats bg-green-500 text-white">승인</span>
       case 'rejected':
-        return <Badge variant={null} className="badge-danger">반려</Badge>
+        return <span className="badge-stats bg-red-500 text-white">반려</span>
       case 'pending':
-        return <Badge variant={null} className="badge-warning">대기</Badge>
+        return <span className="badge-stats bg-yellow-500 text-white">대기</span>
       default:
-        return <Badge variant={null} className="badge-secondary">-</Badge>
+        return <span className="badge-stats bg-gray-500 text-white">-</span>
     }
   }
 
   const getDeliveryStatusBadge = (status: string | null) => {
     switch (status) {
       case 'completed':
-        return <Badge variant={null} className="badge-success">납품완료</Badge>
+        return <span className="badge-stats bg-green-500 text-white">납품완료</span>
       case 'partial':
-        return <Badge variant={null} className="badge-warning">부분납품</Badge>
+        return <span className="badge-stats bg-yellow-500 text-white">부분납품</span>
       case 'pending':
-        return <Badge variant={null} className="badge-secondary">납품대기</Badge>
+        return <span className="badge-stats bg-gray-500 text-white">납품대기</span>
       default:
-        return <Badge variant={null} className="badge-secondary">-</Badge>
+        return <span className="badge-stats bg-gray-500 text-white">-</span>
     }
   }
 

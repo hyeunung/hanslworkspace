@@ -14,7 +14,6 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { PurchaseRequestWithDetails } from '@/types/purchase'
 import { formatCurrency } from '@/utils/purchase'
@@ -39,19 +38,19 @@ export default function ApprovalCard({
   const getStatusBadge = () => {
     if (approval.middle_manager_status === 'pending') {
       return (
-        <Badge variant="secondary" className="flex items-center gap-1">
+        <span className="badge-stats border border-gray-300 bg-white text-gray-600 flex items-center gap-1">
           <Clock className="w-3 h-3" />
           1차 승인 대기
-        </Badge>
+        </span>
       )
     }
     
     if (approval.middle_manager_status === 'approved' && approval.final_manager_status === 'pending') {
       return (
-        <Badge variant="secondary" className="flex items-center gap-1">
+        <span className="badge-stats border border-gray-300 bg-white text-gray-600 flex items-center gap-1">
           <Clock className="w-3 h-3" />
           최종 승인 대기
-        </Badge>
+        </span>
       )
     }
     
@@ -59,10 +58,10 @@ export default function ApprovalCard({
         approval.final_manager_status === 'approved' && 
         !approval.is_payment_completed) {
       return (
-        <Badge variant="default" className="flex items-center gap-1">
+        <span className="badge-stats bg-blue-500 text-white flex items-center gap-1">
           <Package className="w-3 h-3" />
           구매 처리 대기
-        </Badge>
+        </span>
       )
     }
     
@@ -115,14 +114,14 @@ export default function ApprovalCard({
                   {approval.purchase_order_number || `발주 #${approval.id?.toString().slice(-8)}`}
                 </h3>
                 {urgency === 'high' && (
-                  <Badge variant="destructive" className="text-xs">
+                  <span className="badge-stats bg-red-500 text-white text-xs">
                     긴급
-                  </Badge>
+                  </span>
                 )}
                 {urgency === 'medium' && (
-                  <Badge variant="outline" className="text-xs border-yellow-500 text-yellow-700">
+                  <span className="badge-stats border border-yellow-500 bg-white text-yellow-700 text-xs">
                     주의
-                  </Badge>
+                  </span>
                 )}
               </div>
               {getStatusBadge()}
@@ -222,15 +221,15 @@ export default function ApprovalCard({
 
         {/* 특이사항 */}
         <div className="flex gap-2">
-          <Badge variant={approval.progress_type === '선진행' ? 'default' : 'secondary'}>
+          <span className={`badge-stats ${approval.progress_type === '선진행' ? 'bg-blue-500 text-white' : 'border border-gray-300 bg-white text-gray-600'}`}>
             {approval.progress_type}
-          </Badge>
-          <Badge variant="outline">
+          </span>
+          <span className="badge-stats border border-gray-300 bg-white text-gray-600">
             {approval.request_type}
-          </Badge>
-          <Badge variant="outline">
+          </span>
+          <span className="badge-stats border border-gray-300 bg-white text-gray-600">
             {approval.payment_category}
-          </Badge>
+          </span>
         </div>
 
         {/* 납기 요청일 */}

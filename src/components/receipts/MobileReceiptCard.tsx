@@ -1,6 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Printer, Download, Calendar, User, FileText, Trash2 } from "lucide-react";
 import type { ReceiptItem } from "@/types/receipt";
 import { formatDate, formatFileSize } from "@/utils/helpers";
@@ -23,13 +22,13 @@ export default function MobileReceiptCard({ receipt, onView, onPrint, onDownload
           {/* 상단: 인쇄 상태 + 업로드일 */}
           <div className="flex items-center justify-between">
             {receipt.is_printed ? (
-              <Badge className="bg-green-100 text-green-700 hover:bg-green-100 badge-text">
+              <span className="badge-stats bg-green-100 text-green-700 badge-text">
                 ✓ 인쇄완료
-              </Badge>
+              </span>
             ) : (
-              <Badge variant="secondary" className="bg-gray-100 text-gray-600 badge-text">
+              <span className="badge-stats bg-gray-100 text-gray-600 badge-text">
                 미완료
-              </Badge>
+              </span>
             )}
             <div className="flex items-center gap-1 badge-text text-gray-500">
               <Calendar className="w-3 h-3" />

@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ IMPORTANT: Project Context
+**현재 프로젝트는 hanslworkspace입니다!**
+- 이곳은 `/Users/scott/workspace/hanslworkspace` 디렉토리입니다
+- hanslwebapp이 아닙니다 - hanslwebapp은 이 workspace의 하위 프로젝트입니다
+- 프로젝트 이름을 혼동하지 마세요: **hanslworkspace** ≠ **hanslwebapp**
+
 ## Project Structure Overview
 
 This workspace contains three main projects:
@@ -181,55 +187,35 @@ The `.button-base` class provides standardized sizing:
 - **Apply color/background styling AFTER button-base** - `button-base bg-blue-500 text-white`
 - **Icons remain standard size** - Use `w-4 h-4` for button icons
 
-#### Standardized Badge System (Button-Consistent Sizing)
-**Same dimensions as buttons (px-2.5 py-0.5, business-radius-badge) for visual consistency**
+#### Badge System (상태 표시용 - 버튼과 분리된 디자인)
+**배지는 버튼과 별개의 디자인 시스템으로, 상태 표시 전용으로 사용**
 
-**Badge Base Structure:**
-```tsx
-// Use this base class for all badges
-const badgeBaseClass = 'inline-flex items-center gap-1 business-radius-badge px-2.5 py-0.5 badge-text leading-tight'
+**배지 디자인 원칙:**
+- **용도**: 클릭 불가능한 상태 표시용 (UTK 완료/대기, 승인 상태 등)
+- **크기**: 버튼보다 작고 컴팩트한 디자인
+- **표준**: UTK 칼럼 배지 스타일을 기준으로 통일
+
+**Standard Badge Classes (Statistics Badge 기반):**
+```css
+/* 기본 배지 스타일 - UTK 칼럼처럼 작은 크기 */
+.badge-stats {
+  padding: 2px 6px;  /* px-1.5 py-0.5 */
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 8px;  /* business-radius-badge */
+}
 ```
 
-**Standard Badge Classes:**
-- `.badge-base` - Base badge class (same size as buttons)
-- `.badge-primary` - Blue background (구매요청 등)
-- `.badge-success` - Green background (발주 등)  
-- `.badge-warning` - Yellow background (승인대기 등)
-- `.badge-danger` - Red background (반려 등)
-- `.badge-secondary` - Gray background (현장결제 등)
+**Badge Variants:**
+- `.badge-utk-pending` - 대기 상태 (회색 테두리, 흰 배경)
+- `.badge-utk-complete` - 완료 상태 (주황색 배경)
+- `.badge-stats-primary` - 기본 정보 (파란색 배경)
+- `.badge-stats-secondary` - 보조 정보 (회색 배경)
 
-**Key Features:**
-- **Same height as buttons**: Consistent `px-2.5 py-0.5` padding
-- **Same border radius**: `business-radius-badge` 
-- **Same text size**: `badge-text` (12px, font-medium)
-- **Visual harmony**: Badges and buttons have identical dimensions
+**배지 vs 버튼 구분:**
+- **배지**: 상태 표시용, 작은 크기 (10px 폰트, px-1.5 py-0.5)
+- **버튼**: 클릭 가능한 액션, 큰 크기 (12px 폰트, 2px 10px 패딩)
 
-#### Statistics Badge System (Tab Buttons & Counters)
-**Smaller badges for tab buttons, statistics counters, and compact UI elements**
-
-**Statistics Badge Base Structure:**
-```tsx
-// Use this base class for all statistics badges
-const badgeStatsClass = 'inline-flex items-center gap-0.5 business-radius-badge px-1.5 py-0.5 text-[10px] font-medium leading-tight'
-```
-
-**Statistics Badge Classes:**
-- `.badge-stats` - Base statistics badge class (10px text, compact padding)
-- `.badge-stats-primary` - Blue statistics badge (bg-blue-50 text-blue-700)
-- `.badge-stats-secondary` - Gray statistics badge (bg-gray-100 text-gray-600)
-- `.badge-stats-active` - Active tab badge (bg-hansl-50 text-hansl-700)
-
-**Usage Guidelines:**
-- **Tab Buttons**: Use `badge-stats-active` for active tab, `badge-stats-secondary` for inactive
-- **Statistics Counters**: Use `badge-stats-primary` for important counts
-- **Compact Areas**: Use when standard badges are too large for the context
-- **Text Size**: 10px font-medium for minimal visual weight
-
-**Key Features:**
-- **Compact size**: `px-1.5 py-0.5` padding (smaller than standard badges)
-- **10px text**: Smaller than standard `badge-text` (12px)
-- **Same border radius**: `business-radius-badge` for consistency
-- **Minimal visual weight**: Perfect for tab counters and statistics
 
 #### Page Title & Subtitle System (hanslwebapp Standard)
 - `.page-title` - Main page titles (19px, font-semibold, text-foreground)
@@ -308,6 +294,49 @@ console.error('에러:', error);  // DON'T DO THIS
 - **Employees**: User management with roles
 - **Purchase Requests**: Multi-step approval workflow
 - **Attendance**: Location-tracked time management
+
+## Permission System (권한 시스템)
+
+### Purchase Detail Modal Permissions
+발주 상세 모달에서의 권한별 기능 제한:
+
+#### 수정 권한 (Edit Permissions)
+1. **Full Edit (전체 수정)** - `app_admin`, `final_approver`, `ceo`
+   - 모든 필드 수정 가능
+   - 품목 추가/삭제 가능
+   - 발주서 삭제 가능
+
+2. **Limited Edit (제한적 수정)** - `lead buyer`
+   - **수정 가능**: 수량(quantity), 단가(unit_price), 금액(amount) 필드만
+   - **수정 불가**: 품목명, 규격, 비고 등 다른 필드
+   - **삭제 불가**: 발주서 삭제 권한 없음
+   - **품목 추가/삭제**: 불가
+
+#### 삭제 권한 (Delete Permissions)
+- **승인된 발주서**: `app_admin`, `final_approver`, `ceo`만 삭제 가능
+- **미승인 발주서**: 위 역할 + 요청자 본인
+- **lead buyer**: 삭제 권한 없음 (승인 여부 관계없이)
+
+#### 구매/입고 권한 (Purchase/Receipt Permissions)
+- **구매 처리**: `app_admin`, `lead buyer`
+- **입고 처리**: `app_admin` + 요청자 본인
+
+### Implementation Example
+```typescript
+// 권한 체크 로직
+const canEditAll = roles.includes('final_approver') || 
+                   roles.includes('app_admin') || 
+                   roles.includes('ceo')
+
+const canEditLimited = roles.includes('lead buyer')
+
+const canEdit = canEditAll || canEditLimited
+
+// UI에서 필드 제한
+<Input 
+  disabled={canEditLimited && !canEditAll}  // lead buyer는 특정 필드 수정 불가
+/>
+```
 
 ## Testing and Quality
 - Flutter: Uses `flutter_test` for widget and unit testing

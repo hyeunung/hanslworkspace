@@ -22,7 +22,6 @@ import {
   Truck
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
@@ -166,15 +165,22 @@ function PurchaseDetailModal({
     : userRoles
   
   // 권한 체크
-  const canEdit = effectiveRoles.includes('final_approver') || 
-                  effectiveRoles.includes('app_admin') || 
-                  effectiveRoles.includes('ceo')
+  // 전체 수정 권한 (모든 필드 수정 가능)
+  const canEditAll = effectiveRoles.includes('final_approver') || 
+                     effectiveRoles.includes('app_admin') || 
+                     effectiveRoles.includes('ceo')
   
-  // 삭제 권한: 관리자 또는 요청자 본인 (단, 승인된 요청은 관리자만)
+  // lead buyer 제한적 수정 권한 (금액/수량만 수정 가능)
+  const canEditLimited = effectiveRoles.includes('lead buyer')
+  
+  // 통합 수정 권한 (둘 중 하나라도 있으면 수정 모드 활성화)
+  const canEdit = canEditAll || canEditLimited
+  
+  // 삭제 권한: 관리자 또는 요청자 본인 (단, 승인된 요청은 관리자만, lead buyer는 삭제 불가)
   const isApproved = purchase?.final_manager_status === 'approved';
   const canDelete = isApproved 
-    ? canEdit  // 승인된 요청은 관리자만 삭제 가능
-    : (canEdit || (purchase?.requester_name === currentUserName))  // 미승인 요청은 요청자도 삭제 가능
+    ? canEditAll  // 승인된 요청은 관리자만 삭제 가능 (lead buyer 제외)
+    : (canEditAll || (purchase?.requester_name === currentUserName))  // 미승인도 lead buyer 제외
   
   // 구매 권한 체크: app_admin + lead buyer만 (요청자 본인 제외)
   const canPurchase = effectiveRoles.includes('app_admin') || 
@@ -827,19 +833,19 @@ function PurchaseDetailModal({
       const category = purchase.payment_category.trim()
       
       if (category === '발주') {
-        return <Badge variant={null} className="badge-success">발주</Badge>
+        return <span className="badge-stats bg-green-500 text-white">발주</span>
       } else if (category === '구매요청') {
-        return <Badge variant={null} className="badge-primary">구매요청</Badge>
+        return <span className="badge-stats bg-blue-500 text-white">구매요청</span>
       } else if (category === '현장결제') {
-        return <Badge variant={null} className="badge-secondary">현장결제</Badge>
+        return <span className="badge-stats bg-gray-500 text-white">현장결제</span>
       } else {
         // payment_category 값이 있지만 알려진 값이 아닌 경우
-        return <Badge variant={null} className="badge-primary">{category}</Badge>
+        return <span className="badge-stats bg-blue-500 text-white">{category}</span>
       }
     }
     
     // payment_category가 없으면 기본값
-    return <Badge variant={null} className="badge-primary">구매요청</Badge>
+    return <span className="badge-stats bg-blue-500 text-white">구매요청</span>
   }
 
   // formatDate는 utils/helpers.ts에서 import
@@ -2154,7 +2160,7 @@ function PurchaseDetailModal({
                   <h3 className="modal-section-title flex items-center">
                     <Package className="w-4 h-4 mr-2 text-gray-600" />
                     품목 리스트
-                    <span className="ml-2 badge-secondary">
+                    <span className="ml-2 badge-stats bg-gray-500 text-white">
                       {purchase.items?.length || 0}개
                     </span>
                   </h3>
@@ -2297,6 +2303,7 @@ function PurchaseDetailModal({
                                   onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
                                   className="modal-label border-gray-200 rounded-lg w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                                   placeholder="품목명"
+                                  disabled={canEditLimited && !canEditAll}  // lead buyer는 품목명 수정 불가
                                 />
                               ) : (
                                 <span className="modal-value">{item.item_name || '품목명 없음'}</span>
@@ -2311,6 +2318,7 @@ function PurchaseDetailModal({
                                   onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
                                   className="modal-label border-gray-200 rounded-lg w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                                   placeholder="규격"
+                                  disabled={canEditLimited && !canEditAll}  // lead buyer는 규격 수정 불가
                                 />
                               ) : (
                                 <span className="modal-subtitle">{item.specification || '-'}</span>
@@ -2359,6 +2367,7 @@ function PurchaseDetailModal({
                                   className="modal-label border-gray-200 rounded-lg text-right w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                                   placeholder="합계"
                                   max="10000000000"
+                                  disabled={canEditLimited && !canEditAll}  // lead buyer는 합계 수정 불가 (자동계산)
                                 />
                               ) : (
                                 <span className="modal-value">₩{formatCurrency(item.amount_value || 0)}</span>
@@ -2370,6 +2379,7 @@ function PurchaseDetailModal({
                               {isEditing ? (
                                 <Input
                                   value={item.remark || ''}
+                                  disabled={canEditLimited && !canEditAll}  // lead buyer는 비고 수정 불가
                                   onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
                                   className="modal-label border-gray-200 rounded-lg text-center w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                                   placeholder="비고"
@@ -2635,6 +2645,7 @@ function PurchaseDetailModal({
                                     onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
                                     className="modal-label border-gray-200 rounded-lg w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                                     placeholder="품목명"
+                                    disabled={canEditLimited && !canEditAll}  // lead buyer는 품목명 수정 불가
                                   />
                                 ) : (
                                   <div className="modal-value font-medium">{item.item_name || '품목명 없음'}</div>
@@ -2645,6 +2656,7 @@ function PurchaseDetailModal({
                                     onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
                                     className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                                     placeholder="규격"
+                                    disabled={canEditLimited && !canEditAll}  // lead buyer는 규격 수정 불가
                                   />
                                 ) : (
                                   <div className="modal-subtitle text-gray-500">{item.specification || '-'}</div>
@@ -2658,6 +2670,7 @@ function PurchaseDetailModal({
                                     onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
                                     className="modal-label border-gray-200 rounded-lg text-right w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
                                     placeholder="합계"
+                                    disabled={canEditLimited && !canEditAll}  // lead buyer는 합계 수정 불가 (자동계산)
                                   />
                                 ) : (
                                   <div className="modal-value font-semibold">₩{formatCurrency(item.amount_value || 0)}</div>

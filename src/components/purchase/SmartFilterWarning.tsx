@@ -1,7 +1,6 @@
 import { memo, useState } from 'react';
 import { AlertTriangle, Settings, X, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { SmartFilterLimitResult } from '@/hooks/useSmartFilterLimit';
 
 interface SmartFilterWarningProps {
@@ -78,14 +77,14 @@ const SmartFilterWarning = memo<SmartFilterWarningProps>(({
           
           {/* 상태 정보 */}
           <div className="flex items-center gap-3 mb-3">
-            <Badge className={styles.badgeClass}>
+            <span className={`badge-stats ${styles.badgeClass}`}>
               {smartFilter.getLimitMessage()}
-            </Badge>
+            </span>
             
             {smartFilter.isLimited && (
-              <Badge className="badge-secondary">
+              <span className="badge-stats bg-gray-500 text-white">
                 제한 모드: {smartFilter.limitConfig.maxResults.toLocaleString()}개
-              </Badge>
+              </span>
             )}
           </div>
 

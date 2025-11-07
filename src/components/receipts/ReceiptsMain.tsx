@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Filter, Receipt, Printer, Download, Calendar, Plus, Trash2 } from "lucide-react";
@@ -455,9 +454,9 @@ export default function ReceiptsMain() {
             <Plus className="w-4 h-4 mr-2" />
             영수증 업로드
           </Button>
-          <Badge variant="secondary" className="modal-subtitle">
+          <span className="badge-stats bg-gray-100 text-gray-600 modal-subtitle">
             총 {filteredReceipts.length}건
-          </Badge>
+          </span>
         </div>
       </div>
 
@@ -560,13 +559,13 @@ export default function ReceiptsMain() {
                     >
                       <td className="px-4 py-3 modal-subtitle text-center">
                         {receipt.is_printed ? (
-                          <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+                          <span className="badge-stats bg-green-100 text-green-700">
                             ✓ 완료
-                          </Badge>
+                          </span>
                         ) : (
-                          <Badge variant="secondary" className="bg-gray-100 text-gray-600">
+                          <span className="badge-stats bg-gray-100 text-gray-600">
                             미완료
-                          </Badge>
+                          </span>
                         )}
                       </td>
                       <td className="px-4 py-3 modal-subtitle text-center text-gray-600">

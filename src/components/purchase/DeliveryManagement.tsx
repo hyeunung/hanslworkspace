@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { 
   Dialog, 
@@ -79,9 +78,9 @@ export function DeliveryManagement({
   // 입고 상태에 따른 배지 컴포넌트 (actual_received_date 기준)
   const getStatusBadge = (actualReceivedDate: string | null) => {
     if (actualReceivedDate) {
-      return <Badge variant={null} className="badge-success">입고완료</Badge>;
+      return <span className="badge-stats bg-green-500 text-white">입고완료</span>;
     } else {
-      return <Badge variant={null} className="badge-secondary">입고대기</Badge>;
+      return <span className="badge-stats bg-gray-500 text-white">입고대기</span>;
     }
   };
 
@@ -354,15 +353,15 @@ export function DeliveryManagement({
               입고현황 ({stats.completed}/{stats.total})
             </CardTitle>
             <div className="flex gap-2">
-              <Badge variant={null} className="badge-success">
+              <span className="badge-stats bg-green-500 text-white">
                 완료: {stats.completed}
-              </Badge>
-              <Badge variant={null} className="badge-warning">
+              </span>
+              <span className="badge-stats bg-yellow-500 text-white">
                 부분: {stats.partial}
-              </Badge>
-              <Badge variant={null} className="badge-secondary">
+              </span>
+              <span className="badge-stats bg-gray-500 text-white">
                 대기: {stats.pending}
-              </Badge>
+              </span>
             </div>
           </div>
           

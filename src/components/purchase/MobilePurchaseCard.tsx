@@ -1,6 +1,5 @@
 import { memo } from 'react'
 import { Eye } from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
 import { Purchase } from '@/types/purchase'
 import { formatDateShort } from '@/utils/helpers'
 
@@ -40,7 +39,7 @@ const StatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
   }
   
   const { text, className } = config[status]
-  return <Badge variant={null} className={className}>{text}</Badge>
+  return <span className={`badge-stats ${className}`}>{text}</span>
 })
 
 StatusBadge.displayName = 'StatusBadge'
@@ -59,13 +58,13 @@ const MobilePurchaseCard = memo(({ purchase, onClick }: MobilePurchaseCardProps)
         <div>
           <div className="flex items-center gap-2">
             {isAdvance ? (
-              <Badge variant={null} className="badge-danger">
+              <span className="badge-stats bg-red-500 text-white">
                 선진행
-              </Badge>
+              </span>
             ) : (
-              <Badge variant={null} className="badge-secondary">
+              <span className="badge-stats bg-gray-500 text-white">
                 일반
-              </Badge>
+              </span>
             )}
             <span className="card-title text-gray-900">
               {purchase.purchase_order_number || '-'}
@@ -144,9 +143,9 @@ const MobilePurchaseCard = memo(({ purchase, onClick }: MobilePurchaseCardProps)
         <div className="flex items-center justify-between card-subtitle">
           <span className="text-gray-600">결제</span>
           {purchase.is_payment_completed ? (
-            <Badge variant={null} className="badge-success">완료</Badge>
+            <span className="badge-stats bg-green-500 text-white">완료</span>
           ) : (
-            <Badge variant={null} className="badge-secondary">대기</Badge>
+            <span className="badge-stats bg-gray-500 text-white">대기</span>
           )}
         </div>
       )}

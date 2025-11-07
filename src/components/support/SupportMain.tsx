@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
 import { MessageCircle, Send, Calendar, Search, CheckCircle, Clock, AlertCircle, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Eye, X, Edit2, Trash2, Save } from 'lucide-react'
 import { supportService, type SupportInquiry } from '@/services/supportService'
 import { createClient } from '@/lib/supabase/client'
@@ -364,15 +363,15 @@ ${purchaseInfo}`;
   const getStatusBadge = (status?: string) => {
     switch (status) {
       case 'open':
-        return <Badge className="bg-yellow-100 text-yellow-800">대기</Badge>
+        return <span className="badge-stats bg-yellow-100 text-yellow-800">대기</span>
       case 'in_progress':
-        return <Badge className="bg-blue-100 text-blue-800">처리중</Badge>
+        return <span className="badge-stats bg-blue-100 text-blue-800">처리중</span>
       case 'resolved':
-        return <Badge className="bg-green-100 text-green-800">완료</Badge>
+        return <span className="badge-stats bg-green-100 text-green-800">완료</span>
       case 'closed':
-        return <Badge className="bg-gray-100 text-gray-800">종료</Badge>
+        return <span className="badge-stats bg-gray-100 text-gray-800">종료</span>
       default:
-        return <Badge>-</Badge>
+        return <span className="badge-stats border border-gray-300 bg-white text-gray-600">-</span>
     }
   }
 
@@ -664,9 +663,9 @@ ${purchaseInfo}`;
                   <AlertCircle className="w-5 h-5 text-orange-500" />
                   {isAdmin ? '전체 문의 목록' : '내 문의 내역'}
                 </span>
-                <Badge variant="outline">
+                <span className="badge-stats border border-gray-300 bg-white text-gray-600">
                   {inquiries.length}건
-                </Badge>
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -692,9 +691,9 @@ ${purchaseInfo}`;
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <Badge variant="outline" className="badge-text whitespace-nowrap">
+                            <span className="badge-stats border border-gray-300 bg-white text-gray-600 badge-text whitespace-nowrap">
                               {getInquiryTypeLabel(inquiry.inquiry_type)}
-                            </Badge>
+                            </span>
                             {getStatusBadge(inquiry.status)}
                             <span className="modal-label truncate">
                               {inquiry.subject}
@@ -817,9 +816,9 @@ ${purchaseInfo}`;
               <div className="flex items-center gap-2">
                 <span>발주요청 상세</span>
                 {selectedInquiryDetail?.purchase_order_number && (
-                  <Badge variant="outline" className="font-normal">
+                  <span className="badge-stats border border-gray-300 bg-white text-gray-600 font-normal">
                     {selectedInquiryDetail.purchase_order_number}
-                  </Badge>
+                  </span>
                 )}
               </div>
               {isAdmin && selectedInquiryDetail && (

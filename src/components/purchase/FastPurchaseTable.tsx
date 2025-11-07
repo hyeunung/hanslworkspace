@@ -1,5 +1,4 @@
 import { memo, useMemo, useState, useCallback } from "react";
-import { Badge } from "@/components/ui/badge";
 import PurchaseDetailModal from "./PurchaseDetailModal";
 import MobilePurchaseCard from "./MobilePurchaseCard";
 import { createClient } from "@/lib/supabase/client";
@@ -47,7 +46,7 @@ const StatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
   };
   
   const { text, className } = config[status];
-  return <Badge className={className}>{text}</Badge>;
+  return <span className={`badge-stats ${className}`}>{text}</span>;
 });
 
 StatusBadge.displayName = 'StatusBadge';
@@ -75,8 +74,8 @@ const COMMON_COLUMN_CLASSES = {
   purchaseOrderNumberCompact: "pl-2 w-36 min-w-[140px] max-w-[140px]", // 구매현황 탭용 (추가 컬럼 보상)
   paymentCategory: "text-center w-20 min-w-[85px] max-w-[85px]",
   requesterName: "w-16 min-w-[68px] max-w-[68px]",
-  requestDate: "w-20 min-w-[85px] max-w-[85px]",
-  vendorName: "w-28 min-w-[115px] max-w-[115px]",
+  requestDate: "text-center px-2 w-16 min-w-[64px] max-w-[68px]",
+  vendorName: "pl-3 pr-2 w-32 min-w-[130px] max-w-[130px]",
   contactName: "w-16 min-w-[68px] max-w-[68px]",
   deliveryRequestDate: "w-20 min-w-[85px] max-w-[85px]",
   revisedDeliveryRequestDate: "w-20 min-w-[85px] max-w-[85px]",
@@ -98,7 +97,7 @@ const COMMON_COLUMN_CLASSES = {
   receipt: "text-center w-24 min-w-[100px] max-w-[100px]",           // 진행바 + 퍼센트 표시
   paymentStatus: "text-center w-16 min-w-[70px] max-w-[70px]",
   link: "w-20 min-w-[85px] max-w-[85px]",
-  utk: "text-center w-12 min-w-[50px] max-w-[50px]"  // UTK 칼럼 전용 (작은 너비)
+  utk: "text-center w-14 min-w-[56px] max-w-[60px]"  // UTK 칼럼 전용 (핏하게)
 };
 
 // 승인 상태 상세 표시 컴포넌트 (승인대기 탭용)
@@ -116,9 +115,9 @@ const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
         <div className="flex items-center gap-0.5">
           <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></div>
         </div>
-        <Badge variant={null} className="badge-danger">
+        <span className="badge-stats bg-red-500 text-white">
           반려
-        </Badge>
+        </span>
       </div>
     );
   }
@@ -130,9 +129,9 @@ const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
         <div className="flex items-center gap-0.5">
           <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
         </div>
-        <Badge variant={null} className="badge-success">
+        <span className="badge-stats bg-green-500 text-white">
           승인완료
-        </Badge>
+        </span>
       </div>
     );
   }
@@ -146,9 +145,9 @@ const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
           <div className="w-3 h-0.5 bg-gray-300"></div>
           <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
         </div>
-        <Badge variant={null} className="badge-warning">
+        <span className="badge-stats bg-yellow-500 text-white">
           1차 승인
-        </Badge>
+        </span>
       </div>
     );
   }
@@ -161,9 +160,9 @@ const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
         <div className="w-3 h-0.5 bg-gray-300"></div>
         <div className="w-1.5 h-1.5 bg-gray-300 rounded-full"></div>
       </div>
-      <Badge variant={null} className="badge-secondary">
+      <span className="badge-stats bg-gray-500 text-white">
         승인대기
-      </Badge>
+      </span>
     </div>
   );
 });
@@ -235,16 +234,16 @@ const ProgressTypeBadge = memo(({ type }: { type?: string }) => {
   
   if (isAdvance) {
     return (
-      <Badge variant={null} className="badge-danger">
+      <span className="badge-stats bg-red-500 text-white">
         선진행
-      </Badge>
+      </span>
     );
   }
   
   return (
-    <Badge variant={null} className="badge-secondary">
+    <span className="badge-stats bg-gray-500 text-white">
       일반
-    </Badge>
+    </span>
   );
 });
 
@@ -374,13 +373,13 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       {/* 모든 탭에서 결제종류 표시 */}
       {(activeTab === 'pending' || activeTab === 'purchase' || activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
         <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>
-          <Badge variant={null} className={
-            purchase.payment_category === '구매요청' || purchase.payment_category === '구매 요청' ? 'badge-primary' :
-            purchase.payment_category === '발주' ? 'badge-success' :
-            purchase.payment_category === '현장결제' || purchase.payment_category === '현장 결제' ? 'badge-secondary' :
-            purchase.payment_category === '경비 청구' ? 'badge-secondary' :
-            'badge-secondary'
-          }>
+          <span className={`badge-stats ${
+            purchase.payment_category === '구매요청' || purchase.payment_category === '구매 요청' ? 'bg-blue-500 text-white' :
+            purchase.payment_category === '발주' ? 'bg-green-500 text-white' :
+            purchase.payment_category === '현장결제' || purchase.payment_category === '현장 결제' ? 'bg-gray-500 text-white' :
+            purchase.payment_category === '경비 청구' ? 'bg-gray-500 text-white' :
+            'bg-gray-500 text-white'
+          }`}>
             {(() => {
               // 표시 텍스트 통일
               if (purchase.payment_category === '발주') return '발주요청';
@@ -388,7 +387,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
               if (purchase.payment_category === '현장 결제') return '현장결제';
               return purchase.payment_category || '-';
             })()}
-          </Badge>
+          </span>
         </td>
       )}
       <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.requesterName}`}>
@@ -396,22 +395,18 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
           {purchase.requester_name || '-'}
         </span>
       </td>
-      <td className={`pl-2 pr-0 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.requestDate}`}>
+      <td className={`py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.requestDate}`}>
         {formatDateShort(purchase.request_date)}
       </td>
       {/* 전체항목 탭에서만 UTK 확인 칼럼 표시 (청구일과 업체 사이) */}
       {activeTab === 'done' && (
-        <td className={`pl-0 pr-2 py-1.5 card-title whitespace-nowrap text-center ${COMMON_COLUMN_CLASSES.utk}`}>
-          <Badge variant={null} className={
-            (purchase as any).is_utk_checked 
-              ? 'bg-orange-500 text-white' 
-              : 'bg-white border border-gray-300 text-gray-600'
-          }>
+        <td className={`pl-2 pr-3 py-1.5 card-title whitespace-nowrap text-center overflow-visible text-clip ${COMMON_COLUMN_CLASSES.utk}`}>
+          <span className={(purchase as any).is_utk_checked ? 'badge-utk-complete' : 'badge-utk-pending'}>
             {(purchase as any).is_utk_checked ? '완료' : '대기'}
-          </Badge>
+          </span>
         </td>
       )}
-      <td className={`pl-2 pr-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.vendorName}`}>
+      <td className={`pl-3 pr-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.vendorName}`}>
         <span className="block truncate" title={purchase.vendor_name || ''}>
           {purchase.vendor_name || '-'}
         </span>
@@ -961,12 +956,12 @@ const FastPurchaseTable = memo(({
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
         )}
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
-        <th className={`pl-2 pr-0 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
+        <th className={`py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
         {/* 전체항목 탭에서만 UTK 확인 칼럼 헤더 표시 */}
         {activeTab === 'done' && (
-          <th className={`pl-0 pr-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center ${COMMON_COLUMN_CLASSES.utk}`}>UTK</th>
+          <th className={`pl-2 pr-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center ${COMMON_COLUMN_CLASSES.utk}`}>UTK</th>
         )}
-        <th className={`pl-2 pr-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
+        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
         {(activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (

@@ -3,7 +3,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { dashboardService } from '@/services/dashboardService'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -389,13 +388,13 @@ export default function DashboardMain() {
               <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Dashboard</p>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="badge-text">
+              <span className="badge-stats border border-gray-300 bg-white text-gray-600">
                 {new Date().toLocaleDateString('ko-KR', { 
                   month: 'long', 
                   day: 'numeric',
                   weekday: 'short'
                 })}
-              </Badge>
+              </span>
             </div>
           </div>
         </div>
@@ -417,9 +416,9 @@ export default function DashboardMain() {
                     <Download className="w-4 h-4 text-orange-600" />
                     <span>미다운로드 발주서</span>
                   </div>
-                  <Badge className="bg-orange-100 text-orange-700 border-orange-200 px-2 py-0.5">
+                  <span className="badge-stats bg-orange-100 text-orange-700">
                     {undownloadedOrders.length}
-                  </Badge>
+                  </span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4">
@@ -475,9 +474,9 @@ export default function DashboardMain() {
                                 )}
                               </span>
                               {daysSince > 3 && (
-                                <Badge variant="outline" className="badge-text px-1.5 py-0 flex-shrink-0">
+                                <span className="badge-stats border border-gray-300 bg-white text-gray-600 flex-shrink-0">
                                   {daysSince}일
-                                </Badge>
+                                </span>
                               )}
                             </div>
                             <div>
@@ -521,9 +520,9 @@ export default function DashboardMain() {
                     <Clock className="w-3.5 h-3.5 text-orange-500" />
                     승인 대기
                     {data.pendingApprovals.length > 0 && (
-                      <Badge variant="destructive" className="badge-text h-4 px-1">
+                      <span className="badge-stats bg-red-500 text-white h-4 px-1">
                         {data.pendingApprovals.length}
-                      </Badge>
+                      </span>
                     )}
                   </CardTitle>
                   {data.pendingApprovals.length > 0 && (
@@ -631,9 +630,9 @@ export default function DashboardMain() {
                     <span>구매 대기</span>
                   </div>
                   {data.myPurchaseStatus && data.myPurchaseStatus.waitingPurchase && data.myPurchaseStatus.waitingPurchase.length > 0 && (
-                    <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200 px-2 py-0.5">
+                    <span className="badge-stats bg-yellow-100 text-yellow-700">
                       {data.myPurchaseStatus.waitingPurchase.length}
-                    </Badge>
+                    </span>
                   )}
                 </CardTitle>
               </CardHeader>
@@ -748,9 +747,9 @@ export default function DashboardMain() {
                     <span>입고 대기</span>
                   </div>
                   {data.myPurchaseStatus.waitingDelivery.length > 0 && (
-                    <Badge className="bg-blue-100 text-blue-700 border-blue-200 px-2 py-0.5">
+                    <span className="badge-stats bg-blue-100 text-blue-700">
                       {data.myPurchaseStatus.waitingDelivery.length}
-                    </Badge>
+                    </span>
                   )}
                 </CardTitle>
               </CardHeader>
@@ -886,9 +885,9 @@ export default function DashboardMain() {
                     </h1>
                     <p className="modal-subtitle">{selectedOrder.vendor_name || '업체명 없음'}</p>
                   </div>
-                  <div className={`px-3 py-1.5 business-radius-badge badge-text bg-orange-50 text-orange-700 border-orange-200`}>
+                  <span className="badge-stats bg-orange-50 text-orange-700">
                     미다운로드
-                  </div>
+                  </span>
                 </div>
               </div>
             </div>

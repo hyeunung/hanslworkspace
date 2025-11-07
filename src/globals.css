@@ -228,6 +228,15 @@
     @apply badge-base bg-gray-500 text-white !important;
   }
 
+  /* UTK Badge Variants (Purchase Tables) */
+  .badge-utk-pending {
+    @apply badge-stats border border-gray-300 bg-white text-gray-600 overflow-visible text-clip;
+  }
+
+  .badge-utk-complete {
+    @apply badge-stats border border-orange-400 bg-orange-500 text-white overflow-visible text-clip;
+  }
+
   /* Statistics Badge System - Smaller size for tab buttons and stats */
   .badge-stats {
     @apply inline-flex items-center gap-0.5 business-radius-badge px-1.5 py-0.5 text-[10px] font-medium leading-tight;

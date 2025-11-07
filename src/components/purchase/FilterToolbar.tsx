@@ -26,7 +26,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
 import { Calendar as CalendarComponent } from '@/components/ui/calendar'
 import {
   Command,
@@ -912,9 +911,9 @@ export default function FilterToolbar({
                 <Sliders className="w-4 h-4 mr-1" />
                 <span className="button-text">필터</span>
                 {activeFilters.length > 0 && (
-                  <Badge variant="secondary" className="ml-1 badge-stats-primary">
+                  <span className="ml-1 badge-stats bg-blue-50 text-blue-700">
                     {activeFilters.length}
-                  </Badge>
+                  </span>
                 )}
               </Button>
             </PopoverTrigger>
@@ -1217,14 +1216,13 @@ export default function FilterToolbar({
         </div>
       </div>
 
-      {/* 활성 필터 태그 */}
+      {/* 활성 필터 태그 - badge-stats span으로 변경 */}
       {activeFilters.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {activeFilters.map(filter => (
-            <Badge
+            <span
               key={filter.id}
-              variant="secondary"
-              className="badge-base flex items-center gap-1 bg-blue-50 text-blue-700 border-blue-200"
+              className="badge-stats flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200"
             >
               {filter.label}
               {filter.dateField && (
@@ -1241,7 +1239,7 @@ export default function FilterToolbar({
               >
                 <X className="w-3 h-3" />
               </Button>
-            </Badge>
+            </span>
           ))}
         </div>
       )}

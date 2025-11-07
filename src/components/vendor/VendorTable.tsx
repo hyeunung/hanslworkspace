@@ -3,7 +3,6 @@ import { useState } from 'react'
 import { Vendor } from '@/types/purchase'
 import { formatDate } from '@/utils/helpers'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { 
   Table, 
   TableBody, 
@@ -135,9 +134,9 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                   {vendor.vendor_name}
                 </TableCell>
                 <TableCell className="text-center text-[11px] px-1 py-1.5">
-                  <Badge variant="outline" className="text-[10px] px-1 py-0">
+                  <span className="badge-stats border border-gray-300 bg-white text-gray-600 text-[10px] px-1 py-0">
                     {vendor.vendor_contacts?.length || 0}명
-                  </Badge>
+                  </span>
                 </TableCell>
                 <TableCell className="px-2 py-1.5">
                   <div className="space-y-0.5">
@@ -254,9 +253,9 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                   <tr key={vendor.id} className="hover:bg-gray-50">
                     <td className="p-3 modal-value">{vendor.vendor_name}</td>
                     <td className="p-3 text-center">
-                      <Badge variant="outline" className="badge-text">
+                      <span className="badge-stats border border-gray-300 bg-white text-gray-600 badge-text">
                         {vendor.vendor_contacts?.length || 0}명
-                      </Badge>
+                      </span>
                     </td>
                     <td className="p-3 modal-subtitle">
                       {vendor.vendor_contacts && vendor.vendor_contacts.length > 0 ? (
@@ -343,9 +342,9 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
               <MobileCardHeader>
                 <div className="flex justify-between items-center">
                   <span>{vendor.vendor_name}</span>
-                  <Badge variant="outline">
+                  <span className="badge-stats border border-gray-300 bg-white text-gray-600">
                     {vendor.vendor_contacts?.length || 0}명
-                  </Badge>
+                  </span>
                 </div>
               </MobileCardHeader>
               

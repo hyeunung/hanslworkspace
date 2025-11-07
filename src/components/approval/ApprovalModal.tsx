@@ -21,7 +21,6 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Badge } from '@/components/ui/badge'
 import { PurchaseRequestWithDetails } from '@/types/purchase'
 import { formatCurrency } from '@/utils/purchase'
 
@@ -102,12 +101,12 @@ export default function ApprovalModal({
                 {approval.purchase_order_number || `발주 #${approval.id?.toString().slice(-8)}`}
               </h3>
               <div className="flex gap-2">
-                <Badge variant={approval.progress_type === '선진행' ? 'default' : 'secondary'}>
+                <span className={`badge-stats ${approval.progress_type === '선진행' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'}`}>
                   {approval.progress_type}
-                </Badge>
-                <Badge variant="outline">
+                </span>
+                <span className="badge-stats border border-gray-300 bg-white text-gray-600">
                   {approval.request_type}
-                </Badge>
+                </span>
               </div>
             </div>
             

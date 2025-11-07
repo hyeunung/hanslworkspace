@@ -1,7 +1,6 @@
 import React, { memo, useMemo, useCallback, forwardRef, useImperativeHandle, useRef } from 'react';
 import { FixedSizeList } from 'react-window';
 import { Purchase } from '@/hooks/usePurchaseData';
-import { Badge } from '@/components/ui/badge';
 import { formatDateShort } from '@/utils/helpers';
 import { logger } from '@/lib/logger';
 
@@ -48,13 +47,13 @@ const TableRow = memo<{
   // 상태 배지 생성 - FastPurchaseTable과 동일
   const getStatusBadge = useCallback((purchase: Purchase) => {
     if (purchase.is_received) {
-      return <Badge className="badge-success">입고완료</Badge>;
+      return <span className="badge-stats bg-green-500 text-white">입고완료</span>;
     } else if (purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'approved') {
-      return <Badge className="badge-primary">구매진행</Badge>;
+      return <span className="badge-stats bg-blue-500 text-white">구매진행</span>;
     } else if (purchase.middle_manager_status === 'rejected' || purchase.final_manager_status === 'rejected') {
-      return <Badge className="badge-danger">반려</Badge>;
+      return <span className="badge-stats bg-red-500 text-white">반려</span>;
     } else {
-      return <Badge className="badge-warning">승인대기</Badge>;
+      return <span className="badge-stats bg-yellow-500 text-white">승인대기</span>;
     }
   }, []);
 
@@ -77,9 +76,9 @@ const TableRow = memo<{
     const isChecked = (purchase as any).is_utk_checked;
     return (
       <td className="px-2 py-1.5 text-center">
-        <Badge className={isChecked ? "badge-success" : "badge-warning"}>
+        <span className={isChecked ? "bg-green-500 text-white" : "bg-yellow-500 text-white"}>
           {isChecked ? "완료" : "대기"}
-        </Badge>
+        </span>
       </td>
     );
   };
@@ -90,9 +89,9 @@ const TableRow = memo<{
     const isReceived = (purchase as any).is_statement_received;
     return (
       <td className="px-2 py-1.5 text-center">
-        <Badge className={isReceived ? "badge-success" : "badge-warning"}>
+        <span className={isReceived ? "bg-green-500 text-white" : "bg-yellow-500 text-white"}>
           {isReceived ? "수령" : "대기"}
-        </Badge>
+        </span>
       </td>
     );
   };
@@ -125,13 +124,13 @@ const TableRow = memo<{
 
       {/* 결제종류 */}
       <td className="px-2 py-1.5 card-title">
-        <Badge className={
-          purchase.payment_category === '현금' ? "badge-success" :
+        <span className={
+          purchase.payment_category === '현금' ? "bg-green-500 text-white" :
           purchase.payment_category === '카드' ? "badge-primary" :
-          purchase.payment_category === '현장결제' ? "badge-secondary" : "badge-warning"
+          purchase.payment_category === '현장결제' ? "bg-gray-500 text-white" : "bg-yellow-500 text-white"
         }>
           {purchase.payment_category || '미정'}
-        </Badge>
+        </span>
       </td>
 
       {/* 요청자 */}
@@ -309,14 +308,14 @@ const TableRow = memo<{
             </span>
           </td>
           <td className="px-2 py-1.5 text-center">
-            <Badge className={purchase.is_payment_completed ? "badge-success" : "badge-warning"}>
+            <span className={purchase.is_payment_completed ? "bg-green-500 text-white" : "bg-yellow-500 text-white"}>
               {purchase.is_payment_completed ? "완료" : "대기"}
-            </Badge>
+            </span>
           </td>
           <td className="px-2 py-1.5 text-center">
-            <Badge className={purchase.is_received ? "badge-success" : "badge-warning"}>
+            <span className={purchase.is_received ? "bg-green-500 text-white" : "bg-yellow-500 text-white"}>
               {purchase.is_received ? "완료" : "대기"}
-            </Badge>
+            </span>
           </td>
         </>
       )}

@@ -1,6 +1,5 @@
 import React, { memo, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Purchase } from '@/hooks/usePurchaseData';
-import { Badge } from '@/components/ui/badge';
 import { formatDateShort } from '@/utils/helpers';
 
 interface SimpleVirtualizedTableProps {
@@ -51,13 +50,13 @@ const SimpleVirtualizedTable = memo<SimpleVirtualizedTableProps>(({
   // 상태 배지 생성
   const getStatusBadge = useCallback((purchase: Purchase) => {
     if (purchase.is_received) {
-      return <Badge className="badge-success">입고완료</Badge>;
+      return <span className="badge-stats bg-green-500 text-white">입고완료</span>;
     } else if (purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'approved') {
-      return <Badge className="badge-primary">구매진행</Badge>;
+      return <span className="badge-stats bg-blue-500 text-white">구매진행</span>;
     } else if (purchase.middle_manager_status === 'rejected' || purchase.final_manager_status === 'rejected') {
-      return <Badge className="badge-danger">반려</Badge>;
+      return <span className="badge-stats bg-red-500 text-white">반려</span>;
     } else {
-      return <Badge className="badge-warning">승인대기</Badge>;
+      return <span className="badge-stats bg-yellow-500 text-white">승인대기</span>;
     }
   }, []);
 
