@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { generatePurchaseOrderExcelJS, PurchaseOrderData } from '@/utils/exceljs/generatePurchaseOrderExcel';
-import { Purchase } from './usePurchaseData';
+import { Purchase } from '@/types/purchase';
 
 export const useExcelDownload = (currentUserRoles: string[], onRefresh: () => void) => {
   const supabase = createClient();

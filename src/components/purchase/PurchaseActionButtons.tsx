@@ -3,7 +3,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { Purchase } from "@/hooks/usePurchaseData";
+import { Purchase } from "@/types/purchase";
 
 interface PurchaseActionButtonsProps {
   purchase: Purchase;

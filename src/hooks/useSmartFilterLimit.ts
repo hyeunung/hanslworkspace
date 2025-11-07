@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { Purchase } from './usePurchaseData';
+import { Purchase } from '@/types/purchase';
 import { FilterRule } from '@/components/purchase/FilterToolbar';
 
 export interface SmartFilterLimitConfig {

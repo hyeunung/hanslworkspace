@@ -22,7 +22,6 @@ export class DashboardService {
   private supabase = createClient()
 
   // 역할 파싱 유틸: 배열/CSV 문자열/단일 문자열을 모두 배열로 정규화
-  // usePurchaseData.ts와 동일한 로직 사용
   private parseRoles(purchaseRole: string | string[] | null | undefined): string[] {
     let roles: string[] = []
     

@@ -1,6 +1,6 @@
 import React, { memo, useMemo, useCallback, forwardRef, useImperativeHandle, useRef } from 'react';
 import { FixedSizeList } from 'react-window';
-import { Purchase } from '@/hooks/usePurchaseData';
+import { Purchase } from '@/types/purchase';
 import { formatDateShort } from '@/utils/helpers';
 import { logger } from '@/lib/logger';
 

@@ -286,6 +286,7 @@ export interface Purchase {
   revised_delivery_request_date?: string;
   progress_type?: string;
   is_payment_completed?: boolean;
+  payment_completed_at?: string | null;
   payment_completed_by_name?: string;
   payment_category?: string;
   currency: string;
@@ -295,11 +296,20 @@ export interface Purchase {
   contact_id?: number;
   contact_name?: string;
   requester_name: string;
+  requester_phone?: string;
+  requester_address?: string;
+  requester_fax?: string;
   project_vendor?: string;
   sales_order_number?: string;
   project_item?: string;
   middle_manager_status?: string;
+  middle_manager_approved_at?: string | null;
+  middle_manager_rejected_at?: string | null;
+  middle_manager_rejection_reason?: string;
   final_manager_status?: string;
+  final_manager_approved_at?: string | null;
+  final_manager_rejected_at?: string | null;
+  final_manager_rejection_reason?: string;
   total_amount: number;
   is_received: boolean;
   received_at?: string | null;
@@ -307,8 +317,13 @@ export interface Purchase {
   is_statement_received?: boolean;
   is_utk_checked?: boolean;
   items?: PurchaseRequestItem[];
+  purchase_request_items?: PurchaseRequestItem[]; // alias for items
   // Item level fields (for single item purchases)
   item_name?: string;
+  item_detail?: string;
+  manufacturer?: string;
+  model?: string;
+  spec?: string;
   specification?: string;
   quantity?: number;
   unit_price_value?: number;
@@ -316,6 +331,21 @@ export interface Purchase {
   remark?: string;
   vendor_payment_schedule?: string;
   link?: string;
+  created_at?: string;
+  updated_at?: string;
+  
+  // 계산된 필드들 (DB에는 없고 프론트에서 계산)
+  pr_number?: string; // = purchase_order_number (별칭)
+  purchase_type?: string; // request_type 또는 payment_category에서 추론
+  approval_status?: string; // middle/final_manager_status에서 계산
+  requires_ceo_approval?: boolean; // 금액 또는 조건에 따라 계산
+  requestor_name?: string; // = requester_name (오타 별칭)
+  total_price?: number; // = total_amount (별칭)
+  actual_amount?: number; // items의 실제 금액 합계
+  is_all_received?: boolean; // items 모두 입고 여부
+  received_count?: number; // 입고된 items 수
+  total_count?: number; // 전체 items 수
+  actual_received_date?: string | null; // items 중 최신 입고일
 }
 
 export interface DashboardData {

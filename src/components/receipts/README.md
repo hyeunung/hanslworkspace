@@ -95,6 +95,10 @@ HANSL 구매 관리 시스템의 영수증 관리 모듈입니다.
 | `memo` | TEXT | 메모 (선택) |
 | `purchase_request_id` | INTEGER | 구매요청 ID (선택) |
 | `item_id` | INTEGER | 구매항목 ID (선택) |
+| `participants` | TEXT | 함께한 인원 (선택) |
+| `card_last_digits` | TEXT | 카드번호 끝 4자리 (선택) |
+| `dining_date` | DATE | 식사 날짜 |
+| `expense_amount` | NUMERIC | 지출 금액 |
 
 ## 🚀 성능 최적화
 

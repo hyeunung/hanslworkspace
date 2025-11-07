@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Purchase } from './usePurchaseData';
+import { Purchase } from '@/types/purchase';
 import { logger } from '@/lib/logger';
 
 export interface ProgressiveLoadingState {

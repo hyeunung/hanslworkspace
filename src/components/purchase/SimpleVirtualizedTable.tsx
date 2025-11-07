@@ -1,5 +1,5 @@
 import React, { memo, useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Purchase } from '@/hooks/usePurchaseData';
+import { Purchase } from '@/types/purchase';
 import { formatDateShort } from '@/utils/helpers';
 
 interface SimpleVirtualizedTableProps {

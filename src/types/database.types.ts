@@ -350,10 +350,14 @@ export type Database = {
       purchase_receipts: {
         Row: {
           created_at: string
+          card_last_digits: string | null
+          dining_date: string | null
+          expense_amount: number | null
           file_name: string | null
           file_size: number | null
           id: number
           is_printed: boolean | null
+          participants: string | null
           memo: string | null
           printed_at: string | null
           printed_by: string | null
@@ -365,10 +369,14 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          card_last_digits?: string | null
+          dining_date?: string | null
+          expense_amount?: number | null
           file_name?: string | null
           file_size?: number | null
           id?: never
           is_printed?: boolean | null
+          participants?: string | null
           memo?: string | null
           printed_at?: string | null
           printed_by?: string | null
@@ -380,10 +388,14 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          card_last_digits?: string | null
+          dining_date?: string | null
+          expense_amount?: number | null
           file_name?: string | null
           file_size?: number | null
           id?: never
           is_printed?: boolean | null
+          participants?: string | null
           memo?: string | null
           printed_at?: string | null
           printed_by?: string | null

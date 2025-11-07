@@ -10,6 +10,9 @@ import type { Employee } from '@/types/purchase'
 
 // 로그인은 항상 필요하므로 직접 import
 import LoginMain from '@/components/auth/LoginMain'
+import InitialLoadingScreen from '@/components/common/InitialLoadingScreen'
+import { loadAllPurchaseData } from '@/services/purchaseDataLoader'
+import { purchaseMemoryCache } from '@/stores/purchaseMemoryStore'
 
 // 페이지 컴포넌트들을 lazy loading으로 변경 (코드 스플리팅)
 const DashboardMain = lazy(() => import('@/components/dashboard/DashboardMain'))
@@ -49,11 +52,18 @@ export default function App() {
 
         if (employeeData) {
           setEmployee(employeeData)
+          purchaseMemoryCache.currentUser = employeeData
+          
+          // 구매 데이터 초기 로드 (병렬로 실행)
+          loadAllPurchaseData(employeeData.id).catch(err => {
+            console.error('[App] Failed to load purchase data:', err)
+          })
         }
       } catch (_error) {
         setIsAuthenticated(false)
       } finally {
-        setLoading(false)
+        // 최소 1.5초는 로딩 화면 표시
+        setTimeout(() => setLoading(false), 1500)
       }
     }
 
@@ -74,11 +84,7 @@ export default function App() {
   }, [])
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    )
+    return <InitialLoadingScreen />
   }
 
   // 로그인하지 않은 경우
