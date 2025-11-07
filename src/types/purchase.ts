@@ -277,28 +277,37 @@ export interface QuickAction {
   color: 'red' | 'yellow' | 'green' | 'blue'
 }
 
-// Purchase interface for list views (simplified version)
+// Purchase interface - DB 필드만 정확히 매핑
 export interface Purchase {
+  // purchase_requests 테이블 필드들
   id: number;
-  purchase_order_number?: string;
-  request_date: string;
-  delivery_request_date?: string;
-  revised_delivery_request_date?: string;
-  progress_type?: string;
-  is_payment_completed?: boolean;
-  payment_completed_at?: string | null;
-  payment_completed_by_name?: string;
-  payment_category?: string;
-  currency: string;
-  request_type?: string;
-  vendor_name?: string;
-  vendor_id?: number;
-  contact_id?: number;
-  contact_name?: string;
+  purchase_order_number: string;
   requester_name: string;
   requester_phone?: string;
   requester_address?: string;
   requester_fax?: string;
+  requester_id?: string;
+  vendor_id: number;
+  vendor_name?: string;
+  contact_id?: number;
+  request_date: string;
+  delivery_request_date?: string;
+  revised_delivery_request_date?: string;
+  progress_type: string;
+  payment_category: string;
+  currency: string;
+  request_type: string;
+  total_amount: number;
+  unit_price_currency: string;
+  po_template_type: string;
+  is_po_download?: boolean;
+  is_received?: boolean;
+  received_at?: string | null;
+  is_payment_completed?: boolean;
+  payment_completed_at?: string | null;
+  payment_completed_by_name?: string;
+  is_utk_checked: boolean;
+  is_statement_received: boolean;
   project_vendor?: string;
   sales_order_number?: string;
   project_item?: string;
@@ -310,42 +319,11 @@ export interface Purchase {
   final_manager_approved_at?: string | null;
   final_manager_rejected_at?: string | null;
   final_manager_rejection_reason?: string;
-  total_amount: number;
-  is_received: boolean;
-  received_at?: string | null;
-  is_po_download?: boolean;
-  is_statement_received?: boolean;
-  is_utk_checked?: boolean;
-  items?: PurchaseRequestItem[];
-  purchase_request_items?: PurchaseRequestItem[]; // alias for items
-  // Item level fields (for single item purchases)
-  item_name?: string;
-  item_detail?: string;
-  manufacturer?: string;
-  model?: string;
-  spec?: string;
-  specification?: string;
-  quantity?: number;
-  unit_price_value?: number;
-  amount_value?: number;
-  remark?: string;
-  vendor_payment_schedule?: string;
-  link?: string;
   created_at?: string;
   updated_at?: string;
   
-  // 계산된 필드들 (DB에는 없고 프론트에서 계산)
-  pr_number?: string; // = purchase_order_number (별칭)
-  purchase_type?: string; // request_type 또는 payment_category에서 추론
-  approval_status?: string; // middle/final_manager_status에서 계산
-  requires_ceo_approval?: boolean; // 금액 또는 조건에 따라 계산
-  requestor_name?: string; // = requester_name (오타 별칭)
-  total_price?: number; // = total_amount (별칭)
-  actual_amount?: number; // items의 실제 금액 합계
-  is_all_received?: boolean; // items 모두 입고 여부
-  received_count?: number; // 입고된 items 수
-  total_count?: number; // 전체 items 수
-  actual_received_date?: string | null; // items 중 최신 입고일
+  // JOIN된 items (purchase_request_items 테이블)
+  purchase_request_items?: PurchaseRequestItem[];
 }
 
 export interface DashboardData {

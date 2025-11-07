@@ -11,6 +11,23 @@ import { logger } from '@/lib/logger'
 // 초기 데이터 로드 상한선
 const INITIAL_LOAD_LIMIT = 2000
 
+// 승인 상태 계산 헬퍼
+const calculateApprovalStatus = (
+  middleStatus?: string | null, 
+  finalStatus?: string | null
+): string => {
+  if (middleStatus === 'rejected' || finalStatus === 'rejected') {
+    return '거절됨'
+  }
+  if (finalStatus === 'approved') {
+    return '승인됨'
+  }
+  if (middleStatus === 'approved' && !finalStatus) {
+    return '최종승인 대기'
+  }
+  return '승인 대기'
+}
+
 /**
  * 모든 구매 데이터를 메모리에 로드
  * @param userId 현재 사용자 ID
@@ -60,25 +77,51 @@ export const loadAllPurchaseData = async (userId?: string): Promise<boolean> => 
     }
     
     // 3. 데이터 처리 및 변환
-    const processedData: Purchase[] = (rawData || []).map(request => ({
-      ...request,
-      items: request.purchase_request_items || [],
+    const processedData: Purchase[] = (rawData || []).map(request => {
+      const items = request.purchase_request_items || []
+      
       // 계산된 필드들
-      total_price: (request.purchase_request_items || []).reduce(
-        (sum: number, item: any) => sum + (item.total_price || 0), 
-        0
-      ),
-      actual_amount: (request.purchase_request_items || []).reduce(
-        (sum: number, item: any) => sum + (item.actual_amount || 0), 
-        0
-      ),
-      is_all_received: request.purchase_request_items?.length > 0 &&
-        request.purchase_request_items.every((item: any) => item.is_received),
-      received_count: (request.purchase_request_items || []).filter(
-        (item: any) => item.is_received
-      ).length,
-      total_count: request.purchase_request_items?.length || 0
-    }))
+      const calculatedFields = {
+        // 별칭들
+        pr_number: request.purchase_order_number,
+        requestor_name: request.requester_name,
+        total_price: request.total_amount,
+        purchase_request_items: items,
+        items: items,
+        
+        // request_type을 기반으로 purchase_type 추론
+        purchase_type: request.payment_category || request.request_type,
+        
+        // 승인 상태 계산
+        approval_status: calculateApprovalStatus(
+          request.middle_manager_status, 
+          request.final_manager_status
+        ),
+        
+        // CEO 승인 필요 여부 (예: 1000만원 이상)
+        requires_ceo_approval: request.total_amount > 10000000,
+        
+        // items 기반 계산
+        actual_amount: items.reduce(
+          (sum: number, item: any) => sum + (item.amount_value || 0), 
+          0
+        ),
+        is_all_received: items.length > 0 && items.every((item: any) => item.is_received),
+        received_count: items.filter((item: any) => item.is_received).length,
+        total_count: items.length,
+        
+        // 최신 입고일
+        actual_received_date: items
+          .filter((item: any) => item.actual_received_date)
+          .map((item: any) => item.actual_received_date)
+          .sort((a: string, b: string) => new Date(b).getTime() - new Date(a).getTime())[0] || null
+      }
+      
+      return {
+        ...request,
+        ...calculatedFields
+      }
+    })
     
     // 4. 캐시에 저장
     purchaseMemoryCache.allPurchases = processedData
