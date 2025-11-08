@@ -406,8 +406,23 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   const tabFilteredPurchases = baseFilteredPurchases;
 
 
-  // 메모리 기반 탭별 카운트
-  const { tabCounts } = usePurchaseMemory();
+  // 필터링된 데이터 기반 동적 탭별 카운트
+  const filteredTabCounts = useMemo(() => {
+    const filterOptions = {
+      employeeName,
+      searchTerm,
+      advancedFilters: activeFilters,
+      startDate: dateStart,
+      sortConfig: sortConfig ? { key: sortConfig.field, direction: sortConfig.direction } : undefined
+    };
+
+    return {
+      pending: getFilteredPurchases({ tab: 'pending', ...filterOptions }).length,
+      purchase: getFilteredPurchases({ tab: 'purchase', ...filterOptions }).length, 
+      receipt: getFilteredPurchases({ tab: 'receipt', ...filterOptions }).length,
+      done: getFilteredPurchases({ tab: 'done', ...filterOptions }).length,
+    };
+  }, [getFilteredPurchases, employeeName, searchTerm, activeFilters, dateStart, sortConfig]);
 
 
   // 월간 필터 감지 및 합계금액 계산
@@ -787,7 +802,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
                   }`
                 }
               >
-                {tabCounts[tab.key as keyof typeof tabCounts]}
+                {filteredTabCounts[tab.key as keyof typeof filteredTabCounts]}
               </span>
             </button>
           ))}
