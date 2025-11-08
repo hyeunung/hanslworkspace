@@ -5,6 +5,7 @@
 
 import type { Purchase, Employee } from '@/types/purchase'
 import { HIDDEN_EMPLOYEES } from '@/config/constants'
+import { logger } from '@/lib/logger'
 
 // 탭 타입 정의
 export type TabType = 'pending' | 'purchase' | 'receipt' | 'done'
@@ -59,7 +60,7 @@ export const filterByTab = (
         // 2. 전체 권한자 체크 (app_admin과 ceo만)
         if (userRoles.includes('app_admin') || 
             userRoles.includes('ceo')) {
-          console.log('🔥 App Admin detected! Showing all items for:', purchase.purchase_order_number);
+          logger.debug('🔥 App Admin detected! Showing all items for:', purchase.purchase_order_number);
           return true
         }
         
@@ -198,13 +199,15 @@ export const applyAdvancedFilters = (
           return !fieldValue || fieldValue === '' || fieldValue === null
         case 'is_not_empty':
           return fieldValue && fieldValue !== '' && fieldValue !== null
-        case 'between':
+        case 'between': {
           const [min, max] = value.split(',').map(Number)
           const numValue = Number(fieldValue)
           return numValue >= min && numValue <= max
-        case 'in':
+        }
+        case 'in': {
           const values = value.split(',').map((v: string) => v.trim())
           return values.includes(String(fieldValue))
+        }
         default:
           return true
       }
