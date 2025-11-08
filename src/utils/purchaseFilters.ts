@@ -152,20 +152,52 @@ export const applyAdvancedFilters = (
   
   return purchases.filter(purchase => {
     return filters.every(filter => {
-      const { field, operator, value } = filter
-      const fieldValue = getFieldValue(purchase, field)
+      const { field, condition, value, dateField } = filter
       
-      switch (operator) {
+      // 날짜 필터의 경우 실제 적용할 필드 결정
+      const targetField = dateField || field
+      const fieldValue = getFieldValue(purchase, targetField)
+      
+      switch (condition) {
         case 'contains':
           return String(fieldValue).toLowerCase().includes(String(value).toLowerCase())
         case 'equals':
+          // 날짜 범위 처리
+          if (typeof value === 'string' && value.includes('~')) {
+            const [startDate, endDate] = value.split('~')
+            const purchaseDate = new Date(fieldValue).toISOString().split('T')[0]
+            return purchaseDate >= startDate && purchaseDate <= endDate
+          }
+          // 월별 필터 처리 (YYYY-MM 형식)
+          if (typeof value === 'string' && (value.match(/^\d{4}-\d{2}$/) || value.match(/^\d{4}-\d{2}~\d{4}-\d{2}$/))) {
+            if (value.includes('~')) {
+              const [startMonth, endMonth] = value.split('~')
+              const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7) // YYYY-MM 형식
+              return purchaseMonth >= startMonth && purchaseMonth <= endMonth
+            } else {
+              const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7)
+              return purchaseMonth === value
+            }
+          }
           return fieldValue === value
-        case 'notEquals':
+        case 'not_equals':
           return fieldValue !== value
-        case 'greaterThan':
+        case 'starts_with':
+          return String(fieldValue).toLowerCase().startsWith(String(value).toLowerCase())
+        case 'ends_with':
+          return String(fieldValue).toLowerCase().endsWith(String(value).toLowerCase())
+        case 'greater_than':
           return Number(fieldValue) > Number(value)
-        case 'lessThan':
+        case 'less_than':
           return Number(fieldValue) < Number(value)
+        case 'after':
+          return new Date(fieldValue) > new Date(value)
+        case 'before':
+          return new Date(fieldValue) < new Date(value)
+        case 'is_empty':
+          return !fieldValue || fieldValue === '' || fieldValue === null
+        case 'is_not_empty':
+          return fieldValue && fieldValue !== '' && fieldValue !== null
         case 'between':
           const [min, max] = value.split(',').map(Number)
           const numValue = Number(fieldValue)
@@ -173,10 +205,6 @@ export const applyAdvancedFilters = (
         case 'in':
           const values = value.split(',').map((v: string) => v.trim())
           return values.includes(String(fieldValue))
-        case 'startsWith':
-          return String(fieldValue).toLowerCase().startsWith(String(value).toLowerCase())
-        case 'endsWith':
-          return String(fieldValue).toLowerCase().endsWith(String(value).toLowerCase())
         default:
           return true
       }
