@@ -226,7 +226,7 @@ class DeliveryService {
         .limit(limit);
 
       if (error) throw error;
-      
+
       // 클라이언트 사이드에서 null 필터링
       const filteredData = (data || []).filter((item: any) => item.received_date != null);
 

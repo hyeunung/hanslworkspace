@@ -3,8 +3,7 @@
  * 메모리에 있는 데이터를 즉시 필터링
  */
 
-import type { Purchase } from '@/types/purchase'
-import type { Employee } from '@/types/schema'
+import type { Purchase, Employee } from '@/types/purchase'
 import { HIDDEN_EMPLOYEES } from '@/config/constants'
 
 // 탭 타입 정의
@@ -20,56 +19,85 @@ export const filterByTab = (
 ): Purchase[] => {
   if (!purchases || !currentUser) return []
   
-  const userRoles = typeof currentUser.purchase_role === 'string' 
-    ? currentUser.purchase_role.split(',').map(r => r.trim())
+  const userRoles = Array.isArray(currentUser.purchase_role) 
+    ? currentUser.purchase_role.map((r: string) => r.trim())
+    : typeof currentUser.purchase_role === 'string' 
+    ? currentUser.purchase_role.split(',').map((r: string) => r.trim())
     : []
   
   switch (tab) {
     case 'pending': {
-      // 승인 대기 탭: 승인자별 필터링
+      // 승인 대기 탭: 권한별로 필터링
       return purchases.filter(purchase => {
-        // 기본 조건: 승인 대기 상태
-        if (purchase.approval_status !== '승인 대기') return false
-        
-        // 역할별 필터링
-        if (userRoles.includes('lead_buyer')) {
-          // lead_buyer: 구매 요청만
-          return purchase.purchase_type === '구매 요청'
-        } else if (userRoles.includes('ceo')) {
-          // CEO: 대표이사 승인 필요한 것만
-          return purchase.requires_ceo_approval === true
-        } else if (userRoles.includes('finance_team')) {
-          // 재무팀: 결제 요청만
-          return purchase.purchase_type === '결제 요청'
-        } else if (userRoles.includes('raw_material_manager')) {
-          // 원자재 관리자: 발주만
-          return purchase.purchase_type === '발주'
-        } else if (userRoles.includes('consumable_manager')) {
-          // 소모품 관리자: 구매 요청만
-          return purchase.purchase_type === '구매 요청'
+        // 기본 조건: 둘 다 approved면 제외
+        if (purchase.middle_manager_status === 'approved' && 
+            purchase.final_manager_status === 'approved') {
+          return false // 승인 완료는 승인대기 탭에서 제외
         }
-        return false
+        
+        // 반려된 경우 제외
+        if (purchase.middle_manager_status === 'rejected' || 
+            purchase.final_manager_status === 'rejected') {
+          return false
+        }
+        
+        // 1. 카테고리별 관리자 먼저 체크 (특정 항목만 보기)
+        if (userRoles.includes('consumable_manager')) {
+          // 구매 요청만 볼 수 있음
+          if (purchase.payment_category !== '구매 요청') {
+            return false
+          }
+        }
+        
+        if (userRoles.includes('raw_material_manager')) {
+          // 발주만 볼 수 있음
+          if (purchase.payment_category !== '발주') {
+            return false
+          }
+        }
+        
+        // 2. 전체 권한자 체크 (app_admin과 ceo만)
+        if (userRoles.includes('app_admin') || 
+            userRoles.includes('ceo')) {
+          console.log('🔥 App Admin detected! Showing all items for:', purchase.purchase_order_number);
+          return true
+        }
+        
+        // 3. middle_manager는 중간승인 대기 항목만
+        if (userRoles.includes('middle_manager')) {
+          const isMiddlePending = ['pending', '대기', '', null, undefined].includes(
+            purchase.middle_manager_status as any
+          )
+          return isMiddlePending
+        }
+        
+        // 4. 일반 직원은 본인이 요청한 항목만
+        return purchase.requester_name === currentUser?.name
       })
     }
     
     case 'purchase': {
-      // 구매 현황 탭: 진행 중인 구매들
+      // 구매 현황 탭: 결제 대기중인 구매요청들
       return purchases.filter(purchase => {
-        // 승인됨 + 미입고 상태
-        return purchase.approval_status === '승인됨' && 
-               !purchase.is_all_received &&
-               purchase.purchase_type !== '결제 요청' // 결제 요청 제외
+        const isRequest = purchase.payment_category === '구매 요청'
+        const notPaid = !purchase.is_payment_completed
+        if (!isRequest || !notPaid) return false
+
+        const isSeonJin = (purchase.progress_type || '').includes('선진행')
+        const isIlban = (purchase.progress_type || '').includes('일반') || !purchase.progress_type || purchase.progress_type === ''
+        const finalApproved = purchase.final_manager_status === 'approved'
+
+        return isSeonJin || (isIlban && finalApproved)
       })
     }
     
     case 'receipt': {
-      // 입고 현황 탭: 부분 입고 상태
+      // 입고 현황 탭: 입고 대기중인 항목들
       return purchases.filter(purchase => {
-        // 부분 입고 (일부만 입고됨)
-        return purchase.approval_status === '승인됨' &&
-               purchase.received_count > 0 &&
-               purchase.received_count < purchase.total_count &&
-               purchase.purchase_type !== '결제 요청'
+        if (purchase.is_received) return false
+        const isSeonJin = (purchase.progress_type || '').includes('선진행')
+        const finalApproved = purchase.final_manager_status === 'approved'
+        return isSeonJin || finalApproved
       })
     }
     
@@ -92,15 +120,17 @@ export const filterByEmployee = (
   if (!purchases || !employeeName || employeeName === '전체') return purchases
   
   // HIDDEN_EMPLOYEES 체크 (관리자 권한 필요)
-  const userRoles = typeof currentUser?.purchase_role === 'string' 
-    ? currentUser.purchase_role.split(',').map(r => r.trim())
+  const userRoles = Array.isArray(currentUser?.purchase_role) 
+    ? currentUser.purchase_role.map((r: string) => r.trim())
+    : typeof currentUser?.purchase_role === 'string' 
+    ? currentUser.purchase_role.split(',').map((r: string) => r.trim())
     : []
-  const hasManagerRole = userRoles.some(role => 
+  const hasManagerRole = userRoles.some((role: string) => 
     ['lead_buyer', 'ceo', 'finance_team', 'raw_material_manager', 'consumable_manager'].includes(role)
   )
   
   return purchases.filter(purchase => {
-    const requestorName = purchase.requestor_name || ''
+    const requestorName = purchase.requester_name || ''
     
     // HIDDEN_EMPLOYEES 처리
     if (HIDDEN_EMPLOYEES.includes(requestorName) && !hasManagerRole) {
@@ -169,14 +199,11 @@ export const filterBySearchTerm = (
     // 검색 대상 필드들
     const searchableFields = [
       purchase.purchase_order_number,
-      purchase.requestor_name,
-      purchase.pr_number,
+      purchase.requester_name,
+      purchase.purchase_order_number,
       purchase.vendor_name,
-      purchase.approval_status,
-      purchase.purchase_type,
-      purchase.additional_requests,
-      // 품목 정보도 검색
-      ...(purchase.items || []).map(item => [
+      // purchase_request_items 필드들은 별도 처리 필요
+      ...(purchase.purchase_request_items || []).map((item: any) => [
         item.item_name,
         item.item_detail,
         item.manufacturer,

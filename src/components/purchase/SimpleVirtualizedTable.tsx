@@ -124,7 +124,7 @@ const SimpleVirtualizedTable = memo<SimpleVirtualizedTableProps>(({
                     {purchase.purchase_order_number}
                   </div>
                   <div className="card-description">
-                    {purchase.items?.length || 1}개 품목
+                    {purchase.purchase_request_items?.length || 1}개 품목
                   </div>
                 </div>
 

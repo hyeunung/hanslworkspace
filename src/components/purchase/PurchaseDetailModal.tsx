@@ -585,6 +585,7 @@ function PurchaseDetailModal({
  
    // 디버깅 로그
    logger.debug('PurchaseDetailModal 권한 체크', {
+     purchaseOrderNumber: purchase?.purchase_order_number,
      currentUserRoles,
      userRoles,
      effectiveRoles,
@@ -604,9 +605,9 @@ function PurchaseDetailModal({
 
   // 칼럼 너비 계산 (텍스트 길이 기반)
   const calculateOptimalColumnWidths = useCallback(() => {
-    if (!purchase?.items || purchase.items.length === 0) return []
+    if (!purchase?.purchase_request_items || purchase.purchase_request_items.length === 0) return []
 
-    const items = purchase.items ?? []
+    const items = purchase.purchase_request_items ?? []
 
     const columnConfigs = [
       { key: 'item_name', minWidth: 80, maxWidth: 500, baseWidth: 80 },
@@ -642,7 +643,10 @@ function PurchaseDetailModal({
           ? '입고상태'
           : '상태'
 
-        const baseHeaders = ['품목명', '규격', '수량', '단가', '합계', '비고', statusHeader]
+        // 승인대기탭에서는 상태 칼럼 제외
+        const baseHeaders = activeTab === 'pending' 
+          ? ['품목명', '규격', '수량', '단가', '합계', '비고']
+          : ['품목명', '규격', '수량', '단가', '합계', '비고', statusHeader]
         if (activeTab === 'receipt') {
           return [...baseHeaders, '실제입고일']
         } else if (activeTab === 'done') {
@@ -768,7 +772,7 @@ function PurchaseDetailModal({
 
   // View 모드에서 칼럼 너비 계산 (데이터 로드 후)
   useEffect(() => {
-    if (purchase && purchase.items && purchase.items.length > 0 && !isEditing) {
+    if (purchase && purchase.purchase_request_items && purchase.purchase_request_items.length > 0 && !isEditing) {
       // 즉시 계산 (DOM 측정 불필요)
       calculateOptimalColumnWidths()
     }
@@ -1881,7 +1885,17 @@ function PurchaseDetailModal({
               {/* 승인 버튼들을 중앙에 배치 */}
               <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
                 {/* 1차 승인 버튼 */}
-                {canApproveMiddle && purchase.middle_manager_status === 'pending' && (
+                {(() => {
+                  const shouldShow = canApproveMiddle && purchase.middle_manager_status === 'pending';
+                  if (purchase?.purchase_order_number === 'F20251105_004') {
+                    logger.debug('F20251105_004 1차 승인 버튼 조건', {
+                      canApproveMiddle,
+                      middleManagerStatus: purchase.middle_manager_status,
+                      shouldShow
+                    });
+                  }
+                  return shouldShow;
+                })() && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -1910,7 +1924,18 @@ function PurchaseDetailModal({
                 )}
 
                 {/* 최종 승인 버튼 */}
-                {canApproveFinal && purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'pending' && (
+                {(() => {
+                  const shouldShow = canApproveFinal && purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'pending';
+                  if (purchase?.purchase_order_number === 'F20251105_004') {
+                    logger.debug('F20251105_004 최종 승인 버튼 조건', {
+                      canApproveFinal,
+                      middleManagerStatus: purchase.middle_manager_status,
+                      finalManagerStatus: purchase.final_manager_status,
+                      shouldShow
+                    });
+                  }
+                  return shouldShow;
+                })() && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -2161,7 +2186,7 @@ function PurchaseDetailModal({
                     <Package className="w-4 h-4 mr-2 text-gray-600" />
                     품목 리스트
                     <span className="ml-2 badge-stats bg-gray-500 text-white">
-                      {purchase.items?.length || 0}개
+                      {purchase.purchase_request_items?.length || 0}개
                     </span>
                   </h3>
                   {!isEditing && (
@@ -2289,7 +2314,7 @@ function PurchaseDetailModal({
                       </div>
                     </div>
                     <div className="divide-y divide-gray-100">
-                      {(isEditing ? editedItems : purchase.items)?.map((item, index) => (
+                      {(isEditing ? editedItems : purchase.purchase_request_items)?.map((item, index) => (
                         <div key={index} className="px-2 sm:px-3 py-1.5 border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                           {/* Desktop Layout */}
                           <div className={`hidden sm:grid items-center gap-3`} style={{
@@ -2389,21 +2414,22 @@ function PurchaseDetailModal({
                               )}
                             </div>
                             
-                            {/* 상태/액션 */}
-                            <div className="text-center flex justify-center items-start pt-1">
-                              {isEditing ? (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => handleRemoveItem(index)}
-                                  className="text-red-600 hover:bg-red-50 rounded-lg p-1 h-6 w-6"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </Button>
-                              ) : (
-                                <>
-                                  {/* 구매 탭에서의 구매완료 상태 */}
-                                  {activeTab === 'purchase' && (
+                            {/* 상태/액션 - 승인대기탭에서는 제외 */}
+                            {activeTab !== 'pending' && (
+                              <div className="text-center flex justify-center items-start pt-1">
+                                {isEditing ? (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleRemoveItem(index)}
+                                    className="text-red-600 hover:bg-red-50 rounded-lg p-1 h-6 w-6"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </Button>
+                                ) : (
+                                  <>
+                                    {/* 구매 탭에서의 구매완료 상태 */}
+                                    {activeTab === 'purchase' && (
                                     <div className="flex justify-center">
                                       {canPurchase ? (
                                         <button
@@ -2502,7 +2528,8 @@ function PurchaseDetailModal({
                                   )}
                                 </>
                               )}
-                            </div>
+                              </div>
+                            )}
                             
                             {/* 실제 입고 날짜 - 입고 탭에서만 표시 (상태 컬럼 오른쪽) */}
                             {activeTab === 'receipt' && (
@@ -2970,7 +2997,7 @@ function PurchaseDetailModal({
                     <div className="text-right">
                       <span className="text-[12px] font-bold text-gray-900">
                         ₩{formatCurrency(
-                          (isEditing ? editedItems : purchase.items)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
+                          (isEditing ? editedItems : purchase.purchase_request_items)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
                         )}
                       </span>
                     </div>
@@ -2986,7 +3013,7 @@ function PurchaseDetailModal({
                       <span className="text-[13px] font-bold text-gray-900">총액</span>
                       <span className="text-[13px] font-bold text-gray-900">
                         ₩{formatCurrency(
-                          (isEditing ? editedItems : purchase.items)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
+                          (isEditing ? editedItems : purchase.purchase_request_items)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
                         )}
                       </span>
                     </div>
@@ -3068,7 +3095,25 @@ function PurchaseDetailModal({
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => purchase && onDelete(purchase)}
+                        onClick={async () => {
+                          if (purchase) {
+                            try {
+                              logger.debug('발주 삭제 시작', { purchaseOrderNumber: purchase.purchase_order_number });
+                              await onDelete(purchase);
+                              logger.debug('발주 삭제 완료 - 모달 닫기 및 새로고침 진행');
+                              
+                              // 삭제 후 모달 닫기 및 새로고침
+                              onClose();
+                              if (onRefresh) {
+                                await onRefresh(true); // 강제 새로고침
+                                logger.debug('상위 컴포넌트 새로고침 완료');
+                              }
+                            } catch (error) {
+                              logger.error('발주 삭제 중 오류 발생', error);
+                              toast.error('삭제 중 오류가 발생했습니다.');
+                            }
+                          }
+                        }}
                         className="button-base button-action-danger"
                       >
                         <Trash2 className="w-4 h-4 mr-2" />

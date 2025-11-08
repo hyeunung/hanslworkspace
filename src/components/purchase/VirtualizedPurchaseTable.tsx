@@ -118,7 +118,7 @@ const TableRow = memo<{
           {purchase.purchase_order_number}
         </span>
         <span className="card-description">
-          {purchase.items?.length || 1}개 품목
+          {purchase.purchase_request_items?.length || 1}개 품목
         </span>
       </td>
 
@@ -159,7 +159,7 @@ const TableRow = memo<{
 
       {/* 담당자 */}
       <td className="px-2 py-1.5 card-title text-left">
-        <span className="block truncate" title={purchase.contact_name}>
+        <span className="block truncate" title={purchase.contact_name || undefined}>
           {purchase.contact_name || '-'}
         </span>
       </td>
@@ -457,6 +457,7 @@ const VirtualizedPurchaseTable = forwardRef<VirtualizedTableHandle, VirtualizedP
             <FixedSizeList
               ref={listRef}
               height={height}
+              width="100%"
               itemCount={purchases.length}
               itemSize={itemHeight}
               itemData={itemData}

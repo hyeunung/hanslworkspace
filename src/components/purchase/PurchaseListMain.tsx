@@ -62,9 +62,12 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     getFilteredPurchases
   } = usePurchaseMemory();
   
-  const currentUserRoles = typeof currentUser?.purchase_role === 'string' 
+  const currentUserRoles = Array.isArray(currentUser?.purchase_role) 
+    ? currentUser.purchase_role.map((r: string) => r.trim())
+    : typeof currentUser?.purchase_role === 'string' 
     ? currentUser.purchase_role.split(',').map((r: string) => r.trim())
     : [];
+  
   const currentUserName = currentUser?.name || null;
   
   // 메모리 기반이므로 리프레시 불필요 (하위 호환성을 위해 빈 함수 유지)
@@ -183,17 +186,34 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     }
   }, []);
 
-  // 입고 현황 계산
+  // 입고 현황 계산 
   const getReceiptProgress = (purchase: Purchase) => {
-    if (!purchase.items || purchase.items.length === 0) return { received: 0, total: 0, percentage: 0 };
+    if (!purchase.purchase_request_items || purchase.purchase_request_items.length === 0) {
+      return { received: 0, total: 0, percentage: 0 };
+    }
     
-    const total = purchase.items.length;
-    const received = purchase.items.filter(item => 
-      item.actual_received_date !== null && item.actual_received_date !== undefined
+    const total = purchase.purchase_request_items.length;
+    const received = purchase.purchase_request_items.filter((item: any) => 
+      item.is_received === true
     ).length;
     const percentage = total > 0 ? Math.round((received / total) * 100) : 0;
     
     return { received, total, percentage };
+  };
+  
+  // 구매 진행 상태 계산
+  const getPurchaseProgress = (purchase: Purchase) => {
+    if (!purchase.purchase_request_items || purchase.purchase_request_items.length === 0) {
+      return { completed: 0, total: 0, percentage: 0 };
+    }
+    
+    const total = purchase.purchase_request_items.length;
+    const completed = purchase.purchase_request_items.filter((item: any) => 
+      item.is_payment_completed === true
+    ).length;
+    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+    
+    return { completed, total, percentage };
   };
 
   // 선진행 체크 함수
@@ -213,19 +233,20 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       case 'vendor_name':
         return purchase.vendor_name;
       case 'contact_name':
-        return purchase.contact_name;
+        // vendor_contacts JOIN 필요 - 현재는 빈 값 반환
+        return '-'; // vendor_contacts JOIN 필요
       case 'item_name':
-        return purchase.item_name;
+        return purchase.purchase_request_items?.[0]?.item_name || '';
       case 'specification':
-        return purchase.specification;
+        return purchase.purchase_request_items?.[0]?.specification || '';
       case 'quantity':
-        return purchase.quantity;
+        return purchase.purchase_request_items?.[0]?.quantity || 0;
       case 'unit_price_value':
-        return purchase.unit_price_value;
+        return purchase.purchase_request_items?.[0]?.unit_price_value || 0;
       case 'total_amount':
         return purchase.total_amount;
       case 'remark':
-        return purchase.remark;
+        return purchase.purchase_request_items?.[0]?.remark || '';
       case 'project_vendor':
         return purchase.project_vendor;
       case 'project_item':
@@ -233,15 +254,18 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       case 'sales_order_number':
         return purchase.sales_order_number;
       case 'payment_schedule':
-        return (purchase as any).vendor_payment_schedule;
+        // vendor_payment_schedule은 vendors 테이블에 있음 - JOIN 필요
+        return '-';
       case 'is_payment_completed':
+        // 전체 구매 완료 상태
         return purchase.is_payment_completed ? '완료' : '대기';
       case 'is_received':
+        // 전체 입고 완료 상태
         return purchase.is_received ? '완료' : '대기';
       case 'is_statement_received':
-        return (purchase as any).is_statement_received ? '완료' : '대기';
+        return purchase.is_statement_received ? '완료' : '대기';
       case 'is_utk_checked':
-        return (purchase as any).is_utk_checked ? '완료' : '대기';
+        return purchase.is_utk_checked ? '완료' : '대기';
       case 'request_date':
         return purchase.request_date;
       case 'delivery_request_date':
@@ -251,9 +275,9 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       case 'received_at':
         return purchase.received_at;
       case 'created_at':
-        return (purchase as any).created_at;
+        return purchase.created_at;
       case 'statement_received_at':
-        return (purchase as any).statement_received_at;
+        return purchase.purchase_request_items?.[0]?.statement_received_date || null;
       default:
         return null;
     }
@@ -349,45 +373,6 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     }
   }, []);
 
-  const matchesTabCondition = useCallback((item: Purchase, tabKey: string) => {
-    switch (tabKey) {
-      case 'pending': {
-        if (currentUserRoles && currentUserRoles.includes('consumable_manager')) {
-          if (item.payment_category !== '구매 요청') return false;
-        }
-
-        const isMiddlePending = ['pending', '대기', '', null, undefined].includes(item.middle_manager_status as any);
-        const isFinalPending = (item.middle_manager_status === '승인' || item.middle_manager_status === 'approved') &&
-                               item.final_manager_status !== 'approved' && item.final_manager_status !== '승인';
-        const isApprovedToday = false; // final_manager_approved_at 필드가 없으므로 임시로 false 처리
-
-        if (item.middle_manager_status === 'rejected' || item.final_manager_status === 'rejected') return false;
-
-        return isMiddlePending || isFinalPending || isApprovedToday;
-      }
-      case 'purchase': {
-        const isRequest = item.payment_category === '구매 요청';
-        const notPaid = !item.is_payment_completed;
-        if (!isRequest || !notPaid) return false;
-
-        const isSeonJin = (item.progress_type || '').includes('선진행');
-        const isIlban = (item.progress_type || '').includes('일반');
-        const finalApproved = item.final_manager_status === 'approved';
-
-        return isSeonJin || (isIlban && finalApproved);
-      }
-      case 'receipt': {
-        if (item.is_received) return false;
-        const isSeonJin = (item.progress_type || '').includes('선진행');
-        const finalApproved = item.final_manager_status === 'approved';
-        return isSeonJin || finalApproved;
-      }
-      case 'done':
-        return true;
-      default:
-        return true;
-    }
-  }, [currentUserRoles]);
 
   // 메모리 기반 필터링 - 60일 제한 적용
   const baseFilteredPurchases = useMemo(() => {
@@ -404,9 +389,12 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       dateStart = sixtyDaysAgo.toISOString().split('T')[0];
     }
     
+    const employeeName = selectedEmployee === 'all' || selectedEmployee === '전체' ? null : selectedEmployee;
+    
+    
     return getFilteredPurchases({
       tab: activeTab as any,
-      employeeName: selectedEmployee === 'all' || selectedEmployee === '전체' ? null : selectedEmployee,
+      employeeName,
       searchTerm,
       advancedFilters: activeFilters,
       startDate: dateStart,
@@ -461,8 +449,14 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         
         // 해당 월의 합계 계산
         const monthTotal = monthData.reduce((sum, purchase) => {
-          const amount = purchase.amount_value || purchase.total_amount || 0;
-          return sum + amount;
+          // items의 amount_value 합계 또는 total_amount 사용
+          if (purchase.purchase_request_items?.length) {
+            const itemsTotal = purchase.purchase_request_items.reduce((itemSum: number, item: any) => {
+              return itemSum + (item.amount_value || 0);
+            }, 0);
+            return sum + itemsTotal;
+          }
+          return sum + (purchase.total_amount || 0);
         }, 0);
         
         monthlyTotals.push({
@@ -494,8 +488,14 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       });
       
       const monthTotal = monthData.reduce((sum, purchase) => {
-        const amount = purchase.amount_value || purchase.total_amount || 0;
-        return sum + amount;
+        // items의 amount_value 합계 또는 total_amount 사용
+        if (purchase.purchase_request_items?.length) {
+          const itemsTotal = purchase.purchase_request_items.reduce((itemSum: number, item: any) => {
+            return itemSum + (item.amount_value || 0);
+          }, 0);
+          return sum + itemsTotal;
+        }
+        return sum + (purchase.total_amount || 0);
       }, 0);
       
       return {

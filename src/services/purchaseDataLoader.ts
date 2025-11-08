@@ -1,51 +1,52 @@
-/**
- * 초기 구매 데이터 로더
- * 앱 시작 시 한 번만 실행되어 모든 데이터를 메모리에 로드
- */
-
 import { createClient } from '@/lib/supabase/client'
 import { purchaseMemoryCache, calculateMemoryUsage } from '@/stores/purchaseMemoryStore'
-import type { Purchase } from '@/types/purchase'
 import { logger } from '@/lib/logger'
+import type { Purchase } from '@/types/purchase'
 
-// 초기 데이터 로드 상한선
+// 초기 로드 제한
 const INITIAL_LOAD_LIMIT = 2000
 
-// 승인 상태 계산 헬퍼
-const calculateApprovalStatus = (
-  middleStatus?: string | null, 
-  finalStatus?: string | null
-): string => {
+// 실제 금액 계산 (검수 금액 또는 기본 금액)
+function calculateActualAmount(items: any[]): number {
+  return items.reduce((sum, item) => {
+    const baseAmount = item.amount_value || 0
+    const actualAmount = item.actual_amount || baseAmount
+    return sum + actualAmount
+  }, 0)
+}
+
+// 실제 입고일 계산
+function calculateActualReceivedDate(items: any[]): string | null {
+  const receivedItems = items.filter(item => item.is_received)
+  if (receivedItems.length === 0) return null
+  
+  const dates = receivedItems
+    .map(item => item.actual_received_date)
+    .filter(date => date)
+    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
+  
+  return dates[0] || null
+}
+
+// 승인 상태 계산
+function calculateApprovalStatus(middleStatus: string, finalStatus: string): string {
   if (middleStatus === 'rejected' || finalStatus === 'rejected') {
-    return '거절됨'
+    return 'rejected'
   }
-  if (finalStatus === 'approved') {
-    return '승인됨'
+  if (middleStatus === 'approved' && finalStatus === 'approved') {
+    return 'approved'
   }
-  if (middleStatus === 'approved' && !finalStatus) {
-    return '최종승인 대기'
-  }
-  return '승인 대기'
+  return 'pending'
 }
 
 /**
- * 모든 구매 데이터를 메모리에 로드
- * @param userId 현재 사용자 ID
- * @returns 성공 여부
+ * 애플리케이션 시작 시 모든 구매 데이터를 메모리에 로드
+ * - 최근 2000개까지만 로드 (초기 성능을 위해)
+ * - 추가 데이터는 필요 시 증분 로드
  */
-export const loadAllPurchaseData = async (userId?: string): Promise<boolean> => {
+export async function loadAllPurchaseData(userId?: string): Promise<void> {
   try {
-    // 이미 로딩 중이면 스킵
-    if (purchaseMemoryCache.isLoading) {
-      logger.debug('[PurchaseDataLoader] Already loading, skipping...')
-      return false
-    }
-
-    purchaseMemoryCache.isLoading = true
-    purchaseMemoryCache.error = null
-    
     const supabase = createClient()
-    const startTime = Date.now()
     
     logger.info('[PurchaseDataLoader] Starting initial data load...')
     
@@ -62,12 +63,14 @@ export const loadAllPurchaseData = async (userId?: string): Promise<boolean> => 
       }
     }
     
-    // 2. 최근 2000개 구매 데이터 + 품목 로드
+    // 2. 최근 2000개 구매 데이터 + 품목 + 벤더 정보 로드
     const { data: rawData, error } = await supabase
       .from('purchase_requests')
       .select(`
         *,
-        purchase_request_items(*)
+        purchase_request_items(*),
+        vendors!vendor_id(vendor_payment_schedule),
+        vendor_contacts!contact_id(contact_name)
       `)
       .order('request_date', { ascending: false })
       .limit(INITIAL_LOAD_LIMIT)
@@ -77,137 +80,64 @@ export const loadAllPurchaseData = async (userId?: string): Promise<boolean> => 
     }
     
     // 3. 데이터 처리 및 변환
-    const processedData: Purchase[] = (rawData || []).map(request => {
-      const items = request.purchase_request_items || []
-      
-      // 계산된 필드들
-      const calculatedFields = {
-        // 별칭들
-        pr_number: request.purchase_order_number,
-        requestor_name: request.requester_name,
-        total_price: request.total_amount,
-        purchase_request_items: items,
-        items: items,
-        
-        // request_type을 기반으로 purchase_type 추론
-        purchase_type: request.payment_category || request.request_type,
-        
-        // 승인 상태 계산
-        approval_status: calculateApprovalStatus(
-          request.middle_manager_status, 
-          request.final_manager_status
-        ),
-        
-        // CEO 승인 필요 여부 (예: 1000만원 이상)
-        requires_ceo_approval: request.total_amount > 10000000,
-        
-        // items 기반 계산
-        actual_amount: items.reduce(
-          (sum: number, item: any) => sum + (item.amount_value || 0), 
-          0
-        ),
-        is_all_received: items.length > 0 && items.every((item: any) => item.is_received),
-        received_count: items.filter((item: any) => item.is_received).length,
-        total_count: items.length,
-        
-        // 최신 입고일
-        actual_received_date: items
-          .filter((item: any) => item.actual_received_date)
-          .map((item: any) => item.actual_received_date)
-          .sort((a: string, b: string) => new Date(b).getTime() - new Date(a).getTime())[0] || null
-      }
-      
+    const processedData: Purchase[] = (rawData || []).map((request: any) => {
       return {
         ...request,
-        ...calculatedFields
+        purchase_request_items: request.purchase_request_items || [],
+        // JOIN된 데이터 플랫하게 추가
+        vendor_payment_schedule: request.vendors?.vendor_payment_schedule || null,
+        contact_name: request.vendor_contacts?.contact_name || null
       }
     })
     
-    // 4. 캐시에 저장
+    // 4. 메모리 캐시에 저장
     purchaseMemoryCache.allPurchases = processedData
     purchaseMemoryCache.lastFetch = Date.now()
-    
-    // 5. 통계 정보 업데이트
-    const memoryUsage = calculateMemoryUsage(processedData)
+    purchaseMemoryCache.isLoading = false
     purchaseMemoryCache.stats = {
       totalCount: processedData.length,
       loadedCount: processedData.length,
-      memoryUsage
+      memoryUsage: calculateMemoryUsage(processedData)
     }
     
-    const loadTime = Date.now() - startTime
-    logger.info(`[PurchaseDataLoader] Loaded ${processedData.length} purchases in ${loadTime}ms`)
-    logger.info(`[PurchaseDataLoader] Memory usage: ${memoryUsage.toFixed(2)}MB`)
-    
-    return true
+    logger.info(`[PurchaseDataLoader] Loaded ${processedData.length} purchase records into memory`)
     
   } catch (error) {
-    logger.error('[PurchaseDataLoader] Failed to load data:', error)
+    logger.error('[PurchaseDataLoader] Failed to load purchase data:', error)
     purchaseMemoryCache.error = error instanceof Error ? error.message : 'Unknown error'
-    return false
-    
-  } finally {
     purchaseMemoryCache.isLoading = false
+    throw error
   }
 }
 
 /**
- * 추가 데이터 로드 (날짜 필터 등으로 더 많은 데이터가 필요할 때)
- * @param startDate 시작 날짜
- * @param endDate 종료 날짜
+ * 특정 조건에 따라 추가 데이터 로드
+ * (예: 날짜 범위 확장, 특정 필터 적용 시)
  */
-export const loadAdditionalData = async (
-  startDate?: string, 
+export async function loadAdditionalData(params: {
+  startDate?: string
   endDate?: string
-): Promise<Purchase[]> => {
-  try {
-    const supabase = createClient()
+  offset?: number
+}): Promise<void> {
+  // 향후 구현: 필요 시 추가 데이터 로드
+  logger.info('[PurchaseDataLoader] Additional data loading not yet implemented')
+}
+
+/**
+ * 단일 구매 건 업데이트 (옵티미스틱 업데이트용)
+ */
+export function updatePurchaseInMemory(
+  purchaseId: number, 
+  updater: (prev: Purchase) => Purchase
+): void {
+  if (!purchaseMemoryCache.allPurchases) return
+  
+  const index = purchaseMemoryCache.allPurchases.findIndex(p => p.id === purchaseId)
+  if (index !== -1) {
+    const updated = updater(purchaseMemoryCache.allPurchases[index])
+    purchaseMemoryCache.allPurchases[index] = updated
     
-    let query = supabase
-      .from('purchase_requests')
-      .select(`
-        *,
-        purchase_request_items(*)
-      `)
-    
-    // 날짜 필터 적용
-    if (startDate) {
-      query = query.gte('request_date', startDate)
-    }
-    if (endDate) {
-      query = query.lte('request_date', endDate)
-    }
-    
-    const { data: rawData, error } = await query
-      .order('request_date', { ascending: false })
-      .limit(5000) // 추가 로드는 더 많이 가능
-    
-    if (error) throw error
-    
-    // 데이터 처리
-    const processedData: Purchase[] = (rawData || []).map(request => ({
-      ...request,
-      items: request.purchase_request_items || [],
-      total_price: (request.purchase_request_items || []).reduce(
-        (sum: number, item: any) => sum + (item.total_price || 0), 
-        0
-      ),
-      actual_amount: (request.purchase_request_items || []).reduce(
-        (sum: number, item: any) => sum + (item.actual_amount || 0), 
-        0
-      ),
-      is_all_received: request.purchase_request_items?.length > 0 &&
-        request.purchase_request_items.every((item: any) => item.is_received),
-      received_count: (request.purchase_request_items || []).filter(
-        (item: any) => item.is_received
-      ).length,
-      total_count: request.purchase_request_items?.length || 0
-    }))
-    
-    return processedData
-    
-  } catch (error) {
-    logger.error('[PurchaseDataLoader] Failed to load additional data:', error)
-    return []
+    // 메모리 변경을 구독자들에게 알림
+    purchaseMemoryCache.lastFetch = Date.now()
   }
 }

@@ -51,6 +51,7 @@ interface PurchaseItemsModalProps {
     currency: string;
     payment_category?: string;
     items?: PurchaseItem[];
+    purchase_request_items?: PurchaseItem[];
     total_amount: number;
   };
   isAdmin: boolean;
@@ -59,7 +60,7 @@ interface PurchaseItemsModalProps {
 }
 
 export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin, onUpdate, activeTab = 'done' }: PurchaseItemsModalProps) {
-  const [editingItems, setEditingItems] = useState<PurchaseItem[]>(purchase.items || []);
+  const [editingItems, setEditingItems] = useState<PurchaseItem[]>(purchase.purchase_request_items || []);
   const [isEditing, setIsEditing] = useState(false);
   const [currentUserName, setCurrentUserName] = useState<string>('');
   const supabase = createClient();
@@ -187,13 +188,13 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
   // 품목 수정 시작
   const handleEditStart = () => {
     setIsEditing(true);
-    setEditingItems([...purchase.items || []]);
+    setEditingItems([...purchase.purchase_request_items || []]);
   };
 
   // 품목 수정 취소
   const handleEditCancel = () => {
     setIsEditing(false);
-    setEditingItems(purchase.items || []);
+    setEditingItems(purchase.purchase_request_items || []);
   };
 
   // 품목 값 변경
@@ -333,7 +334,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
     }
   };
   
-  const baseItems = editingItems.length > 0 ? editingItems : (purchase.items || []);
+  const baseItems = editingItems.length > 0 ? editingItems : (purchase.purchase_request_items || []);
   const items = isEditing ? editingItems : baseItems;
 
   const tableMinWidth = useMemo(() => {
@@ -353,14 +354,14 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
     ];
 
     const widths = columnDefs.map((col, index) => {
-      const values = data.map((item, rowIndex) => {
+      const values = data.map((item: any, rowIndex: number) => {
         if (col.accessor) {
           return col.accessor(item, rowIndex) ?? '';
         }
         return '';
       });
       const headerLength = col.header ? col.header.length : 0;
-      const maxLen = Math.max(headerLength, ...values.map(value => (value ? String(value).length : 0)));
+      const maxLen = Math.max(headerLength, ...values.map((value: any) => (value ? String(value).length : 0)));
       const computed = maxLen * 8 + 32;
       const limited = col.max ? Math.min(col.max, computed) : computed;
       return Math.max(col.base, limited);
@@ -392,7 +393,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
     return Math.max(total, 960);
   }, [items, baseItems, activeTab, isEditing]);
 
-  const totalAmount = items.reduce((sum, item) => sum + (item.amount_value || 0), 0);
+  const totalAmount = items.reduce((sum: number, item: any) => sum + (item.amount_value || 0), 0);
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -514,7 +515,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                 </tr>
               </thead>
               <tbody>
-              {(isEditing ? editingItems : items).map((item, index) => (
+              {(isEditing ? editingItems : items).map((item: any, index: number) => (
                   <tr key={item.id || index} className="border-b last:border-b-0">
                     <td className="px-3 py-2 text-center align-top modal-value">{item.line_number || index + 1}</td>
                     <td className="px-3 py-2 align-top min-w-[140px]">

@@ -166,6 +166,10 @@ export interface PurchaseRequest {
   received_at?: string
   created_at: string
   updated_at: string
+  
+  // JOIN으로 가져오는 필드들
+  vendor_payment_schedule?: string | null
+  contact_name?: string | null
 }
 
 export interface PurchaseRequestWithDetails extends PurchaseRequest {
@@ -324,6 +328,20 @@ export interface Purchase {
   
   // JOIN된 items (purchase_request_items 테이블)
   purchase_request_items?: PurchaseRequestItem[];
+  items?: PurchaseRequestItem[]; // 별칭 (하위 호환성)
+  
+  // 단일 item 필드들 (첫 번째 item의 필드들 - 하위 호환성)
+  item_name?: string;
+  specification?: string;
+  quantity?: number;
+  unit_price_value?: number;
+  amount_value?: number;
+  remark?: string;
+  link?: string;
+  
+  // JOIN으로 가져오는 필드들
+  vendor_payment_schedule?: string | null;
+  contact_name?: string | null;
 }
 
 export interface DashboardData {

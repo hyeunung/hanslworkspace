@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 
 interface Employee {
@@ -52,10 +51,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const loadAuthData = async () => {
     try {
+      logger.debug('[AuthContext] Starting auth data load...')
+      
       const { data: { user }, error: authError } = await supabase.auth.getUser()
       
       if (authError) {
-        logger.error('인증 정보 조회 실패', authError)
+        logger.error('[AuthContext] 인증 정보 조회 실패', authError)
         setUser(null)
         setEmployee(null)
         return
@@ -64,9 +65,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(user)
       
       if (!user) {
+        logger.debug('[AuthContext] No authenticated user found')
         setEmployee(null)
         return
       }
+
+      logger.debug('[AuthContext] Authenticated user found, loading employee data...')
 
       // 직원 정보 조회
       const { data: employeeData, error: employeeError } = await supabase
@@ -76,20 +80,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
         .single()
 
       if (employeeError) {
-        logger.error('직원 정보 조회 실패', employeeError)
+        logger.error('[AuthContext] 직원 정보 조회 실패', employeeError)
         setEmployee(null)
         return
       }
 
       if (employeeData) {
         setEmployee(employeeData)
-        logger.debug('인증 데이터 로드 완료', { 
+        logger.info('[AuthContext] 인증 데이터 로드 완료', { 
           email: employeeData.email, 
           roles: parseRoles(employeeData.purchase_role) 
         })
       }
     } catch (error) {
-      logger.error('인증 데이터 로드 중 오류', error)
+      logger.error('[AuthContext] 인증 데이터 로드 중 오류', error)
       setUser(null)
       setEmployee(null)
     } finally {
@@ -98,6 +102,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   const refreshAuth = async () => {
+    setLoading(true)
     await loadAuthData()
   }
 
@@ -106,11 +111,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     // Supabase auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      logger.debug('[AuthContext] Auth state changed:', event)
+      
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        setLoading(true)
         loadAuthData()
       } else if (event === 'SIGNED_OUT') {
+        logger.info('[AuthContext] User signed out')
         setUser(null)
         setEmployee(null)
+        setLoading(false)
       }
     })
 

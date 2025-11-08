@@ -206,7 +206,7 @@ export default function PurchaseDetailMain() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {(purchase.items || []).map((item, index) => (
+              {(purchase.purchase_request_items || []).map((item, index) => (
                 <tr key={index}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {item.item_name}

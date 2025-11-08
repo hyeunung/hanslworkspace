@@ -137,7 +137,7 @@ class PurchaseService {
 
       const purchasesWithDetails = (Array.isArray(data) ? data : []).map(purchase => ({
         ...purchase,
-        items: purchase.items || [],
+        items: purchase.purchase_request_items || [],
         vendor: purchase.vendor || { id: 0, vendor_name: '알 수 없음' },
         vendor_contacts: purchase.vendor_contacts || []
       })) as PurchaseRequestWithDetails[];

@@ -53,13 +53,23 @@ export function hasApproverRole(roles: string[]): boolean {
 /**
  * 역할 그룹 계산 (탭별 기본 필터용)
  * 1: 일반 사용자 (본인 데이터만)
- * 2: 구매 담당자 (구매 관련)
- * 3: 승인자/관리자 (전체 데이터)
+ * 2: 카테고리별 관리자 (구매 요청 또는 발주만)
+ * 3: 전체 권한자 (app_admin, ceo만 - 모든 데이터)
  */
 export function getRoleCase(roles: string[]): number {
   if (!roles || roles.length === 0) return 1;
-  if (roles.includes('purchase_manager')) return 2;
-  if (hasApproverRole(roles) || hasManagerRole(roles)) return 3;
+  
+  // app_admin과 ceo는 전체 권한 (case 3)
+  if (roles.includes('app_admin') || roles.includes('ceo')) return 3;
+  
+  // 카테고리별 관리자는 제한된 권한 (case 2)
+  if (roles.includes('consumable_manager') || 
+      roles.includes('raw_material_manager') ||
+      roles.includes('purchase_manager')) return 2;
+  
+  // middle_manager도 제한된 권한
+  if (roles.includes('middle_manager')) return 2;
+  
   return 1;
 }
 

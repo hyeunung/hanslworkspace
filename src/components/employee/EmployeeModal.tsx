@@ -91,7 +91,9 @@ export default function EmployeeModal({ isOpen, onClose, employee, onSave, mode 
         phone: employee.phone || '',
         position: employee.position || '',
         department: employee.department || '',
-        purchase_role: employee.purchase_role ? employee.purchase_role.split(',') : [],
+        purchase_role: Array.isArray(employee.purchase_role) 
+          ? employee.purchase_role 
+          : employee.purchase_role?.split(',') || [],
       })
     } else if (!employee && isOpen) {
       form.reset({

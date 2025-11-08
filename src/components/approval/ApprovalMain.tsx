@@ -1,6 +1,7 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/contexts/AuthContext'
 import { PurchaseRequestWithDetails } from '@/types/purchase'
 import ApprovalCard from '@/components/approval/ApprovalCard'
 import ApprovalModal from '@/components/approval/ApprovalModal'
@@ -8,7 +9,6 @@ import BatchApprovalButton from '@/components/approval/BatchApprovalButton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Loader2, AlertCircle, ArrowUpDown } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Employee } from '@/types/purchase'
 
 type ApprovalTab = 'middle' | 'final'
 
@@ -28,7 +28,7 @@ const parseRoles = (purchaseRole: string | string[] | null | undefined): string[
 }
 
 export default function ApprovalMain() {
-  const [employee, setEmployee] = useState<Employee | null>(null)
+  const { employee, currentUserRoles } = useAuth()
   const [approvals, setApprovals] = useState<PurchaseRequestWithDetails[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<ApprovalTab | null>(null)
@@ -42,70 +42,35 @@ export default function ApprovalMain() {
   const supabase = createClient()
 
   useEffect(() => {
-    loadEmployeeAndApprovals()
-  }, [refreshTrigger])
+    if (employee) {
+      loadApprovals()
+    }
+  }, [employee, refreshTrigger])
 
-  const loadEmployeeAndApprovals = async () => {
+  const loadApprovals = async () => {
+    if (!employee) return
+    
     try {
       setLoading(true)
       
-      // 현재 사용자 정보 조회
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      if (authError || !user) {
-        toast.error('사용자 인증이 필요합니다')
-        setLoading(false)
-        return
-      }
-
-      // 직원 정보 조회 (전체 필드 조회)
-      let { data: employeeData, error: _employeeError } = await supabase
-        .from('employees')
-        .select('*')
-        .eq('id', user.id)
-        .single()
-
-      // ID로 못 찾으면 이메일로 재시도
-      if (!employeeData && user.email) {
-        const { data: userByEmail, error: _emailError } = await supabase
-          .from('employees')
-          .select('*')
-          .eq('email', user.email)
-          .single()
-        
-        if (userByEmail) {
-          employeeData = userByEmail
-        }
-        // _employeeError = _emailError - not used
-      }
-
-      if (!employeeData) {
-        toast.error(`직원 정보를 찾을 수 없습니다.\nID: ${user.id}\nEmail: ${user.email}`)
-        setLoading(false)
-        return
-      }
-
-      setEmployee(employeeData)
-      
       // 승인 권한이 있는지 확인
-      const roles = parseRoles(employeeData.purchase_role)
-      
       const approvalRoles = ['middle_manager', 'final_approver', 'ceo', 'app_admin']
-      const hasApprovalRole = roles.some((role: string) => approvalRoles.includes(role))
+      const hasApprovalRole = currentUserRoles.some((role: string) => approvalRoles.includes(role))
 
       if (!hasApprovalRole) {
-        toast.error(`승인 권한이 없습니다. 현재 role: ${employeeData.purchase_role || '없음'}`)
+        toast.error(`승인 권한이 없습니다. 현재 role: ${employee.purchase_role || '없음'}`)
         setLoading(false)
         return
       }
 
       // 승인 대기 목록 조회
-      await loadApprovals(employeeData)
+      await loadApprovalsData(employee)
       
       // 초기 탭 설정
       if (!activeTab) {
-        if (roles.includes('middle_manager')) {
+        if (currentUserRoles.includes('middle_manager')) {
           setActiveTab('middle')
-        } else if (roles.some(role => ['final_approver', 'ceo', 'app_admin'].includes(role))) {
+        } else if (currentUserRoles.some(role => ['final_approver', 'ceo', 'app_admin'].includes(role))) {
           setActiveTab('final')
         }
       }
@@ -117,7 +82,7 @@ export default function ApprovalMain() {
     }
   }
 
-  const loadApprovals = async (employeeData: Employee) => {
+  const loadApprovalsData = async (employeeData: any) => {
     try {
       const { data: approvalData, error: approvalError } = await supabase
         .from('purchase_requests')
@@ -126,9 +91,9 @@ export default function ApprovalMain() {
 
       if (approvalError) throw approvalError
 
-      const purchasesWithDetails = (approvalData || []).map(purchase => ({
+      const purchasesWithDetails = (approvalData || []).map((purchase: any) => ({
         ...purchase,
-        items: purchase.items || [],
+        items: purchase.purchase_request_items || [],
         vendor: purchase.vendor || { id: 0, vendor_name: '알 수 없음' },
         vendor_contacts: purchase.vendor_contacts || []
       })) as PurchaseRequestWithDetails[]
@@ -144,7 +109,7 @@ export default function ApprovalMain() {
     }
   }
 
-  const calculateTabCounts = (purchases: PurchaseRequestWithDetails[], employeeData: Employee): TabCounts => {
+  const calculateTabCounts = (purchases: PurchaseRequestWithDetails[], employeeData: any): TabCounts => {
     const counts = { middle: 0, final: 0 }
     
     // purchase_role 처리
@@ -160,7 +125,7 @@ export default function ApprovalMain() {
       // 최종 승인 대기 (최종승인자/CEO/app_admin)
       if (purchase.middle_manager_status === 'approved' && 
           purchase.final_manager_status === 'pending' &&
-          roles.some(role => ['final_approver', 'ceo', 'app_admin'].includes(role))) {
+          roles.some((role: string) => ['final_approver', 'ceo', 'app_admin'].includes(role))) {
         counts.final++
       }
       
@@ -197,7 +162,7 @@ export default function ApprovalMain() {
         filtered = approvals.filter(approval => 
           approval.middle_manager_status === 'pending'
         )
-      } else if (roles.some(role => ['final_approver', 'ceo', 'app_admin'].includes(role))) {
+      } else if (roles.some((role: string) => ['final_approver', 'ceo', 'app_admin'].includes(role))) {
         // 최종 승인 대기
         filtered = approvals.filter(approval => 
           approval.middle_manager_status === 'approved' && 
@@ -249,7 +214,7 @@ export default function ApprovalMain() {
             middle_manager_status: 'rejected'
           }
         }
-      } else if (roles.some(r => ['final_approver', 'ceo', 'app_admin'].includes(r))) {
+      } else if (roles.some((r: string) => ['final_approver', 'ceo', 'app_admin'].includes(r))) {
         // 최종 승인
         if (action === 'approve') {
           updateData = { 
@@ -312,7 +277,7 @@ export default function ApprovalMain() {
         updateData = {
           middle_manager_status: 'approved'
         }
-      } else if (roles.some(r => ['final_approver', 'ceo', 'app_admin'].includes(r))) {
+      } else if (roles.some((r: string) => ['final_approver', 'ceo', 'app_admin'].includes(r))) {
         updateData = {
           final_manager_status: 'approved'
         }
@@ -417,7 +382,7 @@ export default function ApprovalMain() {
               )
             }
             
-            if (roles.some(role => ['final_approver', 'ceo', 'app_admin'].includes(role))) {
+            if (roles.some((role: string) => ['final_approver', 'ceo', 'app_admin'].includes(role))) {
               tabs.push(
                 <button
                   key="final"

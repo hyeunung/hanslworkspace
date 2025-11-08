@@ -1,180 +1,26 @@
-import { useEffect, useState, lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter } from 'react-router-dom'
+import { AuthProvider } from '@/contexts/AuthContext'
+import AuthGuard from '@/components/auth/AuthGuard'
+import DataInitializer from '@/components/auth/DataInitializer'
+import AppLayout from '@/components/layout/AppLayout'
 
-import { createClient } from '@/lib/supabase/client'
-import Header from '@/components/layout/Header'
-import FixedNavigation from '@/components/layout/FixedNavigation'
-import ErrorBoundary from '@/components/ErrorBoundary'
-
-import type { Employee } from '@/types/purchase'
-
-// 로그인은 항상 필요하므로 직접 import
-import LoginMain from '@/components/auth/LoginMain'
-import InitialLoadingScreen from '@/components/common/InitialLoadingScreen'
-import { loadAllPurchaseData } from '@/services/purchaseDataLoader'
-import { purchaseMemoryCache } from '@/stores/purchaseMemoryStore'
-
-// 페이지 컴포넌트들을 lazy loading으로 변경 (코드 스플리팅)
-const DashboardMain = lazy(() => import('@/components/dashboard/DashboardMain'))
-const PurchaseNewMain = lazy(() => import('@/components/purchase/PurchaseNewMain'))
-const PurchaseListMain = lazy(() => import('@/components/purchase/PurchaseListMain'))
-const PurchaseDetailMain = lazy(() => import('@/components/purchase/PurchaseDetailMain'))
-const VendorMain = lazy(() => import('@/components/vendor/VendorMain'))
-const EmployeeMain = lazy(() => import('@/components/employee/EmployeeMain'))
-const SupportMain = lazy(() => import('@/components/support/SupportMain'))
-const ReceiptsMain = lazy(() => import('@/components/receipts/ReceiptsMain'))
-
+/**
+ * 애플리케이션 최상위 컴포넌트
+ * - AuthProvider로 인증 상태 관리
+ * - AuthGuard로 인증되지 않은 사용자 차단
+ * - DataInitializer로 인증 후 데이터 초기화
+ * - AppLayout으로 메인 애플리케이션 렌더링
+ */
 export default function App() {
-  const [employee, setEmployee] = useState<Employee | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-
-  useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        
-        if (!user) {
-          setIsAuthenticated(false)
-          setLoading(false)
-          return
-        }
-
-        setIsAuthenticated(true)
-
-        const { data: employeeData } = await supabase
-          .from('employees')
-          .select('*')
-          .eq('email', user.email)
-          .single()
-
-        if (employeeData) {
-          setEmployee(employeeData)
-          purchaseMemoryCache.currentUser = employeeData
-          
-          // 구매 데이터 초기 로드 (병렬로 실행)
-          loadAllPurchaseData(employeeData.id).catch(err => {
-            console.error('[App] Failed to load purchase data:', err)
-          })
-        }
-      } catch (_error) {
-        setIsAuthenticated(false)
-      } finally {
-        // 최소 1.5초는 로딩 화면 표시
-        setTimeout(() => setLoading(false), 1500)
-      }
-    }
-
-    loadUser()
-
-    // Supabase auth state listener
-    const supabase = createClient()
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, _session) => {
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        loadUser()
-      } else if (event === 'SIGNED_OUT') {
-        setIsAuthenticated(false)
-        setEmployee(null)
-      }
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  if (loading) {
-    return <InitialLoadingScreen />
-  }
-
-  // 로그인하지 않은 경우
-  if (!isAuthenticated) {
-    return (
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginMain />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </BrowserRouter>
-    )
-  }
-
-  // 로그인한 경우
   return (
     <BrowserRouter>
-      <div style={{ position: 'relative', minHeight: '100vh', backgroundColor: '#f9fafb' }}>
-        {/* 고정 헤더 */}
-        <Header user={employee} onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} />
-        
-        {/* 고정 네비게이션 */}
-        <FixedNavigation 
-          role={employee?.purchase_role} 
-          isOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
-        />
-        
-        {/* 콘텐츠 영역 */}
-        <div style={{ paddingTop: '56px', paddingLeft: '0' }}>
-          <div style={{ marginLeft: '56px' }} className="lg:block hidden">
-            <main className="p-1 sm:p-2 lg:p-3">
-              <ErrorBoundary>
-                <Suspense fallback={
-                  <div className="flex items-center justify-center py-12">
-                    <div className="w-8 h-8 border-2 border-hansl-600 border-t-transparent rounded-full animate-spin" />
-                    <span className="ml-3 text-gray-600">로딩 중...</span>
-                  </div>
-                }>
-                  <Routes>
-                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                    <Route path="/login" element={<Navigate to="/dashboard" replace />} />
-                    <Route path="/dashboard" element={<DashboardMain />} />
-                    <Route path="/purchase" element={<PurchaseListMain showEmailButton={false} />} />
-                    <Route path="/purchase/new" element={<PurchaseNewMain />} />
-                    <Route path="/purchase/list" element={<PurchaseListMain showEmailButton={false} />} />
-                    <Route path="/purchase/detail/:id" element={<PurchaseDetailMain />} />
-                    <Route path="/purchase/requests/:id" element={<PurchaseDetailMain />} />
-                    <Route path="/vendor" element={<VendorMain />} />
-                    <Route path="/employee" element={<EmployeeMain />} />
-                    <Route path="/receipts" element={<ReceiptsMain />} />
-                    <Route path="/support" element={<SupportMain />} />
-                    <Route path="*" element={<Navigate to="/dashboard" replace />} />
-                  </Routes>
-                </Suspense>
-              </ErrorBoundary>
-            </main>
-          </div>
-          
-          {/* 모바일 뷰 */}
-          <div className="lg:hidden">
-            <main className="p-1 sm:p-2">
-              <ErrorBoundary>
-                <Suspense fallback={
-                  <div className="flex items-center justify-center py-12">
-                    <div className="w-8 h-8 border-2 border-hansl-600 border-t-transparent rounded-full animate-spin" />
-                    <span className="ml-3 text-gray-600">로딩 중...</span>
-                  </div>
-                }>
-                  <Routes>
-                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                    <Route path="/login" element={<Navigate to="/dashboard" replace />} />
-                    <Route path="/dashboard" element={<DashboardMain />} />
-                    <Route path="/purchase" element={<PurchaseListMain showEmailButton={false} />} />
-                    <Route path="/purchase/new" element={<PurchaseNewMain />} />
-                    <Route path="/purchase/list" element={<PurchaseListMain showEmailButton={false} />} />
-                    <Route path="/purchase/detail/:id" element={<PurchaseDetailMain />} />
-                    <Route path="/purchase/requests/:id" element={<PurchaseDetailMain />} />
-                    <Route path="/vendor" element={<VendorMain />} />
-                    <Route path="/employee" element={<EmployeeMain />} />
-                    <Route path="/receipts" element={<ReceiptsMain />} />
-                    <Route path="/support" element={<SupportMain />} />
-                    <Route path="*" element={<Navigate to="/dashboard" replace />} />
-                  </Routes>
-                </Suspense>
-              </ErrorBoundary>
-            </main>
-          </div>
-        </div>
-      </div>
+      <AuthProvider>
+        <AuthGuard>
+          <DataInitializer>
+            <AppLayout />
+          </DataInitializer>
+        </AuthGuard>
+      </AuthProvider>
     </BrowserRouter>
   )
 }

@@ -172,14 +172,14 @@ ApprovalStatusBadge.displayName = 'ApprovalStatusBadge';
 // 입고 현황 계산 함수 (actual_received_date 기준)
 const getReceiptProgress = (purchase: Purchase) => {
   // items 배열이 없으면 전체 미입고로 처리
-  if (!purchase.items || purchase.items.length === 0) {
+  if (!purchase.purchase_request_items || purchase.purchase_request_items.length === 0) {
     return { received: 0, total: 1, percentage: 0 };
   }
   
-  // 개별 아이템 실제 입고 상태 계산 (actual_received_date 기준)
-  const total = purchase.items.length;
-  const received = purchase.items.filter((item: any) => 
-    item.actual_received_date !== null && item.actual_received_date !== undefined
+  // 개별 아이템 실제 입고 상태 계산 (is_received 기준)
+  const total = purchase.purchase_request_items.length;
+  const received = purchase.purchase_request_items.filter((item: any) => 
+    item.is_received === true
   ).length;
   const percentage = total > 0 ? Math.round((received / total) * 100) : 0;
   
@@ -194,13 +194,13 @@ const getPaymentProgress = (purchase: Purchase) => {
   }
   
   // items 배열이 없으면 전체 미완료로 처리
-  if (!purchase.items || purchase.items.length === 0) {
+  if (!purchase.purchase_request_items || purchase.purchase_request_items.length === 0) {
     return { completed: 0, total: 1, percentage: 0 };
   }
   
   // 개별 아이템 구매완료 상태 계산
-  const total = purchase.items.length;
-  const completed = purchase.items.filter((item: any) => 
+  const total = purchase.purchase_request_items.length;
+  const completed = purchase.purchase_request_items.filter((item: any) => 
     item.is_payment_completed === true
   ).length;
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -211,13 +211,13 @@ const getPaymentProgress = (purchase: Purchase) => {
 // 거래명세서 완료 현황 계산 함수
 const getStatementProgress = (purchase: Purchase) => {
   // items 배열이 없으면 전체 미완료로 처리
-  if (!purchase.items || purchase.items.length === 0) {
+  if (!purchase.purchase_request_items || purchase.purchase_request_items.length === 0) {
     return { completed: 0, total: 1, percentage: 0 };
   }
   
   // 개별 아이템 거래명세서 확인 상태 계산 (is_statement_received 기준)
-  const total = purchase.items.length;
-  const completed = purchase.items.filter((item: any) => 
+  const total = purchase.purchase_request_items.length;
+  const completed = purchase.purchase_request_items.filter((item: any) => 
     item.is_statement_received === true
   ).length;
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -364,8 +364,8 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
           )}
           <span className="block truncate" title={purchase.purchase_order_number || ''}>
             {purchase.purchase_order_number || '-'}
-            {purchase.items && purchase.items.length > 1 && (
-              <span className="text-gray-500 ml-0.5">({purchase.items.length})</span>
+            {purchase.purchase_request_items && purchase.purchase_request_items.length > 1 && (
+              <span className="text-gray-500 ml-0.5">({purchase.purchase_request_items.length})</span>
             )}
           </span>
         </div>
@@ -427,31 +427,31 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
         </td>
       )}
       <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.itemName}`}>
-        <span className="block truncate" title={purchase.item_name || ''}>
-          {purchase.item_name || '-'}
+        <span className="block truncate" title={purchase.purchase_request_items?.[0]?.item_name || ''}>
+          {purchase.purchase_request_items?.[0]?.item_name || '-'}
         </span>
       </td>
       <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.specification}`}>
-        <span className="block truncate" title={purchase.specification || ''}>
-          {purchase.specification || '-'}
+        <span className="block truncate" title={purchase.purchase_request_items?.[0]?.specification || ''}>
+          {purchase.purchase_request_items?.[0]?.specification || '-'}
         </span>
       </td>
       <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>
-        {purchase.quantity || 0}
+        {purchase.purchase_request_items?.[0]?.quantity || 0}
       </td>
       <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>
-        {purchase.unit_price_value ? `${purchase.unit_price_value.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.currency || 'KRW')}`}
+        {purchase.purchase_request_items?.[0]?.unit_price_value ? `${purchase.purchase_request_items[0].unit_price_value.toLocaleString()} ${getCurrencySymbol(purchase.purchase_request_items[0]?.unit_price_currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.purchase_request_items?.[0]?.unit_price_currency || 'KRW')}`}
       </td>
       <td className={`px-2 py-1.5 card-amount whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>
-        {purchase.amount_value ? `${purchase.amount_value.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : purchase.total_amount ? `${purchase.total_amount.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.currency || 'KRW')}`}
+        {purchase.purchase_request_items?.[0]?.amount_value ? `${purchase.purchase_request_items[0].amount_value.toLocaleString()} ${getCurrencySymbol(purchase.purchase_request_items[0]?.amount_currency || 'KRW')}` : purchase.total_amount ? `${purchase.total_amount.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.currency || 'KRW')}`}
       </td>
       
       {/* 탭별 다른 칼럼 표시 */}
       {activeTab === 'pending' && (
         <>
           <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
-            <span className="block truncate" title={purchase.remark || ''}>
-              {purchase.remark || '-'}
+            <span className="block truncate" title={purchase.purchase_request_items?.[0]?.remark || ''}>
+              {purchase.purchase_request_items?.[0]?.remark || '-'}
             </span>
           </td>
           <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectVendor}`}>
@@ -475,18 +475,18 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       {activeTab === 'purchase' && (
         <>
           <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
-            <span className="block truncate" title={purchase.remark || ''}>
-              {purchase.remark || '-'}
+            <span className="block truncate" title={purchase.purchase_request_items?.[0]?.remark || ''}>
+              {purchase.purchase_request_items?.[0]?.remark || '-'}
             </span>
           </td>
           <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.link}`}>
-            {purchase.link ? (
+            {purchase.purchase_request_items?.[0]?.link ? (
               <a 
-                href={purchase.link} 
+                href={purchase.purchase_request_items?.[0]?.link} 
                 target="_blank" 
                 rel="noopener noreferrer" 
                 className="text-blue-600 hover:text-blue-800 underline truncate block"
-                title={purchase.link}
+                title={purchase.purchase_request_items?.[0]?.link}
               >
                 링크 보기
               </a>
@@ -494,7 +494,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
               <span className="text-gray-400">-</span>
             )}
           </td>
-          {activeTab !== 'receipt' && (
+          {activeTab !== 'purchase' && activeTab !== 'receipt' && (
             <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>
               <span className="block truncate" title={purchase.vendor_payment_schedule || ''}>
                 {purchase.vendor_payment_schedule || '-'}
@@ -507,8 +507,8 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       {activeTab === 'receipt' && (
         <>
           <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
-            <span className="block truncate" title={purchase.remark || ''}>
-              {purchase.remark || '-'}
+            <span className="block truncate" title={purchase.purchase_request_items?.[0]?.remark || ''}>
+              {purchase.purchase_request_items?.[0]?.remark || '-'}
             </span>
           </td>
           <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectVendor}`}>
@@ -532,18 +532,18 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       {(activeTab === 'done' || !activeTab) && (
         <>
           <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
-            <span className="block truncate" title={purchase.remark || ''}>
-              {purchase.remark || '-'}
+            <span className="block truncate" title={purchase.purchase_request_items?.[0]?.remark || ''}>
+              {purchase.purchase_request_items?.[0]?.remark || '-'}
             </span>
           </td>
           <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.link}`}>
-            {purchase.link ? (
+            {purchase.purchase_request_items?.[0]?.link ? (
               <a 
-                href={purchase.link} 
+                href={purchase.purchase_request_items?.[0]?.link} 
                 target="_blank" 
                 rel="noopener noreferrer" 
                 className="text-blue-600 hover:text-blue-800 underline truncate block"
-                title={purchase.link}
+                title={purchase.purchase_request_items?.[0]?.link}
               >
                 링크 보기
               </a>
@@ -829,10 +829,10 @@ const FastPurchaseTable = memo(({
       let roles: string[] = [];
       if (employee.purchase_role) {
         if (Array.isArray(employee.purchase_role)) {
-          roles = employee.purchase_role.map(r => String(r).trim());
+          roles = employee.purchase_role.map((r: any) => String(r).trim());
         } else {
           const roleString = String(employee.purchase_role);
-          roles = roleString.split(',').map(r => r.trim()).filter(r => r.length > 0);
+          roles = roleString.split(',').map((r: string) => r.trim()).filter((r: string) => r.length > 0);
         }
       }
 
@@ -1081,9 +1081,9 @@ const FastPurchaseTable = memo(({
                   <td className="p-2 modal-value">{purchase.purchase_order_number || '-'}</td>
                   <td className="p-2">{purchase.requester_name}</td>
                   <td className="p-2 truncate" title={purchase.vendor_name}>{purchase.vendor_name}</td>
-                  <td className="p-2 truncate" title={purchase.item_name}>{purchase.item_name || '-'}</td>
+                  <td className="p-2 truncate" title={purchase.purchase_request_items?.[0]?.item_name}>{purchase.purchase_request_items?.[0]?.item_name || '-'}</td>
                   <td className="p-2 text-right card-amount">
-                    {purchase.amount_value ? `${purchase.amount_value.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : purchase.total_amount ? `${purchase.total_amount.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.currency || 'KRW')}`}
+                    {purchase.purchase_request_items?.[0]?.amount_value ? `${purchase.purchase_request_items[0].amount_value.toLocaleString()} ${getCurrencySymbol(purchase.purchase_request_items[0]?.amount_currency || 'KRW')}` : purchase.total_amount ? `${purchase.total_amount.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.currency || 'KRW')}`}
                   </td>
                   <td className="p-2 text-center">
                     <StatusBadge purchase={purchase} />

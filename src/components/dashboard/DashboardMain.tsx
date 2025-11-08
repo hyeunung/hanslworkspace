@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/contexts/AuthContext'
 import { dashboardService } from '@/services/dashboardService'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -43,139 +43,38 @@ export default function DashboardMain() {
   })
   
   const navigate = useNavigate()
-  const supabase = createClient()
+  const { employee, currentUserRoles: userRoles } = useAuth()
 
   const loadDashboardData = useCallback(async (showLoading = true, forceRefresh = false) => {
+    if (!employee) {
+      logger.error('[DashboardMain] No employee data available')
+      return
+    }
+
     try {
-      const supabase = createClient()
-      
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      
-      if (authError) {
-        toast.error('인증 정보를 불러올 수 없습니다.')
-        return
-      }
-      
-      if (!user) {
-        toast.error('로그인이 필요합니다.')
-        return
-      }
-
-      const { data: employee, error: employeeError } = await supabase
-        .from('employees')
-        .select('*')
-        .eq('email', user.email)
-        .single()
-
-      if (employeeError || !employee) {
-        // employee가 없어도 기본값으로 대시보드 표시
-        const defaultEmployee = {
-          id: user.id,
-          name: user.email?.split('@')[0] || 'Guest User',  // 이메일에서 이름 추출
-          email: user.email || '',
-          purchase_role: null
-        }
-        
-        try {
-          const dashboardData = await dashboardService.getDashboardData(defaultEmployee as any, forceRefresh)
-          setData(dashboardData)
-          setLoading(false)
-        } catch (_err) {
-          // 대시보드 데이터 로딩 실패 시에도 기본 employee 정보는 설정
-          setData({
-            employee: defaultEmployee,
-            stats: { pending: 0, purchase: 0, delivery: 0, completed: 0 },
-            pendingApprovals: [],
-            urgentRequests: [],
-            myPurchaseStatus: { waitingPurchase: [], waitingDelivery: [] }
-          } as any)
-          setLoading(false)
-        }
-        return
-      }
-
       if (showLoading && !forceRefresh && !data) {
-        // 초기 로드 시 캐시 확인 - getDashboardData가 캐시를 확인하므로 즉시 반환됨
-        // 하지만 로딩 상태를 먼저 false로 설정하지 않으므로, 캐시가 있어도 로딩이 표시됨
-        // 따라서 캐시가 있으면 즉시 표시하도록 별도 처리
-        try {
-          const cachedData = await dashboardService.getDashboardData(employee, false)
-          if (cachedData) {
-            setData(cachedData)
-            setLoading(false)
-            
-            // 백그라운드에서 최신 데이터 업데이트
-            setTimeout(async () => {
-              try {
-                const freshData = await dashboardService.getDashboardData(employee, true)
-                setData(freshData)
-              } catch (_err) {
-                // 백그라운드 업데이트 실패는 무시
-              }
-            }, 100)
-            
-            // role 설정 및 미다운로드 항목 조회
-            if (employee.purchase_role) {
-              const roles = Array.isArray(employee.purchase_role)
-                ? employee.purchase_role.map((r: any) => String(r).trim())
-                : String(employee.purchase_role)
-                    .split(',')
-                    .map((r: string) => r.trim())
-                    .filter((r: string) => r.length > 0)
-              setCurrentUserRoles(roles)
-              
-              if (roles.includes('lead buyer') || roles.includes('lead buyer')) {
-                const undownloaded = await dashboardService.getUndownloadedOrders(employee)
-                setUndownloadedOrders(undownloaded)
-              }
-            }
-            
-            return
-          }
-        } catch (_err) {
-          // 캐시 확인 실패 시 정상 로드 진행
-        }
-      }
-      
-      if (showLoading) {
         setLoading(true)
       }
       
-      try {
-        const dashboardData = await dashboardService.getDashboardData(employee, forceRefresh)
+      const dashboardData = await dashboardService.getDashboardData(employee, forceRefresh)
         
-        // 전체 입고대기 건수 조회 추가
-        const _totalDeliveryWaiting = await dashboardService.getTotalDeliveryWaitingCount()
-        
-        setData(dashboardData)
-        
-        // 사용자 role 설정
-        if (employee.purchase_role) {
-          const roles = Array.isArray(employee.purchase_role)
-            ? employee.purchase_role.map((r: any) => String(r).trim())
-            : String(employee.purchase_role)
-                .split(',')
-                .map((r: string) => r.trim())
-                .filter((r: string) => r.length > 0)
-          setCurrentUserRoles(roles)
-          
-          // lead buyer 또는 "lead buyer" (공백 포함)인 경우 미다운로드 항목 조회
-          if (roles.includes('lead buyer') || roles.includes('lead buyer')) {
-            const undownloaded = await dashboardService.getUndownloadedOrders(employee)
-            setUndownloadedOrders(undownloaded)
-          }
-        }
-      } catch (_err) {
-        toast.error('대시보드 데이터를 불러오는데 실패했습니다.')
+      setData(dashboardData)
+      setCurrentUserRoles(userRoles)
+      
+      // lead buyer인 경우 미다운로드 항목 조회
+      if (userRoles.includes('lead buyer')) {
+        const undownloaded = await dashboardService.getUndownloadedOrders(employee)
+        setUndownloadedOrders(undownloaded)
       }
-    } catch (_error) {
-      // 전체 대시보드 로딩 실패
+    } catch (error) {
+      logger.error('[DashboardMain] Failed to load dashboard data:', error)
+      toast.error('대시보드 데이터를 불러오는데 실패했습니다.')
     } finally {
       if (showLoading) {
         setLoading(false)
       }
     }
-  }, [])
+  }, [employee, userRoles, data])
 
   useEffect(() => {
     loadDashboardData()
