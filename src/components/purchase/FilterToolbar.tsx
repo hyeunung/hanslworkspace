@@ -27,13 +27,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Calendar as CalendarComponent } from '@/components/ui/calendar'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from '@/components/ui/command'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 
@@ -310,6 +303,7 @@ export default function FilterToolbar({
   const [tempMonth, setTempMonth] = useState<Date | undefined>()
   const [tempMonthRange, setTempMonthRange] = useState<{from?: Date, to?: Date}>({})
   const [tempSort, setTempSort] = useState<{field?: string, direction?: 'asc' | 'desc'}>({})
+  const [searchValue, setSearchValue] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   // 검색 확장 시 포커스
@@ -479,8 +473,17 @@ export default function FilterToolbar({
           placeholder = "담당자"
         }
 
+        // 검색으로 옵션 필터링
+        const filteredOptions = options.filter(option => 
+          option.toLowerCase().includes(searchValue.toLowerCase())
+        )
+
         return (
-          <Popover>
+          <Popover onOpenChange={(open) => {
+            if (!open) {
+              setSearchValue('')
+            }
+          }}>
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
@@ -493,30 +496,46 @@ export default function FilterToolbar({
                 <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[200px] p-0 border-0 shadow-lg" align="start">
-              <Command className="border-0">
-                <CommandInput placeholder={`${placeholder} 검색...`} className="h-auto border-0 focus:ring-0 focus:outline-none card-description placeholder:card-description" style={{padding: '2px 10px'}} />
-                <CommandEmpty>{placeholder}를 찾을 수 없습니다.</CommandEmpty>
-                <CommandGroup className="max-h-[200px] overflow-y-auto">
-                  {options.map(option => (
-                    <CommandItem
-                      key={option}
-                      value={option}
-                      onSelect={(value) => {
-                        setNewFilter(prev => ({ ...prev, value: value }));
-                      }}
-                      className="cursor-pointer"
-                    >
-                      <Check
-                        className={`mr-2 h-3 w-3 ${
-                          newFilter.value === option ? "opacity-100" : "opacity-0"
-                        }`}
-                      />
-                      <span className="card-description">{option}</span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </Command>
+            <PopoverContent className="w-[200px] p-1 border-0 shadow-lg" align="start">
+              <div className="space-y-1">
+                {/* 검색 입력 필드 */}
+                <Input
+                  placeholder={`${placeholder} 검색...`}
+                  className="h-auto border-0 focus:ring-0 focus:outline-none card-description placeholder:card-description"
+                  style={{padding: '2px 10px'}}
+                  value={searchValue}
+                  onChange={(e) => setSearchValue(e.target.value)}
+                  autoFocus
+                />
+                
+                {/* 옵션 목록 - Command 대신 단순 div 사용 */}
+                <div className="max-h-[200px] overflow-y-auto">
+                  {filteredOptions.length === 0 ? (
+                    <div className="p-2 text-sm text-gray-500">
+                      {searchValue ? '검색 결과가 없습니다' : `${placeholder}를 찾을 수 없습니다`}
+                    </div>
+                  ) : (
+                    filteredOptions.map(option => (
+                      <Button
+                        key={option}
+                        variant="ghost"
+                        onClick={() => {
+                          setNewFilter(prev => ({ ...prev, value: option }))
+                          setSearchValue('')
+                        }}
+                        className="w-full justify-start p-2 h-auto hover:bg-gray-100 text-left"
+                      >
+                        <Check
+                          className={`mr-2 h-3 w-3 ${
+                            newFilter.value === option ? "opacity-100" : "opacity-0"
+                          }`}
+                        />
+                        <span className="card-description">{option}</span>
+                      </Button>
+                    ))
+                  )}
+                </div>
+              </div>
             </PopoverContent>
           </Popover>
         )
