@@ -17,19 +17,54 @@ interface DataInitializerProps {
  */
 export default function DataInitializer({ children }: DataInitializerProps) {
   const { employee } = useAuth()
-  const [dataLoading, setDataLoading] = useState(true)
+  const [dataLoading, setDataLoading] = useState(() => {
+    // 더 정확한 초기 상태 결정: 캐시와 사용자 정보 모두 확인
+    const hasCache = !!purchaseMemoryCache.allPurchases
+    const isSameUser = purchaseMemoryCache.currentUser?.id === employee?.id
+    const shouldLoad = !hasCache || !isSameUser
+    
+    logger.debug('[DataInitializer] Initial state calculation:', {
+      hasCache,
+      isSameUser,
+      shouldLoad,
+      employeeId: employee?.id,
+      cachedUserId: purchaseMemoryCache.currentUser?.id
+    })
+    
+    return shouldLoad
+  })
   const [dataError, setDataError] = useState<string | null>(null)
 
   useEffect(() => {
     let isMounted = true
 
     const initializeAppData = async () => {
-      if (!employee?.id) return
+      if (!employee?.id) {
+        setDataLoading(false)
+        return
+      }
+
+      // 이미 데이터가 로드되어 있고 같은 사용자인 경우 스킵
+      if (purchaseMemoryCache.allPurchases && 
+          purchaseMemoryCache.currentUser?.id === employee.id) {
+        logger.debug('[DataInitializer] Data already loaded for current user, skipping initialization')
+        if (isMounted && dataLoading) {
+          setDataLoading(false)
+        }
+        return
+      }
+
+      // 이미 로딩 중인 경우 스킵
+      if (purchaseMemoryCache.isLoading) {
+        logger.debug('[DataInitializer] Data loading already in progress')
+        return
+      }
 
       try {
         logger.info('[DataInitializer] Starting app data initialization...')
         setDataLoading(true)
         setDataError(null)
+        purchaseMemoryCache.isLoading = true
 
         // 사용자 정보를 메모리 캐시에 설정
         purchaseMemoryCache.currentUser = employee
@@ -39,6 +74,7 @@ export default function DataInitializer({ children }: DataInitializerProps) {
 
         if (isMounted) {
           setDataLoading(false)
+          purchaseMemoryCache.isLoading = false
           logger.info('[DataInitializer] App data initialization completed')
         }
       } catch (error) {
@@ -46,6 +82,7 @@ export default function DataInitializer({ children }: DataInitializerProps) {
         if (isMounted) {
           setDataError(error instanceof Error ? error.message : 'Unknown error')
           setDataLoading(false)
+          purchaseMemoryCache.isLoading = false
         }
       }
     }
@@ -55,7 +92,7 @@ export default function DataInitializer({ children }: DataInitializerProps) {
     return () => {
       isMounted = false
     }
-  }, [employee?.id])
+  }, [employee?.id, dataLoading])
 
   // 데이터 로딩 중 - 로고 포함된 로딩 화면
   if (dataLoading) {

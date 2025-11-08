@@ -408,6 +408,19 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
 
   // 필터링된 데이터 기반 동적 탭별 카운트
   const filteredTabCounts = useMemo(() => {
+    const hasAnyFilter = activeFilters.length > 0 || searchTerm.trim() !== '' || 
+                        (selectedEmployee && selectedEmployee !== 'all' && selectedEmployee !== '전체');
+
+    let dateStart: string | undefined;
+    
+    if (!hasAnyFilter) {
+      const sixtyDaysAgo = new Date();
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+      dateStart = sixtyDaysAgo.toISOString().split('T')[0];
+    }
+    
+    const employeeName = selectedEmployee === 'all' || selectedEmployee === '전체' ? null : selectedEmployee;
+    
     const filterOptions = {
       employeeName,
       searchTerm,
@@ -422,7 +435,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       receipt: getFilteredPurchases({ tab: 'receipt', ...filterOptions }).length,
       done: getFilteredPurchases({ tab: 'done', ...filterOptions }).length,
     };
-  }, [getFilteredPurchases, employeeName, searchTerm, activeFilters, dateStart, sortConfig]);
+  }, [getFilteredPurchases, selectedEmployee, searchTerm, activeFilters, sortConfig]);
 
 
   // 월간 필터 감지 및 합계금액 계산
