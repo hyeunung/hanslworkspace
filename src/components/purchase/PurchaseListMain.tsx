@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { usePurchaseMemory } from "@/hooks/usePurchaseMemory";
 import FastPurchaseTable from "@/components/purchase/FastPurchaseTable";
 import FilterToolbar, { FilterRule, SortRule } from "@/components/purchase/FilterToolbar";
+import { updatePurchaseInMemory } from "@/services/purchaseDataLoader";
 
 import { Plus, Package, Info } from "lucide-react";
 import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs/generatePurchaseOrderExcel";
@@ -72,7 +73,11 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   
   // 메모리 기반이므로 리프레시 불필요 (하위 호환성을 위해 빈 함수 유지)
   const loadPurchases = useCallback(async () => {}, []);
-  const updatePurchaseOptimistic = useCallback(() => {}, []);
+  
+  // Optimistic Update: 메모리 캐시 즉시 업데이트
+  const updatePurchaseOptimistic = useCallback((purchaseId: number, updater: (prev: Purchase) => Purchase) => {
+    updatePurchaseInMemory(purchaseId, updater)
+  }, []);
   
   const isAdmin = currentUserRoles?.includes('app_admin');
   
@@ -400,7 +405,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       startDate: dateStart,
       sortConfig: sortConfig ? { key: sortConfig.field, direction: sortConfig.direction } : undefined
     });
-  }, [getFilteredPurchases, activeTab, selectedEmployee, searchTerm, activeFilters, sortConfig]);
+  }, [getFilteredPurchases, activeTab, selectedEmployee, searchTerm, activeFilters, sortConfig, purchases]);
 
   // 메모리 기반 필터링으로 이미 모든 필터 적용됨
   const tabFilteredPurchases = baseFilteredPurchases;

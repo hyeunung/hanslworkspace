@@ -130,14 +130,26 @@ export function updatePurchaseInMemory(
   purchaseId: number, 
   updater: (prev: Purchase) => Purchase
 ): void {
-  if (!purchaseMemoryCache.allPurchases) return
+  if (!purchaseMemoryCache.allPurchases) {
+    logger.warn(`[updatePurchaseInMemory] Cache is empty, purchaseId: ${purchaseId}`)
+    return
+  }
   
   const index = purchaseMemoryCache.allPurchases.findIndex(p => p.id === purchaseId)
   if (index !== -1) {
     const updated = updater(purchaseMemoryCache.allPurchases[index])
-    purchaseMemoryCache.allPurchases[index] = updated
+    
+    // 배열 참조를 변경하여 React가 즉시 변경을 감지하도록 함 (실시간 업데이트)
+    purchaseMemoryCache.allPurchases = [
+      ...purchaseMemoryCache.allPurchases.slice(0, index),
+      updated,
+      ...purchaseMemoryCache.allPurchases.slice(index + 1)
+    ]
     
     // 메모리 변경을 구독자들에게 알림
     purchaseMemoryCache.lastFetch = Date.now()
+    logger.debug(`[updatePurchaseInMemory] Updated purchase ${purchaseId} at index ${index}`)
+  } else {
+    logger.warn(`[updatePurchaseInMemory] Purchase ${purchaseId} not found in cache. Total purchases: ${purchaseMemoryCache.allPurchases.length}`)
   }
 }

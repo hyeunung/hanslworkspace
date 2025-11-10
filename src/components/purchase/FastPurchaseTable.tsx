@@ -101,6 +101,7 @@ const COMMON_COLUMN_CLASSES = {
 };
 
 // 승인 상태 상세 표시 컴포넌트 (승인대기 탭용)
+// 실시간 업데이트를 위해 memo 비교 함수에서 승인 상태 변경 감지
 const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
   const middleApproved = purchase.middle_manager_status === 'approved';
   const middleRejected = purchase.middle_manager_status === 'rejected';

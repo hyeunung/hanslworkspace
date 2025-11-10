@@ -3,8 +3,7 @@
  * 초기 로딩 시 모든 데이터를 메모리에 저장하고 클라이언트에서 필터링
  */
 
-import type { Purchase } from '@/types/purchase'
-import type { Employee } from '@/types/schema'
+import type { Purchase, Employee } from '@/types/purchase'
 
 // 전역 메모리 캐시
 export interface PurchaseMemoryCache {
@@ -61,4 +60,14 @@ export const calculateMemoryUsage = (purchases: Purchase[]): number => {
   const purchaseSize = 5 * 1024 // 5KB in bytes
   const totalBytes = purchases.length * purchaseSize
   return totalBytes / (1024 * 1024) // Convert to MB
+}
+
+// 메모리에서 특정 구매 요청 찾기
+export const findPurchaseInMemory = (purchaseId: number | string): Purchase | null => {
+  if (!purchaseMemoryCache.allPurchases) return null
+  
+  const id = Number(purchaseId)
+  if (isNaN(id)) return null
+  
+  return purchaseMemoryCache.allPurchases.find(purchase => purchase.id === id) || null
 }

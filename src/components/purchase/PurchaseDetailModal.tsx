@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { PurchaseRequestWithDetails, Purchase } from '@/types/purchase'
+import { PurchaseRequestWithDetails, Purchase, Vendor } from '@/types/purchase'
+import { findPurchaseInMemory } from '@/stores/purchaseMemoryStore'
 import { formatDate } from '@/utils/helpers'
 import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { 
@@ -208,6 +209,32 @@ function PurchaseDetailModal({
     if (!purchaseId) return
     
     try {
+      // 🚀 메모리에서 먼저 찾기 (즉시 새로고침)
+      const memoryPurchase = findPurchaseInMemory(purchaseId)
+      if (memoryPurchase) {
+        logger.debug(`[PurchaseDetailModal] 메모리에서 발주 ${purchaseId} 새로고침 완료`)
+        
+        // 메모리 데이터를 PurchaseRequestWithDetails 형태로 변환
+        const purchaseData = {
+          ...memoryPurchase,
+          id: String(memoryPurchase.id), // PurchaseRequest는 id가 string
+          is_po_generated: false, // Purchase 타입에는 없지만 PurchaseRequest에 필수
+          vendor: {
+            id: memoryPurchase.vendor_id,
+            vendor_name: memoryPurchase.vendor_name || '알 수 없음',
+            is_active: true
+          } as Vendor,
+          vendor_contacts: []
+        } as PurchaseRequestWithDetails
+        
+        setPurchase(purchaseData)
+        setEditedPurchase(purchaseData)
+        setEditedItems(memoryPurchase.items || [])
+        return
+      }
+      
+      // 메모리에 없는 경우에만 DB에서 로드 (fallback)
+      logger.debug(`[PurchaseDetailModal] 메모리에서 발주 ${purchaseId} 찾지 못함, DB에서 새로고침`)
       const supabase = createClient()
       // 최신 구매 요청 데이터 로드
       const { data, error } = await supabase
@@ -598,7 +625,30 @@ function PurchaseDetailModal({
  
   useEffect(() => {
     if (purchaseId && isOpen) {
-      loadPurchaseDetail(purchaseId.toString())
+      // 🚀 메모리에서 즉시 데이터 확인 후 로드
+      const memoryPurchase = findPurchaseInMemory(purchaseId)
+      if (memoryPurchase) {
+        // 메모리에 있으면 즉시 로드 (loading 상태 없음)
+        logger.debug(`[PurchaseDetailModal] useEffect - 메모리에서 발주 ${purchaseId} 즉시 설정`)
+        const purchaseData = {
+          ...memoryPurchase,
+          id: String(memoryPurchase.id), // PurchaseRequest는 id가 string
+          is_po_generated: false, // Purchase 타입에는 없지만 PurchaseRequest에 필수
+          vendor: {
+            id: memoryPurchase.vendor_id,
+            vendor_name: memoryPurchase.vendor_name || '알 수 없음',
+            is_active: true
+          } as Vendor,
+          vendor_contacts: []
+        } as PurchaseRequestWithDetails
+        
+        setPurchase(purchaseData)
+        setEditedPurchase(purchaseData)
+        setEditedItems(memoryPurchase.items || [])
+      } else {
+        // 메모리에 없으면 기존 방식으로 로드
+        loadPurchaseDetail(purchaseId.toString())
+      }
       setIsEditing(false) // 모달 열 때마다 편집 모드 초기화
     }
   }, [purchaseId, isOpen])
@@ -789,6 +839,32 @@ function PurchaseDetailModal({
 
   const loadPurchaseDetail = async (id: string) => {
     try {
+      // 🚀 메모리에서 먼저 찾기 (로딩 상태 없이 즉시 로드)
+      const memoryPurchase = findPurchaseInMemory(id)
+      if (memoryPurchase) {
+        logger.debug(`[PurchaseDetailModal] 메모리에서 발주 ${id} 즉시 로드 완료`)
+        
+        // 메모리 데이터를 PurchaseRequestWithDetails 형태로 변환
+        const purchaseData = {
+          ...memoryPurchase,
+          id: String(memoryPurchase.id), // PurchaseRequest는 id가 string
+          is_po_generated: false, // Purchase 타입에는 없지만 PurchaseRequest에 필수
+          vendor: {
+            id: memoryPurchase.vendor_id,
+            vendor_name: memoryPurchase.vendor_name || '알 수 없음',
+            is_active: true
+          } as Vendor,
+          vendor_contacts: []
+        } as PurchaseRequestWithDetails
+        
+        setPurchase(purchaseData)
+        setEditedPurchase(purchaseData)
+        setEditedItems(memoryPurchase.items || [])
+        return
+      }
+      
+      // 메모리에 없는 경우에만 로딩 상태 표시 후 DB에서 로드 (fallback)
+      logger.debug(`[PurchaseDetailModal] 메모리에서 발주 ${id} 찾지 못함, DB에서 로드`)
       setLoading(true)
       const supabase = createClient()
       
@@ -823,6 +899,7 @@ function PurchaseDetailModal({
         setEditedItems(sortedItems)
       }
     } catch (error) {
+      logger.error('[PurchaseDetailModal] 발주 상세 로드 실패:', error)
       toast.error('발주 상세 정보를 불러오는데 실패했습니다.')
     } finally {
       setLoading(false)
@@ -1353,7 +1430,7 @@ function PurchaseDetailModal({
         : { 
             final_manager_status: 'approved'
           }
-      
+
       const { error } = await supabase
         .from('purchase_requests')
         .update(updateData)
@@ -1362,15 +1439,42 @@ function PurchaseDetailModal({
       if (error) {
         throw error
       }
-      
+
       // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
       if (type === 'middle') {
         setPurchase(prev => prev ? { ...prev, middle_manager_status: 'approved' } : null)
       } else {
         setPurchase(prev => prev ? { ...prev, final_manager_status: 'approved' } : null)
       }
+
+      // Optimistic Update로 리스트 즉시 반영 (구매완료/입고완료와 동일한 패턴)
+      if (purchase && onOptimisticUpdate) {
+        const purchaseIdNumber = Number(purchase.id)
+        if (!Number.isNaN(purchaseIdNumber)) {
+          onOptimisticUpdate(purchaseIdNumber, prev => {
+            if (type === 'middle') {
+              return {
+                ...prev,
+                middle_manager_status: 'approved' as any
+              }
+            } else {
+              return {
+                ...prev,
+                final_manager_status: 'approved' as any
+              }
+            }
+          })
+        }
+      }
       
       toast.success(`${type === 'middle' ? '중간' : '최종'} 승인이 완료되었습니다.`)
+
+      // 상세 모달 및 리스트 모두 새로고침
+      await refreshModalData()
+      const refreshResult = onRefresh?.(true, { silent: true })
+      if (refreshResult instanceof Promise) {
+        await refreshResult
+      }
     } catch (error) {
       toast.error('승인 처리 중 오류가 발생했습니다.')
     }
@@ -2315,7 +2419,7 @@ function PurchaseDetailModal({
                     </div>
                     <div className="divide-y divide-gray-100">
                       {(isEditing ? editedItems : purchase.purchase_request_items)?.map((item, index) => (
-                        <div key={index} className="px-2 sm:px-3 py-1.5 border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                        <div key={index} className="px-2 sm:px-3 py-1.5 border-b border-gray-50 hover:bg-gray-50/50">
                           {/* Desktop Layout */}
                           <div className={`hidden sm:grid items-center gap-3`} style={{
                             gridTemplateColumns: getGridTemplateColumns()
@@ -2434,7 +2538,7 @@ function PurchaseDetailModal({
                                       {canPurchase ? (
                                         <button
                                           onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
-                                          className={`transition-colors ${
+                                          className={`${
                                             item.is_payment_completed
                                               ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
                                               : 'button-toggle-inactive'
@@ -2564,7 +2668,7 @@ function PurchaseDetailModal({
                                           remark: item.remark
                                         })
                                       }}
-                                      className="button-action-primary hover:bg-green-600 transition-colors"
+                                      className="button-action-primary hover:bg-green-600"
                                       title="클릭하여 거래명세서 확인 취소"
                                     >
                                       {statementReceivedAction.config.completedText}
@@ -2640,7 +2744,7 @@ function PurchaseDetailModal({
                                 {canReceiptCheck ? (
                                   <button
                                     onClick={() => handleUtkToggle(item.id, !item.is_utk_checked)}
-                                    className={`button-base transition-colors ${
+                                    className={`button-base ${
                                       item.is_utk_checked
                                         ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
                                         : 'button-toggle-inactive'
@@ -2753,7 +2857,7 @@ function PurchaseDetailModal({
                                           {canPurchase ? (
                                             <button
                                               onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
-                                              className={`text-xs px-2 py-1 rounded transition-colors ${
+                                              className={`text-xs px-2 py-1 rounded ${
                                                 item.is_payment_completed
                                                   ? 'bg-orange-500 text-white hover:bg-orange-600'
                                                   : 'bg-gray-100 text-gray-600'
@@ -2903,7 +3007,7 @@ function PurchaseDetailModal({
                                             remark: item.remark
                                           })
                                         }}
-                                        className="text-xs px-2 py-1 rounded button-action-primary hover:bg-green-600 transition-colors"
+                                        className="text-xs px-2 py-1 rounded button-action-primary hover:bg-green-600"
                                         title="클릭하여 거래명세서 확인 취소"
                                       >
                                         {statementReceivedAction.config.completedText}

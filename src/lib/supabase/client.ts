@@ -20,22 +20,30 @@ export function createClient() {
       const root = document.getElementById('root')
       if (root) {
         root.innerHTML = `
-          <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px;">
-            <div style="max-width: 600px; text-align: center;">
-              <h1 style="color: #ef4444; margin-bottom: 20px;">환경 변수 설정 필요</h1>
-              <p style="color: #6b7280; margin-bottom: 30px;">
+          <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; background-color: #f9fafb;">
+            <div style="max-width: 700px; text-align: center; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+              <h1 style="color: #ef4444; margin-bottom: 20px; font-size: 28px;">⚠️ 환경 변수 설정 필요</h1>
+              <p style="color: #4b5563; margin-bottom: 30px; font-size: 18px;">
                 Supabase 연결을 위한 환경 변수가 설정되지 않았습니다.
               </p>
-              <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; text-align: left;">
-                <h3 style="margin-bottom: 10px;">필요한 환경 변수:</h3>
-                <ul style="list-style: none; padding: 0;">
-                  <li style="margin-bottom: 5px;">• VITE_SUPABASE_URL</li>
-                  <li>• VITE_SUPABASE_ANON_KEY</li>
-                </ul>
+              <div style="background: #fef3c7; padding: 25px; border-radius: 8px; text-align: left; margin-bottom: 30px; border: 1px solid #fcd34d;">
+                <h3 style="margin-bottom: 15px; color: #92400e; font-size: 18px;">📋 설정 방법:</h3>
+                <ol style="padding-left: 20px; color: #78350f; line-height: 1.8;">
+                  <li style="margin-bottom: 10px;">프로젝트 루트에 <code style="background: #fff; padding: 2px 6px; border-radius: 4px; font-family: monospace;">.env</code> 파일을 생성하세요</li>
+                  <li style="margin-bottom: 10px;">다음 내용을 추가하세요:
+                    <pre style="background: #1f2937; color: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 10px; font-size: 14px;">VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key-here</pre>
+                  </li>
+                  <li style="margin-bottom: 10px;">Supabase 대시보드에서 실제 URL과 키를 복사하여 붙여넣으세요</li>
+                  <li>개발 서버를 재시작하세요: <code style="background: #fff; padding: 2px 6px; border-radius: 4px; font-family: monospace;">npm run dev</code></li>
+                </ol>
               </div>
-              <p style="color: #6b7280; margin-top: 20px; font-size: 14px;">
-                Vercel 또는 Netlify 대시보드에서 환경 변수를 설정해주세요.
-              </p>
+              <div style="background: #dbeafe; padding: 20px; border-radius: 8px; border: 1px solid #93c5fd;">
+                <p style="color: #1e3a8a; margin: 0; font-size: 14px;">
+                  💡 <strong>참고:</strong> .env 파일은 git에 커밋되지 않습니다. 
+                  팀원들과 별도로 공유하세요.
+                </p>
+              </div>
             </div>
           </div>
         `

@@ -1,5 +1,6 @@
-import { ReactNode } from 'react'
+import { ReactNode, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
+import { logger } from '@/lib/logger'
 import LoginMain from '@/components/auth/LoginMain'
 interface AuthGuardProps {
   children: ReactNode
@@ -18,7 +19,10 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="w-8 h-8 border-2 border-hansl-600 border-t-transparent rounded-full animate-spin" />
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-hansl-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="mt-4 text-gray-600">인증 확인 중...</p>
+        </div>
       </div>
     )
   }

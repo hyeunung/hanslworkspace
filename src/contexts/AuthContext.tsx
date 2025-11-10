@@ -1,14 +1,7 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { logger } from '@/lib/logger'
-
-interface Employee {
-  id: number
-  email: string
-  name: string
-  purchase_role: string | string[]
-  [key: string]: any
-}
+import type { Employee } from '@/types/purchase'
 
 interface AuthContextType {
   user: any
@@ -18,7 +11,8 @@ interface AuthContextType {
   currentUserEmail: string
   currentUserId: string
   loading: boolean
-  refreshAuth: () => Promise<void>
+  refreshing: boolean
+  refreshAuth: (options?: { background?: boolean }) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -31,6 +25,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<any>(null)
   const [employee, setEmployee] = useState<Employee | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false)
+  const initialLoadCompleteRef = useRef(false)
 
   const supabase = createClient()
 
@@ -49,9 +46,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return []
   }
 
-  const loadAuthData = async () => {
+  const loadAuthData = async (options?: { background?: boolean }) => {
+    const isBackground = options?.background ?? false
+
+    if (isBackground) {
+      setRefreshing(true)
+    } else {
+      setLoading(true)
+    }
+
     try {
-      logger.debug('[AuthContext] Starting auth data load...')
+      logger.debug('[AuthContext] Starting auth data load...', { background: isBackground })
       
       const { data: { user }, error: authError } = await supabase.auth.getUser()
       
@@ -86,7 +91,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       if (employeeData) {
-        setEmployee(employeeData)
+        // DB에서 받은 데이터에 id를 string으로 변환
+        const employeeWithStringId = {
+          ...employeeData,
+          id: String(employeeData.id)
+        }
+        setEmployee(employeeWithStringId)
         logger.info('[AuthContext] 인증 데이터 로드 완료', { 
           email: employeeData.email, 
           roles: parseRoles(employeeData.purchase_role) 
@@ -97,30 +107,47 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(null)
       setEmployee(null)
     } finally {
-      setLoading(false)
+      if (isBackground) {
+        setRefreshing(false)
+      } else {
+        setLoading(false)
+      }
+      if (!initialLoadComplete) {
+        setInitialLoadComplete(true)
+        initialLoadCompleteRef.current = true
+      }
     }
   }
 
-  const refreshAuth = async () => {
-    setLoading(true)
-    await loadAuthData()
+  const refreshAuth = async (options?: { background?: boolean }) => {
+    const isBackground = options?.background ?? true
+    await loadAuthData({ background: isBackground })
   }
 
   useEffect(() => {
-    loadAuthData()
+    initialLoadCompleteRef.current = initialLoadComplete
+  }, [initialLoadComplete])
 
-    // Supabase auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      logger.debug('[AuthContext] Auth state changed:', event)
-      
+  useEffect(() => {
+    loadAuthData({ background: false })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, _session: any) => {
+      logger.debug('[AuthContext] Auth state changed:', { event })
+
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        setLoading(true)
-        loadAuthData()
+        if (initialLoadCompleteRef.current) {
+          loadAuthData({ background: true })
+        } else {
+          loadAuthData({ background: false })
+        }
       } else if (event === 'SIGNED_OUT') {
         logger.info('[AuthContext] User signed out')
         setUser(null)
         setEmployee(null)
         setLoading(false)
+        setRefreshing(false)
+        setInitialLoadComplete(false)
+        initialLoadCompleteRef.current = false
       }
     })
 
@@ -141,6 +168,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     currentUserEmail,
     currentUserId,
     loading,
+    refreshing,
     refreshAuth
   }
 

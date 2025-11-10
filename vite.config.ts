@@ -15,7 +15,8 @@ export default defineConfig({
     middlewareMode: false,
     cors: true,
     hmr: {
-      port: 24678
+      port: 24678,
+      clientPort: 24678
     },
     fs: {
       strict: false

@@ -19,22 +19,34 @@ export function usePurchaseMemory() {
   
   // 캐시 데이터 구독
   useEffect(() => {
+    let lastArrayRef = purchaseMemoryCache.allPurchases
+    let lastFetchTime = purchaseMemoryCache.lastFetch
+    
     // 캐시가 업데이트되면 즉시 반영
     const checkCache = () => {
-      if (purchaseMemoryCache.allPurchases) {
-        setPurchases(purchaseMemoryCache.allPurchases)
-        setLoading(false)
-      } else {
-        setLoading(purchaseMemoryCache.isLoading)
+      // 배열 참조가 변경되었거나 lastFetch가 변경되었는지 확인
+      const arrayChanged = purchaseMemoryCache.allPurchases !== lastArrayRef
+      const fetchTimeChanged = purchaseMemoryCache.lastFetch !== lastFetchTime
+      
+      if (arrayChanged || fetchTimeChanged) {
+        if (purchaseMemoryCache.allPurchases) {
+          setPurchases([...purchaseMemoryCache.allPurchases]) // 새 배열로 복사하여 리렌더링 보장
+          setLoading(false)
+          lastArrayRef = purchaseMemoryCache.allPurchases
+          lastFetchTime = purchaseMemoryCache.lastFetch
+        } else {
+          setLoading(purchaseMemoryCache.isLoading)
+        }
+        setError(purchaseMemoryCache.error)
       }
-      setError(purchaseMemoryCache.error)
     }
     
     // 초기 체크
     checkCache()
     
-    // 폴링으로 캐시 업데이트 감지 (간단한 구현)
-    const interval = setInterval(checkCache, 100)
+    // 폴링으로 캐시 업데이트 감지 (더 빠른 반응을 위해 50ms로 단축)
+    // 배열 참조 변경 시 즉시 감지되지만, 폴링도 유지하여 안전성 보장
+    const interval = setInterval(checkCache, 50)
     
     return () => clearInterval(interval)
   }, [])

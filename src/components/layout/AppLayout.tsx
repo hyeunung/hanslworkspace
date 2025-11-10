@@ -30,16 +30,16 @@ export default function AppLayout() {
       
       {/* 콘텐츠 영역 */}
       <div style={{ paddingTop: '56px', paddingLeft: '0' }}>
-        {/* 데스크톱 뷰 */}
-        <div style={{ marginLeft: '56px' }} className="lg:block hidden">
-          <main className="p-1 sm:p-2 lg:p-3">
+        {/* 데스크톱 뷰 - 항상 보이도록 수정 */}
+        <div style={{ marginLeft: '56px' }} className="hidden lg:block">
+          <main className="p-1 sm:p-2 lg:p-3" style={{ minHeight: 'calc(100vh - 56px)' }}>
             <AppRoutes />
           </main>
         </div>
         
         {/* 모바일 뷰 */}
-        <div className="lg:hidden">
-          <main className="p-1 sm:p-2">
+        <div className="block lg:hidden">
+          <main className="p-1 sm:p-2" style={{ minHeight: 'calc(100vh - 56px)' }}>
             <AppRoutes />
           </main>
         </div>

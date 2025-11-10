@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import ErrorBoundary from '@/components/ErrorBoundary'
 
 // 페이지 컴포넌트들을 lazy loading으로 변경 (코드 스플리팅)
@@ -18,17 +18,25 @@ const ReceiptsMain = lazy(() => import('@/components/receipts/ReceiptsMain'))
  * - 지연 로딩 및 에러 바운더리 적용
  */
 export default function AppRoutes() {
+  const location = useLocation()
+  
   return (
     <ErrorBoundary>
       <Suspense fallback={
-        <div className="flex items-center justify-center py-12">
-          <div className="w-8 h-8 border-2 border-hansl-600 border-t-transparent rounded-full animate-spin" />
-          <span className="ml-3 text-gray-600">로딩 중...</span>
+        <div className="flex items-center justify-center py-12" style={{ minHeight: '400px' }}>
+          <div className="text-center">
+            <div className="w-8 h-8 border-2 border-hansl-600 border-t-transparent rounded-full animate-spin mx-auto" />
+            <span className="ml-3 text-gray-600 block mt-4">로딩 중...</span>
+            <p className="text-xs text-gray-400 mt-2">경로: {location.pathname}</p>
+          </div>
         </div>
       }>
         <Routes>
           {/* 기본 리다이렉트 */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          
+          {/* 테스트 라우트 */}
+          <Route path="/test" element={<div style={{ padding: '20px', backgroundColor: 'yellow' }}>테스트 라우트 작동 중!</div>} />
           
           {/* 메인 페이지들 */}
           <Route path="/dashboard" element={<DashboardMain />} />

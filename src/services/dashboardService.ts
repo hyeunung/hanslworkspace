@@ -56,14 +56,7 @@ export class DashboardService {
       return dashboardCache.data
     }
 
-    const [
-      stats,
-      myRecentRequests,
-      pendingApprovals,
-      quickActions,
-      todaySummary,
-      myPurchaseStatus
-    ] = await Promise.all([
+    const results = await Promise.allSettled([
       this.getDashboardStats(employee),
       this.getMyRecentRequests(employee),
       this.getPendingApprovals(employee),
@@ -71,6 +64,57 @@ export class DashboardService {
       this.getTodaySummary(employee),
       this.getMyPurchaseStatus(employee)
     ])
+    
+    const statsResult = results[0]
+    const myRecentRequestsResult = results[1]
+    const pendingApprovalsResult = results[2]
+    const quickActionsResult = results[3]
+    const todaySummaryResult = results[4]
+    const myPurchaseStatusResult = results[5]
+    
+    const stats: DashboardStats = statsResult.status === 'fulfilled' 
+      ? statsResult.value 
+      : { total: 0, myRequests: 0, pending: 0, completed: 0, urgent: 0, todayActions: 0 }
+    
+    const myRecentRequests: MyRequestStatus[] = myRecentRequestsResult.status === 'fulfilled'
+      ? myRecentRequestsResult.value
+      : []
+    
+    const pendingApprovals: PurchaseRequestWithDetails[] = pendingApprovalsResult.status === 'fulfilled'
+      ? pendingApprovalsResult.value
+      : []
+    
+    const quickActions: QuickAction[] = quickActionsResult.status === 'fulfilled'
+      ? quickActionsResult.value
+      : []
+    
+    const todaySummary = todaySummaryResult.status === 'fulfilled'
+      ? todaySummaryResult.value
+      : { approved: 0, requested: 0, received: 0 }
+    
+    const myPurchaseStatus = myPurchaseStatusResult.status === 'fulfilled'
+      ? myPurchaseStatusResult.value
+      : { waitingPurchase: [], waitingDelivery: [], recentCompleted: [] }
+    
+    // 실패한 항목 로깅
+    if (statsResult.status === 'rejected') {
+      logger.error('[DashboardService] getDashboardStats 실패:', statsResult.reason)
+    }
+    if (myRecentRequestsResult.status === 'rejected') {
+      logger.error('[DashboardService] getMyRecentRequests 실패:', myRecentRequestsResult.reason)
+    }
+    if (pendingApprovalsResult.status === 'rejected') {
+      logger.error('[DashboardService] getPendingApprovals 실패:', pendingApprovalsResult.reason)
+    }
+    if (quickActionsResult.status === 'rejected') {
+      logger.error('[DashboardService] getQuickActions 실패:', quickActionsResult.reason)
+    }
+    if (todaySummaryResult.status === 'rejected') {
+      logger.error('[DashboardService] getTodaySummary 실패:', todaySummaryResult.reason)
+    }
+    if (myPurchaseStatusResult.status === 'rejected') {
+      logger.error('[DashboardService] getMyPurchaseStatus 실패:', myPurchaseStatusResult.reason)
+    }
 
     const dashboardData: DashboardData = {
       employee,
@@ -157,7 +201,7 @@ export class DashboardService {
       .order('created_at', { ascending: false })
       .limit(5)
 
-    return (data || []).map(item => ({
+    return (data || []).map((item: any) => ({
       ...item,
       vendor_name: item.vendors?.vendor_name,
       total_items: item.purchase_request_items?.length || 0,
@@ -174,7 +218,7 @@ export class DashboardService {
 
     // 먼저 모든 발주요청을 가져옴 (발주 리스트와 동일)
     // 스키마에 맞춰 item 단가/금액 컬럼 수정 (unit_price_value, amount_value)
-    let allRequests: any[] | null = null
+    let allRequests: any[] = []
     let baseError: any = null
 
 
@@ -201,18 +245,6 @@ export class DashboardService {
     } else {
       allRequests = firstTry.data || []
     }
-    
-    logger.debug('📊 전체 조회된 발주요청 개수', { count: allRequests.length })
-    logger.debug('📊 최근 5개 발주요청', {
-      items: allRequests.slice(0, 5).map(item => ({
-        id: item.id,
-        purchase_order_number: item.purchase_order_number,
-        request_date: item.request_date,
-        created_at: item.created_at,
-        middle_manager_status: item.middle_manager_status,
-        final_manager_status: item.final_manager_status
-      }))
-    })
 
     // 클라이언트 사이드에서 역할별 필터링
     let filteredData = allRequests || []
@@ -510,7 +542,7 @@ export class DashboardService {
 
     // 클라이언트 사이드 필터링 (PurchaseListMain 구매/입고 탭과 동일한 로직)
     
-    const waitingPurchase = allMyRequests.filter(item => {
+    const waitingPurchase = allMyRequests.filter((item: any) => {
       // 구매 대기: 구매/발주 요청 카테고리 + 결제 미완료 + 선진행(승인무관) OR 일반&최종승인
       // payment_category를 trim()하여 공백 처리 및 대소문자 무시
       const categoryNormalized = (item.payment_category || '').trim().replace(/\s+/g, '')
@@ -532,7 +564,7 @@ export class DashboardService {
     }).slice(0, 10)
 
 
-    const waitingDelivery = allMyRequests.filter(item => {
+    const waitingDelivery = allMyRequests.filter((item: any) => {
       // 입고 탭 로직: 입고 미완료 + 선진행(승인무관) OR 최종승인
       const notReceived = !item.is_received
       const isSeonJin = (item.progress_type || '').includes('선진행')
@@ -549,7 +581,7 @@ export class DashboardService {
     }).slice(0, 10)
 
 
-    const recentCompleted = allMyRequests.filter(item => {
+    const recentCompleted = allMyRequests.filter((item: any) => {
       // 입고 완료 && 7일 이내
       if (item.is_received !== true) return false
       if (!item.received_at) return false
@@ -843,7 +875,7 @@ export class DashboardService {
 
     // 클라이언트 사이드 필터링
     // 조건: (선진행이거나 최종승인 완료) AND (is_po_download가 false 또는 null)
-    const filteredData = (data || []).filter(item => {
+    const filteredData = (data || []).filter((item: any) => {
       // 다운로드 가능 조건 체크
       const isDownloadable = item.progress_type === '선진행' || 
         (item.middle_manager_status === 'approved' && item.final_manager_status === 'approved')
@@ -855,7 +887,7 @@ export class DashboardService {
     })
 
     // 오래된 순으로 정렬 (created_at 기준 오름차순)
-    filteredData.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+    filteredData.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 
     return filteredData.slice(0, 10) // 상위 10개만 반환
   }

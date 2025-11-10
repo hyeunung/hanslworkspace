@@ -17,86 +17,119 @@ interface DataInitializerProps {
  */
 export default function DataInitializer({ children }: DataInitializerProps) {
   const { employee } = useAuth()
-  const [dataLoading, setDataLoading] = useState(() => {
-    // 더 정확한 초기 상태 결정: 캐시와 사용자 정보 모두 확인
-    const hasCache = !!purchaseMemoryCache.allPurchases
-    const isSameUser = purchaseMemoryCache.currentUser?.id === employee?.id
-    const shouldLoad = !hasCache || !isSameUser
-    
-    logger.debug('[DataInitializer] Initial state calculation:', {
-      hasCache,
-      isSameUser,
-      shouldLoad,
-      employeeId: employee?.id,
-      cachedUserId: purchaseMemoryCache.currentUser?.id
-    })
-    
-    return shouldLoad
-  })
+  
+  // 데이터가 이미 메모리에 있는지 확인
+  const hasDataInCache = !!purchaseMemoryCache.allPurchases && 
+                         purchaseMemoryCache.allPurchases.length > 0 &&
+                         employee?.id &&
+                         purchaseMemoryCache.currentUser?.id === String(employee.id)
+  
+  // 데이터가 이미 있으면 로딩 상태를 false로 시작
+  const [dataLoading, setDataLoading] = useState(!hasDataInCache)
   const [dataError, setDataError] = useState<string | null>(null)
+
+  // 데이터가 이미 로드되었는지 확인하고 로딩 상태 해제
+  useEffect(() => {
+    if (dataLoading && purchaseMemoryCache.allPurchases && purchaseMemoryCache.allPurchases.length > 0) {
+      // 현재 사용자의 데이터인지 확인
+      if (employee?.id && purchaseMemoryCache.currentUser?.id === String(employee.id)) {
+        setDataLoading(false)
+      }
+    }
+  }, [dataLoading, employee?.id])
 
   useEffect(() => {
     let isMounted = true
 
-    const initializeAppData = async () => {
+    const initializeAppData = async (force = false) => {
+      // employee가 없으면 대기
       if (!employee?.id) {
-        setDataLoading(false)
         return
       }
 
-      // 이미 데이터가 로드되어 있고 같은 사용자인 경우 스킵
-      if (purchaseMemoryCache.allPurchases && 
-          purchaseMemoryCache.currentUser?.id === employee.id) {
-        logger.debug('[DataInitializer] Data already loaded for current user, skipping initialization')
-        if (isMounted && dataLoading) {
-          setDataLoading(false)
-        }
+      // 강제 로딩이 아니고 이미 데이터가 있으면 스킵
+      const hasExistingData = !force && purchaseMemoryCache.allPurchases && 
+                              purchaseMemoryCache.allPurchases.length > 0 &&
+                              purchaseMemoryCache.currentUser?.id === String(employee.id)
+      
+      if (hasExistingData) {
+        // 데이터가 이미 있으면 로딩 상태를 설정하지 않음
         return
       }
 
       // 이미 로딩 중인 경우 스킵
       if (purchaseMemoryCache.isLoading) {
-        logger.debug('[DataInitializer] Data loading already in progress')
         return
       }
 
       try {
-        logger.info('[DataInitializer] Starting app data initialization...')
-        setDataLoading(true)
-        setDataError(null)
+        // 데이터가 없을 때만 로딩 상태 설정
+        if (isMounted) {
+          setDataLoading(true)
+          setDataError(null)
+        }
+        
         purchaseMemoryCache.isLoading = true
-
-        // 사용자 정보를 메모리 캐시에 설정
         purchaseMemoryCache.currentUser = employee
 
         // 구매 데이터 로드
         await loadAllPurchaseData(String(employee.id))
 
-        if (isMounted) {
-          setDataLoading(false)
-          purchaseMemoryCache.isLoading = false
-          logger.info('[DataInitializer] App data initialization completed')
+        // 데이터 로딩 완료 - 언마운트 여부와 관계없이 상태 업데이트
+        const hasData = !!purchaseMemoryCache.allPurchases && purchaseMemoryCache.allPurchases.length > 0
+        
+        if (hasData) {
+          if (isMounted) {
+            setDataLoading(false)
+          } else {
+            // 언마운트되었지만 데이터는 로드됨 - 약간의 지연 후 상태 업데이트 시도
+            setTimeout(() => {
+              setDataLoading(false)
+            }, 100)
+          }
+        } else {
+          if (isMounted) {
+            setDataLoading(false)
+            logger.warn('[DataInitializer] Initialization completed but no data loaded')
+          }
         }
       } catch (error) {
-        logger.error('[DataInitializer] Failed to initialize app data:', error)
+        logger.error('[DataInitializer] Initialization failed:', error)
         if (isMounted) {
           setDataError(error instanceof Error ? error.message : 'Unknown error')
           setDataLoading(false)
-          purchaseMemoryCache.isLoading = false
         }
+      } finally {
+        purchaseMemoryCache.isLoading = false
       }
     }
 
-    initializeAppData()
+    // employee가 있을 때만 초기화 실행
+    if (employee?.id) {
+      initializeAppData()
+    }
 
     return () => {
       isMounted = false
     }
-  }, [employee?.id, dataLoading])
+  }, [employee?.id])
 
   // 데이터 로딩 중 - 로고 포함된 로딩 화면
-  if (dataLoading) {
-    return <InitialLoadingScreen />
+  // 단, 데이터가 이미 메모리에 있으면 로딩 화면을 표시하지 않음
+  if (dataLoading && !hasDataInCache) {
+    return (
+      <>
+        <InitialLoadingScreen />
+        {/* InitialLoadingScreen이 1.5초 후 사라져도 children은 렌더링 */}
+        {children}
+      </>
+    )
+  }
+  
+  // 데이터가 이미 있으면 로딩 상태를 해제하고 children 렌더링
+  if (dataLoading && hasDataInCache) {
+    // 상태 업데이트는 useEffect에서 처리되므로 여기서는 children만 렌더링
+    return <>{children}</>
   }
 
   // 데이터 로딩 실패

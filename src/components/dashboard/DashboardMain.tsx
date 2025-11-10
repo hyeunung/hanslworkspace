@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { dashboardService } from '@/services/dashboardService'
+import { createClient } from '@/lib/supabase/client'
+import { updatePurchaseInMemory } from '@/services/purchaseDataLoader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -13,7 +15,7 @@ import ExcelJS from 'exceljs'
 import PurchaseDetailModal from '@/components/purchase/PurchaseDetailModal'
 import PurchaseStatusModal from '@/components/dashboard/PurchaseStatusModal'
 import { toast } from 'sonner'
-import type { DashboardData } from '@/types/purchase'
+import type { DashboardData, Purchase } from '@/types/purchase'
 import { useNavigate } from 'react-router-dom'
 import { logger } from '@/lib/logger'
 
@@ -28,6 +30,8 @@ export default function DashboardMain() {
   const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set())
   const [selectedOrder, setSelectedOrder] = useState<any>(null)
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false)
+  
+  const supabase = createClient()
   
   // 구매/입고 상세 모달 상태
   const [selectedStatusItem, setSelectedStatusItem] = useState<any>(null)
@@ -48,6 +52,9 @@ export default function DashboardMain() {
   const loadDashboardData = useCallback(async (showLoading = true, forceRefresh = false) => {
     if (!employee) {
       logger.error('[DashboardMain] No employee data available')
+      if (showLoading) {
+        setLoading(false)
+      }
       return
     }
 
@@ -57,18 +64,25 @@ export default function DashboardMain() {
       }
       
       const dashboardData = await dashboardService.getDashboardData(employee, forceRefresh)
-        
       setData(dashboardData)
       setCurrentUserRoles(userRoles)
       
       // lead buyer인 경우 미다운로드 항목 조회
       if (userRoles.includes('lead buyer')) {
-        const undownloaded = await dashboardService.getUndownloadedOrders(employee)
-        setUndownloadedOrders(undownloaded)
+        try {
+          const undownloaded = await dashboardService.getUndownloadedOrders(employee)
+          setUndownloadedOrders(undownloaded)
+        } catch (undownloadedError) {
+          // 미다운로드 항목 조회 실패는 치명적이지 않으므로 계속 진행
+        }
       }
     } catch (error) {
       logger.error('[DashboardMain] Failed to load dashboard data:', error)
       toast.error('대시보드 데이터를 불러오는데 실패했습니다.')
+      // 에러 발생 시에도 로딩 상태 해제
+      setLoading(false)
+      // 빈 데이터라도 설정해서 UI가 렌더링되도록
+      setData(null)
     } finally {
       if (showLoading) {
         setLoading(false)
@@ -244,21 +258,33 @@ export default function DashboardMain() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
+      <div className="flex items-center justify-center" style={{ minHeight: '400px', backgroundColor: '#f9fafb' }}>
         <div className="text-center">
           <div className="w-12 h-12 border-3 border-hansl-500 border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="mt-4 card-subtitle">대시보드를 불러오고 있습니다...</p>
+          <p className="text-xs text-gray-400 mt-2">Employee: {employee?.name || '없음'}</p>
         </div>
       </div>
     )
   }
 
   if (!data?.employee) {
+    logger.warn('[DashboardMain] 데이터 없음', { 
+      hasData: !!data, 
+      hasEmployee: !!employee,
+      employeeName: employee?.name,
+      loading 
+    })
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="text-center bg-white p-8 rounded-lg border border-gray-200">
+      <div className="flex items-center justify-center" style={{ minHeight: '400px', backgroundColor: '#f9fafb' }}>
+        <div className="text-center bg-white p-8 rounded-lg border border-gray-200 shadow-sm">
           <h3 className="modal-subtitle mb-2">사용자 정보를 찾을 수 없습니다</h3>
-          <p className="card-subtitle">로그인을 다시 시도해주세요.</p>
+          <p className="card-subtitle mb-4">로그인을 다시 시도해주세요.</p>
+          <div className="text-xs text-gray-400 space-y-1">
+            <p>Employee: {employee?.name || '없음'}</p>
+            <p>Loading: {loading ? 'true' : 'false'}</p>
+            <p>Has Data: {data ? 'true' : 'false'}</p>
+          </div>
         </div>
       </div>
     )
@@ -731,6 +757,12 @@ export default function DashboardMain() {
           loadDashboardData()
           setIsModalOpen(false)
           setSelectedApprovalId(null)
+        }}
+        onOptimisticUpdate={(purchaseId: number, updater: (prev: Purchase) => Purchase) => {
+          // 메모리 캐시 즉시 업데이트
+          updatePurchaseInMemory(purchaseId, updater)
+          // 대시보드 데이터도 새로고침
+          loadDashboardData(false)
         }}
       />
       
