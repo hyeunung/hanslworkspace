@@ -179,11 +179,22 @@ ApprovalStatusBadge.displayName = 'ApprovalStatusBadge';
 
 // 구매완료 진행률 컴포넌트 (구매현황 탭용)
 // 🚀 메모리 캐시 변경 감지를 위해 usePurchaseMemory 훅 사용
-const PaymentProgressBar = memo(({ purchase }: { purchase: Purchase }) => {
+const PaymentProgressBar = memo(({ purchase, activeTab }: { purchase: Purchase; activeTab?: string }) => {
   const { allPurchases } = usePurchaseMemory(); // 메모리 캐시 변경 감지용
   
   // 메모리에서 최신 데이터 조회 (실시간 업데이트 보장)
   const memoryPurchase = allPurchases?.find(p => p.id === purchase.id) || purchase;
+
+  // 전체항목 탭에서 결제종류가 '구매 요청'이 아닌 건들은 "-" 표시
+  if (activeTab === 'done') {
+    if (memoryPurchase.payment_category !== '구매 요청') {
+      return (
+        <div className="flex items-center justify-center">
+          <span className="card-title text-gray-500">-</span>
+        </div>
+      );
+    }
+  }
   
   // purchase_requests 테이블의 is_payment_completed 필드 우선 체크
   if (memoryPurchase.is_payment_completed) {
@@ -192,7 +203,7 @@ const PaymentProgressBar = memo(({ purchase }: { purchase: Purchase }) => {
       <div className="flex items-center justify-center gap-1">
         <div className="bg-gray-200 rounded-full h-1.5 w-8">
           <div 
-            className="h-1.5 rounded-full bg-blue-500"
+            className="h-1.5 rounded-full bg-orange-500"
             style={{ width: '100%' }}
           />
         </div>
@@ -229,8 +240,8 @@ const PaymentProgressBar = memo(({ purchase }: { purchase: Purchase }) => {
       <div className="bg-gray-200 rounded-full h-1.5 w-8">
         <div 
           className={`h-1.5 rounded-full ${
-            percentage === 100 ? 'bg-blue-500' : 
-            percentage > 0 ? 'bg-blue-400' : 'bg-gray-300'
+            percentage === 100 ? 'bg-orange-500' : 
+            percentage > 0 ? 'bg-orange-400' : 'bg-gray-300'
           }`}
           style={{ width: `${percentage}%` }}
         />
@@ -277,8 +288,8 @@ const ReceiptProgressBar = memo(({ purchase }: { purchase: Purchase }) => {
       <div className="bg-gray-200 rounded-full h-1.5 w-8">
         <div 
           className={`h-1.5 rounded-full ${
-            percentage === 100 ? 'bg-green-500' : 
-            percentage > 0 ? 'bg-green-400' : 'bg-gray-300'
+            percentage === 100 ? 'bg-blue-500' : 
+            percentage > 0 ? 'bg-blue-400' : 'bg-gray-300'
           }`}
           style={{ width: `${percentage}%` }}
         />
@@ -322,7 +333,7 @@ const StatementProgressBar = memo(({ purchase }: { purchase: Purchase }) => {
         <div 
           className={`h-1.5 rounded-full ${
             statementProgress.percentage === 100 ? 'bg-green-500' : 
-            statementProgress.percentage > 0 ? 'bg-hansl-500' : 'bg-gray-300'
+            statementProgress.percentage > 0 ? 'bg-green-400' : 'bg-gray-300'
           }`}
           style={{ width: `${statementProgress.percentage}%` }}
         />
@@ -386,7 +397,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       {/* 구매현황 탭에서는 구매완료 진행률만 표시 */}
       {activeTab === 'purchase' && (
         <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receiptProgress}`}>
-          <PaymentProgressBar purchase={purchase} />
+          <PaymentProgressBar purchase={purchase} activeTab={activeTab} />
         </td>
       )}
       {/* 입고현황 탭에서는 입고진행을 맨 앞에 표시 */}
@@ -629,7 +640,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
             </span>
           </td>
           <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.status}`}>
-            <PaymentProgressBar purchase={purchase} />
+            <PaymentProgressBar purchase={purchase} activeTab={activeTab} />
           </td>
           <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receipt}`}>
             <ReceiptProgressBar purchase={purchase} />

@@ -308,12 +308,21 @@ const TableRow = memo<{
             </span>
           </td>
           <td className="px-2 py-1.5 text-center">
-            <span className={purchase.is_payment_completed ? "bg-green-500 text-white" : "bg-yellow-500 text-white"}>
-              {purchase.is_payment_completed ? "완료" : "대기"}
-            </span>
+            {/* 전체항목 탭에서 결제종류가 '구매 요청'이 아닌 건들은 "-" 표시 */}
+            {(() => {
+              if (purchase.payment_category !== '구매 요청') {
+                return <span className="card-title text-gray-500">-</span>;
+              }
+              
+              return (
+                <span className={purchase.is_payment_completed ? "bg-orange-500 text-white" : "bg-yellow-500 text-white"}>
+                  {purchase.is_payment_completed ? "완료" : "대기"}
+                </span>
+              );
+            })()}
           </td>
           <td className="px-2 py-1.5 text-center">
-            <span className={purchase.is_received ? "bg-green-500 text-white" : "bg-yellow-500 text-white"}>
+            <span className={purchase.is_received ? "bg-blue-500 text-white" : "bg-yellow-500 text-white"}>
               {purchase.is_received ? "완료" : "대기"}
             </span>
           </td>
@@ -430,13 +439,7 @@ const VirtualizedPurchaseTable = forwardRef<VirtualizedTableHandle, VirtualizedP
 
   // 스크롤 이벤트 핸들러
   const handleScroll = useCallback((props: any) => {
-    // 스크롤 성능 로깅 (개발용)
-    if (process.env.NODE_ENV === 'development') {
-      logger.debug('가상화 테이블 스크롤', { 
-        scrollTop: props.scrollTop,
-        scrollHeight: props.scrollHeight 
-      });
-    }
+    // 스크롤 성능 로깅은 제거됨
   }, []);
 
   return (
