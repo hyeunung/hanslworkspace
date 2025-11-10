@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs/generatePurchaseOrderExcel";
 import { formatDateShort } from "@/utils/helpers";
 import { logger } from "@/lib/logger";
+import { usePurchaseMemory } from "@/hooks/usePurchaseMemory";
+import { removePurchaseFromMemory } from '@/stores/purchaseMemoryStore';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -101,12 +103,17 @@ const COMMON_COLUMN_CLASSES = {
 };
 
 // 승인 상태 상세 표시 컴포넌트 (승인대기 탭용)
-// 실시간 업데이트를 위해 memo 비교 함수에서 승인 상태 변경 감지
+// 🚀 메모리 캐시 변경 감지를 위해 usePurchaseMemory 훅 사용
 const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
-  const middleApproved = purchase.middle_manager_status === 'approved';
-  const middleRejected = purchase.middle_manager_status === 'rejected';
-  const finalApproved = purchase.final_manager_status === 'approved';
-  const finalRejected = purchase.final_manager_status === 'rejected';
+  const { allPurchases } = usePurchaseMemory(); // 메모리 캐시 변경 감지용
+  
+  // 메모리에서 최신 데이터 조회 (실시간 업데이트 보장)
+  const memoryPurchase = allPurchases?.find(p => p.id === purchase.id) || purchase;
+  
+  const middleApproved = memoryPurchase.middle_manager_status === 'approved';
+  const middleRejected = memoryPurchase.middle_manager_status === 'rejected';
+  const finalApproved = memoryPurchase.final_manager_status === 'approved';
+  const finalRejected = memoryPurchase.final_manager_status === 'rejected';
 
   // 전체 상태 결정
   if (middleRejected || finalRejected) {
@@ -170,61 +177,164 @@ const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) => {
 
 ApprovalStatusBadge.displayName = 'ApprovalStatusBadge';
 
-// 입고 현황 계산 함수 (actual_received_date 기준)
-const getReceiptProgress = (purchase: Purchase) => {
-  // items 배열이 없으면 전체 미입고로 처리
-  if (!purchase.purchase_request_items || purchase.purchase_request_items.length === 0) {
-    return { received: 0, total: 1, percentage: 0 };
-  }
+// 구매완료 진행률 컴포넌트 (구매현황 탭용)
+// 🚀 메모리 캐시 변경 감지를 위해 usePurchaseMemory 훅 사용
+const PaymentProgressBar = memo(({ purchase }: { purchase: Purchase }) => {
+  const { allPurchases } = usePurchaseMemory(); // 메모리 캐시 변경 감지용
   
-  // 개별 아이템 실제 입고 상태 계산 (is_received 기준)
-  const total = purchase.purchase_request_items.length;
-  const received = purchase.purchase_request_items.filter((item: any) => 
-    item.is_received === true
-  ).length;
-  const percentage = total > 0 ? Math.round((received / total) * 100) : 0;
+  // 메모리에서 최신 데이터 조회 (실시간 업데이트 보장)
+  const memoryPurchase = allPurchases?.find(p => p.id === purchase.id) || purchase;
   
-  return { received, total, percentage };
-};
-
-// 구매완료 현황 계산 함수
-const getPaymentProgress = (purchase: Purchase) => {
   // purchase_requests 테이블의 is_payment_completed 필드 우선 체크
-  if (purchase.is_payment_completed) {
-    return { completed: 1, total: 1, percentage: 100 };
+  if (memoryPurchase.is_payment_completed) {
+    const progress = { completed: 1, total: 1, percentage: 100 };
+    return (
+      <div className="flex items-center justify-center gap-1">
+        <div className="bg-gray-200 rounded-full h-1.5 w-8">
+          <div 
+            className="h-1.5 rounded-full bg-blue-500"
+            style={{ width: '100%' }}
+          />
+        </div>
+        <span className="card-title text-gray-600">100%</span>
+      </div>
+    );
   }
   
   // items 배열이 없으면 전체 미완료로 처리
-  if (!purchase.purchase_request_items || purchase.purchase_request_items.length === 0) {
-    return { completed: 0, total: 1, percentage: 0 };
+  if (!memoryPurchase.purchase_request_items || memoryPurchase.purchase_request_items.length === 0) {
+    const progress = { completed: 0, total: 1, percentage: 0 };
+    return (
+      <div className="flex items-center justify-center gap-1">
+        <div className="bg-gray-200 rounded-full h-1.5 w-8">
+          <div 
+            className="h-1.5 rounded-full bg-gray-300"
+            style={{ width: '0%' }}
+          />
+        </div>
+        <span className="card-title text-gray-600">0%</span>
+      </div>
+    );
   }
   
   // 개별 아이템 구매완료 상태 계산
-  const total = purchase.purchase_request_items.length;
-  const completed = purchase.purchase_request_items.filter((item: any) => 
+  const total = memoryPurchase.purchase_request_items.length;
+  const completed = memoryPurchase.purchase_request_items.filter((item: any) => 
     item.is_payment_completed === true
   ).length;
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
-  
-  return { completed, total, percentage };
-};
 
-// 거래명세서 완료 현황 계산 함수
-const getStatementProgress = (purchase: Purchase) => {
-  // items 배열이 없으면 전체 미완료로 처리
-  if (!purchase.purchase_request_items || purchase.purchase_request_items.length === 0) {
-    return { completed: 0, total: 1, percentage: 0 };
+  return (
+    <div className="flex items-center justify-center gap-1">
+      <div className="bg-gray-200 rounded-full h-1.5 w-8">
+        <div 
+          className={`h-1.5 rounded-full ${
+            percentage === 100 ? 'bg-blue-500' : 
+            percentage > 0 ? 'bg-blue-400' : 'bg-gray-300'
+          }`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+      <span className="card-title text-gray-600">{percentage}%</span>
+    </div>
+  );
+});
+
+PaymentProgressBar.displayName = 'PaymentProgressBar';
+
+// 입고완료 진행률 컴포넌트 (입고현황 탭용)  
+// 🚀 메모리 캐시 변경 감지를 위해 usePurchaseMemory 훅 사용
+const ReceiptProgressBar = memo(({ purchase }: { purchase: Purchase }) => {
+  const { allPurchases } = usePurchaseMemory(); // 메모리 캐시 변경 감지용
+  
+  // 메모리에서 최신 데이터 조회 (실시간 업데이트 보장)
+  const memoryPurchase = allPurchases?.find(p => p.id === purchase.id) || purchase;
+  
+  // items 배열이 없으면 전체 미입고로 처리
+  if (!memoryPurchase.purchase_request_items || memoryPurchase.purchase_request_items.length === 0) {
+    return (
+      <div className="flex items-center justify-center gap-1">
+        <div className="bg-gray-200 rounded-full h-1.5 w-8">
+          <div 
+            className="h-1.5 rounded-full bg-gray-300"
+            style={{ width: '0%' }}
+          />
+        </div>
+        <span className="card-title text-gray-600">0%</span>
+      </div>
+    );
   }
   
-  // 개별 아이템 거래명세서 확인 상태 계산 (is_statement_received 기준)
-  const total = purchase.purchase_request_items.length;
-  const completed = purchase.purchase_request_items.filter((item: any) => 
-    item.is_statement_received === true
+  // 개별 아이템 실제 입고 상태 계산 (is_received 기준)
+  const total = memoryPurchase.purchase_request_items.length;
+  const received = memoryPurchase.purchase_request_items.filter((item: any) => 
+    item.is_received === true
   ).length;
-  const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const percentage = total > 0 ? Math.round((received / total) * 100) : 0;
+
+  return (
+    <div className="flex items-center justify-center gap-1">
+      <div className="bg-gray-200 rounded-full h-1.5 w-8">
+        <div 
+          className={`h-1.5 rounded-full ${
+            percentage === 100 ? 'bg-green-500' : 
+            percentage > 0 ? 'bg-green-400' : 'bg-gray-300'
+          }`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+      <span className="card-title text-gray-600">{percentage}%</span>
+    </div>
+  );
+});
+
+ReceiptProgressBar.displayName = 'ReceiptProgressBar';
+
+// 거래명세서 진행률 컴포넌트 (전체항목 탭용)  
+// 🚀 메모리 캐시 변경 감지를 위해 usePurchaseMemory 훅 사용
+const StatementProgressBar = memo(({ purchase }: { purchase: Purchase }) => {
+  const { allPurchases } = usePurchaseMemory(); // 메모리 캐시 변경 감지용
   
-  return { completed, total, percentage };
-};
+  // 🚀 메모리에서 최신 데이터 가져오기 (실시간 업데이트 반영)
+  const currentPurchase = useMemo(() => {
+    if (!allPurchases) return purchase;
+    const memoryPurchase = allPurchases.find(p => p.id === purchase.id);
+    return memoryPurchase || purchase;
+  }, [allPurchases, purchase.id, purchase]);
+
+  // 거래명세서 완료 현황 계산
+  const statementProgress = useMemo(() => {
+    const items = currentPurchase.purchase_request_items || currentPurchase.items || [];
+    if (items.length === 0) {
+      return { completed: 0, total: 1, percentage: 0 };
+    }
+    
+    const total = items.length;
+    const completed = items.filter((item: any) => item.is_statement_received === true).length;
+    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+    
+    return { completed, total, percentage };
+  }, [currentPurchase]);
+
+  return (
+    <div className="flex items-center justify-center gap-1">
+      <div className="bg-gray-200 rounded-full h-1.5 w-8">
+        <div 
+          className={`h-1.5 rounded-full ${
+            statementProgress.percentage === 100 ? 'bg-green-500' : 
+            statementProgress.percentage > 0 ? 'bg-hansl-500' : 'bg-gray-300'
+          }`}
+          style={{ width: `${statementProgress.percentage}%` }}
+        />
+      </div>
+      <span className="card-title text-gray-600">
+        {statementProgress.percentage}%
+      </span>
+    </div>
+  );
+});
+
+StatementProgressBar.displayName = 'StatementProgressBar';
 
 
 // formatDateShort는 utils/helpers.ts에서 import
@@ -260,9 +370,6 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
   onReceiptComplete?: (purchaseId: number) => Promise<void>;
   onExcelDownload?: (purchase: Purchase) => Promise<void>;
 }) => {
-  const receiptProgress = getReceiptProgress(purchase);
-  const paymentProgress = getPaymentProgress(purchase);
-  const statementProgress = getStatementProgress(purchase);
   const isAdvance = purchase.progress_type === '선진행' || purchase.progress_type?.includes('선진행');
   
   return (
@@ -279,58 +386,19 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       {/* 구매현황 탭에서는 구매완료 진행률만 표시 */}
       {activeTab === 'purchase' && (
         <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receiptProgress}`}>
-          <div className="flex items-center justify-center gap-1">
-            <div className="bg-gray-200 rounded-full h-1.5 w-8">
-              <div 
-                className={`h-1.5 rounded-full ${
-                  paymentProgress.percentage === 100 ? 'bg-blue-500' : 
-                  paymentProgress.percentage > 0 ? 'bg-blue-400' : 'bg-gray-300'
-                }`}
-                style={{ width: `${paymentProgress.percentage}%` }}
-              />
-            </div>
-            <span className="card-title text-gray-600">
-              {paymentProgress.percentage}%
-            </span>
-          </div>
+          <PaymentProgressBar purchase={purchase} />
         </td>
       )}
       {/* 입고현황 탭에서는 입고진행을 맨 앞에 표시 */}
       {activeTab === 'receipt' && (
         <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receiptProgress}`}>
-          <div className="flex items-center justify-center gap-1">
-            <div className="bg-gray-200 rounded-full h-1.5 w-8">
-              <div 
-                className={`h-1.5 rounded-full ${
-                  receiptProgress.percentage === 100 ? 'bg-green-500' : 
-                  receiptProgress.percentage > 0 ? 'bg-hansl-500' : 'bg-gray-300'
-                }`}
-                style={{ width: `${receiptProgress.percentage}%` }}
-              />
-            </div>
-            <span className="card-title text-gray-600">
-              {receiptProgress.percentage}%
-            </span>
-          </div>
+          <ReceiptProgressBar purchase={purchase} />
         </td>
       )}
       {/* 전체항목 탭에서는 거래명세서 진행률을 맨 앞에 표시 */}
       {activeTab === 'done' && (
         <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receiptProgress}`}>
-          <div className="flex items-center justify-center gap-1">
-            <div className="bg-gray-200 rounded-full h-1.5 w-8">
-              <div 
-                className={`h-1.5 rounded-full ${
-                  statementProgress.percentage === 100 ? 'bg-green-500' : 
-                  statementProgress.percentage > 0 ? 'bg-hansl-500' : 'bg-gray-300'
-                }`}
-                style={{ width: `${statementProgress.percentage}%` }}
-              />
-            </div>
-            <span className="card-title text-gray-600">
-              {statementProgress.percentage}%
-            </span>
-          </div>
+          <StatementProgressBar purchase={purchase} />
         </td>
       )}
       <td className={`px-2 py-1.5 card-title whitespace-nowrap ${activeTab === 'purchase' ? COMMON_COLUMN_CLASSES.purchaseOrderNumberCompact : COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>
@@ -561,23 +629,10 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
             </span>
           </td>
           <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.status}`}>
-            <span className="text-gray-400 card-title">-</span>
+            <PaymentProgressBar purchase={purchase} />
           </td>
           <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receipt}`}>
-            <div className="flex items-center justify-center gap-1">
-              <div className="bg-gray-200 rounded-full h-1.5 w-8">
-                <div 
-                  className={`h-1.5 rounded-full ${
-                    receiptProgress.percentage === 100 ? 'bg-green-500' : 
-                    receiptProgress.percentage > 0 ? 'bg-hansl-500' : 'bg-gray-300'
-                  }`}
-                  style={{ width: `${receiptProgress.percentage}%` }}
-                />
-              </div>
-              <span className="card-title text-gray-600">
-                {receiptProgress.percentage}%
-              </span>
-            </div>
+            <ReceiptProgressBar purchase={purchase} />
           </td>
         </>
       )}
@@ -769,12 +824,6 @@ const FastPurchaseTable = memo(({
   const handleConfirmDelete = useCallback(async () => {
     if (!purchaseToDelete) return;
 
-    logger.debug('발주 삭제 확인', {
-      id: purchaseToDelete.id,
-      purchase_order_number: purchaseToDelete.purchase_order_number,
-      requester_name: purchaseToDelete.requester_name,
-      final_manager_status: purchaseToDelete.final_manager_status
-    });
 
     try {
       // Supabase 환경 변수 확인
@@ -803,11 +852,6 @@ const FastPurchaseTable = memo(({
         .eq('email', user.email)
         .single();
 
-      logger.debug('사용자 권한 확인', {
-        employee: employee?.name,
-        roles: employee?.purchase_role,
-        email: employee?.email
-      });
 
       if (empError || !employee) {
         toast.error("사용자 권한을 확인할 수 없습니다.");
@@ -833,13 +877,6 @@ const FastPurchaseTable = memo(({
       const isRequester = purchaseToDelete.requester_name === employee.name;
       const canDeleteThis = isApproved ? canEdit : (canEdit || isRequester);
 
-      logger.debug('삭제 권한 확인', {
-        canEdit,
-        isApproved,
-        isRequester,
-        canDeleteThis,
-        userRoles: roles
-      });
 
       if (!canDeleteThis) {
         toast.error("삭제 권한이 없습니다.");
@@ -864,10 +901,6 @@ const FastPurchaseTable = memo(({
         throw itemsError;
       }
 
-      logger.debug('아이템 삭제 완료', {
-        deletedItemsCount: deletedItems?.length || 0,
-        purchaseRequestId: purchaseToDelete.id
-      });
 
       // 발주요청 삭제
       const { data: deletedRequest, error: requestError } = await supabase
@@ -886,10 +919,18 @@ const FastPurchaseTable = memo(({
         throw requestError;
       }
 
-      logger.debug('발주요청 삭제 완료', {
-        deletedRequestId: purchaseToDelete.id,
-        purchase_order_number: purchaseToDelete.purchase_order_number
-      });
+
+      // 🚀 메모리 캐시에서 즉시 삭제 (구매완료 등과 동일한 패턴)
+      const memoryUpdated = removePurchaseFromMemory(purchaseToDelete.id);
+      if (!memoryUpdated) {
+        logger.warn('[handleConfirmDelete] 메모리 캐시에서 발주서 삭제 실패', { 
+          purchaseId: purchaseToDelete.id 
+        });
+      } else {
+        logger.info('✅ [handleConfirmDelete] 메모리 캐시에서 발주서 삭제 성공', { 
+          purchaseId: purchaseToDelete.id 
+        });
+      }
 
       toast.success("발주요청 내역이 삭제되었습니다.");
       onRefresh?.();

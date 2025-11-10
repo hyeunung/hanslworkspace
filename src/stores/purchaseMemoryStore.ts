@@ -4,6 +4,7 @@
  */
 
 import type { Purchase, Employee } from '@/types/purchase'
+import { useState, useEffect } from 'react'
 
 // 전역 메모리 캐시
 export interface PurchaseMemoryCache {
@@ -47,6 +48,70 @@ export const clearPurchaseMemoryCache = () => {
   purchaseMemoryCache.stats = null
 }
 
+// 캐시 무효화 (데이터 재로드 필요 표시)
+export const invalidatePurchaseMemoryCache = () => {
+  // lastFetch를 0으로 설정하여 다음 로드 시 강제 새로고침
+  purchaseMemoryCache.lastFetch = 0
+}
+
+// 품목 삭제를 위한 메모리 캐시 업데이트 함수 (다른 함수들과 동일한 패턴)
+export const removeItemFromMemory = (purchaseId: number | string, itemId: number | string): boolean => {
+  const result = updatePurchaseInMemory(purchaseId, (purchase) => {
+    const targetItemId = Number(itemId)
+    
+    // 현재 items 배열 선택 (다른 함수들과 동일한 로직)
+    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    
+    // 해당 품목을 제외한 배열 생성 (삭제)
+    const updatedItems = currentItems.filter(item => item.id !== targetItemId)
+    
+    // 합계 재계산
+    const newTotalAmount = updatedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
+    
+    return {
+      ...purchase,
+      // 품목 데이터 업데이트 - 삭제된 항목 제외
+      items: purchase.items ? updatedItems : purchase.items,
+      purchase_request_items: purchase.purchase_request_items ? updatedItems : purchase.purchase_request_items,
+      total_amount: newTotalAmount,
+      updated_at: new Date().toISOString()
+    }
+  })
+  
+  // 실시간 UI 반영을 위해 lastFetch 업데이트 (다른 함수들과 동일)
+  if (result) {
+    purchaseMemoryCache.lastFetch = Date.now()
+  }
+  
+  return result
+}
+
+// 발주서 전체 삭제를 위한 메모리 캐시 함수 (다른 함수들과 동일한 패턴)
+export const removePurchaseFromMemory = (purchaseId: number | string): boolean => {
+  if (!purchaseMemoryCache.allPurchases) {
+    return false
+  }
+  
+  const id = Number(purchaseId)
+  if (isNaN(id)) {
+    return false
+  }
+  
+  // 해당 발주서를 배열에서 제거
+  const originalLength = purchaseMemoryCache.allPurchases.length
+  purchaseMemoryCache.allPurchases = purchaseMemoryCache.allPurchases.filter(purchase => purchase.id !== id)
+  
+  // 실제로 제거되었는지 확인
+  const wasRemoved = purchaseMemoryCache.allPurchases.length < originalLength
+  
+  if (wasRemoved) {
+    // 실시간 UI 반영을 위해 lastFetch 업데이트 (다른 함수들과 동일)
+    purchaseMemoryCache.lastFetch = Date.now()
+  }
+  
+  return wasRemoved
+}
+
 // 캐시 유효성 검사
 export const isCacheValid = () => {
   const now = Date.now()
@@ -74,13 +139,19 @@ export const findPurchaseInMemory = (purchaseId: number | string): Purchase | nu
 
 // 메모리 캐시에서 특정 구매 요청 업데이트
 export const updatePurchaseInMemory = (purchaseId: number | string, updater: (purchase: Purchase) => Purchase): boolean => {
-  if (!purchaseMemoryCache.allPurchases) return false
+  if (!purchaseMemoryCache.allPurchases) {
+    return false
+  }
   
   const id = Number(purchaseId)
-  if (isNaN(id)) return false
+  if (isNaN(id)) {
+    return false
+  }
   
   const index = purchaseMemoryCache.allPurchases.findIndex(purchase => purchase.id === id)
-  if (index === -1) return false
+  if (index === -1) {
+    return false
+  }
   
   // 기존 데이터 복사 후 업데이트
   const currentPurchase = purchaseMemoryCache.allPurchases[index]
@@ -91,7 +162,6 @@ export const updatePurchaseInMemory = (purchaseId: number | string, updater: (pu
   
   // 🚀 React 감지를 위한 lastFetch 업데이트 (UI 즉시 반영)
   purchaseMemoryCache.lastFetch = Date.now()
-  
   return true
 }
 
@@ -100,8 +170,8 @@ export const markPurchaseAsPaymentCompleted = (purchaseId: number | string): boo
   return updatePurchaseInMemory(purchaseId, (purchase) => {
     const currentTime = new Date().toISOString()
     
-    // 모든 품목을 구매완료로 업데이트
-    const updatedItems = (purchase.items || []).map(item => ({
+    // 모든 품목을 구매완료로 업데이트 (입고완료와 동일한 방식)
+    const updatedItems = (purchase.items || purchase.purchase_request_items || []).map(item => ({
       ...item,
       is_payment_completed: true,
       payment_completed_at: currentTime
@@ -111,7 +181,8 @@ export const markPurchaseAsPaymentCompleted = (purchaseId: number | string): boo
       ...purchase,
       is_payment_completed: true,
       payment_completed_at: currentTime,
-      items: updatedItems
+      items: purchase.items ? updatedItems : purchase.items,
+      purchase_request_items: purchase.purchase_request_items ? updatedItems : purchase.purchase_request_items
     }
   })
 }
@@ -122,8 +193,11 @@ export const markItemAsPaymentCompleted = (purchaseId: number | string, itemId: 
     const currentTime = new Date().toISOString()
     const targetItemId = Number(itemId)
     
+    // 현재 items 배열 선택 (markItemAsPaymentCanceled와 동일한 로직)
+    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    
     // 해당 품목만 구매완료로 업데이트
-    const updatedItems = (purchase.items || []).map(item => 
+    const updatedItems = currentItems.map(item => 
       item.id === targetItemId 
         ? { ...item, is_payment_completed: true, payment_completed_at: currentTime }
         : item
@@ -136,7 +210,285 @@ export const markItemAsPaymentCompleted = (purchaseId: number | string, itemId: 
       ...purchase,
       is_payment_completed: allItemsCompleted,
       payment_completed_at: allItemsCompleted ? currentTime : purchase.payment_completed_at,
-      items: updatedItems
+      items: purchase.items ? updatedItems : purchase.items,
+      purchase_request_items: purchase.purchase_request_items ? updatedItems : purchase.purchase_request_items
     }
   })
 }
+
+// 입고완료 처리를 위한 헬퍼 함수
+export const markPurchaseAsReceived = (purchaseId: number | string): boolean => {
+  return updatePurchaseInMemory(purchaseId, (purchase) => {
+    const currentTime = new Date().toISOString()
+    
+    // 모든 품목을 입고완료로 업데이트
+    const updatedItems = (purchase.items || purchase.purchase_request_items || []).map(item => ({
+      ...item,
+      is_received: true,
+      delivery_status: 'received',
+      received_at: currentTime
+    }))
+    
+    return {
+      ...purchase,
+      is_received: true,
+      received_at: currentTime,
+      items: purchase.items ? updatedItems : purchase.items,
+      purchase_request_items: purchase.purchase_request_items ? updatedItems : purchase.purchase_request_items
+    }
+  })
+}
+
+// 특정 품목의 구매완료 취소를 위한 헬퍼 함수
+export const markItemAsPaymentCanceled = (purchaseId: number | string, itemId: number | string): boolean => {
+  return updatePurchaseInMemory(purchaseId, (purchase) => {
+    const targetItemId = Number(itemId)
+    
+    // 현재 items 배열 선택
+    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    
+    // 해당 품목만 구매완료 취소로 업데이트
+    const updatedItems = currentItems.map(item => 
+      item.id === targetItemId 
+        ? { ...item, is_payment_completed: false, payment_completed_at: null }
+        : item
+    )
+    
+    // 모든 품목이 구매완료되었는지 확인 (취소 후)
+    const allItemsCompleted = updatedItems.every(item => item.is_payment_completed)
+    
+    return {
+      ...purchase,
+      is_payment_completed: allItemsCompleted,
+      payment_completed_at: allItemsCompleted ? purchase.payment_completed_at : null,
+      items: purchase.items ? updatedItems : purchase.items,
+      purchase_request_items: purchase.purchase_request_items ? updatedItems : purchase.purchase_request_items
+    }
+  })
+}
+
+// 특정 품목의 입고완료 처리를 위한 헬퍼 함수
+export const markItemAsReceived = (purchaseId: number | string, itemId: number | string, selectedDate?: string): boolean => {
+  const result = updatePurchaseInMemory(purchaseId, (purchase) => {
+    const currentTime = new Date().toISOString()
+    const actualReceivedDate = selectedDate || currentTime  // 선택된 날짜 또는 현재 시간
+    const targetItemId = Number(itemId)
+    
+    // 현재 items 배열 선택
+    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    
+    // 해당 품목만 입고완료로 업데이트
+    const updatedItems = currentItems.map(item => 
+      item.id === targetItemId 
+        ? { 
+            ...item, 
+            is_received: true, 
+            delivery_status: 'received', 
+            received_at: currentTime,
+            actual_received_date: actualReceivedDate  // 🚀 사용자가 선택한 날짜 사용
+          }
+        : item
+    )
+    
+    // 모든 품목이 입고완료되었는지 확인
+    const allItemsReceived = updatedItems.every(item => item.is_received)
+    
+    return {
+      ...purchase,
+      is_received: allItemsReceived,
+      received_at: allItemsReceived ? currentTime : purchase.received_at,
+      items: purchase.items ? updatedItems : purchase.items,
+      purchase_request_items: purchase.purchase_request_items ? updatedItems : purchase.purchase_request_items
+    }
+  })
+  
+  // 실시간 UI 반영을 위해 lastFetch 업데이트
+  if (result) {
+    purchaseMemoryCache.lastFetch = Date.now()
+  }
+  
+  return result
+}
+
+// 특정 품목의 입고완료 취소 처리를 위한 헬퍼 함수
+export const markItemAsReceiptCanceled = (purchaseId: number | string, itemId: number | string): boolean => {
+  const result = updatePurchaseInMemory(purchaseId, (purchase) => {
+    const targetItemId = Number(itemId)
+    
+    // 현재 items 배열 선택
+    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    
+    // 해당 품목만 입고완료 취소로 업데이트
+    const updatedItems = currentItems.map(item => 
+      item.id === targetItemId 
+        ? { 
+            ...item, 
+            is_received: false, 
+            delivery_status: 'pending', 
+            received_at: null, 
+            actual_received_date: null  // 🚀 실제입고일도 함께 초기화
+          }
+        : item
+    )
+    
+    // 모든 품목이 입고완료되었는지 확인
+    const allItemsReceived = updatedItems.every(item => item.is_received)
+    
+    return {
+      ...purchase,
+      is_received: allItemsReceived,
+      received_at: allItemsReceived ? purchase.received_at : null,
+      items: purchase.items ? updatedItems : purchase.items,
+      purchase_request_items: purchase.purchase_request_items ? updatedItems : purchase.purchase_request_items
+    }
+  })
+  
+  // 실시간 UI 반영을 위해 lastFetch 업데이트
+  if (result) {
+    purchaseMemoryCache.lastFetch = Date.now()
+  }
+  
+  return result
+}
+
+// 특정 품목의 거래명세서 확인 처리를 위한 헬퍼 함수
+export const markItemAsStatementReceived = (purchaseId: number | string, itemId: number | string, selectedDate?: string, userName?: string): boolean => {
+  const result = updatePurchaseInMemory(purchaseId, (purchase) => {
+    const currentTime = new Date().toISOString()
+    const statementReceivedDate = selectedDate || currentTime
+    const targetItemId = Number(itemId)
+    
+    // 현재 items 배열 선택
+    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    
+    // 해당 품목만 거래명세서 확인으로 업데이트
+    const updatedItems = currentItems.map(item => 
+      item.id === targetItemId 
+        ? { 
+            ...item, 
+            is_statement_received: true, 
+            statement_received_date: statementReceivedDate,
+            statement_received_by_name: userName || null
+          }
+        : item
+    )
+    
+    // 모든 품목이 거래명세서 확인되었는지 확인
+    const allItemsReceived = updatedItems.every(item => item.is_statement_received)
+    
+    return {
+      ...purchase,
+      is_statement_received: allItemsReceived,
+      statement_received_at: allItemsReceived ? statementReceivedDate : purchase.statement_received_at,
+      items: purchase.items ? updatedItems : purchase.items,
+      purchase_request_items: purchase.purchase_request_items ? updatedItems : purchase.purchase_request_items
+    }
+  })
+  
+  // 실시간 UI 반영을 위해 lastFetch 업데이트
+  if (result) {
+    purchaseMemoryCache.lastFetch = Date.now()
+  }
+  
+  return result
+}
+
+// 특정 품목의 거래명세서 확인 취소 처리를 위한 헬퍼 함수
+export const markItemAsStatementCanceled = (purchaseId: number | string, itemId: number | string): boolean => {
+  const result = updatePurchaseInMemory(purchaseId, (purchase) => {
+    const targetItemId = Number(itemId)
+    
+    // 현재 items 배열 선택
+    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    
+    // 해당 품목만 거래명세서 확인 취소로 업데이트
+    const updatedItems = currentItems.map(item => 
+      item.id === targetItemId 
+        ? { 
+            ...item, 
+            is_statement_received: false, 
+            statement_received_date: null,
+            statement_received_by_name: null
+          }
+        : item
+    )
+    
+    // 모든 품목이 거래명세서 확인되었는지 확인
+    const allItemsReceived = updatedItems.every(item => item.is_statement_received)
+    
+    return {
+      ...purchase,
+      is_statement_received: allItemsReceived,
+      statement_received_at: allItemsReceived ? purchase.statement_received_at : null,
+      items: purchase.items ? updatedItems : purchase.items,
+      purchase_request_items: purchase.purchase_request_items ? updatedItems : purchase.purchase_request_items
+    }
+  })
+  
+  // 실시간 UI 반영을 위해 lastFetch 업데이트
+  if (result) {
+    purchaseMemoryCache.lastFetch = Date.now()
+  }
+  
+  return result
+}
+
+// UTK 확인 처리를 위한 헬퍼 함수
+export const markItemAsUtkChecked = (purchaseId: number | string, itemId: number | string, isChecked: boolean): boolean => {
+  const result = updatePurchaseInMemory(purchaseId, (purchase) => {
+    const targetItemId = Number(itemId)
+    
+    // 현재 items 배열 선택
+    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    
+    // 해당 품목의 UTK 상태만 업데이트
+    const updatedItems = currentItems.map(item => 
+      item.id === targetItemId 
+        ? { 
+            ...item, 
+            is_utk_checked: isChecked
+          }
+        : item
+    )
+    
+    return {
+      ...purchase,
+      items: purchase.items ? updatedItems : purchase.items,
+      purchase_request_items: purchase.purchase_request_items ? updatedItems : purchase.purchase_request_items
+    }
+  })
+  
+  // 실시간 UI 반영을 위해 lastFetch 업데이트
+  if (result) {
+    purchaseMemoryCache.lastFetch = Date.now()
+  }
+  
+  return result
+}
+
+// React 훅: 메모리 캐시 상태를 구독하여 실시간 변경 감지
+export const usePurchaseMemory = () => {
+  const [memoryState, setMemoryState] = useState(purchaseMemoryCache);
+  const [lastFetch, setLastFetch] = useState(purchaseMemoryCache.lastFetch);
+
+  useEffect(() => {
+    // lastFetch 시간 변경을 기반으로 효율적인 변경 감지
+    const interval = setInterval(() => {
+      if (purchaseMemoryCache.lastFetch !== lastFetch) {
+        setMemoryState({ ...purchaseMemoryCache });
+        setLastFetch(purchaseMemoryCache.lastFetch);
+      }
+    }, 50); // 50ms마다 lastFetch만 확인
+
+    return () => clearInterval(interval);
+  }, [lastFetch]);
+
+  return {
+    allPurchases: memoryState.allPurchases,
+    currentUser: memoryState.currentUser,
+    isLoading: memoryState.isLoading,
+    error: memoryState.error,
+    stats: memoryState.stats,
+    lastFetch: memoryState.lastFetch
+  };
+};
