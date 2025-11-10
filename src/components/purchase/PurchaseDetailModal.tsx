@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails, Purchase, Vendor } from '@/types/purchase'
-import { findPurchaseInMemory } from '@/stores/purchaseMemoryStore'
+import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPaymentCompleted } from '@/stores/purchaseMemoryStore'
 import { formatDate } from '@/utils/helpers'
 import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { 
@@ -821,10 +821,13 @@ function PurchaseDetailModal({
   }
 
   // View 모드에서 칼럼 너비 계산 (데이터 로드 후)
+  // 비동기로 처리하여 모달이 먼저 표시되도록 함
   useEffect(() => {
     if (purchase && purchase.purchase_request_items && purchase.purchase_request_items.length > 0 && !isEditing) {
-      // 즉시 계산 (DOM 측정 불필요)
-      calculateOptimalColumnWidths()
+      // requestAnimationFrame으로 다음 프레임에 계산하여 모달 렌더링을 블로킹하지 않음
+      requestAnimationFrame(() => {
+        calculateOptimalColumnWidths()
+      })
     }
   }, [purchase, isEditing, activeTab, calculateOptimalColumnWidths])
 
@@ -1188,6 +1191,22 @@ function PurchaseDetailModal({
 
       if (error) throw error
 
+      // 🚀 메모리 캐시 즉시 업데이트 (구매완료만 처리)
+      if (purchase && isCompleted) {
+        const memoryUpdated = markItemAsPaymentCompleted(purchase.id, numericId);
+        if (memoryUpdated) {
+          logger.debug('[PurchaseDetailModal] 메모리 캐시 품목 구매완료 업데이트 완료', { 
+            purchaseId: purchase.id, 
+            itemId: numericId 
+          });
+        } else {
+          logger.warn('[PurchaseDetailModal] 메모리 캐시 품목 업데이트 실패', { 
+            purchaseId: purchase.id, 
+            itemId: numericId 
+          });
+        }
+      }
+
       // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
       setPurchase(prev => {
         if (!prev) return null
@@ -1501,6 +1520,18 @@ function PurchaseDetailModal({
         .eq('is_payment_completed', false) // 아직 구매완료되지 않은 항목만
       
       if (error) throw error
+      
+      // 🚀 메모리 캐시 즉시 업데이트 (전체 구매완료)
+      const memoryUpdated = markPurchaseAsPaymentCompleted(purchase.id);
+      if (memoryUpdated) {
+        logger.debug('[PurchaseDetailModal] 메모리 캐시 전체 구매완료 업데이트 완료', { 
+          purchaseId: purchase.id 
+        });
+      } else {
+        logger.warn('[PurchaseDetailModal] 메모리 캐시 전체 구매완료 업데이트 실패', { 
+          purchaseId: purchase.id 
+        });
+      }
       
       // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
       setPurchase(prev => {
@@ -1905,6 +1936,7 @@ function PurchaseDetailModal({
         return { ...prev, items: updatedItems }
       })
 
+      // DB 업데이트 후 메모리 캐시 즉시 업데이트 (실시간 반영)
       applyOptimisticUpdate()
 
       toast.success('모든 품목이 입고완료 처리되었습니다.')
@@ -1914,8 +1946,6 @@ function PurchaseDetailModal({
       if (refreshResult instanceof Promise) {
         await refreshResult
       }
-
-      applyOptimisticUpdate()
     } catch (error) {
       logger.error('전체 입고완료 처리 오류', error)
       toast.error('입고완료 처리 중 오류가 발생했습니다.')

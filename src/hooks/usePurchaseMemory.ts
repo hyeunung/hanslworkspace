@@ -44,9 +44,9 @@ export function usePurchaseMemory() {
     // 초기 체크
     checkCache()
     
-    // 폴링으로 캐시 업데이트 감지 (더 빠른 반응을 위해 50ms로 단축)
+    // 폴링으로 캐시 업데이트 감지 (더 빠른 반응을 위해 10ms로 단축)
     // 배열 참조 변경 시 즉시 감지되지만, 폴링도 유지하여 안전성 보장
-    const interval = setInterval(checkCache, 50)
+    const interval = setInterval(checkCache, 10)
     
     return () => clearInterval(interval)
   }, [])
@@ -62,9 +62,9 @@ export function usePurchaseMemory() {
     )
   }, [currentUser])
   
-  // 탭별 카운트 계산
+  // 탭별 카운트 계산 - purchases 상태가 업데이트되면 자동으로 재계산
   const tabCounts = useMemo(() => {
-    if (!purchaseMemoryCache.allPurchases) {
+    if (!purchases || purchases.length === 0) {
       return {
         pending: 0,
         purchase: 0,
@@ -73,7 +73,7 @@ export function usePurchaseMemory() {
       }
     }
     
-    return calculateTabCounts(purchaseMemoryCache.allPurchases, currentUser)
+    return calculateTabCounts(purchases, currentUser)
   }, [purchases, currentUser])
   
   // 통계 정보

@@ -5,6 +5,7 @@ import { usePurchaseMemory } from "@/hooks/usePurchaseMemory";
 import FastPurchaseTable from "@/components/purchase/FastPurchaseTable";
 import FilterToolbar, { FilterRule, SortRule } from "@/components/purchase/FilterToolbar";
 import { updatePurchaseInMemory } from "@/services/purchaseDataLoader";
+import { markPurchaseAsPaymentCompleted } from '@/stores/purchaseMemoryStore';
 
 import { Plus, Package, Info } from "lucide-react";
 import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs/generatePurchaseOrderExcel";
@@ -722,7 +723,8 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         supabase
           .from('purchase_request_items')
           .update({ 
-            is_payment_completed: true
+            is_payment_completed: true,
+            payment_completed_at: currentTime
           })
           .eq('purchase_request_id', purchaseId)
       ]);
@@ -730,9 +732,18 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       if (requestResult.error) throw requestResult.error;
       if (itemsResult.error) throw itemsResult.error;
       
+      // 🚀 메모리 캐시 즉시 업데이트 (UI 즉시 반영)
+      const memoryUpdated = markPurchaseAsPaymentCompleted(purchaseId);
+      if (memoryUpdated) {
+        logger.debug('[PurchaseListMain] 메모리 캐시 구매완료 업데이트 완료', { purchaseId });
+      } else {
+        logger.warn('[PurchaseListMain] 메모리 캐시 업데이트 실패, 데이터 재로드', { purchaseId });
+        await loadPurchases(); // fallback: 메모리 업데이트 실패 시 전체 재로드
+      }
+      
       toast.success('구매완료 처리되었습니다.');
-      await loadPurchases();
     } catch (error) {
+      logger.error('[PurchaseListMain] 구매완료 처리 실패:', error);
       toast.error('처리 중 오류가 발생했습니다.');
     }
   }, [supabase, loadPurchases]);

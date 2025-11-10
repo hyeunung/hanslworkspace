@@ -71,3 +71,69 @@ export const findPurchaseInMemory = (purchaseId: number | string): Purchase | nu
   
   return purchaseMemoryCache.allPurchases.find(purchase => purchase.id === id) || null
 }
+
+// 메모리 캐시에서 특정 구매 요청 업데이트
+export const updatePurchaseInMemory = (purchaseId: number | string, updater: (purchase: Purchase) => Purchase): boolean => {
+  if (!purchaseMemoryCache.allPurchases) return false
+  
+  const id = Number(purchaseId)
+  if (isNaN(id)) return false
+  
+  const index = purchaseMemoryCache.allPurchases.findIndex(purchase => purchase.id === id)
+  if (index === -1) return false
+  
+  // 기존 데이터 복사 후 업데이트
+  const currentPurchase = purchaseMemoryCache.allPurchases[index]
+  const updatedPurchase = updater({ ...currentPurchase })
+  
+  // 메모리 캐시 업데이트
+  purchaseMemoryCache.allPurchases[index] = updatedPurchase
+  
+  return true
+}
+
+// 구매완료 처리를 위한 헬퍼 함수
+export const markPurchaseAsPaymentCompleted = (purchaseId: number | string): boolean => {
+  return updatePurchaseInMemory(purchaseId, (purchase) => {
+    const currentTime = new Date().toISOString()
+    
+    // 모든 품목을 구매완료로 업데이트
+    const updatedItems = (purchase.items || []).map(item => ({
+      ...item,
+      is_payment_completed: true,
+      payment_completed_at: currentTime
+    }))
+    
+    return {
+      ...purchase,
+      is_payment_completed: true,
+      payment_completed_at: currentTime,
+      items: updatedItems
+    }
+  })
+}
+
+// 특정 품목의 구매완료 처리를 위한 헬퍼 함수
+export const markItemAsPaymentCompleted = (purchaseId: number | string, itemId: number | string): boolean => {
+  return updatePurchaseInMemory(purchaseId, (purchase) => {
+    const currentTime = new Date().toISOString()
+    const targetItemId = Number(itemId)
+    
+    // 해당 품목만 구매완료로 업데이트
+    const updatedItems = (purchase.items || []).map(item => 
+      item.id === targetItemId 
+        ? { ...item, is_payment_completed: true, payment_completed_at: currentTime }
+        : item
+    )
+    
+    // 모든 품목이 구매완료되었는지 확인
+    const allItemsCompleted = updatedItems.every(item => item.is_payment_completed)
+    
+    return {
+      ...purchase,
+      is_payment_completed: allItemsCompleted,
+      payment_completed_at: allItemsCompleted ? currentTime : purchase.payment_completed_at,
+      items: updatedItems
+    }
+  })
+}

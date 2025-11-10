@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Purchase } from "@/types/purchase";
+import { updatePurchaseInMemory } from '@/stores/purchaseMemoryStore';
+import { logger } from '@/lib/logger';
 
 interface PurchaseActionButtonsProps {
   purchase: Purchase;
@@ -42,20 +44,53 @@ const PurchaseActionButtons = memo(({
     
     setUpdating(true);
     try {
+      const currentTime = new Date().toISOString();
+      
       const { error } = await supabase
         .from('purchase_requests')
         .update({ 
           is_payment_completed: checked,
-          payment_completed_at: checked ? new Date().toISOString() : null
+          payment_completed_at: checked ? currentTime : null
         })
         .eq('id', purchase.id);
 
       if (error) throw error;
 
+      // 🚀 메모리 캐시 업데이트 (UI 즉시 반영)
+      const memoryUpdated = updatePurchaseInMemory(purchase.id, (p) => ({
+        ...p,
+        is_payment_completed: checked,
+        payment_completed_at: checked ? currentTime : null,
+        // 개별 품목도 동시 업데이트
+        items: checked 
+          ? (p.items || []).map(item => ({
+              ...item,
+              is_payment_completed: true,
+              payment_completed_at: currentTime
+            }))
+          : (p.items || []).map(item => ({
+              ...item,
+              is_payment_completed: false,
+              payment_completed_at: null
+            }))
+      }));
+      
+      if (memoryUpdated) {
+        logger.debug('[PurchaseActionButtons] 메모리 캐시 구매완료 업데이트 완료', { 
+          purchaseId: purchase.id, 
+          checked 
+        });
+      } else {
+        logger.warn('[PurchaseActionButtons] 메모리 캐시 업데이트 실패', { 
+          purchaseId: purchase.id 
+        });
+      }
+
       setIsPaymentCompleted(checked);
       toast.success(checked ? '결제 완료 처리되었습니다.' : '결제 완료가 취소되었습니다.');
       onUpdate();
     } catch (error) {
+      logger.error('[PurchaseActionButtons] 구매완료 처리 실패:', error);
       toast.error('처리 중 오류가 발생했습니다.');
     } finally {
       setUpdating(false);
@@ -68,20 +103,42 @@ const PurchaseActionButtons = memo(({
     
     setUpdating(true);
     try {
+      const currentTime = new Date().toISOString();
+      
       const { error } = await supabase
         .from('purchase_requests')
         .update({ 
           delivery_status: checked ? 'completed' : 'pending',
-          received_at: checked ? new Date().toISOString() : null
+          received_at: checked ? currentTime : null
         })
         .eq('id', purchase.id);
 
       if (error) throw error;
 
+      // 🚀 메모리 캐시 업데이트 (UI 즉시 반영)
+      const memoryUpdated = updatePurchaseInMemory(purchase.id, (p) => ({
+        ...p,
+        delivery_status: checked ? 'completed' : 'pending',
+        received_at: checked ? currentTime : null,
+        is_received: checked
+      }));
+      
+      if (memoryUpdated) {
+        logger.debug('[PurchaseActionButtons] 메모리 캐시 입고완료 업데이트 완료', { 
+          purchaseId: purchase.id, 
+          checked 
+        });
+      } else {
+        logger.warn('[PurchaseActionButtons] 메모리 캐시 입고완료 업데이트 실패', { 
+          purchaseId: purchase.id 
+        });
+      }
+
       setIsReceived(checked);
       toast.success(checked ? '입고 완료 처리되었습니다.' : '입고 완료가 취소되었습니다.');
       onUpdate();
     } catch (error) {
+      logger.error('[PurchaseActionButtons] 입고완료 처리 실패:', error);
       toast.error('처리 중 오류가 발생했습니다.');
     } finally {
       setUpdating(false);
