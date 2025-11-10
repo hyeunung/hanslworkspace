@@ -495,13 +495,6 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
               <span className="text-gray-400">-</span>
             )}
           </td>
-          {activeTab !== 'purchase' && activeTab !== 'receipt' && (
-            <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>
-              <span className="block truncate" title={purchase.vendor_payment_schedule || ''}>
-                {purchase.vendor_payment_schedule || '-'}
-              </span>
-            </td>
-          )}
         </>
       )}
       
@@ -565,11 +558,6 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
           <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>
             <span className="block truncate" title={purchase.sales_order_number || ''}>
               {purchase.sales_order_number || '-'}
-            </span>
-          </td>
-          <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>
-            <span className="block truncate" title={purchase.vendor_payment_schedule || ''}>
-              {purchase.vendor_payment_schedule || '-'}
             </span>
           </td>
           <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.status}`}>
@@ -983,7 +971,6 @@ const FastPurchaseTable = memo(({
         <>
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.link}`}>링크</th>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>지출예정일</th>
         </>
       );
     } else if (activeTab === 'receipt') {
@@ -1004,7 +991,6 @@ const FastPurchaseTable = memo(({
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>지출예정일</th>
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.status}`}>구매진행</th>
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receipt}`}>입고진행</th>
         </>

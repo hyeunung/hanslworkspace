@@ -89,6 +89,9 @@ export const updatePurchaseInMemory = (purchaseId: number | string, updater: (pu
   // 메모리 캐시 업데이트
   purchaseMemoryCache.allPurchases[index] = updatedPurchase
   
+  // 🚀 React 감지를 위한 lastFetch 업데이트 (UI 즉시 반영)
+  purchaseMemoryCache.lastFetch = Date.now()
+  
   return true
 }
 
