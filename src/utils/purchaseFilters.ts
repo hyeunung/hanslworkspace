@@ -60,7 +60,7 @@ export const filterByTab = (
         // 2. 전체 권한자 체크 (app_admin과 ceo만)
         if (userRoles.includes('app_admin') || 
             userRoles.includes('ceo')) {
-          logger.debug('🔥 App Admin detected! Showing all items for:', purchase.purchase_order_number);
+          logger.debug('🔥 App Admin detected! Showing all items for:', { purchase_order_number: purchase.purchase_order_number });
           return true
         }
         
@@ -298,6 +298,25 @@ export const sortPurchases = (
  * 필드 값 추출 헬퍼
  */
 const getFieldValue = (purchase: Purchase, field: string): any => {
+  // boolean 상태 필드는 먼저 체크 (중첩 필드 처리 전)
+  if (field === 'is_payment_completed') {
+    const value = purchase.is_payment_completed
+    return value === true ? '완료' : '대기'
+  }
+  if (field === 'is_received') {
+    // purchase_requests.is_received만 확인 (품목별 확인 X)
+    const value = purchase.is_received
+    return value === true ? '완료' : '대기'
+  }
+  if (field === 'is_statement_received') {
+    const value = purchase.is_statement_received
+    return value === true ? '완료' : '대기'
+  }
+  if (field === 'is_utk_checked') {
+    const value = purchase.is_utk_checked
+    return value === true ? '완료' : '대기'
+  }
+  
   // 중첩된 필드 처리 (예: items.0.item_name)
   const keys = field.split('.')
   let value: any = purchase

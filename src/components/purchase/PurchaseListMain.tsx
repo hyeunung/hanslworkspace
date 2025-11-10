@@ -2,10 +2,12 @@
 import { useState, lazy, Suspense, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { usePurchaseMemory } from "@/hooks/usePurchaseMemory";
+import { useColumnSettings } from "@/hooks/useColumnSettings";
+import ColumnSettingsDropdown from "@/components/purchase/ColumnSettingsDropdown";
 import FastPurchaseTable from "@/components/purchase/FastPurchaseTable";
 import FilterToolbar, { FilterRule, SortRule } from "@/components/purchase/FilterToolbar";
-import { updatePurchaseInMemory } from "@/services/purchaseDataLoader";
-import { markPurchaseAsPaymentCompleted } from '@/stores/purchaseMemoryStore';
+import { updatePurchaseInMemory, loadAllPurchaseData } from "@/services/purchaseDataLoader";
+import { markPurchaseAsPaymentCompleted, markPurchaseAsReceived, isCacheValid, purchaseMemoryCache } from '@/stores/purchaseMemoryStore';
 
 import { Plus, Package, Info } from "lucide-react";
 import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs/generatePurchaseOrderExcel";
@@ -64,6 +66,20 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     getFilteredPurchases
   } = usePurchaseMemory();
   
+  // 칼럼 가시성 설정
+  const { columnVisibility, isLoading: isColumnLoading, applyColumnSettings, resetToDefault } = useColumnSettings();
+  
+  // 숨겨진 칼럼이 있는지 확인
+  const hasHiddenColumns = useMemo(() => {
+    if (!columnVisibility) return false;
+    return Object.values(columnVisibility).some(visible => !visible);
+  }, [columnVisibility]);
+  
+  // 디버깅용 로그
+  useEffect(() => {
+    logger.info('[PurchaseListMain] columnVisibility 상태', { columnVisibility });
+  }, [columnVisibility]);
+  
   const currentUserRoles = Array.isArray(currentUser?.purchase_role) 
     ? currentUser.purchase_role.map((r: string) => r.trim())
     : typeof currentUser?.purchase_role === 'string' 
@@ -72,8 +88,14 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   
   const currentUserName = currentUser?.name || null;
   
-  // 메모리 기반이므로 리프레시 불필요 (하위 호환성을 위해 빈 함수 유지)
-  const loadPurchases = useCallback(async () => {}, []);
+  // 강제 리렌더링을 위한 더미 상태
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
+  
+  // 메모리 캐시 기반 강제 새로고침
+  const loadPurchases = useCallback(async () => {
+    console.log('🔄 [loadPurchases] 강제 새로고침 트리거')
+    setRefreshTrigger(prev => prev + 1)
+  }, []);
   
   // Optimistic Update: 메모리 캐시 즉시 업데이트
   const updatePurchaseOptimistic = useCallback((purchaseId: number, updater: (prev: Purchase) => Purchase) => {
@@ -126,6 +148,29 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       setActiveTab(tab);
     }
   }, [location.search]);
+
+  // 캐시 상태 확인 및 필요시 데이터 새로고침
+  useEffect(() => {
+    const checkAndRefreshCache = async () => {
+      // 캐시가 무효화되었거나 데이터가 없는 경우 새로고침
+      if (!isCacheValid() || !purchaseMemoryCache.allPurchases) {
+        console.log('🔄 [PurchaseListMain] 캐시 무효화 감지, 데이터 새로고침 중...', {
+          isCacheValid: isCacheValid(),
+          hasData: !!purchaseMemoryCache.allPurchases,
+          lastFetch: purchaseMemoryCache.lastFetch
+        });
+        
+        try {
+          await loadAllPurchaseData(currentUser?.id);
+          console.log('✅ [PurchaseListMain] 데이터 새로고침 완료');
+        } catch (error) {
+          console.error('❌ [PurchaseListMain] 데이터 새로고침 실패:', error);
+        }
+      }
+    };
+    
+    checkAndRefreshCache();
+  }, [currentUser?.id]); // currentUser가 변경될 때마다 체크
 
   // 필터 옵션 데이터 로드
   useEffect(() => {
@@ -700,6 +745,12 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       if (requestResult.error) throw requestResult.error;
       if (itemsResult.error) throw itemsResult.error;
       
+      // 🚀 메모리 캐시 즉시 업데이트 (UI 즉시 반영)
+      const memoryUpdated = markPurchaseAsReceived(purchaseId);
+      if (!memoryUpdated) {
+        logger.warn('[PurchaseListMain] 메모리 캐시 입고완료 업데이트 실패', { purchaseId });
+      }
+      
       toast.success('입고완료 처리되었습니다.');
       await loadPurchases();
     } catch (error) {
@@ -734,9 +785,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       
       // 🚀 메모리 캐시 즉시 업데이트 (UI 즉시 반영)
       const memoryUpdated = markPurchaseAsPaymentCompleted(purchaseId);
-      if (memoryUpdated) {
-        logger.debug('[PurchaseListMain] 메모리 캐시 구매완료 업데이트 완료', { purchaseId });
-      } else {
+      if (!memoryUpdated) {
         logger.warn('[PurchaseListMain] 메모리 캐시 업데이트 실패, 데이터 재로드', { purchaseId });
         await loadPurchases(); // fallback: 메모리 업데이트 실패 시 전체 재로드
       }
@@ -796,17 +845,30 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
           availableContacts={availableContacts}
           availablePaymentSchedules={availablePaymentSchedules}
         />
-        {/* 필터가 없을 때만 표시되는 안내 메시지 */}
-        {activeFilters.length === 0 && !searchTerm.trim() && (
-          <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
-            <Info className="w-3.5 h-3.5" />
-            <span>최근 60일 데이터만 표시됩니다. 더 오래된 데이터를 보려면 필터를 적용해주세요.</span>
-          </div>
-        )}
+        {/* 필터가 없을 때만 표시되는 안내 메시지와 칼럼 설정 버튼 */}
+        <div className="mt-2 flex items-center justify-between">
+          {activeFilters.length === 0 && !searchTerm.trim() ? (
+            <div className="flex items-center gap-1.5 text-xs text-gray-500">
+              <Info className="w-3.5 h-3.5" />
+              <span>최근 60일 데이터만 표시됩니다. 더 오래된 데이터를 보려면 필터를 적용해주세요.</span>
+            </div>
+          ) : (
+            <div></div>
+          )}
+          {/* 칼럼 설정 버튼 - 60일 메시지 오른쪽 */}
+          <ColumnSettingsDropdown 
+            isVisible={true} 
+            columnVisibility={columnVisibility}
+            applyColumnSettings={applyColumnSettings}
+            resetToDefault={resetToDefault}
+            isLoading={isColumnLoading}
+          />
+        </div>
       </div>
 
       {/* 직접 구현한 탭 (hanslwebapp 방식) - 빠른 성능 */}
       <div className="space-y-3">
+
         {/* 탭 버튼들 - 모바일 반응형 개선 */}
         <div className="flex flex-col sm:flex-row sm:space-x-1 space-y-1 sm:space-y-0 bg-gray-50 p-1 business-radius-card border border-gray-200">
           {NAV_TABS.map((tab) => (
@@ -907,7 +969,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         )}
 
         {/* 탭 콘텐츠 */}
-        <Card className="overflow-hidden border border-gray-200">
+        <Card className={`overflow-hidden border border-gray-200 ${hasHiddenColumns ? 'w-fit' : ''}`}>
           <CardContent className="p-0">
             {loading ? (
               <div className="flex items-center justify-center py-12">
@@ -929,6 +991,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
                 onOptimisticUpdate={updatePurchaseOptimistic}
                 onPaymentComplete={handlePaymentComplete}
                 onReceiptComplete={handleReceiptComplete}
+                columnVisibility={columnVisibility}
               />
             )}
           </CardContent>

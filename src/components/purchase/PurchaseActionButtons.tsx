@@ -75,12 +75,7 @@ const PurchaseActionButtons = memo(({
             }))
       }));
       
-      if (memoryUpdated) {
-        logger.debug('[PurchaseActionButtons] 메모리 캐시 구매완료 업데이트 완료', { 
-          purchaseId: purchase.id, 
-          checked 
-        });
-      } else {
+      if (!memoryUpdated) {
         logger.warn('[PurchaseActionButtons] 메모리 캐시 업데이트 실패', { 
           purchaseId: purchase.id 
         });
@@ -123,12 +118,7 @@ const PurchaseActionButtons = memo(({
         is_received: checked
       }));
       
-      if (memoryUpdated) {
-        logger.debug('[PurchaseActionButtons] 메모리 캐시 입고완료 업데이트 완료', { 
-          purchaseId: purchase.id, 
-          checked 
-        });
-      } else {
+      if (!memoryUpdated) {
         logger.warn('[PurchaseActionButtons] 메모리 캐시 입고완료 업데이트 실패', { 
           purchaseId: purchase.id 
         });

@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, useCallback } from "react";
+import { memo, useMemo, useState, useCallback, useEffect } from "react";
 import PurchaseDetailModal from "./PurchaseDetailModal";
 import MobilePurchaseCard from "./MobilePurchaseCard";
 import { createClient } from "@/lib/supabase/client";
@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Purchase, PurchaseRequestWithDetails } from "@/types/purchase";
+import { DoneTabColumnId, ColumnVisibility } from "@/types/columnSettings";
 
 interface FastPurchaseTableProps {
   purchases: Purchase[];
@@ -28,6 +29,7 @@ interface FastPurchaseTableProps {
   onOptimisticUpdate?: (purchaseId: number, updater: (prev: Purchase) => Purchase) => void;
   onPaymentComplete?: (purchaseId: number) => Promise<void>;
   onReceiptComplete?: (purchaseId: number) => Promise<void>;
+  columnVisibility?: ColumnVisibility; // 칼럼 가시성 설정
 }
 
 // 상태 배지 컴포넌트 (더 빠르게)
@@ -75,13 +77,13 @@ const COMMON_COLUMN_CLASSES = {
   purchaseOrderNumber: "pl-2 w-38 min-w-[155px] max-w-[155px]",      // 발주번호 + 품목갯수 + 엑셀아이콘
   purchaseOrderNumberCompact: "pl-2 w-36 min-w-[140px] max-w-[140px]", // 구매현황 탭용 (추가 컬럼 보상)
   paymentCategory: "text-center w-20 min-w-[85px] max-w-[85px]",
-  requesterName: "w-16 min-w-[68px] max-w-[68px]",
+  requesterName: "w-12 min-w-[48px] max-w-[48px]",                    // 한글 이름 2-3자 기준 (김용희, 한화 등)
   requestDate: "text-center px-2 w-16 min-w-[64px] max-w-[68px]",
-  vendorName: "pl-3 pr-2 w-32 min-w-[130px] max-w-[130px]",
+  vendorName: "pl-3 pr-2 w-20 min-w-[80px] max-w-[80px]",            // 업체명 보통 3-5자 (LG, LGPRI, 한승 등)
   contactName: "w-16 min-w-[68px] max-w-[68px]",
   deliveryRequestDate: "w-20 min-w-[85px] max-w-[85px]",
   revisedDeliveryRequestDate: "w-20 min-w-[85px] max-w-[85px]",
-  itemName: "w-28 min-w-[120px] max-w-[120px]",                       // 평균 7.8자 + 여유
+  itemName: "w-44 min-w-[176px] max-w-[176px]",                       // 품명 공간 더 늘림: 160px → 176px
   specification: "w-64 min-w-[260px] max-w-[260px]",                  // 평균 15.5자 + 여유 (조금 더 길게)
   quantity: "text-center w-14 min-w-[60px] max-w-[60px]",
   unitPrice: "text-right w-24 min-w-[100px] max-w-[100px]",
@@ -372,7 +374,7 @@ const ProgressTypeBadge = memo(({ type }: { type?: string }) => {
 ProgressTypeBadge.displayName = 'ProgressTypeBadge';
 
 // 테이블 행 컴포넌트 메모화
-const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentComplete, onReceiptComplete, onExcelDownload }: { 
+const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentComplete, onReceiptComplete, onExcelDownload, columnVisibility }: { 
   purchase: Purchase; 
   onClick: (purchase: Purchase) => void;
   activeTab?: string;
@@ -380,8 +382,16 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
   onPaymentComplete?: (purchaseId: number) => Promise<void>;
   onReceiptComplete?: (purchaseId: number) => Promise<void>;
   onExcelDownload?: (purchase: Purchase) => Promise<void>;
+  columnVisibility?: ColumnVisibility;
 }) => {
   const isAdvance = purchase.progress_type === '선진행' || purchase.progress_type?.includes('선진행');
+  
+  // 칼럼 가시성 헬퍼 함수
+  const isVisible = (columnId: DoneTabColumnId) => {
+    // 전체항목 탭이 아니면 모든 칼럼 표시
+    if (!columnVisibility) return true;
+    return columnVisibility[columnId] !== false;
+  };
   
   return (
     <tr 
@@ -395,24 +405,26 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
         </td>
       )}
       {/* 구매현황 탭에서는 구매완료 진행률만 표시 */}
-      {activeTab === 'purchase' && (
+      {activeTab === 'purchase' && isVisible('purchase_progress') && (
         <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receiptProgress}`}>
           <PaymentProgressBar purchase={purchase} activeTab={activeTab} />
         </td>
       )}
       {/* 입고현황 탭에서는 입고진행을 맨 앞에 표시 */}
-      {activeTab === 'receipt' && (
+      {activeTab === 'receipt' && isVisible('receipt_progress') && (
         <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receiptProgress}`}>
           <ReceiptProgressBar purchase={purchase} />
         </td>
       )}
-      {/* 전체항목 탭에서는 거래명세서 진행률을 맨 앞에 표시 */}
-      {activeTab === 'done' && (
+      {/* 거래명세서 진행률 칼럼 */}
+      {activeTab === 'done' && isVisible('statement_progress') && (
         <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receiptProgress}`}>
           <StatementProgressBar purchase={purchase} />
         </td>
       )}
-      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${activeTab === 'purchase' ? COMMON_COLUMN_CLASSES.purchaseOrderNumberCompact : COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>
+      {/* 발주번호 칼럼 */}
+      {isVisible('purchase_order_number') && (
+        <td className={`px-2 py-1.5 card-title whitespace-nowrap ${activeTab === 'purchase' ? COMMON_COLUMN_CLASSES.purchaseOrderNumberCompact : COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>
         <div className="flex items-center gap-1">
           {/* 엑셀 다운로드 아이콘 - 항상 표시, 조건에 따라 활성화/비활성화 */}
           {onExcelDownload && (
@@ -449,9 +461,10 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
             )}
           </span>
         </div>
-      </td>
-      {/* 모든 탭에서 결제종류 표시 */}
-      {(activeTab === 'pending' || activeTab === 'purchase' || activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
+        </td>
+      )}
+      {/* 결제종류 칼럼 */}
+      {isVisible('payment_category') && (
         <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>
           <span className={`badge-stats ${
             purchase.payment_category === '구매요청' || purchase.payment_category === '구매 요청' ? 'bg-blue-500 text-white' :
@@ -470,181 +483,253 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
           </span>
         </td>
       )}
-      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.requesterName}`}>
-        <span className="block truncate" title={purchase.requester_name || ''}>
-          {purchase.requester_name || '-'}
-        </span>
-      </td>
-      <td className={`py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.requestDate}`}>
-        {formatDateShort(purchase.request_date)}
-      </td>
-      {/* 전체항목 탭에서만 UTK 확인 칼럼 표시 (청구일과 업체 사이) */}
-      {activeTab === 'done' && (
+      {/* 요청자 칼럼 */}
+      {isVisible('requester_name') && (
+        <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.requesterName}`}>
+          <span className="block truncate" title={purchase.requester_name || ''}>
+            {purchase.requester_name || '-'}
+          </span>
+        </td>
+      )}
+      {/* 청구일 칼럼 */}
+      {isVisible('request_date') && (
+        <td className={`py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.requestDate}`}>
+          {formatDateShort(purchase.request_date)}
+        </td>
+      )}
+      {/* UTK 확인 칼럼 */}
+      {activeTab === 'done' && isVisible('utk_status') && (
         <td className={`pl-2 pr-3 py-1.5 card-title whitespace-nowrap text-center overflow-visible text-clip ${COMMON_COLUMN_CLASSES.utk}`}>
           <span className={(purchase as any).is_utk_checked ? 'badge-utk-complete' : 'badge-utk-pending'}>
             {(purchase as any).is_utk_checked ? '완료' : '대기'}
           </span>
         </td>
       )}
-      <td className={`pl-3 pr-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.vendorName}`}>
-        <span className="block truncate" title={purchase.vendor_name || ''}>
-          {purchase.vendor_name || '-'}
-        </span>
-      </td>
-      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.contactName}`}>
-        <span className="block truncate" title={purchase.contact_name || ''}>
-          {purchase.contact_name || '-'}
-        </span>
-      </td>
-      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.deliveryRequestDate} ${
-        purchase.revised_delivery_request_date ? 'text-gray-400' : ''
-      }`}>
-        {formatDateShort(purchase.delivery_request_date)}
-      </td>
-      {(activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
+      {/* 업체 칼럼 */}
+      {isVisible('vendor_name') && (
+        <td className={`pl-3 pr-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.vendorName}`}>
+          <span className="block truncate" title={purchase.vendor_name || ''}>
+            {purchase.vendor_name || '-'}
+          </span>
+        </td>
+      )}
+      {/* 담당자 칼럼 */}
+      {isVisible('contact_name') && (
+        <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.contactName}`}>
+          <span className="block truncate" title={purchase.contact_name || ''}>
+            {purchase.contact_name || '-'}
+          </span>
+        </td>
+      )}
+      {/* 입고요청일 칼럼 */}
+      {isVisible('delivery_request_date') && (
+        <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.deliveryRequestDate} ${
+          purchase.revised_delivery_request_date ? 'text-gray-400' : ''
+        }`}>
+          {formatDateShort(purchase.delivery_request_date)}
+        </td>
+      )}
+      {/* 변경입고일 칼럼 */}
+      {(activeTab === 'receipt' || activeTab === 'done') && isVisible('revised_delivery_date') && (
         <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>
           {formatDateShort(purchase.revised_delivery_request_date)}
         </td>
       )}
-      <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.itemName}`}>
-        <span className="block truncate" title={purchase.purchase_request_items?.[0]?.item_name || ''}>
-          {purchase.purchase_request_items?.[0]?.item_name || '-'}
-        </span>
-      </td>
-      <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.specification}`}>
-        <span className="block truncate" title={purchase.purchase_request_items?.[0]?.specification || ''}>
-          {purchase.purchase_request_items?.[0]?.specification || '-'}
-        </span>
-      </td>
-      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>
-        {purchase.purchase_request_items?.[0]?.quantity || 0}
-      </td>
-      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>
-        {purchase.purchase_request_items?.[0]?.unit_price_value ? `${purchase.purchase_request_items[0].unit_price_value.toLocaleString()} ${getCurrencySymbol(purchase.purchase_request_items[0]?.unit_price_currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.purchase_request_items?.[0]?.unit_price_currency || 'KRW')}`}
-      </td>
-      <td className={`px-2 py-1.5 card-amount whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>
-        {purchase.purchase_request_items?.[0]?.amount_value ? `${purchase.purchase_request_items[0].amount_value.toLocaleString()} ${getCurrencySymbol(purchase.purchase_request_items[0]?.amount_currency || 'KRW')}` : purchase.total_amount ? `${purchase.total_amount.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.currency || 'KRW')}`}
-      </td>
+      {/* 품명 칼럼 */}
+      {isVisible('item_name') && (
+        <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.itemName}`}>
+          <span className="block truncate" title={purchase.purchase_request_items?.[0]?.item_name || ''}>
+            {purchase.purchase_request_items?.[0]?.item_name || '-'}
+          </span>
+        </td>
+      )}
+      {/* 규격 칼럼 */}
+      {isVisible('specification') && (
+        <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.specification}`}>
+          <span className="block truncate" title={purchase.purchase_request_items?.[0]?.specification || ''}>
+            {purchase.purchase_request_items?.[0]?.specification || '-'}
+          </span>
+        </td>
+      )}
+      {/* 수량 칼럼 */}
+      {isVisible('quantity') && (
+        <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>
+          {purchase.purchase_request_items?.[0]?.quantity || 0}
+        </td>
+      )}
+      {/* 단가 칼럼 */}
+      {isVisible('unit_price') && (
+        <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>
+          {purchase.purchase_request_items?.[0]?.unit_price_value ? `${purchase.purchase_request_items[0].unit_price_value.toLocaleString()} ${getCurrencySymbol(purchase.purchase_request_items[0]?.unit_price_currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.purchase_request_items?.[0]?.unit_price_currency || 'KRW')}`}
+        </td>
+      )}
+      {/* 합계 칼럼 */}
+      {isVisible('amount') && (
+        <td className={`px-2 py-1.5 card-amount whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>
+          {purchase.purchase_request_items?.[0]?.amount_value ? `${purchase.purchase_request_items[0].amount_value.toLocaleString()} ${getCurrencySymbol(purchase.purchase_request_items[0]?.amount_currency || 'KRW')}` : purchase.total_amount ? `${purchase.total_amount.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.currency || 'KRW')}`}
+        </td>
+      )}
       
       {/* 탭별 다른 칼럼 표시 */}
       {activeTab === 'pending' && (
         <>
-          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
-            <span className="block truncate" title={purchase.purchase_request_items?.[0]?.remark || ''}>
-              {purchase.purchase_request_items?.[0]?.remark || '-'}
-            </span>
-          </td>
-          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectVendor}`}>
-            <span className="block truncate" title={purchase.project_vendor || ''}>
-              {purchase.project_vendor || '-'}
-            </span>
-          </td>
-          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectItem}`}>
-            <span className="block truncate" title={purchase.project_item || ''}>
-              {purchase.project_item || '-'}
-            </span>
-          </td>
-          <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>
-            <span className="block truncate" title={purchase.sales_order_number || ''}>
-              {purchase.sales_order_number || '-'}
-            </span>
-          </td>
+          {isVisible('remark') && (
+            <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
+              <span className="block truncate" title={purchase.purchase_request_items?.[0]?.remark || ''}>
+                {purchase.purchase_request_items?.[0]?.remark || '-'}
+              </span>
+            </td>
+          )}
+          {isVisible('project_vendor') && (
+            <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectVendor}`}>
+              <span className="block truncate" title={purchase.project_vendor || ''}>
+                {purchase.project_vendor || '-'}
+              </span>
+            </td>
+          )}
+          {isVisible('project_item') && (
+            <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectItem}`}>
+              <span className="block truncate" title={purchase.project_item || ''}>
+                {purchase.project_item || '-'}
+              </span>
+            </td>
+          )}
+          {isVisible('sales_order_number') && (
+            <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>
+              <span className="block truncate" title={purchase.sales_order_number || ''}>
+                {purchase.sales_order_number || '-'}
+              </span>
+            </td>
+          )}
         </>
       )}
       
       {activeTab === 'purchase' && (
         <>
-          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
-            <span className="block truncate" title={purchase.purchase_request_items?.[0]?.remark || ''}>
-              {purchase.purchase_request_items?.[0]?.remark || '-'}
-            </span>
-          </td>
-          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.link}`}>
-            {purchase.purchase_request_items?.[0]?.link ? (
-              <a 
-                href={purchase.purchase_request_items?.[0]?.link} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="text-blue-600 hover:text-blue-800 underline truncate block"
-                title={purchase.purchase_request_items?.[0]?.link}
-              >
-                링크 보기
-              </a>
-            ) : (
-              <span className="text-gray-400">-</span>
-            )}
-          </td>
+          {isVisible('remark') && (
+            <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
+              <span className="block truncate" title={purchase.purchase_request_items?.[0]?.remark || ''}>
+                {purchase.purchase_request_items?.[0]?.remark || '-'}
+              </span>
+            </td>
+          )}
+          {isVisible('link') && (
+            <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.link}`}>
+              {purchase.purchase_request_items?.[0]?.link ? (
+                <a 
+                  href={purchase.purchase_request_items?.[0]?.link} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="text-blue-600 hover:text-blue-800 underline truncate block"
+                  title={purchase.purchase_request_items?.[0]?.link}
+                >
+                  링크 보기
+                </a>
+              ) : (
+                <span className="text-gray-400">-</span>
+              )}
+            </td>
+          )}
         </>
       )}
       
       {activeTab === 'receipt' && (
         <>
-          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
-            <span className="block truncate" title={purchase.purchase_request_items?.[0]?.remark || ''}>
-              {purchase.purchase_request_items?.[0]?.remark || '-'}
-            </span>
-          </td>
-          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectVendor}`}>
-            <span className="block truncate" title={purchase.project_vendor || ''}>
-              {purchase.project_vendor || '-'}
-            </span>
-          </td>
-          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectItem}`}>
-            <span className="block truncate" title={purchase.project_item || ''}>
-              {purchase.project_item || '-'}
-            </span>
-          </td>
-          <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>
-            <span className="block truncate" title={purchase.sales_order_number || ''}>
-              {purchase.sales_order_number || '-'}
-            </span>
-          </td>
+          {isVisible('remark') && (
+            <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
+              <span className="block truncate" title={purchase.purchase_request_items?.[0]?.remark || ''}>
+                {purchase.purchase_request_items?.[0]?.remark || '-'}
+              </span>
+            </td>
+          )}
+          {isVisible('project_vendor') && (
+            <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectVendor}`}>
+              <span className="block truncate" title={purchase.project_vendor || ''}>
+                {purchase.project_vendor || '-'}
+              </span>
+            </td>
+          )}
+          {isVisible('project_item') && (
+            <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectItem}`}>
+              <span className="block truncate" title={purchase.project_item || ''}>
+                {purchase.project_item || '-'}
+              </span>
+            </td>
+          )}
+          {isVisible('sales_order_number') && (
+            <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>
+              <span className="block truncate" title={purchase.sales_order_number || ''}>
+                {purchase.sales_order_number || '-'}
+              </span>
+            </td>
+          )}
         </>
       )}
       
       {(activeTab === 'done' || !activeTab) && (
         <>
-          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
-            <span className="block truncate" title={purchase.purchase_request_items?.[0]?.remark || ''}>
-              {purchase.purchase_request_items?.[0]?.remark || '-'}
-            </span>
-          </td>
-          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.link}`}>
-            {purchase.purchase_request_items?.[0]?.link ? (
-              <a 
-                href={purchase.purchase_request_items?.[0]?.link} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="text-blue-600 hover:text-blue-800 underline truncate block"
-                title={purchase.purchase_request_items?.[0]?.link}
-              >
-                링크 보기
-              </a>
-            ) : (
-              <span className="text-gray-400">-</span>
-            )}
-          </td>
-          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectVendor}`}>
-            <span className="block truncate" title={purchase.project_vendor || ''}>
-              {purchase.project_vendor || '-'}
-            </span>
-          </td>
-          <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectItem}`}>
-            <span className="block truncate" title={purchase.project_item || ''}>
-              {purchase.project_item || '-'}
-            </span>
-          </td>
-          <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>
-            <span className="block truncate" title={purchase.sales_order_number || ''}>
-              {purchase.sales_order_number || '-'}
-            </span>
-          </td>
-          <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.status}`}>
-            <PaymentProgressBar purchase={purchase} activeTab={activeTab} />
-          </td>
-          <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receipt}`}>
-            <ReceiptProgressBar purchase={purchase} />
-          </td>
+          {/* 비고 칼럼 */}
+          {isVisible('remark') && (
+            <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
+              <span className="block truncate" title={purchase.purchase_request_items?.[0]?.remark || ''}>
+                {purchase.purchase_request_items?.[0]?.remark || '-'}
+              </span>
+            </td>
+          )}
+          {/* 링크 칼럼 */}
+          {isVisible('link') && (
+            <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.link}`}>
+              {purchase.purchase_request_items?.[0]?.link ? (
+                <a 
+                  href={purchase.purchase_request_items?.[0]?.link} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="text-blue-600 hover:text-blue-800 underline truncate block"
+                  title={purchase.purchase_request_items?.[0]?.link}
+                >
+                  링크 보기
+                </a>
+              ) : (
+                <span className="text-gray-400">-</span>
+              )}
+            </td>
+          )}
+          {/* PJ업체 칼럼 */}
+          {isVisible('project_vendor') && (
+            <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectVendor}`}>
+              <span className="block truncate" title={purchase.project_vendor || ''}>
+                {purchase.project_vendor || '-'}
+              </span>
+            </td>
+          )}
+          {/* PJ ITEM 칼럼 */}
+          {isVisible('project_item') && (
+            <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.projectItem}`}>
+              <span className="block truncate" title={purchase.project_item || ''}>
+                {purchase.project_item || '-'}
+              </span>
+            </td>
+          )}
+          {/* 수주번호 칼럼 */}
+          {isVisible('sales_order_number') && (
+            <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>
+              <span className="block truncate" title={purchase.sales_order_number || ''}>
+                {purchase.sales_order_number || '-'}
+              </span>
+            </td>
+          )}
+          {/* 구매진행 칼럼 */}
+          {isVisible('purchase_progress') && (
+            <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.status}`}>
+              <PaymentProgressBar purchase={purchase} activeTab={activeTab} />
+            </td>
+          )}
+          {/* 입고진행 칼럼 */}
+          {isVisible('receipt_progress') && (
+            <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receipt} ${activeTab === 'done' ? 'column-progress' : ''}`}>
+              <ReceiptProgressBar purchase={purchase} />
+            </td>
+          )}
         </>
       )}
       
@@ -655,15 +740,20 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
 TableRow.displayName = 'TableRow';
 
 // 메인 테이블 컴포넌트
-const FastPurchaseTable = memo(({ 
+const FastPurchaseTable = ({ 
   purchases, 
   activeTab = 'done', 
   currentUserRoles = [], 
   onRefresh,
   onOptimisticUpdate,
   onPaymentComplete,
-  onReceiptComplete 
+  onReceiptComplete,
+  columnVisibility
 }: FastPurchaseTableProps) => {
+  // 디버깅용 로그
+  useEffect(() => {
+    logger.info('[FastPurchaseTable] columnVisibility 변경됨', { columnVisibility });
+  }, [columnVisibility]);
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -962,6 +1052,12 @@ const FastPurchaseTable = memo(({
     setPurchaseToDelete(null);
   }, [supabase, purchaseToDelete, onRefresh]);
 
+  // 칼럼 표시 여부 체크 함수
+  const isColumnVisible = useCallback((columnId: DoneTabColumnId) => {
+    if (!columnVisibility) return true; // columnVisibility가 없으면 모든 칼럼 표시
+    return columnVisibility[columnId] !== false;
+  }, [columnVisibility]);
+
   // 탭별 테이블 헤더 메모화
   const tableHeader = useMemo(() => {
     if (activeTab === 'pending') {
@@ -969,22 +1065,108 @@ const FastPurchaseTable = memo(({
         <thead className="bg-gray-50">
           <tr>
             <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.approvalStatus}`}>승인상태</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.itemName}`}>품명</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
+            {isColumnVisible('purchase_order_number') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
+            )}
+            {isColumnVisible('payment_category') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
+            )}
+            {isColumnVisible('requester_name') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
+            )}
+            {isColumnVisible('request_date') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
+            )}
+            {isColumnVisible('vendor_name') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
+            )}
+            {isColumnVisible('contact_name') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
+            )}
+            {isColumnVisible('delivery_request_date') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
+            )}
+            {isColumnVisible('item_name') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.itemName}`}>품명</th>
+            )}
+            {isColumnVisible('specification') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
+            )}
+            {isColumnVisible('quantity') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
+            )}
+            {isColumnVisible('unit_price') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
+            )}
+            {isColumnVisible('amount') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
+            )}
+            {isColumnVisible('remark') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
+            )}
+            {isColumnVisible('project_vendor') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
+            )}
+            {isColumnVisible('project_item') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
+            )}
+            {isColumnVisible('sales_order_number') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
+            )}
+          </tr>
+        </thead>
+      );
+    }
+    
+    if (activeTab === 'purchase') {
+      return (
+        <thead className="bg-gray-50">
+          <tr>
+            {isColumnVisible('purchase_progress') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>구매진행</th>
+            )}
+            {isColumnVisible('purchase_order_number') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumberCompact}`}>발주번호</th>
+            )}
+            {isColumnVisible('payment_category') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
+            )}
+            {isColumnVisible('requester_name') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
+            )}
+            {isColumnVisible('request_date') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
+            )}
+            {isColumnVisible('vendor_name') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
+            )}
+            {isColumnVisible('contact_name') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
+            )}
+            {isColumnVisible('delivery_request_date') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
+            )}
+            {isColumnVisible('item_name') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.itemName}`}>품명</th>
+            )}
+            {isColumnVisible('specification') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
+            )}
+            {isColumnVisible('quantity') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
+            )}
+            {isColumnVisible('unit_price') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
+            )}
+            {isColumnVisible('amount') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
+            )}
+            {isColumnVisible('remark') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
+            )}
+            {isColumnVisible('link') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.link}`}>링크</th>
+            )}
           </tr>
         </thead>
       );
@@ -992,27 +1174,49 @@ const FastPurchaseTable = memo(({
     
     const baseHeaders = (
       <>
-        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${activeTab === 'purchase' ? COMMON_COLUMN_CLASSES.purchaseOrderNumberCompact : COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
-        {(activeTab === 'purchase' || activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
+        {isColumnVisible('purchase_order_number') && (
+          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${activeTab === 'purchase' ? COMMON_COLUMN_CLASSES.purchaseOrderNumberCompact : COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
+        )}
+        {isColumnVisible('payment_category') && (
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
         )}
-        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
-        <th className={`py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
+        {isColumnVisible('requester_name') && (
+          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
+        )}
+        {isColumnVisible('request_date') && (
+          <th className={`py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
+        )}
         {/* 전체항목 탭에서만 UTK 확인 칼럼 헤더 표시 */}
-        {activeTab === 'done' && (
+        {activeTab === 'done' && isColumnVisible('utk_status') && (
           <th className={`pl-2 pr-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center ${COMMON_COLUMN_CLASSES.utk}`}>UTK</th>
         )}
-        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
-        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
-        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
-        {(activeTab === 'receipt' || activeTab === 'done' || !activeTab) && (
+        {isColumnVisible('vendor_name') && (
+          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
+        )}
+        {isColumnVisible('contact_name') && (
+          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
+        )}
+        {isColumnVisible('delivery_request_date') && (
+          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
+        )}
+        {(activeTab === 'receipt' || activeTab === 'done') && isColumnVisible('revised_delivery_date') && (
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.revisedDeliveryRequestDate}`}>변경 입고일</th>
         )}
-        <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.itemName}`}>품명</th>
-        <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
-        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
-        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
-        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
+        {isColumnVisible('item_name') && (
+          <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.itemName}`}>품명</th>
+        )}
+        {isColumnVisible('specification') && (
+          <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
+        )}
+        {isColumnVisible('quantity') && (
+          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
+        )}
+        {isColumnVisible('unit_price') && (
+          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
+        )}
+        {isColumnVisible('amount') && (
+          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
+        )}
       </>
     );
 
@@ -1021,30 +1225,56 @@ const FastPurchaseTable = memo(({
     if (activeTab === 'purchase') {
       additionalHeaders = (
         <>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.link}`}>링크</th>
+          {isColumnVisible('remark') && (
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
+          )}
+          {isColumnVisible('link') && (
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.link}`}>링크</th>
+          )}
         </>
       );
     } else if (activeTab === 'receipt') {
       additionalHeaders = (
         <>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
+          {isColumnVisible('remark') && (
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
+          )}
+          {isColumnVisible('project_vendor') && (
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
+          )}
+          {isColumnVisible('project_item') && (
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
+          )}
+          {isColumnVisible('sales_order_number') && (
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
+          )}
         </>
       );
     } else {
       // done 또는 기본
       additionalHeaders = (
         <>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.link}`}>링크</th>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.status}`}>구매진행</th>
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receipt}`}>입고진행</th>
+          {isColumnVisible('remark') && (
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
+          )}
+          {isColumnVisible('link') && (
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.link}`}>링크</th>
+          )}
+          {isColumnVisible('project_vendor') && (
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
+          )}
+          {isColumnVisible('project_item') && (
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
+          )}
+          {isColumnVisible('sales_order_number') && (
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
+          )}
+          {isColumnVisible('purchase_progress') && (
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.status}`}>구매진행</th>
+          )}
+          {isColumnVisible('receipt_progress') && (
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receipt}`}>입고진행</th>
+          )}
         </>
       );
     }
@@ -1053,15 +1283,15 @@ const FastPurchaseTable = memo(({
       <thead className="bg-gray-50">
         <tr>
           {/* 구매현황 탭에서는 구매완료 진행률을 맨 앞에 */}
-          {activeTab === 'purchase' && (
+          {activeTab === 'purchase' && isColumnVisible('purchase_progress') && (
             <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>구매진행</th>
           )}
           {/* 입고현황 탭에서는 입고진행을 맨 앞에 */}
-          {activeTab === 'receipt' && (
+          {activeTab === 'receipt' && isColumnVisible('receipt_progress') && (
             <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>입고진행</th>
           )}
           {/* 전체항목 탭에서는 거래명세서 진행률을 맨 앞에 */}
-          {activeTab === 'done' && (
+          {activeTab === 'done' && isColumnVisible('statement_progress') && (
             <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>거래명세서</th>
           )}
           {baseHeaders}
@@ -1069,14 +1299,21 @@ const FastPurchaseTable = memo(({
         </tr>
       </thead>
     );
-  }, [activeTab]);
+  }, [activeTab, isColumnVisible]);
+
+  // 숨겨진 칼럼이 있는지 확인하여 테이블 클래스 동적 적용
+  const hasHiddenColumns = useMemo(() => {
+    if (!columnVisibility) return false;
+    return Object.values(columnVisibility).some(visible => !visible);
+  }, [columnVisibility]);
 
   return (
     <>
       {/* 데스크톱 테이블 뷰 - 실제 데이터 1,979건 분석 기반 최적 너비 */}
-      <div className="hidden md:block w-full">
-        <div className="overflow-x-auto border rounded-lg">
-          <table className="w-full min-w-[1790px] border-collapse">
+      <div className={`hidden md:block ${hasHiddenColumns ? 'w-fit' : 'w-full'}`}>
+        
+        <div className={hasHiddenColumns ? 'table-container-fit-left' : 'overflow-x-auto border rounded-lg'}>
+          <table className={hasHiddenColumns ? 'table-fit-left' : 'w-full min-w-[1790px] border-collapse'}>
             {tableHeader}
             <tbody>
               {purchases.map((purchase) => (
@@ -1089,6 +1326,7 @@ const FastPurchaseTable = memo(({
                   onPaymentComplete={onPaymentComplete}
                   onReceiptComplete={onReceiptComplete}
                   onExcelDownload={handleExcelDownload}
+                  columnVisibility={columnVisibility}
                 />
               ))}
             </tbody>
@@ -1183,7 +1421,7 @@ const FastPurchaseTable = memo(({
       </AlertDialog>
     </>
   );
-});
+};
 
 FastPurchaseTable.displayName = 'FastPurchaseTable';
 

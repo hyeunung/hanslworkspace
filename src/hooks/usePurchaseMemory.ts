@@ -29,11 +29,23 @@ export function usePurchaseMemory() {
       const fetchTimeChanged = purchaseMemoryCache.lastFetch !== lastFetchTime
       
       if (arrayChanged || fetchTimeChanged) {
+        console.log('🔄 [usePurchaseMemory] 캐시 변경 감지', {
+          arrayChanged,
+          fetchTimeChanged,
+          currentLastFetch: purchaseMemoryCache.lastFetch,
+          prevLastFetch: lastFetchTime,
+          purchasesCount: purchaseMemoryCache.allPurchases?.length || 0
+        })
+        
         if (purchaseMemoryCache.allPurchases) {
           setPurchases([...purchaseMemoryCache.allPurchases]) // 새 배열로 복사하여 리렌더링 보장
           setLoading(false)
           lastArrayRef = purchaseMemoryCache.allPurchases
           lastFetchTime = purchaseMemoryCache.lastFetch
+          
+          console.log('✅ [usePurchaseMemory] purchases 상태 업데이트 완료', {
+            newPurchasesCount: purchaseMemoryCache.allPurchases.length
+          })
         } else {
           setLoading(purchaseMemoryCache.isLoading)
         }

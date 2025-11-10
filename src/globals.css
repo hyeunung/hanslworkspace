@@ -647,6 +647,172 @@
   grid-template-columns: repeat(13, minmax(0, 1fr));
 }
 
+/* ================================================================
+   전체항목 탭 칼럼 설정 시스템
+   - 동적 칼럼 숨기기/표시 기능
+   - 좌측 핏 정렬 레이아웃
+   ================================================================ */
+
+/* 칼럼 숨기기 클래스 */
+.column-hidden {
+  display: none !important;
+}
+
+/* 좌측 핏 정렬 테이블 컨테이너 */
+.table-container-fit-left {
+  @apply overflow-x-auto border business-radius-card;
+  /* 테이블이 컨텐츠에 맞게 좌측 정렬되도록 설정 */
+  width: fit-content !important;
+  max-width: 100%;
+}
+
+/* 좌측 핏 정렬 테이블 */
+.table-fit-left {
+  @apply border-collapse;
+  /* 컨텐츠 크기에 맞게 자동 조정 */
+  width: auto !important;
+  max-width: fit-content !important;
+  min-width: auto !important;
+  
+  /* 테이블이 왼쪽에 정렬되도록 설정 */
+  margin-left: 0;
+  margin-right: auto;
+}
+
+/* 좌측 핏 정렬 테이블 칼럼 */
+.table-fit-left th,
+.table-fit-left td {
+  /* 각 칼럼이 컨텐츠에 맞게 자동 조정 */
+  width: auto !important;
+  min-width: max-content !important;
+  white-space: nowrap;
+  
+  /* 기존 패딩과 스타일 유지 */
+  @apply px-2 py-1.5;
+}
+
+/* 텍스트가 긴 칼럼들의 최대 너비 제한 */
+.table-fit-left .column-text-long {
+  max-width: 200px !important;
+  min-width: 120px !important;
+  white-space: normal;
+}
+
+.table-fit-left .column-text-medium {
+  max-width: 150px !important;
+  min-width: 100px !important;
+}
+
+.table-fit-left .column-text-short {
+  max-width: 100px !important;
+  min-width: 60px !important;
+}
+
+/* 숫자 칼럼 스타일 */
+.table-fit-left .column-number {
+  @apply text-right;
+  min-width: 80px !important;
+  max-width: 120px !important;
+}
+
+/* 상태 배지 칼럼 스타일 */
+.table-fit-left .column-status {
+  @apply text-center;
+  min-width: 70px !important;
+  max-width: 100px !important;
+}
+
+/* 날짜 칼럼 스타일 */
+.table-fit-left .column-date {
+  @apply text-center;
+  min-width: 85px !important;
+  max-width: 100px !important;
+}
+
+/* 진행률 칼럼 스타일 */
+.table-fit-left .column-progress {
+  @apply text-center;
+  min-width: 90px !important;
+  max-width: 110px !important;
+}
+
+/* 링크 칼럼 스타일 */
+.table-fit-left .column-link {
+  min-width: 70px !important;
+  max-width: 90px !important;
+}
+
+/* 필수 칼럼 강조 */
+.column-required {
+  position: relative;
+}
+
+.column-required::after {
+  content: '*';
+  color: theme('colors.red.500');
+  font-weight: bold;
+  margin-left: 2px;
+}
+
+/* 칼럼 설정 드롭다운 전용 스타일 */
+.column-settings-dropdown {
+  /* 드롭다운 메뉴의 최대 높이와 스크롤 */
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.column-settings-dropdown .group-title {
+  @apply modal-label text-gray-700 font-medium;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
+.column-settings-dropdown .column-item {
+  @apply flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50;
+  transition: background-color 150ms ease-in-out;
+}
+
+.column-settings-dropdown .column-item.disabled {
+  @apply opacity-60 cursor-not-allowed;
+}
+
+.column-settings-dropdown .column-checkbox {
+  @apply w-4 h-4 business-radius-badge;
+}
+
+.column-settings-dropdown .column-label {
+  @apply modal-value text-xs truncate;
+  letter-spacing: 0.01em;
+}
+
+.column-settings-dropdown .column-required-mark {
+  @apply text-red-500 font-bold ml-1;
+}
+
+.column-settings-dropdown .summary-badge {
+  @apply badge-stats bg-blue-500 text-white;
+}
+
+/* 반응형 칼럼 설정 */
+@media (max-width: 1024px) {
+  .table-fit-left .column-text-long {
+    max-width: 150px !important;
+    min-width: 100px !important;
+  }
+  
+  .table-fit-left .column-text-medium {
+    max-width: 120px !important;
+    min-width: 80px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* 모바일에서는 칼럼 설정 기능 숨김 */
+  .column-settings-dropdown {
+    display: none;
+  }
+}
+
 /* Month Calendar Styles - Only show months */
 .month-calendar .rdp-weekdays {
   @apply hidden;

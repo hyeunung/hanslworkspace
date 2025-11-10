@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails, Purchase, Vendor } from '@/types/purchase'
-import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPaymentCompleted } from '@/stores/purchaseMemoryStore'
+import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPaymentCompleted, markItemAsReceived, markPurchaseAsReceived, markItemAsPaymentCanceled, markItemAsStatementReceived, markItemAsStatementCanceled, markItemAsUtkChecked, usePurchaseMemory, updatePurchaseInMemory, removeItemFromMemory } from '@/stores/purchaseMemoryStore'
 import { formatDate } from '@/utils/helpers'
 import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { 
@@ -53,6 +53,8 @@ function PurchaseDetailModal({
   onOptimisticUpdate,
   onDelete
 }: PurchaseDetailModalProps) {
+  const { allPurchases } = usePurchaseMemory(); // 🚀 메모리 캐시 실시간 동기화
+  
   const [loading, setLoading] = useState(false)
   const [purchase, setPurchase] = useState<PurchaseRequestWithDetails | null>(null)
   const [isEditing, setIsEditing] = useState(false)
@@ -62,6 +64,27 @@ function PurchaseDetailModal({
   const [userRoles, setUserRoles] = useState<string[]>([])
   const [currentUserName, setCurrentUserName] = useState<string>('')
   const [columnWidths, setColumnWidths] = useState<number[]>([])
+  
+  // 메모리 캐시 동기화는 useEffect에서 처리
+
+  // 🚀 실시간 items 데이터 (메모리 캐시에서 최신 데이터 사용)
+  // 메모리 캐시와 동일한 로직 사용: items 우선, 없으면 purchase_request_items
+  const currentItems = useMemo(() => {
+    if (!purchaseId || !allPurchases) {
+      const purchaseItems = purchase?.items?.length > 0 ? purchase.items : purchase?.purchase_request_items || [];
+      return purchaseItems;
+    }
+    
+    const memoryPurchase = allPurchases.find(p => p.id === purchaseId);
+    if (memoryPurchase) {
+      // 🚀 메모리 캐시와 동일한 로직: items 우선, 없으면 purchase_request_items
+      return memoryPurchase.items?.length > 0 ? memoryPurchase.items : memoryPurchase.purchase_request_items || [];
+    }
+    
+    const purchaseItems = purchase?.items?.length > 0 ? purchase.items : purchase?.purchase_request_items || [];
+    return purchaseItems;
+  }, [purchaseId, allPurchases, purchase?.items, purchase?.purchase_request_items]);
+
   const tableMinWidth = useMemo(() => {
     if (columnWidths.length > 0) {
       const columnGap = columnWidths.length > 1 ? (columnWidths.length - 1) * 12 : 0
@@ -212,13 +235,19 @@ function PurchaseDetailModal({
       // 🚀 메모리에서 먼저 찾기 (즉시 새로고침)
       const memoryPurchase = findPurchaseInMemory(purchaseId)
       if (memoryPurchase) {
-        logger.debug(`[PurchaseDetailModal] 메모리에서 발주 ${purchaseId} 새로고침 완료`)
+        
+        // items 필드 정규화: purchase_request_items를 items로 복사
+        const normalizedItems = memoryPurchase.items?.length > 0 
+          ? memoryPurchase.items 
+          : memoryPurchase.purchase_request_items || []
         
         // 메모리 데이터를 PurchaseRequestWithDetails 형태로 변환
         const purchaseData = {
           ...memoryPurchase,
           id: String(memoryPurchase.id), // PurchaseRequest는 id가 string
           is_po_generated: false, // Purchase 타입에는 없지만 PurchaseRequest에 필수
+          items: normalizedItems, // 정규화된 items 사용
+          purchase_request_items: normalizedItems, // 하위 호환성을 위해 양쪽 모두 설정
           vendor: {
             id: memoryPurchase.vendor_id,
             vendor_name: memoryPurchase.vendor_name || '알 수 없음',
@@ -229,12 +258,11 @@ function PurchaseDetailModal({
         
         setPurchase(purchaseData)
         setEditedPurchase(purchaseData)
-        setEditedItems(memoryPurchase.items || [])
+        setEditedItems(normalizedItems)
         return
       }
       
       // 메모리에 없는 경우에만 DB에서 로드 (fallback)
-      logger.debug(`[PurchaseDetailModal] 메모리에서 발주 ${purchaseId} 찾지 못함, DB에서 새로고침`)
       const supabase = createClient()
       // 최신 구매 요청 데이터 로드
       const { data, error } = await supabase
@@ -267,13 +295,66 @@ function PurchaseDetailModal({
         setPurchase(purchaseData)
         setEditedPurchase(purchaseData)
         setEditedItems(sortedItems)
-        
-        logger.debug('모달 데이터 새로고침 완료 - 모달 상태 유지')
       }
     } catch (error) {
       logger.error('모달 데이터 새로고침 실패', error)
     }
   }, [purchaseId])
+
+  // 🚀 메모리 캐시 변경 실시간 감지 및 모달 데이터 동기화
+  useEffect(() => {
+    if (!purchaseId || !allPurchases || !purchase) return;
+
+    const memoryPurchase = allPurchases.find(p => p.id === purchaseId);
+    if (memoryPurchase) {
+      // 메모리 데이터로 purchase state 업데이트 (깜빡임 없이 실시간 반영)
+      const normalizedItems = memoryPurchase.items?.length > 0 
+        ? memoryPurchase.items 
+        : memoryPurchase.purchase_request_items || [];
+      
+      const updatedPurchase = {
+        ...purchase,
+        ...memoryPurchase,
+        id: String(memoryPurchase.id),
+        items: normalizedItems,
+        purchase_request_items: normalizedItems
+      } as PurchaseRequestWithDetails;
+
+      setPurchase(updatedPurchase);
+      setEditedPurchase(updatedPurchase);
+      setEditedItems(normalizedItems);
+    }
+  }, [allPurchases]); // purchase?.id 제거해서 무한루프 방지, allPurchases 변경만 감지
+
+  // 🚀 모달이 열릴 때마다 메모리에서 최신 데이터 강제 동기화
+  useEffect(() => {
+    if (!isOpen || !purchaseId || !allPurchases) return;
+
+    const memoryPurchase = allPurchases.find(p => p.id === purchaseId);
+    if (memoryPurchase) {
+      const normalizedItems = memoryPurchase.items?.length > 0 
+        ? memoryPurchase.items 
+        : memoryPurchase.purchase_request_items || [];
+      
+      const updatedPurchase = {
+        ...memoryPurchase,
+        id: String(memoryPurchase.id),
+        is_po_generated: false,
+        items: normalizedItems,
+        purchase_request_items: normalizedItems,
+        vendor: {
+          id: memoryPurchase.vendor_id,
+          vendor_name: memoryPurchase.vendor_name || '알 수 없음',
+          is_active: true
+        } as Vendor,
+        vendor_contacts: []
+      } as PurchaseRequestWithDetails;
+
+      setPurchase(updatedPurchase);
+      setEditedPurchase(updatedPurchase);
+      setEditedItems(normalizedItems);
+    }
+  }, [isOpen, purchaseId, allPurchases]); // 모달이 열릴 때마다 실행
   
   // 컴포넌트가 마운트될 때 외부 새로고침을 방지하는 플래그
   const [isInitialLoad, setIsInitialLoad] = useState(true)
@@ -560,6 +641,7 @@ function PurchaseDetailModal({
     },
     currentUserName,
     canPerformAction: canReceiptCheck,
+    purchaseId: purchase?.id,
     onUpdate: refreshModalData,
     onOptimisticUpdate: handleStatementReceivedOptimisticUpdate
   })
@@ -580,22 +662,13 @@ function PurchaseDetailModal({
     },
     currentUserName,
     canPerformAction: canReceiptCheck,
+    purchaseId: purchase?.id,
     onUpdate: refreshModalData,
     onOptimisticUpdate: handleActualReceiptOptimisticUpdate
   })
   
   // 날짜 선택 핸들러들
   
-  // 디버깅용 로그
-  logger.debug('Receipt Check', {
-    activeTab,
-    canReceiptCheck,
-    isAdmin,
-    isRequester,
-    currentUserName,
-    requesterName: purchase?.requester_name,
-    effectiveRoles
-  });
   
   // 승인 권한 체크
  const canApproveMiddle = effectiveRoles.includes('middle_manager') || 
@@ -610,18 +683,6 @@ function PurchaseDetailModal({
  const approvalButtonClass = 'inline-flex items-center gap-1 business-radius-badge !h-auto !min-h-0 !px-2.5 !py-0.5 badge-text leading-tight'
  const approvalWaitingPillClass = 'inline-flex items-center gap-1 business-radius-badge px-2.5 py-0.5 badge-text leading-tight'
  
-   // 디버깅 로그
-   logger.debug('PurchaseDetailModal 권한 체크', {
-     purchaseOrderNumber: purchase?.purchase_order_number,
-     currentUserRoles,
-     userRoles,
-     effectiveRoles,
-     canApproveMiddle,
-     canApproveFinal,
-     isEditing,
-     middleManagerStatus: purchase?.middle_manager_status,
-     finalManagerStatus: purchase?.final_manager_status
-   });
  
   useEffect(() => {
     if (purchaseId && isOpen) {
@@ -629,7 +690,6 @@ function PurchaseDetailModal({
       const memoryPurchase = findPurchaseInMemory(purchaseId)
       if (memoryPurchase) {
         // 메모리에 있으면 즉시 로드 (loading 상태 없음)
-        logger.debug(`[PurchaseDetailModal] useEffect - 메모리에서 발주 ${purchaseId} 즉시 설정`)
         const purchaseData = {
           ...memoryPurchase,
           id: String(memoryPurchase.id), // PurchaseRequest는 id가 string
@@ -772,17 +832,11 @@ function PurchaseDetailModal({
         Math.min(config.maxWidth, maxLength * 7 + 20)
       )
 
-      logger.debug(`Column ${config.key} calculated:`, { 
-        maxLength, 
-        calculatedWidth, 
-        range: `${config.minWidth}-${config.maxWidth}px` 
-      })
 
       return calculatedWidth
     })
 
     setColumnWidths(calculatedWidths)
-    logger.debug('Optimal column widths calculated', { calculatedWidths })
     return calculatedWidths
   }, [purchase, activeTab])
 
@@ -845,8 +899,6 @@ function PurchaseDetailModal({
       // 🚀 메모리에서 먼저 찾기 (로딩 상태 없이 즉시 로드)
       const memoryPurchase = findPurchaseInMemory(id)
       if (memoryPurchase) {
-        logger.debug(`[PurchaseDetailModal] 메모리에서 발주 ${id} 즉시 로드 완료`)
-        
         // 메모리 데이터를 PurchaseRequestWithDetails 형태로 변환
         const purchaseData = {
           ...memoryPurchase,
@@ -867,7 +919,6 @@ function PurchaseDetailModal({
       }
       
       // 메모리에 없는 경우에만 로딩 상태 표시 후 DB에서 로드 (fallback)
-      logger.debug(`[PurchaseDetailModal] 메모리에서 발주 ${id} 찾지 못함, DB에서 로드`)
       setLoading(true)
       const supabase = createClient()
       
@@ -945,15 +996,9 @@ function PurchaseDetailModal({
     }
     
     try {
-      logger.debug('저장 시작', { 
-        purchaseId: purchase.id, 
-        editedItemsCount: editedItems.length,
-        deletedItemsCount: deletedItemIds.length 
-      });
       
       // 발주 기본 정보 업데이트
       const totalAmount = editedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
-      logger.debug('계산된 총액', { totalAmount });
       
       const { error: updateError } = await supabase
         .from('purchase_requests')
@@ -982,16 +1027,8 @@ function PurchaseDetailModal({
       }
 
       // 각 아이템 업데이트 또는 생성
-      logger.debug('저장할 editedItems', { count: editedItems.length });
       
       for (const item of editedItems) {
-        logger.debug('처리 중인 item', { 
-          itemId: item.id, 
-          itemName: item.item_name,
-          quantity: item.quantity,
-          unitPrice: item.unit_price_value,
-          amount: item.amount_value
-        });
         
         // 필수 필드 검증
         if (!item.item_name || !item.item_name.trim()) {
@@ -1009,7 +1046,6 @@ function PurchaseDetailModal({
         
         if (item.id) {
           // 기존 항목 업데이트
-          logger.debug('기존 항목 업데이트', { itemId: item.id });
           const { error } = await supabase
             .from('purchase_request_items')
             .update({
@@ -1031,7 +1067,6 @@ function PurchaseDetailModal({
           }
         } else {
           // 새 항목 생성
-          logger.debug('새 항목 생성', { itemName: item.item_name });
           const insertData = {
             purchase_request_id: purchase.id,
             item_name: item.item_name.trim(),
@@ -1045,7 +1080,6 @@ function PurchaseDetailModal({
             line_number: item.line_number || editedItems.indexOf(item) + 1,
             created_at: new Date().toISOString()
           };
-          logger.debug('삽입할 데이터', { itemName: insertData.item_name });
           
           const { error } = await supabase
             .from('purchase_request_items')
@@ -1054,20 +1088,108 @@ function PurchaseDetailModal({
           if (error) {
             logger.error('새 항목 생성 오류', error);
             throw error;
-          } else {
-            logger.debug('새 항목 생성 성공');
           }
         }
       }
 
-      logger.debug('저장 완료');
+      // 🚀 전체완료 함수와 정확히 동일한 패턴 적용 (메모리 캐시 포함)
+      const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
+      const sourceData = editedPurchase || purchase
+      
+      // 1. 🚀 삭제된 품목들에 대해 개별 메모리 캐시 처리 (구매완료와 동일한 방식)
+      if (!Number.isNaN(purchaseIdNumber) && deletedItemIds.length > 0) {
+        logger.info('🚀 [메모리 캐시] 개별 품목 삭제 처리 시작', {
+          purchaseId: purchaseIdNumber,
+          deletedItemIds: deletedItemIds,
+          deletedCount: deletedItemIds.length
+        })
+        
+        // 각 삭제된 품목에 대해 개별 메모리 캐시 업데이트 (구매완료와 정확히 동일한 패턴)
+        deletedItemIds.forEach(itemId => {
+          const memoryUpdated = removeItemFromMemory(purchaseIdNumber, itemId)
+          if (!memoryUpdated) {
+            logger.warn('[handleSave] 개별 품목 삭제 메모리 캐시 업데이트 실패', { 
+              purchaseId: purchaseIdNumber, 
+              itemId: itemId 
+            })
+          } else {
+            logger.info('✅ [handleSave] 개별 품목 삭제 메모리 캐시 업데이트 성공', { 
+              purchaseId: purchaseIdNumber, 
+              itemId: itemId 
+            })
+          }
+        })
+      }
+      
+      // 2. 발주 기본 정보 메모리 캐시 업데이트 (수정된 필드들만)
+      if (!Number.isNaN(purchaseIdNumber)) {
+        const memoryUpdated = updatePurchaseInMemory(purchaseIdNumber, (prev) => {
+          const totalAmount = editedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
+          
+          logger.info('🚀 [메모리 캐시] 발주 기본 정보 업데이트', {
+            purchaseId: purchaseIdNumber,
+            newTotalAmount: totalAmount,
+            itemsCount: editedItems.length
+          })
+          
+          return {
+            ...prev,
+            // 발주 기본 정보 업데이트
+            purchase_order_number: sourceData?.purchase_order_number,
+            requester_name: sourceData?.requester_name,
+            delivery_request_date: sourceData?.delivery_request_date,
+            revised_delivery_request_date: sourceData?.revised_delivery_request_date,
+            payment_category: sourceData?.payment_category,
+            project_vendor: sourceData?.project_vendor,
+            total_amount: totalAmount,
+            updated_at: new Date().toISOString()
+          }
+        })
+        
+        logger.info('🚀 [메모리 캐시] 기본 정보 업데이트 결과:', { memoryUpdated })
+      }
+      
+      // 3. applyOptimisticUpdate 함수 정의 (전체완료 함수 패턴)
+      const applyOptimisticUpdate = () => {
+        if (!Number.isNaN(purchaseIdNumber) && onOptimisticUpdate) {
+          onOptimisticUpdate(purchaseIdNumber, prev => {
+            const finalItems = editedItems // 삭제된 항목이 이미 제외됨
+            const totalAmount = finalItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
+            
+            logger.info('🚀 [onOptimisticUpdate] 즉시 UI 업데이트', {
+              originalItemsCount: prev.items?.length || prev.purchase_request_items?.length || 0,
+              finalItemsCount: finalItems.length,
+              deletedItemsCount: deletedItemIds.length
+            })
+            
+            return {
+              ...prev,
+              // 발주 기본 정보 업데이트
+              purchase_order_number: sourceData?.purchase_order_number,
+              requester_name: sourceData?.requester_name,
+              delivery_request_date: sourceData?.delivery_request_date,
+              revised_delivery_request_date: sourceData?.revised_delivery_request_date,
+              payment_category: sourceData?.payment_category,
+              project_vendor: sourceData?.project_vendor,
+              total_amount: totalAmount,
+              // 품목 데이터 업데이트 - 삭제된 항목 제외
+              items: finalItems,
+              purchase_request_items: finalItems,
+              updated_at: new Date().toISOString()
+            }
+          })
+        }
+      }
+      
+      // 4. 즉시 UI 업데이트 실행 (전체완료 함수 패턴)
+      applyOptimisticUpdate()
+
       toast.success('발주 내역이 성공적으로 저장되었습니다.')
       handleEditToggle(false)
       setDeletedItemIds([])
       
-      // 수정된 데이터 다시 로드 (모달은 열린 상태 유지)
-      await loadPurchaseDetail(purchaseId?.toString() || '')
-
+      // 5. 전체완료 함수 패턴: refreshModalData 먼저, 그 다음 onRefresh
+      await refreshModalData()
       const refreshResult = onRefresh?.(true, { silent: true })
       if (refreshResult instanceof Promise) {
         await refreshResult
@@ -1082,23 +1204,17 @@ function PurchaseDetailModal({
   const handleItemChange = (index: number, field: string, value: any) => {
     const newItems = [...editedItems]
     
-    if (field === 'amount_value') {
-      // 금액을 직접 수정한 경우
-      newItems[index] = {
-        ...newItems[index],
-        amount_value: value
-      }
-    } else if (field === 'quantity' || field === 'unit_price_value') {
+    if (field === 'quantity' || field === 'unit_price_value') {
       // 수량이나 단가를 수정한 경우 금액 자동 계산
       const quantity = field === 'quantity' ? value : newItems[index].quantity
       const unitPrice = field === 'unit_price_value' ? value : newItems[index].unit_price_value
       newItems[index] = {
         ...newItems[index],
         [field]: value,
-        amount_value: quantity * unitPrice
+        amount_value: (quantity || 0) * (unitPrice || 0)  // null 체크 추가
       }
     } else {
-      // 기타 필드 수정
+      // 기타 필드 수정 (amount_value 직접 수정은 제거됨)
       newItems[index] = {
         ...newItems[index],
         [field]: value
@@ -1150,7 +1266,9 @@ function PurchaseDetailModal({
 
   // 구매완료 처리 함수
   const handlePaymentToggle = async (itemId: number | string, isCompleted: boolean) => {
+    
     if (!canPurchase) {
+      logger.warn('[handlePaymentToggle] 권한 없음', { canPurchase, currentUserRoles })
       toast.error('구매완료 처리 권한이 없습니다.')
       return
     }
@@ -1158,14 +1276,27 @@ function PurchaseDetailModal({
     const itemIdStr = String(itemId)
     const numericId = typeof itemId === 'number' ? itemId : Number(itemId)
 
+
     if (Number.isNaN(numericId)) {
+      logger.error('[handlePaymentToggle] 잘못된 ID', { itemId, numericId })
       toast.error('유효하지 않은 항목 ID 입니다.')
       return
     }
 
-    // 해당 품목 정보 찾기
-    const targetItem = purchase?.items?.find(item => String(item.id) === itemIdStr)
-    if (!targetItem) return
+    // 해당 품목 정보 찾기 - 데이터 구조 디버깅
+    
+    // items와 purchase_request_items 둘 다 확인 - length로 실제 데이터 유무 판단
+    const purchaseItems = purchase?.items?.length > 0 ? purchase.items : []
+    const requestItems = purchase?.purchase_request_items?.length > 0 ? purchase.purchase_request_items : []
+    const items = purchaseItems.length > 0 ? purchaseItems : requestItems
+    
+    
+    const targetItem = items.find(item => String(item.id) === itemIdStr)
+    
+    
+    if (!targetItem) {
+      return
+    }
 
     const itemInfo = `품명: ${targetItem.item_name}
 규격: ${targetItem.specification || '미입력'}
@@ -1178,9 +1309,13 @@ function PurchaseDetailModal({
       : `다음 품목의 구매완료를 취소하시겠습니까?\n\n${itemInfo}`
     
     const confirm = window.confirm(confirmMessage)
-    if (!confirm) return
+    
+    if (!confirm) {
+      return
+    }
 
     try {
+      
       const { error } = await supabase
         .from('purchase_request_items')
         .update({
@@ -1189,33 +1324,52 @@ function PurchaseDetailModal({
         })
         .eq('id', numericId)
 
-      if (error) throw error
+      if (error) {
+        throw error
+      }
+      
 
-      // 🚀 메모리 캐시 즉시 업데이트 (구매완료만 처리)
-      if (purchase && isCompleted) {
-        const memoryUpdated = markItemAsPaymentCompleted(purchase.id, numericId);
-        if (memoryUpdated) {
-          logger.debug('[PurchaseDetailModal] 메모리 캐시 품목 구매완료 업데이트 완료', { 
-            purchaseId: purchase.id, 
-            itemId: numericId 
-          });
-        } else {
+      // 🚀 메모리 캐시 즉시 업데이트 (구매완료/취소 모두 처리)
+      if (purchase) {
+        
+        const memoryUpdated = isCompleted 
+          ? markItemAsPaymentCompleted(purchase.id, numericId)
+          : markItemAsPaymentCanceled(purchase.id, numericId);
+          
+        if (!memoryUpdated) {
           logger.warn('[PurchaseDetailModal] 메모리 캐시 품목 업데이트 실패', { 
             purchaseId: purchase.id, 
-            itemId: numericId 
+            itemId: numericId,
+            isCompleted
           });
         }
       }
 
       // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
       setPurchase(prev => {
-        if (!prev) return null
-        const updatedItems = prev.items?.map(item => 
+        if (!prev) {
+          return null
+        }
+        
+        // items와 purchase_request_items 둘 다 확인하여 업데이트 - length로 실제 데이터 유무 판단
+        const prevItems = prev.items?.length > 0 ? prev.items : []
+        const prevRequestItems = prev.purchase_request_items?.length > 0 ? prev.purchase_request_items : []
+        const currentItems = prevItems.length > 0 ? prevItems : prevRequestItems
+        const updatedItems = currentItems.map(item => 
           String(item.id) === itemIdStr 
             ? { ...item, is_payment_completed: isCompleted, payment_completed_at: isCompleted ? new Date().toISOString() : null }
             : item
         )
-        return { ...prev, items: updatedItems }
+        
+        
+        // 데이터 구조에 맞게 업데이트
+        const result = {
+          ...prev,
+          items: prev.items ? updatedItems : prev.items,
+          purchase_request_items: prev.purchase_request_items ? updatedItems : prev.purchase_request_items
+        }
+        
+        return result
       })
 
       if (purchase) {
@@ -1309,6 +1463,17 @@ function PurchaseDetailModal({
 
       if (error) throw error
 
+      // 🚀 메모리 캐시 즉시 업데이트 (개별 품목 입고완료)
+      if (purchase) {
+        const memoryUpdated = markItemAsReceived(purchase.id, numericId);
+        if (!memoryUpdated) {
+          logger.warn('[PurchaseDetailModal] 메모리 캐시 개별 품목 입고완료 업데이트 실패', { 
+            purchaseId: purchase.id, 
+            itemId: numericId 
+          });
+        }
+      }
+
       // 로컬 상태 즉시 업데이트
       setPurchase(prev => {
         if (!prev) return null
@@ -1335,8 +1500,6 @@ function PurchaseDetailModal({
       if (refreshResult instanceof Promise) {
         await refreshResult
       }
-
-      applyOptimisticUpdate()
     } catch (error) {
       toast.error('입고완료 처리 중 오류가 발생했습니다.')
     }
@@ -1424,8 +1587,6 @@ function PurchaseDetailModal({
       if (refreshResult instanceof Promise) {
         await refreshResult
       }
-
-      applyOptimisticUpdate()
     } catch (error) {
       toast.error('입고완료 취소 중 오류가 발생했습니다.')
     }
@@ -1499,77 +1660,86 @@ function PurchaseDetailModal({
     }
   }
   
-  // 전체 구매완료 처리
+  // 전체 구매완료 처리 (개별 품목별 처리 방식)
   const handleCompleteAllPayment = async () => {
-    if (!purchase || !canPurchase) return
     
-    const confirmMessage = `발주번호: ${purchase.purchase_order_number}\n\n모든 품목을 구매완료 처리하시겠습니까?`
+    if (!purchase || !canPurchase) {
+      return
+    }
+    
+    const confirmMessage = `발주번호: ${purchase.purchase_order_number}\n\n전체 구매완료 처리하시겠습니까?`
     const confirm = window.confirm(confirmMessage)
-    if (!confirm) return
+    if (!confirm) {
+      return
+    }
+
+    const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
+
+    const applyOptimisticUpdate = () => {
+      if (!Number.isNaN(purchaseIdNumber)) {
+        onOptimisticUpdate?.(purchaseIdNumber, prev => {
+          const allItems = prev.purchase_request_items || [];
+          const pendingItems = allItems.filter(item => !item.is_payment_completed);
+          
+          const updatedItems = allItems.map(item => 
+            !item.is_payment_completed 
+              ? { ...item, is_payment_completed: true, payment_completed_at: new Date().toISOString() }
+              : item
+          );
+          
+          return {
+            ...prev,
+            purchase_request_items: updatedItems,
+            items: prev.items ? updatedItems : prev.items,
+            is_payment_completed: updatedItems.every(item => item.is_payment_completed)
+          }
+        })
+      }
+    }
     
     try {
-      const updateData = {
-        is_payment_completed: true,
-        payment_completed_at: new Date().toISOString()
+      // 🚀 미완료 품목만 필터링 (이미 구매완료된 품목 제외)
+      const allItems = purchase.purchase_request_items || [];
+      const pendingItems = allItems.filter(item => !item.is_payment_completed);
+      
+      if (pendingItems.length === 0) {
+        toast.info('모든 품목이 이미 구매완료되었습니다.');
+        return;
       }
-      
-      const { error } = await supabase
-        .from('purchase_request_items')
-        .update(updateData)
-        .eq('purchase_request_id', purchase.id)
-        .eq('is_payment_completed', false) // 아직 구매완료되지 않은 항목만
-      
-      if (error) throw error
-      
-      // 🚀 메모리 캐시 즉시 업데이트 (전체 구매완료)
-      const memoryUpdated = markPurchaseAsPaymentCompleted(purchase.id);
-      if (memoryUpdated) {
-        logger.debug('[PurchaseDetailModal] 메모리 캐시 전체 구매완료 업데이트 완료', { 
-          purchaseId: purchase.id 
-        });
-      } else {
-        logger.warn('[PurchaseDetailModal] 메모리 캐시 전체 구매완료 업데이트 실패', { 
-          purchaseId: purchase.id 
-        });
-      }
-      
-      // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
-      setPurchase(prev => {
-        if (!prev) return null
-        const updatedItems = prev.items?.map(item => 
-          !item.is_payment_completed 
-            ? { ...item, is_payment_completed: true, payment_completed_at: new Date().toISOString() }
-            : item
-        )
-        return { ...prev, items: updatedItems }
-      })
 
-      if (purchase) {
-        const purchaseIdNumber = Number(purchase.id)
-        if (!Number.isNaN(purchaseIdNumber)) {
-          onOptimisticUpdate?.(purchaseIdNumber, prev => {
-            const updatedItems = (prev.items || []).map(item => ({
-              ...item,
-              is_payment_completed: true
-            }))
-            return {
-              ...prev,
-              items: updatedItems,
-              is_payment_completed: true,
-              payment_completed_at: new Date().toISOString(),
-              payment_completed_by_name: currentUserName || prev.payment_completed_by_name
-            }
-          })
+      logger.info(`전체 구매완료 처리: ${pendingItems.length}개 품목 (총 ${allItems.length}개 중)`);
+      
+      for (const item of pendingItems) {
+        // 각 품목별로 DB 업데이트 (개별 품목과 동일한 방식)
+        const updateData = {
+          is_payment_completed: true,
+          payment_completed_at: new Date().toISOString()
+        };
+
+        const { error } = await supabase
+          .from('purchase_request_items')
+          .update(updateData)
+          .eq('id', item.id);
+
+        if (error) throw error;
+
+        // 🚀 개별 품목 메모리 캐시 업데이트 (개별 처리와 동일)
+        const memoryUpdated = markItemAsPaymentCompleted(purchase.id, item.id);
+        if (!memoryUpdated) {
+          logger.warn('[PurchaseDetailModal] 메모리 캐시 개별 품목 구매완료 업데이트 실패', { 
+            purchaseId: purchase.id, 
+            itemId: item.id 
+          });
         }
       }
-      
-      toast.success('모든 품목이 구매완료 처리되었습니다.')
 
-      // 상세 모달 및 리스트 모두 새로고침
-      await refreshModalData()
-      const refreshResult = onRefresh?.(true, { silent: true })
+      toast.success(`${pendingItems.length}개 품목이 구매완료 처리되었습니다.`);
+
+      // 🚀 새로고침 (개별 품목과 동일)
+      await refreshModalData();
+      const refreshResult = onRefresh?.(true, { silent: true });
       if (refreshResult instanceof Promise) {
-        await refreshResult
+        await refreshResult;
       }
     } catch (error) {
       logger.error('전체 구매완료 처리 오류', error);
@@ -1611,7 +1781,6 @@ function PurchaseDetailModal({
 
     try {
       const supabase = createClient()
-      logger.debug('UTK 확인 처리 시작', { itemId: numericId, isChecked, itemIdStr })
       
       const { data, error } = await supabase
         .from('purchase_request_items')
@@ -1626,7 +1795,17 @@ function PurchaseDetailModal({
         throw error
       }
       
-      logger.debug('UTK 확인 DB 업데이트 성공', { data })
+      // 🚀 메모리 캐시 실시간 업데이트
+      if (purchase?.id) {
+        const memoryUpdated = markItemAsUtkChecked(purchase.id, numericId, isChecked)
+        if (!memoryUpdated) {
+          logger.warn('[PurchaseDetailModal] 메모리 캐시 UTK 확인 업데이트 실패', { 
+            purchaseId: purchase.id, 
+            itemId: numericId,
+            isChecked
+          })
+        }
+      }
 
       // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
       setPurchase(prev => {
@@ -1669,7 +1848,6 @@ function PurchaseDetailModal({
       })
 
       if (allChecked !== undefined && purchase) {
-        logger.debug('purchase_requests 업데이트 시작', { purchaseId: purchase.id, allChecked })
         const { error: updateError } = await supabase
           .from('purchase_requests')
           .update({ is_utk_checked: allChecked })
@@ -1678,8 +1856,6 @@ function PurchaseDetailModal({
         
         if (updateError) {
           logger.error('purchase_requests 업데이트 실패', { error: updateError, purchaseId: purchase.id, allChecked })
-        } else {
-          logger.debug('purchase_requests 업데이트 성공', { purchaseId: purchase.id, allChecked })
         }
       }
       
@@ -1697,71 +1873,80 @@ function PurchaseDetailModal({
     }
   }
 
-  // 전체 UTK 확인 처리
+  // 전체 UTK 확인 처리 (개별 품목별 처리 방식)
   const handleCompleteAllUtk = async () => {
     if (!purchase || !canReceiptCheck) return
     
-    const confirmMessage = `발주번호: ${purchase.purchase_order_number}\n\n모든 품목을 UTK 확인 처리하시겠습니까?`
+    const confirmMessage = `발주번호: ${purchase.purchase_order_number}\n\n전체 UTK 확인 처리하시겠습니까?`
     const confirm = window.confirm(confirmMessage)
     if (!confirm) return
+
+    const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
+
+    const applyOptimisticUpdate = () => {
+      if (!Number.isNaN(purchaseIdNumber)) {
+        onOptimisticUpdate?.(purchaseIdNumber, prev => {
+          const allItems = prev.purchase_request_items || [];
+          const pendingItems = allItems.filter(item => !item.is_utk_checked);
+          
+          const updatedItems = allItems.map(item => 
+            !item.is_utk_checked 
+              ? { ...item, is_utk_checked: true }
+              : item
+          );
+          
+          return {
+            ...prev,
+            purchase_request_items: updatedItems,
+            items: prev.items ? updatedItems : prev.items,
+            is_utk_checked: updatedItems.every(item => item.is_utk_checked)
+          }
+        })
+      }
+    }
     
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from('purchase_request_items')
-        .update({
-          is_utk_checked: true
-        })
-        .eq('purchase_request_id', purchase.id)
-        .eq('is_utk_checked', false) // 아직 확인되지 않은 항목만
+      // 🚀 미완료 품목만 필터링 (이미 UTK 확인된 품목 제외)
+      const allItems = purchase.purchase_request_items || [];
+      const pendingItems = allItems.filter(item => !item.is_utk_checked);
       
-      if (error) throw error
+      if (pendingItems.length === 0) {
+        toast.info('모든 품목이 이미 UTK 확인되었습니다.');
+        return;
+      }
 
-      // purchase_requests도 업데이트
-      await supabase
-        .from('purchase_requests')
-        .update({ is_utk_checked: true })
-        .eq('id', purchase.id)
+      logger.info(`전체 UTK 확인 처리: ${pendingItems.length}개 품목 (총 ${allItems.length}개 중)`);
       
-      // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
-      setPurchase(prev => {
-        if (!prev) return null
-        const updatedItems = prev.items?.map(item => 
-          !item.is_utk_checked 
-            ? { ...item, is_utk_checked: true }
-            : item
-        )
-        return { 
-          ...prev, 
-          items: updatedItems,
+      for (const item of pendingItems) {
+        // 각 품목별로 DB 업데이트 (개별 품목과 동일한 방식)
+        const updateData = {
           is_utk_checked: true
-        }
-      })
+        };
 
-      if (purchase) {
-        const purchaseIdNumber = Number(purchase.id)
-        if (!Number.isNaN(purchaseIdNumber)) {
-          onOptimisticUpdate?.(purchaseIdNumber, prev => {
-            const updatedItems = (prev.items || []).map(item => ({
-              ...item,
-              is_utk_checked: true
-            }))
-            return {
-              ...prev,
-              items: updatedItems,
-              is_utk_checked: true
-            }
-          })
+        const { error } = await supabase
+          .from('purchase_request_items')
+          .update(updateData)
+          .eq('id', item.id);
+
+        if (error) throw error;
+
+        // 🚀 개별 품목 메모리 캐시 업데이트 (개별 처리와 동일)
+        const memoryUpdated = markItemAsUtkChecked(purchase.id, item.id, true);
+        if (!memoryUpdated) {
+          logger.warn('[PurchaseDetailModal] 메모리 캐시 개별 품목 UTK 확인 업데이트 실패', { 
+            purchaseId: purchase.id, 
+            itemId: item.id 
+          });
         }
       }
-      
-      toast.success('모든 품목의 UTK 확인이 완료되었습니다.')
 
-      // 상세 모달 및 리스트 모두 새로고침
-      await refreshModalData()
-      const refreshResult = onRefresh?.(true, { silent: true })
+      toast.success(`${pendingItems.length}개 품목의 UTK 확인이 완료되었습니다.`);
+
+      // 🚀 새로고침 (개별 품목과 동일)
+      await refreshModalData();
+      const refreshResult = onRefresh?.(true, { silent: true });
       if (refreshResult instanceof Promise) {
-        await refreshResult
+        await refreshResult;
       }
     } catch (error) {
       logger.error('전체 UTK 확인 처리 오류', error);
@@ -1769,7 +1954,7 @@ function PurchaseDetailModal({
     }
   }
 
-  // 전체 거래명세서 확인 처리 (날짜 선택)
+  // 전체 거래명세서 확인 처리 (개별 품목별 처리 방식)
   const handleCompleteAllStatement = async (selectedDate: Date) => {
     if (!purchase || !canReceiptCheck) {
       return
@@ -1783,7 +1968,7 @@ function PurchaseDetailModal({
 
     const confirmMessage = `발주번호: ${purchase.purchase_order_number}
 
-모든 품목의 회계상 입고일을 ${formattedDate}로 등록하시겠습니까?`
+전체 거래명세서 확인 처리하시겠습니까?`
     
     if (!window.confirm(confirmMessage)) {
       return
@@ -1792,73 +1977,78 @@ function PurchaseDetailModal({
     const selectedDateIso = selectedDate.toISOString()
     const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
 
-    try {
-      const { error } = await supabase
-        .from('purchase_request_items')
-        .update({
-          is_statement_received: true,
-          statement_received_date: selectedDateIso,
-          statement_received_by_name: currentUserName || null
-        })
-        .eq('purchase_request_id', purchase.id)
-        .eq('is_statement_received', false) // 아직 확인되지 않은 항목만
-      
-      if (error) throw error
-
-      // purchase_requests도 업데이트
-      await supabase
-        .from('purchase_requests')
-        .update({ 
-          is_statement_received: true,
-          statement_received_at: selectedDateIso
-        })
-        .eq('id', purchase.id)
-
-      // 로컬 상태 즉시 업데이트
-      setPurchase(prev => {
-        if (!prev) return null
-        const updatedItems = prev.items?.map(item => 
-          !item.is_statement_received 
-            ? { 
-                ...item, 
-                is_statement_received: true,
-                statement_received_date: selectedDateIso,
-                statement_received_by_name: currentUserName || null
-              }
-            : item
-        )
-        const allCompleted = updatedItems && updatedItems.length > 0 && updatedItems.every(item => item.is_statement_received)
-        return { 
-          ...prev, 
-          items: updatedItems,
-          is_statement_received: allCompleted,
-          statement_received_at: allCompleted ? selectedDateIso : prev.statement_received_at
-        }
-      })
-
+    const applyOptimisticUpdate = () => {
       if (!Number.isNaN(purchaseIdNumber)) {
         onOptimisticUpdate?.(purchaseIdNumber, prev => {
-          const updatedItems = (prev.items || []).map(item => ({
-            ...item,
-            is_statement_received: true,
-            statement_received_date: item.statement_received_date || selectedDateIso,
-            statement_received_by_name: item.statement_received_by_name || currentUserName || null
-          }))
+          const allItems = prev.purchase_request_items || [];
+          const pendingItems = allItems.filter(item => !item.is_statement_received);
+          
+          const updatedItems = allItems.map(item => 
+            !item.is_statement_received 
+              ? { 
+                  ...item, 
+                  is_statement_received: true, 
+                  statement_received_date: selectedDateIso,
+                  statement_received_by_name: currentUserName || null
+                }
+              : item
+          );
+          
           return {
             ...prev,
-            items: updatedItems,
-            is_statement_received: true,
+            purchase_request_items: updatedItems,
+            items: prev.items ? updatedItems : prev.items,
+            is_statement_received: updatedItems.every(item => item.is_statement_received),
             statement_received_at: selectedDateIso
           }
         })
       }
+    }
 
-      toast.success('모든 품목의 회계상 입고일이 등록되었습니다.')
+    try {
+      // 🚀 미완료 품목만 필터링 (이미 거래명세서 확인된 품목 제외)
+      const allItems = purchase.purchase_request_items || [];
+      const pendingItems = allItems.filter(item => !item.is_statement_received);
+      
+      if (pendingItems.length === 0) {
+        toast.info('모든 품목의 거래명세서가 이미 확인되었습니다.');
+        return;
+      }
 
-      await refreshModalData()
-      const refreshResult = onRefresh?.(true, { silent: true })
+      logger.info(`전체 거래명세서 확인 처리: ${pendingItems.length}개 품목 (총 ${allItems.length}개 중)`);
+      
+      for (const item of pendingItems) {
+        // 각 품목별로 DB 업데이트 (개별 품목과 동일한 방식)
+        const updateData = {
+          is_statement_received: true,
+          statement_received_date: selectedDateIso,
+          statement_received_by_name: currentUserName || null
+        };
+
+        const { error } = await supabase
+          .from('purchase_request_items')
+          .update(updateData)
+          .eq('id', item.id);
+
+        if (error) throw error;
+
+        // 🚀 개별 품목 메모리 캐시 업데이트 (개별 처리와 동일)
+        const memoryUpdated = markItemAsStatementReceived(purchase.id, item.id, selectedDateIso, currentUserName || undefined);
+        if (!memoryUpdated) {
+          logger.warn('[PurchaseDetailModal] 메모리 캐시 개별 품목 거래명세서 확인 업데이트 실패', { 
+            purchaseId: purchase.id, 
+            itemId: item.id 
+          });
+        }
+      }
+
+      toast.success(`${pendingItems.length}개 품목의 거래명세서 확인이 완료되었습니다.`);
+
+      // 🚀 새로고침 (개별 품목과 동일)
+      await refreshModalData();
+      const refreshResult = onRefresh?.(true, { silent: true });
       if (refreshResult instanceof Promise) {
-        await refreshResult
+        await refreshResult;
       }
     } catch (error) {
       logger.error('전체 거래명세서 확인 처리 오류', error)
@@ -1903,48 +2093,48 @@ function PurchaseDetailModal({
     }
 
     try {
-      const updateData = {
-        is_received: true,
-        received_at: new Date().toISOString(),
-        actual_received_date: selectedDate.toISOString()
-      }
+      // 🚀 미완료 품목만 필터링 (이미 입고완료된 품목 제외)
+      const allItems = purchase.purchase_request_items || [];
+      const pendingItems = allItems.filter(item => !item.is_received);
       
+      if (pendingItems.length === 0) {
+        toast.info('모든 품목이 이미 입고완료되었습니다.');
+        return;
+      }
 
-      const { data, error } = await supabase
-        .from('purchase_request_items')
-        .update(updateData)
-        .eq('purchase_request_id', purchase.id)
-        .is('actual_received_date', null) // 아직 실제 입고되지 않은 항목만
-        .select()
+      logger.info(`전체 입고완료 처리: ${pendingItems.length}개 품목 (총 ${allItems.length}개 중)`);
+      
+      for (const item of pendingItems) {
+        // 각 품목별로 DB 업데이트 (개별 품목과 동일한 방식)
+        const updateData = {
+          actual_received_date: selectedDate.toISOString(),
+          is_received: true
+        };
 
+        const { error } = await supabase
+          .from('purchase_request_items')
+          .update(updateData)
+          .eq('id', item.id);
 
-      if (error) throw error
+        if (error) throw error;
 
-      // 로컬 상태 즉시 업데이트
-      setPurchase(prev => {
-        if (!prev) return null
-        const updatedItems = prev.items?.map(item => 
-          !item.actual_received_date 
-            ? { 
-                ...item, 
-                is_received: true, 
-                received_at: new Date().toISOString(),
-                actual_received_date: selectedDate.toISOString()
-              }
-            : item
-        )
-        return { ...prev, items: updatedItems }
-      })
+        // 🚀 개별 품목 메모리 캐시 업데이트 (개별 처리와 동일)
+        const memoryUpdated = markItemAsReceived(purchase.id, item.id, selectedDate.toISOString());
+        if (!memoryUpdated) {
+          logger.warn('[PurchaseDetailModal] 메모리 캐시 개별 품목 입고완료 업데이트 실패', { 
+            purchaseId: purchase.id, 
+            itemId: item.id 
+          });
+        }
+      }
 
-      // DB 업데이트 후 메모리 캐시 즉시 업데이트 (실시간 반영)
-      applyOptimisticUpdate()
+      toast.success(`${pendingItems.length}개 품목이 입고완료 처리되었습니다.`);
 
-      toast.success('모든 품목이 입고완료 처리되었습니다.')
-
-      await refreshModalData()
-      const refreshResult = onRefresh?.(true, { silent: true })
+      // 🚀 새로고침 (개별 품목과 동일)
+      await refreshModalData();
+      const refreshResult = onRefresh?.(true, { silent: true });
       if (refreshResult instanceof Promise) {
-        await refreshResult
+        await refreshResult;
       }
     } catch (error) {
       logger.error('전체 입고완료 처리 오류', error)
@@ -2021,13 +2211,6 @@ function PurchaseDetailModal({
                 {/* 1차 승인 버튼 */}
                 {(() => {
                   const shouldShow = canApproveMiddle && purchase.middle_manager_status === 'pending';
-                  if (purchase?.purchase_order_number === 'F20251105_004') {
-                    logger.debug('F20251105_004 1차 승인 버튼 조건', {
-                      canApproveMiddle,
-                      middleManagerStatus: purchase.middle_manager_status,
-                      shouldShow
-                    });
-                  }
                   return shouldShow;
                 })() && (
                   <Button
@@ -2060,14 +2243,6 @@ function PurchaseDetailModal({
                 {/* 최종 승인 버튼 */}
                 {(() => {
                   const shouldShow = canApproveFinal && purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'pending';
-                  if (purchase?.purchase_order_number === 'F20251105_004') {
-                    logger.debug('F20251105_004 최종 승인 버튼 조건', {
-                      canApproveFinal,
-                      middleManagerStatus: purchase.middle_manager_status,
-                      finalManagerStatus: purchase.final_manager_status,
-                      shouldShow
-                    });
-                  }
                   return shouldShow;
                 })() && (
                   <Button
@@ -2320,7 +2495,7 @@ function PurchaseDetailModal({
                     <Package className="w-4 h-4 mr-2 text-gray-600" />
                     품목 리스트
                     <span className="ml-2 badge-stats bg-gray-500 text-white">
-                      {purchase.purchase_request_items?.length || 0}개
+                      {currentItems?.length || 0}개
                     </span>
                   </h3>
                   {!isEditing && (
@@ -2448,7 +2623,7 @@ function PurchaseDetailModal({
                       </div>
                     </div>
                     <div className="divide-y divide-gray-100">
-                      {(isEditing ? editedItems : purchase.purchase_request_items)?.map((item, index) => (
+                      {(isEditing ? editedItems : currentItems)?.map((item, index) => (
                         <div key={index} className="px-2 sm:px-3 py-1.5 border-b border-gray-50 hover:bg-gray-50/50">
                           {/* Desktop Layout */}
                           <div className={`hidden sm:grid items-center gap-3`} style={{
@@ -2516,21 +2691,9 @@ function PurchaseDetailModal({
                               )}
                             </div>
                             
-                            {/* 합계 */}
+                            {/* 합계 (자동계산, 수정 불가) */}
                             <div className="text-right min-w-0">
-                              {isEditing ? (
-                                <Input
-                                  type="number"
-                                  value={item.amount_value}
-                                  onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
-                                  className="modal-label border-gray-200 rounded-lg text-right w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
-                                  placeholder="합계"
-                                  max="10000000000"
-                                  disabled={canEditLimited && !canEditAll}  // lead buyer는 합계 수정 불가 (자동계산)
-                                />
-                              ) : (
-                                <span className="modal-value">₩{formatCurrency(item.amount_value || 0)}</span>
-                              )}
+                              <span className="modal-value">₩{formatCurrency(item.amount_value || 0)}</span>
                             </div>
                             
                             {/* 비고 */}
@@ -2824,18 +2987,7 @@ function PurchaseDetailModal({
                                 )}
                               </div>
                               <div className="ml-3 text-right flex-shrink-0">
-                                {isEditing ? (
-                                  <Input
-                                    type="number"
-                                    value={item.amount_value}
-                                    onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
-                                    className="modal-label border-gray-200 rounded-lg text-right w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
-                                    placeholder="합계"
-                                    disabled={canEditLimited && !canEditAll}  // lead buyer는 합계 수정 불가 (자동계산)
-                                  />
-                                ) : (
-                                  <div className="modal-value font-semibold">₩{formatCurrency(item.amount_value || 0)}</div>
-                                )}
+                                <div className="modal-value font-semibold">₩{formatCurrency(item.amount_value || 0)}</div>
                               </div>
                             </div>
                             
@@ -3131,7 +3283,7 @@ function PurchaseDetailModal({
                     <div className="text-right">
                       <span className="text-[12px] font-bold text-gray-900">
                         ₩{formatCurrency(
-                          (isEditing ? editedItems : purchase.purchase_request_items)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
+                          (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
                         )}
                       </span>
                     </div>
@@ -3147,7 +3299,7 @@ function PurchaseDetailModal({
                       <span className="text-[13px] font-bold text-gray-900">총액</span>
                       <span className="text-[13px] font-bold text-gray-900">
                         ₩{formatCurrency(
-                          (isEditing ? editedItems : purchase.purchase_request_items)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
+                          (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
                         )}
                       </span>
                     </div>
@@ -3232,15 +3384,12 @@ function PurchaseDetailModal({
                         onClick={async () => {
                           if (purchase) {
                             try {
-                              logger.debug('발주 삭제 시작', { purchaseOrderNumber: purchase.purchase_order_number });
                               await onDelete(purchase);
-                              logger.debug('발주 삭제 완료 - 모달 닫기 및 새로고침 진행');
                               
                               // 삭제 후 모달 닫기 및 새로고침
                               onClose();
                               if (onRefresh) {
                                 await onRefresh(true); // 강제 새로고침
-                                logger.debug('상위 컴포넌트 새로고침 완료');
                               }
                             } catch (error) {
                               logger.error('발주 삭제 중 오류 발생', error);

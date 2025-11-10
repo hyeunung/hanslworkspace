@@ -111,14 +111,6 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
   const isRequester = purchase?.requester_name === currentUserName
   const canReceiptCheck = isAdmin || isRequester
   
-  logger.debug('🔐 PurchaseItemsModal 권한 체크 정보', {
-    currentUserName,
-    isAdmin,
-    isRequester,
-    canReceiptCheck,
-    purchaseRequesterName: purchase?.requester_name,
-    activeTab
-  })
 
 
   // 모달 내부 데이터만 새로고침하는 함수 (모달 닫지 않음)
@@ -138,7 +130,6 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
         
         // 모달 상태 유지를 위해 외부 onUpdate 호출 제거
         // 외부 진행률 업데이트는 부모 컴포넌트에서 별도 처리
-        logger.debug('모달 아이템 데이터 새로고침 완료 - 모달 상태 유지')
       }
     } catch (error) {
       logger.error('모달 데이터 새로고침 실패', error)
@@ -162,6 +153,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
     },
     currentUserName,
     canPerformAction: canReceiptCheck,
+    purchaseId: purchase.id,
     onUpdate: refreshModalData
   })
 
@@ -182,6 +174,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
     },
     currentUserName,
     canPerformAction: canReceiptCheck,
+    purchaseId: purchase?.id,
     onUpdate: refreshModalData
   })
   
@@ -258,10 +251,6 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
   // 품목 저장
   const handleSave = async () => {
     try {
-      logger.debug('품목 저장 시작', { 
-        editingItems: editingItems.length,
-        purchaseId: purchase.id 
-      });
 
       // 유효성 검사 - 품목명만 필수
       const invalidItems = editingItems.filter(item => 
@@ -300,7 +289,6 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
         delivery_status: item.delivery_status || 'pending'
       }));
 
-      logger.debug('품목 삽입 데이터', { itemsToInsert });
 
       const { error: insertError } = await supabase
         .from('purchase_request_items')
@@ -323,7 +311,6 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
         throw updateError;
       }
 
-      logger.debug('품목 저장 완료');
       toast.success('품목이 수정되었습니다.');
       setIsEditing(false);
       onUpdate();
@@ -596,11 +583,6 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                           <button
                             onClick={async () => {
                               try {
-                                logger.debug('구매취소 버튼 클릭', { 
-                                  itemId: item.id,
-                                  itemName: item.item_name,
-                                  currentStatus: item.is_payment_completed 
-                                });
 
                                 if (!item.id) {
                                   throw new Error('품목 ID가 없습니다.');
@@ -617,7 +599,6 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                                   throw error;
                                 }
 
-                                logger.debug('구매취소 업데이트 성공', { data });
                                 toast.success('구매 취소 처리되었습니다.');
                                 await refreshModalData();
                               } catch (error) {
@@ -634,11 +615,6 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                           <button
                             onClick={async () => {
                               try {
-                                logger.debug('구매완료 버튼 클릭', { 
-                                  itemId: item.id,
-                                  itemName: item.item_name,
-                                  currentStatus: item.is_payment_completed 
-                                });
 
                                 if (!item.id) {
                                   throw new Error('품목 ID가 없습니다.');
@@ -655,7 +631,6 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                                   throw error;
                                 }
 
-                                logger.debug('구매완료 업데이트 성공', { data });
                                 toast.success('구매완료 처리되었습니다.');
                                 await refreshModalData();
                               } catch (error) {

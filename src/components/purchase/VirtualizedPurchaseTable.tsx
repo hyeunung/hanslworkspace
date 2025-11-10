@@ -3,6 +3,9 @@ import { FixedSizeList } from 'react-window';
 import { Purchase } from '@/types/purchase';
 import { formatDateShort } from '@/utils/helpers';
 import { logger } from '@/lib/logger';
+import { useColumnSettings } from '@/hooks/useColumnSettings';
+import ColumnSettingsDropdown from './ColumnSettingsDropdown';
+import { DoneTabColumnId } from '@/types/columnSettings';
 
 interface VirtualizedPurchaseTableProps {
   purchases: Purchase[];
@@ -16,6 +19,10 @@ interface VirtualizedPurchaseTableProps {
   itemHeight?: number;
   overscanCount?: number;
   className?: string;
+  /**
+   * 칼럼 설정 UI 표시 여부 (전체항목 탭에서만 true)
+   */
+  showColumnSettings?: boolean;
 }
 
 export interface VirtualizedTableHandle {
@@ -410,10 +417,14 @@ const VirtualizedPurchaseTable = forwardRef<VirtualizedTableHandle, VirtualizedP
   height = 600,
   itemHeight = 60,
   overscanCount = 10,
-  className = ""
+  className = "",
+  showColumnSettings = false
 }, ref) => {
   
   const listRef = useRef<any>(null);
+  
+  // 칼럼 설정 훅 (전체항목 탭에서만 사용)
+  const { columnVisibility } = useColumnSettings();
 
   // 외부에서 스크롤 제어할 수 있도록 함수 제공
   useImperativeHandle(ref, () => ({
@@ -435,7 +446,8 @@ const VirtualizedPurchaseTable = forwardRef<VirtualizedTableHandle, VirtualizedP
     currentUserRoles,
     onPaymentComplete,
     onReceiptComplete,
-  }), [purchases, activeTab, currentUserRoles, onPaymentComplete, onReceiptComplete]);
+    columnVisibility: activeTab === 'done' ? columnVisibility : undefined,
+  }), [purchases, activeTab, currentUserRoles, onPaymentComplete, onReceiptComplete, columnVisibility]);
 
   // 스크롤 이벤트 핸들러
   const handleScroll = useCallback((props: any) => {
@@ -444,8 +456,15 @@ const VirtualizedPurchaseTable = forwardRef<VirtualizedTableHandle, VirtualizedP
 
   return (
     <div className={`virtualized-table-container bg-white rounded-lg overflow-hidden ${className}`}>
+      {/* 칼럼 설정 UI 표시 */}
+      {showColumnSettings && activeTab === 'done' && (
+        <div className="mb-3 flex justify-end p-3">
+          <ColumnSettingsDropdown isVisible={true} className="" />
+        </div>
+      )}
+      
       {/* 테이블 형태로 변경 */}
-      <table className="w-full">
+      <table className={activeTab === 'done' ? 'table-fit-left' : 'w-full'}>
         <TableHeader activeTab={activeTab} />
         {purchases.length === 0 ? (
           <tbody>

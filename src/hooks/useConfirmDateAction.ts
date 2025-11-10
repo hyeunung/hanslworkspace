@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
+import { markItemAsReceived, markItemAsReceiptCanceled, markItemAsStatementReceived, markItemAsStatementCanceled } from '@/stores/purchaseMemoryStore'
 
 export interface ConfirmDateActionConfig {
   field: 'statement_received' | 'actual_received'
@@ -21,6 +22,7 @@ export interface UseConfirmDateActionProps {
   config: ConfirmDateActionConfig
   currentUserName: string | null
   canPerformAction: boolean
+  purchaseId?: number | string  // 메모리 캐시 업데이트를 위한 purchase ID
   onUpdate?: () => void
   onOptimisticUpdate?: (params: {
     itemId: number
@@ -41,6 +43,7 @@ export function useConfirmDateAction({
   config,
   currentUserName,
   canPerformAction,
+  purchaseId,
   onUpdate,
   onOptimisticUpdate
 }: UseConfirmDateActionProps) {
@@ -101,7 +104,8 @@ ${config.confirmMessage.confirm}`
         }
       } else if (config.field === 'actual_received') {
         updateData = {
-          actual_received_date: selectedDate.toISOString()
+          actual_received_date: selectedDate.toISOString(),
+          is_received: true
         }
       }
 
@@ -122,6 +126,27 @@ ${config.confirmMessage.confirm}`
 
       logger.info('✅ DB 업데이트 성공', data)
 
+      // 🚀 메모리 캐시 실시간 업데이트
+      if (purchaseId) {
+        if (config.field === 'actual_received') {
+          const memoryUpdated = markItemAsReceived(purchaseId, numericId, selectedDate.toISOString())
+          if (!memoryUpdated) {
+            logger.warn('[useConfirmDateAction] 메모리 캐시 입고완료 업데이트 실패', { 
+              purchaseId, 
+              itemId: numericId 
+            })
+          }
+        } else if (config.field === 'statement_received') {
+          const memoryUpdated = markItemAsStatementReceived(purchaseId, numericId, selectedDate.toISOString(), currentUserName || undefined)
+          if (!memoryUpdated) {
+            logger.warn('[useConfirmDateAction] 메모리 캐시 거래명세서 확인 업데이트 실패', { 
+              purchaseId, 
+              itemId: numericId 
+            })
+          }
+        }
+      }
+
       if (onOptimisticUpdate) {
         onOptimisticUpdate({
           itemId: numericId,
@@ -141,7 +166,7 @@ ${config.confirmMessage.confirm}`
       logger.error('❌ 전체 처리 실패', error)
       toast.error(`${config.field === 'statement_received' ? '거래명세서' : '입고'} 확인 처리 중 오류가 발생했습니다.`)
     }
-  }, [config, currentUserName, canPerformAction, onUpdate, onOptimisticUpdate, supabase])
+  }, [config, currentUserName, canPerformAction, purchaseId, onUpdate, onOptimisticUpdate, supabase])
 
   const handleCancel = useCallback(async (
     itemId: number | string,
@@ -200,7 +225,8 @@ ${config.confirmMessage.cancel}`
         }
       } else if (config.field === 'actual_received') {
         updateData = {
-          actual_received_date: null
+          actual_received_date: null,
+          is_received: false
         }
       }
 
@@ -221,6 +247,27 @@ ${config.confirmMessage.cancel}`
 
       logger.info(`✅ ${config.field} 확인 취소 성공`, data)
 
+      // 🚀 메모리 캐시 실시간 업데이트
+      if (purchaseId) {
+        if (config.field === 'actual_received') {
+          const memoryUpdated = markItemAsReceiptCanceled(purchaseId, numericId)
+          if (!memoryUpdated) {
+            logger.warn('[useConfirmDateAction] 메모리 캐시 입고취소 업데이트 실패', { 
+              purchaseId, 
+              itemId: numericId 
+            })
+          }
+        } else if (config.field === 'statement_received') {
+          const memoryUpdated = markItemAsStatementCanceled(purchaseId, numericId)
+          if (!memoryUpdated) {
+            logger.warn('[useConfirmDateAction] 메모리 캐시 거래명세서 취소 업데이트 실패', { 
+              purchaseId, 
+              itemId: numericId 
+            })
+          }
+        }
+      }
+
       if (onOptimisticUpdate) {
         onOptimisticUpdate({
           itemId: numericId,
@@ -239,13 +286,13 @@ ${config.confirmMessage.cancel}`
       logger.error(`❌ ${config.field} 확인 취소 실패`, error)
       toast.error(`${config.field === 'statement_received' ? '거래명세서' : '입고'} 확인 취소 중 오류가 발생했습니다.`)
     }
-  }, [config, canPerformAction, onUpdate, onOptimisticUpdate, supabase])
+  }, [config, canPerformAction, purchaseId, onUpdate, onOptimisticUpdate, supabase])
 
   const isCompleted = useCallback((item: any) => {
     if (config.field === 'statement_received') {
       return item.is_statement_received
     } else if (config.field === 'actual_received') {
-      return !!item.actual_received_date
+      return item.is_received // actual_received_date 대신 is_received 필드 사용
     }
     return false
   }, [config.field])

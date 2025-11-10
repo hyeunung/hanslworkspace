@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, X, Save, Calculator, Pencil, Trash2, Package } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { invalidatePurchaseMemoryCache } from '@/stores/purchaseMemoryStore';
 import { useForm as useFormRH, Controller, useFieldArray } from "react-hook-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { FormValues, FormItem } from "@/types/purchase";
@@ -585,12 +586,15 @@ export default function PurchaseNewMain() {
       // 3. 성공 메시지 표시
       toast.success("발주요청서가 성공적으로 생성되었습니다.");
       
-      // 4. 발주요청 목록으로 이동
+      // 4. 메모리 캐시 무효화하여 새로운 발주요청이 목록에 나타나도록 함
+      invalidatePurchaseMemoryCache() // 캐시 무효화로 다음 로드 시 새로고침
+      
+      // 5. 발주요청 관리 페이지의 승인대기 탭으로 이동
       try {
-        await navigate('/purchase/list');
+        await navigate('/purchase/list?tab=pending');
       } catch (routerError) {
         // 대체 라우팅 방법
-        window.location.href = '/purchase/list';
+        window.location.href = '/purchase/list?tab=pending';
       }
       return;
     } catch (err: any) {
