@@ -70,8 +70,8 @@ export default function DashboardMain() {
       // lead buyer인 경우 미다운로드 항목 조회
       if (userRoles.includes('lead buyer')) {
         try {
-          const undownloaded = await dashboardService.getUndownloadedOrders(employee)
-          setUndownloadedOrders(undownloaded)
+        const undownloaded = await dashboardService.getUndownloadedOrders(employee)
+        setUndownloadedOrders(undownloaded)
         } catch (undownloadedError) {
           // 미다운로드 항목 조회 실패는 치명적이지 않으므로 계속 진행
         }

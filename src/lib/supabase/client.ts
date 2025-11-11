@@ -42,7 +42,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here</pre>
                 <p style="color: #1e3a8a; margin: 0; font-size: 14px;">
                   💡 <strong>참고:</strong> .env 파일은 git에 커밋되지 않습니다. 
                   팀원들과 별도로 공유하세요.
-                </p>
+              </p>
               </div>
             </div>
           </div>

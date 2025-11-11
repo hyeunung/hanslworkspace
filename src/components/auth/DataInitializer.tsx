@@ -79,8 +79,8 @@ export default function DataInitializer({ children }: DataInitializerProps) {
         const hasData = !!purchaseMemoryCache.allPurchases && purchaseMemoryCache.allPurchases.length > 0
         
         if (hasData) {
-          if (isMounted) {
-            setDataLoading(false)
+        if (isMounted) {
+          setDataLoading(false)
           } else {
             // 언마운트되었지만 데이터는 로드됨 - 약간의 지연 후 상태 업데이트 시도
             setTimeout(() => {

@@ -64,6 +64,7 @@ function PurchaseDetailModal({
   const [userRoles, setUserRoles] = useState<string[]>([])
   const [currentUserName, setCurrentUserName] = useState<string>('')
   const [columnWidths, setColumnWidths] = useState<number[]>([])
+  const [focusedInput, setFocusedInput] = useState<string | null>(null)
   
   // 메모리 캐시 동기화는 useEffect에서 처리
 
@@ -71,17 +72,17 @@ function PurchaseDetailModal({
   // 메모리 캐시와 동일한 로직 사용: items 우선, 없으면 purchase_request_items
   const currentItems = useMemo(() => {
     if (!purchaseId || !allPurchases) {
-      const purchaseItems = purchase?.items?.length > 0 ? purchase.items : purchase?.purchase_request_items || [];
+      const purchaseItems = (purchase?.items && purchase.items.length > 0) ? purchase.items : (purchase?.purchase_request_items || []);
       return purchaseItems;
     }
     
     const memoryPurchase = allPurchases.find(p => p.id === purchaseId);
     if (memoryPurchase) {
       // 🚀 메모리 캐시와 동일한 로직: items 우선, 없으면 purchase_request_items
-      return memoryPurchase.items?.length > 0 ? memoryPurchase.items : memoryPurchase.purchase_request_items || [];
+      return (memoryPurchase.items && memoryPurchase.items.length > 0) ? memoryPurchase.items : (memoryPurchase.purchase_request_items || []);
     }
     
-    const purchaseItems = purchase?.items?.length > 0 ? purchase.items : purchase?.purchase_request_items || [];
+    const purchaseItems = (purchase?.items && purchase.items.length > 0) ? purchase.items : (purchase?.purchase_request_items || []);
     return purchaseItems;
   }, [purchaseId, allPurchases, purchase?.items, purchase?.purchase_request_items]);
 
@@ -237,9 +238,9 @@ function PurchaseDetailModal({
       if (memoryPurchase) {
         
         // items 필드 정규화: purchase_request_items를 items로 복사
-        const normalizedItems = memoryPurchase.items?.length > 0 
+        const normalizedItems = (memoryPurchase.items && memoryPurchase.items.length > 0)
           ? memoryPurchase.items 
-          : memoryPurchase.purchase_request_items || []
+          : (memoryPurchase.purchase_request_items || [])
         
         // 메모리 데이터를 PurchaseRequestWithDetails 형태로 변환
         const purchaseData = {
@@ -258,7 +259,7 @@ function PurchaseDetailModal({
         
         setPurchase(purchaseData)
         setEditedPurchase(purchaseData)
-        setEditedItems(normalizedItems)
+        setEditedItems(normalizedItems.length > 0 ? normalizedItems : [])
         return
       }
       
@@ -308,9 +309,9 @@ function PurchaseDetailModal({
     const memoryPurchase = allPurchases.find(p => p.id === purchaseId);
     if (memoryPurchase) {
       // 메모리 데이터로 purchase state 업데이트 (깜빡임 없이 실시간 반영)
-      const normalizedItems = memoryPurchase.items?.length > 0 
+      const normalizedItems = (memoryPurchase.items && memoryPurchase.items.length > 0) 
         ? memoryPurchase.items 
-        : memoryPurchase.purchase_request_items || [];
+        : (memoryPurchase.purchase_request_items || []);
       
       const updatedPurchase = {
         ...purchase,
@@ -322,7 +323,7 @@ function PurchaseDetailModal({
 
       setPurchase(updatedPurchase);
       setEditedPurchase(updatedPurchase);
-      setEditedItems(normalizedItems);
+      setEditedItems(normalizedItems.length > 0 ? normalizedItems : []);
     }
   }, [allPurchases]); // purchase?.id 제거해서 무한루프 방지, allPurchases 변경만 감지
 
@@ -332,9 +333,9 @@ function PurchaseDetailModal({
 
     const memoryPurchase = allPurchases.find(p => p.id === purchaseId);
     if (memoryPurchase) {
-      const normalizedItems = memoryPurchase.items?.length > 0 
+      const normalizedItems = (memoryPurchase.items && memoryPurchase.items.length > 0) 
         ? memoryPurchase.items 
-        : memoryPurchase.purchase_request_items || [];
+        : (memoryPurchase.purchase_request_items || []);
       
       const updatedPurchase = {
         ...memoryPurchase,
@@ -352,7 +353,7 @@ function PurchaseDetailModal({
 
       setPurchase(updatedPurchase);
       setEditedPurchase(updatedPurchase);
-      setEditedItems(normalizedItems);
+      setEditedItems(normalizedItems.length > 0 ? normalizedItems : []);
     }
   }, [isOpen, purchaseId, allPurchases]); // 모달이 열릴 때마다 실행
   
@@ -721,26 +722,25 @@ function PurchaseDetailModal({
 
     const columnConfigs = [
       { key: 'item_name', minWidth: 80, maxWidth: 500, baseWidth: 80 },
-      { key: 'specification', minWidth: 120, maxWidth: 700, baseWidth: 120 },
+      { key: 'specification', minWidth: 200, maxWidth: 200, baseWidth: 200, isFixed: true }, // 고정 너비 200px
       { key: 'quantity', minWidth: 70, maxWidth: 100, baseWidth: 70 },
       { key: 'unit_price', minWidth: 90, maxWidth: 150, baseWidth: 90 },
       { key: 'total_price', minWidth: 100, maxWidth: 180, baseWidth: 100 },
-      { key: 'remarks', minWidth: 80, maxWidth: 240, baseWidth: 80 },
+      { key: 'remarks', minWidth: 150, maxWidth: 150, baseWidth: 150, isFixed: true }, // 고정 너비 150px
       { key: 'status', minWidth: 80, maxWidth: 120, baseWidth: 80 }
     ]
 
-    // 추가 칼럼들 (탭별)
-    if (activeTab === 'receipt') {
-      columnConfigs.push({ key: 'actual_receipt_date', minWidth: 100, maxWidth: 160, baseWidth: 100 })
-    }
-    if (activeTab === 'done') {
-      columnConfigs.push(
-        { key: 'transaction_confirm', minWidth: 100, maxWidth: 160, baseWidth: 100 },
-        { key: 'accounting_date', minWidth: 100, maxWidth: 160, baseWidth: 100 },
-        { key: 'processor', minWidth: 80, maxWidth: 120, baseWidth: 80 },
-        { key: 'utk_confirm', minWidth: 80, maxWidth: 120, baseWidth: 80 }
-      )
-    }
+      // 추가 칼럼들 (탭별)
+      if (activeTab === 'receipt') {
+        columnConfigs.push({ key: 'actual_receipt_date', minWidth: 100, maxWidth: 160, baseWidth: 100, isFixed: false })
+      }
+      if (activeTab === 'done') {
+        columnConfigs.push(
+          { key: 'transaction_confirm', minWidth: 100, maxWidth: 160, baseWidth: 100, isFixed: false },
+          { key: 'accounting_date', minWidth: 80, maxWidth: 80, baseWidth: 80, isFixed: true },
+          { key: 'utk_confirm', minWidth: 50, maxWidth: 50, baseWidth: 50, isFixed: true }
+        )
+      }
 
     const calculatedWidths = columnConfigs.map((config, index) => {
       let maxLength = 4 // 최소 4자
@@ -760,7 +760,7 @@ function PurchaseDetailModal({
         if (activeTab === 'receipt') {
           return [...baseHeaders, '실제입고일']
         } else if (activeTab === 'done') {
-          return [...baseHeaders, '거래명세서 확인', '회계상 입고일', '처리자', 'UTK']
+          return [...baseHeaders, '거래명세서 확인', '회계상 입고일', 'UTK']
         }
         return baseHeaders
       }
@@ -826,6 +826,11 @@ function PurchaseDetailModal({
         maxLength = Math.max(maxLength, Math.ceil(adjustedLength))
       })
 
+      // 고정 너비 칼럼은 바로 반환
+      if (config.isFixed) {
+        return config.baseWidth
+      }
+      
       // 길이를 픽셀로 변환 (글자당 약 7px + 여백 20px)
       const calculatedWidth = Math.max(
         config.minWidth,
@@ -852,18 +857,43 @@ function PurchaseDetailModal({
 
   // 동적 gridTemplateColumns 생성
   const getGridTemplateColumns = () => {
+    // 동적 계산된 너비가 있으면 사용 (단, 특정 컬럼은 고정값 강제)
     if (columnWidths.length > 0) {
-      return columnWidths.map(width => `${width}px`).join(' ')
+      const widths = columnWidths.map(width => `${width}px`)
+      
+      // 규격, 비고는 항상 고정
+      if (widths.length >= 2) {
+        widths[1] = '200px' // 규격
+      }
+      if (widths.length >= 6) {
+        widths[5] = '150px' // 비고
+      }
+      
+      // 전체항목 탭: 회계상 입고일, UTK 컬럼 강제 고정
+      if (activeTab === 'done') {
+        // [품목명, 규격, 수량, 단가, 합계, 비고, 상태, 거래명세서, 회계상입고일, UTK]
+        // 인덱스: 0     1     2     3     4      5     6      7          8            9
+        if (widths.length >= 9) {
+          widths[7] = '100px' // 거래명세서
+          widths[8] = '80px'  // 회계상 입고일
+        }
+        if (widths.length >= 10) {
+          widths[9] = '50px'  // UTK
+        }
+      }
+      
+      return widths.join(' ')
     }
     
     // 기본값 (데이터 로드 전)
-    const baseColumns = ['80px', '120px', '70px', '90px', '100px', '80px', '80px']
+    // [품목명, 규격, 수량, 단가, 합계, 비고, 상태/삭제]
+    const baseColumns = ['minmax(180px, 1fr)', '200px', '70px', '90px', '100px', '150px', '80px']
     
     // 탭별 추가 칼럼
     if (activeTab === 'receipt') {
       return [...baseColumns, '100px'].join(' ')
     } else if (activeTab === 'done') {
-      return [...baseColumns, '100px', '100px', '80px', '80px'].join(' ')
+      return [...baseColumns, '100px', '80px', '50px'].join(' ')
     }
     
     return baseColumns.join(' ')
@@ -888,6 +918,10 @@ function PurchaseDetailModal({
   // Edit 모드 전환 시 너비 계산
   const handleEditToggle = (editing: boolean) => {
     if (editing && !isEditing) {
+      // Edit 모드로 전환할 때 현재 데이터로 초기화
+      setEditedPurchase(purchase)
+      setEditedItems(currentItems || [])
+      setDeletedItemIds([])
       // Edit 모드로 전환하기 전에 현재 너비 계산
       calculateOptimalColumnWidths()
     }
@@ -1135,15 +1169,15 @@ function PurchaseDetailModal({
           return {
             ...prev,
             // 발주 기본 정보 업데이트
-            purchase_order_number: sourceData?.purchase_order_number,
-            requester_name: sourceData?.requester_name,
-            delivery_request_date: sourceData?.delivery_request_date,
-            revised_delivery_request_date: sourceData?.revised_delivery_request_date,
-            payment_category: sourceData?.payment_category,
-            project_vendor: sourceData?.project_vendor,
+            purchase_order_number: sourceData?.purchase_order_number || prev.purchase_order_number,
+            requester_name: sourceData?.requester_name || prev.requester_name,
+            delivery_request_date: sourceData?.delivery_request_date || prev.delivery_request_date,
+            revised_delivery_request_date: sourceData?.revised_delivery_request_date || prev.revised_delivery_request_date,
+            payment_category: sourceData?.payment_category || prev.payment_category,
+            project_vendor: sourceData?.project_vendor || prev.project_vendor,
             total_amount: totalAmount,
             updated_at: new Date().toISOString()
-          }
+          } as Purchase
         })
         
         logger.info('🚀 [메모리 캐시] 기본 정보 업데이트 결과:', { memoryUpdated })
@@ -1165,18 +1199,18 @@ function PurchaseDetailModal({
             return {
               ...prev,
               // 발주 기본 정보 업데이트
-              purchase_order_number: sourceData?.purchase_order_number,
-              requester_name: sourceData?.requester_name,
-              delivery_request_date: sourceData?.delivery_request_date,
-              revised_delivery_request_date: sourceData?.revised_delivery_request_date,
-              payment_category: sourceData?.payment_category,
-              project_vendor: sourceData?.project_vendor,
+              purchase_order_number: sourceData?.purchase_order_number || prev.purchase_order_number,
+              requester_name: sourceData?.requester_name || prev.requester_name,
+              delivery_request_date: sourceData?.delivery_request_date || prev.delivery_request_date,
+              revised_delivery_request_date: sourceData?.revised_delivery_request_date || prev.revised_delivery_request_date,
+              payment_category: sourceData?.payment_category || prev.payment_category,
+              project_vendor: sourceData?.project_vendor || prev.project_vendor,
               total_amount: totalAmount,
               // 품목 데이터 업데이트 - 삭제된 항목 제외
               items: finalItems,
               purchase_request_items: finalItems,
               updated_at: new Date().toISOString()
-            }
+            } as Purchase
           })
         }
       }
@@ -1286,8 +1320,10 @@ function PurchaseDetailModal({
     // 해당 품목 정보 찾기 - 데이터 구조 디버깅
     
     // items와 purchase_request_items 둘 다 확인 - length로 실제 데이터 유무 판단
-    const purchaseItems = purchase?.items?.length > 0 ? purchase.items : []
-    const requestItems = purchase?.purchase_request_items?.length > 0 ? purchase.purchase_request_items : []
+    if (!purchase) return
+    
+    const purchaseItems = (purchase.items && purchase.items.length > 0) ? purchase.items : []
+    const requestItems = (purchase.purchase_request_items && purchase.purchase_request_items.length > 0) ? purchase.purchase_request_items : []
     const items = purchaseItems.length > 0 ? purchaseItems : requestItems
     
     
@@ -1352,8 +1388,8 @@ function PurchaseDetailModal({
         }
         
         // items와 purchase_request_items 둘 다 확인하여 업데이트 - length로 실제 데이터 유무 판단
-        const prevItems = prev.items?.length > 0 ? prev.items : []
-        const prevRequestItems = prev.purchase_request_items?.length > 0 ? prev.purchase_request_items : []
+        const prevItems = (prev.items && prev.items.length > 0) ? prev.items : []
+        const prevRequestItems = (prev.purchase_request_items && prev.purchase_request_items.length > 0) ? prev.purchase_request_items : []
         const currentItems = prevItems.length > 0 ? prevItems : prevRequestItems
         const updatedItems = currentItems.map(item => 
           String(item.id) === itemIdStr 
@@ -2568,7 +2604,7 @@ function PurchaseDetailModal({
                     <div className="bg-gray-50 px-2 sm:px-3 py-1 border-b border-gray-100 sticky top-0 z-10">
                       <div 
                         ref={headerRowRef}
-                        className="hidden sm:grid gap-3 modal-label" 
+                         className="hidden sm:grid gap-2 modal-label"
                         style={{
                           gridTemplateColumns: getGridTemplateColumns()
                         }}
@@ -2591,7 +2627,6 @@ function PurchaseDetailModal({
                               <>
                                 <div className="text-center">거래명세서 확인</div>
                                 <div className="text-center">회계상 입고일</div>
-                                <div className="text-center">처리자</div>
                                 <div className="text-center">UTK</div>
                               </>
                             )}
@@ -2609,7 +2644,6 @@ function PurchaseDetailModal({
                               <>
                                 <div className="text-center">거래명세서 확인</div>
                                 <div className="text-center">회계상 입고일</div>
-                                <div className="text-center">처리자</div>
                                 <div className="text-center">UTK</div>
                               </>
                             )}
@@ -2622,51 +2656,103 @@ function PurchaseDetailModal({
                         )}
                       </div>
                     </div>
-                    <div className="divide-y divide-gray-100">
+                    <div className="divide-y divide-gray-100 overflow-visible">
                       {(isEditing ? editedItems : currentItems)?.map((item, index) => (
-                        <div key={index} className="px-2 sm:px-3 py-1.5 border-b border-gray-50 hover:bg-gray-50/50">
+                        <div key={index} className="px-2 sm:px-3 py-1 border-b border-gray-50 hover:bg-gray-50/50 relative overflow-visible">
                           {/* Desktop Layout */}
-                          <div className={`hidden sm:grid items-center gap-3`} style={{
+                          <div className={`hidden sm:grid items-center gap-2 overflow-visible`} style={{
                             gridTemplateColumns: getGridTemplateColumns()
                           }}>
                             {/* 품목명 */}
-                            <div className="min-w-0">
+                            <div className="min-w-0 relative overflow-visible flex items-center">
                               {isEditing ? (
                                 <Input
                                   value={item.item_name}
                                   onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
-                                  className="modal-label border-gray-200 rounded-lg w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                  onFocus={() => setFocusedInput(`item_name_${index}`)}
+                                  onBlur={() => setFocusedInput(null)}
+                                  className={`modal-label border-gray-200 rounded-lg w-full !px-1.5 !py-0.5 !text-[10px] focus:border-blue-400 transition-all duration-200 ${
+                                    focusedInput === `item_name_${index}` 
+                                      ? '!h-auto !min-h-[20px] !absolute !z-[9999] !bg-white !shadow-lg !left-0 !right-0 !-translate-y-1/2 !top-1/2 !whitespace-normal' 
+                                      : '!h-5 !truncate'
+                                  }`}
                                   placeholder="품목명"
                                   disabled={canEditLimited && !canEditAll}  // lead buyer는 품목명 수정 불가
                                 />
                               ) : (
-                                <span className="modal-value">{item.item_name || '품목명 없음'}</span>
+                                <div 
+                                  className="modal-value" 
+                                  style={{
+                                    whiteSpace: 'normal',
+                                    wordBreak: 'break-all', // 어디서든 줄바꿈 가능 (하이픈 무시)
+                                    overflowWrap: 'break-word',
+                                    hyphens: 'none', // 하이픈에서 자동 줄바꿈 방지
+                                    WebkitHyphens: 'none',
+                                    MozHyphens: 'none',
+                                    msHyphens: 'none',
+                                    lineHeight: '1.4',
+                                    maxHeight: '2.8em', // 최대 2행 높이
+                                    overflow: 'hidden',
+                                    display: '-webkit-box',
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: 'vertical'
+                                  }}
+                                  title={item.item_name || '품목명 없음'}
+                                >
+                                  {item.item_name || '품목명 없음'}
+                                </div>
                               )}
                             </div>
                             
                             {/* 규격 */}
-                            <div className="min-w-0">
+                            <div className="min-w-0 relative overflow-visible flex items-center" style={{ width: '200px', maxWidth: '200px', minWidth: '200px' }}>
                               {isEditing ? (
                                 <Input
                                   value={item.specification}
                                   onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
-                                  className="modal-label border-gray-200 rounded-lg w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                  onFocus={() => setFocusedInput(`specification_${index}`)}
+                                  onBlur={() => setFocusedInput(null)}
+                                  className={`modal-label border-gray-200 rounded-lg w-full !px-1.5 !py-0.5 !text-[10px] focus:border-blue-400 transition-all duration-200 ${
+                                    focusedInput === `specification_${index}` 
+                                      ? '!h-auto !min-h-[20px] !absolute !z-[9999] !bg-white !shadow-lg !left-1/2 !-translate-x-1/2 !-translate-y-1/2 !top-1/2 !whitespace-normal !w-[300px]' 
+                                      : '!h-5 !truncate'
+                                  }`}
                                   placeholder="규격"
                                   disabled={canEditLimited && !canEditAll}  // lead buyer는 규격 수정 불가
                                 />
                               ) : (
-                                <span className="modal-subtitle">{item.specification || '-'}</span>
+                                <div 
+                                  className="text-[11px] text-gray-600 font-medium" 
+                                  style={{
+                                    whiteSpace: 'normal',
+                                    wordBreak: 'break-all', // 어디서든 줄바꿈 가능 (하이픈 무시)
+                                    overflowWrap: 'break-word',
+                                    hyphens: 'none', // 하이픈에서 자동 줄바꿈 방지
+                                    WebkitHyphens: 'none', // Safari 지원
+                                    MozHyphens: 'none', // Firefox 지원
+                                    msHyphens: 'none', // IE 지원
+                                    lineHeight: '1.4',
+                                    maxHeight: '2.8em', // 최대 2행 높이
+                                    overflow: 'hidden',
+                                    display: '-webkit-box',
+                                    WebkitLineClamp: 2, // 최대 2행까지만 표시
+                                    WebkitBoxOrient: 'vertical'
+                                  }}
+                                  title={item.specification || '-'}
+                                >
+                                  {item.specification || '-'}
+                                </div>
                               )}
                             </div>
                             
                             {/* 수량 */}
-                            <div className="text-center min-w-0">
+                            <div className="text-center min-w-0 flex items-center justify-center">
                               {isEditing ? (
                                 <Input
                                   type="number"
                                   value={item.quantity}
                                   onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
-                                  className="modal-label border-gray-200 rounded-lg text-center w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                  className="border-gray-200 rounded-lg text-center w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
                                   placeholder="수량"
                                   max="99999"
                                 />
@@ -2676,13 +2762,13 @@ function PurchaseDetailModal({
                             </div>
                             
                             {/* 단가 */}
-                            <div className="text-right min-w-0">
+                            <div className="text-right min-w-0 flex items-center justify-end">
                               {isEditing ? (
                                 <Input
                                   type="number"
                                   value={item.unit_price_value}
                                   onChange={(e) => handleItemChange(index, 'unit_price_value', Number(e.target.value))}
-                                  className="modal-label border-gray-200 rounded-lg text-right w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                  className="border-gray-200 rounded-lg text-right w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
                                   placeholder="단가"
                                   max="100000000000"
                                 />
@@ -2692,28 +2778,58 @@ function PurchaseDetailModal({
                             </div>
                             
                             {/* 합계 (자동계산, 수정 불가) */}
-                            <div className="text-right min-w-0">
-                              <span className="modal-value">₩{formatCurrency(item.amount_value || 0)}</span>
+                            <div className="text-right min-w-0 flex items-center justify-end">
+                              <span className={isEditing ? "modal-subtitle" : "modal-value"}>₩{formatCurrency(item.amount_value || 0)}</span>
                             </div>
                             
                             {/* 비고 */}
-                            <div className="min-w-0 flex justify-center items-start pt-1 text-center">
+                            <div className="min-w-0 flex justify-center items-center text-center relative overflow-visible" style={{ width: '150px', maxWidth: '150px', minWidth: '150px' }}>
                               {isEditing ? (
                                 <Input
                                   value={item.remark || ''}
                                   disabled={canEditLimited && !canEditAll}  // lead buyer는 비고 수정 불가
                                   onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
-                                  className="modal-label border-gray-200 rounded-lg text-center w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                  onFocus={() => setFocusedInput(`remark_${index}`)}
+                                  onBlur={() => setFocusedInput(null)}
+                                  className={`modal-label border-gray-200 rounded-lg text-center w-full !px-1.5 !py-0.5 !text-[10px] focus:border-blue-400 transition-all duration-200 ${
+                                    focusedInput === `remark_${index}` 
+                                      ? '!h-auto !min-h-[20px] !absolute !z-[9999] !bg-white !shadow-lg !left-0 !right-0 !-translate-y-1/2 !top-1/2 !whitespace-normal !text-left' 
+                                      : '!h-5 !truncate'
+                                  }`}
                                   placeholder="비고"
                                 />
                               ) : (
-                                <span className="modal-subtitle text-center">{item.remark || '-'}</span>
+                                <div 
+                                  className="text-[11px] text-gray-600 font-medium"
+                                  style={{
+                                    width: '150px',
+                                    maxWidth: '150px',
+                                    minWidth: '150px',
+                                    boxSizing: 'border-box',
+                                    whiteSpace: 'normal',
+                                    wordBreak: 'break-all',
+                                    overflowWrap: 'break-word',
+                                    hyphens: 'none',
+                                    WebkitHyphens: 'none',
+                                    MozHyphens: 'none',
+                                    msHyphens: 'none',
+                                    lineHeight: '1.4',
+                                    maxHeight: '2.8em',
+                                    overflow: 'hidden',
+                                    display: '-webkit-box',
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: 'vertical'
+                                  }}
+                                  title={item.remark || '-'}
+                                >
+                                  {item.remark || '-'}
+                                </div>
                               )}
                             </div>
                             
                             {/* 상태/액션 - 승인대기탭에서는 제외 */}
                             {activeTab !== 'pending' && (
-                              <div className="text-center flex justify-center items-start pt-1">
+                              <div className="text-center flex justify-center items-center">
                                 {isEditing ? (
                                   <Button
                                     size="sm"
@@ -2830,7 +2946,7 @@ function PurchaseDetailModal({
                             
                             {/* 실제 입고 날짜 - 입고 탭에서만 표시 (상태 컬럼 오른쪽) */}
                             {activeTab === 'receipt' && (
-                              <div className="text-center flex justify-center items-start pt-1 pl-2">
+                              <div className="text-center flex justify-center items-center pl-2">
                                 {actualReceivedAction.getCompletedDate(item) ? (
                                   <div className="modal-subtitle text-green-700">
                                     {new Date(actualReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
@@ -2847,7 +2963,7 @@ function PurchaseDetailModal({
 
                             {/* 거래명세서 확인 - 전체항목 탭에서만 표시 */}
                             {activeTab === 'done' && (
-                              <div className="text-center flex justify-center items-start pt-1">
+                              <div className="text-center flex justify-center items-center">
                                 {canReceiptCheck ? (
                                   statementReceivedAction.isCompleted(item) ? (
                                     <button
@@ -2904,7 +3020,7 @@ function PurchaseDetailModal({
 
                             {/* 회계상 입고일 - 전체항목 탭에서만 표시 */}
                             {activeTab === 'done' && (
-                              <div className="text-center flex justify-center items-start pt-1">
+                              <div className="text-center flex justify-center items-center">
                                 {statementReceivedAction.getCompletedDate(item) ? (
                                   <div className="modal-subtitle text-blue-700">
                                     {new Date(statementReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
@@ -2918,22 +3034,10 @@ function PurchaseDetailModal({
                                 )}
                               </div>
                             )}
-                            {/* 처리자 - 전체항목 탭에서만 표시 */}
-                            {activeTab === 'done' && (
-                              <div className="text-center flex justify-center items-start pt-1">
-                                {statementReceivedAction.getCompletedByName(item) ? (
-                                  <span className="modal-subtitle text-gray-600">
-                                    {statementReceivedAction.getCompletedByName(item)}
-                                  </span>
-                                ) : (
-                                  <span className="modal-subtitle text-gray-400">-</span>
-                                )}
-                              </div>
-                            )}
 
                             {/* UTK 확인 - 전체항목 탭에서만 표시 (맨 오른쪽 끝) */}
                             {activeTab === 'done' && (
-                              <div className="text-center flex justify-center items-start pt-1">
+                              <div className="text-center flex justify-center items-center">
                                 {canReceiptCheck ? (
                                   <button
                                     onClick={() => handleUtkToggle(item.id, !item.is_utk_checked)}
@@ -2962,12 +3066,18 @@ function PurchaseDetailModal({
                           {/* Mobile Layout */}
                           <div className="block sm:hidden space-y-2">
                             <div className="flex justify-between items-start">
-                              <div className="flex-1 min-w-0">
+                              <div className="flex-1 min-w-0 relative">
                                 {isEditing ? (
                                   <Input
                                     value={item.item_name}
                                     onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
-                                    className="modal-label border-gray-200 rounded-lg w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                    onFocus={() => setFocusedInput(`m_item_name_${index}`)}
+                                    onBlur={() => setFocusedInput(null)}
+                                    className={`modal-label border-gray-200 rounded-lg w-full !px-1.5 !py-0.5 !text-[10px] focus:border-blue-400 transition-all duration-200 ${
+                                      focusedInput === `m_item_name_${index}` 
+                                        ? '!h-auto !min-h-[20px] !absolute !z-[9999] !bg-white !shadow-lg !left-0 !right-0 !-translate-y-1/2 !top-1/2 !whitespace-normal' 
+                                        : '!h-5 !truncate'
+                                    }`}
                                     placeholder="품목명"
                                     disabled={canEditLimited && !canEditAll}  // lead buyer는 품목명 수정 불가
                                   />
@@ -2978,7 +3088,13 @@ function PurchaseDetailModal({
                                   <Input
                                     value={item.specification}
                                     onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
-                                    className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                    onFocus={() => setFocusedInput(`m_specification_${index}`)}
+                                    onBlur={() => setFocusedInput(null)}
+                                    className={`modal-label border-gray-200 rounded-lg mt-1 w-full !px-1.5 !py-0.5 !text-[10px] focus:border-blue-400 transition-all duration-200 ${
+                                      focusedInput === `m_specification_${index}` 
+                                        ? '!h-auto !min-h-[20px] !absolute !z-[9999] !bg-white !shadow-lg !left-0 !right-0 !-translate-y-1/2 !top-1/2 !whitespace-normal !w-full' 
+                                        : '!h-5 !truncate'
+                                    }`}
                                     placeholder="규격"
                                     disabled={canEditLimited && !canEditAll}  // lead buyer는 규격 수정 불가
                                   />
@@ -2987,7 +3103,7 @@ function PurchaseDetailModal({
                                 )}
                               </div>
                               <div className="ml-3 text-right flex-shrink-0">
-                                <div className="modal-value font-semibold">₩{formatCurrency(item.amount_value || 0)}</div>
+                                <div className={`${isEditing ? "modal-subtitle" : "modal-value"} font-semibold`}>₩{formatCurrency(item.amount_value || 0)}</div>
                               </div>
                             </div>
                             
@@ -2999,7 +3115,7 @@ function PurchaseDetailModal({
                                     type="number"
                                     value={item.quantity}
                                     onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
-                                    className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                    className="border-gray-200 rounded-lg mt-1 w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
                                     placeholder="수량"
                                   />
                                 ) : (
@@ -3013,7 +3129,7 @@ function PurchaseDetailModal({
                                     type="number"
                                     value={item.unit_price_value}
                                     onChange={(e) => handleItemChange(index, 'unit_price_value', Number(e.target.value))}
-                                    className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                                    className="border-gray-200 rounded-lg mt-1 w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
                                     placeholder="단가"
                                   />
                                 ) : (
@@ -3246,17 +3362,6 @@ function PurchaseDetailModal({
                                 </div>
                               </div>
                             )}
-                            {/* 모바일에서 처리자 표시 - 전체항목 탭에서만 */}
-                            {!isEditing && activeTab === 'done' && statementReceivedAction.getCompletedByName(item) && (
-                              <div>
-                                <span className="text-gray-500 text-xs">처리자:</span>
-                                <div className="mt-1">
-                                  <div className="modal-subtitle text-gray-600">
-                                    {statementReceivedAction.getCompletedByName(item)}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
                           </div>
                         </div>
                       ))}
@@ -3291,6 +3396,13 @@ function PurchaseDetailModal({
                     <div></div>
                     <div></div>
                     {activeTab === 'receipt' && <div></div>}
+                    {activeTab === 'done' && (
+                      <>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                      </>
+                    )}
                   </div>
                   
                   {/* Mobile 총액 */}
