@@ -1490,7 +1490,7 @@ function PurchaseDetailModal({
 
   // 개별 품목 입고완료 처리 (날짜 선택 + 실제입고수량)
   const handleItemReceiptToggle = async (itemId: number | string, selectedDate: Date, receivedQuantity?: number) => {
-    if (!canReceiptCheck) {
+    if (!canReceiveItems) {
       toast.error('입고 처리 권한이 없습니다.')
       return
     }
@@ -2408,56 +2408,6 @@ function PurchaseDetailModal({
         </div>
       ) : purchase ? (
         <div>
-          {/* 헤더 테이블 필드 - 메인 테이블과 동일한 필드 표시 */}
-          <div className="bg-white rounded-lg p-2 sm:p-3 mb-1 sm:mb-2 border border-gray-100 shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">발주번호</th>
-                    <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center">결제종류</th>
-                    <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">요청자</th>
-                    <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center">청구일</th>
-                    {activeTab === 'done' && (
-                      <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center">UTK</th>
-                    )}
-                    <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">업체</th>
-                    <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">담당자</th>
-                    <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">입고요청일</th>
-                    {(activeTab === 'receipt' || activeTab === 'done') && (
-                      <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">변경 입고일</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="px-2 py-1.5 modal-value text-left">{purchase.purchase_order_number || '-'}</td>
-                    <td className="px-2 py-1.5 modal-value text-center">{purchase.payment_category || '-'}</td>
-                    <td className="px-2 py-1.5 modal-value text-left">{purchase.requester_name || '-'}</td>
-                    <td className="px-2 py-1.5 modal-value text-center">{formatDate(purchase.request_date)}</td>
-                    {activeTab === 'done' && (
-                      <td className="px-2 py-1.5 text-center">
-                        {purchase.is_utk_checked ? (
-                          <span className="text-orange-600 font-medium">확인</span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </td>
-                    )}
-                    <td className="px-2 py-1.5 modal-value text-left">{purchase.vendor?.vendor_name || purchase.vendor_name || '-'}</td>
-                    <td className="px-2 py-1.5 modal-value text-left">{purchase.vendor_contacts?.[0]?.contact_name || purchase.contact_name || '-'}</td>
-                    <td className="px-2 py-1.5 modal-value text-left">{formatDate(purchase.delivery_request_date)}</td>
-                    {(activeTab === 'receipt' || activeTab === 'done') && (
-                      <td className="px-2 py-1.5 modal-value text-left text-orange-700">
-                        {purchase.revised_delivery_request_date ? formatDate(purchase.revised_delivery_request_date) : '-'}
-                      </td>
-                    )}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
           {/* Compact Info Header */}
           <div className="bg-gray-50 rounded-lg p-2 sm:p-3 mb-1 sm:mb-2 border border-gray-100">
             <div className="grid grid-cols-1 sm:grid-cols-3 items-center gap-3 sm:gap-0">
@@ -3235,7 +3185,7 @@ function PurchaseDetailModal({
                                   {/* 입고 탭에서의 입고완료 상태 */}
                                   {activeTab === 'receipt' && (
                                     <div className="flex justify-center">
-                                      {canReceiptCheck ? (
+                                      {canReceiveItems ? (
                                         actualReceivedAction.isCompleted(item) ? (
                                           <button
                                             onClick={() => {

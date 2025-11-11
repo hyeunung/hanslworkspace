@@ -79,6 +79,11 @@ export const filterByTab = (
     
     case 'purchase': {
       // 구매 현황 탭: 결제 대기중인 구매요청들
+      // 관리자 권한 체크
+      const hasManagerRole = userRoles.some((role: string) => 
+        ['app_admin', 'ceo', 'lead buyer', 'finance_team', 'raw_material_manager', 'consumable_manager', 'purchase_manager', 'hr'].includes(role)
+      )
+      
       return purchases.filter(purchase => {
         const isRequest = purchase.payment_category === '구매 요청'
         const notPaid = !purchase.is_payment_completed
@@ -87,18 +92,44 @@ export const filterByTab = (
         const isSeonJin = (purchase.progress_type || '').includes('선진행')
         const isIlban = (purchase.progress_type || '').includes('일반') || !purchase.progress_type || purchase.progress_type === ''
         const finalApproved = purchase.final_manager_status === 'approved'
-
-        return isSeonJin || (isIlban && finalApproved)
+        const matchesProgress = isSeonJin || (isIlban && finalApproved)
+        
+        if (!matchesProgress) return false
+        
+        // 관리자는 모든 항목 표시, 일반 직원은 본인 것만
+        if (hasManagerRole) {
+          return true
+        }
+        
+        // 일반 직원은 본인이 요청한 항목만
+        return purchase.requester_name === currentUser?.name
       })
     }
     
     case 'receipt': {
       // 입고 현황 탭: 입고 대기중인 항목들
+      // hr 권한이 있으면 모든 항목 볼 수 있음
+      const hasHrRole = userRoles.includes('hr')
+      const hasManagerRole = userRoles.some((role: string) => 
+        ['app_admin', 'ceo', 'lead buyer', 'finance_team', 'raw_material_manager', 'consumable_manager', 'purchase_manager'].includes(role)
+      )
+      
       return purchases.filter(purchase => {
         if (purchase.is_received) return false
+        
+        // hr 권한이 있으면 모든 항목 표시
+        if (hasHrRole || hasManagerRole) {
+          const isSeonJin = (purchase.progress_type || '').includes('선진행')
+          const finalApproved = purchase.final_manager_status === 'approved'
+          return isSeonJin || finalApproved
+        }
+        
+        // 일반 사용자는 본인이 요청한 항목만
         const isSeonJin = (purchase.progress_type || '').includes('선진행')
         const finalApproved = purchase.final_manager_status === 'approved'
-        return isSeonJin || finalApproved
+        const isRequester = purchase.requester_name === currentUser?.name
+        
+        return (isSeonJin || finalApproved) && isRequester
       })
     }
     
@@ -127,7 +158,7 @@ export const filterByEmployee = (
     ? currentUser.purchase_role.split(',').map((r: string) => r.trim())
     : []
   const hasManagerRole = userRoles.some((role: string) => 
-    ['lead_buyer', 'ceo', 'finance_team', 'raw_material_manager', 'consumable_manager'].includes(role)
+    ['lead buyer', 'ceo', 'finance_team', 'raw_material_manager', 'consumable_manager'].includes(role)
   )
   
   return purchases.filter(purchase => {
@@ -337,11 +368,33 @@ export const calculateTabCounts = (
   allPurchases: Purchase[],
   currentUser: Employee | null
 ): Record<TabType, number> => {
+  // 일반 직원인 경우 최근 60일만 필터링
+  const userRoles = currentUser ? (
+    Array.isArray(currentUser.purchase_role) 
+      ? currentUser.purchase_role.map((r: string) => r.trim())
+      : typeof currentUser.purchase_role === 'string' 
+      ? currentUser.purchase_role.split(',').map((r: string) => r.trim())
+      : []
+  ) : []
+  
+  const isGeneralEmployee = !userRoles.some((role: string) => 
+    ['app_admin', 'ceo', 'lead buyer', 'finance_team', 'raw_material_manager', 'consumable_manager', 'purchase_manager', 'hr', 'middle_manager', 'final_approver'].includes(role)
+  )
+  
+  // 일반 직원인 경우 최근 60일만 필터링
+  let purchasesForDone = allPurchases
+  if (isGeneralEmployee) {
+    const sixtyDaysAgo = new Date()
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
+    const dateStart = sixtyDaysAgo.toISOString().split('T')[0]
+    purchasesForDone = filterByDateRange(allPurchases, dateStart, undefined)
+  }
+  
   return {
     pending: filterByTab(allPurchases, 'pending', currentUser).length,
     purchase: filterByTab(allPurchases, 'purchase', currentUser).length,
     receipt: filterByTab(allPurchases, 'receipt', currentUser).length,
-    done: allPurchases.length
+    done: purchasesForDone.length
   }
 }
 

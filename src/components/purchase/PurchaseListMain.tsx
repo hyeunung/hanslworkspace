@@ -20,6 +20,7 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Purchase } from "@/types/purchase";
 import { hasManagerRole, getRoleCase, filterByEmployeeVisibility } from "@/utils/roleHelper";
+import { calculateTabCounts } from "@/utils/purchaseFilters";
 import { logger } from "@/lib/logger";
 
 interface PurchaseListMainProps {
@@ -116,6 +117,25 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   // 탭별 기본 직원 필터 계산
   const computeDefaultEmployee = useCallback((tabKey: string): string => {
     if (!currentUserName) return 'all';
+    
+    // 관리자 권한 체크
+    const hasHrRole = currentUserRoles.includes('hr');
+    const hasPurchaseManagerRole = currentUserRoles.includes('purchase_manager');
+    const hasLeadBuyerRole = currentUserRoles.includes('lead buyer');
+    const hasManagerRole = currentUserRoles.some((role: string) => 
+      ['app_admin', 'ceo', 'lead buyer', 'finance_team', 'raw_material_manager', 'consumable_manager', 'purchase_manager', 'hr'].includes(role)
+    );
+    
+    // receipt 탭에서 hr 또는 purchase_manager 권한이 있으면 모든 항목 표시
+    if (tabKey === 'receipt' && (hasHrRole || hasPurchaseManagerRole)) {
+      return 'all';
+    }
+    
+    // purchase 탭에서 lead buyer 또는 관리자 권한이 있으면 모든 항목 표시
+    if (tabKey === 'purchase' && hasManagerRole) {
+      return 'all';
+    }
+    
     switch (roleCase) {
       case 1:
         if (tabKey === 'done') return 'all';
@@ -128,7 +148,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       default:
         return currentUserName;
     }
-  }, [currentUserName, roleCase]);
+  }, [currentUserName, roleCase, currentUserRoles]);
 
   // 탭 변경 시 기본 직원 필터 설정
   useEffect(() => {
@@ -454,36 +474,12 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   const tabFilteredPurchases = baseFilteredPurchases;
 
 
-  // 필터링된 데이터 기반 동적 탭별 카운트
+  // 탭별 카운트 계산 (필터 없이 전체 데이터 기준)
   const filteredTabCounts = useMemo(() => {
-    const hasAnyFilter = activeFilters.length > 0 || searchTerm.trim() !== '' || 
-                        (selectedEmployee && selectedEmployee !== 'all' && selectedEmployee !== '전체');
-
-    let dateStart: string | undefined;
-    
-    if (!hasAnyFilter) {
-      const sixtyDaysAgo = new Date();
-      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-      dateStart = sixtyDaysAgo.toISOString().split('T')[0];
-    }
-    
-    const employeeName = selectedEmployee === 'all' || selectedEmployee === '전체' ? null : selectedEmployee;
-    
-    const filterOptions = {
-      employeeName,
-      searchTerm,
-      advancedFilters: activeFilters,
-      startDate: dateStart,
-      sortConfig: sortConfig ? { key: sortConfig.field, direction: sortConfig.direction } : undefined
-    };
-
-    return {
-      pending: getFilteredPurchases({ tab: 'pending', ...filterOptions }).length,
-      purchase: getFilteredPurchases({ tab: 'purchase', ...filterOptions }).length, 
-      receipt: getFilteredPurchases({ tab: 'receipt', ...filterOptions }).length,
-      done: getFilteredPurchases({ tab: 'done', ...filterOptions }).length,
-    };
-  }, [getFilteredPurchases, selectedEmployee, searchTerm, activeFilters, sortConfig]);
+    // 필터 없이 전체 데이터를 기준으로 탭별 카운트 계산
+    // visiblePurchases는 이미 필터링된 데이터이므로 원본 purchases 사용
+    return calculateTabCounts(purchases, currentUser);
+  }, [purchases, currentUser]);
 
 
   // 월간 필터 감지 및 합계금액 계산
