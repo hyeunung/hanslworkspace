@@ -742,6 +742,12 @@
   max-width: 90px !important;
 }
 
+.table-fit-left .purchase-order-number-column {
+  width: 150px !important;
+  min-width: 150px !important;
+  max-width: 150px !important;
+}
+
 /* 필수 칼럼 강조 */
 .column-required {
   position: relative;

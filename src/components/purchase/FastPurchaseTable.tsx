@@ -74,7 +74,7 @@ const COMMON_COLUMN_CLASSES = {
   approvalStatus: "text-center w-20 min-w-[85px] max-w-[85px]",
   
   // 모든 탭 공통 컬럼들 (고정 너비)
-  purchaseOrderNumber: "pl-2 w-38 min-w-[155px] max-w-[155px]",      // 발주번호 + 품목갯수 + 엑셀아이콘
+  purchaseOrderNumber: "pl-2 w-[150px] min-w-[150px] max-w-[150px] purchase-order-number-column",      // 발주번호 + 품목갯수 + 엑셀아이콘
   purchaseOrderNumberCompact: "pl-2 w-36 min-w-[140px] max-w-[140px]", // 구매현황 탭용 (추가 컬럼 보상)
   paymentCategory: "text-center w-20 min-w-[85px] max-w-[85px]",
   requesterName: "w-12 min-w-[48px] max-w-[48px]",                    // 한글 이름 2-3자 기준 (김용희, 한화 등)
@@ -90,7 +90,7 @@ const COMMON_COLUMN_CLASSES = {
   amount: "text-right w-24 min-w-[100px] max-w-[100px]",
   
   // 탭별 특화 컬럼들 (고정 너비)
-  remark: "w-28 min-w-[115px] max-w-[115px]",                         // 평균 1.8자, 대부분 비어있음
+  remark: "w-[165px] min-w-[165px] max-w-[165px]",                         // 평균 1.8자, 대부분 비어있음
   paymentSchedule: "w-24 min-w-[100px] max-w-[100px]",
   purchaseStatus: "text-center w-20 min-w-[85px] max-w-[85px]",
   projectVendor: "w-24 min-w-[105px] max-w-[105px]",                  // 평균 6.6자
@@ -424,7 +424,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       )}
       {/* 발주번호 칼럼 */}
       {isVisible('purchase_order_number') && (
-        <td className={`px-2 py-1.5 card-title whitespace-nowrap ${activeTab === 'purchase' ? COMMON_COLUMN_CLASSES.purchaseOrderNumberCompact : COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>
+        <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>
         <div className="flex items-center gap-1">
           {/* 엑셀 다운로드 아이콘 - 항상 표시, 조건에 따라 활성화/비활성화 */}
           {onExcelDownload && (
@@ -1126,7 +1126,7 @@ const FastPurchaseTable = ({
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>구매진행</th>
             )}
             {isColumnVisible('purchase_order_number') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumberCompact}`}>발주번호</th>
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
             )}
             {isColumnVisible('payment_category') && (
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
@@ -1175,7 +1175,7 @@ const FastPurchaseTable = ({
     const baseHeaders = (
       <>
         {isColumnVisible('purchase_order_number') && (
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${activeTab === 'purchase' ? COMMON_COLUMN_CLASSES.purchaseOrderNumberCompact : COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
+          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
         )}
         {isColumnVisible('payment_category') && (
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
@@ -1302,18 +1302,21 @@ const FastPurchaseTable = ({
   }, [activeTab, isColumnVisible]);
 
   // 숨겨진 칼럼이 있는지 확인하여 테이블 클래스 동적 적용
-  const hasHiddenColumns = useMemo(() => {
+  const shouldUseFitLayout = useMemo(() => {
     if (!columnVisibility) return false;
-    return Object.values(columnVisibility).some(visible => !visible);
-  }, [columnVisibility]);
+    const hasHidden = Object.values(columnVisibility).some(visible => !visible);
+    if (!hasHidden) return false;
+    if (activeTab === 'purchase') return false;
+    return true;
+  }, [columnVisibility, activeTab]);
 
   return (
     <>
       {/* 데스크톱 테이블 뷰 - 실제 데이터 1,979건 분석 기반 최적 너비 */}
-      <div className={`hidden md:block ${hasHiddenColumns ? 'w-fit' : 'w-full'}`}>
+      <div className={`hidden md:block ${shouldUseFitLayout ? 'w-fit' : 'w-full'}`}>
         
-        <div className={hasHiddenColumns ? 'table-container-fit-left' : 'overflow-x-auto border rounded-lg'}>
-          <table className={hasHiddenColumns ? 'table-fit-left' : 'w-full min-w-[1790px] border-collapse'}>
+        <div className={shouldUseFitLayout ? 'table-container-fit-left' : 'overflow-x-auto border rounded-lg'}>
+          <table className={shouldUseFitLayout ? 'table-fit-left' : 'w-full min-w-[1790px] border-collapse'}>
             {tableHeader}
             <tbody>
               {purchases.map((purchase) => (
