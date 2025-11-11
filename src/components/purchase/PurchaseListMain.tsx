@@ -15,7 +15,6 @@ import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs
 // Lazy load modal for better performance
 const PurchaseItemsModal = lazy(() => import("@/components/purchase/PurchaseItemsModal"));
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-// Tabs 컴포넌트를 제거하고 직접 구현 (hanslwebapp 방식)
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -24,8 +23,6 @@ import { hasManagerRole, getRoleCase, filterByEmployeeVisibility } from "@/utils
 import { logger } from "@/lib/logger";
 
 interface PurchaseListMainProps {
-  // 현재 사용하지 않지만 확장성을 위해 유지
-  onEmailToggle?: () => void;
   showEmailButton?: boolean;
 }
 
@@ -93,7 +90,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   
   // 메모리 캐시 기반 강제 새로고침
   const loadPurchases = useCallback(async () => {
-    console.log('🔄 [loadPurchases] 강제 새로고침 트리거')
+    logger.debug('🔄 [loadPurchases] 강제 새로고침 트리거')
     setRefreshTrigger(prev => prev + 1)
   }, []);
   
@@ -154,7 +151,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     const checkAndRefreshCache = async () => {
       // 캐시가 무효화되었거나 데이터가 없는 경우 새로고침
       if (!isCacheValid() || !purchaseMemoryCache.allPurchases) {
-        console.log('🔄 [PurchaseListMain] 캐시 무효화 감지, 데이터 새로고침 중...', {
+        logger.info('🔄 [PurchaseListMain] 캐시 무효화 감지, 데이터 새로고침 중...', {
           isCacheValid: isCacheValid(),
           hasData: !!purchaseMemoryCache.allPurchases,
           lastFetch: purchaseMemoryCache.lastFetch
@@ -162,9 +159,9 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         
         try {
           await loadAllPurchaseData(currentUser?.id);
-          console.log('✅ [PurchaseListMain] 데이터 새로고침 완료');
+          logger.info('✅ [PurchaseListMain] 데이터 새로고침 완료');
         } catch (error) {
-          console.error('❌ [PurchaseListMain] 데이터 새로고침 실패:', error);
+          logger.error('❌ [PurchaseListMain] 데이터 새로고침 실패:', error);
         }
       }
     };

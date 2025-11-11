@@ -350,7 +350,6 @@ const StatementProgressBar = memo(({ purchase }: { purchase: Purchase }) => {
 StatementProgressBar.displayName = 'StatementProgressBar';
 
 
-// formatDateShort는 utils/helpers.ts에서 import
 
 // 선진행 구분 배지
 const ProgressTypeBadge = memo(({ type }: { type?: string }) => {
@@ -374,7 +373,7 @@ const ProgressTypeBadge = memo(({ type }: { type?: string }) => {
 ProgressTypeBadge.displayName = 'ProgressTypeBadge';
 
 // 테이블 행 컴포넌트 메모화
-const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentComplete, onReceiptComplete, onExcelDownload, columnVisibility }: { 
+const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentComplete, onReceiptComplete, onExcelDownload, columnVisibility, vendorColumnWidth }: { 
   purchase: Purchase; 
   onClick: (purchase: Purchase) => void;
   activeTab?: string;
@@ -383,6 +382,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
   onReceiptComplete?: (purchaseId: number) => Promise<void>;
   onExcelDownload?: (purchase: Purchase) => Promise<void>;
   columnVisibility?: ColumnVisibility;
+  vendorColumnWidth?: number;
 }) => {
   const isAdvance = purchase.progress_type === '선진행' || purchase.progress_type?.includes('선진행');
   
@@ -507,7 +507,14 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       )}
       {/* 업체 칼럼 */}
       {isVisible('vendor_name') && (
-        <td className={`pl-3 pr-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.vendorName}`}>
+        <td 
+          className="pl-3 pr-2 py-1.5 card-title"
+          style={{ 
+            width: `${vendorColumnWidth || 80}px`, 
+            minWidth: `${vendorColumnWidth || 80}px`, 
+            maxWidth: `${vendorColumnWidth || 80}px` 
+          }}
+        >
           <span className="block truncate" title={purchase.vendor_name || ''}>
             {purchase.vendor_name || '-'}
           </span>
@@ -758,6 +765,7 @@ const FastPurchaseTable = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [purchaseToDelete, setPurchaseToDelete] = useState<Purchase | null>(null);
+  const [vendorColumnWidth, setVendorColumnWidth] = useState<number>(80);
   const supabase = createClient();
 
   // 권한 체크 - lead buyer와 app_admin만 구매완료/입고완료 버튼 사용 가능
@@ -773,6 +781,31 @@ const FastPurchaseTable = ({
                   currentUserRoles.includes('ceo');
   
   const canDelete = canEdit;
+
+  // 업체 칼럼 너비 동적 계산
+  const calculateVendorColumnWidth = useMemo(() => {
+    if (!purchases || purchases.length === 0) return 80;
+
+    let maxLength = 2; // "업체" 헤더 길이
+
+    purchases.forEach(purchase => {
+      const vendorName = purchase.vendor_name || '';
+      // 한글/영문 혼합 텍스트 길이 계산 (한글은 1.5배 가중치)
+      const adjustedLength = vendorName.split('').reduce((acc, char) => {
+        return acc + (/[가-힣]/.test(char) ? 1.5 : 1)
+      }, 0);
+      maxLength = Math.max(maxLength, Math.ceil(adjustedLength));
+    });
+
+    // 길이를 픽셀로 변환 (글자당 약 7px + 여백 20px)
+    const calculatedWidth = Math.max(80, Math.min(200, maxLength * 7 + 20));
+    return calculatedWidth;
+  }, [purchases]);
+
+  // 계산된 너비를 state에 반영
+  useEffect(() => {
+    setVendorColumnWidth(calculateVendorColumnWidth);
+  }, [calculateVendorColumnWidth]);
 
   const handleRowClick = useCallback((purchase: Purchase) => {
     setSelectedPurchaseId(purchase.id);
@@ -1078,7 +1111,14 @@ const FastPurchaseTable = ({
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
             )}
             {isColumnVisible('vendor_name') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
+              <th 
+                className="px-2 py-1.5 modal-label text-gray-900 text-left"
+                style={{ 
+                  width: `${vendorColumnWidth || 80}px`, 
+                  minWidth: `${vendorColumnWidth || 80}px`, 
+                  maxWidth: `${vendorColumnWidth || 80}px` 
+                }}
+              >업체</th>
             )}
             {isColumnVisible('contact_name') && (
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
@@ -1138,7 +1178,14 @@ const FastPurchaseTable = ({
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
             )}
             {isColumnVisible('vendor_name') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
+              <th 
+                className="px-2 py-1.5 modal-label text-gray-900 text-left"
+                style={{ 
+                  width: `${vendorColumnWidth || 80}px`, 
+                  minWidth: `${vendorColumnWidth || 80}px`, 
+                  maxWidth: `${vendorColumnWidth || 80}px` 
+                }}
+              >업체</th>
             )}
             {isColumnVisible('contact_name') && (
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
@@ -1299,7 +1346,7 @@ const FastPurchaseTable = ({
         </tr>
       </thead>
     );
-  }, [activeTab, isColumnVisible]);
+  }, [activeTab, isColumnVisible, vendorColumnWidth]);
 
   // 숨겨진 칼럼이 있는지 확인하여 테이블 클래스 동적 적용
   const shouldUseFitLayout = useMemo(() => {
@@ -1329,6 +1376,7 @@ const FastPurchaseTable = ({
                   onPaymentComplete={onPaymentComplete}
                   onReceiptComplete={onReceiptComplete}
                   onExcelDownload={handleExcelDownload}
+                  vendorColumnWidth={vendorColumnWidth}
                   columnVisibility={columnVisibility}
                 />
               ))}

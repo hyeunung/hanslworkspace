@@ -57,13 +57,13 @@ export const invalidatePurchaseMemoryCache = () => {
 // 품목 삭제를 위한 메모리 캐시 업데이트 함수 (다른 함수들과 동일한 패턴)
 export const removeItemFromMemory = (purchaseId: number | string, itemId: number | string): boolean => {
   const result = updatePurchaseInMemory(purchaseId, (purchase) => {
-    const targetItemId = Number(itemId)
+    const targetItemId = String(itemId)
     
     // 현재 items 배열 선택 (다른 함수들과 동일한 로직)
-    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    const currentItems = (purchase.items && purchase.items.length > 0) ? purchase.items : (purchase.purchase_request_items || [])
     
     // 해당 품목을 제외한 배열 생성 (삭제)
-    const updatedItems = currentItems.filter(item => item.id !== targetItemId)
+    const updatedItems = currentItems.filter(item => String(item.id) !== targetItemId)
     
     // 합계 재계산
     const newTotalAmount = updatedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
@@ -191,14 +191,14 @@ export const markPurchaseAsPaymentCompleted = (purchaseId: number | string): boo
 export const markItemAsPaymentCompleted = (purchaseId: number | string, itemId: number | string): boolean => {
   return updatePurchaseInMemory(purchaseId, (purchase) => {
     const currentTime = new Date().toISOString()
-    const targetItemId = Number(itemId)
+    const targetItemId = String(itemId)
     
     // 현재 items 배열 선택 (markItemAsPaymentCanceled와 동일한 로직)
-    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    const currentItems = (purchase.items && purchase.items.length > 0) ? purchase.items : (purchase.purchase_request_items || [])
     
     // 해당 품목만 구매완료로 업데이트
     const updatedItems = currentItems.map(item => 
-      item.id === targetItemId 
+      String(item.id) === targetItemId 
         ? { ...item, is_payment_completed: true, payment_completed_at: currentTime }
         : item
     )
@@ -225,7 +225,7 @@ export const markPurchaseAsReceived = (purchaseId: number | string): boolean => 
     const updatedItems = (purchase.items || purchase.purchase_request_items || []).map(item => ({
       ...item,
       is_received: true,
-      delivery_status: 'received',
+      delivery_status: 'received' as const,
       received_at: currentTime
     }))
     
@@ -242,14 +242,14 @@ export const markPurchaseAsReceived = (purchaseId: number | string): boolean => 
 // 특정 품목의 구매완료 취소를 위한 헬퍼 함수
 export const markItemAsPaymentCanceled = (purchaseId: number | string, itemId: number | string): boolean => {
   return updatePurchaseInMemory(purchaseId, (purchase) => {
-    const targetItemId = Number(itemId)
+    const targetItemId = String(itemId)
     
     // 현재 items 배열 선택
-    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    const currentItems = (purchase.items && purchase.items.length > 0) ? purchase.items : (purchase.purchase_request_items || [])
     
     // 해당 품목만 구매완료 취소로 업데이트
     const updatedItems = currentItems.map(item => 
-      item.id === targetItemId 
+      String(item.id) === targetItemId 
         ? { ...item, is_payment_completed: false, payment_completed_at: null }
         : item
     )
@@ -272,18 +272,18 @@ export const markItemAsReceived = (purchaseId: number | string, itemId: number |
   const result = updatePurchaseInMemory(purchaseId, (purchase) => {
     const currentTime = new Date().toISOString()
     const actualReceivedDate = selectedDate || currentTime  // 선택된 날짜 또는 현재 시간
-    const targetItemId = Number(itemId)
+    const targetItemId = String(itemId)
     
     // 현재 items 배열 선택
-    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    const currentItems = (purchase.items && purchase.items.length > 0) ? purchase.items : (purchase.purchase_request_items || [])
     
     // 해당 품목만 입고완료로 업데이트
     const updatedItems = currentItems.map(item => 
-      item.id === targetItemId 
+      String(item.id) === targetItemId 
         ? { 
             ...item, 
             is_received: true, 
-            delivery_status: 'received', 
+            delivery_status: 'received' as const, 
             received_at: currentTime,
             actual_received_date: actualReceivedDate  // 🚀 사용자가 선택한 날짜 사용
           }
@@ -313,20 +313,20 @@ export const markItemAsReceived = (purchaseId: number | string, itemId: number |
 // 특정 품목의 입고완료 취소 처리를 위한 헬퍼 함수
 export const markItemAsReceiptCanceled = (purchaseId: number | string, itemId: number | string): boolean => {
   const result = updatePurchaseInMemory(purchaseId, (purchase) => {
-    const targetItemId = Number(itemId)
+    const targetItemId = String(itemId)
     
     // 현재 items 배열 선택
-    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    const currentItems = (purchase.items && purchase.items.length > 0) ? purchase.items : (purchase.purchase_request_items || [])
     
     // 해당 품목만 입고완료 취소로 업데이트
     const updatedItems = currentItems.map(item => 
-      item.id === targetItemId 
+      String(item.id) === targetItemId 
         ? { 
             ...item, 
             is_received: false, 
-            delivery_status: 'pending', 
+            delivery_status: 'pending' as const, 
             received_at: null, 
-            actual_received_date: null  // 🚀 실제입고일도 함께 초기화
+            actual_received_date: undefined  // 🚀 실제입고일도 함께 초기화
           }
         : item
     )
@@ -356,14 +356,14 @@ export const markItemAsStatementReceived = (purchaseId: number | string, itemId:
   const result = updatePurchaseInMemory(purchaseId, (purchase) => {
     const currentTime = new Date().toISOString()
     const statementReceivedDate = selectedDate || currentTime
-    const targetItemId = Number(itemId)
+    const targetItemId = String(itemId)
     
     // 현재 items 배열 선택
-    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    const currentItems = (purchase.items && purchase.items.length > 0) ? purchase.items : (purchase.purchase_request_items || [])
     
     // 해당 품목만 거래명세서 확인으로 업데이트
     const updatedItems = currentItems.map(item => 
-      item.id === targetItemId 
+      String(item.id) === targetItemId 
         ? { 
             ...item, 
             is_statement_received: true, 
@@ -379,7 +379,6 @@ export const markItemAsStatementReceived = (purchaseId: number | string, itemId:
     return {
       ...purchase,
       is_statement_received: allItemsReceived,
-      statement_received_at: allItemsReceived ? statementReceivedDate : purchase.statement_received_at,
       items: purchase.items ? updatedItems : purchase.items,
       purchase_request_items: purchase.purchase_request_items ? updatedItems : purchase.purchase_request_items
     }
@@ -396,14 +395,14 @@ export const markItemAsStatementReceived = (purchaseId: number | string, itemId:
 // 특정 품목의 거래명세서 확인 취소 처리를 위한 헬퍼 함수
 export const markItemAsStatementCanceled = (purchaseId: number | string, itemId: number | string): boolean => {
   const result = updatePurchaseInMemory(purchaseId, (purchase) => {
-    const targetItemId = Number(itemId)
+    const targetItemId = String(itemId)
     
     // 현재 items 배열 선택
-    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    const currentItems = (purchase.items && purchase.items.length > 0) ? purchase.items : (purchase.purchase_request_items || [])
     
     // 해당 품목만 거래명세서 확인 취소로 업데이트
     const updatedItems = currentItems.map(item => 
-      item.id === targetItemId 
+      String(item.id) === targetItemId 
         ? { 
             ...item, 
             is_statement_received: false, 
@@ -419,7 +418,6 @@ export const markItemAsStatementCanceled = (purchaseId: number | string, itemId:
     return {
       ...purchase,
       is_statement_received: allItemsReceived,
-      statement_received_at: allItemsReceived ? purchase.statement_received_at : null,
       items: purchase.items ? updatedItems : purchase.items,
       purchase_request_items: purchase.purchase_request_items ? updatedItems : purchase.purchase_request_items
     }
@@ -436,14 +434,14 @@ export const markItemAsStatementCanceled = (purchaseId: number | string, itemId:
 // UTK 확인 처리를 위한 헬퍼 함수
 export const markItemAsUtkChecked = (purchaseId: number | string, itemId: number | string, isChecked: boolean): boolean => {
   const result = updatePurchaseInMemory(purchaseId, (purchase) => {
-    const targetItemId = Number(itemId)
+    const targetItemId = String(itemId)
     
     // 현재 items 배열 선택
-    const currentItems = purchase.items?.length > 0 ? purchase.items : purchase.purchase_request_items || []
+    const currentItems = (purchase.items && purchase.items.length > 0) ? purchase.items : (purchase.purchase_request_items || [])
     
     // 해당 품목의 UTK 상태만 업데이트
     const updatedItems = currentItems.map(item => 
-      item.id === targetItemId 
+      String(item.id) === targetItemId 
         ? { 
             ...item, 
             is_utk_checked: isChecked
@@ -455,6 +453,44 @@ export const markItemAsUtkChecked = (purchaseId: number | string, itemId: number
       ...purchase,
       items: purchase.items ? updatedItems : purchase.items,
       purchase_request_items: purchase.purchase_request_items ? updatedItems : purchase.purchase_request_items
+    }
+  })
+  
+  // 실시간 UI 반영을 위해 lastFetch 업데이트
+  if (result) {
+    purchaseMemoryCache.lastFetch = Date.now()
+  }
+  
+  return result
+}
+
+// 특정 품목의 지출 정보 처리를 위한 헬퍼 함수
+export const markItemAsExpenditureSet = (purchaseId: number | string, itemId: number | string, expenditureDate: string, expenditureAmount: number): boolean => {
+  const result = updatePurchaseInMemory(purchaseId, (purchase) => {
+    const targetItemId = String(itemId)
+    
+    // 현재 items 배열 선택
+    const currentItems = (purchase.items && purchase.items.length > 0) ? purchase.items : (purchase.purchase_request_items || [])
+    
+    // 해당 품목만 지출 정보로 업데이트
+    const updatedItems = currentItems.map(item => 
+      String(item.id) === targetItemId 
+        ? { 
+            ...item, 
+            expenditure_date: expenditureDate,
+            expenditure_amount: expenditureAmount
+          }
+        : item
+    )
+    
+    // 전체 지출 금액 합계 계산
+    const totalExpenditure = updatedItems.reduce((sum, item) => sum + (item.expenditure_amount || 0), 0)
+    
+    return {
+      ...purchase,
+      items: purchase.items ? updatedItems : purchase.items,
+      purchase_request_items: purchase.purchase_request_items ? updatedItems : purchase.purchase_request_items,
+      total_expenditure_amount: totalExpenditure
     }
   })
   

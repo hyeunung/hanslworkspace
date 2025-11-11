@@ -8,7 +8,6 @@ interface MobilePurchaseCardProps {
   onClick: (purchase: Purchase) => void
 }
 
-// formatDateShort는 utils/helpers.ts에서 import
 
 const getReceiptProgress = (purchase: Purchase) => {
   if (!purchase.purchase_request_items || purchase.purchase_request_items.length === 0) return { received: 0, total: 0, percentage: 0 }

@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails, Purchase, Vendor } from '@/types/purchase'
-import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPaymentCompleted, markItemAsReceived, markPurchaseAsReceived, markItemAsPaymentCanceled, markItemAsStatementReceived, markItemAsStatementCanceled, markItemAsUtkChecked, usePurchaseMemory, updatePurchaseInMemory, removeItemFromMemory } from '@/stores/purchaseMemoryStore'
+import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPaymentCompleted, markItemAsReceived, markPurchaseAsReceived, markItemAsPaymentCanceled, markItemAsStatementReceived, markItemAsStatementCanceled, usePurchaseMemory, updatePurchaseInMemory, removeItemFromMemory, markItemAsExpenditureSet } from '@/stores/purchaseMemoryStore'
 import { formatDate } from '@/utils/helpers'
 import { DatePickerPopover } from '@/components/ui/date-picker-popover'
+import { DateAmountPickerPopover } from '@/components/ui/date-amount-picker-popover'
 import { 
   Calendar, 
   User, 
@@ -53,7 +54,7 @@ function PurchaseDetailModal({
   onOptimisticUpdate,
   onDelete
 }: PurchaseDetailModalProps) {
-  const { allPurchases } = usePurchaseMemory(); // 🚀 메모리 캐시 실시간 동기화
+  const { allPurchases, lastFetch } = usePurchaseMemory(); // 🚀 메모리 캐시 실시간 동기화
   
   const [loading, setLoading] = useState(false)
   const [purchase, setPurchase] = useState<PurchaseRequestWithDetails | null>(null)
@@ -68,33 +69,36 @@ function PurchaseDetailModal({
   
   // 메모리 캐시 동기화는 useEffect에서 처리
 
-  // 🚀 실시간 items 데이터 (메모리 캐시에서 최신 데이터 사용)
-  // 메모리 캐시와 동일한 로직 사용: items 우선, 없으면 purchase_request_items
+  // 🚀 실시간 items 데이터 (로컬 purchase state를 우선 사용)
   const currentItems = useMemo(() => {
-    if (!purchaseId || !allPurchases) {
-      const purchaseItems = (purchase?.items && purchase.items.length > 0) ? purchase.items : (purchase?.purchase_request_items || []);
-      return purchaseItems;
+    // purchase state를 우선 사용 (로컬 상태가 가장 최신)
+    if (purchase?.items && purchase.items.length > 0) {
+      return purchase.items;
+    }
+    if (purchase?.purchase_request_items && purchase.purchase_request_items.length > 0) {
+      return purchase.purchase_request_items;
     }
     
-    const memoryPurchase = allPurchases.find(p => p.id === purchaseId);
-    if (memoryPurchase) {
-      // 🚀 메모리 캐시와 동일한 로직: items 우선, 없으면 purchase_request_items
-      return (memoryPurchase.items && memoryPurchase.items.length > 0) ? memoryPurchase.items : (memoryPurchase.purchase_request_items || []);
+    // purchase state가 없으면 메모리 캐시에서 가져오기
+    if (purchaseId && allPurchases) {
+      const memoryPurchase = allPurchases.find(p => p.id === purchaseId);
+      if (memoryPurchase) {
+        return (memoryPurchase.items && memoryPurchase.items.length > 0) ? memoryPurchase.items : (memoryPurchase.purchase_request_items || []);
+      }
     }
     
-    const purchaseItems = (purchase?.items && purchase.items.length > 0) ? purchase.items : (purchase?.purchase_request_items || []);
-    return purchaseItems;
-  }, [purchaseId, allPurchases, purchase?.items, purchase?.purchase_request_items]);
+    return [];
+  }, [purchase, purchaseId, allPurchases, lastFetch]); // purchase 객체 전체를 의존성으로 사용하여 실시간 업데이트 보장
 
   const tableMinWidth = useMemo(() => {
     if (columnWidths.length > 0) {
       const columnGap = columnWidths.length > 1 ? (columnWidths.length - 1) * 12 : 0
-      const padding = 48
+      const padding = 24
       const total = columnWidths.reduce((sum, width) => sum + width, 0) + columnGap + padding
       return Math.max(total, 720)
     }
 
-    const baseColumns: number[] = [120, 140, 80, 110, 130, 110, 120]
+    const baseColumns: number[] = [120, 200, 70, 90, 100, 150, 80] // 품목명, 규격, 수량, 단가, 합계, 비고, 상태
 
     if (activeTab === 'purchase') {
       baseColumns.push(120)
@@ -109,7 +113,7 @@ function PurchaseDetailModal({
     }
 
     if (activeTab === 'done') {
-      baseColumns.push(140, 140, 110)
+      baseColumns.push(100, 80, 110) // 거래명세서(100), 회계상입고일(80), 지출정보(110)
     }
 
     if (isEditing) {
@@ -325,7 +329,7 @@ function PurchaseDetailModal({
       setEditedPurchase(updatedPurchase);
       setEditedItems(normalizedItems.length > 0 ? normalizedItems : []);
     }
-  }, [allPurchases]); // purchase?.id 제거해서 무한루프 방지, allPurchases 변경만 감지
+  }, [allPurchases, lastFetch]); // lastFetch 추가로 실시간 업데이트 강제 감지
 
   // 🚀 모달이 열릴 때마다 메모리에서 최신 데이터 강제 동기화
   useEffect(() => {
@@ -716,9 +720,14 @@ function PurchaseDetailModal({
 
   // 칼럼 너비 계산 (텍스트 길이 기반)
   const calculateOptimalColumnWidths = useCallback(() => {
-    if (!purchase?.purchase_request_items || purchase.purchase_request_items.length === 0) return []
-
-    const items = purchase.purchase_request_items ?? []
+    // items와 purchase_request_items 둘 다 확인
+    const items = (purchase?.items && purchase.items.length > 0) 
+      ? purchase.items 
+      : (purchase?.purchase_request_items && purchase.purchase_request_items.length > 0)
+      ? purchase.purchase_request_items
+      : []
+    
+    if (items.length === 0) return []
 
     const columnConfigs = [
       { key: 'item_name', minWidth: 80, maxWidth: 500, baseWidth: 80 },
@@ -738,7 +747,7 @@ function PurchaseDetailModal({
         columnConfigs.push(
           { key: 'transaction_confirm', minWidth: 100, maxWidth: 160, baseWidth: 100, isFixed: false },
           { key: 'accounting_date', minWidth: 80, maxWidth: 80, baseWidth: 80, isFixed: true },
-          { key: 'utk_confirm', minWidth: 50, maxWidth: 50, baseWidth: 50, isFixed: true }
+          { key: 'expenditure_info', minWidth: 100, maxWidth: 200, baseWidth: 100, isFixed: false }
         )
       }
 
@@ -760,7 +769,7 @@ function PurchaseDetailModal({
         if (activeTab === 'receipt') {
           return [...baseHeaders, '실제입고일']
         } else if (activeTab === 'done') {
-          return [...baseHeaders, '거래명세서 확인', '회계상 입고일', 'UTK']
+          return [...baseHeaders, '거래명세서 확인', '회계상 입고일', '지출정보']
         }
         return baseHeaders
       }
@@ -810,11 +819,14 @@ function PurchaseDetailModal({
           case 'accounting_date':
             cellValue = item.statement_received_date ? formatDate(item.statement_received_date) : ''
             break
-          case 'processor':
-            cellValue = item.statement_received_by_name || ''
-            break
-          case 'utk_confirm':
-            cellValue = item.is_utk_checked ? '완료' : '대기'
+          case 'expenditure_info':
+            // 지출정보는 날짜와 금액이 2줄로 표시되므로 특별 처리
+            if (item.expenditure_date && item.expenditure_amount !== null && item.expenditure_amount !== undefined) {
+              // 실제 표시 형식: "2025. 11. 25." (약 14자)
+              cellValue = '2025. 11. 25.' // 날짜 형식 고정 길이
+            } else {
+              cellValue = '지출입력' // 버튼 텍스트
+            }
             break
         }
         
@@ -832,11 +844,17 @@ function PurchaseDetailModal({
       }
       
       // 길이를 픽셀로 변환 (글자당 약 7px + 여백 20px)
-      const calculatedWidth = Math.max(
+      let calculatedWidth = Math.max(
         config.minWidth,
         Math.min(config.maxWidth, maxLength * 7 + 20)
       )
-
+      
+      // 지출정보 칼럼은 실제 표시되는 텍스트가 2줄이므로 더 정확한 계산
+      if (config.key === 'expenditure_info') {
+        // 날짜 형식 "2025. 11. 25." 기준으로 고정
+        // 2줄 표시이므로 충분한 여백을 주되 최소화
+        calculatedWidth = 110 // 고정 너비로 설정
+      }
 
       return calculatedWidth
     })
@@ -861,39 +879,28 @@ function PurchaseDetailModal({
     if (columnWidths.length > 0) {
       const widths = columnWidths.map(width => `${width}px`)
       
-      // 규격, 비고는 항상 고정
-      if (widths.length >= 2) {
-        widths[1] = '200px' // 규격
-      }
-      if (widths.length >= 6) {
-        widths[5] = '150px' // 비고
-      }
-      
-      // 전체항목 탭: 회계상 입고일, UTK 컬럼 강제 고정
-      if (activeTab === 'done') {
-        // [품목명, 규격, 수량, 단가, 합계, 비고, 상태, 거래명세서, 회계상입고일, UTK]
-        // 인덱스: 0     1     2     3     4      5     6      7          8            9
-        if (widths.length >= 9) {
-          widths[7] = '100px' // 거래명세서
-          widths[8] = '80px'  // 회계상 입고일
-        }
-        if (widths.length >= 10) {
-          widths[9] = '50px'  // UTK
-        }
-      }
+      // 동적 계산된 값을 그대로 사용 (고정값 제거)
+      // 모든 칼럼이 내용에 맞게 동적으로 조절됨
       
       return widths.join(' ')
     }
     
     // 기본값 (데이터 로드 전)
-    // [품목명, 규격, 수량, 단가, 합계, 비고, 상태/삭제]
-    const baseColumns = ['minmax(180px, 1fr)', '200px', '70px', '90px', '100px', '150px', '80px']
+    // [품목명, 규격, 수량, 단가, 합계, 비고]
+    let baseColumns = ['minmax(80px, 1fr)', '200px', '70px', '90px', '100px', '150px']
+    
+    // isEditing에 따라 상태 또는 삭제 칼럼 추가
+    if (isEditing) {
+      baseColumns.push('80px') // 삭제
+    } else {
+      baseColumns.push('80px') // 상태
+    }
     
     // 탭별 추가 칼럼
     if (activeTab === 'receipt') {
       return [...baseColumns, '100px'].join(' ')
     } else if (activeTab === 'done') {
-      return [...baseColumns, '100px', '80px', '50px'].join(' ')
+      return [...baseColumns, '100px', '80px', '110px'].join(' ') // 거래명세서, 회계상입고일, 지출정보
     }
     
     return baseColumns.join(' ')
@@ -907,7 +914,11 @@ function PurchaseDetailModal({
   // View 모드에서 칼럼 너비 계산 (데이터 로드 후)
   // 비동기로 처리하여 모달이 먼저 표시되도록 함
   useEffect(() => {
-    if (purchase && purchase.purchase_request_items && purchase.purchase_request_items.length > 0 && !isEditing) {
+    // items와 purchase_request_items 둘 다 확인
+    const hasItems = (purchase?.items && purchase.items.length > 0) || 
+                     (purchase?.purchase_request_items && purchase.purchase_request_items.length > 0)
+    
+    if (purchase && hasItems && !isEditing) {
       // requestAnimationFrame으로 다음 프레임에 계산하여 모달 렌더링을 블로킹하지 않음
       requestAnimationFrame(() => {
         calculateOptimalColumnWidths()
@@ -1017,7 +1028,6 @@ function PurchaseDetailModal({
     return <span className="badge-stats bg-blue-500 text-white">구매요청</span>
   }
 
-  // formatDate는 utils/helpers.ts에서 import
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ko-KR').format(amount)
@@ -1783,10 +1793,10 @@ function PurchaseDetailModal({
     }
   }
 
-  // UTK 확인 처리 함수
-  const handleUtkToggle = async (itemId: number | string, isChecked: boolean) => {
-    if (!canReceiptCheck) {
-      toast.error('UTK 확인 처리 권한이 없습니다.')
+  // 개별 지출 정보 입력 처리
+  const handleItemExpenditure = async (itemId: number | string, date: Date, amount: number) => {
+    if (!purchase || !canReceiptCheck) {
+      toast.error('지출 정보 입력 권한이 없습니다.')
       return
     }
 
@@ -1794,199 +1804,244 @@ function PurchaseDetailModal({
     const numericId = typeof itemId === 'number' ? itemId : Number(itemId)
 
     if (Number.isNaN(numericId)) {
-      toast.error('유효하지 않은 항목 ID 입니다.')
+      logger.error('유효하지 않은 itemId', { itemId })
       return
     }
 
-    // 해당 품목 정보 찾기
-    const targetItem = purchase?.items?.find(item => String(item.id) === itemIdStr)
+    const targetItem = purchase.items?.find(item => String(item.id) === itemIdStr)
     if (!targetItem) return
-
-    const itemInfo = `품명: ${targetItem.item_name}
-규격: ${targetItem.specification || '미입력'}
-수량: ${targetItem.quantity?.toLocaleString() || 0}${targetItem.unit || ''}
-단가: ₩${targetItem.unit_price_value?.toLocaleString() || 0}
-합계: ₩${targetItem.amount_value?.toLocaleString() || 0}`
-
-    const confirmMessage = isChecked 
-      ? `다음 품목을 UTK 확인 처리하시겠습니까?\n\n${itemInfo}` 
-      : `다음 품목의 UTK 확인을 취소하시겠습니까?\n\n${itemInfo}`
-    
-    const confirm = window.confirm(confirmMessage)
-    if (!confirm) return
-
-    try {
-      const supabase = createClient()
-      
-      const { data, error } = await supabase
-        .from('purchase_request_items')
-        .update({
-          is_utk_checked: isChecked
-        })
-        .eq('id', numericId)
-        .select()
-
-      if (error) {
-        logger.error('UTK 확인 DB 업데이트 실패', { error, itemId: numericId, isChecked })
-        throw error
-      }
-      
-      // 🚀 메모리 캐시 실시간 업데이트
-      if (purchase?.id) {
-        const memoryUpdated = markItemAsUtkChecked(purchase.id, numericId, isChecked)
-        if (!memoryUpdated) {
-          logger.warn('[PurchaseDetailModal] 메모리 캐시 UTK 확인 업데이트 실패', { 
-            purchaseId: purchase.id, 
-            itemId: numericId,
-            isChecked
-          })
-        }
-      }
-
-      // 로컬 상태 즉시 업데이트 (UI 즉시 반영)
-      setPurchase(prev => {
-        if (!prev) return null
-        const updatedItems = prev.items?.map(item => 
-          String(item.id) === itemIdStr 
-            ? { ...item, is_utk_checked: isChecked }
-            : item
-        )
-        return { ...prev, items: updatedItems }
-      })
-
-      if (purchase) {
-        const purchaseIdNumber = Number(purchase.id)
-        if (!Number.isNaN(purchaseIdNumber)) {
-          onOptimisticUpdate?.(purchaseIdNumber, prev => {
-            const updatedItems = (prev.items || []).map(item =>
-              String(item.id) === itemIdStr
-                ? { ...item, is_utk_checked: isChecked }
-                : item
-            )
-            const total = updatedItems.length || prev.items?.length || 0
-            const checked = updatedItems.filter(item => item.is_utk_checked).length
-            const allChecked = total > 0 && checked === total
-            return {
-              ...prev,
-              items: updatedItems,
-              is_utk_checked: allChecked
-            }
-          })
-        }
-      }
-
-      // 모든 품목이 확인되면 purchase_requests에도 업데이트
-      const allChecked = purchase?.items?.every(item => {
-        if (String(item.id) === itemIdStr) {
-          return isChecked
-        }
-        return item.is_utk_checked === true
-      })
-
-      if (allChecked !== undefined && purchase) {
-        const { error: updateError } = await supabase
-          .from('purchase_requests')
-          .update({ is_utk_checked: allChecked })
-          .eq('id', purchase.id)
-          .select()
-        
-        if (updateError) {
-          logger.error('purchase_requests 업데이트 실패', { error: updateError, purchaseId: purchase.id, allChecked })
-        }
-      }
-      
-      toast.success(isChecked ? 'UTK 확인이 완료되었습니다.' : 'UTK 확인이 취소되었습니다.')
-
-      // 상세 모달 및 상위 리스트 모두 최신 상태로 동기화
-      await refreshModalData()
-      const refreshResult = onRefresh?.(true, { silent: true })
-      if (refreshResult instanceof Promise) {
-        await refreshResult
-      }
-    } catch (error) {
-      logger.error('UTK 확인 처리 중 오류', error)
-      toast.error('UTK 확인 처리 중 오류가 발생했습니다.')
-    }
-  }
-
-  // 전체 UTK 확인 처리 (개별 품목별 처리 방식)
-  const handleCompleteAllUtk = async () => {
-    if (!purchase || !canReceiptCheck) return
-    
-    const confirmMessage = `발주번호: ${purchase.purchase_order_number}\n\n전체 UTK 확인 처리하시겠습니까?`
-    const confirm = window.confirm(confirmMessage)
-    if (!confirm) return
 
     const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
 
     const applyOptimisticUpdate = () => {
       if (!Number.isNaN(purchaseIdNumber)) {
         onOptimisticUpdate?.(purchaseIdNumber, prev => {
-          const allItems = prev.purchase_request_items || [];
-          const pendingItems = allItems.filter(item => !item.is_utk_checked);
-          
-          const updatedItems = allItems.map(item => 
-            !item.is_utk_checked 
-              ? { ...item, is_utk_checked: true }
+          const updatedItems = (prev.items || []).map(item =>
+            String(item.id) === itemIdStr
+              ? {
+                  ...item,
+                  expenditure_date: date.toISOString(),
+                  expenditure_amount: amount
+                }
               : item
-          );
-          
-          return {
-            ...prev,
-            purchase_request_items: updatedItems,
-            items: prev.items ? updatedItems : prev.items,
-            is_utk_checked: updatedItems.every(item => item.is_utk_checked)
-          }
+          )
+          return { ...prev, items: updatedItems }
         })
       }
     }
-    
+
     try {
-      // 🚀 미완료 품목만 필터링 (이미 UTK 확인된 품목 제외)
-      const allItems = purchase.purchase_request_items || [];
-      const pendingItems = allItems.filter(item => !item.is_utk_checked);
-      
-      if (pendingItems.length === 0) {
-        toast.info('모든 품목이 이미 UTK 확인되었습니다.');
-        return;
+      applyOptimisticUpdate()
+
+      // 로컬 상태 즉시 업데이트 (items와 purchase_request_items 모두 업데이트) - 다른 함수들과 동일한 패턴
+      setPurchase(prev => {
+        if (!prev) return null
+        const currentItems = prev.items || prev.purchase_request_items || []
+        const updatedItems = currentItems.map(item => 
+          String(item.id) === itemIdStr
+            ? {
+                ...item,
+                expenditure_date: date.toISOString(),
+                expenditure_amount: amount
+              }
+            : item
+        )
+        const totalExpenditure = updatedItems.reduce((sum, item) => sum + (item.expenditure_amount || 0), 0)
+        // 새 객체를 반환하여 React가 변경을 감지하도록 함
+        return { 
+          ...prev, 
+          items: updatedItems,
+          purchase_request_items: updatedItems,
+          total_expenditure_amount: totalExpenditure,
+          updated_at: new Date().toISOString() // 강제로 객체 참조 변경
+        }
+      })
+
+      const { error } = await supabase
+        .from('purchase_request_items')
+        .update({
+          expenditure_date: date.toISOString(),
+          expenditure_amount: amount
+        })
+        .eq('id', numericId)
+
+      if (error) {
+        logger.error('지출 정보 DB 업데이트 실패', { error, itemId: numericId })
+        throw error
       }
 
-      logger.info(`전체 UTK 확인 처리: ${pendingItems.length}개 품목 (총 ${allItems.length}개 중)`);
-      
-      for (const item of pendingItems) {
-        // 각 품목별로 DB 업데이트 (개별 품목과 동일한 방식)
-        const updateData = {
-          is_utk_checked: true
-        };
+      // purchase_requests의 total_expenditure_amount 업데이트
+      const allItemsForTotal = purchase.items || purchase.purchase_request_items || []
+      const totalExpenditure = allItemsForTotal.reduce((sum, item) => {
+        if (String(item.id) === itemIdStr) {
+          return sum + amount
+        }
+        return sum + (item.expenditure_amount || 0)
+      }, 0)
 
-        const { error } = await supabase
-          .from('purchase_request_items')
-          .update(updateData)
-          .eq('id', item.id);
+      await supabase
+        .from('purchase_requests')
+        .update({ total_expenditure_amount: totalExpenditure })
+        .eq('id', purchaseIdNumber)
 
-        if (error) throw error;
-
-        // 🚀 개별 품목 메모리 캐시 업데이트 (개별 처리와 동일)
-        const memoryUpdated = markItemAsUtkChecked(purchase.id, item.id, true);
+      // 🚀 메모리 캐시 즉시 업데이트 (실시간 UI 반영) - DB 업데이트 후에 호출
+      if (purchase?.id) {
+        const memoryUpdated = markItemAsExpenditureSet(purchase.id, numericId, date.toISOString(), amount)
         if (!memoryUpdated) {
-          logger.warn('[PurchaseDetailModal] 메모리 캐시 개별 품목 UTK 확인 업데이트 실패', { 
+          logger.warn('[PurchaseDetailModal] 메모리 캐시 지출 정보 업데이트 실패', { 
             purchaseId: purchase.id, 
-            itemId: item.id 
-          });
+            itemId: numericId 
+          })
         }
       }
 
-      toast.success(`${pendingItems.length}개 품목의 UTK 확인이 완료되었습니다.`);
+      toast.success(`"${targetItem.item_name}" 품목의 지출 정보가 저장되었습니다.`)
 
-      // 🚀 새로고침 (개별 품목과 동일)
-      await refreshModalData();
-      const refreshResult = onRefresh?.(true, { silent: true });
+      await refreshModalData()
+      const refreshResult = onRefresh?.(true, { silent: true })
       if (refreshResult instanceof Promise) {
-        await refreshResult;
+        await refreshResult
       }
     } catch (error) {
-      logger.error('전체 UTK 확인 처리 오류', error);
-      toast.error('UTK 확인 처리 중 오류가 발생했습니다.')
+      logger.error('지출 정보 입력 중 오류', error)
+      toast.error('지출 정보 입력 중 오류가 발생했습니다.')
+    }
+  }
+
+  // 일괄 지출 정보 입력 처리
+  const handleBulkExpenditure = async (date: Date, amount: number) => {
+    if (!purchase || !canReceiptCheck) {
+      toast.error('지출 정보 입력 권한이 없습니다.')
+      return
+    }
+
+    const confirmMessage = `발주번호: ${purchase.purchase_order_number}\n\n일괄 지출 정보를 입력하시겠습니까?\n날짜: ${date.toLocaleDateString('ko-KR')}\n금액: ${amount.toLocaleString()}원`
+    
+    if (!window.confirm(confirmMessage)) {
+      return
+    }
+
+    const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
+
+    const applyOptimisticUpdate = () => {
+      if (!Number.isNaN(purchaseIdNumber)) {
+        onOptimisticUpdate?.(purchaseIdNumber, prev => {
+          const updatedItems = (prev.items || []).map(item =>
+            // 이미 개별 입력된 항목은 제외
+            item.expenditure_date && item.expenditure_amount
+              ? item
+              : {
+                  ...item,
+                  expenditure_date: date.toISOString(),
+                  expenditure_amount: amount
+                }
+          )
+          return { ...prev, items: updatedItems }
+        })
+      }
+    }
+
+    try {
+      applyOptimisticUpdate()
+
+      // 이미 개별 입력된 항목 제외하고 일괄 업데이트
+      const allItems = purchase.items || purchase.purchase_request_items || []
+      const pendingItems = allItems.filter(item => !item.expenditure_date || !item.expenditure_amount)
+      
+      if (pendingItems.length === 0) {
+        toast.info('모든 품목에 이미 지출 정보가 입력되어 있습니다.')
+        return
+      }
+
+      // 로컬 상태 즉시 업데이트 (items와 purchase_request_items 모두 업데이트)
+      setPurchase(prev => {
+        if (!prev) return null
+        const allItems = prev.items || prev.purchase_request_items || []
+        const updatedItems = allItems.map(item =>
+          // 이미 개별 입력된 항목은 제외
+          item.expenditure_date && item.expenditure_amount
+            ? item
+            : {
+                ...item,
+                expenditure_date: date.toISOString(),
+                expenditure_amount: amount
+              }
+        )
+        const totalExpenditure = updatedItems.reduce((sum, item) => sum + (item.expenditure_amount || 0), 0)
+        // 새 객체를 반환하여 React가 변경을 감지하도록 함
+        return { 
+          ...prev, 
+          items: updatedItems,
+          purchase_request_items: updatedItems,
+          total_expenditure_amount: totalExpenditure,
+          updated_at: new Date().toISOString() // 강제로 객체 참조 변경
+        }
+      })
+
+      for (const item of pendingItems) {
+        const { error } = await supabase
+          .from('purchase_request_items')
+          .update({
+            expenditure_date: date.toISOString(),
+            expenditure_amount: amount
+          })
+          .eq('id', item.id)
+
+        if (error) {
+          logger.error('일괄 지출 정보 DB 업데이트 실패', { error, itemId: item.id })
+          throw error
+        }
+      }
+
+      // purchase_requests의 total_expenditure_amount 업데이트
+      const totalExpenditure = allItems.reduce((sum, item) => {
+        if (pendingItems.find(pi => pi.id === item.id)) {
+          return sum + amount
+        }
+        return sum + (item.expenditure_amount || 0)
+      }, 0)
+
+      await supabase
+        .from('purchase_requests')
+        .update({ total_expenditure_amount: totalExpenditure })
+        .eq('id', purchaseIdNumber)
+
+      // 🚀 메모리 캐시 즉시 업데이트 (실시간 UI 반영) - DB 업데이트 후에 호출
+      for (const item of pendingItems) {
+        const memoryUpdated = markItemAsExpenditureSet(purchase.id, item.id, date.toISOString(), amount)
+        if (!memoryUpdated) {
+          logger.warn('[PurchaseDetailModal] 메모리 캐시 일괄 지출 정보 업데이트 실패', { 
+            purchaseId: purchase.id, 
+            itemId: item.id 
+          })
+        }
+      }
+
+      // 메모리 캐시 업데이트 후 즉시 로컬 상태도 동기화 (실시간 반영)
+      const memoryPurchase = findPurchaseInMemory(purchase.id)
+      if (memoryPurchase) {
+        const normalizedItems = (memoryPurchase.items && memoryPurchase.items.length > 0) 
+          ? memoryPurchase.items 
+          : (memoryPurchase.purchase_request_items || [])
+        const totalExpenditure = normalizedItems.reduce((sum, item) => sum + (item.expenditure_amount || 0), 0)
+        setPurchase(prev => ({
+          ...prev!,
+          items: normalizedItems,
+          purchase_request_items: normalizedItems,
+          total_expenditure_amount: totalExpenditure
+        }))
+      }
+
+      toast.success(`${pendingItems.length}개 품목의 지출 정보가 일괄 입력되었습니다.`)
+
+      await refreshModalData()
+      const refreshResult = onRefresh?.(true, { silent: true })
+      if (refreshResult instanceof Promise) {
+        await refreshResult
+      }
+    } catch (error) {
+      logger.error('일괄 지출 정보 입력 중 오류', error)
+      toast.error('일괄 지출 정보 입력 중 오류가 발생했습니다.')
     }
   }
 
@@ -2323,10 +2378,76 @@ function PurchaseDetailModal({
               {/* 발주 기본정보 */}
               <div className="bg-white rounded-lg p-2 sm:p-3 border border-gray-100 shadow-sm">
                 <div className="mb-3">
-                  <h3 className="modal-section-title flex items-center">
-                    <FileText className="w-4 h-4 mr-2 text-gray-600" />
-                    {purchase?.purchase_order_number || 'PO번호 없음'}
-                  </h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="modal-section-title flex items-center">
+                      <FileText className="w-4 h-4 mr-2 text-gray-600" />
+                      {purchase?.purchase_order_number || 'PO번호 없음'}
+                    </h3>
+                    {canReceiptCheck && activeTab === 'done' && (
+                      <button
+                        onClick={async () => {
+                          if (!purchase) return
+                          const isCurrentlyChecked = purchase.is_utk_checked || false
+                          const newStatus = !isCurrentlyChecked
+                          
+                          const confirmMessage = newStatus
+                            ? `발주번호: ${purchase.purchase_order_number}\n\nUTK 확인 처리하시겠습니까?`
+                            : `발주번호: ${purchase.purchase_order_number}\n\nUTK 확인을 취소하시겠습니까?`
+                          
+                          if (!window.confirm(confirmMessage)) return
+                          
+                          try {
+                            const supabase = createClient()
+                            const { error } = await supabase
+                              .from('purchase_requests')
+                              .update({ is_utk_checked: newStatus })
+                              .eq('id', purchase.id)
+                            
+                            if (error) {
+                              logger.error('UTK 확인 DB 업데이트 실패', { error, purchaseId: purchase.id })
+                              toast.error('UTK 확인 처리 중 오류가 발생했습니다.')
+                              return
+                            }
+                            
+                            // 로컬 상태 즉시 업데이트 (객체 참조 변경으로 React 재렌더링 보장)
+                            setPurchase(prev => prev ? { 
+                              ...prev, 
+                              is_utk_checked: newStatus,
+                              updated_at: new Date().toISOString() // 강제로 객체 참조 변경
+                            } : null)
+                            
+                            // 메모리 캐시 업데이트
+                            if (purchase.id) {
+                              updatePurchaseInMemory(purchase.id, (prev) => ({
+                                ...prev,
+                                is_utk_checked: newStatus
+                              }))
+                            }
+                            
+                            toast.success(newStatus ? 'UTK 확인이 완료되었습니다.' : 'UTK 확인이 취소되었습니다.')
+                            
+                            await refreshModalData()
+                            const refreshResult = onRefresh?.(true, { silent: true })
+                            if (refreshResult instanceof Promise) {
+                              await refreshResult
+                            }
+                          } catch (error) {
+                            logger.error('UTK 확인 처리 중 오류', error)
+                            toast.error('UTK 확인 처리 중 오류가 발생했습니다.')
+                          }
+                        }}
+                        className={`button-base text-xs px-2 py-1 flex items-center ${
+                          purchase?.is_utk_checked
+                            ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
+                            : 'button-toggle-inactive'
+                        }`}
+                        title={purchase?.is_utk_checked ? 'UTK 확인 취소' : 'UTK 확인'}
+                      >
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        UTK {purchase?.is_utk_checked ? '완료' : '확인'}
+                      </button>
+                    )}
+                  </div>
                 </div>
                 
                 <div className="space-y-2">
@@ -2522,10 +2643,10 @@ function PurchaseDetailModal({
 
             </div>
 
-            {/* Right Column - Items List (Flexible Width) */}
-            <div className="lg:flex-1 lg:min-w-0 relative overflow-visible">
+            {/* Right Column - Items List (Fit Width) */}
+            <div className="lg:w-fit lg:min-w-0 relative overflow-visible">
               
-              <div className="bg-white rounded-lg border border-gray-100 overflow-hidden shadow-sm">
+              <div className="bg-white rounded-lg border border-gray-100 shadow-sm">
                 <div className="p-2 sm:p-3 bg-gray-50 border-b border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
                   <h3 className="modal-section-title flex items-center">
                     <Package className="w-4 h-4 mr-2 text-gray-600" />
@@ -2578,14 +2699,20 @@ function PurchaseDetailModal({
                               거래명세서 확인
                             </Button>
                           </DatePickerPopover>
-                          <Button
-                            size="sm"
-                            onClick={handleCompleteAllUtk}
-                            className="button-base bg-orange-500 hover:bg-orange-600 text-white"
+                          <DateAmountPickerPopover
+                            onConfirm={handleBulkExpenditure}
+                            placeholder="일괄 지출 날짜와 금액을 입력하세요"
+                            align="end"
+                            side="bottom"
                           >
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                            UTK 확인
-                          </Button>
+                            <Button
+                              size="sm"
+                              className="button-base button-action-primary"
+                            >
+                              <DollarSign className="w-3 h-3 mr-1" />
+                              일괄지출
+                            </Button>
+                          </DateAmountPickerPopover>
                         </div>
                       )}
                     </>
@@ -2598,13 +2725,13 @@ function PurchaseDetailModal({
                 </div>
                 
                 {/* Items List with Header Inside Scrollable Container */}
-                <div className="max-h-[50vh] sm:max-h-[40vh] w-full min-w-0 overflow-auto">
-                  <div style={{ minWidth: `${tableMinWidth}px` }}>
+                <div className="max-h-[50vh] sm:max-h-[40vh] overflow-auto">
+                  <div className="w-fit">
                     {/* Items Table Header - Sticky inside scroll container */}
-                    <div className="bg-gray-50 px-2 sm:px-3 py-1 border-b border-gray-100 sticky top-0 z-10">
+                    <div className="bg-gray-50 px-2 sm:px-3 py-1 border-b border-gray-100 sticky top-0 z-10 w-fit">
                       <div 
                         ref={headerRowRef}
-                         className="hidden sm:grid gap-2 modal-label"
+                         className="hidden sm:grid gap-2 modal-label w-fit"
                         style={{
                           gridTemplateColumns: getGridTemplateColumns()
                         }}
@@ -2627,7 +2754,7 @@ function PurchaseDetailModal({
                               <>
                                 <div className="text-center">거래명세서 확인</div>
                                 <div className="text-center">회계상 입고일</div>
-                                <div className="text-center">UTK</div>
+                                <div className="text-center">지출정보</div>
                               </>
                             )}
                           </>
@@ -2644,7 +2771,7 @@ function PurchaseDetailModal({
                               <>
                                 <div className="text-center">거래명세서 확인</div>
                                 <div className="text-center">회계상 입고일</div>
-                                <div className="text-center">UTK</div>
+                                <div className="text-center">지출정보</div>
                               </>
                             )}
                             {activeTab === 'receipt' && (
@@ -2656,11 +2783,11 @@ function PurchaseDetailModal({
                         )}
                       </div>
                     </div>
-                    <div className="divide-y divide-gray-100 overflow-visible">
+                    <div className="divide-y divide-gray-100 overflow-visible w-fit">
                       {(isEditing ? editedItems : currentItems)?.map((item, index) => (
                         <div key={index} className="px-2 sm:px-3 py-1 border-b border-gray-50 hover:bg-gray-50/50 relative overflow-visible">
                           {/* Desktop Layout */}
-                          <div className={`hidden sm:grid items-center gap-2 overflow-visible`} style={{
+                          <div className={`hidden sm:grid items-center gap-2 overflow-visible w-fit`} style={{
                             gridTemplateColumns: getGridTemplateColumns()
                           }}>
                             {/* 품목명 */}
@@ -3035,32 +3162,62 @@ function PurchaseDetailModal({
                               </div>
                             )}
 
-                            {/* UTK 확인 - 전체항목 탭에서만 표시 (맨 오른쪽 끝) */}
+                            {/* 지출정보 - 전체항목 탭에서만 표시 */}
                             {activeTab === 'done' && (
                               <div className="text-center flex justify-center items-center">
-                                {canReceiptCheck ? (
-                                  <button
-                                    onClick={() => handleUtkToggle(item.id, !item.is_utk_checked)}
-                                    className={`button-base ${
-                                      item.is_utk_checked
-                                        ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
-                                        : 'button-toggle-inactive'
-                                    }`}
-                                    title={item.is_utk_checked ? 'UTK 확인 취소' : 'UTK 확인 처리'}
-                                  >
-                                    {item.is_utk_checked ? '완료' : '대기'}
-                                  </button>
-                                ) : (
-                                  <span className={`${
-                                    item.is_utk_checked 
-                                      ? 'button-toggle-active bg-orange-500 text-white' 
-                                      : 'button-waiting-inactive'
-                                  }`}>
-                                    {item.is_utk_checked ? '완료' : '대기'}
-                                  </span>
-                                )}
+                                {(() => {
+                                  const hasExpenditure = item.expenditure_date && 
+                                                        item.expenditure_amount !== null && 
+                                                        item.expenditure_amount !== undefined
+                                  
+                                  if (canReceiptCheck) {
+                                    return hasExpenditure ? (
+                                      <div className="w-full px-1 leading-none">
+                                        <div className="text-blue-700 text-[9px] leading-[1.1] font-normal">
+                                          {new Date(item.expenditure_date).toLocaleDateString('ko-KR', {
+                                            year: 'numeric',
+                                            month: '2-digit',
+                                            day: '2-digit'
+                                          })}
+                                        </div>
+                                        <div className="text-gray-700 text-[9px] leading-[1.1] font-normal">
+                                          ₩{Number(item.expenditure_amount).toLocaleString()}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <DateAmountPickerPopover
+                                        onConfirm={(date, amount) => handleItemExpenditure(item.id, date, amount)}
+                                        placeholder="지출 날짜와 금액을 입력하세요"
+                                        align="center"
+                                        side="bottom"
+                                      >
+                                        <button className="button-toggle-inactive">
+                                          지출입력
+                                        </button>
+                                      </DateAmountPickerPopover>
+                                    )
+                                  } else {
+                                    return hasExpenditure ? (
+                                      <div className="w-full px-1 leading-none">
+                                        <div className="text-blue-700 text-[9px] leading-[1.1] font-normal">
+                                          {new Date(item.expenditure_date).toLocaleDateString('ko-KR', {
+                                            year: 'numeric',
+                                            month: '2-digit',
+                                            day: '2-digit'
+                                          })}
+                                        </div>
+                                        <div className="text-gray-700 text-[9px] leading-[1.1] font-normal">
+                                          ₩{Number(item.expenditure_amount).toLocaleString()}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <span className="modal-subtitle text-gray-400">-</span>
+                                    )
+                                  }
+                                })()}
                               </div>
                             )}
+
                           </div>
                           
                           {/* Mobile Layout */}
@@ -3371,7 +3528,7 @@ function PurchaseDetailModal({
                 
                 {/* 합계 */}
                 <div className="bg-gray-50 px-2 sm:px-3 border-t border-gray-100">
-                  <div className="hidden sm:grid items-center gap-3 py-0.5" style={{
+                  <div className="hidden sm:grid items-center gap-2 py-0.5 w-fit" style={{
                     gridTemplateColumns: getGridTemplateColumns()
                   }}>
                     {/* 품목명 */}
@@ -3386,21 +3543,34 @@ function PurchaseDetailModal({
                     </div>
                     {/* 합계 */}
                     <div className="text-right">
-                      <span className="text-[12px] font-bold text-gray-900">
+                      <span className="text-[12px] font-bold text-gray-600">
                         ₩{formatCurrency(
                           (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
                         )}
                       </span>
                     </div>
-                    {/* 나머지 칼럼들 */}
+                    {/* 나머지 칼럼들은 비워둠 */}
                     <div></div>
-                    <div></div>
+                    {isEditing ? (
+                      <div></div>
+                    ) : (
+                      <div></div>
+                    )}
                     {activeTab === 'receipt' && <div></div>}
                     {activeTab === 'done' && (
                       <>
                         <div></div>
                         <div></div>
-                        <div></div>
+                        <div className="text-center">
+                          <div className="text-[10px] font-medium text-gray-500 mb-0.5">지출 총합</div>
+                          <div className="text-[12px] font-bold text-gray-600">
+                            ₩{formatCurrency(
+                              (isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
+                                return sum + (Number(item.expenditure_amount) || 0)
+                              }, 0) || 0
+                            )}
+                          </div>
+                        </div>
                       </>
                     )}
                   </div>
@@ -3409,12 +3579,25 @@ function PurchaseDetailModal({
                   <div className="block sm:hidden py-0.5">
                     <div className="flex justify-between items-center">
                       <span className="text-[13px] font-bold text-gray-900">총액</span>
-                      <span className="text-[13px] font-bold text-gray-900">
+                      <span className="text-[13px] font-bold text-gray-600">
                         ₩{formatCurrency(
                           (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
                         )}
                       </span>
                     </div>
+                    {/* Mobile 지출 총합 - 전체항목 탭에서만 표시 */}
+                    {activeTab === 'done' && (
+                      <div className="flex justify-between items-center mt-1">
+                        <span className="text-[13px] font-bold text-gray-900">지출 총합</span>
+                        <span className="text-[13px] font-bold text-gray-600">
+                          ₩{formatCurrency(
+                            (isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
+                              return sum + (Number(item.expenditure_amount) || 0)
+                            }, 0) || 0
+                          )}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 
