@@ -231,15 +231,16 @@ export const filterBySearchTerm = (
     const searchableFields = [
       purchase.purchase_order_number,
       purchase.requester_name,
-      purchase.purchase_order_number,
       purchase.vendor_name,
+      purchase.contact_name,
       // purchase_request_items 필드들은 별도 처리 필요
       ...(purchase.purchase_request_items || []).map((item: any) => [
         item.item_name,
         item.item_detail,
         item.manufacturer,
         item.model,
-        item.spec
+        item.specification, // spec -> specification으로 수정
+        item.spec // 하위 호환성을 위해 유지
       ]).flat()
     ]
     
