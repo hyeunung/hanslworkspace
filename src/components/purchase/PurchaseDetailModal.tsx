@@ -5,6 +5,7 @@ import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPayment
 import { formatDate } from '@/utils/helpers'
 import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { DateAmountPickerPopover } from '@/components/ui/date-amount-picker-popover'
+import { DateQuantityPickerPopover } from '@/components/ui/date-quantity-picker-popover'
 import { 
   Calendar, 
   User, 
@@ -367,10 +368,11 @@ function PurchaseDetailModal({
   // 커스텀 훅 설정
   const purchaseIdNumber = purchaseId ? Number(purchaseId) : (purchase ? Number(purchase.id) : NaN)
 
-  const handleActualReceiptOptimisticUpdate = useCallback(({ itemId, selectedDate, action }: {
+  const handleActualReceiptOptimisticUpdate = useCallback(({ itemId, selectedDate, action, receivedQuantity }: {
     itemId: number
     selectedDate?: Date
     action: 'confirm' | 'cancel'
+    receivedQuantity?: number
     itemInfo?: {
       item_name?: string
       specification?: string
@@ -378,6 +380,7 @@ function PurchaseDetailModal({
       unit_price_value?: number
       amount_value?: number
       remark?: string
+      received_quantity?: number
     }
   }) => {
     const itemIdStr = String(itemId)
@@ -394,7 +397,8 @@ function PurchaseDetailModal({
             ...item,
             is_received: true,
             actual_received_date: selectedDateIso,
-            received_at: nowIso
+            received_at: nowIso,
+            received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.received_quantity
           }
         }
 
@@ -402,7 +406,8 @@ function PurchaseDetailModal({
           ...item,
           is_received: false,
           actual_received_date: undefined,
-          received_at: undefined
+          received_at: undefined,
+          received_quantity: undefined
         }
       })
     }
@@ -410,6 +415,7 @@ function PurchaseDetailModal({
     setPurchase(prev => {
       if (!prev) return prev
       const updatedItems = updateItems(prev.items) || []
+      const updatedRequestItems = updateItems(prev.purchase_request_items) || []
       const total = updatedItems.length
       const completed = updatedItems.filter(item => item.is_received).length
       const allReceived = total > 0 && completed === total
@@ -417,17 +423,21 @@ function PurchaseDetailModal({
       return {
         ...prev,
         items: updatedItems,
+        purchase_request_items: updatedRequestItems,
         is_received: allReceived,
-        received_at: allReceived ? (prev.received_at || nowIso) : undefined
+        received_at: allReceived ? (prev.received_at || nowIso) : undefined,
+        updated_at: new Date().toISOString()
       }
     })
 
     setEditedPurchase(prev => {
       if (!prev) return prev
       const updatedItems = updateItems(prev.items) || []
+      const updatedRequestItems = updateItems(prev.purchase_request_items) || []
       return {
         ...prev,
-        items: updatedItems
+        items: updatedItems,
+        purchase_request_items: updatedRequestItems
       }
     })
 
@@ -441,7 +451,8 @@ function PurchaseDetailModal({
             ...item,
             is_received: true,
             actual_received_date: selectedDateIso,
-            received_at: nowIso
+            received_at: nowIso,
+            received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.received_quantity
           }
         }
 
@@ -449,7 +460,8 @@ function PurchaseDetailModal({
           ...item,
           is_received: false,
           actual_received_date: undefined,
-          received_at: undefined
+          received_at: undefined,
+          received_quantity: undefined
         }
       })
     })
@@ -457,6 +469,7 @@ function PurchaseDetailModal({
     if (!Number.isNaN(purchaseIdNumber)) {
       onOptimisticUpdate?.(purchaseIdNumber, prevPurchase => {
         const updatedItems = updateItems(prevPurchase.items) || prevPurchase.items || []
+        const updatedRequestItems = updateItems(prevPurchase.purchase_request_items) || prevPurchase.purchase_request_items || []
         const total = updatedItems.length || prevPurchase.items?.length || 0
         const completed = updatedItems.filter(item => item.is_received).length
         const allReceived = total > 0 && completed === total
@@ -464,8 +477,10 @@ function PurchaseDetailModal({
         return {
           ...prevPurchase,
           items: updatedItems,
+          purchase_request_items: updatedRequestItems,
           is_received: allReceived,
-          received_at: allReceived ? (prevPurchase.received_at || nowIso) : undefined
+          received_at: allReceived ? (prevPurchase.received_at || nowIso) : undefined,
+          updated_at: new Date().toISOString()
         }
       })
     }
@@ -732,7 +747,7 @@ function PurchaseDetailModal({
     const columnConfigs = [
       { key: 'item_name', minWidth: 80, maxWidth: 500, baseWidth: 80 },
       { key: 'specification', minWidth: 200, maxWidth: 200, baseWidth: 200, isFixed: true }, // 고정 너비 200px
-      { key: 'quantity', minWidth: 70, maxWidth: 100, baseWidth: 70 },
+      { key: 'quantity', minWidth: 70, maxWidth: 120, baseWidth: 70 }, // 100/0 형식 고려하여 maxWidth 증가
       { key: 'unit_price', minWidth: 90, maxWidth: 150, baseWidth: 90 },
       { key: 'total_price', minWidth: 100, maxWidth: 180, baseWidth: 100 },
       { key: 'remarks', minWidth: 150, maxWidth: 150, baseWidth: 150, isFixed: true }, // 고정 너비 150px
@@ -741,7 +756,9 @@ function PurchaseDetailModal({
 
       // 추가 칼럼들 (탭별)
       if (activeTab === 'receipt') {
-        columnConfigs.push({ key: 'actual_receipt_date', minWidth: 100, maxWidth: 160, baseWidth: 100, isFixed: false })
+        columnConfigs.push(
+          { key: 'actual_receipt_date', minWidth: 100, maxWidth: 160, baseWidth: 100, isFixed: false }
+        )
       }
       if (activeTab === 'done') {
         columnConfigs.push(
@@ -763,9 +780,13 @@ function PurchaseDetailModal({
           : '상태'
 
         // 승인대기탭에서는 상태 칼럼 제외
+        // receipt, done 탭에서는 '요청/실제 입고수량' 형식으로 헤더 길이 계산
+        const quantityHeader = (activeTab === 'receipt' || activeTab === 'done') 
+          ? '요청/실제 입고수량' 
+          : '요청수량'
         const baseHeaders = activeTab === 'pending' 
-          ? ['품목명', '규격', '수량', '단가', '합계', '비고']
-          : ['품목명', '규격', '수량', '단가', '합계', '비고', statusHeader]
+          ? ['품목명', '규격', quantityHeader, '단가', '합계', '비고']
+          : ['품목명', '규격', quantityHeader, '단가', '합계', '비고', statusHeader]
         if (activeTab === 'receipt') {
           return [...baseHeaders, '실제입고일']
         } else if (activeTab === 'done') {
@@ -790,7 +811,18 @@ function PurchaseDetailModal({
             cellValue = item.specification || ''
             break
           case 'quantity':
-            cellValue = item.quantity?.toString() || ''
+            // receipt, done 탭에서는 요청수량/실제입고수량 형식으로 표시
+            if (activeTab === 'receipt' || activeTab === 'done') {
+              const quantity = item.quantity || 0
+              const receivedQuantity = item.received_quantity ?? 0
+              // 100 이상이면 2행으로 표시되므로 더 긴 숫자 기준으로 계산
+              // 첫 번째 행의 숫자 길이만 고려 (두 번째 행은 /숫자이므로 더 짧음)
+              cellValue = quantity >= 100 || receivedQuantity >= 100 
+                ? `${quantity}` // 2행일 때는 첫 번째 행만 고려
+                : `${quantity}/${receivedQuantity}` // 1행일 때는 전체 고려
+            } else {
+              cellValue = item.quantity?.toString() || ''
+            }
             break
           case 'unit_price':
             cellValue = item.unit_price_value != null ? item.unit_price_value.toLocaleString() : ''
@@ -1096,6 +1128,7 @@ function PurchaseDetailModal({
               item_name: item.item_name.trim(),
               specification: item.specification || null,
               quantity: Number(item.quantity),
+              received_quantity: item.received_quantity !== null && item.received_quantity !== undefined ? Number(item.received_quantity) : null,
               unit_price_value: Number(item.unit_price_value),
               unit_price_currency: purchase.currency || 'KRW',
               amount_value: Number(item.amount_value),
@@ -1116,6 +1149,7 @@ function PurchaseDetailModal({
             item_name: item.item_name.trim(),
             specification: item.specification || null,
             quantity: Number(item.quantity),
+            received_quantity: item.received_quantity !== null && item.received_quantity !== undefined ? Number(item.received_quantity) : null,
             unit_price_value: Number(item.unit_price_value),
             unit_price_currency: purchase.currency || 'KRW',
             amount_value: Number(item.amount_value),
@@ -1454,8 +1488,8 @@ function PurchaseDetailModal({
     }
   }
 
-  // 개별 품목 입고완료 처리 (날짜 선택)
-  const handleItemReceiptToggle = async (itemId: number | string, selectedDate: Date) => {
+  // 개별 품목 입고완료 처리 (날짜 선택 + 실제입고수량)
+  const handleItemReceiptToggle = async (itemId: number | string, selectedDate: Date, receivedQuantity?: number) => {
     if (!canReceiptCheck) {
       toast.error('입고 처리 권한이 없습니다.')
       return
@@ -1479,7 +1513,8 @@ function PurchaseDetailModal({
               ? {
                   ...item,
                   is_received: true,
-                  actual_received_date: selectedDate.toISOString()
+                  actual_received_date: selectedDate.toISOString(),
+                  received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.received_quantity
                 }
               : item
           )
@@ -1503,7 +1538,8 @@ function PurchaseDetailModal({
         .update({
           is_received: true,
           received_at: new Date().toISOString(),
-          actual_received_date: selectedDate.toISOString()
+          actual_received_date: selectedDate.toISOString(),
+          received_quantity: receivedQuantity !== undefined ? receivedQuantity : null
         })
         .eq('id', numericId)
 
@@ -1511,7 +1547,7 @@ function PurchaseDetailModal({
 
       // 🚀 메모리 캐시 즉시 업데이트 (개별 품목 입고완료)
       if (purchase) {
-        const memoryUpdated = markItemAsReceived(purchase.id, numericId);
+        const memoryUpdated = markItemAsReceived(purchase.id, numericId, selectedDate.toISOString(), receivedQuantity);
         if (!memoryUpdated) {
           logger.warn('[PurchaseDetailModal] 메모리 캐시 개별 품목 입고완료 업데이트 실패', { 
             purchaseId: purchase.id, 
@@ -1529,11 +1565,28 @@ function PurchaseDetailModal({
                 ...item, 
                 is_received: true, 
                 received_at: new Date().toISOString(),
-                actual_received_date: selectedDate.toISOString()
+                actual_received_date: selectedDate.toISOString(),
+                received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.received_quantity
               }
             : item
         )
-        return { ...prev, items: updatedItems }
+        const updatedRequestItems = prev.purchase_request_items?.map(item => 
+          String(item.id) === itemIdStr 
+            ? { 
+                ...item, 
+                is_received: true, 
+                received_at: new Date().toISOString(),
+                actual_received_date: selectedDate.toISOString(),
+                received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.received_quantity
+              }
+            : item
+        )
+        return { 
+          ...prev, 
+          items: updatedItems,
+          purchase_request_items: updatedRequestItems,
+          updated_at: new Date().toISOString()
+        }
       })
 
       applyOptimisticUpdate()
@@ -2147,8 +2200,8 @@ function PurchaseDetailModal({
     }
   }
 
-  // 전체 입고완료 처리 (날짜 선택)
-  const handleCompleteAllReceipt = async (selectedDate: Date) => {
+  // 전체 입고완료 처리 (날짜 선택 + 실제입고수량)
+  const handleCompleteAllReceipt = async (selectedDate: Date, receivedQuantity?: number) => {
     if (!purchase || !canReceiveItems) {
       return
     }
@@ -2164,29 +2217,52 @@ function PurchaseDetailModal({
 
     const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
 
-    const applyOptimisticUpdate = () => {
-      if (!Number.isNaN(purchaseIdNumber)) {
-        onOptimisticUpdate?.(purchaseIdNumber, prev => {
-          const updatedItems = (prev.items || []).map(item => ({
-            ...item,
-            is_received: true,
-            actual_received_date: item.actual_received_date || selectedDate.toISOString()
-          }))
-
-          return {
-            ...prev,
-            items: updatedItems,
-            is_received: true,
-            received_at: new Date().toISOString()
-          }
-        })
-      }
-    }
-
     try {
       // 🚀 미완료 품목만 필터링 (이미 입고완료된 품목 제외)
       const allItems = purchase.purchase_request_items || [];
       const pendingItems = allItems.filter(item => !item.is_received);
+      
+      const applyOptimisticUpdate = () => {
+        if (!Number.isNaN(purchaseIdNumber)) {
+          onOptimisticUpdate?.(purchaseIdNumber, prev => {
+            const updatedItems = (prev.items || []).map(item => {
+              const pendingItem = pendingItems.find((p: any) => String(p.id) === String(item.id))
+              if (pendingItem) {
+                // 미완료 품목만 업데이트, receivedQuantity가 없으면 요청수량(quantity)을 그대로 사용
+                return {
+                  ...item,
+                  is_received: true,
+                  actual_received_date: item.actual_received_date || selectedDate.toISOString(),
+                  received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.quantity
+                }
+              }
+              return item
+            })
+            const updatedRequestItems = (prev.purchase_request_items || []).map(item => {
+              const pendingItem = pendingItems.find((p: any) => String(p.id) === String(item.id))
+              if (pendingItem) {
+                // 미완료 품목만 업데이트, receivedQuantity가 없으면 요청수량(quantity)을 그대로 사용
+                return {
+                  ...item,
+                  is_received: true,
+                  actual_received_date: item.actual_received_date || selectedDate.toISOString(),
+                  received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.quantity
+                }
+              }
+              return item
+            })
+
+            return {
+              ...prev,
+              items: updatedItems,
+              purchase_request_items: updatedRequestItems,
+              is_received: true,
+              received_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }
+          })
+        }
+      }
       
       if (pendingItems.length === 0) {
         toast.info('모든 품목이 이미 입고완료되었습니다.');
@@ -2195,11 +2271,61 @@ function PurchaseDetailModal({
 
       logger.info(`전체 입고완료 처리: ${pendingItems.length}개 품목 (총 ${allItems.length}개 중)`);
       
+      // Optimistic Update 먼저 실행
+      applyOptimisticUpdate()
+      
+      // 로컬 상태 즉시 업데이트
+      setPurchase(prev => {
+        if (!prev) return null
+        const updatedItems = prev.items?.map(item => {
+          const pendingItem = pendingItems.find(p => String(p.id) === String(item.id))
+          if (pendingItem) {
+            // receivedQuantity가 없으면 요청수량(quantity)을 그대로 사용
+            return {
+              ...item,
+              is_received: true,
+              received_at: new Date().toISOString(),
+              actual_received_date: selectedDate.toISOString(),
+              received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.quantity
+            }
+          }
+          return item
+        }) || []
+        const updatedRequestItems = prev.purchase_request_items?.map(item => {
+          const pendingItem = pendingItems.find(p => String(p.id) === String(item.id))
+          if (pendingItem) {
+            // receivedQuantity가 없으면 요청수량(quantity)을 그대로 사용
+            return {
+              ...item,
+              is_received: true,
+              received_at: new Date().toISOString(),
+              actual_received_date: selectedDate.toISOString(),
+              received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.quantity
+            }
+          }
+          return item
+        }) || []
+        const total = updatedItems.length
+        const completed = updatedItems.filter(item => item.is_received).length
+        const allReceived = total > 0 && completed === total
+        
+        return {
+          ...prev,
+          items: updatedItems,
+          purchase_request_items: updatedRequestItems,
+          is_received: allReceived,
+          received_at: allReceived ? new Date().toISOString() : prev.received_at,
+          updated_at: new Date().toISOString()
+        }
+      })
+      
       for (const item of pendingItems) {
         // 각 품목별로 DB 업데이트 (개별 품목과 동일한 방식)
+        // receivedQuantity가 없으면 요청수량(quantity)을 그대로 사용
         const updateData = {
           actual_received_date: selectedDate.toISOString(),
-          is_received: true
+          is_received: true,
+          received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.quantity // 전체 입고시 요청수량과 동일하게 설정
         };
 
         const { error } = await supabase
@@ -2210,7 +2336,9 @@ function PurchaseDetailModal({
         if (error) throw error;
 
         // 🚀 개별 품목 메모리 캐시 업데이트 (개별 처리와 동일)
-        const memoryUpdated = markItemAsReceived(purchase.id, item.id, selectedDate.toISOString());
+        // receivedQuantity가 없으면 요청수량(quantity)을 그대로 사용
+        const itemReceivedQuantity = receivedQuantity !== undefined ? receivedQuantity : item.quantity
+        const memoryUpdated = markItemAsReceived(purchase.id, item.id, selectedDate.toISOString(), itemReceivedQuantity);
         if (!memoryUpdated) {
           logger.warn('[PurchaseDetailModal] 메모리 캐시 개별 품목 입고완료 업데이트 실패', { 
             purchaseId: purchase.id, 
@@ -2668,11 +2796,13 @@ function PurchaseDetailModal({
                         </Button>
                       )}
                       {activeTab === 'receipt' && canReceiveItems && (
-                        <DatePickerPopover
-                          onDateSelect={handleCompleteAllReceipt}
-                          placeholder="전체 입고완료 날짜를 선택하세요"
+                        <DateQuantityPickerPopover
+                          onConfirm={handleCompleteAllReceipt}
+                          placeholder="입고일을 선택하세요"
                           align="end"
                           side="bottom"
+                          hideQuantityInput={true}
+                          quantityInfoText="요청입고수량과 동일한 수량으로 입력됩니다"
                         >
                           <Button
                             size="sm"
@@ -2681,7 +2811,7 @@ function PurchaseDetailModal({
                             <Truck className="w-3 h-3 mr-1" />
                             전체 입고완료
                           </Button>
-                        </DatePickerPopover>
+                        </DateQuantityPickerPopover>
                       )}
                       {activeTab === 'done' && canReceiptCheck && (
                         <div className="flex items-center gap-2">
@@ -2738,7 +2868,16 @@ function PurchaseDetailModal({
                       >
                         <div>품목명</div>
                         <div>규격</div>
-                        <div className="text-center">수량</div>
+                        <div className="text-center">
+                          {(activeTab === 'receipt' || activeTab === 'done') && !isEditing ? (
+                            <div className="flex flex-col items-center leading-tight">
+                              <div className="text-[9px]">요청/실제</div>
+                              <div className="text-[10px]">입고수량</div>
+                            </div>
+                          ) : (
+                            '요청수량'
+                          )}
+                        </div>
                         <div className="text-right">단가</div>
                         <div className="text-right">합계</div>
                         <div className="text-center">비고</div>
@@ -2875,16 +3014,65 @@ function PurchaseDetailModal({
                             {/* 수량 */}
                             <div className="text-center min-w-0 flex items-center justify-center">
                               {isEditing ? (
-                                <Input
-                                  type="number"
-                                  value={item.quantity}
-                                  onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
-                                  className="border-gray-200 rounded-lg text-center w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
-                                  placeholder="수량"
-                                  max="99999"
-                                />
+                                (activeTab === 'receipt' || activeTab === 'done') ? (
+                                  <div className="flex flex-col items-center gap-0.5 w-full">
+                                    <Input
+                                      type="number"
+                                      value={item.quantity}
+                                      onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
+                                      className="border-gray-200 rounded-lg text-center w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
+                                      placeholder="요청수량"
+                                      max="99999"
+                                    />
+                                    <div className="flex items-center gap-0.5 w-full">
+                                      <span className="text-[9px] text-gray-500">/</span>
+                                      <Input
+                                        type="number"
+                                        value={item.received_quantity ?? ''}
+                                        onChange={(e) => handleItemChange(index, 'received_quantity', e.target.value ? Number(e.target.value) : null)}
+                                        className="border-gray-200 rounded-lg text-center flex-1 !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
+                                        placeholder="실제입고"
+                                        max="99999"
+                                      />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <Input
+                                    type="number"
+                                    value={item.quantity}
+                                    onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
+                                    className="border-gray-200 rounded-lg text-center w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
+                                    placeholder="수량"
+                                    max="99999"
+                                  />
+                                )
                               ) : (
-                                <span className="modal-subtitle">{item.quantity || 0}</span>
+                                (activeTab === 'receipt' || activeTab === 'done') ? (
+                                  (() => {
+                                    const quantity = item.quantity || 0
+                                    const receivedQuantity = item.received_quantity ?? 0
+                                    const shouldWrap = quantity >= 100 || receivedQuantity >= 100
+                                    const hasReceived = receivedQuantity > 0
+                                    
+                                    if (shouldWrap) {
+                                      return (
+                                        <div className="flex flex-col items-center leading-tight">
+                                          <div className={`modal-subtitle ${hasReceived ? 'text-gray-400' : ''}`}>{quantity}</div>
+                                          <div className={`modal-subtitle ${hasReceived ? '' : 'text-gray-400'}`}>/{receivedQuantity}</div>
+                                        </div>
+                                      )
+                                    } else {
+                                      return (
+                                        <span className="modal-subtitle">
+                                          <span className={hasReceived ? 'text-gray-400' : ''}>{quantity}</span>
+                                          <span className={hasReceived ? '' : 'text-gray-400'}>/{receivedQuantity}</span>
+                                        </span>
+                                      )
+                                    }
+                                  })()
+                                ) : (
+                                  <span className="modal-subtitle">{item.quantity || 0}</span>
+                                )
                               )}
                             </div>
                             
@@ -3015,25 +3203,20 @@ function PurchaseDetailModal({
                                             {actualReceivedAction.config.completedText}
                                           </button>
                                         ) : (
-                                          <DatePickerPopover
-                                            onDateSelect={(date) => {
-                                              actualReceivedAction.handleConfirm(item.id, date, {
-                                                item_name: item.item_name,
-                                                specification: item.specification,
-                                                quantity: item.quantity,
-                                                unit_price_value: item.unit_price_value,
-                                                amount_value: item.amount_value,
-                                                remark: item.remark
-                                              })
+                                          <DateQuantityPickerPopover
+                                            onConfirm={(date, quantity) => {
+                                              handleItemReceiptToggle(item.id, date, quantity)
                                             }}
-                                            placeholder="실제 입고된 날짜를 선택하세요"
+                                            placeholder="날짜와 실제입고수량을 입력하세요"
                                             align="center"
                                             side="bottom"
+                                            defaultQuantity={item.received_quantity ?? undefined}
+                                            maxQuantity={item.quantity}
                                           >
                                             <button className="button-toggle-inactive">
                                               {actualReceivedAction.config.waitingText}
                                             </button>
-                                          </DatePickerPopover>
+                                          </DateQuantityPickerPopover>
                                         )
                                       ) : (
                                         <span className={`${

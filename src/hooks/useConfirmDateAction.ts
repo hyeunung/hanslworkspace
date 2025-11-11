@@ -28,6 +28,7 @@ export interface UseConfirmDateActionProps {
     itemId: number
     selectedDate?: Date
     action: 'confirm' | 'cancel'
+    receivedQuantity?: number
     itemInfo?: {
       item_name?: string
       specification?: string
@@ -35,6 +36,7 @@ export interface UseConfirmDateActionProps {
       unit_price_value?: number
       amount_value?: number
       remark?: string
+      received_quantity?: number
     }
   }) => void
 }
@@ -59,7 +61,9 @@ export function useConfirmDateAction({
       unit_price_value?: number
       amount_value?: number
       remark?: string
-    }
+      received_quantity?: number
+    },
+    receivedQuantity?: number
   ) => {
     
     if (!canPerformAction) {
@@ -105,7 +109,8 @@ ${config.confirmMessage.confirm}`
       } else if (config.field === 'actual_received') {
         updateData = {
           actual_received_date: selectedDate.toISOString(),
-          is_received: true
+          is_received: true,
+          received_quantity: receivedQuantity !== undefined ? receivedQuantity : (itemInfo?.received_quantity !== undefined ? itemInfo.received_quantity : null)
         }
       }
 
@@ -129,7 +134,7 @@ ${config.confirmMessage.confirm}`
       // 🚀 메모리 캐시 실시간 업데이트
       if (purchaseId) {
         if (config.field === 'actual_received') {
-          const memoryUpdated = markItemAsReceived(purchaseId, numericId, selectedDate.toISOString())
+          const memoryUpdated = markItemAsReceived(purchaseId, numericId, selectedDate.toISOString(), receivedQuantity)
           if (!memoryUpdated) {
             logger.warn('[useConfirmDateAction] 메모리 캐시 입고완료 업데이트 실패', { 
               purchaseId, 
@@ -152,6 +157,7 @@ ${config.confirmMessage.confirm}`
           itemId: numericId,
           selectedDate,
           action: 'confirm',
+          receivedQuantity: receivedQuantity !== undefined ? receivedQuantity : itemInfo?.received_quantity,
           itemInfo
         })
       }

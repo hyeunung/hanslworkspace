@@ -74,7 +74,7 @@ const COMMON_COLUMN_CLASSES = {
   approvalStatus: "text-center w-20 min-w-[85px] max-w-[85px]",
   
   // 모든 탭 공통 컬럼들 (고정 너비)
-  purchaseOrderNumber: "pl-2 w-[150px] min-w-[150px] max-w-[150px] purchase-order-number-column",      // 발주번호 + 품목갯수 + 엑셀아이콘
+  purchaseOrderNumber: "pl-2 w-[155px] min-w-[155px] max-w-[155px] purchase-order-number-column",      // 발주번호 + 품목갯수 + 엑셀아이콘
   purchaseOrderNumberCompact: "pl-2 w-36 min-w-[140px] max-w-[140px]", // 구매현황 탭용 (추가 컬럼 보상)
   paymentCategory: "text-center w-20 min-w-[85px] max-w-[85px]",
   requesterName: "w-12 min-w-[48px] max-w-[48px]",                    // 한글 이름 2-3자 기준 (김용희, 한화 등)
@@ -86,6 +86,7 @@ const COMMON_COLUMN_CLASSES = {
   itemName: "w-44 min-w-[176px] max-w-[176px]",                       // 품명 공간 더 늘림: 160px → 176px
   specification: "w-64 min-w-[260px] max-w-[260px]",                  // 평균 15.5자 + 여유 (조금 더 길게)
   quantity: "text-center w-14 min-w-[60px] max-w-[60px]",
+  receivedQuantity: "text-center w-16 min-w-[70px] max-w-[70px]",
   unitPrice: "text-right w-24 min-w-[100px] max-w-[100px]",
   amount: "text-right w-24 min-w-[100px] max-w-[100px]",
   
@@ -560,8 +561,33 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       )}
       {/* 수량 칼럼 */}
       {isVisible('quantity') && (
-        <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>
-          {purchase.purchase_request_items?.[0]?.quantity || 0}
+        <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.quantity}`}>
+          {(activeTab === 'receipt' || activeTab === 'done') ? (
+            (() => {
+              const quantity = purchase.purchase_request_items?.[0]?.quantity || 0
+              const receivedQuantity = purchase.purchase_request_items?.[0]?.received_quantity ?? 0
+              const shouldWrap = quantity >= 100 || receivedQuantity >= 100
+              const hasReceived = receivedQuantity > 0
+              
+              if (shouldWrap) {
+                return (
+                  <div className="flex flex-col items-center leading-tight">
+                    <div className={hasReceived ? 'text-gray-400' : ''}>{quantity}</div>
+                    <div className={hasReceived ? '' : 'text-gray-400'}>/{receivedQuantity}</div>
+                  </div>
+                )
+              } else {
+                return (
+                  <span>
+                    <span className={hasReceived ? 'text-gray-400' : ''}>{quantity}</span>
+                    <span className={hasReceived ? '' : 'text-gray-400'}>/{receivedQuantity}</span>
+                  </span>
+                )
+              }
+            })()
+          ) : (
+            purchase.purchase_request_items?.[0]?.quantity || 0
+          )}
         </td>
       )}
       {/* 단가 칼럼 */}
@@ -1133,7 +1159,7 @@ const FastPurchaseTable = ({
               <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
             )}
             {isColumnVisible('quantity') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>요청수량</th>
             )}
             {isColumnVisible('unit_price') && (
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
@@ -1200,7 +1226,7 @@ const FastPurchaseTable = ({
               <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
             )}
             {isColumnVisible('quantity') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>요청수량</th>
             )}
             {isColumnVisible('unit_price') && (
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
@@ -1256,7 +1282,16 @@ const FastPurchaseTable = ({
           <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
         )}
         {isColumnVisible('quantity') && (
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>수량</th>
+          <th className={`px-2 py-1.5 modal-label text-gray-900 ${COMMON_COLUMN_CLASSES.quantity}`}>
+            {(activeTab === 'receipt' || activeTab === 'done') ? (
+              <div className="flex flex-col items-center leading-tight">
+                <div className="text-[9px]">요청/실제</div>
+                <div className="text-[10px]">입고수량</div>
+              </div>
+            ) : (
+              '요청수량'
+            )}
+          </th>
         )}
         {isColumnVisible('unit_price') && (
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>

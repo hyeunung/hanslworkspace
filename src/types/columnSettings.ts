@@ -18,6 +18,7 @@ export type DoneTabColumnId =
   | 'item_name'               // 품명
   | 'specification'           // 규격
   | 'quantity'                // 수량
+  | 'received_quantity'       // 실제입고수량
   | 'unit_price'              // 단가
   | 'amount'                  // 합계
   | 'remark'                  // 비고

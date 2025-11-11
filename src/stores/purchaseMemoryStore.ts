@@ -268,7 +268,7 @@ export const markItemAsPaymentCanceled = (purchaseId: number | string, itemId: n
 }
 
 // 특정 품목의 입고완료 처리를 위한 헬퍼 함수
-export const markItemAsReceived = (purchaseId: number | string, itemId: number | string, selectedDate?: string): boolean => {
+export const markItemAsReceived = (purchaseId: number | string, itemId: number | string, selectedDate?: string, receivedQuantity?: number): boolean => {
   const result = updatePurchaseInMemory(purchaseId, (purchase) => {
     const currentTime = new Date().toISOString()
     const actualReceivedDate = selectedDate || currentTime  // 선택된 날짜 또는 현재 시간
@@ -285,7 +285,8 @@ export const markItemAsReceived = (purchaseId: number | string, itemId: number |
             is_received: true, 
             delivery_status: 'received' as const, 
             received_at: currentTime,
-            actual_received_date: actualReceivedDate  // 🚀 사용자가 선택한 날짜 사용
+            actual_received_date: actualReceivedDate,  // 🚀 사용자가 선택한 날짜 사용
+            received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.received_quantity
           }
         : item
     )
