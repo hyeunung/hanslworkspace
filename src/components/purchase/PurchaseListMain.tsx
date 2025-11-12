@@ -9,18 +9,17 @@ import FilterToolbar, { FilterRule, SortRule } from "@/components/purchase/Filte
 import { updatePurchaseInMemory, loadAllPurchaseData } from "@/services/purchaseDataLoader";
 import { markPurchaseAsPaymentCompleted, markPurchaseAsReceived, isCacheValid, purchaseMemoryCache } from '@/stores/purchaseMemoryStore';
 
-import { Plus, Package, Info } from "lucide-react";
+import { Package, Info } from "lucide-react";
 import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs/generatePurchaseOrderExcel";
 
 // Lazy load modal for better performance
 const PurchaseItemsModal = lazy(() => import("@/components/purchase/PurchaseItemsModal"));
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Purchase } from "@/types/purchase";
 import { hasManagerRole, getRoleCase, filterByEmployeeVisibility } from "@/utils/roleHelper";
-import { calculateTabCounts, filterByEmployee, sortPurchases } from "@/utils/purchaseFilters";
+import { filterByEmployee, sortPurchases } from "@/utils/purchaseFilters";
 import { logger } from "@/lib/logger";
 
 interface PurchaseListMainProps {
@@ -61,7 +60,8 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     allPurchases: purchases,
     loading,
     currentUser,
-    getFilteredPurchases
+    getFilteredPurchases,
+    tabCounts
   } = usePurchaseMemory();
   
   // 칼럼 가시성 설정
@@ -513,14 +513,6 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   }, [activeTab, sixtyDaysPurchases, selectedEmployee, sortConfig, baseFilteredPurchases, currentUser, activeFilters.length, searchTerm]);
 
 
-  // 탭별 카운트 계산 (필터 없이 전체 데이터 기준)
-  const filteredTabCounts = useMemo(() => {
-    // 필터 없이 전체 데이터를 기준으로 탭별 카운트 계산
-    // visiblePurchases는 이미 필터링된 데이터이므로 원본 purchases 사용
-    return calculateTabCounts(purchases, currentUser);
-  }, [purchases, currentUser]);
-
-
   // 월간 필터 감지 및 합계금액 계산
   const monthlyFilterSummary = useMemo(() => {
     // 월간 필터가 활성화되어 있는지 확인
@@ -854,13 +846,6 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
           <h1 className="page-title">발주요청 관리</h1>
           <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Purchase Management</p>
         </div>
-        <Button 
-          onClick={() => navigate('/purchase/new')}
-          className="mt-4 sm:mt-0 bg-hansl-500 hover:bg-hansl-600"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          새 발주요청 작성
-        </Button>
       </div>
 
       {/* 고급 필터 툴바 - 탭바 위 왼쪽 상단에 여백 추가 */}
@@ -928,7 +913,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
                   }`
                 }
               >
-                {filteredTabCounts[tab.key as keyof typeof filteredTabCounts]}
+                {tabCounts[tab.key as keyof typeof tabCounts]}
               </span>
             </button>
           ))}

@@ -9,10 +9,15 @@ import { applyAllFilters, calculateTabCounts, type FilterOptions, type TabType }
 import type { Purchase } from '@/types/purchase'
 
 export function usePurchaseMemory() {
+  const initialPurchases = purchaseMemoryCache.allPurchases
+    ? [...purchaseMemoryCache.allPurchases]
+    : []
+  const initialLoading = !purchaseMemoryCache.allPurchases && purchaseMemoryCache.isLoading
+
   // 로컬 상태
-  const [purchases, setPurchases] = useState<Purchase[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [purchases, setPurchases] = useState<Purchase[]>(initialPurchases)
+  const [loading, setLoading] = useState(initialLoading)
+  const [error, setError] = useState<string | null>(purchaseMemoryCache.error)
   
   // 현재 사용자 정보
   const currentUser = purchaseMemoryCache.currentUser
