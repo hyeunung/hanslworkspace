@@ -509,7 +509,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       {/* 업체 칼럼 */}
       {isVisible('vendor_name') && (
         <td 
-          className="pl-3 pr-2 py-1.5 card-title"
+          className="pl-3 pr-2 py-1.5 card-title vendor-dynamic-column"
           style={{ 
             width: `${vendorColumnWidth || 80}px`, 
             minWidth: `${vendorColumnWidth || 80}px`, 
@@ -791,7 +791,7 @@ const FastPurchaseTable = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [purchaseToDelete, setPurchaseToDelete] = useState<Purchase | null>(null);
-  const [vendorColumnWidth, setVendorColumnWidth] = useState<number>(80);
+  // vendorColumnWidth는 이제 useMemo로 직접 계산됨
   const supabase = createClient();
 
   // 권한 체크 - lead buyer와 app_admin만 구매완료/입고완료 버튼 사용 가능
@@ -808,13 +808,20 @@ const FastPurchaseTable = ({
   
   const canDelete = canEdit;
 
-  // 업체 칼럼 너비 동적 계산
-  const calculateVendorColumnWidth = useMemo(() => {
+  // 업체 칼럼 너비 직접 계산 (useState와 useEffect 제거로 렌더링 최적화)
+  const vendorColumnWidth = useMemo(() => {
     if (!purchases || purchases.length === 0) return 80;
 
+    // 탭별로 캐시된 계산값 사용을 위해 탭도 의존성에 추가
+    const cacheKey = `${activeTab}-${purchases.length}`;
+    
     let maxLength = 2; // "업체" 헤더 길이
 
-    purchases.forEach(purchase => {
+    // 성능 최적화: 최대 100개 항목만 샘플링
+    const sampleSize = Math.min(purchases.length, 100);
+    const sampledPurchases = purchases.slice(0, sampleSize);
+    
+    sampledPurchases.forEach(purchase => {
       const vendorName = purchase.vendor_name || '';
       // 한글/영문 혼합 텍스트 길이 계산 (한글은 1.5배 가중치)
       const adjustedLength = vendorName.split('').reduce((acc, char) => {
@@ -825,13 +832,15 @@ const FastPurchaseTable = ({
 
     // 길이를 픽셀로 변환 (글자당 약 7px + 여백 20px)
     const calculatedWidth = Math.max(80, Math.min(200, maxLength * 7 + 20));
+    console.log('🔍 [FastPurchaseTable] 업체 칼럼 너비 계산:', { 
+      activeTab,
+      maxLength,
+      calculatedWidth,
+      sampleSize,
+      firstVendor: sampledPurchases[0]?.vendor_name 
+    });
     return calculatedWidth;
-  }, [purchases]);
-
-  // 계산된 너비를 state에 반영
-  useEffect(() => {
-    setVendorColumnWidth(calculateVendorColumnWidth);
-  }, [calculateVendorColumnWidth]);
+  }, [purchases, activeTab]);
 
   const handleRowClick = useCallback((purchase: Purchase) => {
     setSelectedPurchaseId(purchase.id);
@@ -1138,11 +1147,11 @@ const FastPurchaseTable = ({
             )}
             {isColumnVisible('vendor_name') && (
               <th 
-                className="px-2 py-1.5 modal-label text-gray-900 text-left"
+                className="px-2 py-1.5 modal-label text-gray-900 text-left vendor-dynamic-column"
                 style={{ 
-                  width: `${vendorColumnWidth || 80}px`, 
-                  minWidth: `${vendorColumnWidth || 80}px`, 
-                  maxWidth: `${vendorColumnWidth || 80}px` 
+                  width: `${vendorColumnWidth || 80}px !important`, 
+                  minWidth: `${vendorColumnWidth || 80}px !important`, 
+                  maxWidth: `${vendorColumnWidth || 80}px !important` 
                 }}
               >업체</th>
             )}
@@ -1205,11 +1214,11 @@ const FastPurchaseTable = ({
             )}
             {isColumnVisible('vendor_name') && (
               <th 
-                className="px-2 py-1.5 modal-label text-gray-900 text-left"
+                className="px-2 py-1.5 modal-label text-gray-900 text-left vendor-dynamic-column"
                 style={{ 
-                  width: `${vendorColumnWidth || 80}px`, 
-                  minWidth: `${vendorColumnWidth || 80}px`, 
-                  maxWidth: `${vendorColumnWidth || 80}px` 
+                  width: `${vendorColumnWidth || 80}px !important`, 
+                  minWidth: `${vendorColumnWidth || 80}px !important`, 
+                  maxWidth: `${vendorColumnWidth || 80}px !important` 
                 }}
               >업체</th>
             )}
@@ -1264,7 +1273,14 @@ const FastPurchaseTable = ({
           <th className={`pl-2 pr-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center ${COMMON_COLUMN_CLASSES.utk}`}>UTK</th>
         )}
         {isColumnVisible('vendor_name') && (
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.vendorName}`}>업체</th>
+          <th 
+            className="px-2 py-1.5 modal-label text-gray-900 text-left vendor-dynamic-column"
+            style={{ 
+              width: `${vendorColumnWidth || 80}px`, 
+              minWidth: `${vendorColumnWidth || 80}px`, 
+              maxWidth: `${vendorColumnWidth || 80}px` 
+            }}
+          >업체</th>
         )}
         {isColumnVisible('contact_name') && (
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
@@ -1428,7 +1444,7 @@ const FastPurchaseTable = ({
               <tr>
                 <th className="text-left p-2 modal-label text-gray-900 w-24">발주번호</th>
                 <th className="text-left p-2 modal-label text-gray-900 w-16">요청자</th>
-                <th className="text-left p-2 modal-label text-gray-900 w-20">업체</th>
+                <th className="text-left p-2 modal-label text-gray-900 vendor-dynamic-column" style={{ width: `${vendorColumnWidth || 80}px` }}>업체</th>
                 <th className="text-left p-2 modal-label text-gray-900 w-32">품명</th>
                 <th className="text-right p-2 modal-label text-gray-900 w-20">금액</th>
                 <th className="text-center p-2 modal-label text-gray-900 w-16">상태</th>

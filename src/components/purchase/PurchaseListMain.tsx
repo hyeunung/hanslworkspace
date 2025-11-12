@@ -1,5 +1,5 @@
 
-import { useState, lazy, Suspense, useEffect, useCallback, useMemo } from "react";
+import { useState, lazy, Suspense, useEffect, useCallback, useMemo, useTransition } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { usePurchaseMemory } from "@/hooks/usePurchaseMemory";
 import { useColumnSettings } from "@/hooks/useColumnSettings";
@@ -20,7 +20,7 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Purchase } from "@/types/purchase";
 import { hasManagerRole, getRoleCase, filterByEmployeeVisibility } from "@/utils/roleHelper";
-import { calculateTabCounts } from "@/utils/purchaseFilters";
+import { calculateTabCounts, filterByEmployee, sortPurchases } from "@/utils/purchaseFilters";
 import { logger } from "@/lib/logger";
 
 interface PurchaseListMainProps {
@@ -102,69 +102,64 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   
   const isAdmin = currentUserRoles?.includes('app_admin');
   
-  // 탭 상태 관리 (hanslwebapp 방식 - 단순 상태)
-  const [activeTab, setActiveTab] = useState('pending');
-  const [selectedEmployee, setSelectedEmployee] = useState<string>('');
+  // roleCase 계산 (탭별 기본 직원 필터용) - 먼저 정의
+  const roleCase = useMemo(() => getRoleCase(currentUserRoles), [currentUserRoles]);
+
+  // 탭별 기본 직원 필터 계산 - 미리 계산하여 성능 최적화
+  const defaultEmployeeByTab = useMemo(() => {
+    if (!currentUserName) {
+      return { pending: 'all', purchase: 'all', receipt: 'all', done: 'all' };
+    }
+    
+    // 관리자 권한 체크
+    const hasHrRole = currentUserRoles.includes('hr');
+    const hasPurchaseManagerRole = currentUserRoles.includes('purchase_manager');
+    const hasManagerRole = currentUserRoles.some((role: string) => 
+      ['app_admin', 'ceo', 'lead buyer', 'finance_team', 'raw_material_manager', 'consumable_manager', 'purchase_manager', 'hr'].includes(role)
+    );
+    
+    return {
+      pending: roleCase === 3 ? 'all' : currentUserName,
+      purchase: hasManagerRole ? 'all' : (roleCase === 3 ? 'all' : currentUserName),
+      receipt: (hasHrRole || hasPurchaseManagerRole) ? 'all' : (roleCase === 3 ? 'all' : currentUserName),
+      done: 'all' // 전체 항목 탭은 항상 모든 항목 표시
+    };
+  }, [currentUserName, roleCase, currentUserRoles]);
+
+  // URL에서 초기 탭 확인
+  const getInitialTab = () => {
+    const searchParams = new URLSearchParams(location.search);
+    const tab = searchParams.get('tab');
+    if (tab && ['pending', 'purchase', 'receipt', 'done'].includes(tab)) {
+      return tab;
+    }
+    return 'pending';
+  };
+
+  // 탭 상태 관리 - 초기값 설정
+  const initialTab = getInitialTab();
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const [selectedEmployee, setSelectedEmployee] = useState<string>(() => {
+    return defaultEmployeeByTab[initialTab as keyof typeof defaultEmployeeByTab] || 'all';
+  });
+  const [isPending, startTransition] = useTransition();
 
   // 권한별 필터링된 데이터 (메모리 캐시에서 가져옴)
   const visiblePurchases = useMemo(() => {
     return filterByEmployeeVisibility(purchases, currentUserRoles);
   }, [purchases, currentUserRoles]);
 
-  // roleCase 계산 (탭별 기본 직원 필터용)
-  const roleCase = useMemo(() => getRoleCase(currentUserRoles), [currentUserRoles]);
 
-  // 탭별 기본 직원 필터 계산
-  const computeDefaultEmployee = useCallback((tabKey: string): string => {
-    if (!currentUserName) return 'all';
-    
-    // 관리자 권한 체크
-    const hasHrRole = currentUserRoles.includes('hr');
-    const hasPurchaseManagerRole = currentUserRoles.includes('purchase_manager');
-    const hasLeadBuyerRole = currentUserRoles.includes('lead buyer');
-    const hasManagerRole = currentUserRoles.some((role: string) => 
-      ['app_admin', 'ceo', 'lead buyer', 'finance_team', 'raw_material_manager', 'consumable_manager', 'purchase_manager', 'hr'].includes(role)
-    );
-    
-    // receipt 탭에서 hr 또는 purchase_manager 권한이 있으면 모든 항목 표시
-    if (tabKey === 'receipt' && (hasHrRole || hasPurchaseManagerRole)) {
-      return 'all';
-    }
-    
-    // purchase 탭에서 lead buyer 또는 관리자 권한이 있으면 모든 항목 표시
-    if (tabKey === 'purchase' && hasManagerRole) {
-      return 'all';
-    }
-    
-    switch (roleCase) {
-      case 1:
-        if (tabKey === 'done') return 'all';
-        return currentUserName;
-      case 2:
-        if (tabKey === 'done') return 'all';
-        return currentUserName;
-      case 3:
-        return 'all';
-      default:
-        return currentUserName;
-    }
-  }, [currentUserName, roleCase, currentUserRoles]);
-
-  // 탭 변경 시 기본 직원 필터 설정
-  useEffect(() => {
-    if (!currentUserName) return;
-    const defaultEmployee = computeDefaultEmployee(activeTab);
-    setSelectedEmployee(defaultEmployee);
-  }, [activeTab, currentUserName, computeDefaultEmployee]);
-
-  // URL 쿼리 파라미터에서 탭 설정
+  // URL 쿼리 파라미터 변경 시 처리
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     const tab = searchParams.get('tab');
     if (tab && ['pending', 'purchase', 'receipt', 'done'].includes(tab)) {
       setActiveTab(tab);
+      // 탭에 맞는 기본 직원 필터 설정 (미리 계산된 값 사용)
+      setSelectedEmployee(defaultEmployeeByTab[tab as keyof typeof defaultEmployeeByTab] || 'all');
     }
-  }, [location.search]);
+  }, [location.search, defaultEmployeeByTab]);
 
   // 캐시 상태 확인 및 필요시 데이터 새로고침
   useEffect(() => {
@@ -450,8 +445,8 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     let dateStart: string | undefined;
     let dateEnd: string | undefined;
     
+    // 필터가 없으면 최근 60일만 (모든 권한에서 적용)
     if (!hasAnyFilter) {
-      // 필터가 없으면 최근 60일만
       const sixtyDaysAgo = new Date();
       sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
       dateStart = sixtyDaysAgo.toISOString().split('T')[0];
@@ -470,8 +465,49 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     });
   }, [getFilteredPurchases, activeTab, selectedEmployee, searchTerm, activeFilters, sortConfig, purchases]);
 
+  // 전체항목 탭용 60일 필터링된 데이터를 미리 준비
+  const sixtyDaysPurchases = useMemo(() => {
+    if (!purchases || purchases.length === 0) return [];
+    
+    const sixtyDaysAgo = new Date();
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+    const dateStart = sixtyDaysAgo.toISOString().split('T')[0];
+    
+    // 날짜 필터만 먼저 적용하여 데이터 양 줄이기
+    return purchases.filter(purchase => {
+      const requestDate = purchase.request_date;
+      return requestDate >= dateStart;
+    });
+  }, [purchases]);
+  
   // 메모리 기반 필터링으로 이미 모든 필터 적용됨
-  const tabFilteredPurchases = baseFilteredPurchases;
+  const tabFilteredPurchases = useMemo(() => {
+    // 전체항목 탭이고 필터가 없으면 미리 필터링된 60일 데이터 사용
+    const hasAnyFilter = activeFilters.length > 0 || searchTerm.trim() !== '' || 
+                        (selectedEmployee && selectedEmployee !== 'all' && selectedEmployee !== '전체');
+    
+    if (activeTab === 'done' && !hasAnyFilter) {
+      // 이미 60일 필터링된 데이터에서 시작
+      const employeeName = selectedEmployee === 'all' || selectedEmployee === '전체' ? null : selectedEmployee;
+      
+      let filtered = sixtyDaysPurchases;
+      
+      // 직원 필터 적용
+      if (employeeName) {
+        filtered = filterByEmployee(filtered, employeeName, currentUser);
+      }
+      
+      // 정렬 적용
+      if (sortConfig) {
+        filtered = sortPurchases(filtered, { key: sortConfig.field, direction: sortConfig.direction });
+      }
+      
+      return filtered;
+    }
+    
+    // 다른 경우는 기존 로직 사용
+    return baseFilteredPurchases;
+  }, [activeTab, sixtyDaysPurchases, selectedEmployee, sortConfig, baseFilteredPurchases, currentUser, activeFilters.length, searchTerm]);
 
 
   // 탭별 카운트 계산 (필터 없이 전체 데이터 기준)
@@ -868,7 +904,12 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
             <button
               key={tab.key}
               onClick={() => {
-                setActiveTab(tab.key);
+                // 부드러운 탭 전환을 위해 startTransition 사용
+                startTransition(() => {
+                  setActiveTab(tab.key);
+                  // 탭에 맞는 기본 직원 필터 설정 (미리 계산된 값 사용 - 즉시 반영)
+                  setSelectedEmployee(defaultEmployeeByTab[tab.key as keyof typeof defaultEmployeeByTab] || 'all');
+                });
               }}
               className={`flex-1 flex items-center justify-center space-x-2 py-1.5 px-3 sm:px-4 business-radius-button button-text font-medium transition-colors ${
                 activeTab === tab.key

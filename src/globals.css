@@ -680,8 +680,8 @@
 }
 
 /* 좌측 핏 정렬 테이블 칼럼 */
-.table-fit-left th,
-.table-fit-left td {
+.table-fit-left th:not(.vendor-dynamic-column),
+.table-fit-left td:not(.vendor-dynamic-column) {
   /* 각 칼럼이 컨텐츠에 맞게 자동 조정 */
   width: auto !important;
   min-width: max-content !important;
@@ -751,6 +751,16 @@
 /* 필수 칼럼 강조 */
 .column-required {
   position: relative;
+}
+
+/* 업체 칼럼 동적 너비 - 인라인 스타일 우선 */
+.vendor-dynamic-column[style],
+th.vendor-dynamic-column[style],
+td.vendor-dynamic-column[style] {
+  /* 인라인 스타일이 있을 때만 적용 - CSS 초기화 */
+  width: initial !important;
+  min-width: initial !important;
+  max-width: initial !important;
 }
 
 .column-required::after {
