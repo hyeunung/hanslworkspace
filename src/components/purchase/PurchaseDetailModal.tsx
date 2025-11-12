@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react'
+import React, { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails, Purchase, Vendor } from '@/types/purchase'
 import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPaymentCompleted, markItemAsReceived, markPurchaseAsReceived, markItemAsPaymentCanceled, markItemAsStatementReceived, markItemAsStatementCanceled, usePurchaseMemory, updatePurchaseInMemory, removeItemFromMemory, markItemAsExpenditureSet } from '@/stores/purchaseMemoryStore'
@@ -31,6 +31,7 @@ import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { useConfirmDateAction } from '@/hooks/useConfirmDateAction'
 import { format as formatDateInput } from 'date-fns'
+import { supportService } from '@/services/supportService'
 
 interface PurchaseDetailModalProps {
   purchaseId: number | null
@@ -2577,7 +2578,8 @@ function PurchaseDetailModal({
                         <CheckCircle className="w-3 h-3 mr-1" />
                         UTK {purchase?.is_utk_checked ? '완료' : '확인'}
                       </button>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
                 
@@ -3804,7 +3806,6 @@ function PurchaseDetailModal({
               </div>
             </div>
           </div>
-        </div>
       ) : (
         <div className="text-center py-12">
           <span className="modal-subtitle">
@@ -3813,7 +3814,7 @@ function PurchaseDetailModal({
         </div>
       )}
     </div>
-  )
+  );
 
   // embedded가 true면 Dialog 없이 내용만 반환
   if (embedded) {
@@ -3832,14 +3833,49 @@ function PurchaseDetailModal({
         </DialogHeader>
         {/* Apple-style Header */}
         <div className="relative px-3 sm:px-6 pt-0 sm:pt-3 lg:pt-4 pb-0 sm:pb-2 lg:pb-3 flex-shrink-0">
-          <button
-            onClick={onClose}
-            className="button-base button-action-secondary absolute right-3 sm:right-6 top-0 sm:top-3 lg:top-4 w-6 h-6 sm:w-8 sm:h-8 rounded-full"
-          >
-            <X className="w-4 h-4 text-gray-500" />
-          </button>
+          <div className="absolute right-3 sm:right-6 top-0 sm:top-3 lg:top-4 flex items-center gap-2">
+            {/* 수정요청 버튼 - 모든 탭에서 표시 */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                if (!purchase) return
+                
+                const confirmMessage = `발주번호: ${purchase.purchase_order_number}\n\n수정요청을 등록하시겠습니까?`
+                if (!window.confirm(confirmMessage)) return
+                
+                try {
+                  const result = await supportService.createInquiry({
+                    inquiry_type: 'modify',
+                    subject: `[수정요청] ${purchase.purchase_order_number}`,
+                    message: `발주번호 ${purchase.purchase_order_number}에 대한 수정요청입니다.`,
+                    purchase_order_number: purchase.purchase_order_number,
+                    purchase_request_id: typeof purchase.id === 'string' ? Number(purchase.id) : purchase.id
+                  })
+                  
+                  if (result.success) {
+                    toast.success('수정요청이 등록되었습니다.')
+                  } else {
+                    toast.error(result.error || '수정요청 등록에 실패했습니다.')
+                  }
+                } catch (error) {
+                  logger.error('수정요청 등록 오류', error)
+                  toast.error('수정요청 등록 중 오류가 발생했습니다.')
+                }
+              }}
+              className="button-base text-xs px-2 py-1"
+            >
+              수정요청
+            </Button>
+            <button
+              onClick={onClose}
+              className="button-base button-action-secondary w-6 h-6 sm:w-8 sm:h-8 rounded-full"
+            >
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
+          </div>
           
-          <div className="pr-8 sm:pr-16">
+          <div className="pr-24 sm:pr-32">
             <div className="flex items-start gap-4 mb-0 sm:mb-3">
               <div className="min-w-0 flex-1">
                 <h1 className="page-title mb-0 sm:mb-1">
