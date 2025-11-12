@@ -51,7 +51,7 @@ export default function PurchaseNewMain() {
         
         
         if (data && !error && data.length > 0) {
-          setEmployees(data.map(dbEmp => ({
+          setEmployees(data.map((dbEmp: any) => ({
             id: dbEmp.id,
             name: dbEmp.name,
             email: dbEmp.email || '',
@@ -62,7 +62,7 @@ export default function PurchaseNewMain() {
           })));
           
           // 이미 설정된 employeeName이 있고 employees 배열에 해당 직원이 있는지 확인
-          if (employeeName && !data.find(emp => emp.name === employeeName)) {
+          if (employeeName && !data.find((emp: any) => emp.name === employeeName)) {
             // 현재 사용자를 employees 배열에 추가
             const currentUser = {
               id: user?.id || 'current-user',
@@ -73,7 +73,7 @@ export default function PurchaseNewMain() {
               position: '',
               department: ''
             };
-            setEmployees([...data.map(dbEmp => ({
+            setEmployees([...data.map((dbEmp: any) => ({
               id: dbEmp.id,
               name: dbEmp.name,
               email: dbEmp.email || '',

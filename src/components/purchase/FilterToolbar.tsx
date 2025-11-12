@@ -60,6 +60,7 @@ interface FilterToolbarProps {
   availableVendors?: string[]
   availableContacts?: string[]
   availablePaymentSchedules?: string[]
+  children?: React.ReactNode // 칼럼 설정 버튼 등 추가 요소
 }
 
 // 필터 항목 정의
@@ -291,7 +292,8 @@ export default function FilterToolbar({
   availableEmployees = [],
   availableVendors = [],
   availableContacts = [],
-  availablePaymentSchedules = []
+  availablePaymentSchedules = [],
+  children
 }: FilterToolbarProps) {
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [isSortOpen, setIsSortOpen] = useState(false)
@@ -1232,6 +1234,11 @@ export default function FilterToolbar({
           >
             ↻ <span className="button-text text-blue-600">초기화</span>
           </Button>
+        </div>
+
+        {/* 우측 끝 - 칼럼 설정 버튼 등 */}
+        <div className="flex items-center gap-2">
+          {children}
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 import { memo, useMemo, useState, useCallback, useEffect } from "react";
 import PurchaseDetailModal from "./PurchaseDetailModal";
 import MobilePurchaseCard from "./MobilePurchaseCard";
+import VirtualScrollTable from "./VirtualScrollTable";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs/generatePurchaseOrderExcel";
@@ -188,9 +189,12 @@ const PaymentProgressBar = memo(({ purchase, activeTab }: { purchase: Purchase; 
   // 메모리에서 최신 데이터 조회 (실시간 업데이트 보장)
   const memoryPurchase = allPurchases?.find(p => p.id === purchase.id) || purchase;
 
-  // 전체항목 탭에서 결제종류가 '구매 요청'이 아닌 건들은 "-" 표시
+  // 전체항목 탭에서 선진행인 경우에만 "-" 표시 (승인 상태와 무관하게 구매진행 표시)
   if (activeTab === 'done') {
-    if (memoryPurchase.payment_category !== '구매 요청') {
+    const isAdvancePayment = memoryPurchase.payment_category === '선진행' || memoryPurchase.payment_category?.includes('선진행');
+    
+    // 선진행인 경우에만 "-" 표시
+    if (isAdvancePayment) {
       return (
         <div className="flex items-center justify-center">
           <span className="card-title text-gray-500">-</span>
@@ -237,6 +241,7 @@ const PaymentProgressBar = memo(({ purchase, activeTab }: { purchase: Purchase; 
     item.is_payment_completed === true
   ).length;
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+  
 
   return (
     <div className="flex items-center justify-center gap-1">
@@ -399,16 +404,10 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       className={`border-b hover:bg-gray-100 cursor-pointer transition-colors ${isAdvance ? 'bg-red-50 hover:bg-red-100' : ''}`}
       onClick={() => onClick(purchase)}
     >
-      {/* 승인대기 탭에서는 승인상태를 맨 앞에 표시 */}
-      {activeTab === 'pending' && (
+      {/* 승인대기/구매현황 탭에서는 승인상태를 맨 앞에 표시 */}
+      {(activeTab === 'pending' || activeTab === 'purchase') && (
         <td className={`px-2 py-1.5 whitespace-nowrap ${COMMON_COLUMN_CLASSES.approvalStatus}`}>
           <ApprovalStatusBadge purchase={purchase} />
-        </td>
-      )}
-      {/* 구매현황 탭에서는 구매완료 진행률만 표시 */}
-      {activeTab === 'purchase' && isVisible('purchase_progress') && (
-        <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receiptProgress}`}>
-          <PaymentProgressBar purchase={purchase} activeTab={activeTab} />
         </td>
       )}
       {/* 입고현황 탭에서는 입고진행을 맨 앞에 표시 */}
@@ -604,13 +603,30 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       )}
       
       {/* 탭별 다른 칼럼 표시 */}
-      {activeTab === 'pending' && (
+      {(activeTab === 'pending' || activeTab === 'purchase') && (
         <>
           {isVisible('remark') && (
             <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
               <span className="block truncate" title={purchase.purchase_request_items?.[0]?.remark || ''}>
                 {purchase.purchase_request_items?.[0]?.remark || '-'}
               </span>
+            </td>
+          )}
+          {activeTab === 'purchase' && isVisible('link') && (
+            <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.link}`}>
+              {purchase.purchase_request_items?.[0]?.link ? (
+                <a 
+                  href={purchase.purchase_request_items?.[0]?.link} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="text-blue-600 hover:text-blue-800 underline truncate block"
+                  title={purchase.purchase_request_items?.[0]?.link}
+                >
+                  링크 보기
+                </a>
+              ) : (
+                <span className="text-gray-400">-</span>
+              )}
             </td>
           )}
           {isVisible('project_vendor') && (
@@ -637,34 +653,6 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
         </>
       )}
       
-      {activeTab === 'purchase' && (
-        <>
-          {isVisible('remark') && (
-            <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.remark}`}>
-              <span className="block truncate" title={purchase.purchase_request_items?.[0]?.remark || ''}>
-                {purchase.purchase_request_items?.[0]?.remark || '-'}
-              </span>
-            </td>
-          )}
-          {isVisible('link') && (
-            <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.link}`}>
-              {purchase.purchase_request_items?.[0]?.link ? (
-                <a 
-                  href={purchase.purchase_request_items?.[0]?.link} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
-                  className="text-blue-600 hover:text-blue-800 underline truncate block"
-                  title={purchase.purchase_request_items?.[0]?.link}
-                >
-                  링크 보기
-                </a>
-              ) : (
-                <span className="text-gray-400">-</span>
-              )}
-            </td>
-          )}
-        </>
-      )}
       
       {activeTab === 'receipt' && (
         <>
@@ -752,7 +740,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
             </td>
           )}
           {/* 구매진행 칼럼 */}
-          {isVisible('purchase_progress') && (
+          {isVisible('purchase_progress') && activeTab !== 'purchase' && (
             <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.status}`}>
               <PaymentProgressBar purchase={purchase} activeTab={activeTab} />
             </td>
@@ -1128,7 +1116,7 @@ const FastPurchaseTable = ({
 
   // 탭별 테이블 헤더 메모화
   const tableHeader = useMemo(() => {
-    if (activeTab === 'pending') {
+    if (activeTab === 'pending' || activeTab === 'purchase') {
       return (
         <thead className="bg-gray-50">
           <tr>
@@ -1149,9 +1137,9 @@ const FastPurchaseTable = ({
               <th 
                 className="px-2 py-1.5 modal-label text-gray-900 text-left vendor-dynamic-column"
                 style={{ 
-                  width: `${vendorColumnWidth || 80}px !important`, 
-                  minWidth: `${vendorColumnWidth || 80}px !important`, 
-                  maxWidth: `${vendorColumnWidth || 80}px !important` 
+                  width: `${vendorColumnWidth || 80}px`, 
+                  minWidth: `${vendorColumnWidth || 80}px`, 
+                  maxWidth: `${vendorColumnWidth || 80}px` 
                 }}
               >업체</th>
             )}
@@ -1178,6 +1166,9 @@ const FastPurchaseTable = ({
             )}
             {isColumnVisible('remark') && (
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
+            )}
+            {activeTab === 'purchase' && isColumnVisible('link') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.link}`}>링크</th>
             )}
             {isColumnVisible('project_vendor') && (
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
@@ -1187,67 +1178,6 @@ const FastPurchaseTable = ({
             )}
             {isColumnVisible('sales_order_number') && (
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
-            )}
-          </tr>
-        </thead>
-      );
-    }
-    
-    if (activeTab === 'purchase') {
-      return (
-        <thead className="bg-gray-50">
-          <tr>
-            {isColumnVisible('purchase_progress') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>구매진행</th>
-            )}
-            {isColumnVisible('purchase_order_number') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
-            )}
-            {isColumnVisible('payment_category') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
-            )}
-            {isColumnVisible('requester_name') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
-            )}
-            {isColumnVisible('request_date') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
-            )}
-            {isColumnVisible('vendor_name') && (
-              <th 
-                className="px-2 py-1.5 modal-label text-gray-900 text-left vendor-dynamic-column"
-                style={{ 
-                  width: `${vendorColumnWidth || 80}px !important`, 
-                  minWidth: `${vendorColumnWidth || 80}px !important`, 
-                  maxWidth: `${vendorColumnWidth || 80}px !important` 
-                }}
-              >업체</th>
-            )}
-            {isColumnVisible('contact_name') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
-            )}
-            {isColumnVisible('delivery_request_date') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
-            )}
-            {isColumnVisible('item_name') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.itemName}`}>품명</th>
-            )}
-            {isColumnVisible('specification') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
-            )}
-            {isColumnVisible('quantity') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>요청수량</th>
-            )}
-            {isColumnVisible('unit_price') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
-            )}
-            {isColumnVisible('amount') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
-            )}
-            {isColumnVisible('remark') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
-            )}
-            {isColumnVisible('link') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.link}`}>링크</th>
             )}
           </tr>
         </thead>
@@ -1320,18 +1250,7 @@ const FastPurchaseTable = ({
 
     let additionalHeaders = null;
     
-    if (activeTab === 'purchase') {
-      additionalHeaders = (
-        <>
-          {isColumnVisible('remark') && (
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
-          )}
-          {isColumnVisible('link') && (
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.link}`}>링크</th>
-          )}
-        </>
-      );
-    } else if (activeTab === 'receipt') {
+    if (activeTab === 'receipt') {
       additionalHeaders = (
         <>
           {isColumnVisible('remark') && (
@@ -1348,8 +1267,8 @@ const FastPurchaseTable = ({
           )}
         </>
       );
-    } else {
-      // done 또는 기본
+    } else if (activeTab === 'done') {
+      // 전체항목 탭
       additionalHeaders = (
         <>
           {isColumnVisible('remark') && (
@@ -1380,10 +1299,6 @@ const FastPurchaseTable = ({
     return (
       <thead className="bg-gray-50">
         <tr>
-          {/* 구매현황 탭에서는 구매완료 진행률을 맨 앞에 */}
-          {activeTab === 'purchase' && isColumnVisible('purchase_progress') && (
-            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>구매진행</th>
-          )}
           {/* 입고현황 탭에서는 입고진행을 맨 앞에 */}
           {activeTab === 'receipt' && isColumnVisible('receipt_progress') && (
             <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>입고진행</th>
@@ -1404,36 +1319,59 @@ const FastPurchaseTable = ({
     if (!columnVisibility) return false;
     const hasHidden = Object.values(columnVisibility).some(visible => !visible);
     if (!hasHidden) return false;
-    if (activeTab === 'purchase') return false;
     return true;
-  }, [columnVisibility, activeTab]);
+  }, [columnVisibility]);
+
+  // 가상 스크롤 사용 여부 결정 (100개 이상 항목일 때)
+  const shouldUseVirtualScroll = useMemo(() => {
+    return purchases.length >= 100;
+  }, [purchases.length]);
 
   return (
     <>
       {/* 데스크톱 테이블 뷰 - 실제 데이터 1,979건 분석 기반 최적 너비 */}
       <div className={`hidden md:block ${shouldUseFitLayout ? 'w-fit' : 'w-full'}`}>
         
-        <div className={shouldUseFitLayout ? 'table-container-fit-left' : 'overflow-x-auto border rounded-lg'}>
-          <table className={shouldUseFitLayout ? 'table-fit-left' : 'w-full min-w-[1790px] border-collapse'}>
-            {tableHeader}
-            <tbody>
-              {purchases.map((purchase) => (
-                <TableRow 
-                  key={purchase.id} 
-                  purchase={purchase} 
-                  onClick={handleRowClick}
-                  activeTab={activeTab}
-                  isLeadBuyer={isLeadBuyer}
-                  onPaymentComplete={onPaymentComplete}
-                  onReceiptComplete={onReceiptComplete}
-                  onExcelDownload={handleExcelDownload}
-                  vendorColumnWidth={vendorColumnWidth}
-                  columnVisibility={columnVisibility}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
+{shouldUseVirtualScroll ? (
+          // 진짜 가상 스크롤 테이블 (100개 이상 항목) - DOM 노드 대폭 감소
+          <VirtualScrollTable
+            purchases={purchases}
+            activeTab={activeTab}
+            onRowClick={handleRowClick}
+            isLeadBuyer={isLeadBuyer}
+            onPaymentComplete={onPaymentComplete}
+            onReceiptComplete={onReceiptComplete}
+            onExcelDownload={handleExcelDownload}
+            columnVisibility={columnVisibility}
+            vendorColumnWidth={vendorColumnWidth}
+            tableHeader={tableHeader}
+            TableRowComponent={TableRow}
+            shouldUseFitLayout={shouldUseFitLayout}
+          />
+        ) : (
+          // 기존 테이블 (100개 미만 항목)
+          <div className={shouldUseFitLayout ? 'table-container-fit-left' : 'overflow-x-auto border rounded-lg'}>
+            <table className={shouldUseFitLayout ? 'table-fit-left' : 'w-full min-w-[1790px] border-collapse'}>
+              {tableHeader}
+              <tbody>
+                {purchases.map((purchase) => (
+                  <TableRow 
+                    key={purchase.id} 
+                    purchase={purchase} 
+                    onClick={handleRowClick}
+                    activeTab={activeTab}
+                    isLeadBuyer={isLeadBuyer}
+                    onPaymentComplete={onPaymentComplete}
+                    onReceiptComplete={onReceiptComplete}
+                    onExcelDownload={handleExcelDownload}
+                    vendorColumnWidth={vendorColumnWidth}
+                    columnVisibility={columnVisibility}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
       
       {/* 태블릿 컴팩트 뷰 */}

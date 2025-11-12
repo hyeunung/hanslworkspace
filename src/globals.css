@@ -754,13 +754,21 @@
 }
 
 /* 업체 칼럼 동적 너비 - 인라인 스타일 우선 */
-.vendor-dynamic-column[style],
-th.vendor-dynamic-column[style],
-td.vendor-dynamic-column[style] {
-  /* 인라인 스타일이 있을 때만 적용 - CSS 초기화 */
-  width: initial !important;
-  min-width: initial !important;
-  max-width: initial !important;
+.vendor-dynamic-column,
+th.vendor-dynamic-column,
+td.vendor-dynamic-column {
+  /* 고정 너비 클래스 오버라이드 */
+  width: auto !important;
+  min-width: auto !important;
+  max-width: none !important;
+}
+
+/* table-fit-left에서도 동일하게 적용 */
+.table-fit-left th.vendor-dynamic-column,
+.table-fit-left td.vendor-dynamic-column {
+  width: auto !important;
+  min-width: auto !important;
+  max-width: none !important;
 }
 
 .column-required::after {
@@ -871,4 +879,104 @@ input[type="number"] {
     width: 0%;
     margin-left: 100%;
   }
+}
+
+/* Virtual Scroll Table Styles */
+.virtual-scroll-container {
+  @apply w-full;
+}
+
+.virtual-scroll-header {
+  @apply bg-gray-50 border-b border-gray-200;
+}
+
+.virtual-scroll-body {
+  /* 스크롤 성능 최적화 */
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: auto; /* smooth는 가상스크롤에서 문제 발생 가능 */
+  contain: layout style paint;
+  /* 스크롤바 스타일링 */
+}
+
+.virtual-scroll-body::-webkit-scrollbar {
+  width: 12px;
+}
+
+.virtual-scroll-body::-webkit-scrollbar-track {
+  @apply bg-gray-100;
+}
+
+.virtual-scroll-body::-webkit-scrollbar-thumb {
+  @apply bg-gray-400 rounded-lg;
+  transition: background-color 0.2s ease;
+}
+
+.virtual-scroll-body::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-500;
+}
+
+/* 가상 스크롤 행 최적화 */
+.virtual-scroll-row {
+  /* GPU 가속을 위한 transform 사용 */
+  transform: translateZ(0);
+  /* Repaint 최적화 */
+  contain: layout style paint;
+}
+
+/* 가상 스크롤 칼럼 정렬 최적화 */
+.virtual-scroll-body table {
+  /* 헤더와 동일한 테이블 레이아웃 보장 */
+  table-layout: fixed !important;
+  width: 100% !important;
+}
+
+/* 가상 스크롤에서 칼럼 너비 일치 강제 */
+.virtual-scroll-body .vendor-dynamic-column {
+  /* 인라인 스타일과 동일하게 강제 적용 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 가상 스크롤 sticky 헤더 최적화 */
+.virtual-scroll-body > div:first-child {
+  /* sticky 헤더가 스크롤에 영향받지 않도록 */
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 10 !important;
+  background-color: white !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* 가상 스크롤 전용 고정 행 높이 - 기존 커밋과 동일한 자연스러운 높이 */
+.virtual-scroll-table tr {
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+}
+
+.virtual-scroll-table td {
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  vertical-align: middle !important;
+  overflow: hidden !important;
+  /* 패딩은 기존 클래스 그대로 사용 - px-2 py-1.5 */
+}
+
+/* 가상 스크롤 내 flex 컴포넌트 높이만 제한, 기존과 비슷하게 */
+.virtual-scroll-table .flex.flex-col {
+  height: 24px !important;
+  min-height: 24px !important;
+  max-height: 24px !important;
+  justify-content: center !important;
+  /* gap은 원래대로 유지 */
+}
+
+/* 가상 스크롤에서 텍스트 오버플로 처리만 */
+.virtual-scroll-table .truncate,
+.virtual-scroll-table .block.truncate {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
 }

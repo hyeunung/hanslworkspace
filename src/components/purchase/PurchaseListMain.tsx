@@ -437,7 +437,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   }, []);
 
 
-  // 메모리 기반 필터링 - 60일 제한 적용
+  // 메모리 기반 필터링 - 60일 제한 적용 (가상 스크롤 사용시 제외)
   const baseFilteredPurchases = useMemo(() => {
     const hasAnyFilter = activeFilters.length > 0 || searchTerm.trim() !== '' || 
                         (selectedEmployee && selectedEmployee !== 'all' && selectedEmployee !== '전체');
@@ -445,8 +445,11 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     let dateStart: string | undefined;
     let dateEnd: string | undefined;
     
-    // 필터가 없으면 최근 60일만 (모든 권한에서 적용)
-    if (!hasAnyFilter) {
+    // 가상 스크롤 사용 여부 확인 (purchases 길이 기준)
+    const shouldUseVirtualScroll = purchases.length >= 100;
+    
+    // 필터가 없고 가상 스크롤을 사용하지 않을 때만 최근 60일 제한
+    if (!hasAnyFilter && !shouldUseVirtualScroll) {
       const sixtyDaysAgo = new Date();
       sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
       dateStart = sixtyDaysAgo.toISOString().split('T')[0];
@@ -873,18 +876,8 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
           availableVendors={availableVendors}
           availableContacts={availableContacts}
           availablePaymentSchedules={availablePaymentSchedules}
-        />
-        {/* 필터가 없을 때만 표시되는 안내 메시지와 칼럼 설정 버튼 */}
-        <div className="mt-2 flex items-center justify-between">
-          {activeFilters.length === 0 && !searchTerm.trim() ? (
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <Info className="w-3.5 h-3.5" />
-              <span>최근 60일 데이터만 표시됩니다. 더 오래된 데이터를 보려면 필터를 적용해주세요.</span>
-            </div>
-          ) : (
-            <div></div>
-          )}
-          {/* 칼럼 설정 버튼 - 60일 메시지 오른쪽 */}
+        >
+          {/* 칼럼 설정 버튼을 필터 툴바와 같은 행에 배치 */}
           <ColumnSettingsDropdown 
             isVisible={true} 
             columnVisibility={columnVisibility}
@@ -892,7 +885,15 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
             resetToDefault={resetToDefault}
             isLoading={isColumnLoading}
           />
-        </div>
+        </FilterToolbar>
+        
+        {/* 필터가 없고 가상 스크롤을 사용하지 않을 때만 표시되는 안내 메시지 */}
+        {activeFilters.length === 0 && !searchTerm.trim() && baseFilteredPurchases.length < 100 && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+            <Info className="w-3.5 h-3.5" />
+            <span>최근 60일 데이터만 표시됩니다. 더 오래된 데이터를 보려면 필터를 적용해주세요.</span>
+          </div>
+        )}
       </div>
 
       {/* 직접 구현한 탭 (hanslwebapp 방식) - 빠른 성능 */}
