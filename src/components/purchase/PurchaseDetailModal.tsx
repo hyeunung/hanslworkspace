@@ -232,6 +232,9 @@ function PurchaseDetailModal({
   const canReceiptCheck = effectiveRoles.includes('app_admin') || 
                          effectiveRoles.includes('lead buyer')
   
+  // 입고 처리 권한: app_admin 또는 본인이 요청한 건
+  const canProcessReceipt = effectiveRoles.includes('app_admin') || isRequester
+  
 
   // 모달 내부 데이터만 새로고침하는 함수 (모달 닫지 않음)
   const refreshModalData = useCallback(async () => {
@@ -681,7 +684,7 @@ function PurchaseDetailModal({
       waitingText: '입고대기'
     },
     currentUserName,
-    canPerformAction: canReceiptCheck,
+    canPerformAction: canProcessReceipt,
     purchaseId: purchase?.id,
     onUpdate: refreshModalData,
     onOptimisticUpdate: handleActualReceiptOptimisticUpdate
@@ -1606,7 +1609,7 @@ function PurchaseDetailModal({
 
   // 입고완료 취소 처리
   const handleReceiptCancel = async (itemId: number | string) => {
-    if (!canReceiptCheck) {
+    if (!canProcessReceipt) {
       toast.error('입고 처리 권한이 없습니다.')
       return
     }
@@ -3517,7 +3520,7 @@ function PurchaseDetailModal({
                                       
                                       {activeTab === 'receipt' && (
                                         <>
-                                          {canReceiptCheck ? (
+                                          {canProcessReceipt ? (
                                             actualReceivedAction.isCompleted(item) ? (
                                               <button
                                                 onClick={() => {
