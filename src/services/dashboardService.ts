@@ -445,18 +445,27 @@ export class DashboardService {
   // 내 구매/입고 상태 확인 - JOIN 쿼리로 최적화됨
   async getMyPurchaseStatus(employee: Employee): Promise<{ waitingPurchase: PurchaseRequestWithDetails[], waitingDelivery: PurchaseRequestWithDetails[], recentCompleted: PurchaseRequestWithDetails[] }> {
     
+    const roles = this.parseRoles(employee.purchase_role)
+    const isLeadBuyer = roles.includes('lead buyer') || roles.includes('app_admin')
+    
     // name이 없으면 email 사용
     const requesterName = employee.name || employee.email
     
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
     // ✅ JOIN을 사용하여 한 번의 쿼리로 모든 관련 데이터 조회
-    const myRequests = await this.supabase
+    // lead buyer 또는 app_admin은 모든 항목 조회, 그 외는 본인 것만
+    let query = this.supabase
       .from('purchase_requests')
       .select('*,vendors(vendor_name),purchase_request_items(item_name,quantity,specification,amount_value)')
-      .eq('requester_name', requesterName)
       .order('created_at', { ascending: false })
-      .limit(100)
+      .limit(500)  // 충분한 개수로 증가
+    
+    if (!isLeadBuyer) {
+      query = query.eq('requester_name', requesterName)
+    }
+    
+    const myRequests = await query
 
     if (myRequests.error) {
       logger.error('getMyPurchaseStatus 에러', myRequests.error)
@@ -473,15 +482,18 @@ export class DashboardService {
     // 클라이언트 사이드 필터링 (PurchaseListMain 구매/입고 탭과 동일한 로직)
     
     const waitingPurchase = allMyRequests.filter((item: any) => {
-      // 구매 대기: 구매/발주 요청 카테고리 + 결제 미완료 + 선진행(승인무관) OR 일반&최종승인
+      // 구매 대기: 구매 요청 + 결제 미완료 + (선진행이거나 최종승인완료)
       const category = (item.payment_category || '').trim()
       const isPurchaseRequest = category === '구매 요청'
       const notPaid = !item.is_payment_completed
+      
+      // 구매 요청이 아니거나 이미 결제 완료된 것은 제외
+      if (!isPurchaseRequest || !notPaid) return false
+      
       const isSeonJin = (item.progress_type || '').includes('선진행')
       
-      
       // 선진행은 승인 상태와 무관하게 구매 대기
-      if (isPurchaseRequest && notPaid && isSeonJin) {
+      if (isSeonJin) {
         return true
       }
       
@@ -489,8 +501,8 @@ export class DashboardService {
       const isIlban = (item.progress_type || '').includes('일반') || !item.progress_type || item.progress_type === ''
       const finalApproved = item.final_manager_status === 'approved'
       
-      return isPurchaseRequest && notPaid && isIlban && finalApproved
-    }).slice(0, 10)
+      return isIlban && finalApproved
+    })
 
 
     const waitingDelivery = allMyRequests.filter((item: any) => {
@@ -507,7 +519,7 @@ export class DashboardService {
       const finalApproved = item.final_manager_status === 'approved'
       
       return notReceived && finalApproved
-    }).slice(0, 10)
+    })
 
 
     const recentCompleted = allMyRequests.filter((item: any) => {
@@ -517,7 +529,7 @@ export class DashboardService {
       const receivedDate = new Date(item.received_at)
       const sevenDaysAgoDate = new Date(sevenDaysAgo)
       return receivedDate >= sevenDaysAgoDate
-    }).slice(0, 10)
+    })
 
 
     return {
@@ -806,7 +818,7 @@ export class DashboardService {
       }
 
       // 클라이언트 사이드에서 조건에 맞는 것만 필터링
-      // 조건: 선진행이거나 최종승인완료인 것만 (더 포괄적 조건)
+      // 조건: 구매요청 + 미결제 + (선진행이거나 최종승인완료)
       const filteredData = (data || []).filter((item: any) => {
         // is_po_download가 true인 것은 제외 (안전장치)
         if (item.is_po_download === true) return false
@@ -815,6 +827,14 @@ export class DashboardService {
         if (item.middle_manager_status === 'rejected' || item.final_manager_status === 'rejected') {
           return false
         }
+        
+        // 구매 요청인지 확인
+        const category = (item.payment_category || '').trim()
+        const isPurchaseRequest = category === '구매 요청'
+        if (!isPurchaseRequest) return false
+        
+        // 이미 결제 완료된 것은 제외 (발주서는 결제 전에 다운로드)
+        if (item.is_payment_completed) return false
         
         // 1) 선진행: 승인 상태와 관계없이 포함
         const isAdvance = (item.progress_type || '').includes('선진행')

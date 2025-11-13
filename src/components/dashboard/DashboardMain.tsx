@@ -610,7 +610,7 @@ export default function DashboardMain() {
                     
                     {/* 항목 리스트 */}
                     <div className="space-y-2 h-[36rem] overflow-y-auto">
-                      {filterItems(data.myPurchaseStatus.waitingPurchase, searchTerms.purchase).slice(0, 10).map((item) => {
+                      {filterItems(data.myPurchaseStatus.waitingPurchase, searchTerms.purchase).map((item) => {
                         const items = item.purchase_request_items || []
                         const firstItem = items[0]
                         const totalAmount = items.reduce((sum: number, i: any) => sum + (Number(i.amount_value) || 0), 0)
