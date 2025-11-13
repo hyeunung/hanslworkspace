@@ -19,7 +19,7 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Purchase } from "@/types/purchase";
 import { hasManagerRole, getRoleCase, filterByEmployeeVisibility } from "@/utils/roleHelper";
-import { filterByEmployee, sortPurchases } from "@/utils/purchaseFilters";
+import { filterByEmployee, sortPurchases, calculateTabCounts } from "@/utils/purchaseFilters";
 import { logger } from "@/lib/logger";
 
 interface PurchaseListMainProps {
