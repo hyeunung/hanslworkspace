@@ -108,6 +108,9 @@ export default function DashboardMain() {
 
     setActionLoading(requestId)
     
+    // UI 블로킹 방지를 위해 다음 틱으로 지연
+    await new Promise(resolve => setTimeout(resolve, 0))
+    
     // Optimistic Update: 즉시 UI에서 제거
     const originalData = data
     setData(prev => {
@@ -173,6 +176,9 @@ export default function DashboardMain() {
   const handleDownloadExcel = async (purchase: any) => {
     try {
       setDownloadingIds(prev => new Set(prev).add(purchase.id))
+      
+      // UI 블로킹 방지를 위해 다음 틱으로 지연
+      await new Promise(resolve => setTimeout(resolve, 0))
       
       // Excel 파일 생성 (FastPurchaseTable과 동일한 로직)
       const workbook = new ExcelJS.Workbook()
@@ -418,9 +424,9 @@ export default function DashboardMain() {
                                 size="sm"
                                 variant="outline"
                                 className="h-7 px-2 badge-text border-orange-200 hover:bg-orange-50"
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                   e.stopPropagation()
-                                  handleDownloadExcel(item)
+                                  await handleDownloadExcel(item)
                                 }}
                                 disabled={downloadingIds.has(item.id)}
                               >
@@ -531,9 +537,9 @@ export default function DashboardMain() {
                               </div>
                               <Button
                                 size="sm"
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                   e.stopPropagation()
-                                  handleQuickApprove(approval.id)
+                                  await handleQuickApprove(approval.id)
                                 }}
                                 disabled={actionLoading === approval.id}
                                 className={`h-7 px-2 text-white badge-text shrink-0 ${
@@ -643,6 +649,9 @@ export default function DashboardMain() {
                                   onClick={async (e) => {
                                     e.stopPropagation()
                                     if (!confirm('이 발주를 구매완료 처리하시겠습니까?')) return
+                                    
+                                    // UI 블로킹 방지를 위해 다음 틱으로 지연
+                                    await new Promise(resolve => setTimeout(resolve, 0))
                                     
                                     try {
                                       const { error } = await supabase

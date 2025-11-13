@@ -474,9 +474,8 @@ export class DashboardService {
     
     const waitingPurchase = allMyRequests.filter((item: any) => {
       // 구매 대기: 구매/발주 요청 카테고리 + 결제 미완료 + 선진행(승인무관) OR 일반&최종승인
-      // payment_category를 trim()하여 공백 처리 및 대소문자 무시
-      const categoryNormalized = (item.payment_category || '').trim().replace(/\s+/g, '')
-      const isPurchaseRequest = ['구매요청', '발주요청'].includes(categoryNormalized)
+      const category = (item.payment_category || '').trim()
+      const isPurchaseRequest = category === '구매 요청'
       const notPaid = !item.is_payment_completed
       const isSeonJin = (item.progress_type || '').includes('선진행')
       
