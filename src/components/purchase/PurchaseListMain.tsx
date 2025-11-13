@@ -606,9 +606,9 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         {
           id: purchase.id,
           purchase_order_number: purchase.purchase_order_number,
-          vendor_name: purchase.vendor_name,
-          vendor_id: purchase.vendor_id,
-          contact_id: purchase.contact_id
+          vendor_name: purchase.vendor_name || '',
+          vendor_id: purchase.vendor_id?.toString(),
+          contact_id: purchase.contact_id?.toString()
         },
         currentUserRoles,
         () => {
