@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { dashboardService } from '@/services/dashboardService'
 import { createClient } from '@/lib/supabase/client'
@@ -10,8 +10,8 @@ import { Input } from '@/components/ui/input'
 import { Clock, CheckCircle, ArrowRight, X, Package, Truck, ShoppingCart, Download, Search } from 'lucide-react'
 import ExcelJS from 'exceljs'
 
-// Lazy load modal for better performance
-const PurchaseItemsModal = lazy(() => import('@/components/purchase/PurchaseItemsModal'))
+// 모든 카드에서 사용하는 모달 (activeTab에 따라 다른 내용 표시)
+import PurchaseDetailModal from '@/components/purchase/PurchaseDetailModal'
 
 import { toast } from 'sonner'
 import type { DashboardData, Purchase } from '@/types/purchase'
@@ -28,10 +28,10 @@ export default function DashboardMain() {
   
   const supabase = createClient()
   
-  // 통일된 상세 모달 상태
-  const [selectedPurchase, setSelectedPurchase] = useState<any>(null)
-  const [isItemsModalOpen, setIsItemsModalOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<'pending' | 'purchase' | 'receipt' | 'done'>('done')
+  // PurchaseDetailModal 상태 (모든 카드에서 사용)
+  const [selectedPurchaseId, setSelectedPurchaseId] = useState<number | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [modalActiveTab, setModalActiveTab] = useState<string>('pending') // 모달의 activeTab 값
   
   // 검색 상태
   const [searchTerms, setSearchTerms] = useState({
@@ -153,11 +153,11 @@ export default function DashboardMain() {
     }
   }
 
-  // 모달 열기 헬퍼 함수
-  const openPurchaseModal = (item: any, tab: 'pending' | 'purchase' | 'receipt' | 'done') => {
-    setSelectedPurchase(item)
-    setActiveTab(tab)
-    setIsItemsModalOpen(true)
+  // 모달 열기 헬퍼 함수 (PurchaseDetailModal 사용, activeTab 전달)
+  const openPurchaseModal = (item: any, activeTab: string = 'pending') => {
+    setSelectedPurchaseId(Number(item.id))
+    setModalActiveTab(activeTab)
+    setIsModalOpen(true)
   }
 
   // 검색 필터링 함수
@@ -320,20 +320,9 @@ export default function DashboardMain() {
       <div className="w-full px-4 lg:px-6">
         {/* 헤더 */}
         <div className="mb-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="page-title">대시보드</h1>
-              <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Dashboard</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="badge-stats border border-gray-300 bg-white text-gray-600">
-                {new Date().toLocaleDateString('ko-KR', { 
-                  month: 'long', 
-                  day: 'numeric',
-                  weekday: 'short'
-                })}
-              </span>
-            </div>
+          <div>
+            <h1 className="page-title">대시보드</h1>
+            <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Dashboard</p>
           </div>
         </div>
 
@@ -342,19 +331,26 @@ export default function DashboardMain() {
           <h2 className="section-title mb-2 flex items-center gap-1.5">
             <Package className="w-3.5 h-3.5 text-gray-600" />
             전체 현황
+            <span className="badge-stats border border-gray-300 bg-white text-gray-600 ml-2">
+              {new Date().toLocaleDateString('ko-KR', { 
+                month: 'long', 
+                day: 'numeric',
+                weekday: 'short'
+              })}
+            </span>
           </h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {/* Lead Buyer / App Admin - 미다운로드 발주서 */}
           {(currentUserRoles.includes('lead buyer') || currentUserRoles.includes('app_admin')) && (
             <Card className="w-full col-span-1 row-span-2 border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-              <CardHeader className="py-3 px-4 bg-gray-50 border-b">
-                <CardTitle className="section-title flex items-center justify-between">
+              <CardHeader className="h-12 px-4 bg-gray-50 border-b flex items-center">
+                <CardTitle className="section-title flex items-center justify-between w-full">
                   <div className="flex items-center gap-2">
                     <Download className="w-4 h-4 text-orange-600" />
                     <span>미다운로드 발주서</span>
                   </div>
-                  <span className="badge-stats bg-orange-100 text-orange-700">
+                  <span className="badge-stats bg-gray-200 text-gray-700">
                     {undownloadedOrders.length}
                   </span>
                 </CardTitle>
@@ -382,27 +378,20 @@ export default function DashboardMain() {
                       </div>
                     ) : (
                       filterItems(undownloadedOrders, searchTerms.undownloaded).map((item, index) => {
-                      const items = item.purchase_request_items || []
-                      const firstItem = items[0] || {}
-                      const totalAmount = items.reduce((sum: number, i: any) => {
-                        return sum + (Number(i.amount_value) || 0)
-                      }, 0)
-                      const totalQty = items.reduce((sum: number, i: any) => {
-                        return sum + (Number(i.quantity) || 0)
-                      }, 0)
-                      const daysSince = Math.floor((Date.now() - new Date(item.created_at).getTime()) / (1000 * 60 * 60 * 24))
-                      const isAdvance = item.progress_type === '선진행'
+                        const items = item.purchase_request_items || []
+                        const firstItem = items[0] || {}
+                        const isAdvance = item.progress_type === '선진행'
                       
                       return (
                         <div 
-                          key={item.id} 
-                          className={`border rounded-lg p-2 transition-all cursor-pointer hover:shadow-sm ${
-                            isAdvance ? 'bg-red-50 hover:bg-red-100 border-red-200' : 'bg-white hover:bg-gray-50 border-gray-200'
+                          key={`undownloaded-${item.id}`} 
+                          className={`border rounded-lg p-2 hover:shadow-sm transition-all cursor-pointer mb-2 ${
+                            isAdvance ? 'bg-red-50 border-red-200' : 'hover:bg-orange-50/30'
                           }`}
                           onClick={(e) => {
                             // 버튼 클릭은 무시
                             if ((e.target as HTMLElement).closest('button')) return
-                            openPurchaseModal(item, 'pending')
+                            openPurchaseModal(item, 'pending') // 미다운로드 발주서는 승인대기 탭과 동일
                           }}
                         >
                           <div className="flex items-center justify-between gap-2">
@@ -419,33 +408,21 @@ export default function DashboardMain() {
                                   <span className="text-gray-400"> 외 {items.length - 1}건</span>
                                 )}
                               </span>
-                              {daysSince > 3 && (
-                                <span className="badge-stats border border-gray-300 bg-white text-gray-600 flex-shrink-0">
-                                  {daysSince}일
-                                </span>
+                            </div>
+                            <Button
+                              className="button-base bg-gray-500 hover:bg-gray-600 text-white"
+                              onClick={async (e) => {
+                                e.stopPropagation()
+                                await handleDownloadExcel(item)
+                              }}
+                              disabled={downloadingIds.has(item.id)}
+                            >
+                              {downloadingIds.has(item.id) ? (
+                                <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                "다운로드"
                               )}
-                            </div>
-                            <div>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 px-2 badge-text border-orange-200 hover:bg-orange-50"
-                                onClick={async (e) => {
-                                  e.stopPropagation()
-                                  await handleDownloadExcel(item)
-                                }}
-                                disabled={downloadingIds.has(item.id)}
-                              >
-                                {downloadingIds.has(item.id) ? (
-                                  <div className="w-3 h-3 border border-orange-600 border-t-transparent rounded-full animate-spin" />
-                                ) : (
-                                  <>
-                                    <Download className="w-3 h-3 mr-1" />
-                                    다운로드
-                                  </>
-                                )}
-                              </Button>
-                            </div>
+                            </Button>
                           </div>
                         </div>
                       )
@@ -473,30 +450,20 @@ export default function DashboardMain() {
           {/* 승인 대기 (승인 권한자만 표시) */}
           {canSeeApprovalBox && (
             <Card className="w-full col-span-1 row-span-2">
-              <CardHeader className="pb-2 pt-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="section-title flex items-center gap-1.5">
+              <CardHeader className="h-12 px-4 bg-gray-50 border-b flex items-center">
+                <CardTitle className="section-title flex items-center justify-between w-full">
+                  <div className="flex items-center gap-2">
                     <Clock className="w-3.5 h-3.5 text-orange-500" />
-                    승인 대기
-                    {data.pendingApprovals.length > 0 && (
-                      <span className="badge-stats bg-red-500 text-white h-4 px-1">
-                        {data.pendingApprovals.length}
-                      </span>
-                    )}
-                  </CardTitle>
+                    <span>승인 대기</span>
+                  </div>
                   {data.pendingApprovals.length > 0 && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => navigate('/purchase')}
-                      className="h-6 px-2"
-                    >
-                      <ArrowRight className="w-3 h-3" />
-                    </Button>
+                    <span className="badge-stats bg-gray-200 text-gray-700">
+                      {data.pendingApprovals.length}
+                    </span>
                   )}
-                </div>
+                </CardTitle>
               </CardHeader>
-              <CardContent className="p-3">
+              <CardContent className="p-4">
                 {data.pendingApprovals.length === 0 ? (
                   <div className="text-center py-4 text-gray-400">
                     <CheckCircle className="w-6 h-6 mx-auto mb-1" />
@@ -516,7 +483,7 @@ export default function DashboardMain() {
                     </div>
                     
                     {/* 항목 리스트 */}
-                    <div style={{ maxHeight: '36rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                    <div className="space-y-2 h-[36rem] overflow-y-auto">
                       {filterItems(data.pendingApprovals, searchTerms.pending).slice(0, 10).map((approval, index) => {
                         const items = approval.purchase_request_items || []
                         const firstItem = items[0] || {}
@@ -526,14 +493,13 @@ export default function DashboardMain() {
                         return (
                           <div 
                             key={`approval-${approval.id}`} 
-                            className={`border rounded-lg p-2 hover:shadow-sm transition-all cursor-pointer mb-1.5 ${
+                            className={`border rounded-lg p-2 hover:shadow-sm transition-all cursor-pointer mb-2 ${
                               isAdvance ? 'bg-red-50 border-red-200' : 'hover:bg-orange-50/30'
                             }`}
-                            style={{ display: 'block' }}
                             onClick={(e) => {
                               // 버튼 클릭은 무시
                               if ((e.target as HTMLElement).closest('button')) return
-                              openPurchaseModal(approval, 'pending')
+                              openPurchaseModal(approval, 'pending') // 승인대기 탭
                             }}
                           >
                             <div className="flex items-center justify-between gap-2">
@@ -547,13 +513,12 @@ export default function DashboardMain() {
                                 </span>
                               </div>
                               <Button
-                                size="sm"
                                 onClick={async (e) => {
                                   e.stopPropagation()
                                   await handleQuickApprove(approval.id)
                                 }}
                                 disabled={actionLoading === approval.id}
-                                className={`h-7 px-2 text-white badge-text shrink-0 ${
+                                className={`button-base text-white ${
                                   approval.middle_manager_status === 'approved' 
                                     ? 'bg-blue-600 hover:bg-blue-700' 
                                     : 'bg-green-600 hover:bg-green-700'
@@ -582,14 +547,14 @@ export default function DashboardMain() {
           {/* 구매 대기중 - Lead Buyer와 App Admin만 표시 */}
           {(currentUserRoles.includes('lead buyer') || currentUserRoles.includes('app_admin')) && (
             <Card className="w-full col-span-1 border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-              <CardHeader className="py-3 px-4 bg-gray-50 border-b">
-                <CardTitle className="section-title flex items-center justify-between">
+              <CardHeader className="h-12 px-4 bg-gray-50 border-b flex items-center">
+                <CardTitle className="section-title flex items-center justify-between w-full">
                   <div className="flex items-center gap-2">
                     <ShoppingCart className="w-4 h-4 text-yellow-600" />
                     <span>구매 대기</span>
                   </div>
                   {data.myPurchaseStatus && data.myPurchaseStatus.waitingPurchase && data.myPurchaseStatus.waitingPurchase.length > 0 && (
-                    <span className="badge-stats bg-yellow-100 text-yellow-700">
+                    <span className="badge-stats bg-gray-200 text-gray-700">
                       {data.myPurchaseStatus.waitingPurchase.length}
                     </span>
                   )}
@@ -625,7 +590,7 @@ export default function DashboardMain() {
                         return (
                           <div 
                             key={item.id} 
-                            className={`border rounded-lg p-3 transition-all hover:shadow-sm ${
+                            className={`border rounded-lg p-2 transition-all hover:shadow-sm mb-2 ${
                               isSeonJin ? 'bg-red-50 hover:bg-red-100 border-red-200' : 'bg-white hover:bg-gray-50 border-gray-200'
                             }`}
                           >
@@ -635,7 +600,7 @@ export default function DashboardMain() {
                                 onClick={(e) => {
                                   // 버튼 클릭은 무시
                                   if ((e.target as HTMLElement).closest('button')) return
-                                  openPurchaseModal(item, 'purchase')
+                                  openPurchaseModal(item, 'purchase') // 구매현황 탭
                                 }}
                               >
                                 <span className="card-title">
@@ -656,7 +621,6 @@ export default function DashboardMain() {
                               {(currentUserRoles.includes('lead buyer') || 
                                 currentUserRoles.includes('app_admin')) && !item.is_payment_completed && (
                                 <Button
-                                  size="sm"
                                   onClick={async (e) => {
                                     e.stopPropagation()
                                     if (!confirm('이 발주를 구매완료 처리하시겠습니까?')) return
@@ -681,7 +645,7 @@ export default function DashboardMain() {
                                       toast.error('처리 중 오류가 발생했습니다.')
                                     }
                                   }}
-                                  className="bg-yellow-600 hover:bg-yellow-700 text-white h-7 px-2 badge-text shrink-0"
+                                  className="button-base bg-orange-500 hover:bg-orange-600 text-white"
                                 >
                                   구매완료
                                 </Button>
@@ -706,14 +670,14 @@ export default function DashboardMain() {
 
           {/* 입고 대기중 */}
           <Card className="w-full col-span-1 border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-              <CardHeader className="py-3 px-4 bg-gray-50 border-b">
-                <CardTitle className="section-title flex items-center justify-between">
+              <CardHeader className="h-12 px-4 bg-gray-50 border-b flex items-center">
+                <CardTitle className="section-title flex items-center justify-between w-full">
                   <div className="flex items-center gap-2">
                     <Truck className="w-4 h-4 text-blue-600" />
                     <span>입고 대기</span>
                   </div>
                   {data.myPurchaseStatus.waitingDelivery.length > 0 && (
-                    <span className="badge-stats bg-blue-100 text-blue-700">
+                    <span className="badge-stats bg-gray-200 text-gray-700">
                       {data.myPurchaseStatus.waitingDelivery.length}
                     </span>
                   )}
@@ -752,13 +716,13 @@ export default function DashboardMain() {
                         return (
                           <div 
                             key={item.id} 
-                            className={`border rounded-lg p-3 transition-all cursor-pointer hover:shadow-sm ${
+                            className={`border rounded-lg p-2 transition-all cursor-pointer hover:shadow-sm mb-2 ${
                               isSeonJin ? 'bg-red-50 hover:bg-red-100 border-red-200' : 'bg-white hover:bg-gray-50 border-gray-200'
                             }`}
                             onClick={(e) => {
                               // 버튼 클릭은 무시
                               if ((e.target as HTMLElement).closest('button')) return
-                              openPurchaseModal(item, 'receipt')
+                              openPurchaseModal(item, 'receipt') // 입고현황 탭
                             }}
                           >
                             <div className="flex items-center gap-2">
@@ -789,43 +753,28 @@ export default function DashboardMain() {
         {/* 오늘의 요약 - 상단 통계에 통합 */}
       </div>
       
-      {/* 통일된 상세보기 모달 */}
-      {selectedPurchase && (
-        <Suspense fallback={
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-          </div>
-        }>
-          <PurchaseItemsModal
-            isOpen={isItemsModalOpen}
-            onClose={() => {
-              setIsItemsModalOpen(false)
-              setSelectedPurchase(null)
-            }}
-            purchase={{
-              id: selectedPurchase.id,
-              purchase_order_number: selectedPurchase.purchase_order_number,
-              vendor_name: selectedPurchase.vendor_name || '',
-              requester_name: selectedPurchase.requester_name || '',
-              project_vendor: selectedPurchase.project_vendor || '',
-              sales_order_number: selectedPurchase.sales_order_number || '',
-              project_item: selectedPurchase.project_item || '',
-              request_date: selectedPurchase.request_date || selectedPurchase.created_at || new Date().toISOString(),
-              delivery_request_date: selectedPurchase.delivery_request_date,
-              revised_delivery_request_date: selectedPurchase.revised_delivery_request_date,
-              currency: selectedPurchase.currency || 'KRW',
-              payment_category: selectedPurchase.payment_category,
-              purchase_request_items: selectedPurchase.purchase_request_items || [],
-              total_amount: selectedPurchase.total_amount || (selectedPurchase.purchase_request_items || []).reduce((sum: number, i: any) => sum + (Number(i.amount_value) || 0), 0)
-            }}
-            isAdmin={currentUserRoles.includes('app_admin') || currentUserRoles.includes('lead buyer')}
-            onUpdate={() => {
-              loadDashboardData(false)
-            }}
-            activeTab={activeTab}
-          />
-        </Suspense>
-      )}
+      {/* PurchaseDetailModal - 모든 카드에서 사용 (activeTab에 따라 다른 내용 표시) */}
+      <PurchaseDetailModal
+        purchaseId={selectedPurchaseId}
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false)
+          setSelectedPurchaseId(null)
+          setModalActiveTab('pending')
+        }}
+        currentUserRoles={currentUserRoles}
+        activeTab={modalActiveTab}
+        onRefresh={() => {
+          loadDashboardData(false)
+          setIsModalOpen(false)
+          setSelectedPurchaseId(null)
+          setModalActiveTab('pending')
+        }}
+        onOptimisticUpdate={(purchaseId: number, updater: (prev: Purchase) => Purchase) => {
+          updatePurchaseInMemory(purchaseId, updater)
+          loadDashboardData(false)
+        }}
+      />
     </div>
   )
 }

@@ -455,9 +455,10 @@ export class DashboardService {
 
     // ✅ JOIN을 사용하여 한 번의 쿼리로 모든 관련 데이터 조회
     // lead buyer 또는 app_admin은 모든 항목 조회, 그 외는 본인 것만
+    // PurchaseItemsModal과 동일한 데이터 구조를 위해 purchase_request_items 전체 필드 조회
     let query = this.supabase
       .from('purchase_requests')
-      .select('*,vendors(vendor_name),purchase_request_items(item_name,quantity,specification,amount_value)')
+      .select('*,vendors(vendor_name),purchase_request_items(*)')
       .order('created_at', { ascending: false })
       .limit(500)  // 충분한 개수로 증가
     
@@ -839,7 +840,7 @@ export class DashboardService {
         afterFilter: filteredData.length,
         roles,
         employeeName: employee.name,
-        sampleItems: filteredData.slice(0, 3).map(item => ({
+        sampleItems: filteredData.slice(0, 3).map((item: any) => ({
           id: item.id,
           purchase_order_number: item.purchase_order_number,
           requester_name: item.requester_name,
