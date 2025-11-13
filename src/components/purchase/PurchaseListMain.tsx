@@ -747,6 +747,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
             applyColumnSettings={applyColumnSettings}
             resetToDefault={resetToDefault}
             isLoading={isColumnLoading}
+            currentUserRoles={currentUserRoles}
           />
         </FilterToolbar>
         

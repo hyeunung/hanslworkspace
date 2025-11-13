@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Settings, RotateCcw, Eye, EyeOff, Check, X } from 'lucide-react';
-import { COLUMN_GROUPS, REQUIRED_COLUMNS } from '@/constants/columnSettings';
+import { COLUMN_GROUPS, REQUIRED_COLUMNS, RESTRICTED_COLUMNS, AUTHORIZED_ROLES } from '@/constants/columnSettings';
 import { DoneTabColumnId, ColumnVisibility } from '@/types/columnSettings';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -38,6 +38,10 @@ interface ColumnSettingsDropdownProps {
    * 로딩 상태
    */
   isLoading?: boolean;
+  /**
+   * 현재 사용자 역할
+   */
+  currentUserRoles?: string[];
 }
 
 /**
@@ -54,11 +58,18 @@ const ColumnSettingsDropdown: React.FC<ColumnSettingsDropdownProps> = memo(({
   applyColumnSettings,
   resetToDefault,
   isLoading = false,
+  currentUserRoles = []
 }) => {
   
   // 임시 선택 상태 (드롭다운 내에서만 사용)
   const [tempVisibility, setTempVisibility] = useState<ColumnVisibility>(columnVisibility);
   const [isOpen, setIsOpen] = useState(false);
+  
+  // 권한 체크 헬퍼
+  const hasPermissionForColumn = (columnId: DoneTabColumnId): boolean => {
+    if (!RESTRICTED_COLUMNS.includes(columnId)) return true;
+    return currentUserRoles.some(role => AUTHORIZED_ROLES.includes(role));
+  };
 
   // 드롭다운이 열릴 때마다 현재 상태로 초기화
   useEffect(() => {
@@ -81,6 +92,11 @@ const ColumnSettingsDropdown: React.FC<ColumnSettingsDropdownProps> = memo(({
   const handleColumnToggle = (columnId: DoneTabColumnId) => {
     // 필수 칼럼은 비활성화할 수 없음
     if (REQUIRED_COLUMNS.includes(columnId) && tempVisibility[columnId]) {
+      return;
+    }
+    
+    // 권한 없는 칼럼은 토글 불가
+    if (!hasPermissionForColumn(columnId)) {
       return;
     }
     
@@ -160,6 +176,7 @@ const ColumnSettingsDropdown: React.FC<ColumnSettingsDropdownProps> = memo(({
               {group.columns.map((columnId) => {
                 const isVisible = tempVisibility[columnId];
                 const isRequired = REQUIRED_COLUMNS.includes(columnId);
+                const hasPermission = hasPermissionForColumn(columnId);
                 
                 // 칼럼 라벨 매핑
                 const columnLabels: Record<DoneTabColumnId, string> = {
@@ -185,25 +202,30 @@ const ColumnSettingsDropdown: React.FC<ColumnSettingsDropdownProps> = memo(({
                   sales_order_number: '수주번호',
                   purchase_progress: '구매진행',
                   receipt_progress: '입고진행',
+                  received_quantity: '실제 입고수량',
                 };
 
                 return (
                   <div
                     key={columnId}
                     className={`flex items-center gap-1 py-1 rounded overflow-hidden ${
+                      !hasPermission ? 'opacity-50 cursor-not-allowed' :
                       isRequired && isVisible ? 'opacity-75' : 'cursor-pointer hover:bg-gray-50'
                     }`}
                     onClick={() => {
+                      if (!hasPermission) return;
                       if (!(isRequired && isVisible)) {
                         handleColumnToggle(columnId);
                       }
                     }}
+                    title={!hasPermission ? '이 칼럼을 보려면 권한이 필요합니다' : ''}
                   >
                     <div className={`p-0.5 ${
+                      !hasPermission ? '' :
                       isRequired && isVisible ? '' : 'hover:bg-gray-100 rounded transition-colors'
                     }`}>
                       {isVisible ? (
-                        <Eye className="w-3.5 h-3.5 text-green-600" />
+                        <Eye className={`w-3.5 h-3.5 ${!hasPermission ? 'text-gray-400' : 'text-green-600'}`} />
                       ) : (
                         <EyeOff className="w-3.5 h-3.5 text-gray-400" />
                       )}
@@ -211,11 +233,15 @@ const ColumnSettingsDropdown: React.FC<ColumnSettingsDropdownProps> = memo(({
                     
                     <div className="flex-1 min-w-0">
                       <div className={`modal-value truncate ${
+                        !hasPermission ? 'text-gray-400' :
                         !isVisible ? 'text-gray-500' : ''
                       }`}>
                         {columnLabels[columnId]}
                         {isRequired && (
                           <span className="ml-1 text-red-500" title="필수 칼럼">*</span>
+                        )}
+                        {!hasPermission && (
+                          <span className="ml-1 text-gray-400" title="권한 필요">🔒</span>
                         )}
                       </div>
                     </div>

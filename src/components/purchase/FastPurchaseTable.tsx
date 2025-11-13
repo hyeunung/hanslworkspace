@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Purchase, PurchaseRequestWithDetails } from "@/types/purchase";
 import { DoneTabColumnId, ColumnVisibility } from "@/types/columnSettings";
+import { RESTRICTED_COLUMNS, AUTHORIZED_ROLES } from "@/constants/columnSettings";
 
 interface FastPurchaseTableProps {
   purchases: Purchase[];
@@ -376,7 +377,7 @@ const ProgressTypeBadge = memo(({ type }: { type?: string }) => {
 ProgressTypeBadge.displayName = 'ProgressTypeBadge';
 
 // 테이블 행 컴포넌트 메모화
-const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentComplete, onReceiptComplete, onExcelDownload, columnVisibility, vendorColumnWidth }: { 
+const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentComplete, onReceiptComplete, onExcelDownload, columnVisibility, vendorColumnWidth, currentUserRoles }: { 
   purchase: Purchase; 
   onClick: (purchase: Purchase) => void;
   activeTab?: string;
@@ -386,6 +387,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
   onExcelDownload?: (purchase: Purchase) => Promise<void>;
   columnVisibility?: ColumnVisibility;
   vendorColumnWidth?: number;
+  currentUserRoles?: string[];
 }) => {
   const isAdvance = purchase.progress_type === '선진행' || purchase.progress_type?.includes('선진행');
   
@@ -393,6 +395,14 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
   const isVisible = (columnId: DoneTabColumnId) => {
     // 전체항목 탭이 아니면 모든 칼럼 표시
     if (!columnVisibility) return true;
+    
+    // 전체항목 탭인 경우 권한 체크
+    if (activeTab === 'done' && RESTRICTED_COLUMNS.includes(columnId)) {
+      // 권한 있는 역할이 있는지 확인
+      const hasPermission = currentUserRoles?.some(role => AUTHORIZED_ROLES.includes(role));
+      if (!hasPermission) return false;
+    }
+    
     return columnVisibility[columnId] !== false;
   };
   
@@ -1144,8 +1154,16 @@ const FastPurchaseTable = ({
   // 칼럼 표시 여부 체크 함수
   const isColumnVisible = useCallback((columnId: DoneTabColumnId) => {
     if (!columnVisibility) return true; // columnVisibility가 없으면 모든 칼럼 표시
+    
+    // 전체항목 탭인 경우 권한 체크
+    if (activeTab === 'done' && RESTRICTED_COLUMNS.includes(columnId)) {
+      // 권한 있는 역할이 있는지 확인
+      const hasPermission = currentUserRoles?.some(role => AUTHORIZED_ROLES.includes(role));
+      if (!hasPermission) return false;
+    }
+    
     return columnVisibility[columnId] !== false;
-  }, [columnVisibility]);
+  }, [columnVisibility, activeTab, currentUserRoles]);
 
   // 탭별 테이블 헤더 메모화
   const tableHeader = useMemo(() => {
@@ -1445,6 +1463,7 @@ const FastPurchaseTable = ({
             tableHeader={tableHeader}
             TableRowComponent={TableRow}
             shouldUseFitLayout={shouldUseFitLayout}
+            currentUserRoles={currentUserRoles}
           />
         ) : (
           // 기존 테이블 (100개 미만 항목)
@@ -1464,6 +1483,7 @@ const FastPurchaseTable = ({
                     onExcelDownload={handleExcelDownload}
                     vendorColumnWidth={vendorColumnWidth}
                     columnVisibility={columnVisibility}
+                    currentUserRoles={currentUserRoles}
                   />
                 ))}
               </tbody>

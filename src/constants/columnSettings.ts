@@ -167,6 +167,22 @@ export const REQUIRED_COLUMNS: DoneTabColumnId[] = [
   'specification',
 ];
 
+// 권한 제한 컬럼 (특정 역할만 볼 수 있는 칼럼)
+export const RESTRICTED_COLUMNS: DoneTabColumnId[] = [
+  'statement_progress',  // 거래명세서
+  'utk_status',         // UTK
+  'unit_price',         // 단가
+  'amount',            // (총 품목)합계
+];
+
+// 권한 있는 역할
+export const AUTHORIZED_ROLES = [
+  'app_admin',
+  'ceo',
+  'final_approver',
+  'purchase_manager',
+];
+
 // 칼럼 그룹 (설정 UI에서 그룹핑용)
 export const COLUMN_GROUPS = [
   {

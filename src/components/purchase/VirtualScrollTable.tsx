@@ -16,6 +16,7 @@ interface VirtualScrollTableProps {
   TableRowComponent: React.ComponentType<any>;
   height?: number;
   shouldUseFitLayout?: boolean;
+  currentUserRoles?: string[];
 }
 
 const ITEM_HEIGHT = 30; // 각 행의 고정 높이 (기존 py-1.5 + 텍스트 높이)
@@ -34,7 +35,8 @@ const VirtualScrollTable = memo<VirtualScrollTableProps>(({
   tableHeader,
   TableRowComponent,
   height = 600,
-  shouldUseFitLayout = false
+  shouldUseFitLayout = false,
+  currentUserRoles
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -180,6 +182,7 @@ const VirtualScrollTable = memo<VirtualScrollTableProps>(({
                     onExcelDownload={onExcelDownload}
                     vendorColumnWidth={vendorColumnWidth}
                     columnVisibility={columnVisibility}
+                    currentUserRoles={currentUserRoles}
                   />
                 ))}
               </tbody>

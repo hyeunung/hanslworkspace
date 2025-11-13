@@ -130,7 +130,7 @@ export const filterByTab = (
       // hr 권한이 있으면 모든 항목 볼 수 있음
       const hasHrRole = userRoles.includes('hr')
       const hasManagerRole = userRoles.some((role: string) => 
-        ['app_admin', 'ceo', 'lead buyer', 'finance_team', 'raw_material_manager', 'consumable_manager', 'purchase_manager'].includes(role)
+        ['app_admin', 'ceo', 'finance_team', 'raw_material_manager', 'consumable_manager', 'purchase_manager'].includes(role)
       )
       
       return purchases.filter(purchase => {
@@ -143,7 +143,7 @@ export const filterByTab = (
           return isSeonJin || finalApproved
         }
         
-        // 일반 사용자는 본인이 요청한 항목만
+        // lead buyer와 일반 사용자는 본인이 요청한 항목만
         const isSeonJin = (purchase.progress_type || '').includes('선진행')
         const finalApproved = purchase.final_manager_status === 'approved'
         const isRequester = purchase.requester_name === currentUser?.name

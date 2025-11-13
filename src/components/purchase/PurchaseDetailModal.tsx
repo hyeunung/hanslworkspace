@@ -31,6 +31,7 @@ import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { useConfirmDateAction } from '@/hooks/useConfirmDateAction'
 import { format as formatDateInput } from 'date-fns'
+import { AUTHORIZED_ROLES } from '@/constants/columnSettings'
 
 interface PurchaseDetailModalProps {
   purchaseId: number | null
@@ -205,6 +206,9 @@ function PurchaseDetailModal({
   
   // 통합 수정 권한 (둘 중 하나라도 있으면 수정 모드 활성화)
   const canEdit = canEditAll || canEditLimited
+  
+  // 재무 정보 열람 권한 체크
+  const canViewFinancialInfo = effectiveRoles.some(role => AUTHORIZED_ROLES.includes(role))
   
   // 삭제 권한: 관리자 또는 요청자 본인 (단, 승인된 요청은 관리자만, lead buyer는 삭제 불가)
   const isApproved = purchase?.final_manager_status === 'approved';
@@ -2514,7 +2518,7 @@ function PurchaseDetailModal({
                       <FileText className="w-4 h-4 mr-2 text-gray-600" />
                       {purchase?.purchase_order_number || 'PO번호 없음'}
                     </h3>
-                    {canReceiptCheck && activeTab === 'done' && (
+                    {canReceiptCheck && canViewFinancialInfo && activeTab === 'done' && (
                       <button
                         onClick={async () => {
                           if (!purchase) return
@@ -2816,7 +2820,7 @@ function PurchaseDetailModal({
                           </Button>
                         </DateQuantityPickerPopover>
                       )}
-                      {activeTab === 'done' && canReceiptCheck && (
+                      {activeTab === 'done' && canReceiptCheck && canViewFinancialInfo && (
                         <div className="flex items-center gap-2">
                           <DatePickerPopover
                             onDateSelect={handleCompleteAllStatement}
@@ -3091,13 +3095,21 @@ function PurchaseDetailModal({
                                   max="100000000000"
                                 />
                               ) : (
-                                <span className="modal-subtitle">₩{formatCurrency(item.unit_price_value)}</span>
+                                <span className="modal-subtitle">
+                                  {activeTab === 'done' && !canViewFinancialInfo 
+                                    ? '-' 
+                                    : `₩${formatCurrency(item.unit_price_value)}`}
+                                </span>
                               )}
                             </div>
                             
                             {/* 합계 (자동계산, 수정 불가) */}
                             <div className="text-right min-w-0 flex items-center justify-end">
-                              <span className={isEditing ? "modal-subtitle" : "modal-value"}>₩{formatCurrency(item.amount_value || 0)}</span>
+                              <span className={isEditing ? "modal-subtitle" : "modal-value"}>
+                                {activeTab === 'done' && !canViewFinancialInfo 
+                                  ? '-' 
+                                  : `₩${formatCurrency(item.amount_value || 0)}`}
+                              </span>
                             </div>
                             
                             {/* 비고 */}
@@ -3238,7 +3250,7 @@ function PurchaseDetailModal({
                                     <div className="flex justify-center">
                                       <span className={`button-base ${
                                         actualReceivedAction.isCompleted(item)
-                                          ? 'bg-green-500 hover:bg-green-600 text-white' 
+                                          ? 'bg-blue-500 hover:bg-blue-600 text-white' 
                                           : 'border border-gray-300 text-gray-600 bg-white hover:bg-gray-50'
                                       }`}>
                                         {actualReceivedAction.isCompleted(item) ? '입고완료' : '입고대기'}
@@ -3367,7 +3379,9 @@ function PurchaseDetailModal({
                                           })}
                                         </div>
                                         <div className="text-gray-700 text-[9px] leading-[1.1] font-normal">
-                                          ₩{Number(item.expenditure_amount).toLocaleString()}
+                                          {!canViewFinancialInfo 
+                                            ? '-' 
+                                            : `₩${Number(item.expenditure_amount).toLocaleString()}`}
                                         </div>
                                       </div>
                                     ) : (
@@ -3393,7 +3407,9 @@ function PurchaseDetailModal({
                                           })}
                                         </div>
                                         <div className="text-gray-700 text-[9px] leading-[1.1] font-normal">
-                                          ₩{Number(item.expenditure_amount).toLocaleString()}
+                                          {!canViewFinancialInfo 
+                                            ? '-' 
+                                            : `₩${Number(item.expenditure_amount).toLocaleString()}`}
                                         </div>
                                       </div>
                                     ) : (
@@ -3476,7 +3492,11 @@ function PurchaseDetailModal({
                                     placeholder="단가"
                                   />
                                 ) : (
-                                  <div className="modal-subtitle">₩{formatCurrency(item.unit_price_value)}</div>
+                                  <div className="modal-subtitle">
+                                    {activeTab === 'done' && !canViewFinancialInfo 
+                                      ? '-' 
+                                      : `₩${formatCurrency(item.unit_price_value)}`}
+                                  </div>
                                 )}
                               </div>
                               <div>
@@ -3730,9 +3750,11 @@ function PurchaseDetailModal({
                     {/* 합계 */}
                     <div className="text-right">
                       <span className="text-[12px] font-bold text-gray-600">
-                        ₩{formatCurrency(
-                          (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
-                        )}
+                        {activeTab === 'done' && !canViewFinancialInfo 
+                          ? '-' 
+                          : `₩${formatCurrency(
+                              (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
+                            )}`}
                       </span>
                     </div>
                     {/* 나머지 칼럼들은 비워둠 */}
@@ -3750,11 +3772,13 @@ function PurchaseDetailModal({
                         <div className="text-center">
                           <div className="text-[10px] font-medium text-gray-500 mb-0.5">지출 총합</div>
                           <div className="text-[12px] font-bold text-gray-600">
-                            ₩{formatCurrency(
-                              (isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
-                                return sum + (Number(item.expenditure_amount) || 0)
-                              }, 0) || 0
-                            )}
+                            {!canViewFinancialInfo 
+                              ? '-' 
+                              : `₩${formatCurrency(
+                                  (isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
+                                    return sum + (Number(item.expenditure_amount) || 0)
+                                  }, 0) || 0
+                                )}`}
                           </div>
                         </div>
                       </>
@@ -3766,9 +3790,11 @@ function PurchaseDetailModal({
                     <div className="flex justify-between items-center">
                       <span className="text-[13px] font-bold text-gray-900">총액</span>
                       <span className="text-[13px] font-bold text-gray-600">
-                        ₩{formatCurrency(
-                          (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
-                        )}
+                        {activeTab === 'done' && !canViewFinancialInfo 
+                          ? '-' 
+                          : `₩${formatCurrency(
+                              (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
+                            )}`}
                       </span>
                     </div>
                     {/* Mobile 지출 총합 - 전체항목 탭에서만 표시 */}
@@ -3776,11 +3802,13 @@ function PurchaseDetailModal({
                       <div className="flex justify-between items-center mt-1">
                         <span className="text-[13px] font-bold text-gray-900">지출 총합</span>
                         <span className="text-[13px] font-bold text-gray-600">
-                          ₩{formatCurrency(
-                            (isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
-                              return sum + (Number(item.expenditure_amount) || 0)
-                            }, 0) || 0
-                          )}
+                          {!canViewFinancialInfo 
+                            ? '-' 
+                            : `₩${formatCurrency(
+                                (isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
+                                  return sum + (Number(item.expenditure_amount) || 0)
+                                }, 0) || 0
+                              )}`}
                         </span>
                       </div>
                     )}
