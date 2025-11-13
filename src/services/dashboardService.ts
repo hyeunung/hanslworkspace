@@ -818,33 +818,13 @@ export class DashboardService {
       }
 
       // 클라이언트 사이드에서 조건에 맞는 것만 필터링
-      // 조건: 구매요청 + 미결제 + (선진행이거나 최종승인완료)
+      // 일시적으로 필터링 완화 - 전체 미다운로드 항목 조회
       const filteredData = (data || []).filter((item: any) => {
-        // is_po_download가 true인 것은 제외 (안전장치)
+        // is_po_download가 true인 것만 제외 (실제 다운로드 완료된 것)
         if (item.is_po_download === true) return false
         
-        // 반려된 것은 제외
-        if (item.middle_manager_status === 'rejected' || item.final_manager_status === 'rejected') {
-          return false
-        }
-        
-        // 구매 요청인지 확인
-        const category = (item.payment_category || '').trim()
-        const isPurchaseRequest = category === '구매 요청'
-        if (!isPurchaseRequest) return false
-        
-        // 이미 결제 완료된 것은 제외 (발주서는 결제 전에 다운로드)
-        if (item.is_payment_completed) return false
-        
-        // 1) 선진행: 승인 상태와 관계없이 포함
-        const isAdvance = (item.progress_type || '').includes('선진행')
-        if (isAdvance) return true
-        
-        // 2) 일반: 최종승인 완료된 것만 포함
-        const isNormal = (item.progress_type || '').includes('일반') || !item.progress_type || item.progress_type === ''
-        const finalApproved = item.final_manager_status === 'approved'
-        
-        return isNormal && finalApproved
+        // 나머지는 모두 포함 (lead buyer가 전체를 볼 수 있도록)
+        return true
       })
 
       logger.info('[DashboardService] 미다운로드 발주서 필터링 결과:', {
