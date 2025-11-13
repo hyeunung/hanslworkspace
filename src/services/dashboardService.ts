@@ -190,7 +190,7 @@ export class DashboardService {
     return stats
   }
 
-  // 내 최근 요청 상태 (승인 진행중인 항목만 - 승인 대기는 제외)
+  // 내 최근 요청 상태 (승인 진행중인 항목만 - 승인 대기는 제외) - 이미 JOIN 최적화됨
   async getMyRecentRequests(employee: Employee): Promise<MyRequestStatus[]> {
     const { data } = await this.supabase
       .from('purchase_requests')
@@ -212,64 +212,57 @@ export class DashboardService {
     })) as MyRequestStatus[]
   }
 
-  // 승인 대기 항목 (전체 조회) - 발주 리스트와 동일한 방식
+  // 승인 대기 항목 (전체 조회) - JOIN 쿼리로 N+1 문제 해결
   async getPendingApprovals(employee: Employee): Promise<PurchaseRequestWithDetails[]> {
     const roles = this.parseRoles(employee.purchase_role)
 
-    // 먼저 모든 발주요청을 가져옴 (발주 리스트와 동일)
-    // 스키마에 맞춰 item 단가/금액 컬럼 수정 (unit_price_value, amount_value)
-    let allRequests: any[] = []
-    let baseError: any = null
-
-
-    const firstTry = await this.supabase
-      .from('purchase_requests')
-      .select('*')
-      .order('request_date', { ascending: false })
-      .limit(100) // 최적화: 100개로 제한
-
-
-    if (firstTry.error) {
-      // 관계 조회 실패 시 최소 컬럼으로 재시도하여 리스트 자체는 표시되도록 함
-      baseError = firstTry.error
-      const fallback = await this.supabase
-        .from('purchase_requests')
-        .select('*')
-        .order('request_date', { ascending: false })
-        .limit(100) // 최적화: 100개로 제한
-      if (fallback.error) {
-        // Fallback query also failed - will return empty array
-        return []
-      }
-      allRequests = fallback.data || []
-    } else {
-      allRequests = firstTry.data || []
+    // 역할이 있는 사용자만 승인 대기 항목을 볼 수 있음
+    if (roles.length === 0) {
+      return []
     }
 
-    // 클라이언트 사이드에서 역할별 필터링
+    logger.debug('🚀 승인 대기 항목 조회 시작', {
+      employeeName: employee.name,
+      employeeRoles: roles
+    })
+
+    // ✅ N+1 문제 해결: JOIN을 사용하여 한 번의 쿼리로 모든 관련 데이터 조회
+    const { data: allRequests, error: requestsError } = await this.supabase
+      .from('purchase_requests')
+      .select(`
+        *,
+        vendors(vendor_name),
+        purchase_request_items(
+          id,
+          item_name,
+          specification,
+          quantity,
+          unit_price_value,
+          amount_value
+        )
+      `)
+      .order('request_date', { ascending: false })
+      .limit(100) // 성능 최적화: 100개로 제한
+
+    if (requestsError) {
+      logger.error('❌ 승인 대기 항목 조회 실패', requestsError)
+      return []
+    }
+
+    // 클라이언트 사이드에서 승인 대기 상태 필터링
     let filteredData = allRequests || []
 
-    // 발주 리스트와 동일한 필터링 로직 사용 - 승인 대기인 항목만
     // pending, 대기, 빈문자열, null 모두 대기로 처리
     const isPending = (status: any) => (
       status === 'pending' || status === '대기' || status === '' || status === null || status === undefined
     )
 
-    // 발주 리스트의 pending 탭과 동일한 조건: 중간승인자나 최종승인자 중 하나라도 pending이면 승인대기
-    logger.debug('🔍 승인대기 필터링 전 데이터', {
-      employeeName: employee.name,
-      employeeRoles: this.parseRoles(employee.purchase_role),
-      totalRequests: allRequests?.length || 0,
-      sampleData: allRequests?.slice(0, 3).map(item => ({
-        id: item.id,
-        purchase_order_number: item.purchase_order_number,
-        middle_manager_status: item.middle_manager_status,
-        final_manager_status: item.final_manager_status,
-        vendor_name: item.vendor_name
-      })) || []
+    logger.debug('🔍 승인 대기 필터링 전 데이터', {
+      totalRequests: allRequests?.length || 0
     })
     
-    filteredData = filteredData.filter(item => {
+    // 승인 대기인 항목만 필터링
+    filteredData = filteredData.filter((item: any) => {
       const middlePending = isPending(item.middle_manager_status)
       const finalPending = isPending(item.final_manager_status)
       
@@ -280,37 +273,10 @@ export class DashboardService {
       if (middleRejected || finalRejected) return false
       
       // 중간승인 대기 또는 최종승인 대기
-      const shouldInclude = middlePending || finalPending
-      
-      logger.debug('✅ 승인대기 항목 필터링', {
-        id: item.id,
-        purchase_order_number: item.purchase_order_number,
-        middle_manager_status: item.middle_manager_status,
-        final_manager_status: item.final_manager_status,
-        middlePending,
-        finalPending,
-        shouldInclude
-      })
-      
-      return shouldInclude
+      return middlePending || finalPending
     })
-    
-    logger.debug('🔍 승인대기 필터링 후 데이터', {
-      filteredCount: filteredData.length,
-      filteredItems: filteredData.map(item => ({
-        id: item.id,
-        purchase_order_number: item.purchase_order_number,
-        middle_manager_status: item.middle_manager_status,
-        final_manager_status: item.final_manager_status
-      }))
-    })
-    
-    // 역할이 있는 사용자만 승인 대기 항목을 볼 수 있음
-    if (roles.length === 0) {
-      return []
-    }
 
-    // 역할별 권한에 따른 추가 필터링 (app_admin이 최우선)
+    // 역할별 권한에 따른 추가 필터링
     let roleFilteredData = filteredData
     
     if (roles.includes('app_admin')) {
@@ -318,20 +284,16 @@ export class DashboardService {
       logger.debug('🔑 app_admin 권한으로 모든 승인대기 항목 표시', {
         totalItems: roleFilteredData.length
       })
-      // app_admin인 경우 추가 필터링 없이 모든 항목 표시
     } else if (roles.includes('middle_manager')) {
       // 중간승인자: 중간승인 대기 항목만
-      roleFilteredData = filteredData.filter(item => {
-        const middlePending = isPending(item.middle_manager_status)
-        return middlePending
-      })
+      roleFilteredData = filteredData.filter((item: any) => isPending(item.middle_manager_status))
       logger.debug('🔑 middle_manager 권한으로 중간승인 대기 항목만 표시', {
         beforeFilter: filteredData.length,
         afterFilter: roleFilteredData.length
       })
     } else if (roles.includes('final_approver') || roles.includes('ceo')) {
       // 최종승인자: 중간승인 완료 + 최종승인 대기 항목만
-      roleFilteredData = filteredData.filter(item => {
+      roleFilteredData = filteredData.filter((item: any) => {
         const middleApproved = item.middle_manager_status === 'approved'
         const finalPending = isPending(item.final_manager_status)
         return middleApproved && finalPending
@@ -342,7 +304,7 @@ export class DashboardService {
       })
     } else if (roles.includes('raw_material_manager') || roles.includes('consumable_manager')) {
       // 원자재/소모품 매니저: 최종승인자와 동일한 권한
-      roleFilteredData = filteredData.filter(item => {
+      roleFilteredData = filteredData.filter((item: any) => {
         const middleApproved = item.middle_manager_status === 'approved'
         const finalPending = isPending(item.final_manager_status)
         return middleApproved && finalPending
@@ -353,7 +315,7 @@ export class DashboardService {
       })
     } else if (roles.includes('lead buyer')) {
       // 구매담당자: 최종승인 완료 + 구매 대기 항목만
-      roleFilteredData = filteredData.filter(item => {
+      roleFilteredData = filteredData.filter((item: any) => {
         const finalApproved = item.final_manager_status === 'approved'
         const purchasePending = !item.is_payment_completed
         return finalApproved && purchasePending
@@ -365,66 +327,34 @@ export class DashboardService {
     } else {
       // 기타 역할은 승인 권한 없음
       roleFilteredData = []
-      logger.debug('🔑 승인 권한 없는 역할', {
-        roles,
-        result: 'empty'
-      })
+      logger.debug('🔑 승인 권한 없는 역할', { roles, result: 'empty' })
     }
-    
-    // 최종 필터링된 데이터 사용
-    filteredData = roleFilteredData
-    
-    logger.debug('📋 품목 정보 조회 시작', {
-      filteredDataCount: filteredData.length,
-      filteredDataIds: filteredData.map(item => ({
-        id: item.id,
-        purchase_order_number: item.purchase_order_number
-      }))
+
+    // ✅ 데이터 가공: JOIN으로 가져온 데이터를 기반으로 처리
+    const enhancedData = roleFilteredData.map((item: any) => {
+      // vendor_name 처리 (JOIN 결과 사용)
+      const vendor_name = item.vendors?.vendor_name || item.vendor_name || '업체 정보 없음'
+      
+      // purchase_request_items 처리 (이미 JOIN으로 가져옴)
+      const purchase_request_items = item.purchase_request_items || []
+      
+      // total_amount 계산
+      const total_amount = purchase_request_items.reduce((sum: number, i: any) => {
+        const amount = Number(i?.amount_value) || (Number(i?.quantity) || 0) * (Number(i?.unit_price_value) || 0)
+        return sum + amount
+      }, 0)
+
+      return {
+        ...item,
+        vendor_name,
+        purchase_request_items,
+        total_amount
+      }
     })
-
-    // 품목 정보를 별도로 조회하여 추가
-    const enhancedData = await Promise.all(
-      filteredData.map(async (item) => {
-        // 각 발주요청에 대해 품목 정보 조회
-        const { data: items } = await this.supabase
-          .from('purchase_request_items')
-          .select('*')
-          .eq('purchase_request_id', item.id)
-
-        // 업체 정보 조회
-        let vendor_name = item.vendor_name
-        if (!vendor_name && item.vendor_id) {
-          const { data: vendor } = await this.supabase
-            .from('vendors')
-            .select('vendor_name')
-            .eq('id', item.vendor_id)
-            .single()
-          vendor_name = vendor?.vendor_name
-        }
-
-        const purchase_request_items = items || []
-        const total_amount = purchase_request_items.reduce((sum: number, i: any) => {
-          const amount = Number(i?.amount_value) || (Number(i?.quantity) || 0) * (Number(i?.unit_price_value) || 0)
-          return sum + amount
-        }, 0)
-
-        return {
-          ...item,
-          vendor_name,
-          purchase_request_items,
-          total_amount
-        }
-      })
-    )
     
-    logger.debug('📋 품목 정보 조회 완료', {
-      enhancedDataCount: enhancedData.length,
-      enhancedDataSummary: enhancedData.map(item => ({
-        id: item.id,
-        purchase_order_number: item.purchase_order_number,
-        itemsCount: item.purchase_request_items?.length || 0,
-        total_amount: item.total_amount
-      }))
+    logger.debug('✅ 승인 대기 항목 조회 완료 (최적화됨)', {
+      finalCount: enhancedData.length,
+      performanceNote: 'N+1 문제 해결 - 단일 JOIN 쿼리 사용'
     })
 
     return enhancedData
@@ -512,7 +442,7 @@ export class DashboardService {
     }
   }
 
-  // 내 구매/입고 상태 확인
+  // 내 구매/입고 상태 확인 - JOIN 쿼리로 최적화됨
   async getMyPurchaseStatus(employee: Employee): Promise<{ waitingPurchase: PurchaseRequestWithDetails[], waitingDelivery: PurchaseRequestWithDetails[], recentCompleted: PurchaseRequestWithDetails[] }> {
     
     // name이 없으면 email 사용
@@ -520,7 +450,7 @@ export class DashboardService {
     
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
-    // 먼저 모든 내 요청을 가져온 다음 클라이언트에서 필터링
+    // ✅ JOIN을 사용하여 한 번의 쿼리로 모든 관련 데이터 조회
     const myRequests = await this.supabase
       .from('purchase_requests')
       .select('*,vendors(vendor_name),purchase_request_items(item_name,quantity,specification,amount_value)')
@@ -852,44 +782,49 @@ export class DashboardService {
     return estimatedCompletion.toLocaleDateString('ko-KR')
   }
 
-  // lead buyer를 위한 미다운로드 발주서 목록 조회
+  // lead buyer 또는 app_admin을 위한 미다운로드 발주서 목록 조회 - 이미 JOIN 최적화됨
   async getUndownloadedOrders(employee: Employee): Promise<PurchaseRequestWithDetails[]> {
     const roles = this.parseRoles(employee.purchase_role)
     
-    // lead buyer 또는 "lead buyer" (공백 포함) 권한 체크
-    if (!roles.includes('lead buyer') && !roles.includes('lead buyer')) {
+    // lead buyer 또는 app_admin 권한 체크
+    if (!roles.includes('lead buyer') && !roles.includes('app_admin')) {
+      logger.info('[DashboardService] 미다운로드 발주서 조회 권한 없음:', { roles })
       return []
     }
 
-    // 먼저 모든 발주서를 가져온 다음 클라이언트에서 필터링
-    const { data, error } = await this.supabase
-      .from('purchase_requests')
-      .select('*,purchase_request_items(id,item_name,specification,quantity,unit_price_value,amount_value)')
-      .order('created_at', { ascending: false })
-      .limit(100)
+    try {
+      // 먼저 간단한 쿼리로 미다운로드 발주서만 가져오기 (false 또는 null)
+      const { data, error } = await this.supabase
+        .from('purchase_requests')
+        .select('*,purchase_request_items(id,item_name,specification,quantity,unit_price_value,amount_value)')
+        .or('eq.is_po_download,false,is.is_po_download,null')
+        .order('created_at', { ascending: true })
+        .limit(50)
 
-    if (error) {
-      logger.error('Failed to fetch undownloaded orders', error)
-      return []
+      if (error) {
+        logger.error('[DashboardService] 미다운로드 발주서 조회 쿼리 에러:', error)
+        throw error
+      }
+
+      // 클라이언트 사이드에서 추가 필터링
+      const filteredData = (data || []).filter((item: any) => {
+        // 선진행이거나 최종승인완료인 것만
+        const isAdvance = item.progress_type === '선진행'
+        const isApproved = item.middle_manager_status === 'approved' && item.final_manager_status === 'approved'
+        return isAdvance || isApproved
+      })
+
+      logger.info('[DashboardService] 미다운로드 발주서 필터링 결과:', {
+        totalFetched: data?.length || 0,
+        afterFilter: filteredData.length,
+        roles
+      })
+
+      return filteredData
+    } catch (error) {
+      logger.error('[DashboardService] getUndownloadedOrders 에러:', error)
+      throw error // 에러를 상위로 전파
     }
-
-    // 클라이언트 사이드 필터링
-    // 조건: (선진행이거나 최종승인 완료) AND (is_po_download가 false 또는 null)
-    const filteredData = (data || []).filter((item: any) => {
-      // 다운로드 가능 조건 체크
-      const isDownloadable = item.progress_type === '선진행' || 
-        (item.middle_manager_status === 'approved' && item.final_manager_status === 'approved')
-      
-      // 아직 다운로드 안 된 것만
-      const notDownloaded = !item.is_po_download || item.is_po_download === false || item.is_po_download === null
-      
-      return isDownloadable && notDownloaded
-    })
-
-    // 오래된 순으로 정렬 (created_at 기준 오름차순)
-    filteredData.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-
-    return filteredData.slice(0, 10) // 상위 10개만 반환
   }
 }
 

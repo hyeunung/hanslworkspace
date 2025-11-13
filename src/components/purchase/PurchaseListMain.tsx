@@ -89,6 +89,14 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   // 강제 리렌더링을 위한 더미 상태
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   
+  // 탭 카운트를 별도 state로 관리하여 0으로 리셋되는 것 방지
+  const [cachedTabCounts, setCachedTabCounts] = useState({ 
+    pending: 0, 
+    purchase: 0, 
+    receipt: 0, 
+    done: 0 
+  })
+  
   // 메모리 캐시 기반 강제 새로고침
   const loadPurchases = useCallback(async () => {
     logger.debug('🔄 [loadPurchases] 강제 새로고침 트리거')
@@ -437,80 +445,59 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   }, []);
 
 
-  // 메모리 기반 필터링 - 60일 제한 적용 (가상 스크롤 사용시 제외)
+  // 메모리 기반 필터링
   const baseFilteredPurchases = useMemo(() => {
-    const hasAnyFilter = activeFilters.length > 0 || searchTerm.trim() !== '' || 
-                        (selectedEmployee && selectedEmployee !== 'all' && selectedEmployee !== '전체');
-
-    let dateStart: string | undefined;
-    let dateEnd: string | undefined;
-    
-    // 가상 스크롤 사용 여부 확인 (purchases 길이 기준)
-    const shouldUseVirtualScroll = purchases.length >= 100;
-    
-    // 필터가 없고 가상 스크롤을 사용하지 않을 때만 최근 60일 제한
-    if (!hasAnyFilter && !shouldUseVirtualScroll) {
-      const sixtyDaysAgo = new Date();
-      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-      dateStart = sixtyDaysAgo.toISOString().split('T')[0];
-    }
-    
     const employeeName = selectedEmployee === 'all' || selectedEmployee === '전체' ? null : selectedEmployee;
-    
     
     return getFilteredPurchases({
       tab: activeTab as any,
       employeeName,
       searchTerm,
       advancedFilters: activeFilters,
-      startDate: dateStart,
       sortConfig: sortConfig ? { key: sortConfig.field, direction: sortConfig.direction } : undefined
     });
   }, [getFilteredPurchases, activeTab, selectedEmployee, searchTerm, activeFilters, sortConfig, purchases]);
 
-  // 전체항목 탭용 60일 필터링된 데이터를 미리 준비
-  const sixtyDaysPurchases = useMemo(() => {
-    if (!purchases || purchases.length === 0) return [];
-    
-    const sixtyDaysAgo = new Date();
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-    const dateStart = sixtyDaysAgo.toISOString().split('T')[0];
-    
-    // 날짜 필터만 먼저 적용하여 데이터 양 줄이기
-    return purchases.filter(purchase => {
-      const requestDate = purchase.request_date;
-      return requestDate >= dateStart;
-    });
-  }, [purchases]);
   
-  // 메모리 기반 필터링으로 이미 모든 필터 적용됨
-  const tabFilteredPurchases = useMemo(() => {
-    // 전체항목 탭이고 필터가 없으면 미리 필터링된 60일 데이터 사용
-    const hasAnyFilter = activeFilters.length > 0 || searchTerm.trim() !== '' || 
-                        (selectedEmployee && selectedEmployee !== 'all' && selectedEmployee !== '전체');
-    
-    if (activeTab === 'done' && !hasAnyFilter) {
-      // 이미 60일 필터링된 데이터에서 시작
-      const employeeName = selectedEmployee === 'all' || selectedEmployee === '전체' ? null : selectedEmployee;
+  // 메모리 기반 필터링으로 이미 모든 필터 적용됨 
+  const tabFilteredPurchases = baseFilteredPurchases;
+
+
+  // 탭별 카운트 계산 및 캐싱
+  useEffect(() => {
+    // 데이터가 있을 때만 탭 카운트 업데이트
+    if (purchases && purchases.length > 0) {
+      const newCounts = calculateTabCounts(purchases, currentUser);
+      setCachedTabCounts(newCounts);
+    } else if (purchaseMemoryCache.allPurchases && purchaseMemoryCache.allPurchases.length > 0) {
+      // 로컬 state가 비어있으면 캐시에서 직접 계산
+      const newCounts = calculateTabCounts(purchaseMemoryCache.allPurchases, currentUser);
+      setCachedTabCounts(newCounts);
+    }
+  }, [purchases, currentUser]);
+
+  // 표시할 탭 카운트 (캐시된 값 사용)
+  const filteredTabCounts = cachedTabCounts;
+
+  // 탭 배지 텍스트 결정 함수
+  const getTabBadgeText = useCallback((tabKey: string) => {
+    // 전체항목 탭에 대한 특별 처리
+    if (tabKey === 'done') {
+      // 고급필터가 적용되어 있는지 확인
+      const hasAdvancedFilters = activeFilters.length > 0;
       
-      let filtered = sixtyDaysPurchases;
-      
-      // 직원 필터 적용
-      if (employeeName) {
-        filtered = filterByEmployee(filtered, employeeName, currentUser);
+      if (hasAdvancedFilters) {
+        // 고급필터가 적용된 경우 필터된 항목 개수 표시
+        return tabFilteredPurchases.length.toString();
+      } else {
+        // 고급필터가 없는 경우 "전체" 표시
+        return "전체";
       }
-      
-      // 정렬 적용
-      if (sortConfig) {
-        filtered = sortPurchases(filtered, { key: sortConfig.field, direction: sortConfig.direction });
-      }
-      
-      return filtered;
     }
     
-    // 다른 경우는 기존 로직 사용
-    return baseFilteredPurchases;
-  }, [activeTab, sixtyDaysPurchases, selectedEmployee, sortConfig, baseFilteredPurchases, currentUser, activeFilters.length, searchTerm]);
+    // 다른 탭들은 기존 로직 유지
+    return filteredTabCounts[tabKey as keyof typeof filteredTabCounts].toString();
+  }, [activeFilters.length, tabFilteredPurchases.length, filteredTabCounts]);
 
 
   // 월간 필터 감지 및 합계금액 계산
@@ -841,7 +828,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   return (
     <div className="w-full">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
+      <div className="mb-4">
         <div>
           <h1 className="page-title">발주요청 관리</h1>
           <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Purchase Management</p>
@@ -872,13 +859,6 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
           />
         </FilterToolbar>
         
-        {/* 필터가 없고 가상 스크롤을 사용하지 않을 때만 표시되는 안내 메시지 */}
-        {activeFilters.length === 0 && !searchTerm.trim() && baseFilteredPurchases.length < 100 && (
-          <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
-            <Info className="w-3.5 h-3.5" />
-            <span>최근 60일 데이터만 표시됩니다. 더 오래된 데이터를 보려면 필터를 적용해주세요.</span>
-          </div>
-        )}
       </div>
 
       {/* 직접 구현한 탭 (hanslwebapp 방식) - 빠른 성능 */}
@@ -913,7 +893,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
                   }`
                 }
               >
-                {tabCounts[tab.key as keyof typeof tabCounts]}
+                {getTabBadgeText(tab.key)}
               </span>
             </button>
           ))}
