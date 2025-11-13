@@ -10,6 +10,25 @@ import { logger } from '@/lib/logger'
 // 탭 타입 정의
 export type TabType = 'pending' | 'purchase' | 'receipt' | 'done'
 
+// 품목 필드 목록 정의
+const ITEM_FIELDS = [
+  'item_name',
+  'item_detail',
+  'specification',
+  'spec',
+  'quantity',
+  'unit_price',
+  'unit_price_value',
+  'unit_price_currency',
+  'amount',
+  'amount_value',
+  'amount_currency',
+  'manufacturer',
+  'model',
+  'remark',
+  'link'
+]
+
 /**
  * 탭별 필터링
  */
@@ -185,68 +204,107 @@ export const applyAdvancedFilters = (
 ): Purchase[] => {
   if (!filters || filters.length === 0) return purchases
   
+  // 품목 필드 필터가 있는지 확인
+  const hasItemFilter = filters.some(filter => ITEM_FIELDS.includes(filter.field))
+  
+  if (hasItemFilter) {
+    // 품목 단위로 펼쳐서 필터링
+    return purchases.flatMap(purchase => {
+      const items = purchase.purchase_request_items || []
+      
+      // 각 품목에 대해 필터 조건 검사
+      const matchedItems = items.filter((item: any) => {
+        return filters.every(filter => {
+          const { field, condition, value, dateField } = filter
+          const targetField = dateField || field
+          
+          // 품목 필드인 경우
+          if (ITEM_FIELDS.includes(targetField)) {
+            const fieldValue = item[targetField]
+            return checkFilterCondition(fieldValue, condition, value)
+          }
+          
+          // 헤더 필드인 경우
+          const fieldValue = getFieldValue(purchase, targetField)
+          return checkFilterCondition(fieldValue, condition, value)
+        })
+      })
+      
+      // 매칭된 품목만 포함하여 purchase 객체 반환
+      return matchedItems.map((item: any) => ({
+        ...purchase,
+        purchase_request_items: [item]
+      }))
+    })
+  }
+  
+  // 품목 필터가 없으면 기존 방식대로 처리
   return purchases.filter(purchase => {
     return filters.every(filter => {
       const { field, condition, value, dateField } = filter
-      
-      // 날짜 필터의 경우 실제 적용할 필드 결정
       const targetField = dateField || field
       const fieldValue = getFieldValue(purchase, targetField)
-      
-      switch (condition) {
-        case 'contains':
-          return String(fieldValue).toLowerCase().includes(String(value).toLowerCase())
-        case 'equals':
-          // 날짜 범위 처리
-          if (typeof value === 'string' && value.includes('~')) {
-            const [startDate, endDate] = value.split('~')
-            const purchaseDate = new Date(fieldValue).toISOString().split('T')[0]
-            return purchaseDate >= startDate && purchaseDate <= endDate
-          }
-          // 월별 필터 처리 (YYYY-MM 형식)
-          if (typeof value === 'string' && (value.match(/^\d{4}-\d{2}$/) || value.match(/^\d{4}-\d{2}~\d{4}-\d{2}$/))) {
-            if (value.includes('~')) {
-              const [startMonth, endMonth] = value.split('~')
-              const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7) // YYYY-MM 형식
-              return purchaseMonth >= startMonth && purchaseMonth <= endMonth
-            } else {
-              const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7)
-              return purchaseMonth === value
-            }
-          }
-          return fieldValue === value
-        case 'not_equals':
-          return fieldValue !== value
-        case 'starts_with':
-          return String(fieldValue).toLowerCase().startsWith(String(value).toLowerCase())
-        case 'ends_with':
-          return String(fieldValue).toLowerCase().endsWith(String(value).toLowerCase())
-        case 'greater_than':
-          return Number(fieldValue) > Number(value)
-        case 'less_than':
-          return Number(fieldValue) < Number(value)
-        case 'after':
-          return new Date(fieldValue) > new Date(value)
-        case 'before':
-          return new Date(fieldValue) < new Date(value)
-        case 'is_empty':
-          return !fieldValue || fieldValue === '' || fieldValue === null
-        case 'is_not_empty':
-          return fieldValue && fieldValue !== '' && fieldValue !== null
-        case 'between': {
-          const [min, max] = value.split(',').map(Number)
-          const numValue = Number(fieldValue)
-          return numValue >= min && numValue <= max
-        }
-        case 'in': {
-          const values = value.split(',').map((v: string) => v.trim())
-          return values.includes(String(fieldValue))
-        }
-        default:
-          return true
-      }
+      return checkFilterCondition(fieldValue, condition, value)
     })
   })
+}
+
+/**
+ * 필터 조건 체크 헬퍼 함수
+ */
+const checkFilterCondition = (fieldValue: any, condition: string, value: any): boolean => {
+  switch (condition) {
+    case 'contains':
+      return String(fieldValue).toLowerCase().includes(String(value).toLowerCase())
+    case 'equals':
+      // 날짜 범위 처리
+      if (typeof value === 'string' && value.includes('~')) {
+        const [startDate, endDate] = value.split('~')
+        const purchaseDate = new Date(fieldValue).toISOString().split('T')[0]
+        return purchaseDate >= startDate && purchaseDate <= endDate
+      }
+      // 월별 필터 처리 (YYYY-MM 형식)
+      if (typeof value === 'string' && (value.match(/^\d{4}-\d{2}$/) || value.match(/^\d{4}-\d{2}~\d{4}-\d{2}$/))) {
+        if (value.includes('~')) {
+          const [startMonth, endMonth] = value.split('~')
+          const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7) // YYYY-MM 형식
+          return purchaseMonth >= startMonth && purchaseMonth <= endMonth
+        } else {
+          const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7)
+          return purchaseMonth === value
+        }
+      }
+      return fieldValue === value
+    case 'not_equals':
+      return fieldValue !== value
+    case 'starts_with':
+      return String(fieldValue).toLowerCase().startsWith(String(value).toLowerCase())
+    case 'ends_with':
+      return String(fieldValue).toLowerCase().endsWith(String(value).toLowerCase())
+    case 'greater_than':
+      return Number(fieldValue) > Number(value)
+    case 'less_than':
+      return Number(fieldValue) < Number(value)
+    case 'after':
+      return new Date(fieldValue) > new Date(value)
+    case 'before':
+      return new Date(fieldValue) < new Date(value)
+    case 'is_empty':
+      return !fieldValue || fieldValue === '' || fieldValue === null
+    case 'is_not_empty':
+      return fieldValue && fieldValue !== '' && fieldValue !== null
+    case 'between': {
+      const [min, max] = value.split(',').map(Number)
+      const numValue = Number(fieldValue)
+      return numValue >= min && numValue <= max
+    }
+    case 'in': {
+      const values = value.split(',').map((v: string) => v.trim())
+      return values.includes(String(fieldValue))
+    }
+    default:
+      return true
+  }
 }
 
 /**
@@ -260,28 +318,51 @@ export const filterBySearchTerm = (
   
   const term = searchTerm.toLowerCase().trim()
   
-  return purchases.filter(purchase => {
-    // 검색 대상 필드들
-    const searchableFields = [
+  return purchases.flatMap(purchase => {
+    // 헤더 필드에서 검색어 매치 확인
+    const headerFields = [
       purchase.purchase_order_number,
       purchase.requester_name,
       purchase.vendor_name,
-      purchase.contact_name,
-      // purchase_request_items 필드들은 별도 처리 필요
-      ...(purchase.purchase_request_items || []).map((item: any) => [
+      purchase.contact_name
+    ]
+    
+    const headerMatch = headerFields.some(field => 
+      field && String(field).toLowerCase().includes(term)
+    )
+    
+    // 품목에서 검색어 매치 확인
+    const items = purchase.purchase_request_items || []
+    const matchedItems = items.filter((item: any) => {
+      const itemFields = [
         item.item_name,
         item.item_detail,
         item.manufacturer,
         item.model,
-        item.specification, // spec -> specification으로 수정
+        item.specification,
         item.spec // 하위 호환성을 위해 유지
-      ]).flat()
-    ]
+      ]
+      
+      return itemFields.some(field => 
+        field && String(field).toLowerCase().includes(term)
+      )
+    })
     
-    // 어느 하나라도 매치하면 true
-    return searchableFields.some(field => 
-      field && String(field).toLowerCase().includes(term)
-    )
+    // 헤더 매치만 있는 경우: 전체 purchase 반환
+    if (headerMatch && matchedItems.length === 0) {
+      return [purchase]
+    }
+    
+    // 품목 매치가 있는 경우: 매치된 품목만 포함하여 반환
+    if (matchedItems.length > 0) {
+      return matchedItems.map((item: any) => ({
+        ...purchase,
+        purchase_request_items: [item]
+      }))
+    }
+    
+    // 아무것도 매치하지 않으면 빈 배열
+    return []
   })
 }
 
