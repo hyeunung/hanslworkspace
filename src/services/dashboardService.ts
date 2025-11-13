@@ -510,6 +510,11 @@ export class DashboardService {
       const notReceived = !item.is_received
       const isSeonJin = (item.progress_type || '').includes('선진행')
       
+      // 입고 대기는 항상 본인 것만 (lead buyer도 본인 것만)
+      if (item.requester_name !== requesterName) {
+        return false
+      }
+      
       // 선진행은 승인 상태와 무관하게 입고 대기
       if (notReceived && isSeonJin) {
         return true
@@ -523,9 +528,11 @@ export class DashboardService {
 
 
     const recentCompleted = allMyRequests.filter((item: any) => {
-      // 입고 완료 && 7일 이내
+      // 입고 완료 && 7일 이내 && 본인 것만
       if (item.is_received !== true) return false
       if (!item.received_at) return false
+      if (item.requester_name !== requesterName) return false
+      
       const receivedDate = new Date(item.received_at)
       const sevenDaysAgoDate = new Date(sevenDaysAgo)
       return receivedDate >= sevenDaysAgoDate
