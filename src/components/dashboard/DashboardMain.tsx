@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Clock, CheckCircle, ArrowRight, X, Package, Truck, ShoppingCart, Download, Search } from 'lucide-react'
-import ExcelJS from 'exceljs'
+import { downloadPurchaseOrderExcel } from '@/utils/excelDownload'
 
 // 모든 카드에서 사용하는 모달 (activeTab에 따라 다른 내용 표시)
 import PurchaseDetailModal from '@/components/purchase/PurchaseDetailModal'
@@ -185,71 +185,23 @@ export default function DashboardMain() {
       // UI 블로킹 방지를 위해 다음 틱으로 지연
       await new Promise(resolve => setTimeout(resolve, 0))
       
-      // Excel 파일 생성 (FastPurchaseTable과 동일한 로직)
-      const workbook = new ExcelJS.Workbook()
-      const worksheet = workbook.addWorksheet('발주서')
-      
-      // 헤더 설정
-      worksheet.columns = [
-        { header: '발주번호', key: 'purchase_order_number', width: 20 },
-        { header: '업체명', key: 'vendor_name', width: 30 },
-        { header: '품목명', key: 'item_name', width: 40 },
-        { header: '규격', key: 'specification', width: 30 },
-        { header: '수량', key: 'quantity', width: 15 },
-        { header: '단가', key: 'unit_price', width: 20 },
-        { header: '금액', key: 'amount', width: 20 },
-        { header: '요청일', key: 'request_date', width: 15 },
-        { header: '진행상태', key: 'progress_type', width: 15 }
-      ]
-      
-      // 데이터 추가
-      const items = purchase.purchase_request_items || []
-      items.forEach((item: any) => {
-        worksheet.addRow({
+      // 관리탭과 동일한 Excel 다운로드 함수 호출
+      await downloadPurchaseOrderExcel(
+        {
+          id: purchase.id,
           purchase_order_number: purchase.purchase_order_number,
-          vendor_name: purchase.vendor_name || purchase.vendors?.vendor_name || '',
-          item_name: item.item_name || '',
-          specification: item.specification || '',
-          quantity: item.quantity || 0,
-          unit_price: item.unit_price_value || 0,
-          amount: item.amount_value || 0,
-          request_date: purchase.request_date || '',
-          progress_type: purchase.progress_type || ''
-        })
-      })
-      
-      // 스타일 적용
-      worksheet.getRow(1).font = { bold: true }
-      worksheet.getRow(1).fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFE0E0E0' }
-      }
-      
-      // 파일 다운로드
-      const buffer = await workbook.xlsx.writeBuffer()
-      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `발주서_${purchase.purchase_order_number}_${new Date().toISOString().slice(0, 10)}.xlsx`
-      link.click()
-      window.URL.revokeObjectURL(url)
-      
-      // lead buyer 또는 app_admin인 경우 is_po_download를 true로 업데이트
-      if (currentUserRoles.includes('lead buyer') || currentUserRoles.includes('app_admin')) {
-        await supabase
-          .from('purchase_requests')
-          .update({ is_po_download: true })
-          .eq('id', purchase.id)
-        
-        // UI에서 제거
-        setUndownloadedOrders(prev => prev.filter(item => item.id !== purchase.id))
-      }
-      
-      toast.success('발주서가 다운로드되었습니다.')
+          vendor_name: purchase.vendor_name,
+          vendor_id: purchase.vendor_id,
+          contact_id: purchase.contact_id
+        },
+        currentUserRoles,
+        () => {
+          // 성공 콜백: UI에서 다운로드 완료된 항목 제거
+          setUndownloadedOrders(prev => prev.filter(item => item.id !== purchase.id))
+        }
+      )
     } catch (error) {
-      toast.error('다운로드 중 오류가 발생했습니다.')
+      logger.error('Excel 다운로드 중 오류 발생', error)
     } finally {
       setDownloadingIds(prev => {
         const newSet = new Set(prev)
