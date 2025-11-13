@@ -850,7 +850,17 @@ export class DashboardService {
       logger.info('[DashboardService] 미다운로드 발주서 필터링 결과:', {
         totalFetched: data?.length || 0,
         afterFilter: filteredData.length,
-        roles
+        roles,
+        employeeName: employee.name,
+        sampleItems: filteredData.slice(0, 3).map(item => ({
+          id: item.id,
+          purchase_order_number: item.purchase_order_number,
+          requester_name: item.requester_name,
+          payment_category: item.payment_category,
+          progress_type: item.progress_type,
+          is_po_download: item.is_po_download,
+          is_payment_completed: item.is_payment_completed
+        }))
       })
 
       return filteredData

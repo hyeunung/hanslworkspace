@@ -69,7 +69,12 @@ export default function DashboardMain() {
           logger.info('[DashboardMain] 미다운로드 발주서 조회 결과:', { 
             count: undownloaded.length,
             userRoles,
-            employeeName: employee.name
+            employeeName: employee.name,
+            sampleItems: undownloaded.slice(0, 3).map(item => ({
+              purchase_order_number: item.purchase_order_number,
+              requester_name: item.requester_name,
+              vendor_name: item.vendor_name
+            }))
           })
           setUndownloadedOrders(undownloaded)
         } catch (undownloadedError) {
@@ -366,6 +371,15 @@ export default function DashboardMain() {
                       className="pl-10 h-8 text-xs"
                     />
                   </div>
+                  
+                  {/* 디버그 정보 (개발 환경에서만) */}
+                  {process.env.NODE_ENV === 'development' && (
+                    <div className="text-xs bg-blue-50 p-2 rounded mb-2">
+                      <div>전체 미다운로드: {undownloadedOrders.length}개</div>
+                      <div>필터링 후: {filterItems(undownloadedOrders, searchTerms.undownloaded).length}개</div>
+                      <div>요청자들: {[...new Set(undownloadedOrders.map(item => item.requester_name))].join(', ')}</div>
+                    </div>
+                  )}
                   
                   {/* 항목 리스트 */}
                   <div className="space-y-2 h-[36rem] overflow-y-auto">
