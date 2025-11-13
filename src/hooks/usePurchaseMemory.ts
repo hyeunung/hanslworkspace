@@ -33,13 +33,14 @@ export function usePurchaseMemory() {
       const arrayChanged = purchaseMemoryCache.allPurchases !== lastArrayRef
       const fetchTimeChanged = purchaseMemoryCache.lastFetch !== lastFetchTime
       
-      if (arrayChanged || fetchTimeChanged) {
+      if (arrayChanged || fetchTimeChanged || purchases.length === 0) {
         console.log('🔄 [usePurchaseMemory] 캐시 변경 감지', {
           arrayChanged,
           fetchTimeChanged,
           currentLastFetch: purchaseMemoryCache.lastFetch,
           prevLastFetch: lastFetchTime,
-          purchasesCount: purchaseMemoryCache.allPurchases?.length || 0
+          purchasesCount: purchaseMemoryCache.allPurchases?.length || 0,
+          currentPurchasesCount: purchases.length
         })
         
         if (purchaseMemoryCache.allPurchases) {
@@ -66,7 +67,7 @@ export function usePurchaseMemory() {
     const interval = setInterval(checkCache, 10)
     
     return () => clearInterval(interval)
-  }, [])
+  }, [purchases.length]) // purchases.length 추가하여 state가 비어있을 때도 체크
   
   // 필터링된 데이터 반환 함수
   const getFilteredPurchases = useCallback((options: FilterOptions): Purchase[] => {

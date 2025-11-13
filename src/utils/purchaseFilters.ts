@@ -368,33 +368,11 @@ export const calculateTabCounts = (
   allPurchases: Purchase[],
   currentUser: Employee | null
 ): Record<TabType, number> => {
-  // 일반 직원인 경우 최근 60일만 필터링
-  const userRoles = currentUser ? (
-    Array.isArray(currentUser.purchase_role) 
-      ? currentUser.purchase_role.map((r: string) => r.trim())
-      : typeof currentUser.purchase_role === 'string' 
-      ? currentUser.purchase_role.split(',').map((r: string) => r.trim())
-      : []
-  ) : []
-  
-  const isGeneralEmployee = !userRoles.some((role: string) => 
-    ['app_admin', 'ceo', 'lead buyer', 'finance_team', 'raw_material_manager', 'consumable_manager', 'purchase_manager', 'hr', 'middle_manager', 'final_approver'].includes(role)
-  )
-  
-  // 일반 직원인 경우 최근 60일만 필터링
-  let purchasesForDone = allPurchases
-  if (isGeneralEmployee) {
-    const sixtyDaysAgo = new Date()
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
-    const dateStart = sixtyDaysAgo.toISOString().split('T')[0]
-    purchasesForDone = filterByDateRange(allPurchases, dateStart, undefined)
-  }
-  
   return {
     pending: filterByTab(allPurchases, 'pending', currentUser).length,
     purchase: filterByTab(allPurchases, 'purchase', currentUser).length,
     receipt: filterByTab(allPurchases, 'receipt', currentUser).length,
-    done: purchasesForDone.length
+    done: filterByTab(allPurchases, 'done', currentUser).length
   }
 }
 

@@ -149,7 +149,7 @@ const VirtualScrollTable = memo<VirtualScrollTableProps>(({
           backgroundColor: 'white',
           borderBottom: '1px solid #e5e7eb'
         }}>
-          <table className={shouldUseFitLayout ? 'table-fit-left' : 'w-full min-w-[1790px] border-collapse'}>
+          <table className={shouldUseFitLayout ? `table-fit-left ${activeTab}-tab` : 'w-full min-w-[1790px] border-collapse'}>
             {tableHeader}
           </table>
         </div>
@@ -166,7 +166,7 @@ const VirtualScrollTable = memo<VirtualScrollTableProps>(({
               right: 0,
             }}
           >
-            <table className={`${shouldUseFitLayout ? 'table-fit-left' : 'w-full min-w-[1790px] border-collapse'} virtual-scroll-table`}>
+            <table className={`${shouldUseFitLayout ? `table-fit-left ${activeTab}-tab` : 'w-full min-w-[1790px] border-collapse'} virtual-scroll-table`}>
               <tbody>
                 {visibleItems.map((purchase, index) => (
                   <TableRowComponent

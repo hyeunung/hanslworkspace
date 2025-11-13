@@ -80,7 +80,7 @@ const COMMON_COLUMN_CLASSES = {
   paymentCategory: "text-center w-20 min-w-[85px] max-w-[85px]",
   requesterName: "w-12 min-w-[48px] max-w-[48px]",                    // 한글 이름 2-3자 기준 (김용희, 한화 등)
   requestDate: "text-center px-2 w-16 min-w-[64px] max-w-[68px]",
-  vendorName: "pl-3 pr-2 w-20 min-w-[80px] max-w-[80px]",            // 업체명 보통 3-5자 (LG, LGPRI, 한승 등)
+  vendorName: "pl-3 pr-2 w-32 min-w-[128px] max-w-[128px]",           // 업체명 최대 길이 대응 (95% 커버리지)
   contactName: "w-16 min-w-[68px] max-w-[68px]",
   deliveryRequestDate: "w-20 min-w-[85px] max-w-[85px]",
   revisedDeliveryRequestDate: "w-20 min-w-[85px] max-w-[85px]",
@@ -99,7 +99,7 @@ const COMMON_COLUMN_CLASSES = {
   salesOrderNumber: "w-28 min-w-[115px] max-w-[115px]",               // 평균 8.6자
   projectItem: "w-44 min-w-[180px] max-w-[180px]",                    // 평균 11.1자 + 여유 (조금 더 길게)
   receiptProgress: "text-center w-20 min-w-[85px] max-w-[85px]",
-  status: "text-center w-20 min-w-[85px] max-w-[85px]",
+  status: "text-center w-24 min-w-[100px] max-w-[100px]",
   receipt: "text-center w-24 min-w-[100px] max-w-[100px]",           // 진행바 + 퍼센트 표시
   paymentStatus: "text-center w-16 min-w-[70px] max-w-[70px]",
   link: "w-20 min-w-[85px] max-w-[85px]",
@@ -508,8 +508,8 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       {/* 업체 칼럼 */}
       {isVisible('vendor_name') && (
         <td 
-          className="pl-3 pr-2 py-1.5 card-title vendor-dynamic-column"
-          style={{ 
+          className={`pl-3 pr-2 py-1.5 card-title ${activeTab === 'done' ? COMMON_COLUMN_CLASSES.vendorName : 'vendor-dynamic-column'}`}
+          style={activeTab === 'done' ? undefined : { 
             width: `${vendorColumnWidth || 80}px`, 
             minWidth: `${vendorColumnWidth || 80}px`, 
             maxWidth: `${vendorColumnWidth || 80}px` 
@@ -1204,8 +1204,8 @@ const FastPurchaseTable = ({
         )}
         {isColumnVisible('vendor_name') && (
           <th 
-            className="px-2 py-1.5 modal-label text-gray-900 text-left vendor-dynamic-column"
-            style={{ 
+            className={`px-2 py-1.5 modal-label text-gray-900 text-left ${activeTab === 'done' ? COMMON_COLUMN_CLASSES.vendorName : 'vendor-dynamic-column'}`}
+            style={activeTab === 'done' ? undefined : { 
               width: `${vendorColumnWidth || 80}px`, 
               minWidth: `${vendorColumnWidth || 80}px`, 
               maxWidth: `${vendorColumnWidth || 80}px` 
@@ -1351,7 +1351,7 @@ const FastPurchaseTable = ({
         ) : (
           // 기존 테이블 (100개 미만 항목)
           <div className={shouldUseFitLayout ? 'table-container-fit-left' : 'overflow-x-auto border rounded-lg'}>
-            <table className={shouldUseFitLayout ? 'table-fit-left' : 'w-full min-w-[1790px] border-collapse'}>
+            <table className={shouldUseFitLayout ? `table-fit-left ${activeTab}-tab` : 'w-full min-w-[1790px] border-collapse'}>
               {tableHeader}
               <tbody>
                 {purchases.map((purchase) => (

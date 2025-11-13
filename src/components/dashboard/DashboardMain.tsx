@@ -1,19 +1,18 @@
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { dashboardService } from '@/services/dashboardService'
 import { createClient } from '@/lib/supabase/client'
 import { updatePurchaseInMemory } from '@/services/purchaseDataLoader'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Clock, CheckCircle, ArrowRight, X, Package, Truck, ShoppingCart, Download, Search } from 'lucide-react'
 import ExcelJS from 'exceljs'
 
-// Import modals
-import PurchaseDetailModal from '@/components/purchase/PurchaseDetailModal'
-import PurchaseStatusModal from '@/components/dashboard/PurchaseStatusModal'
+// Lazy load modal for better performance
+const PurchaseItemsModal = lazy(() => import('@/components/purchase/PurchaseItemsModal'))
+
 import { toast } from 'sonner'
 import type { DashboardData, Purchase } from '@/types/purchase'
 import { useNavigate } from 'react-router-dom'
@@ -23,20 +22,16 @@ export default function DashboardMain() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [selectedApprovalId, setSelectedApprovalId] = useState<number | null>(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
   const [currentUserRoles, setCurrentUserRoles] = useState<string[]>([])
   const [undownloadedOrders, setUndownloadedOrders] = useState<any[]>([])
   const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set())
-  const [selectedOrder, setSelectedOrder] = useState<any>(null)
-  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false)
   
   const supabase = createClient()
   
-  // 구매/입고 상세 모달 상태
-  const [selectedStatusItem, setSelectedStatusItem] = useState<any>(null)
-  const [statusModalType, setStatusModalType] = useState<'purchase' | 'delivery' | 'completed' | null>(null)
-  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false)
+  // 통일된 상세 모달 상태
+  const [selectedPurchase, setSelectedPurchase] = useState<any>(null)
+  const [isItemsModalOpen, setIsItemsModalOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState<'pending' | 'purchase' | 'receipt' | 'done'>('done')
   
   // 검색 상태
   const [searchTerms, setSearchTerms] = useState({
@@ -67,13 +62,19 @@ export default function DashboardMain() {
       setData(dashboardData)
       setCurrentUserRoles(userRoles)
       
-      // lead buyer인 경우 미다운로드 항목 조회
-      if (userRoles.includes('lead buyer')) {
+      // lead buyer 또는 app_admin인 경우 미다운로드 항목 조회
+      if (userRoles.includes('lead buyer') || userRoles.includes('app_admin')) {
         try {
-        const undownloaded = await dashboardService.getUndownloadedOrders(employee)
-        setUndownloadedOrders(undownloaded)
+          const undownloaded = await dashboardService.getUndownloadedOrders(employee)
+          logger.info('[DashboardMain] 미다운로드 발주서 조회 결과:', { 
+            count: undownloaded.length,
+            userRoles,
+            employeeName: employee.name
+          })
+          setUndownloadedOrders(undownloaded)
         } catch (undownloadedError) {
-          // 미다운로드 항목 조회 실패는 치명적이지 않으므로 계속 진행
+          logger.error('[DashboardMain] 미다운로드 발주서 조회 실패:', undownloadedError)
+          toast.error('미다운로드 발주서를 불러오는데 실패했습니다.')
         }
       }
     } catch (error) {
@@ -144,10 +145,11 @@ export default function DashboardMain() {
     }
   }
 
-  const handleStatusClick = (item: any, type: 'purchase' | 'delivery' | 'completed') => {
-    setSelectedStatusItem(item)
-    setStatusModalType(type)
-    setIsStatusModalOpen(true)
+  // 모달 열기 헬퍼 함수
+  const openPurchaseModal = (item: any, tab: 'pending' | 'purchase' | 'receipt' | 'done') => {
+    setSelectedPurchase(item)
+    setActiveTab(tab)
+    setIsItemsModalOpen(true)
   }
 
   // 검색 필터링 함수
@@ -223,8 +225,8 @@ export default function DashboardMain() {
       link.click()
       window.URL.revokeObjectURL(url)
       
-      // lead buyer인 경우 is_po_download를 true로 업데이트
-      if (currentUserRoles.includes('lead buyer') || currentUserRoles.includes('lead buyer')) {
+      // lead buyer 또는 app_admin인 경우 is_po_download를 true로 업데이트
+      if (currentUserRoles.includes('lead buyer') || currentUserRoles.includes('app_admin')) {
         await supabase
           .from('purchase_requests')
           .update({ is_po_download: true })
@@ -332,8 +334,8 @@ export default function DashboardMain() {
           </h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-          {/* Lead Buyer - 미다운로드 발주서 */}
-          {(currentUserRoles.includes('lead buyer') || currentUserRoles.includes('lead buyer')) && undownloadedOrders.length > 0 && (
+          {/* Lead Buyer / App Admin - 미다운로드 발주서 */}
+          {(currentUserRoles.includes('lead buyer') || currentUserRoles.includes('app_admin')) && (
             <Card className="w-full col-span-1 row-span-2 border-gray-200 shadow-sm hover:shadow-md transition-shadow">
               <CardHeader className="py-3 px-4 bg-gray-50 border-b">
                 <CardTitle className="section-title flex items-center justify-between">
@@ -361,7 +363,13 @@ export default function DashboardMain() {
                   
                   {/* 항목 리스트 */}
                   <div className="space-y-2 h-[36rem] overflow-y-auto">
-                    {filterItems(undownloadedOrders, searchTerms.undownloaded).slice(0, 10).map((item) => {
+                    {filterItems(undownloadedOrders, searchTerms.undownloaded).length === 0 ? (
+                      <div className="text-center py-12 text-gray-400">
+                        <Download className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+                        <p className="card-subtitle">미다운로드 발주서가 없습니다</p>
+                      </div>
+                    ) : (
+                      filterItems(undownloadedOrders, searchTerms.undownloaded).map((item, index) => {
                       const items = item.purchase_request_items || []
                       const firstItem = items[0] || {}
                       const totalAmount = items.reduce((sum: number, i: any) => {
@@ -379,9 +387,10 @@ export default function DashboardMain() {
                           className={`border rounded-lg p-2 transition-all cursor-pointer hover:shadow-sm ${
                             isAdvance ? 'bg-red-50 hover:bg-red-100 border-red-200' : 'bg-white hover:bg-gray-50 border-gray-200'
                           }`}
-                          onClick={() => {
-                            setSelectedOrder(item)
-                            setIsOrderModalOpen(true)
+                          onClick={(e) => {
+                            // 버튼 클릭은 무시
+                            if ((e.target as HTMLElement).closest('button')) return
+                            openPurchaseModal(item, 'pending')
                           }}
                         >
                           <div className="flex items-center justify-between gap-2">
@@ -428,7 +437,15 @@ export default function DashboardMain() {
                           </div>
                         </div>
                       )
-                    })}
+                      })
+                    )}
+                    {undownloadedOrders.length >= 50 && (
+                      <div className="text-center text-xs text-gray-500 mt-3 pb-2">
+                        표시 가능한 최대 개수(50개)에 도달했습니다.
+                        <br />
+                        전체 목록은 구매 현황에서 확인하세요.
+                      </div>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -497,9 +514,9 @@ export default function DashboardMain() {
                             }`}
                             style={{ display: 'block' }}
                             onClick={(e) => {
+                              // 버튼 클릭은 무시
                               if ((e.target as HTMLElement).closest('button')) return
-                              setSelectedApprovalId(Number(approval.id))
-                              setIsModalOpen(true)
+                              openPurchaseModal(approval, 'pending')
                             }}
                           >
                             <div className="flex items-center justify-between gap-2">
@@ -545,8 +562,8 @@ export default function DashboardMain() {
           )}
           
 
-          {/* 구매 대기중 - Lead Buyer만 표시 */}
-          {currentUserRoles.includes('lead buyer') && (
+          {/* 구매 대기중 - Lead Buyer와 App Admin만 표시 */}
+          {(currentUserRoles.includes('lead buyer') || currentUserRoles.includes('app_admin')) && (
             <Card className="w-full col-span-1 border-gray-200 shadow-sm hover:shadow-md transition-shadow">
               <CardHeader className="py-3 px-4 bg-gray-50 border-b">
                 <CardTitle className="section-title flex items-center justify-between">
@@ -598,7 +615,11 @@ export default function DashboardMain() {
                             <div className="flex items-center justify-between gap-2">
                               <div 
                                 className="flex items-center gap-2 flex-1 cursor-pointer"
-                                onClick={() => handleStatusClick(item, 'purchase')}
+                                onClick={(e) => {
+                                  // 버튼 클릭은 무시
+                                  if ((e.target as HTMLElement).closest('button')) return
+                                  openPurchaseModal(item, 'purchase')
+                                }}
                               >
                                 <span className="card-title">
                                   {item.purchase_order_number || `PO-${item.id.slice(0, 8)}`}
@@ -714,7 +735,11 @@ export default function DashboardMain() {
                             className={`border rounded-lg p-3 transition-all cursor-pointer hover:shadow-sm ${
                               isSeonJin ? 'bg-red-50 hover:bg-red-100 border-red-200' : 'bg-white hover:bg-gray-50 border-gray-200'
                             }`}
-                            onClick={() => handleStatusClick(item, 'delivery')}
+                            onClick={(e) => {
+                              // 버튼 클릭은 무시
+                              if ((e.target as HTMLElement).closest('button')) return
+                              openPurchaseModal(item, 'receipt')
+                            }}
                           >
                             <div className="flex items-center gap-2">
                               <span className="card-title">
@@ -744,201 +769,42 @@ export default function DashboardMain() {
         {/* 오늘의 요약 - 상단 통계에 통합 */}
       </div>
       
-      {/* 승인 상세보기 모달 */}
-      <PurchaseDetailModal
-        purchaseId={selectedApprovalId}
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false)
-          setSelectedApprovalId(null)
-        }}
-        currentUserRoles={currentUserRoles}
-        onRefresh={() => {
-          loadDashboardData()
-          setIsModalOpen(false)
-          setSelectedApprovalId(null)
-        }}
-        onOptimisticUpdate={(purchaseId: number, updater: (prev: Purchase) => Purchase) => {
-          // 메모리 캐시 즉시 업데이트
-          updatePurchaseInMemory(purchaseId, updater)
-          // 대시보드 데이터도 새로고침
-          loadDashboardData(false)
-        }}
-      />
-      
-      {/* 구매/입고 상태 상세보기 모달 */}
-      <PurchaseStatusModal
-          isOpen={isStatusModalOpen}
-          onClose={() => {
-            setIsStatusModalOpen(false)
-            setSelectedStatusItem(null)
-            setStatusModalType(null)
-          }}
-          item={selectedStatusItem}
-          type={statusModalType as any}
-          onRefresh={() => loadDashboardData(false)}
-      />
-
-      {/* Order Detail Modal - Apple-inspired Design */}
-      {isOrderModalOpen && selectedOrder && (
-        <Dialog open={isOrderModalOpen} onOpenChange={() => {
-          setIsOrderModalOpen(false)
-          setSelectedOrder(null)
-        }}>
-          <DialogContent 
-            className="overflow-hidden bg-white rounded-3xl shadow-2xl border-0"
-            style={{ maxWidth: '1280px', width: '90vw', maxHeight: '50vh' }}
-            showCloseButton={false}
-          >
-            <DialogHeader className="sr-only">
-              <DialogTitle>발주 요청 세부사항</DialogTitle>
-            </DialogHeader>
-            {/* Apple-style Header */}
-            <div className="relative px-6 pt-6 pb-4">
-              <button
-                onClick={() => {
-                  setIsOrderModalOpen(false)
-                  setSelectedOrder(null)
-                }}
-                className="absolute right-6 top-6 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-all duration-200"
-              >
-                <X className="w-4 h-4 text-gray-500" />
-              </button>
-              
-              <div className="pr-16">
-                <div className="flex items-start gap-4 mb-2">
-                  <div className="w-10 h-10 rounded-2xl bg-orange-50 flex items-center justify-center flex-shrink-0">
-                    <Download className="w-6 h-6 text-orange-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h1 className="modal-title mb-1">
-                      {selectedOrder.purchase_order_number || 'PO번호 없음'}
-                    </h1>
-                    <p className="modal-subtitle">{selectedOrder.vendor_name || '업체명 없음'}</p>
-                  </div>
-                  <span className="badge-stats bg-orange-50 text-orange-700">
-                    미다운로드
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Apple-style Content */}
-            <div className="overflow-y-auto max-h-[calc(50vh-160px)] px-6 pb-4 space-y-3">
-              
-              {/* Dense Basic Information Grid */}
-              <div className="bg-gray-50 rounded-xl p-3 border border-gray-100">
-                <div className="grid grid-cols-3 gap-x-4 gap-y-2 text-xs">
-                  <div><span className="text-gray-500">요청자:</span> <span className="font-medium">{selectedOrder.requester_name}</span></div>
-                  <div><span className="text-gray-500">요청일:</span> <span className="font-medium">{new Date(selectedOrder.request_date || selectedOrder.created_at).toLocaleDateString('ko-KR')}</span></div>
-                  <div><span className="text-gray-500">납기요청일:</span> <span className="font-medium">{selectedOrder.delivery_request_date ? new Date(selectedOrder.delivery_request_date).toLocaleDateString('ko-KR') : '미지정'}</span></div>
-                  
-                  <div><span className="text-gray-500">업체명:</span> <span className="font-medium">{selectedOrder.vendor_name || '-'}</span></div>
-                  <div><span className="text-gray-500">결제유형:</span> <span className="font-medium">{selectedOrder.payment_category || '일반'}</span></div>
-                  <div><span className="text-gray-500">진행구분:</span> <span className="font-medium">{selectedOrder.progress_type || '일반'}</span></div>
-                  
-                  <div><span className="text-gray-500">프로젝트업체:</span> <span className="font-medium">{selectedOrder.project_vendor || '-'}</span></div>
-                  <div><span className="text-gray-500">판매주문번호:</span> <span className="font-medium">{selectedOrder.sales_order_number || '-'}</span></div>
-                  <div><span className="text-gray-500">배송지:</span> <span className="font-medium">{selectedOrder.shipping_address || '본사'}</span></div>
-                  
-                  <div><span className="text-gray-500">통화:</span> <span className="font-medium">{selectedOrder.currency || 'KRW'}</span></div>
-                  <div><span className="text-gray-500">템플릿:</span> <span className="font-medium">{selectedOrder.po_template_type || '일반'}</span></div>
-                  {selectedOrder.revised_delivery_request_date && (
-                    <div><span className="text-orange-500">변경입고일:</span> <span className="font-medium text-orange-900">{new Date(selectedOrder.revised_delivery_request_date).toLocaleDateString('ko-KR')}</span></div>
-                  )}
-                </div>
-              </div>
-
-              {/* Compact Items Table */}
-              <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-                <div className="bg-gray-50 px-3 py-2 border-b border-gray-100">
-                  <h3 className="text-sm font-medium text-gray-700">주문 품목 ({(selectedOrder.purchase_request_items || []).length}개, 총 ₩{(selectedOrder.purchase_request_items || []).reduce((sum: number, i: any) => sum + (Number(i.amount_value) || 0), 0).toLocaleString()})</h3>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs table-fixed">
-                    <colgroup>
-                      <col className="w-[30%]" />
-                      <col className="w-[25%]" />
-                      <col className="w-[10%]" />
-                      <col className="w-[15%]" />
-                      <col className="w-[20%]" />
-                    </colgroup>
-                    <thead className="bg-gray-50 border-b border-gray-100">
-                      <tr>
-                        <th className="text-left p-2 font-medium text-gray-600">품목명</th>
-                        <th className="text-left p-2 font-medium text-gray-600">규격</th>
-                        <th className="text-right p-2 font-medium text-gray-600">수량</th>
-                        <th className="text-right p-2 font-medium text-gray-600">단가</th>
-                        <th className="text-right p-2 font-medium text-gray-600">금액</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {(selectedOrder.purchase_request_items || []).map((pItem: any, index: number) => {
-                        const unitPrice = pItem.quantity > 0 ? (Number(pItem.amount_value) || 0) / pItem.quantity : 0
-                        return (
-                          <tr key={index} className="hover:bg-gray-50">
-                            <td className="p-2">
-                              <div className="font-medium text-gray-900">{pItem.item_name || '품목명 없음'}</div>
-                              {pItem.remark && (
-                                <div className="text-xs text-amber-600 mt-1">비고: {pItem.remark}</div>
-                              )}
-                            </td>
-                            <td className="p-2 text-gray-600">{pItem.specification || '-'}</td>
-                            <td className="p-2 text-right font-medium">{pItem.quantity || 0}</td>
-                            <td className="p-2 text-right">₩{unitPrice.toLocaleString()}</td>
-                            <td className="p-2 text-right font-medium">₩{(Number(pItem.amount_value) || 0).toLocaleString()}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            {/* Apple-style Action Bar */}
-            <div className="sticky bottom-0 bg-white border-t border-gray-100 px-6 py-6">
-              <div className="flex items-center justify-between gap-6">
-                <Button
-                  onClick={() => handleDownloadExcel(selectedOrder)}
-                  disabled={downloadingIds.has(selectedOrder.id)}
-                  className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-8 py-4 rounded-2xl shadow-lg transition-all duration-200 modal-subtitle"
-                >
-                  {downloadingIds.has(selectedOrder.id) ? (
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-3" />
-                  ) : (
-                    <Download className="w-5 h-5 mr-3" />
-                  )}
-                  Excel 다운로드
-                </Button>
-
-                <div className="flex items-center gap-4 ml-auto">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      navigate(`/purchase/list?tab=purchase`)
-                      setIsOrderModalOpen(false)
-                      setSelectedOrder(null)
-                    }}
-                    className="border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-900 hover:border-gray-400 px-8 py-4 rounded-2xl modal-subtitle transition-all duration-200"
-                  >
-                    발주 목록에서 보기
-                    <ArrowRight className="w-5 h-5 ml-3" />
-                  </Button>
-                  <Button 
-                    onClick={() => {
-                      setIsOrderModalOpen(false)
-                      setSelectedOrder(null)
-                    }} 
-                    className="bg-gray-900 hover:bg-gray-800 text-white px-10 py-4 rounded-2xl modal-subtitle transition-all duration-200 shadow-lg"
-                  >
-                    완료
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+      {/* 통일된 상세보기 모달 */}
+      {selectedPurchase && (
+        <Suspense fallback={
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+          </div>
+        }>
+          <PurchaseItemsModal
+            isOpen={isItemsModalOpen}
+            onClose={() => {
+              setIsItemsModalOpen(false)
+              setSelectedPurchase(null)
+            }}
+            purchase={{
+              id: selectedPurchase.id,
+              purchase_order_number: selectedPurchase.purchase_order_number,
+              vendor_name: selectedPurchase.vendor_name || '',
+              requester_name: selectedPurchase.requester_name || '',
+              project_vendor: selectedPurchase.project_vendor || '',
+              sales_order_number: selectedPurchase.sales_order_number || '',
+              project_item: selectedPurchase.project_item || '',
+              request_date: selectedPurchase.request_date || selectedPurchase.created_at || new Date().toISOString(),
+              delivery_request_date: selectedPurchase.delivery_request_date,
+              revised_delivery_request_date: selectedPurchase.revised_delivery_request_date,
+              currency: selectedPurchase.currency || 'KRW',
+              payment_category: selectedPurchase.payment_category,
+              purchase_request_items: selectedPurchase.purchase_request_items || [],
+              total_amount: selectedPurchase.total_amount || (selectedPurchase.purchase_request_items || []).reduce((sum: number, i: any) => sum + (Number(i.amount_value) || 0), 0)
+            }}
+            isAdmin={currentUserRoles.includes('app_admin') || currentUserRoles.includes('lead buyer')}
+            onUpdate={() => {
+              loadDashboardData(false)
+            }}
+            activeTab={activeTab}
+          />
+        </Suspense>
       )}
     </div>
   )
