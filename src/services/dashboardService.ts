@@ -792,25 +792,39 @@ export class DashboardService {
     }
 
     try {
-      // 먼저 간단한 쿼리로 미다운로드 발주서만 가져오기 (false 또는 null)
+      // 미다운로드 발주서만 먼저 가져오기 (NULL이거나 false인 것들)
       const { data, error } = await this.supabase
         .from('purchase_requests')
         .select('*,purchase_request_items(id,item_name,specification,quantity,unit_price_value,amount_value)')
-        .or('eq.is_po_download,false,is.is_po_download,null')
-        .order('created_at', { ascending: true })
-        .limit(50)
+        .or('is_po_download.is.null,is_po_download.eq.false')
+        .order('created_at', { ascending: false })  // 최신 순으로 정렬
+        .limit(500)  // 더 많은 데이터 조회
 
       if (error) {
         logger.error('[DashboardService] 미다운로드 발주서 조회 쿼리 에러:', error)
         throw error
       }
 
-      // 클라이언트 사이드에서 추가 필터링
+      // 클라이언트 사이드에서 조건에 맞는 것만 필터링
+      // 조건: 선진행이거나 최종승인완료인 것만 (더 포괄적 조건)
       const filteredData = (data || []).filter((item: any) => {
-        // 선진행이거나 최종승인완료인 것만
-        const isAdvance = item.progress_type === '선진행'
-        const isApproved = item.middle_manager_status === 'approved' && item.final_manager_status === 'approved'
-        return isAdvance || isApproved
+        // is_po_download가 true인 것은 제외 (안전장치)
+        if (item.is_po_download === true) return false
+        
+        // 반려된 것은 제외
+        if (item.middle_manager_status === 'rejected' || item.final_manager_status === 'rejected') {
+          return false
+        }
+        
+        // 1) 선진행: 승인 상태와 관계없이 포함
+        const isAdvance = (item.progress_type || '').includes('선진행')
+        if (isAdvance) return true
+        
+        // 2) 일반: 최종승인 완료된 것만 포함
+        const isNormal = (item.progress_type || '').includes('일반') || !item.progress_type || item.progress_type === ''
+        const finalApproved = item.final_manager_status === 'approved'
+        
+        return isNormal && finalApproved
       })
 
       logger.info('[DashboardService] 미다운로드 발주서 필터링 결과:', {

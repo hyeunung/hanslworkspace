@@ -445,11 +445,16 @@ export default function DashboardMain() {
                       )
                       })
                     )}
-                    {undownloadedOrders.length >= 50 && (
+                    {filterItems(undownloadedOrders, searchTerms.undownloaded).length >= 100 && (
                       <div className="text-center text-xs text-gray-500 mt-3 pb-2">
-                        표시 가능한 최대 개수(50개)에 도달했습니다.
+                        표시된 항목: {filterItems(undownloadedOrders, searchTerms.undownloaded).length}개
                         <br />
-                        전체 목록은 구매 현황에서 확인하세요.
+                        더 많은 항목이 있을 수 있습니다. 검색으로 필터링하세요.
+                      </div>
+                    )}
+                    {filterItems(undownloadedOrders, searchTerms.undownloaded).length > 0 && (
+                      <div className="text-center text-xs text-gray-400 mt-2 pb-2">
+                        총 {filterItems(undownloadedOrders, searchTerms.undownloaded).length}개 미다운로드 발주서
                       </div>
                     )}
                   </div>
