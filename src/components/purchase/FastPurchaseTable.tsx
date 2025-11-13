@@ -189,12 +189,9 @@ const PaymentProgressBar = memo(({ purchase, activeTab }: { purchase: Purchase; 
   // 메모리에서 최신 데이터 조회 (실시간 업데이트 보장)
   const memoryPurchase = allPurchases?.find(p => p.id === purchase.id) || purchase;
 
-  // 전체항목 탭에서 선진행인 경우에만 "-" 표시 (승인 상태와 무관하게 구매진행 표시)
+  // 전체항목 탭에서 결제종류가 '구매 요청'이 아닌 경우 "-" 표시
   if (activeTab === 'done') {
-    const isAdvancePayment = memoryPurchase.payment_category === '선진행' || memoryPurchase.payment_category?.includes('선진행');
-    
-    // 선진행인 경우에만 "-" 표시
-    if (isAdvancePayment) {
+    if (memoryPurchase.payment_category !== '구매 요청') {
       return (
         <div className="flex items-center justify-center">
           <span className="card-title text-gray-500">-</span>
@@ -404,10 +401,16 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       className={`border-b hover:bg-gray-100 cursor-pointer transition-colors ${isAdvance ? 'bg-red-50 hover:bg-red-100' : ''}`}
       onClick={() => onClick(purchase)}
     >
-      {/* 승인대기/구매현황 탭에서는 승인상태를 맨 앞에 표시 */}
-      {(activeTab === 'pending' || activeTab === 'purchase') && (
+      {/* 승인대기 탭에서는 승인상태를 맨 앞에 표시 */}
+      {activeTab === 'pending' && (
         <td className={`px-2 py-1.5 whitespace-nowrap ${COMMON_COLUMN_CLASSES.approvalStatus}`}>
           <ApprovalStatusBadge purchase={purchase} />
+        </td>
+      )}
+      {/* 구매현황 탭에서는 구매진행을 맨 앞에 표시 */}
+      {activeTab === 'purchase' && (
+        <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receiptProgress}`}>
+          <PaymentProgressBar purchase={purchase} activeTab={activeTab} />
         </td>
       )}
       {/* 입고현황 탭에서는 입고진행을 맨 앞에 표시 */}
@@ -560,45 +563,75 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       )}
       {/* 수량 칼럼 */}
       {isVisible('quantity') && (
-        <td className={`px-2 py-1.5 card-title ${COMMON_COLUMN_CLASSES.quantity}`}>
-          {(activeTab === 'receipt' || activeTab === 'done') ? (
-            (() => {
-              const quantity = purchase.purchase_request_items?.[0]?.quantity || 0
-              const receivedQuantity = purchase.purchase_request_items?.[0]?.received_quantity ?? 0
-              const shouldWrap = quantity >= 100 || receivedQuantity >= 100
-              const hasReceived = receivedQuantity > 0
-              
-              if (shouldWrap) {
-                return (
-                  <div className="flex flex-col items-center leading-tight">
-                    <div className={hasReceived ? 'text-gray-400' : ''}>{quantity}</div>
-                    <div className={hasReceived ? '' : 'text-gray-400'}>/{receivedQuantity}</div>
-                  </div>
-                )
-              } else {
-                return (
-                  <span>
-                    <span className={hasReceived ? 'text-gray-400' : ''}>{quantity}</span>
-                    <span className={hasReceived ? '' : 'text-gray-400'}>/{receivedQuantity}</span>
-                  </span>
-                )
-              }
-            })()
-          ) : (
-            purchase.purchase_request_items?.[0]?.quantity || 0
-          )}
-        </td>
+        (() => {
+          // 모든 품목의 수량 합계 계산
+          const quantity = purchase.purchase_request_items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0
+          const receivedQuantity = purchase.purchase_request_items?.reduce((sum, item) => sum + (item.received_quantity || 0), 0) || 0
+          const isFullyReceived = quantity === receivedQuantity && receivedQuantity > 0
+          const shouldWrap = (activeTab === 'receipt' || activeTab === 'done') && (quantity >= 100 || receivedQuantity >= 100) && !isFullyReceived
+          
+          return (
+            <td className={`px-2 card-title ${COMMON_COLUMN_CLASSES.quantity} ${shouldWrap ? 'py-0.5' : 'py-1.5'}`}>
+              {(activeTab === 'receipt' || activeTab === 'done') ? (
+                (() => {
+                  // 완전 입고 완료 시 실제 입고 수량만 검정색으로 표시
+                  if (isFullyReceived) {
+                    return <span className="text-gray-900">{receivedQuantity}</span>
+                  }
+                  
+                  // 완전 입고되지 않은 경우 원래 색상 로직 유지
+                  const hasReceived = receivedQuantity > 0
+                  
+                  if (shouldWrap) {
+                    return (
+                      <div className="flex flex-col items-center justify-center gap-px leading-tight text-[10px]">
+                        <div className={hasReceived ? 'text-gray-400' : ''}>{quantity}</div>
+                        <div className={hasReceived ? '' : 'text-gray-400'}>/{receivedQuantity}</div>
+                      </div>
+                    )
+                  } else {
+                    return (
+                      <span className="whitespace-nowrap">
+                        <span className={hasReceived ? 'text-gray-400' : ''}>{quantity}</span>
+                        <span className={hasReceived ? '' : 'text-gray-400'}>/{receivedQuantity}</span>
+                      </span>
+                    )
+                  }
+                })()
+              ) : (
+                quantity || 0
+              )}
+            </td>
+          )
+        })()
       )}
       {/* 단가 칼럼 */}
       {isVisible('unit_price') && (
         <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>
-          {purchase.purchase_request_items?.[0]?.unit_price_value ? `${purchase.purchase_request_items[0].unit_price_value.toLocaleString()} ${getCurrencySymbol(purchase.purchase_request_items[0]?.unit_price_currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.purchase_request_items?.[0]?.unit_price_currency || 'KRW')}`}
+          {(() => {
+            const itemCount = purchase.purchase_request_items?.length || 0
+            
+            // 품목이 2개 이상이면 '-' 표시
+            if (itemCount > 1) {
+              return '-'
+            }
+            
+            // 품목이 1개면 단가 표시
+            const unitPrice = purchase.purchase_request_items?.[0]?.unit_price_value || 0
+            const currency = purchase.purchase_request_items?.[0]?.unit_price_currency || 'KRW'
+            return `${unitPrice.toLocaleString()} ${getCurrencySymbol(currency)}`
+          })()}
         </td>
       )}
       {/* 합계 칼럼 */}
       {isVisible('amount') && (
         <td className={`px-2 py-1.5 card-amount whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>
-          {purchase.purchase_request_items?.[0]?.amount_value ? `${purchase.purchase_request_items[0].amount_value.toLocaleString()} ${getCurrencySymbol(purchase.purchase_request_items[0]?.amount_currency || 'KRW')}` : purchase.total_amount ? `${purchase.total_amount.toLocaleString()} ${getCurrencySymbol(purchase.currency || 'KRW')}` : `0 ${getCurrencySymbol(purchase.currency || 'KRW')}`}
+          {(() => {
+            // 모든 품목의 금액 합계 계산
+            const totalAmount = purchase.purchase_request_items?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
+            const currency = purchase.purchase_request_items?.[0]?.amount_currency || purchase.currency || 'KRW'
+            return `${totalAmount.toLocaleString()} ${getCurrencySymbol(currency)}`
+          })()}
         </td>
       )}
       
@@ -1116,7 +1149,7 @@ const FastPurchaseTable = ({
 
   // 탭별 테이블 헤더 메모화
   const tableHeader = useMemo(() => {
-    if (activeTab === 'pending' || activeTab === 'purchase') {
+    if (activeTab === 'pending') {
       return (
         <thead className="bg-gray-50">
           <tr>
@@ -1162,7 +1195,72 @@ const FastPurchaseTable = ({
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
             )}
             {isColumnVisible('amount') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>(총 품목)합계</th>
+            )}
+            {isColumnVisible('remark') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
+            )}
+            {isColumnVisible('project_vendor') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectVendor}`}>PJ업체</th>
+            )}
+            {isColumnVisible('project_item') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.projectItem}`}>PJ ITEM</th>
+            )}
+            {isColumnVisible('sales_order_number') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
+            )}
+          </tr>
+        </thead>
+      );
+    }
+    
+    if (activeTab === 'purchase') {
+      return (
+        <thead className="bg-gray-50">
+          <tr>
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>구매진행</th>
+            {isColumnVisible('purchase_order_number') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.purchaseOrderNumber}`}>발주번호</th>
+            )}
+            {isColumnVisible('payment_category') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentCategory}`}>결제종류</th>
+            )}
+            {isColumnVisible('requester_name') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName}`}>요청자</th>
+            )}
+            {isColumnVisible('request_date') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requestDate}`}>청구일</th>
+            )}
+            {isColumnVisible('vendor_name') && (
+              <th 
+                className="px-2 py-1.5 modal-label text-gray-900 text-left vendor-dynamic-column"
+                style={{ 
+                  width: `${vendorColumnWidth || 80}px`, 
+                  minWidth: `${vendorColumnWidth || 80}px`, 
+                  maxWidth: `${vendorColumnWidth || 80}px` 
+                }}
+              >업체</th>
+            )}
+            {isColumnVisible('contact_name') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.contactName}`}>담당자</th>
+            )}
+            {isColumnVisible('delivery_request_date') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.deliveryRequestDate}`}>입고요청일</th>
+            )}
+            {isColumnVisible('item_name') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.itemName}`}>품명</th>
+            )}
+            {isColumnVisible('specification') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.specification}`}>규격</th>
+            )}
+            {isColumnVisible('quantity') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>요청수량</th>
+            )}
+            {isColumnVisible('unit_price') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
+            )}
+            {isColumnVisible('amount') && (
+              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>(총 품목)합계</th>
             )}
             {isColumnVisible('remark') && (
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
@@ -1243,7 +1341,7 @@ const FastPurchaseTable = ({
           <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
         )}
         {isColumnVisible('amount') && (
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
+          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>(총 품목)합계</th>
         )}
       </>
     );

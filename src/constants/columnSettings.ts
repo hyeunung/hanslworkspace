@@ -164,7 +164,7 @@ export const REQUIRED_COLUMNS: DoneTabColumnId[] = [
   'purchase_order_number',
   'vendor_name',
   'item_name',
-  'amount',
+  'specification',
 ];
 
 // 칼럼 그룹 (설정 UI에서 그룹핑용)

@@ -135,8 +135,11 @@ export const filterByTab = (
     
     case 'done':
     default: {
-      // 전체 항목 탭: 모든 데이터
-      return purchases
+      // 전체 항목 탭: 양쪽 승인 완료된 항목만
+      return purchases.filter(purchase => 
+        purchase.middle_manager_status === 'approved' && 
+        purchase.final_manager_status === 'approved'
+      )
     }
   }
 }
