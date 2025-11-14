@@ -268,7 +268,7 @@ const TableRow = memo<{
       </td>
 
       {/* 합계 */}
-      <td className={`px-2 py-1.5 card-amount whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount} ${!isColumnVisible('amount') ? 'column-hidden' : ''}`}>
+      <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount} ${!isColumnVisible('amount') ? 'column-hidden' : ''}`}>
         {formatAmount(purchase.total_amount || 0, purchase.currency)}
       </td>
 
@@ -436,8 +436,8 @@ const TableHeader = memo<{ activeTab: string; columnVisibility?: any }>(({ activ
         <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.itemName} ${!isColumnVisible('item_name') ? 'column-hidden' : ''}`}>품명</th>
         <th className={`px-2 py-1.5 modal-label text-gray-900 text-left ${COMMON_COLUMN_CLASSES.specification} ${!isColumnVisible('specification') ? 'column-hidden' : ''}`}>규격</th>
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity} ${!isColumnVisible('quantity') ? 'column-hidden' : ''}`}>수량</th>
-        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice} ${!isColumnVisible('unit_price') ? 'column-hidden' : ''}`}>단가</th>
-        <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount} ${!isColumnVisible('amount') ? 'column-hidden' : ''}`}>합계</th>
+        <th className={`px-2 py-1.5 table-header-text text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice} ${!isColumnVisible('unit_price') ? 'column-hidden' : ''}`}>단가</th>
+        <th className={`px-2 py-1.5 table-header-text text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount} ${!isColumnVisible('amount') ? 'column-hidden' : ''}`}>합계</th>
       
       {/* 탭별 추가 칼럼들 */}
       {activeTab === 'purchase' && (

@@ -635,10 +635,15 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       )}
       {/* 합계 칼럼 */}
       {isVisible('amount') && (
-        <td className={`px-2 py-1.5 card-amount whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>
+        <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>
           {(() => {
             // 모든 품목의 금액 합계 계산
-            const totalAmount = purchase.purchase_request_items?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
+            // 발주 카테고리인 경우 세액도 포함
+            const totalAmount = purchase.purchase_request_items?.reduce((sum, item) => {
+              const baseAmount = item.amount_value || 0
+              const taxAmount = (purchase.payment_category === '발주' && item.tax_amount_value) ? item.tax_amount_value : 0
+              return sum + baseAmount + taxAmount
+            }, 0) || 0
             const currency = purchase.purchase_request_items?.[0]?.amount_currency || purchase.currency || 'KRW'
             return `${totalAmount.toLocaleString()} ${getCurrencySymbol(currency)}`
           })()}
@@ -1210,10 +1215,10 @@ const FastPurchaseTable = ({
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>요청수량</th>
             )}
             {isColumnVisible('unit_price') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
+              <th className={`px-2 py-1.5 table-header-text text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
             )}
             {isColumnVisible('amount') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>(총 품목)합계</th>
+              <th className={`px-2 py-1.5 table-header-text text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
             )}
             {isColumnVisible('remark') && (
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
@@ -1275,10 +1280,10 @@ const FastPurchaseTable = ({
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.quantity}`}>요청수량</th>
             )}
             {isColumnVisible('unit_price') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
+              <th className={`px-2 py-1.5 table-header-text text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
             )}
             {isColumnVisible('amount') && (
-              <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>(총 품목)합계</th>
+              <th className={`px-2 py-1.5 table-header-text text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>합계</th>
             )}
             {isColumnVisible('remark') && (
               <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.remark}`}>비고</th>
@@ -1356,10 +1361,10 @@ const FastPurchaseTable = ({
           </th>
         )}
         {isColumnVisible('unit_price') && (
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
+          <th className={`px-2 py-1.5 table-header-text text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.unitPrice}`}>단가</th>
         )}
         {isColumnVisible('amount') && (
-          <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>(총 품목)합계</th>
+          <th className={`px-2 py-1.5 table-header-text text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.amount}`}>(총 품목)합계</th>
         )}
       </>
     );

@@ -184,6 +184,14 @@
     white-space: nowrap;
   }
   
+  /* 테이블 헤더 전용 클래스 - 확실한 적용을 위해 */
+  .table-header-text {
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+  }
+  
   .modal-value {
     @apply text-[11px] font-bold text-gray-900;
     letter-spacing: 0.01em;
