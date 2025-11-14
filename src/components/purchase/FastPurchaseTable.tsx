@@ -377,7 +377,7 @@ const ProgressTypeBadge = memo(({ type }: { type?: string }) => {
 ProgressTypeBadge.displayName = 'ProgressTypeBadge';
 
 // 테이블 행 컴포넌트 메모화
-const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentComplete, onReceiptComplete, onExcelDownload, columnVisibility, vendorColumnWidth, currentUserRoles }: { 
+const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentComplete, onReceiptComplete, onExcelDownload, columnVisibility, vendorColumnWidth, currentUserRoles, rowIndex }: { 
   purchase: Purchase; 
   onClick: (purchase: Purchase) => void;
   activeTab?: string;
@@ -388,6 +388,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
   columnVisibility?: ColumnVisibility;
   vendorColumnWidth?: number;
   currentUserRoles?: string[];
+  rowIndex?: number;
 }) => {
   const isAdvance = purchase.progress_type === '선진행' || purchase.progress_type?.includes('선진행');
   
@@ -411,6 +412,12 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       className={`border-b hover:bg-gray-100 cursor-pointer transition-colors ${isAdvance ? 'bg-red-50 hover:bg-red-100' : ''}`}
       onClick={() => onClick(purchase)}
     >
+      {/* 입고현황 탭에서는 라인 넘버를 맨 앞에 표시 */}
+      {activeTab === 'receipt' && (
+        <td className="px-2 py-1.5 text-center w-12 min-w-[48px] max-w-[48px] card-title">
+          {(rowIndex !== undefined) ? rowIndex + 1 : '-'}
+        </td>
+      )}
       {/* 승인대기 탭에서는 승인상태를 맨 앞에 표시 */}
       {activeTab === 'pending' && (
         <td className={`px-2 py-1.5 whitespace-nowrap ${COMMON_COLUMN_CLASSES.approvalStatus}`}>
@@ -423,7 +430,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
           <PaymentProgressBar purchase={purchase} activeTab={activeTab} />
         </td>
       )}
-      {/* 입고현황 탭에서는 입고진행을 맨 앞에 표시 */}
+      {/* 입고현황 탭에서는 입고진행을 두 번째에 표시 */}
       {activeTab === 'receipt' && isVisible('receipt_progress') && (
         <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.receiptProgress}`}>
           <ReceiptProgressBar purchase={purchase} />
@@ -1415,7 +1422,11 @@ const FastPurchaseTable = ({
     return (
       <thead className="bg-gray-50">
         <tr>
-          {/* 입고현황 탭에서는 입고진행을 맨 앞에 */}
+          {/* 입고현황 탭에서는 라인 넘버를 맨 앞에 */}
+          {activeTab === 'receipt' && (
+            <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-12 min-w-[48px] max-w-[48px]">No.</th>
+          )}
+          {/* 입고현황 탭에서는 입고진행을 두 번째에 */}
           {activeTab === 'receipt' && isColumnVisible('receipt_progress') && (
             <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>입고진행</th>
           )}
@@ -1471,7 +1482,7 @@ const FastPurchaseTable = ({
             <table className={shouldUseFitLayout ? `table-fit-left ${activeTab}-tab` : 'w-full min-w-[1790px] border-collapse'}>
               {tableHeader}
               <tbody>
-                {purchases.map((purchase) => (
+                {purchases.map((purchase, index) => (
                   <TableRow 
                     key={purchase.id} 
                     purchase={purchase} 
@@ -1484,6 +1495,7 @@ const FastPurchaseTable = ({
                     vendorColumnWidth={vendorColumnWidth}
                     columnVisibility={columnVisibility}
                     currentUserRoles={currentUserRoles}
+                    rowIndex={index}
                   />
                 ))}
               </tbody>

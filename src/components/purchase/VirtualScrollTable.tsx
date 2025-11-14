@@ -183,6 +183,7 @@ const VirtualScrollTable = memo<VirtualScrollTableProps>(({
                     vendorColumnWidth={vendorColumnWidth}
                     columnVisibility={columnVisibility}
                     currentUserRoles={currentUserRoles}
+                    rowIndex={startIndex + index}
                   />
                 ))}
               </tbody>

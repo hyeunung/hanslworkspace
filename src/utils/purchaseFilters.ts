@@ -126,7 +126,7 @@ export const filterByTab = (
     }
     
     case 'receipt': {
-      // 입고 현황 탭: 입고 대기중인 항목들
+      // 입고 현황 탭: 입고 대기중인 항목들 (purchase_requests.is_received 기준)
       // hr 권한이 있으면 모든 항목 볼 수 있음
       const hasHrRole = userRoles.includes('hr')
       const hasManagerRole = userRoles.some((role: string) => 
@@ -134,12 +134,8 @@ export const filterByTab = (
       )
       
       return purchases.filter(purchase => {
-        // 개별 품목 중 하나라도 입고 대기중인 것이 있는지 확인
-        const items = purchase.purchase_request_items || []
-        const hasUnreceivedItems = items.some((item: any) => !item.is_received)
-        
-        // 모든 품목이 입고완료되면 제외
-        if (!hasUnreceivedItems) return false
+        // purchase_requests의 is_received가 false인 경우만 표시
+        if (purchase.is_received) return false
         
         // hr 권한이 있으면 모든 항목 표시
         if (hasHrRole || hasManagerRole) {
