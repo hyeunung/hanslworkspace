@@ -100,6 +100,7 @@ export interface PurchaseRequestItem {
   amount: number
   amount_value?: number
   amount_currency?: string
+  tax_amount_value?: number
   remark?: string
   link?: string
   vendor_name?: string
@@ -173,6 +174,7 @@ export interface PurchaseRequest {
   // JOIN으로 가져오는 필드들
   vendor_payment_schedule?: string | null
   contact_name?: string | null
+  contact_id?: number | null
 }
 
 export interface PurchaseRequestWithDetails extends PurchaseRequest {

@@ -32,6 +32,7 @@ import { logger } from '@/lib/logger'
 import { useConfirmDateAction } from '@/hooks/useConfirmDateAction'
 import { format as formatDateInput } from 'date-fns'
 import { AUTHORIZED_ROLES } from '@/constants/columnSettings'
+import ReactSelect from 'react-select'
 
 interface PurchaseDetailModalProps {
   purchaseId: number | null
@@ -68,6 +69,8 @@ function PurchaseDetailModal({
   const [currentUserName, setCurrentUserName] = useState<string>('')
   const [columnWidths, setColumnWidths] = useState<number[]>([])
   const [focusedInput, setFocusedInput] = useState<string | null>(null)
+  const [vendors, setVendors] = useState<Vendor[]>([])
+  const [vendorSearchTerm, setVendorSearchTerm] = useState('')
   
   // 메모리 캐시 동기화는 useEffect에서 처리
 
@@ -189,6 +192,29 @@ function PurchaseDetailModal({
       loadUserRoles()
     }
   }, [isOpen])
+
+  // 업체 목록 로드
+  useEffect(() => {
+    const loadVendors = async () => {
+      try {
+        const { data: vendorsData, error } = await supabase
+          .from('vendors')
+          .select('*')
+          .order('vendor_name', { ascending: true })
+        
+        if (error) throw error
+        if (vendorsData) {
+          setVendors(vendorsData)
+        }
+      } catch (error) {
+        logger.error('업체 목록 로드 실패:', error)
+      }
+    }
+    
+    if (isOpen) {
+      loadVendors()
+    }
+  }, [isOpen])
   
   // currentUserRoles가 배열이 아니면 userRoles 사용
   const effectiveRoles = Array.isArray(currentUserRoles) && currentUserRoles.length > 0 
@@ -245,50 +271,53 @@ function PurchaseDetailModal({
     if (!purchaseId) return
     
     try {
-      // 🚀 메모리에서 먼저 찾기 (즉시 새로고침)
-      const memoryPurchase = findPurchaseInMemory(purchaseId)
-      if (memoryPurchase) {
-        
-        // items 필드 정규화: purchase_request_items를 items로 복사
-        const normalizedItems = (memoryPurchase.items && memoryPurchase.items.length > 0)
-          ? memoryPurchase.items 
-          : (memoryPurchase.purchase_request_items || [])
-        
-        // 메모리 데이터를 PurchaseRequestWithDetails 형태로 변환
-        const purchaseData = {
-          ...memoryPurchase,
-          id: String(memoryPurchase.id), // PurchaseRequest는 id가 string
-          is_po_generated: false, // Purchase 타입에는 없지만 PurchaseRequest에 필수
-          items: normalizedItems, // 정규화된 items 사용
-          purchase_request_items: normalizedItems, // 하위 호환성을 위해 양쪽 모두 설정
-          vendor: {
-            id: memoryPurchase.vendor_id,
-            vendor_name: memoryPurchase.vendor_name || '알 수 없음',
-            is_active: true
-          } as Vendor,
-          vendor_contacts: []
-        } as PurchaseRequestWithDetails
-        
-        setPurchase(purchaseData)
-        setEditedPurchase(purchaseData)
-        setEditedItems(normalizedItems.length > 0 ? normalizedItems : [])
-        return
-      }
-      
-      // 메모리에 없는 경우에만 DB에서 로드 (fallback)
+      // 항상 DB에서 최신 데이터를 가져와서 vendor_contacts 정보를 정확히 반영
+      // 메모리 캐시는 vendor_contacts를 포함하지 않으므로 사용하지 않음
       const supabase = createClient()
       // 최신 구매 요청 데이터 로드
+      // 먼저 purchase_requests 데이터 가져오기
       const { data, error } = await supabase
         .from('purchase_requests')
         .select(`
           *,
-          vendors(id, vendor_name),
-          purchase_request_items(*)
+          vendors:vendor_id(id, vendor_name, is_active),
+          purchase_request_items(*),
+          contact:contact_id(id, contact_name, contact_email, contact_phone, position)
         `)
         .eq('id', purchaseId)
         .single()
       
       if (error) throw error
+      
+      // vendor_id가 있으면 해당 업체의 모든 담당자를 가져오고, 현재 선택된 담당자를 첫 번째로 배치
+      let vendorContacts = []
+      if (data && data.vendor_id) {
+        const { data: allContacts } = await supabase
+          .from('vendor_contacts')
+          .select('id, contact_name, contact_email, contact_phone, position')
+          .eq('vendor_id', data.vendor_id)
+          .order('contact_name')
+        
+        if (allContacts && allContacts.length > 0) {
+          // contact_id와 일치하는 담당자를 첫 번째로 배치
+          if (data.contact_id) {
+            const currentContact = allContacts.find((c: any) => c.id === data.contact_id)
+            const otherContacts = allContacts.filter((c: any) => c.id !== data.contact_id)
+            vendorContacts = currentContact ? [currentContact, ...otherContacts] : allContacts
+          } else {
+            vendorContacts = allContacts
+          }
+          logger.info('🔍 업체의 모든 담당자 로드:', {
+            vendor_id: data.vendor_id,
+            contact_id: data.contact_id,
+            allContacts_count: allContacts.length,
+            vendorContacts
+          })
+        }
+      } else if (data && data.contact) {
+        // vendor_id가 없는 경우 contact 정보만 사용
+        vendorContacts = [data.contact]
+      }
 
       if (data) {
         // 라인넘버 순서대로 정렬
@@ -301,13 +330,28 @@ function PurchaseDetailModal({
         const purchaseData = {
           ...data,
           items: sortedItems,
-          vendor: data.vendors || { id: 0, vendor_name: '알 수 없음' },
-          vendor_contacts: []
+          vendor: data.vendors || null,
+          vendor_contacts: vendorContacts,
+          contact_id: data.contact_id,  // contact_id 포함
+          contact_name: vendorContacts[0]?.contact_name || data.contact?.contact_name || null  // contact_name 포함
         } as PurchaseRequestWithDetails
 
         setPurchase(purchaseData)
         setEditedPurchase(purchaseData)
         setEditedItems(sortedItems)
+        logger.info('🔍 refreshModalData DB에서 로드 완료:', { 
+          vendor_contacts: purchaseData.vendor_contacts,
+          vendorContacts_from_query: vendorContacts,
+          purchase_updated: true,
+          vendor_id: data.vendor_id,
+          has_vendor_contacts: vendorContacts && vendorContacts.length > 0
+        })
+        console.log('🔍 refreshModalData - DB에서 가져온 데이터:', {
+          vendor_id: data.vendor_id,
+          vendor_contacts: vendorContacts,
+          purchaseData_full: purchaseData,
+          담당자이름: vendorContacts?.[0]?.contact_name || '없음'
+        })
       }
     } catch (error) {
       logger.error('모달 데이터 새로고침 실패', error)
@@ -721,12 +765,12 @@ function PurchaseDetailModal({
           ...memoryPurchase,
           id: String(memoryPurchase.id), // PurchaseRequest는 id가 string
           is_po_generated: false, // Purchase 타입에는 없지만 PurchaseRequest에 필수
-          vendor: {
+          vendor: (memoryPurchase as any).vendor || (memoryPurchase.vendor_id ? {
             id: memoryPurchase.vendor_id,
             vendor_name: memoryPurchase.vendor_name || '알 수 없음',
             is_active: true
-          } as Vendor,
-          vendor_contacts: []
+          } as Vendor : null),
+          vendor_contacts: (memoryPurchase as any).vendor_contacts || []
         } as PurchaseRequestWithDetails
         
         setPurchase(purchaseData)
@@ -753,13 +797,21 @@ function PurchaseDetailModal({
 
     const columnConfigs = [
       { key: 'item_name', minWidth: 80, maxWidth: 500, baseWidth: 80 },
-      { key: 'specification', minWidth: 200, maxWidth: 200, baseWidth: 200, isFixed: true }, // 고정 너비 200px
+      { key: 'specification', minWidth: 80, maxWidth: 200, baseWidth: 150, isFixed: false }, // 동적 너비 (80px~200px)
       { key: 'quantity', minWidth: 70, maxWidth: 120, baseWidth: 70 }, // 100/0 형식 고려하여 maxWidth 증가
       { key: 'unit_price', minWidth: 90, maxWidth: 150, baseWidth: 90 },
       { key: 'total_price', minWidth: 100, maxWidth: 180, baseWidth: 100 },
+    ]
+    
+    // 발주인 경우에만 세액 칼럼 추가
+    if (purchase.payment_category === '발주') {
+      columnConfigs.push({ key: 'tax_amount', minWidth: 80, maxWidth: 150, baseWidth: 80 })
+    }
+    
+    columnConfigs.push(
       { key: 'remarks', minWidth: 150, maxWidth: 150, baseWidth: 150, isFixed: true }, // 고정 너비 150px
       { key: 'status', minWidth: 80, maxWidth: 120, baseWidth: 80 }
-    ]
+    )
 
       // 추가 칼럼들 (탭별)
       if (activeTab === 'receipt') {
@@ -792,8 +844,8 @@ function PurchaseDetailModal({
           ? '요청/실제 입고수량' 
           : '요청수량'
         const baseHeaders = activeTab === 'pending' 
-          ? ['품목명', '규격', quantityHeader, '단가', '합계', '비고']
-          : ['품목명', '규격', quantityHeader, '단가', '합계', '비고', statusHeader]
+          ? ['품목명', '규격', quantityHeader, '단가', '합계', purchase.payment_category === '발주' ? '세액' : null, '비고'].filter(h => h !== null)
+          : ['품목명', '규격', quantityHeader, '단가', '합계', purchase.payment_category === '발주' ? '세액' : null, '비고', statusHeader].filter(h => h !== null)
         if (activeTab === 'receipt') {
           return [...baseHeaders, '실제입고일']
         } else if (activeTab === 'done') {
@@ -842,6 +894,9 @@ function PurchaseDetailModal({
             } else {
               cellValue = ''
             }
+            break
+          case 'tax_amount':
+            cellValue = item.tax_amount_value != null ? item.tax_amount_value.toLocaleString() : ''
             break
           case 'remarks':
             cellValue = item.remark || ''
@@ -988,12 +1043,12 @@ function PurchaseDetailModal({
           ...memoryPurchase,
           id: String(memoryPurchase.id), // PurchaseRequest는 id가 string
           is_po_generated: false, // Purchase 타입에는 없지만 PurchaseRequest에 필수
-          vendor: {
+          vendor: (memoryPurchase as any).vendor || (memoryPurchase.vendor_id ? {
             id: memoryPurchase.vendor_id,
             vendor_name: memoryPurchase.vendor_name || '알 수 없음',
             is_active: true
-          } as Vendor,
-          vendor_contacts: []
+          } as Vendor : null),
+          vendor_contacts: (memoryPurchase as any).vendor_contacts || []
         } as PurchaseRequestWithDetails
         
         setPurchase(purchaseData)
@@ -1006,17 +1061,49 @@ function PurchaseDetailModal({
       setLoading(true)
       const supabase = createClient()
       
+      // 먼저 purchase_requests 데이터 가져오기
       const { data, error } = await supabase
         .from('purchase_requests')
         .select(`
           *,
-          vendors(id, vendor_name),
-          purchase_request_items(*)
+          vendors:vendor_id(id, vendor_name, is_active),
+          purchase_request_items(*),
+          contact:contact_id(id, contact_name, contact_email, contact_phone, position)
         `)
         .eq('id', id)
         .single()
 
       if (error) throw error
+      
+      // vendor_id가 있으면 해당 업체의 모든 담당자를 가져오고, 현재 선택된 담당자를 첫 번째로 배치
+      let vendorContacts = []
+      if (data && data.vendor_id) {
+        const { data: allContacts } = await supabase
+          .from('vendor_contacts')
+          .select('id, contact_name, contact_email, contact_phone, position')
+          .eq('vendor_id', data.vendor_id)
+          .order('contact_name')
+        
+        if (allContacts && allContacts.length > 0) {
+          // contact_id와 일치하는 담당자를 첫 번째로 배치
+          if (data.contact_id) {
+            const currentContact = allContacts.find((c: any) => c.id === data.contact_id)
+            const otherContacts = allContacts.filter((c: any) => c.id !== data.contact_id)
+            vendorContacts = currentContact ? [currentContact, ...otherContacts] : allContacts
+          } else {
+            vendorContacts = allContacts
+          }
+          logger.info('🔍 loadPurchaseDetail - 업체의 모든 담당자 로드:', {
+            vendor_id: data.vendor_id,
+            contact_id: data.contact_id,
+            allContacts_count: allContacts.length,
+            vendorContacts
+          })
+        }
+      } else if (data && data.contact) {
+        // vendor_id가 없는 경우 contact 정보만 사용
+        vendorContacts = [data.contact]
+      }
 
       if (data) {
         // 라인넘버 순서대로 정렬
@@ -1029,8 +1116,10 @@ function PurchaseDetailModal({
         const purchaseData = {
           ...data,
           items: sortedItems,
-          vendor: data.vendors || { id: 0, vendor_name: '알 수 없음' },
-          vendor_contacts: []
+          vendor: data.vendors || null,
+          vendor_contacts: vendorContacts,
+          contact_id: data.contact_id,  // contact_id 포함
+          contact_name: vendorContacts[0]?.contact_name || data.contact?.contact_name || null  // contact_name 포함
         } as PurchaseRequestWithDetails
         setPurchase(purchaseData)
         setEditedPurchase(purchaseData)
@@ -1078,26 +1167,166 @@ function PurchaseDetailModal({
       return
     }
     
+    logger.info('handleSave 시작:', { 
+      purchaseId: purchase.id,
+      vendor_id: editedPurchase.vendor_id,
+      vendor_name: editedPurchase.vendor_name,
+      vendor: editedPurchase.vendor,
+      editedPurchase: editedPurchase
+    })
+    
     try {
+      const supabase = createClient()
       
       // 발주 기본 정보 업데이트
       const totalAmount = editedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
+      
+      logger.info('Update payload:', {
+        purchase_order_number: editedPurchase.purchase_order_number || null,
+        requester_name: editedPurchase.requester_name || null,
+        vendor_id: editedPurchase.vendor_id || null,
+        vendor_name: editedPurchase.vendor_name || null,
+        delivery_request_date: editedPurchase.delivery_request_date || null,
+        revised_delivery_request_date: editedPurchase.revised_delivery_request_date || null,
+        payment_category: editedPurchase.payment_category || null,
+        project_vendor: editedPurchase.project_vendor || null,
+        project_item: editedPurchase.project_item || null,
+        sales_order_number: editedPurchase.sales_order_number || null,
+        total_amount: Number(totalAmount),
+        updated_at: new Date().toISOString()
+      })
+      
+      // contact_id 결정: 우선순위 1. editedPurchase.contact_id 2. vendor_contacts[0].id 3. null
+      let contactId = null
+      if ((editedPurchase as any).contact_id) {
+        contactId = (editedPurchase as any).contact_id
+      } else if (Array.isArray(editedPurchase.vendor_contacts) && editedPurchase.vendor_contacts.length > 0) {
+        contactId = editedPurchase.vendor_contacts[0].id || null
+      }
       
       const { error: updateError } = await supabase
         .from('purchase_requests')
         .update({
           purchase_order_number: editedPurchase.purchase_order_number || null,
           requester_name: editedPurchase.requester_name || null,
+          vendor_id: editedPurchase.vendor_id || null,
+          vendor_name: editedPurchase.vendor_name || null,
+          contact_id: contactId, // contact_id 업데이트
           delivery_request_date: editedPurchase.delivery_request_date || null,
           revised_delivery_request_date: editedPurchase.revised_delivery_request_date || null,
           payment_category: editedPurchase.payment_category || null,
           project_vendor: editedPurchase.project_vendor || null,
+          project_item: editedPurchase.project_item || null,
+          sales_order_number: editedPurchase.sales_order_number || null,
           total_amount: Number(totalAmount),
           updated_at: new Date().toISOString()
         })
         .eq('id', purchase.id)
 
-      if (updateError) throw updateError
+      if (updateError) {
+        logger.error('Purchase update error:', updateError)
+        throw updateError
+      }
+
+      // 업체 담당자 정보 업데이트 및 contact_id 저장
+      let finalContactId = null
+      logger.info('담당자 저장 시작:', { 
+        vendor_id: editedPurchase.vendor_id,
+        vendor_contacts: editedPurchase.vendor_contacts,
+        isArray: Array.isArray(editedPurchase.vendor_contacts)
+      })
+      
+      if (editedPurchase.vendor_id && Array.isArray(editedPurchase.vendor_contacts) && editedPurchase.vendor_contacts.length > 0) {
+        const contact = editedPurchase.vendor_contacts[0]
+        logger.info('담당자 정보:', { contact })
+        
+        // 기존 담당자가 있으면 업데이트, 없으면 생성
+        if (contact.id) {
+          finalContactId = contact.id
+          const { error: contactUpdateError } = await supabase
+            .from('vendor_contacts')
+            .update({
+              contact_name: contact.contact_name || '',
+              contact_email: contact.contact_email || '',
+              contact_phone: contact.contact_phone || '',
+              position: contact.position || ''
+            })
+            .eq('id', contact.id)
+          
+          if (contactUpdateError) {
+            logger.error('담당자 업데이트 오류:', contactUpdateError)
+          } else {
+            // 즉시 UI 상태 업데이트
+            setPurchase(prev => {
+              const updated = prev ? {
+                ...prev,
+                vendor_contacts: [contact],
+                contact_id: contact.id,
+                contact_name: contact.contact_name  // contact_name도 추가
+              } : null
+              logger.info('🔍 담당자 업데이트 후 setPurchase:', { 
+                prev_vendor_contacts: prev?.vendor_contacts,
+                new_vendor_contacts: [contact],
+                updated_purchase: updated
+              })
+              console.log('🔍 담당자 업데이트 후 setPurchase 호출')
+              return updated
+            })
+          }
+        } else if (contact.contact_name) {
+          // 새 담당자 생성
+          const { data: newContact, error: contactInsertError } = await supabase
+            .from('vendor_contacts')
+            .insert({
+              vendor_id: editedPurchase.vendor_id,
+              contact_name: contact.contact_name,
+              contact_email: contact.contact_email || '',
+              contact_phone: contact.contact_phone || '',
+              position: contact.position || ''
+            })
+            .select()
+            .single()
+          
+          if (contactInsertError) {
+            logger.error('담당자 생성 오류:', contactInsertError)
+          } else if (newContact) {
+            finalContactId = newContact.id
+            // 새로 생성된 담당자를 editedPurchase에 반영
+            editedPurchase.vendor_contacts = [newContact]
+            logger.info('담당자 생성 완료:', newContact)
+            
+            // 즉시 UI 상태 업데이트
+            setPurchase(prev => {
+              const updated = prev ? {
+                ...prev,
+                vendor_contacts: [newContact],
+                contact_id: newContact.id,
+                contact_name: newContact.contact_name  // contact_name도 추가
+              } : null
+              logger.info('🔍 새 담당자 생성 후 setPurchase:', { 
+                prev_vendor_contacts: prev?.vendor_contacts,
+                new_vendor_contacts: [newContact],
+                newContact_full: newContact,
+                updated_purchase: updated
+              })
+              console.log('🔍 새 담당자 생성 후 setPurchase 호출:', newContact)
+              return updated
+            })
+            
+            // purchase_requests 테이블의 contact_id도 업데이트
+            const { error: purchaseUpdateError } = await supabase
+              .from('purchase_requests')
+              .update({
+                contact_id: newContact.id
+              })
+              .eq('id', purchase.id)
+            
+            if (purchaseUpdateError) {
+              logger.error('purchase_requests contact_id 업데이트 오류:', purchaseUpdateError)
+            }
+          }
+        }
+      }
 
       // 삭제된 항목들 처리
       if (deletedItemIds.length > 0) {
@@ -1222,10 +1451,15 @@ function PurchaseDetailModal({
             // 발주 기본 정보 업데이트
             purchase_order_number: sourceData?.purchase_order_number || prev.purchase_order_number,
             requester_name: sourceData?.requester_name || prev.requester_name,
+            vendor_id: sourceData?.vendor_id || prev.vendor_id,
+            vendor_name: sourceData?.vendor_name || prev.vendor_name,
+            vendor: sourceData?.vendor || (prev as any).vendor,
+            vendor_contacts: sourceData?.vendor_contacts || (prev as any).vendor_contacts,
             delivery_request_date: sourceData?.delivery_request_date || prev.delivery_request_date,
             revised_delivery_request_date: sourceData?.revised_delivery_request_date || prev.revised_delivery_request_date,
             payment_category: sourceData?.payment_category || prev.payment_category,
             project_vendor: sourceData?.project_vendor || prev.project_vendor,
+            project_item: sourceData?.project_item || prev.project_item,
             total_amount: totalAmount,
             updated_at: new Date().toISOString()
           } as Purchase
@@ -1252,10 +1486,15 @@ function PurchaseDetailModal({
               // 발주 기본 정보 업데이트
               purchase_order_number: sourceData?.purchase_order_number || prev.purchase_order_number,
               requester_name: sourceData?.requester_name || prev.requester_name,
+              vendor_id: sourceData?.vendor_id || prev.vendor_id,
+              vendor_name: sourceData?.vendor_name || prev.vendor_name,
+              vendor: sourceData?.vendor || (prev as any).vendor,
+              vendor_contacts: sourceData?.vendor_contacts || (prev as any).vendor_contacts,
               delivery_request_date: sourceData?.delivery_request_date || prev.delivery_request_date,
               revised_delivery_request_date: sourceData?.revised_delivery_request_date || prev.revised_delivery_request_date,
               payment_category: sourceData?.payment_category || prev.payment_category,
               project_vendor: sourceData?.project_vendor || prev.project_vendor,
+              project_item: sourceData?.project_item || prev.project_item,
               total_amount: totalAmount,
               // 품목 데이터 업데이트 - 삭제된 항목 제외
               items: finalItems,
@@ -1275,6 +1514,8 @@ function PurchaseDetailModal({
       
       // 5. 전체완료 함수 패턴: refreshModalData 먼저, 그 다음 onRefresh
       await refreshModalData()
+      logger.info('🔍 refreshModalData 완료 후 purchase:', { purchaseId: purchase?.id })
+      console.log('🔍 refreshModalData 완료 후 - 전체 purchase 상태:', purchase)
       const refreshResult = onRefresh?.(true, { silent: true })
       if (refreshResult instanceof Promise) {
         await refreshResult
@@ -2692,11 +2933,148 @@ function PurchaseDetailModal({
                     <div className="w-32">
                       <span className="modal-label">업체명</span>
                       {isEditing ? (
-                        <Input
-                          value={editedPurchase?.vendor?.vendor_name || editedPurchase?.vendor_name || ''}
-                          onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, vendor_name: e.target.value } : null)}
-                          className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
+                        <ReactSelect
+                          options={vendors.map(v => ({ 
+                            value: v.id.toString(), 
+                            label: v.vendor_name 
+                          }))}
+                          value={editedPurchase?.vendor_id ? {
+                            value: editedPurchase.vendor_id.toString(),
+                            label: editedPurchase.vendor_name || vendors.find(v => v.id === editedPurchase.vendor_id)?.vendor_name || ''
+                          } : null}
+                          onChange={(option) => {
+                            logger.info('ReactSelect onChange:', { option })
+                            if (option) {
+                              const selectedVendor = vendors.find(v => v.id.toString() === option.value)
+                              logger.info('Selected vendor:', { selectedVendor })
+                              if (selectedVendor) {
+                                // 업체의 담당자 목록 가져오기
+                                const supabase = createClient()
+                                supabase
+                                  .from('vendor_contacts')
+                                  .select('id, contact_name, contact_email, contact_phone, position')
+                                  .eq('vendor_id', selectedVendor.id)
+                                  .then(({ data: contactsData, error }: { data: any, error: any }) => {
+                                    if (error) {
+                                      logger.error('🔍 담당자 목록 로드 오류:', error)
+                                      console.error('담당자 목록 로드 오류:', error)
+                                    }
+                                    
+                                    logger.info('🔍 업체 변경 - 담당자 목록 로드:', { 
+                                      vendor_id: selectedVendor.id,
+                                      vendor_name: selectedVendor.vendor_name,
+                                      contactsData,
+                                      contactsCount: contactsData?.length || 0
+                                    })
+                                    console.log('🔍 업체 변경 - 담당자 목록:', contactsData)
+                                    
+                                    setEditedPurchase(prev => {
+                                      const updated = prev ? { 
+                                        ...prev, 
+                                        vendor_id: selectedVendor.id,
+                                        vendor_name: selectedVendor.vendor_name,
+                                        vendor: selectedVendor,
+                                        vendor_contacts: Array.isArray(contactsData) ? contactsData : [],
+                                        contact_id: null,  // 업체 변경 시 담당자 초기화
+                                        contact_name: null  // 업체 변경 시 담당자 이름 초기화
+                                      } : null
+                                      logger.info('🔍 업체 변경 - editedPurchase 업데이트 완료:', { 
+                                        vendor_id: selectedVendor.id,
+                                        vendor_name: selectedVendor.vendor_name,
+                                        contactsData,
+                                        updated_vendor_contacts: updated?.vendor_contacts,
+                                        updated_full: updated
+                                      })
+                                      console.log('🔍 업체 변경 - editedPurchase 전체:', updated)
+                                      return updated
+                                    })
+                                  })
+                              }
+                            } else {
+                              setEditedPurchase(prev => prev ? { 
+                                ...prev, 
+                                vendor_id: undefined,
+                                vendor_name: '',
+                                vendor: undefined,
+                                vendor_contacts: [],
+                                contact_id: null,  // 업체 해제 시 담당자 초기화
+                                contact_name: null  // 업체 해제 시 담당자 이름 초기화
+                              } : null)
+                            }
+                          }}
                           placeholder="업체 선택"
+                          isClearable
+                          isSearchable
+                          menuPortalTarget={document.body}
+                          styles={{
+                            control: (base) => ({
+                              ...base,
+                              minHeight: '20px',
+                              height: '20px',
+                              fontSize: '10px',
+                              borderRadius: '8px', // rounded-lg와 정확히 동일
+                              borderColor: '#e5e7eb', // border-gray-200과 정확히 동일
+                              borderWidth: '1px',
+                              backgroundColor: '#ffffff',
+                              boxShadow: 'none',
+                              paddingLeft: '6px', // px-1.5
+                              paddingRight: '6px', // px-1.5
+                              '&:hover': {
+                                borderColor: '#e5e7eb', // hover 시에도 동일한 색상 유지
+                              },
+                              '&:focus-within': {
+                                borderColor: '#60a5fa', // focus:border-blue-400
+                                boxShadow: 'none',
+                                outline: 'none',
+                              },
+                            }),
+                            valueContainer: (base) => ({
+                              ...base,
+                              height: '18px', // Input의 실제 높이와 맞춤
+                              padding: '0 2px', // 내부 패딩 최소화
+                              margin: '0',
+                            }),
+                            input: (base) => ({
+                              ...base,
+                              margin: '0',
+                              padding: '0',
+                              fontSize: '10px',
+                            }),
+                            indicatorsContainer: (base) => ({
+                              ...base,
+                              height: '18px',
+                              padding: '0',
+                            }),
+                            indicatorSeparator: () => ({
+                              display: 'none',
+                            }),
+                            dropdownIndicator: (base) => ({
+                              ...base,
+                              padding: '0 2px',
+                              svg: {
+                                width: '12px',
+                                height: '12px',
+                              },
+                            }),
+                            clearIndicator: (base) => ({
+                              ...base,
+                              padding: '0 2px',
+                              svg: {
+                                width: '12px',
+                                height: '12px',
+                              },
+                            }),
+                            option: (base) => ({
+                              ...base,
+                              fontSize: '10px',
+                              padding: '4px 8px',
+                            }),
+                            menuPortal: (base) => ({
+                              ...base,
+                              zIndex: 9999,
+                            }),
+                          }}
+                          classNamePrefix="vendor-select"
                         />
                       ) : (
                         <p className="modal-value">{purchase.vendor?.vendor_name || '-'}</p>
@@ -2705,26 +3083,172 @@ function PurchaseDetailModal({
                     <div className="w-32">
                       <span className="modal-label">업체 담당자</span>
                       {isEditing ? (
-                        <Input
-                          value={editedPurchase?.vendor_contacts?.[0]?.contact_name || ''}
-                          onChange={(e) => {
-                            setEditedPurchase(prev => {
-                              if (!prev) return null;
-                              const contacts = prev.vendor_contacts || [];
-                              const updatedContacts = [...contacts];
-                              if (updatedContacts[0]) {
-                                updatedContacts[0] = { ...updatedContacts[0], contact_name: e.target.value };
+                        editedPurchase?.vendor_id ? (
+                          <ReactSelect
+                            options={(() => {
+                              const contacts = Array.isArray(editedPurchase.vendor_contacts) ? editedPurchase.vendor_contacts : []
+                              // 중복 제거: id 기준으로 중복 제거 (같은 ID는 같은 사람)
+                              const uniqueContacts = contacts.filter((contact, index, arr) => 
+                                arr.findIndex(c => c.id === contact.id) === index
+                              )
+                              // 추가로 contact_name 기준으로도 중복 제거 (같은 이름이 여러 ID로 있을 경우)
+                              const finalUniqueContacts = uniqueContacts.filter((contact, index, arr) => 
+                                arr.findIndex(c => c.contact_name === contact.contact_name) === index
+                              )
+                              const options = finalUniqueContacts.map(c => ({
+                                value: c.id.toString(),
+                                label: c.contact_name || ''
+                              })) || []
+                              logger.info('🔍 담당자 드롭다운 옵션:', {
+                                vendor_id: editedPurchase.vendor_id,
+                                vendor_contacts_raw: editedPurchase.vendor_contacts,
+                                vendor_contacts_count: contacts.length,
+                                unique_by_id_count: uniqueContacts.length,
+                                final_unique_count: finalUniqueContacts.length,
+                                options
+                              })
+                              console.log('🔍 담당자 드롭다운 옵션:', options)
+                              return options
+                            })()}
+                            value={(() => {
+                              const contacts = Array.isArray(editedPurchase.vendor_contacts) ? editedPurchase.vendor_contacts : []
+                              const firstContact = contacts[0]
+                              return firstContact?.id ? {
+                                value: firstContact.id.toString(),
+                                label: firstContact.contact_name || ''
+                              } : null
+                            })()}
+                            onChange={(option) => {
+                              logger.info('🔍 담당자 선택 변경:', { option })
+                              if (option) {
+                                const contacts = Array.isArray(editedPurchase.vendor_contacts) ? editedPurchase.vendor_contacts : []
+                                const selectedContact = contacts.find(c => c.id.toString() === option.value)
+                                if (selectedContact) {
+                                  setEditedPurchase(prev => prev ? {
+                                    ...prev,
+                                    contact_id: selectedContact.id,
+                                    contact_name: selectedContact.contact_name,
+                                    vendor_contacts: [selectedContact, ...contacts.filter(c => c.id !== selectedContact.id)]
+                                  } : null)
+                                }
                               } else {
-                                updatedContacts[0] = { contact_name: e.target.value } as any;
+                                setEditedPurchase(prev => prev ? {
+                                  ...prev,
+                                  contact_id: null,
+                                  contact_name: null,
+                                  vendor_contacts: Array.isArray(editedPurchase.vendor_contacts) ? editedPurchase.vendor_contacts : []
+                                } : null)
                               }
-                              return { ...prev, vendor_contacts: updatedContacts };
-                            })
-                          }}
-                          className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
-                          placeholder="담당자 선택"
-                        />
+                            }}
+                            placeholder="담당자를 선택하세요"
+                            isClearable
+                            isSearchable
+                            noOptionsMessage={() => "담당자가 없습니다"}
+                            menuPortalTarget={document.body}
+                            styles={{
+                              control: (base) => ({
+                                ...base,
+                                minHeight: '20px',
+                                height: '20px',
+                                fontSize: '10px',
+                                borderRadius: '8px', // rounded-lg와 정확히 동일
+                                borderColor: '#e5e7eb', // border-gray-200과 정확히 동일
+                                borderWidth: '1px',
+                                backgroundColor: '#ffffff',
+                                boxShadow: 'none',
+                                paddingLeft: '6px', // px-1.5
+                                paddingRight: '6px', // px-1.5
+                                '&:hover': {
+                                  borderColor: '#e5e7eb', // hover 시에도 동일한 색상 유지
+                                },
+                                '&:focus-within': {
+                                  borderColor: '#60a5fa', // focus:border-blue-400
+                                  boxShadow: 'none',
+                                  outline: 'none',
+                                },
+                              }),
+                              valueContainer: (base) => ({
+                                ...base,
+                                height: '18px', // Input의 실제 높이와 맞춤
+                                padding: '0 2px', // 내부 패딩 최소화
+                                margin: '0',
+                              }),
+                              input: (base) => ({
+                                ...base,
+                                margin: '0',
+                                padding: '0',
+                                fontSize: '10px',
+                              }),
+                              indicatorsContainer: (base) => ({
+                                ...base,
+                                height: '18px',
+                                padding: '0',
+                              }),
+                              indicatorSeparator: () => ({
+                                display: 'none',
+                              }),
+                              dropdownIndicator: (base) => ({
+                                ...base,
+                                padding: '0 2px',
+                                svg: {
+                                  width: '12px',
+                                  height: '12px',
+                                },
+                              }),
+                              clearIndicator: (base) => ({
+                                ...base,
+                                padding: '0 2px',
+                                svg: {
+                                  width: '12px',
+                                  height: '12px',
+                                },
+                              }),
+                              option: (base) => ({
+                                ...base,
+                                fontSize: '10px',
+                                padding: '4px 8px',
+                              }),
+                              menuPortal: (base) => ({
+                                ...base,
+                                zIndex: 9999,
+                              }),
+                            }}
+                            classNamePrefix="contact-select"
+                          />
+                        ) : (
+                          <Input
+                            value=""
+                            disabled
+                            className="mt-1 rounded-lg border-gray-200 w-full h-5 px-1.5 py-0.5 text-[10px]"
+                            placeholder="업체를 먼저 선택하세요"
+                          />
+                        )
                       ) : (
-                        <p className="modal-value">{purchase.vendor_contacts?.[0]?.contact_name || '-'}</p>
+                        <p className="modal-value">{(() => {
+                          // 우선순위: 1. contact_name 필드, 2. vendor_contacts 배열의 첫 번째 담당자, 3. '-'
+                          const contacts = Array.isArray(purchase.vendor_contacts) ? purchase.vendor_contacts : []
+                          const contactName = (purchase as any).contact_name ||
+                                            contacts[0]?.contact_name || 
+                                            '-'
+                          logger.info('🔍 vendor_contacts display 렌더링:', { 
+                            purchase_id: purchase?.id,
+                            vendor_id: purchase?.vendor_id,
+                            contact_id: purchase?.contact_id,
+                            vendor_contacts: purchase.vendor_contacts,
+                            purchase_contact_name: purchase.contact_name,
+                            contactName,
+                            purchase_full: purchase
+                          })
+                          console.log('🔍 vendor_contacts display 렌더링:', { 
+                            purchase_id: purchase?.id,
+                            vendor_id: purchase?.vendor_id,
+                            contact_id: purchase?.contact_id,
+                            vendor_contacts: purchase.vendor_contacts,
+                            purchase_contact_name: purchase.contact_name,
+                            contactName
+                          })
+                          return contactName
+                        })()}</p>
                       )}
                     </div>
                   </div>
@@ -2763,13 +3287,13 @@ function PurchaseDetailModal({
                       <span className="modal-label">수주번호</span>
                       {isEditing ? (
                         <Input
-                          value={editedPurchase?.order_number || ''}
-                          onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, order_number: e.target.value } : null)}
+                          value={editedPurchase?.sales_order_number || ''}
+                          onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, sales_order_number: e.target.value } : null)}
                           className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
                           placeholder="입력"
                         />
                       ) : (
-                        <p className="modal-subtitle">{purchase.order_number || '-'}</p>
+                        <p className="modal-subtitle">{purchase.sales_order_number || '-'}</p>
                       )}
                     </div>
                   </div>
@@ -2887,6 +3411,9 @@ function PurchaseDetailModal({
                         </div>
                         <div className="text-right">단가</div>
                         <div className="text-right">합계</div>
+                        {purchase.payment_category === '발주' && (
+                          <div className="text-right">세액</div>
+                        )}
                         <div className="text-center">비고</div>
                         {isEditing ? (
                           <>
@@ -3111,6 +3638,17 @@ function PurchaseDetailModal({
                                   : `₩${formatCurrency(item.amount_value || 0)}`}
                               </span>
                             </div>
+                            
+                            {/* 세액 - 발주 카테고리인 경우 모든 탭에서 표시 */}
+                            {purchase?.payment_category === '발주' && (
+                              <div className="text-right min-w-0 flex items-center justify-end">
+                                <span className={isEditing ? "modal-subtitle" : "modal-value"}>
+                                  {activeTab === 'done' && !canViewFinancialInfo 
+                                    ? '-' 
+                                    : `₩${formatCurrency(item.tax_amount_value || 0)}`}
+                                </span>
+                              </div>
+                            )}
                             
                             {/* 비고 */}
                             <div className="min-w-0 flex justify-center items-center text-center relative overflow-visible" style={{ width: '150px', maxWidth: '150px', minWidth: '150px' }}>
@@ -3757,7 +4295,11 @@ function PurchaseDetailModal({
                             )}`}
                       </span>
                     </div>
-                    {/* 나머지 칼럼들은 비워둠 */}
+                    {/* 세액 (발주인 경우) */}
+                    {purchase.payment_category === '발주' && (
+                      <div></div>
+                    )}
+                    {/* 비고 */}
                     <div></div>
                     {isEditing ? (
                       <div></div>
@@ -3769,18 +4311,38 @@ function PurchaseDetailModal({
                       <>
                         <div></div>
                         <div></div>
-                        <div className="text-center">
-                          <div className="text-[10px] font-medium text-gray-500 mb-0.5">지출 총합</div>
-                          <div className="text-[12px] font-bold text-gray-600">
-                            {!canViewFinancialInfo 
-                              ? '-' 
-                              : `₩${formatCurrency(
-                                  (isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
-                                    return sum + (Number(item.expenditure_amount) || 0)
-                                  }, 0) || 0
-                                )}`}
+                        {/* 발주가 아닌 경우에만 여기에 지출 총합 표시 */}
+                        {purchase.payment_category !== '발주' ? (
+                          <div className="text-center">
+                            <div className="text-[10px] font-medium text-gray-500 mb-0.5">지출 총합</div>
+                            <div className="text-[12px] font-bold text-gray-600">
+                              {!canViewFinancialInfo 
+                                ? '-' 
+                                : `₩${formatCurrency(
+                                    (isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
+                                      return sum + (Number(item.expenditure_amount) || 0)
+                                    }, 0) || 0
+                                  )}`}
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          /* 발주인 경우 빈 칸 하나 더 */
+                          <>
+                            <div></div>
+                            <div className="text-center">
+                              <div className="text-[10px] font-medium text-gray-500 mb-0.5">지출 총합</div>
+                              <div className="text-[12px] font-bold text-gray-600">
+                                {!canViewFinancialInfo 
+                                  ? '-' 
+                                  : `₩${formatCurrency(
+                                      (isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
+                                        return sum + (Number(item.expenditure_amount) || 0)
+                                      }, 0) || 0
+                                    )}`}
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </>
                     )}
                   </div>

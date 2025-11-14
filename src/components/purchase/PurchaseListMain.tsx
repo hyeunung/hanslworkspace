@@ -510,6 +510,23 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     
     if (monthFilters.length === 0) return null;
     
+    // 필터에 나오는 모든 항목의 합계 계산
+    const totalFilteredAmount = tabFilteredPurchases.reduce((sum, purchase) => {
+      if (purchase.purchase_request_items?.length) {
+        const itemsTotal = purchase.purchase_request_items.reduce((itemSum: number, item: any) => {
+          // 발주 카테고리인 경우 세액도 포함
+          const baseAmount = item.amount_value || 0;
+          const taxAmount = (purchase.payment_category === '발주' && item.tax_amount_value) ? item.tax_amount_value : 0;
+          return itemSum + baseAmount + taxAmount;
+        }, 0);
+        return sum + itemsTotal;
+      }
+      // total_amount가 있는 경우, 발주면 세액도 추정 계산
+      const baseAmount = purchase.total_amount || 0;
+      const taxAmount = (purchase.payment_category === '발주') ? baseAmount * 0.1 : 0;
+      return sum + baseAmount + taxAmount;
+    }, 0);
+    
     const monthFilter = monthFilters[0];
     const filterValue = monthFilter.value;
     
@@ -542,11 +559,17 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
           // items의 amount_value 합계 또는 total_amount 사용
           if (purchase.purchase_request_items?.length) {
             const itemsTotal = purchase.purchase_request_items.reduce((itemSum: number, item: any) => {
-              return itemSum + (item.amount_value || 0);
+              // 발주 카테고리인 경우 세액도 포함
+              const baseAmount = item.amount_value || 0;
+              const taxAmount = (purchase.payment_category === '발주' && item.tax_amount_value) ? item.tax_amount_value : 0;
+              return itemSum + baseAmount + taxAmount;
             }, 0);
             return sum + itemsTotal;
           }
-          return sum + (purchase.total_amount || 0);
+          // total_amount가 있는 경우, 발주면 세액도 추정 계산
+          const baseAmount = purchase.total_amount || 0;
+          const taxAmount = (purchase.payment_category === '발주') ? baseAmount * 0.1 : 0;
+          return sum + baseAmount + taxAmount;
         }, 0);
         
         monthlyTotals.push({
@@ -566,7 +589,8 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       return {
         type: 'range',
         months: monthlyTotals,
-        grandTotal: totalSum
+        grandTotal: totalSum,
+        totalFilteredAmount: totalFilteredAmount // 필터에 나오는 모든 항목의 합계
       };
     } else {
       // 단일 월 필터 (예: "2024-10")
@@ -581,11 +605,17 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         // items의 amount_value 합계 또는 total_amount 사용
         if (purchase.purchase_request_items?.length) {
           const itemsTotal = purchase.purchase_request_items.reduce((itemSum: number, item: any) => {
-            return itemSum + (item.amount_value || 0);
+            // 발주 카테고리인 경우 세액도 포함
+            const baseAmount = item.amount_value || 0;
+            const taxAmount = (purchase.payment_category === '발주' && item.tax_amount_value) ? item.tax_amount_value : 0;
+            return itemSum + baseAmount + taxAmount;
           }, 0);
           return sum + itemsTotal;
         }
-        return sum + (purchase.total_amount || 0);
+        // total_amount가 있는 경우, 발주면 세액도 추정 계산
+        const baseAmount = purchase.total_amount || 0;
+        const taxAmount = (purchase.payment_category === '발주') ? baseAmount * 0.1 : 0;
+        return sum + baseAmount + taxAmount;
       }, 0);
       
       return {
@@ -593,7 +623,8 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         year: parseInt(year),
         month: parseInt(month),
         total: monthTotal,
-        count: monthData.length
+        count: monthData.length,
+        totalFilteredAmount: totalFilteredAmount // 필터에 나오는 모든 항목의 합계
       };
     }
   }, [activeFilters, tabFilteredPurchases]);
@@ -808,7 +839,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
                 </div>
                 <div className="h-4 w-px bg-blue-300"></div>
                 <span className="modal-value text-blue-700 font-semibold">
-                  ₩{monthlyFilterSummary.total?.toLocaleString() || '0'}
+                  ₩{monthlyFilterSummary.totalFilteredAmount?.toLocaleString() || '0'}
                 </span>
               </div>
             ) : (
@@ -827,7 +858,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
                       </span>
                       <div className="h-4 w-px bg-gray-300"></div>
                       <span className="modal-value text-gray-500 font-bold">
-                        ₩{monthlyFilterSummary.grandTotal?.toLocaleString() || '0'}
+                        ₩{monthlyFilterSummary.totalFilteredAmount?.toLocaleString() || '0'}
                       </span>
                     </div>
                   </div>
