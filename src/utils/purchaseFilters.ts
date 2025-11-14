@@ -126,7 +126,7 @@ export const filterByTab = (
     }
     
     case 'receipt': {
-      // 입고 현황 탭: 입고 대기중인 항목들 (purchase_requests.is_received 기준)
+      // 입고 현황 탭: 입고 대기중인 항목들
       // hr 권한이 있으면 모든 항목 볼 수 있음
       const hasHrRole = userRoles.includes('hr')
       const hasManagerRole = userRoles.some((role: string) => 
@@ -134,7 +134,6 @@ export const filterByTab = (
       )
       
       return purchases.filter(purchase => {
-        // purchase_requests의 is_received가 false인 경우만 표시
         if (purchase.is_received) return false
         
         // hr 권한이 있으면 모든 항목 표시
