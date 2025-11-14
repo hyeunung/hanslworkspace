@@ -134,7 +134,12 @@ export const filterByTab = (
       )
       
       return purchases.filter(purchase => {
-        if (purchase.is_received) return false
+        // 개별 품목 중 하나라도 입고 대기중인 것이 있는지 확인
+        const items = purchase.purchase_request_items || []
+        const hasUnreceivedItems = items.some((item: any) => !item.is_received)
+        
+        // 모든 품목이 입고완료되면 제외
+        if (!hasUnreceivedItems) return false
         
         // hr 권한이 있으면 모든 항목 표시
         if (hasHrRole || hasManagerRole) {
