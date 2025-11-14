@@ -804,13 +804,13 @@ function PurchaseDetailModal({
     ]
     
     // 발주인 경우에만 세액 칼럼 추가
-    if (purchase.payment_category === '발주') {
+    if (purchase?.payment_category === '발주') {
       columnConfigs.push({ key: 'tax_amount', minWidth: 80, maxWidth: 150, baseWidth: 80 })
     }
     
     columnConfigs.push(
       { key: 'remarks', minWidth: 150, maxWidth: 150, baseWidth: 150, isFixed: true }, // 고정 너비 150px
-      { key: 'status', minWidth: 80, maxWidth: 120, baseWidth: 80 }
+      { key: 'status', minWidth: 70, maxWidth: 100, baseWidth: 70 } // 입고상태 칼럼 너비 축소
     )
 
       // 추가 칼럼들 (탭별)
@@ -820,11 +820,14 @@ function PurchaseDetailModal({
         )
       }
       if (activeTab === 'done') {
-        columnConfigs.push(
-          { key: 'transaction_confirm', minWidth: 100, maxWidth: 160, baseWidth: 100, isFixed: false },
-          { key: 'accounting_date', minWidth: 80, maxWidth: 80, baseWidth: 80, isFixed: true },
-          { key: 'expenditure_info', minWidth: 100, maxWidth: 200, baseWidth: 100, isFixed: false }
-        )
+        // 발주인 경우에만 거래명세서 확인, 회계상 입고일, 지출정보 칼럼 추가
+        if (purchase?.payment_category === '발주') {
+          columnConfigs.push(
+            { key: 'transaction_confirm', minWidth: 85, maxWidth: 120, baseWidth: 85, isFixed: false }, // 거래명세서 확인 칼럼 너비 축소
+            { key: 'accounting_date', minWidth: 70, maxWidth: 70, baseWidth: 70, isFixed: true }, // 회계상 입고일 칼럼 너비 축소
+            { key: 'expenditure_info', minWidth: 90, maxWidth: 150, baseWidth: 90, isFixed: false } // 지출정보 칼럼 너비 축소
+          )
+        }
       }
 
     const calculatedWidths = columnConfigs.map((config, index) => {
@@ -844,12 +847,17 @@ function PurchaseDetailModal({
           ? '요청/실제 입고수량' 
           : '요청수량'
         const baseHeaders = activeTab === 'pending' 
-          ? ['품목명', '규격', quantityHeader, '단가', '합계', purchase.payment_category === '발주' ? '세액' : null, '비고'].filter(h => h !== null)
-          : ['품목명', '규격', quantityHeader, '단가', '합계', purchase.payment_category === '발주' ? '세액' : null, '비고', statusHeader].filter(h => h !== null)
+          ? ['품목명', '규격', quantityHeader, '단가', '합계', purchase?.payment_category === '발주' ? '세액' : null, '비고'].filter(h => h !== null)
+          : ['품목명', '규격', quantityHeader, '단가', '합계', purchase?.payment_category === '발주' ? '세액' : null, '비고', statusHeader].filter(h => h !== null)
         if (activeTab === 'receipt') {
           return [...baseHeaders, '실제입고일']
         } else if (activeTab === 'done') {
-          return [...baseHeaders, '거래명세서 확인', '회계상 입고일', '지출정보']
+          const doneHeaders = [...baseHeaders]
+          // 발주인 경우에만 거래명세서 확인, 회계상 입고일, 지출정보 칼럼 추가
+          if (purchase?.payment_category === '발주') {
+            doneHeaders.push('거래명세서 확인', '회계상 입고일', '지출정보')
+          }
+          return doneHeaders
         }
         return baseHeaders
       }
@@ -980,8 +988,16 @@ function PurchaseDetailModal({
     }
     
     // 기본값 (데이터 로드 전)
-    // [품목명, 규격, 수량, 단가, 합계, 비고]
-    let baseColumns = ['minmax(80px, 1fr)', '200px', '70px', '90px', '100px', '150px']
+    // [품목명, 규격, 수량, 단가, 합계]
+    let baseColumns = ['minmax(80px, 1fr)', '200px', '70px', '90px', '100px']
+    
+    // 발주인 경우 세액 칼럼 추가
+    if (purchase?.payment_category === '발주') {
+      baseColumns.push('100px') // 세액
+    }
+    
+    // 비고 칼럼 추가
+    baseColumns.push('150px')
     
     // isEditing에 따라 상태 또는 삭제 칼럼 추가
     if (isEditing) {
@@ -994,7 +1010,12 @@ function PurchaseDetailModal({
     if (activeTab === 'receipt') {
       return [...baseColumns, '100px'].join(' ')
     } else if (activeTab === 'done') {
-      return [...baseColumns, '100px', '80px', '110px'].join(' ') // 거래명세서, 회계상입고일, 지출정보
+      const doneColumns = [...baseColumns]
+      // 발주인 경우에만 거래명세서 확인, 회계상 입고일, 지출정보 칼럼 추가
+      if (purchase?.payment_category === '발주') {
+        doneColumns.push('100px', '80px', '110px') // 거래명세서 확인, 회계상 입고일, 지출정보
+      }
+      return doneColumns.join(' ')
     }
     
     return baseColumns.join(' ')
@@ -2975,8 +2996,8 @@ function PurchaseDetailModal({
                                         vendor_name: selectedVendor.vendor_name,
                                         vendor: selectedVendor,
                                         vendor_contacts: Array.isArray(contactsData) ? contactsData : [],
-                                        contact_id: null,  // 업체 변경 시 담당자 초기화
-                                        contact_name: null  // 업체 변경 시 담당자 이름 초기화
+                                        contact_id: undefined,  // 업체 변경 시 담당자 초기화
+                                        contact_name: undefined  // 업체 변경 시 담당자 이름 초기화
                                       } : null
                                       logger.info('🔍 업체 변경 - editedPurchase 업데이트 완료:', { 
                                         vendor_id: selectedVendor.id,
@@ -2997,8 +3018,8 @@ function PurchaseDetailModal({
                                 vendor_name: '',
                                 vendor: undefined,
                                 vendor_contacts: [],
-                                contact_id: null,  // 업체 해제 시 담당자 초기화
-                                contact_name: null  // 업체 해제 시 담당자 이름 초기화
+                                contact_id: undefined,  // 업체 해제 시 담당자 초기화
+                                contact_name: undefined  // 업체 해제 시 담당자 이름 초기화
                               } : null)
                             }
                           }}
@@ -3134,8 +3155,8 @@ function PurchaseDetailModal({
                               } else {
                                 setEditedPurchase(prev => prev ? {
                                   ...prev,
-                                  contact_id: null,
-                                  contact_name: null,
+                                  contact_id: undefined,
+                                  contact_name: undefined,
                                   vendor_contacts: Array.isArray(editedPurchase.vendor_contacts) ? editedPurchase.vendor_contacts : []
                                 } : null)
                               }
@@ -3344,7 +3365,7 @@ function PurchaseDetailModal({
                           </Button>
                         </DateQuantityPickerPopover>
                       )}
-                      {activeTab === 'done' && canReceiptCheck && canViewFinancialInfo && (
+                      {activeTab === 'done' && canReceiptCheck && canViewFinancialInfo && purchase.payment_category === '발주' && (
                         <div className="flex items-center gap-2">
                           <DatePickerPopover
                             onDateSelect={handleCompleteAllStatement}
@@ -3360,20 +3381,22 @@ function PurchaseDetailModal({
                               거래명세서 확인
                             </Button>
                           </DatePickerPopover>
-                          <DateAmountPickerPopover
-                            onConfirm={handleBulkExpenditure}
-                            placeholder="일괄 지출 날짜와 금액을 입력하세요"
-                            align="end"
-                            side="bottom"
-                          >
-                            <Button
-                              size="sm"
-                              className="button-base button-action-primary"
+                          {purchase.payment_category === '발주' && (
+                            <DateAmountPickerPopover
+                              onConfirm={handleBulkExpenditure}
+                              placeholder="일괄 지출 날짜와 금액을 입력하세요"
+                              align="end"
+                              side="bottom"
                             >
-                              <DollarSign className="w-3 h-3 mr-1" />
-                              일괄지출
-                            </Button>
-                          </DateAmountPickerPopover>
+                              <Button
+                                size="sm"
+                                className="button-base button-action-primary"
+                              >
+                                <DollarSign className="w-3 h-3 mr-1" />
+                                일괄지출
+                              </Button>
+                            </DateAmountPickerPopover>
+                          )}
                         </div>
                       )}
                     </>
@@ -3392,7 +3415,7 @@ function PurchaseDetailModal({
                     <div className="bg-gray-50 px-2 sm:px-3 py-1 border-b border-gray-100 sticky top-0 z-10 w-fit">
                       <div 
                         ref={headerRowRef}
-                         className="hidden sm:grid gap-2 modal-label w-fit"
+                         className="hidden sm:grid gap-1 modal-label w-fit"
                         style={{
                           gridTemplateColumns: getGridTemplateColumns()
                         }}
@@ -3425,9 +3448,13 @@ function PurchaseDetailModal({
                             )}
                             {activeTab === 'done' && (
                               <>
-                                <div className="text-center">거래명세서 확인</div>
-                                <div className="text-center">회계상 입고일</div>
-                                <div className="text-center">지출정보</div>
+                                {purchase.payment_category === '발주' && (
+                                  <>
+                                    <div className="text-center">거래명세서 확인</div>
+                                    <div className="text-center">회계상 입고일</div>
+                                    <div className="text-center">지출정보</div>
+                                  </>
+                                )}
                               </>
                             )}
                           </>
@@ -3442,9 +3469,13 @@ function PurchaseDetailModal({
                             </div>
                             {activeTab === 'done' && (
                               <>
-                                <div className="text-center">거래명세서 확인</div>
-                                <div className="text-center">회계상 입고일</div>
-                                <div className="text-center">지출정보</div>
+                                {purchase.payment_category === '발주' && (
+                                  <>
+                                    <div className="text-center">거래명세서 확인</div>
+                                    <div className="text-center">회계상 입고일</div>
+                                    <div className="text-center">지출정보</div>
+                                  </>
+                                )}
                               </>
                             )}
                             {activeTab === 'receipt' && (
@@ -3460,7 +3491,7 @@ function PurchaseDetailModal({
                       {(isEditing ? editedItems : currentItems)?.map((item, index) => (
                         <div key={index} className="px-2 sm:px-3 py-1 border-b border-gray-50 hover:bg-gray-50/50 relative overflow-visible">
                           {/* Desktop Layout */}
-                          <div className={`hidden sm:grid items-center gap-2 overflow-visible w-fit`} style={{
+                          <div className={`hidden sm:grid items-center gap-1 overflow-visible w-fit`} style={{
                             gridTemplateColumns: getGridTemplateColumns()
                           }}>
                             {/* 품목명 */}
@@ -3824,8 +3855,8 @@ function PurchaseDetailModal({
                               </div>
                             )}
 
-                            {/* 거래명세서 확인 - 전체항목 탭에서만 표시 */}
-                            {activeTab === 'done' && (
+                            {/* 거래명세서 확인 - 발주인 경우에만 전체항목 탭에서 표시 */}
+                            {activeTab === 'done' && purchase.payment_category === '발주' && (
                               <div className="text-center flex justify-center items-center">
                                 {canReceiptCheck ? (
                                   statementReceivedAction.isCompleted(item) ? (
@@ -3881,8 +3912,8 @@ function PurchaseDetailModal({
                               </div>
                             )}
 
-                            {/* 회계상 입고일 - 전체항목 탭에서만 표시 */}
-                            {activeTab === 'done' && (
+                            {/* 회계상 입고일 - 발주인 경우에만 전체항목 탭에서 표시 */}
+                            {activeTab === 'done' && purchase.payment_category === '발주' && (
                               <div className="text-center flex justify-center items-center">
                                 {statementReceivedAction.getCompletedDate(item) ? (
                                   <div className="modal-subtitle text-blue-700">
@@ -3898,8 +3929,8 @@ function PurchaseDetailModal({
                               </div>
                             )}
 
-                            {/* 지출정보 - 전체항목 탭에서만 표시 */}
-                            {activeTab === 'done' && (
+                            {/* 지출정보 - 발주인 경우에만 전체항목 탭에서 표시 */}
+                            {activeTab === 'done' && purchase.payment_category === '발주' && (
                               <div className="text-center flex justify-center items-center">
                                 {(() => {
                                   const hasExpenditure = item.expenditure_date && 
@@ -3910,11 +3941,13 @@ function PurchaseDetailModal({
                                     return hasExpenditure ? (
                                       <div className="w-full px-1 leading-none">
                                         <div className="text-blue-700 text-[9px] leading-[1.1] font-normal">
-                                          {new Date(item.expenditure_date).toLocaleDateString('ko-KR', {
-                                            year: 'numeric',
-                                            month: '2-digit',
-                                            day: '2-digit'
-                                          })}
+                                          {(() => {
+                                            const date = new Date(item.expenditure_date)
+                                            const year = date.getFullYear().toString().slice(-2)
+                                            const month = (date.getMonth() + 1).toString().padStart(2, '0')
+                                            const day = date.getDate().toString().padStart(2, '0')
+                                            return `${year}.${month}.${day}`
+                                          })()}
                                         </div>
                                         <div className="text-gray-700 text-[9px] leading-[1.1] font-normal">
                                           {!canViewFinancialInfo 
@@ -3938,11 +3971,13 @@ function PurchaseDetailModal({
                                     return hasExpenditure ? (
                                       <div className="w-full px-1 leading-none">
                                         <div className="text-blue-700 text-[9px] leading-[1.1] font-normal">
-                                          {new Date(item.expenditure_date).toLocaleDateString('ko-KR', {
-                                            year: 'numeric',
-                                            month: '2-digit',
-                                            day: '2-digit'
-                                          })}
+                                          {(() => {
+                                            const date = new Date(item.expenditure_date)
+                                            const year = date.getFullYear().toString().slice(-2)
+                                            const month = (date.getMonth() + 1).toString().padStart(2, '0')
+                                            const day = date.getDate().toString().padStart(2, '0')
+                                            return `${year}.${month}.${day}`
+                                          })()}
                                         </div>
                                         <div className="text-gray-700 text-[9px] leading-[1.1] font-normal">
                                           {!canViewFinancialInfo 
@@ -4188,8 +4223,8 @@ function PurchaseDetailModal({
                               </div>
                             )}
 
-                            {/* 모바일에서 거래명세서 확인 표시 - 전체항목 탭에서만 */}
-                            {!isEditing && activeTab === 'done' && (
+                            {/* 모바일에서 거래명세서 확인 표시 - 발주인 경우에만 전체항목 탭에서 표시 */}
+                            {!isEditing && activeTab === 'done' && purchase.payment_category === '발주' && (
                               <div className="flex items-center justify-between">
                                 <span className="text-gray-500 text-xs">거래명세서 확인:</span>
                                 <div className="flex items-center gap-2">
@@ -4248,8 +4283,8 @@ function PurchaseDetailModal({
                               </div>
                             )}
 
-                            {/* 모바일에서 회계상 입고일 표시 - 전체항목 탭에서만 */}
-                            {!isEditing && activeTab === 'done' && statementReceivedAction.getCompletedDate(item) && (
+                            {/* 모바일에서 회계상 입고일 표시 - 발주인 경우에만 전체항목 탭에서 표시 */}
+                            {!isEditing && activeTab === 'done' && purchase.payment_category === '발주' && statementReceivedAction.getCompletedDate(item) && (
                               <div>
                                 <span className="text-gray-500 text-xs">회계상 입고일:</span>
                                 <div className="mt-1">
@@ -4272,7 +4307,7 @@ function PurchaseDetailModal({
                 
                 {/* 합계 */}
                 <div className="bg-gray-50 px-2 sm:px-3 border-t border-gray-100">
-                  <div className="hidden sm:grid items-center gap-2 py-0.5 w-fit" style={{
+                  <div className="hidden sm:grid items-center gap-1 py-2 w-fit" style={{
                     gridTemplateColumns: getGridTemplateColumns()
                   }}>
                     {/* 품목명 */}
@@ -4281,13 +4316,13 @@ function PurchaseDetailModal({
                     <div></div>
                     {/* 수량 */}
                     <div></div>
-                    {/* 단가 */}
-                    <div className="text-right">
-                      <span className="text-[12px] font-bold text-gray-900">총액</span>
+                    {/* 단가 칼럼 - 라벨 표시 */}
+                    <div className="text-right flex items-center justify-end">
+                      <span className="text-[11px] text-gray-600 font-medium">공급가액</span>
                     </div>
-                    {/* 합계 */}
-                    <div className="text-right">
-                      <span className="text-[12px] font-bold text-gray-600">
+                    {/* 합계 칼럼 - 합계 총액 표시 */}
+                    <div className="text-right flex items-center justify-end">
+                      <span className="text-[12px] font-bold text-gray-900">
                         {activeTab === 'done' && !canViewFinancialInfo 
                           ? '-' 
                           : `₩${formatCurrency(
@@ -4295,43 +4330,39 @@ function PurchaseDetailModal({
                             )}`}
                       </span>
                     </div>
-                    {/* 세액 (발주인 경우) */}
+                    {/* 세액 칼럼 (발주인 경우만) */}
                     {purchase.payment_category === '발주' && (
-                      <div></div>
+                      <div className="text-right flex items-center justify-end">
+                        {/* 세액 합계 - 같은 행에 표시 */}
+                        <span className="text-[12px] font-bold text-gray-900">
+                          {activeTab === 'done' && !canViewFinancialInfo 
+                            ? '-' 
+                            : `₩${formatCurrency(
+                                (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.tax_amount_value || 0), 0) || 0
+                              )}`}
+                        </span>
+                      </div>
                     )}
                     {/* 비고 */}
                     <div></div>
+                    {/* 상태 또는 삭제 - 발주인 경우 지출총합 텍스트 표시 */}
                     {isEditing ? (
                       <div></div>
                     ) : (
-                      <div></div>
+                      <div className={activeTab === 'done' && purchase.payment_category === '발주' ? "text-right flex items-center justify-end" : ""}>
+                        {activeTab === 'done' && purchase.payment_category === '발주' && (
+                          <span className="text-[11px] text-gray-600 font-medium">지출총합</span>
+                        )}
+                      </div>
                     )}
                     {activeTab === 'receipt' && <div></div>}
                     {activeTab === 'done' && (
                       <>
-                        <div></div>
-                        <div></div>
-                        {/* 발주가 아닌 경우에만 여기에 지출 총합 표시 */}
-                        {purchase.payment_category !== '발주' ? (
-                          <div className="text-center">
-                            <div className="text-[10px] font-medium text-gray-500 mb-0.5">지출 총합</div>
-                            <div className="text-[12px] font-bold text-gray-600">
-                              {!canViewFinancialInfo 
-                                ? '-' 
-                                : `₩${formatCurrency(
-                                    (isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
-                                      return sum + (Number(item.expenditure_amount) || 0)
-                                    }, 0) || 0
-                                  )}`}
-                            </div>
-                          </div>
-                        ) : (
-                          /* 발주인 경우 빈 칸 하나 더 */
+                        {/* 거래명세서 칼럼 - 발주인 경우 지출총합 금액 표시 */}
+                        {purchase.payment_category === '발주' && (
                           <>
-                            <div></div>
-                            <div className="text-center">
-                              <div className="text-[10px] font-medium text-gray-500 mb-0.5">지출 총합</div>
-                              <div className="text-[12px] font-bold text-gray-600">
+                            <div className="text-right flex items-center justify-end">
+                              <div className="text-[12px] font-bold text-blue-700">
                                 {!canViewFinancialInfo 
                                   ? '-' 
                                   : `₩${formatCurrency(
@@ -4341,17 +4372,67 @@ function PurchaseDetailModal({
                                     )}`}
                               </div>
                             </div>
+                            {/* 회계상 입고일 칼럼 */}
+                            <div></div>
+                            {/* 지출정보 칼럼 */}
+                            <div></div>
                           </>
                         )}
                       </>
                     )}
                   </div>
+
+                  {/* 합계+세액 행 (발주인 경우에만) */}
+                  {purchase.payment_category === '발주' && (
+                    <div className="hidden sm:grid items-center gap-1 py-2 w-fit border-t border-gray-300" style={{
+                      gridTemplateColumns: getGridTemplateColumns()
+                    }}>
+                      {/* 빈 칸들 */}
+                      <div></div>
+                      <div></div>
+                      <div></div>
+                      {/* 단가 칼럼 - 빈칸 */}
+                      <div></div>
+                      {/* 합계 칼럼 - 총액 라벨 */}
+                      <div className="text-right flex items-center justify-end">
+                        <span className="text-[11px] text-gray-600 font-medium">총액</span>
+                      </div>
+                      {/* 세액 칼럼 - 합계+세액 표시 */}
+                      <div className="text-right flex items-center justify-end">
+                        <span className="text-[12px] font-bold text-blue-600">
+                          {activeTab === 'done' && !canViewFinancialInfo 
+                            ? '-' 
+                            : `₩${formatCurrency(
+                                (isEditing ? editedItems : currentItems)?.reduce((sum, item) => {
+                                  const amount = item.amount_value || 0
+                                  const tax = item.tax_amount_value || 0
+                                  return sum + amount + tax
+                                }, 0) || 0
+                              )}`}
+                        </span>
+                      </div>
+                      {/* 나머지 빈 칸들 */}
+                      <div></div>
+                      {isEditing ? <div></div> : <div></div>}
+                      {activeTab === 'receipt' && <div></div>}
+                      {activeTab === 'done' && purchase.payment_category === '발주' && (
+                        <>
+                          {/* 거래명세서 칼럼 */}
+                          <div></div>
+                          {/* 회계상 입고일 칼럼 */}
+                          <div></div>
+                          {/* 지출정보 칼럼 */}
+                          <div></div>
+                        </>
+                      )}
+                    </div>
+                  )}
                   
                   {/* Mobile 총액 */}
-                  <div className="block sm:hidden py-0.5">
+                  <div className="block sm:hidden py-2 space-y-1">
                     <div className="flex justify-between items-center">
-                      <span className="text-[13px] font-bold text-gray-900">총액</span>
-                      <span className="text-[13px] font-bold text-gray-600">
+                      <span className="text-[12px] text-gray-500">합계 총액</span>
+                      <span className="text-[13px] font-bold text-gray-900">
                         {activeTab === 'done' && !canViewFinancialInfo 
                           ? '-' 
                           : `₩${formatCurrency(
@@ -4359,11 +4440,40 @@ function PurchaseDetailModal({
                             )}`}
                       </span>
                     </div>
-                    {/* Mobile 지출 총합 - 전체항목 탭에서만 표시 */}
-                    {activeTab === 'done' && (
-                      <div className="flex justify-between items-center mt-1">
-                        <span className="text-[13px] font-bold text-gray-900">지출 총합</span>
-                        <span className="text-[13px] font-bold text-gray-600">
+                    {/* 세액 (발주인 경우) */}
+                    {purchase.payment_category === '발주' && (
+                      <>
+                        <div className="flex justify-between items-center">
+                          <span className="text-[12px] text-gray-500">세액 총액</span>
+                          <span className="text-[13px] font-bold text-gray-900">
+                            {activeTab === 'done' && !canViewFinancialInfo 
+                              ? '-' 
+                              : `₩${formatCurrency(
+                                  (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.tax_amount_value || 0), 0) || 0
+                                )}`}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center border-t pt-1">
+                          <span className="text-[12px] text-gray-500">합계+세액</span>
+                          <span className="text-[13px] font-bold text-blue-600">
+                            {activeTab === 'done' && !canViewFinancialInfo 
+                              ? '-' 
+                              : `₩${formatCurrency(
+                                  (isEditing ? editedItems : currentItems)?.reduce((sum, item) => {
+                                    const amount = item.amount_value || 0
+                                    const tax = item.tax_amount_value || 0
+                                    return sum + amount + tax
+                                  }, 0) || 0
+                                )}`}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                    {/* Mobile 지출 총합 - 발주인 경우에만 표시 */}
+                    {activeTab === 'done' && purchase.payment_category === '발주' && (
+                      <div className="flex justify-between items-center border-t pt-1">
+                        <span className="text-[12px] text-gray-500">지출 총합</span>
+                        <span className="text-[13px] font-bold text-blue-700">
                           {!canViewFinancialInfo 
                             ? '-' 
                             : `₩${formatCurrency(
