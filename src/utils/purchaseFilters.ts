@@ -253,28 +253,46 @@ export const applyAdvancedFilters = (
  * 필터 조건 체크 헬퍼 함수
  */
 const checkFilterCondition = (fieldValue: any, condition: string, value: any): boolean => {
+  // null/undefined 체크
+  if (fieldValue === null || fieldValue === undefined) {
+    return condition === 'is_empty'
+  }
+  
   switch (condition) {
     case 'contains':
       return String(fieldValue).toLowerCase().includes(String(value).toLowerCase())
     case 'equals':
       // 날짜 범위 처리
       if (typeof value === 'string' && value.includes('~')) {
-        const [startDate, endDate] = value.split('~')
-        const purchaseDate = new Date(fieldValue).toISOString().split('T')[0]
-        return purchaseDate >= startDate && purchaseDate <= endDate
+        if (!fieldValue) return false
+        try {
+          const [startDate, endDate] = value.split('~')
+          const purchaseDate = new Date(fieldValue).toISOString().split('T')[0]
+          return purchaseDate >= startDate && purchaseDate <= endDate
+        } catch (error) {
+          console.error('날짜 범위 처리 오류:', error)
+          return false
+        }
       }
       // 월별 필터 처리 (YYYY-MM 형식)
       if (typeof value === 'string' && (value.match(/^\d{4}-\d{2}$/) || value.match(/^\d{4}-\d{2}~\d{4}-\d{2}$/))) {
-        if (value.includes('~')) {
-          const [startMonth, endMonth] = value.split('~')
-          const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7) // YYYY-MM 형식
-          return purchaseMonth >= startMonth && purchaseMonth <= endMonth
-        } else {
-          const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7)
-          return purchaseMonth === value
+        if (!fieldValue) return false
+        try {
+          if (value.includes('~')) {
+            const [startMonth, endMonth] = value.split('~')
+            const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7) // YYYY-MM 형식
+            return purchaseMonth >= startMonth && purchaseMonth <= endMonth
+          } else {
+            const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7)
+            return purchaseMonth === value
+          }
+        } catch (error) {
+          console.error('월별 필터 처리 오류:', error)
+          return false
         }
       }
-      return fieldValue === value
+      // 일반 equals 비교
+      return String(fieldValue).toLowerCase() === String(value).toLowerCase()
     case 'not_equals':
       return fieldValue !== value
     case 'starts_with':
@@ -414,6 +432,24 @@ export const sortPurchases = (
  * 필드 값 추출 헬퍼
  */
 const getFieldValue = (purchase: Purchase, field: string): any => {
+  // date_range와 date_month는 request_date를 사용
+  if (field === 'date_range' || field === 'date_month') {
+    return purchase.request_date
+  }
+  
+  // 승인 상태 계산
+  if (field === 'approval_status') {
+    if (purchase.middle_manager_status === 'rejected' || purchase.final_manager_status === 'rejected') {
+      return '반려'
+    } else if (purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'approved') {
+      return '최종승인'
+    } else if (purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'pending') {
+      return '1차승인'
+    } else {
+      return '승인대기'
+    }
+  }
+  
   // boolean 상태 필드는 먼저 체크 (중첩 필드 처리 전)
   if (field === 'is_payment_completed') {
     const value = purchase.is_payment_completed
@@ -431,6 +467,11 @@ const getFieldValue = (purchase: Purchase, field: string): any => {
   if (field === 'is_utk_checked') {
     const value = purchase.is_utk_checked
     return value === true ? '완료' : '대기'
+  }
+  
+  // 담당자 이름
+  if (field === 'contact_name') {
+    return purchase.contact_name || null
   }
   
   // 중첩된 필드 처리 (예: items.0.item_name)

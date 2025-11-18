@@ -479,25 +479,52 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   // 표시할 탭 카운트 (캐시된 값 사용)
   const filteredTabCounts = cachedTabCounts;
 
+  // 검색어 또는 고급필터가 적용된 경우 각 탭별 카운트 계산
+  const filteredTabCountsWithSearch = useMemo(() => {
+    // 검색어나 고급필터가 없으면 기본 카운트 사용
+    if (!searchTerm && activeFilters.length === 0) {
+      return filteredTabCounts;
+    }
+
+    // 각 탭별로 필터링된 카운트 계산
+    const counts = {
+      pending: 0,
+      purchase: 0,
+      receipt: 0,
+      done: 0
+    };
+
+    // 각 탭에 대해 필터링 적용하여 카운트 계산
+    const tabs: Array<keyof typeof counts> = ['pending', 'purchase', 'receipt', 'done'];
+    tabs.forEach(tab => {
+      const filtered = getFilteredPurchases({
+        tab,
+        employeeName: defaultEmployeeByTab[tab] === 'all' ? null : defaultEmployeeByTab[tab],
+        searchTerm,
+        advancedFilters: activeFilters,
+        sortConfig: sortConfig ? { key: sortConfig.field, direction: sortConfig.direction } : undefined
+      });
+      counts[tab] = filtered.length;
+    });
+
+    return counts;
+  }, [searchTerm, activeFilters, filteredTabCounts, getFilteredPurchases, defaultEmployeeByTab, sortConfig]);
+
   // 탭 배지 텍스트 결정 함수
   const getTabBadgeText = useCallback((tabKey: string) => {
-    // 전체항목 탭에 대한 특별 처리
-    if (tabKey === 'done') {
-      // 고급필터가 적용되어 있는지 확인
-      const hasAdvancedFilters = activeFilters.length > 0;
-      
-      if (hasAdvancedFilters) {
-        // 고급필터가 적용된 경우 필터된 항목 개수 표시
-        return tabFilteredPurchases.length.toString();
-      } else {
-        // 고급필터가 없는 경우 "전체" 표시
-        return "전체";
-      }
+    // 검색어나 고급필터가 있는 경우 필터된 카운트 사용
+    if (searchTerm || activeFilters.length > 0) {
+      return filteredTabCountsWithSearch[tabKey as keyof typeof filteredTabCountsWithSearch].toString();
     }
     
-    // 다른 탭들은 기존 로직 유지
+    // 전체항목 탭에 대한 특별 처리 (검색어/필터 없을 때)
+    if (tabKey === 'done') {
+      return "전체";
+    }
+    
+    // 다른 탭들은 기본 카운트 사용
     return filteredTabCounts[tabKey as keyof typeof filteredTabCounts].toString();
-  }, [activeFilters.length, tabFilteredPurchases.length, filteredTabCounts]);
+  }, [searchTerm, activeFilters.length, filteredTabCountsWithSearch, filteredTabCounts]);
 
 
   // 월간 필터 감지 및 합계금액 계산
