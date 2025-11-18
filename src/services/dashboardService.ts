@@ -815,7 +815,17 @@ export class DashboardService {
       // 미다운로드 발주서만 먼저 가져오기 (NULL이거나 false인 것들)
       const { data, error } = await this.supabase
         .from('purchase_requests')
-        .select('*,purchase_request_items(id,item_name,specification,quantity,unit_price_value,amount_value)')
+        .select(`
+          *,
+          purchase_request_items(
+            id,
+            item_name,
+            specification,
+            quantity,
+            unit_price_value,
+            amount_value
+          )
+        `)
         .or('is_po_download.is.null,is_po_download.eq.false')
         .order('created_at', { ascending: false })  // 최신 순으로 정렬
         .limit(500)  // 더 많은 데이터 조회
@@ -826,13 +836,48 @@ export class DashboardService {
       }
 
       // 클라이언트 사이드에서 조건에 맞는 것만 필터링
-      // 일시적으로 필터링 완화 - 전체 미다운로드 항목 조회
-      const filteredData = (data || []).filter((item: any) => {
-        // is_po_download가 true인 것만 제외 (실제 다운로드 완료된 것)
-        if (item.is_po_download === true) return false
+      const filteredData = (data || []).filter((item: any, index: number) => {
+        // 디버깅: 처음 5개 항목의 상세 정보 로깅
+        if (index < 5) {
+          logger.info('[미다운로드 필터링 디버그]', {
+            index,
+            id: item.id,
+            purchase_order_number: item.purchase_order_number,
+            progress_type: item.progress_type,
+            final_manager_status: item.final_manager_status,
+            middle_manager_status: item.middle_manager_status,
+            is_po_download: item.is_po_download,
+            payment_category: item.payment_category,
+            requester_name: item.requester_name
+          })
+        }
         
-        // 나머지는 모두 포함 (lead buyer가 전체를 볼 수 있도록)
-        return true
+        // is_po_download가 true인 것만 제외 (실제 다운로드 완료된 것)
+        if (item.is_po_download === true) {
+          if (index < 5) logger.info(`[필터링] ${item.purchase_order_number}: 다운로드 완료 -> 제외`)
+          return false
+        }
+        
+        // 선진행 건은 승인 여부와 관계없이 포함
+        if (item.progress_type === '선진행') {
+          if (index < 5) logger.info(`[필터링] ${item.purchase_order_number}: 선진행 -> 포함`)
+          return true
+        }
+        
+        // 일반 건은 최종승인(final_manager_status)이 난 것만 포함
+        if (item.final_manager_status === 'approved') {
+          if (index < 5) logger.info(`[필터링] ${item.purchase_order_number}: 일반 + 최종승인 완료 -> 포함`)
+          return true
+        }
+        
+        // 그 외는 제외
+        if (index < 5) {
+          logger.info(`[필터링] ${item.purchase_order_number}: 조건 미충족 -> 제외`, {
+            progress_type: item.progress_type,
+            final_manager_status: item.final_manager_status
+          })
+        }
+        return false
       })
 
       logger.info('[DashboardService] 미다운로드 발주서 필터링 결과:', {
