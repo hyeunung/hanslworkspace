@@ -65,7 +65,8 @@ export function getRoleCase(roles: string[]): number {
   // 카테고리별 관리자는 제한된 권한 (case 2)
   if (roles.includes('consumable_manager') || 
       roles.includes('raw_material_manager') ||
-      roles.includes('purchase_manager')) return 2;
+      roles.includes('purchase_manager') ||
+      roles.includes('lead buyer')) return 2;  // lead buyer 추가
   
   // middle_manager도 제한된 권한
   if (roles.includes('middle_manager')) return 2;

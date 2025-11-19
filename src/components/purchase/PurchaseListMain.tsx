@@ -115,7 +115,12 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
 
   // 탭별 기본 직원 필터 계산 - 미리 계산하여 성능 최적화
   const defaultEmployeeByTab = useMemo(() => {
+    // currentUserName이 없으면 기본값 반환
     if (!currentUserName) {
+      logger.warn('[defaultEmployeeByTab] currentUserName이 없음', {
+        currentUser,
+        currentUserRoles
+      });
       return { pending: 'all', purchase: 'all', receipt: 'all', done: 'all' };
     }
     
@@ -126,12 +131,22 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       ['app_admin', 'ceo', 'lead buyer', 'finance_team', 'raw_material_manager', 'consumable_manager', 'purchase_manager', 'hr'].includes(role)
     );
     
-    return {
+    const result = {
       pending: roleCase === 3 ? 'all' : currentUserName,
       purchase: hasManagerRole ? 'all' : (roleCase === 3 ? 'all' : currentUserName),
       receipt: (hasHrRole || hasPurchaseManagerRole) ? 'all' : (roleCase === 3 ? 'all' : currentUserName),
       done: 'all' // 전체 항목 탭은 항상 모든 항목 표시
     };
+    
+    logger.info('[defaultEmployeeByTab 계산 결과]', {
+      currentUserName,
+      roleCase,
+      currentUserRoles,
+      hasManagerRole,
+      result
+    });
+    
+    return result;
   }, [currentUserName, roleCase, currentUserRoles]);
 
   // URL에서 초기 탭 확인
@@ -147,9 +162,8 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   // 탭 상태 관리 - 초기값 설정
   const initialTab = getInitialTab();
   const [activeTab, setActiveTab] = useState(initialTab);
-  const [selectedEmployee, setSelectedEmployee] = useState<string>(() => {
-    return defaultEmployeeByTab[initialTab as keyof typeof defaultEmployeeByTab] || 'all';
-  });
+  // selectedEmployee 초기값을 안전하게 설정
+  const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
   const [isPending, startTransition] = useTransition();
 
   // 권한별 필터링된 데이터 (메모리 캐시에서 가져옴)
@@ -157,6 +171,21 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     return filterByEmployeeVisibility(purchases, currentUserRoles);
   }, [purchases, currentUserRoles]);
 
+
+  // 초기 selectedEmployee 설정 (defaultEmployeeByTab이 계산된 후)
+  useEffect(() => {
+    if (defaultEmployeeByTab && currentUserName !== null) {
+      const initialEmployeeValue = defaultEmployeeByTab[activeTab as keyof typeof defaultEmployeeByTab];
+      if (initialEmployeeValue !== undefined) {
+        setSelectedEmployee(initialEmployeeValue);
+        logger.info('[초기 selectedEmployee 설정]', {
+          activeTab,
+          initialEmployeeValue,
+          defaultEmployeeByTab
+        });
+      }
+    }
+  }, []); // 최초 마운트 시에만 실행
 
   // URL 쿼리 파라미터 변경 시 처리
   useEffect(() => {
@@ -820,12 +849,42 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
             <button
               key={tab.key}
               onClick={() => {
-                // 부드러운 탭 전환을 위해 startTransition 사용
-                startTransition(() => {
-                  setActiveTab(tab.key);
-                  // 탭에 맞는 기본 직원 필터 설정 (미리 계산된 값 사용 - 즉시 반영)
-                  setSelectedEmployee(defaultEmployeeByTab[tab.key as keyof typeof defaultEmployeeByTab] || 'all');
+                logger.info('[탭 클릭 이벤트]', {
+                  tab: tab.key,
+                  currentActiveTab: activeTab,
+                  currentUser: currentUser?.name,
+                  currentUserRoles,
+                  defaultEmployeeByTab,
+                  isPending
                 });
+                
+                // startTransition이 문제일 수 있어 직접 상태 업데이트로 변경
+                try {
+                  const newEmployeeValue = defaultEmployeeByTab[tab.key as keyof typeof defaultEmployeeByTab];
+                  
+                  // undefined 체크 추가
+                  if (newEmployeeValue === undefined) {
+                    logger.error('[탭 전환 오류] defaultEmployeeByTab에서 값을 찾을 수 없음', {
+                      tabKey: tab.key,
+                      defaultEmployeeByTab,
+                      availableKeys: Object.keys(defaultEmployeeByTab)
+                    });
+                    // 기본값 사용
+                    setActiveTab(tab.key);
+                    setSelectedEmployee('all');
+                  } else {
+                    setActiveTab(tab.key);
+                    setSelectedEmployee(newEmployeeValue);
+                  }
+                  
+                  logger.info('[탭 전환 성공]', { 
+                    newTab: tab.key,
+                    newEmployee: newEmployeeValue || 'all',
+                    actualNewEmployee: newEmployeeValue
+                  });
+                } catch (error) {
+                  logger.error('[탭 전환 실패]', error);
+                }
               }}
               className={`flex-1 flex items-center justify-center space-x-2 py-1.5 px-3 sm:px-4 business-radius-button button-text font-medium transition-colors ${
                 activeTab === tab.key
