@@ -185,7 +185,7 @@ const FILTER_FIELDS = [
     type: 'select',
     icon: CheckCircle,
     category: '상태',
-    options: ['현장결제', '구매요청', '발주요청']
+    options: ['현장결제', '구매 요청', '발주', '현금', '카드']
   },
   { 
     key: 'payment_schedule', 
@@ -225,6 +225,14 @@ const FILTER_FIELDS = [
     icon: CheckCircle,
     category: '상태',
     options: ['대기', '완료']
+  },
+  {
+    key: 'approval_status',
+    label: '승인상태',
+    type: 'select',
+    icon: CheckCircle,
+    category: '상태',
+    options: ['승인대기', '1차승인', '최종승인', '반려']
   }
 ]
 
@@ -330,7 +338,7 @@ export default function FilterToolbar({
     if (!fieldConfig) return
 
     // 날짜 타입 필터는 기본 조건 설정
-    let defaultCondition = 'contains'
+    let defaultCondition: FilterCondition = 'contains'
     if (fieldConfig.type === 'date_range' || fieldConfig.type === 'date_month') {
       defaultCondition = 'equals'
     }
@@ -362,7 +370,7 @@ export default function FilterToolbar({
       }
     }
     
-    if (newFilter.field && finalCondition !== undefined && newFilter.value !== '' && !requiresDateField) {
+    if (newFilter.field && finalCondition !== undefined && newFilter.value !== undefined && newFilter.value !== '' && !requiresDateField) {
       const filter: FilterRule = {
         id: newFilter.id!,
         field: newFilter.field,
@@ -442,7 +450,7 @@ export default function FilterToolbar({
         return (
           <Input
             placeholder="값 입력"
-            value={newFilter.value || ''}
+            value={String(newFilter.value || '')}
             onChange={(e) => setNewFilter(prev => ({ ...prev, value: e.target.value }))}
             className="w-full business-radius-input border border-gray-300 bg-white text-gray-700 card-description h-auto"
             style={{padding: '2px 10px', fontSize: '10px', fontWeight: '500'}}
@@ -454,7 +462,7 @@ export default function FilterToolbar({
           <Input
             type="number"
             placeholder="숫자 입력"
-            value={newFilter.value || ''}
+            value={String(newFilter.value || '')}
             onChange={(e) => setNewFilter(prev => ({ ...prev, value: e.target.value }))}
             className="w-full business-radius-input border border-gray-300 bg-white text-gray-700 card-description h-auto"
             style={{padding: '2px 10px', fontSize: '10px', fontWeight: '500'}}
@@ -493,7 +501,7 @@ export default function FilterToolbar({
                 className="w-full button-base business-radius-button border border-gray-300 bg-white text-gray-700 justify-between [&>svg]:hidden"
               >
                 <span className="truncate text-left" style={{fontSize: '12px', fontWeight: '500'}}>
-                  {newFilter.value || placeholder}
+                  {String(newFilter.value || placeholder)}
                 </span>
                 <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </Button>
@@ -544,7 +552,7 @@ export default function FilterToolbar({
 
       case 'select':
         return (
-          <Select value={newFilter.value || ''} onValueChange={(value) => setNewFilter(prev => ({ ...prev, value }))}>
+          <Select value={String(newFilter.value || '')} onValueChange={(value) => setNewFilter(prev => ({ ...prev, value }))}>
             <SelectTrigger className="button-base business-radius-button border border-gray-300 bg-white text-gray-700 [&>svg]:hidden text-center">
               <SelectValue placeholder="선택" />
             </SelectTrigger>
@@ -561,7 +569,7 @@ export default function FilterToolbar({
       case 'select_with_empty':
         const scheduleOptions = ['공란', ...availablePaymentSchedules]
         return (
-          <Select value={newFilter.value || ''} onValueChange={(value) => setNewFilter(prev => ({ ...prev, value }))}>
+          <Select value={String(newFilter.value || '')} onValueChange={(value) => setNewFilter(prev => ({ ...prev, value }))}>
             <SelectTrigger className="button-base business-radius-button border border-gray-300 bg-white text-gray-700 [&>svg]:hidden text-center">
               <SelectValue placeholder="지출예정일" />
             </SelectTrigger>
@@ -580,7 +588,7 @@ export default function FilterToolbar({
           <Popover open={datePickerOpen} onOpenChange={(open) => {
             if (open) {
               // 팝오버 열릴 때 기존 값 로드
-              if (newFilter.value) {
+              if (newFilter.value && typeof newFilter.value === 'string') {
                 if (newFilter.value.includes('~')) {
                   const [start, end] = newFilter.value.split('~');
                   setTempDateRange({
@@ -607,12 +615,12 @@ export default function FilterToolbar({
                 <div className="flex items-center gap-1.5 min-h-[32px]">
                   <Calendar className="w-3 h-3 flex-shrink-0" />
                   <span className="card-description leading-tight whitespace-pre-line">
-                    {newFilter.value ? (() => {
+                    {newFilter.value && typeof newFilter.value === 'string' ? (() => {
                       if (newFilter.value.includes('~')) {
                         const [start, end] = newFilter.value.split('~');
                         return `${format(new Date(start), 'yy/MM/dd')}\n~ ${format(new Date(end), 'yy/MM/dd')}`;
                       } else {
-                        return format(new Date(newFilter.value), 'yy/MM/dd');
+                        return format(new Date(String(newFilter.value)), 'yy/MM/dd');
                       }
                     })() : '날짜 선택'}
                   </span>
@@ -625,8 +633,8 @@ export default function FilterToolbar({
                   <div className="text-xs font-medium text-gray-600 mb-2">날짜 범위 선택</div>
                   <CalendarComponent
                     mode="range"
-                    selected={tempDateRange}
-                    onSelect={(range) => {
+                    selected={tempDateRange as any}
+                    onSelect={(range: any) => {
                       if (range) {
                         setTempDateRange(range);
                       }
@@ -656,7 +664,7 @@ export default function FilterToolbar({
                           setNewFilter(prev => ({ ...prev, value: rangeValue }));
                         } else {
                           // 시작날짜만 (해당일만 검색)
-                          setNewFilter(prev => ({ ...prev, value: format(tempDateRange.from, 'yyyy-MM-dd') }));
+                          setNewFilter(prev => ({ ...prev, value: format(tempDateRange.from!, 'yyyy-MM-dd') }));
                         }
                         setDatePickerOpen(false);
                       }
@@ -677,7 +685,7 @@ export default function FilterToolbar({
           <Popover open={monthPickerOpen} onOpenChange={(open) => {
             if (open) {
               // 팝오버 열릴 때 기존 값 로드
-              if (newFilter.value) {
+              if (newFilter.value && typeof newFilter.value === 'string') {
                 if (newFilter.value.includes('~')) {
                   const [start, end] = newFilter.value.split('~');
                   setTempMonthRange({
@@ -704,14 +712,14 @@ export default function FilterToolbar({
                 <div className="flex items-center gap-1.5">
                   <Calendar className="w-3 h-3 flex-shrink-0" />
                   <span className="card-description leading-tight whitespace-pre-line">
-                    {newFilter.value ? (() => {
+                    {newFilter.value && typeof newFilter.value === 'string' ? (() => {
                       if (newFilter.value.includes('~')) {
                         const [start, end] = newFilter.value.split('~');
                         const [startYear, startMonth] = start.split('-');
                         const [endYear, endMonth] = end.split('-');
                         return `${startYear.slice(-2)}/${startMonth}\n~ ${endYear.slice(-2)}/${endMonth}`;
                       } else {
-                        const [year, month] = newFilter.value.split('-');
+                        const [year, month] = String(newFilter.value).split('-');
                         return `${year.slice(-2)}/${month}`;
                       }
                     })() : '월 선택'}
@@ -734,7 +742,7 @@ export default function FilterToolbar({
                           <Button
                             onClick={() => {
                               const currentYear = tempMonthRange.from ? tempMonthRange.from.getFullYear() : new Date().getFullYear();
-                              const newDate = new Date(currentYear - 1, tempMonthRange.from ? tempMonthRange.from.getMonth() : 0, 1);
+                              const newDate = new Date(currentYear - 1, tempMonthRange.from?.getMonth() || 0, 1);
                               setTempMonthRange(prev => ({ ...prev, from: newDate }));
                             }}
                             variant="outline"
@@ -798,8 +806,8 @@ export default function FilterToolbar({
                           <div className="flex items-center justify-between mb-2">
                             <Button
                               onClick={() => {
-                                const currentYear = tempMonthRange.to ? tempMonthRange.to.getFullYear() : tempMonthRange.from.getFullYear();
-                                const newDate = new Date(currentYear - 1, tempMonthRange.to ? tempMonthRange.to.getMonth() : 11, 1);
+                                const currentYear = tempMonthRange.to ? tempMonthRange.to.getFullYear() : tempMonthRange.from!.getFullYear();
+                                const newDate = new Date(currentYear - 1, tempMonthRange.to?.getMonth() || 11, 1);
                                 setTempMonthRange(prev => ({ ...prev, to: newDate }));
                               }}
                               variant="outline"
@@ -809,12 +817,12 @@ export default function FilterToolbar({
                               ‹
                             </Button>
                             <span className="text-sm font-medium text-gray-700">
-                              {tempMonthRange.to ? tempMonthRange.to.getFullYear() : tempMonthRange.from.getFullYear()}년
+                              {tempMonthRange.to ? tempMonthRange.to.getFullYear() : tempMonthRange.from!.getFullYear()}년
                             </span>
                             <Button
                               onClick={() => {
-                                const currentYear = tempMonthRange.to ? tempMonthRange.to.getFullYear() : tempMonthRange.from.getFullYear();
-                                const newDate = new Date(currentYear + 1, tempMonthRange.to ? tempMonthRange.to.getMonth() : 11, 1);
+                                const currentYear = tempMonthRange.to ? tempMonthRange.to.getFullYear() : tempMonthRange.from!.getFullYear();
+                                const newDate = new Date(currentYear + 1, tempMonthRange.to?.getMonth() || 11, 1);
                                 setTempMonthRange(prev => ({ ...prev, to: newDate }));
                               }}
                               variant="outline"
@@ -829,12 +837,12 @@ export default function FilterToolbar({
                         {/* 종료 월 12개월 그리드 */}
                         <div className="grid grid-cols-3 gap-2">
                           {Array.from({ length: 12 }, (_, i) => {
-                            const currentYear = tempMonthRange.to ? tempMonthRange.to.getFullYear() : tempMonthRange.from.getFullYear();
+                            const currentYear = tempMonthRange.to ? tempMonthRange.to.getFullYear() : tempMonthRange.from!.getFullYear();
                             const monthDate = new Date(currentYear, i, 1);
                             const isSelected = tempMonthRange.to && 
                               tempMonthRange.to.getFullYear() === currentYear && 
                               tempMonthRange.to.getMonth() === i;
-                            const isDisabled = monthDate < tempMonthRange.from;
+                            const isDisabled = tempMonthRange.from ? monthDate < tempMonthRange.from : false;
                             
                             return (
                               <Button
@@ -896,7 +904,7 @@ export default function FilterToolbar({
                           setNewFilter(prev => ({ ...prev, value: rangeValue }));
                         } else {
                           // 단일 월
-                          setNewFilter(prev => ({ ...prev, value: format(tempMonthRange.from, 'yyyy-MM') }));
+                          setNewFilter(prev => ({ ...prev, value: format(tempMonthRange.from!, 'yyyy-MM') }));
                         }
                         setMonthPickerOpen(false);
                       }
@@ -918,10 +926,10 @@ export default function FilterToolbar({
   }
 
   return (
-    <div className="w-full space-y-3">
+    <div className="w-full">
       {/* 필터 툴바 */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-1">
           {/* 필터 버튼 */}
           <Popover open={isFilterOpen} onOpenChange={setIsFilterOpen}>
             <PopoverTrigger asChild>
@@ -965,7 +973,7 @@ export default function FilterToolbar({
                               ({DATE_FIELDS.find(df => df.value === filter.dateField)?.label})
                             </span>
                           )}
-                          : {filter.value}
+                          : {String(filter.value)}
                         </span>
                         <Button
                           variant="ghost"
@@ -990,8 +998,7 @@ export default function FilterToolbar({
                       className="w-64 max-h-80 overflow-y-auto"
                       style={{
                         scrollbarWidth: 'auto',
-                        scrollbarColor: '#9ca3af #f3f4f6',
-                        WebkitScrollbarWidth: '8px'
+                        scrollbarColor: '#9ca3af #f3f4f6'
                       }}
                     >
                       {Object.entries(
@@ -1234,6 +1241,37 @@ export default function FilterToolbar({
           >
             ↻ <span className="button-text text-blue-600">초기화</span>
           </Button>
+
+          {/* 활성 필터 태그 - 초기화 버튼 우측 같은 행에 표시 */}
+          {activeFilters.length > 0 && (
+            <>
+              <div className="h-6 w-px bg-gray-300 mx-3" />
+              <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
+                {activeFilters.map(filter => (
+                <span
+                  key={filter.id}
+                  className="badge-stats flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap"
+                >
+                  {filter.label}
+                  {filter.dateField && (
+                    <span className="text-blue-600">
+                      ({DATE_FIELDS.find(df => df.value === filter.dateField)?.label})
+                    </span>
+                  )}
+                  : {String(filter.value)}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleRemoveFilter(filter.id)}
+                    className="h-4 w-4 p-0 hover:bg-blue-100 ml-1"
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </span>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         {/* 우측 끝 - 칼럼 설정 버튼 등 */}
@@ -1241,34 +1279,6 @@ export default function FilterToolbar({
           {children}
         </div>
       </div>
-
-      {/* 활성 필터 태그 - badge-stats span으로 변경 */}
-      {activeFilters.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {activeFilters.map(filter => (
-            <span
-              key={filter.id}
-              className="badge-stats flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200"
-            >
-              {filter.label}
-              {filter.dateField && (
-                <span className="text-blue-600">
-                  ({DATE_FIELDS.find(df => df.value === filter.dateField)?.label})
-                </span>
-              )}
-              : {filter.value}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => handleRemoveFilter(filter.id)}
-                className="h-4 w-4 p-0 hover:bg-blue-100 ml-1"
-              >
-                <X className="w-3 h-3" />
-              </Button>
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

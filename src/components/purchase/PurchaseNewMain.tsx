@@ -337,6 +337,86 @@ export default function PurchaseNewMain() {
     update(index, { ...item, amount_value: amount });
   };
 
+  // 엑셀 붙여넣기 핸들러
+  const handlePasteFromExcel = (e: React.ClipboardEvent) => {
+    // 붙여넣기 이벤트가 input 요소 내부에서 발생했다면, 해당 input의 기본 동작을 허용할 수도 있지만,
+    // 여기서는 대량 붙여넣기를 위해 테이블 전체 동작으로 처리
+    // 단, 단일 셀 붙여넣기(짧은 텍스트)인 경우는 제외하고 싶을 수 있으나,
+    // 탭 문자가 포함되어 있거나 개행이 포함된 경우 엑셀 데이터로 간주
+    
+    const clipboardData = e.clipboardData.getData('text');
+    if (!clipboardData) return;
+    
+    // 엑셀 데이터인지 확인 (탭이나 개행이 포함된 경우)
+    const isExcelData = clipboardData.includes('\t') || clipboardData.includes('\n');
+    if (!isExcelData) return; // 일반 텍스트 붙여넣기는 각 input의 기본 동작 따름
+
+    e.preventDefault(); // 기본 붙여넣기 방지
+    e.stopPropagation();
+
+    try {
+      // 행 분리
+      const rows = clipboardData.split(/\r\n|\n|\r/).filter(row => row.trim() !== '');
+      
+      if (rows.length === 0) return;
+
+      const currentItems = getValues("items");
+      const startIndex = 0; // 항상 첫 번째 행부터 시작 (또는 현재 포커스된 행을 찾을 수도 있음)
+      
+      // 붙여넣을 데이터 파싱
+      const newItemsData = rows.map((row, index) => {
+        const columns = row.split('\t');
+        const qty = parseInt(columns[2]?.replace(/,/g, '') || '1') || 1;
+        const price = parseFloat(columns[3]?.replace(/,/g, '') || '0') || 0;
+        
+        return {
+          line_number: 0, // 나중에 재설정
+          item_name: columns[0]?.trim() || '',
+          specification: columns[1]?.trim() || '',
+          quantity: qty,
+          unit_price_value: price,
+          unit_price_currency: currency,
+          amount_value: qty * price,
+          amount_currency: currency,
+          remark: columns[4]?.trim() || '',
+          link: paymentCategory === "구매 요청" ? (columns[5]?.trim() || '') : ''
+        };
+      });
+
+      // 기존 첫 번째 행이 비어있는지 확인 (품목명이 없는 경우 비어있다고 간주)
+      const isFirstItemEmpty = currentItems.length === 1 && !currentItems[0].item_name;
+
+      if (isFirstItemEmpty) {
+        // 첫 번째 행이 비어있으면 덮어쓰기
+        update(0, { ...newItemsData[0], line_number: 1 });
+        
+        // 나머지 데이터 추가
+        const remainingItems = newItemsData.slice(1).map((item, idx) => ({
+          ...item,
+          line_number: idx + 2
+        }));
+        
+        if (remainingItems.length > 0) {
+          append(remainingItems);
+        }
+      } else {
+        // 비어있지 않으면 뒤에 추가
+        const startLineNumber = currentItems.length + 1;
+        const itemsToAdd = newItemsData.map((item, idx) => ({
+          ...item,
+          line_number: startLineNumber + idx
+        }));
+        append(itemsToAdd);
+      }
+
+      toast.success(`${newItemsData.length}개 품목을 붙여넣었습니다.`);
+      
+    } catch (error) {
+      console.error('Excel paste error:', error);
+      toast.error('엑셀 데이터 붙여넣기 중 오류가 발생했습니다.');
+    }
+  };
+
   // 전체 금액 계산
   const getTotalAmount = () => {
     const items = getValues("items");
@@ -724,7 +804,7 @@ export default function PurchaseNewMain() {
         }
       }}
     >
-      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6">
+      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
         {/* 발주 기본 정보 - 모바일: 전체폭, 데스크톱: 1/4 폭 */}
         <div className="w-full lg:w-1/4 relative bg-muted/20 border border-border rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 p-4 lg:p-5 space-y-4">
           <div className="flex flex-row items-start justify-between w-full mb-4">
@@ -1185,8 +1265,8 @@ export default function PurchaseNewMain() {
                 </Button>
               </div>
             </div>
-            <div className="overflow-x-auto">
-              <div className="max-h-[500px] overflow-y-auto">
+            <div className="overflow-x-auto" onPaste={handlePasteFromExcel} tabIndex={0} style={{ outline: 'none' }}>
+              <div className="max-h-[calc(100vh-180px)] overflow-y-auto">
                 <table className="w-full text-xs">
                   <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr className="border-b border-gray-200">
