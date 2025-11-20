@@ -22,10 +22,14 @@ import {
   CheckCircle,
   XCircle,
   Check,
-  Truck
+  Truck,
+  MessageSquarePlus
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
@@ -72,6 +76,70 @@ function PurchaseDetailModal({
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [vendorSearchTerm, setVendorSearchTerm] = useState('')
   
+  // 수정요청 관련 상태
+  const [isModifyRequestOpen, setIsModifyRequestOpen] = useState(false)
+  const [modifySubject, setModifySubject] = useState('')
+  const [modifyMessage, setModifyMessage] = useState('')
+  const [isSendingModify, setIsSendingModify] = useState(false)
+
+  // 수정요청 초기값 설정
+  useEffect(() => {
+    if (isModifyRequestOpen && purchase) {
+      setModifySubject(`[수정요청] 발주번호 ${purchase.purchase_order_number} 수정 요청합니다.`)
+      setModifyMessage('') // 내용은 빈 칸으로 시작
+    }
+  }, [isModifyRequestOpen, purchase])
+
+  // 수정요청 전송
+  const handleSendModifyRequest = async () => {
+    if (!modifySubject.trim() || !modifyMessage.trim()) {
+      toast.error('제목과 내용을 모두 입력해주세요.')
+      return
+    }
+
+    setIsSendingModify(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) {
+        toast.error('로그인이 필요합니다.')
+        return
+      }
+
+      const { error } = await supabase
+        .from('support_inquires')
+        .insert({
+          user_id: user.id,
+          user_email: user.email,
+          user_name: currentUserName,
+          inquiry_type: 'modify',
+          subject: modifySubject,
+          message: modifyMessage,
+          status: 'open',
+          purchase_request_id: purchase?.id,
+          purchase_order_number: purchase?.purchase_order_number,
+          requester_id: purchase?.requester_id,
+          purchase_info: JSON.stringify({
+            vendor_name: purchase?.vendor_name,
+            total_amount: purchase?.total_amount,
+            item_count: purchase?.purchase_request_items?.length || 0
+          })
+        })
+
+      if (error) throw error
+
+      toast.success('수정 요청이 전송되었습니다.')
+      setIsModifyRequestOpen(false)
+      setModifySubject('')
+      setModifyMessage('')
+    } catch (error) {
+      logger.error('수정 요청 전송 실패', error)
+      toast.error('수정 요청 전송 중 오류가 발생했습니다.')
+    } finally {
+      setIsSendingModify(false)
+    }
+  }
+
   // 메모리 캐시 동기화는 useEffect에서 처리
 
   // 🚀 실시간 items 데이터 (로컬 purchase state를 우선 사용)
@@ -4532,12 +4600,85 @@ function PurchaseDetailModal({
         </DialogHeader>
         {/* Apple-style Header */}
         <div className="relative px-3 sm:px-6 pt-0 sm:pt-3 lg:pt-4 pb-0 sm:pb-2 lg:pb-3 flex-shrink-0">
-          <button
-            onClick={onClose}
-            className="button-base button-action-secondary absolute right-3 sm:right-6 top-0 sm:top-3 lg:top-4 w-6 h-6 sm:w-8 sm:h-8 rounded-full"
-          >
-            <X className="w-4 h-4 text-gray-500" />
-          </button>
+          <div className="absolute right-3 sm:right-6 top-3 sm:top-3 lg:top-4 flex items-center gap-2 z-10">
+            {/* 수정요청 버튼 (관리자 제외, 일반 직원용) */}
+            {!isAdmin && !isEditing && (
+              <Popover open={isModifyRequestOpen} onOpenChange={setIsModifyRequestOpen}>
+                <PopoverTrigger asChild>
+                  <button 
+                    className="button-base button-action-secondary w-8 h-8 rounded-full flex items-center justify-center" 
+                    title="수정 요청"
+                  >
+                    <MessageSquarePlus className="w-4 h-4 text-gray-500" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent 
+                  className="w-80 sm:w-96 p-4" 
+                  align="end"
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                >
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <h4 className="font-medium leading-none">수정 요청</h4>
+                      <p className="text-xs text-muted-foreground">
+                        해당 발주서에 대한 수정 요청사항을 입력해주세요.
+                      </p>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <Label htmlFor="subject" className="text-xs">제목</Label>
+                        <Input
+                          id="subject"
+                          value={modifySubject}
+                          onChange={(e) => setModifySubject(e.target.value)}
+                          className="h-8 text-xs"
+                          placeholder="제목을 입력하세요"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="message" className="text-xs">내용</Label>
+                        <div className="relative" onWheel={(e) => e.stopPropagation()}>
+                          <Textarea
+                            id="message"
+                            value={modifyMessage}
+                            onChange={(e) => setModifyMessage(e.target.value)}
+                            className="min-h-[150px] text-xs font-mono overflow-auto"
+                            placeholder="요청 내용을 입력하세요"
+                            style={{ resize: 'none' }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setIsModifyRequestOpen(false)}
+                        className="h-8 text-xs"
+                      >
+                        취소
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        onClick={handleSendModifyRequest}
+                        disabled={isSendingModify}
+                        className="h-8 text-xs bg-blue-600 hover:bg-blue-700"
+                      >
+                        {isSendingModify ? '전송 중...' : '요청 전송'}
+                      </Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+            
+            <button
+              onClick={onClose}
+              className="button-base button-action-secondary w-8 h-8 rounded-full flex items-center justify-center"
+            >
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
+          </div>
           
           <div className="pr-8 sm:pr-16">
             <div className="flex items-start gap-4 mb-0 sm:mb-3">

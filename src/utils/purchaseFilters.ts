@@ -266,9 +266,9 @@ const checkFilterCondition = (fieldValue: any, condition: string, value: any): b
       if (typeof value === 'string' && value.includes('~')) {
         if (!fieldValue) return false
         try {
-          const [startDate, endDate] = value.split('~')
-          const purchaseDate = new Date(fieldValue).toISOString().split('T')[0]
-          return purchaseDate >= startDate && purchaseDate <= endDate
+        const [startDate, endDate] = value.split('~')
+        const purchaseDate = new Date(fieldValue).toISOString().split('T')[0]
+        return purchaseDate >= startDate && purchaseDate <= endDate
         } catch (error) {
           console.error('날짜 범위 처리 오류:', error)
           return false
@@ -278,13 +278,13 @@ const checkFilterCondition = (fieldValue: any, condition: string, value: any): b
       if (typeof value === 'string' && (value.match(/^\d{4}-\d{2}$/) || value.match(/^\d{4}-\d{2}~\d{4}-\d{2}$/))) {
         if (!fieldValue) return false
         try {
-          if (value.includes('~')) {
-            const [startMonth, endMonth] = value.split('~')
-            const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7) // YYYY-MM 형식
-            return purchaseMonth >= startMonth && purchaseMonth <= endMonth
-          } else {
-            const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7)
-            return purchaseMonth === value
+        if (value.includes('~')) {
+          const [startMonth, endMonth] = value.split('~')
+          const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7) // YYYY-MM 형식
+          return purchaseMonth >= startMonth && purchaseMonth <= endMonth
+        } else {
+          const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7)
+          return purchaseMonth === value
           }
         } catch (error) {
           console.error('월별 필터 처리 오류:', error)

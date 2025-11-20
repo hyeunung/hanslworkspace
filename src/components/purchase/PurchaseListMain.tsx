@@ -978,7 +978,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         )}
 
         {/* 탭 콘텐츠 */}
-        <Card className={`overflow-hidden border border-gray-200 ${hasHiddenColumns ? 'w-fit' : ''}`}>
+        <Card className={`overflow-hidden border border-gray-200 ${hasHiddenColumns && tabFilteredPurchases.length > 0 ? 'w-fit' : 'w-full'}`}>
           <CardContent className="p-0">
             {loading ? (
               <div className="flex items-center justify-center py-12">

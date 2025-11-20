@@ -1243,35 +1243,35 @@ export default function FilterToolbar({
           </Button>
 
           {/* 활성 필터 태그 - 초기화 버튼 우측 같은 행에 표시 */}
-          {activeFilters.length > 0 && (
+      {activeFilters.length > 0 && (
             <>
               <div className="h-6 w-px bg-gray-300 mx-3" />
               <div className="flex items-center gap-2 flex-nowrap overflow-x-auto">
-                {activeFilters.map(filter => (
-                <span
-                  key={filter.id}
+          {activeFilters.map(filter => (
+            <span
+              key={filter.id}
                   className="badge-stats flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap"
-                >
-                  {filter.label}
-                  {filter.dateField && (
-                    <span className="text-blue-600">
-                      ({DATE_FIELDS.find(df => df.value === filter.dateField)?.label})
-                    </span>
-                  )}
-                  : {String(filter.value)}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveFilter(filter.id)}
-                    className="h-4 w-4 p-0 hover:bg-blue-100 ml-1"
-                  >
-                    <X className="w-3 h-3" />
-                  </Button>
+            >
+              {filter.label}
+              {filter.dateField && (
+                <span className="text-blue-600">
+                  ({DATE_FIELDS.find(df => df.value === filter.dateField)?.label})
                 </span>
-                ))}
-              </div>
+              )}
+                  : {String(filter.value)}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleRemoveFilter(filter.id)}
+                className="h-4 w-4 p-0 hover:bg-blue-100 ml-1"
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            </span>
+          ))}
+        </div>
             </>
-          )}
+      )}
         </div>
 
         {/* 우측 끝 - 칼럼 설정 버튼 등 */}
