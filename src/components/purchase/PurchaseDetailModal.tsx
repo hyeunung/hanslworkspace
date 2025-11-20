@@ -4605,12 +4605,15 @@ function PurchaseDetailModal({
             {!isAdmin && !isEditing && (
               <Popover open={isModifyRequestOpen} onOpenChange={setIsModifyRequestOpen}>
                 <PopoverTrigger asChild>
-                  <button 
-                    className="button-base button-action-secondary w-8 h-8 rounded-full flex items-center justify-center" 
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="button-base button-action-secondary h-8 text-xs px-3 gap-1.5"
                     title="수정 요청"
                   >
-                    <MessageSquarePlus className="w-4 h-4 text-gray-500" />
-                  </button>
+                    <MessageSquarePlus className="w-3.5 h-3.5 text-gray-500" />
+                    <span>수정 요청</span>
+                  </Button>
                 </PopoverTrigger>
                 <PopoverContent 
                   className="w-80 sm:w-96 p-4" 
