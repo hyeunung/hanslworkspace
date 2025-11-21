@@ -361,55 +361,167 @@ export default function PurchaseNewMain() {
       if (rows.length === 0) return;
 
       const currentItems = getValues("items");
-      const startIndex = 0; // 항상 첫 번째 행부터 시작 (또는 현재 포커스된 행을 찾을 수도 있음)
       
-      // 붙여넣을 데이터 파싱
-      const newItemsData = rows.map((row, index) => {
-        const columns = row.split('\t');
-        const qty = parseInt(columns[2]?.replace(/,/g, '') || '1') || 1;
-        const price = parseFloat(columns[3]?.replace(/,/g, '') || '0') || 0;
-        
-        return {
-          line_number: 0, // 나중에 재설정
-          item_name: columns[0]?.trim() || '',
-          specification: columns[1]?.trim() || '',
-          quantity: qty,
-          unit_price_value: price,
-          unit_price_currency: currency,
-          amount_value: qty * price,
-          amount_currency: currency,
-          remark: columns[4]?.trim() || '',
-          link: paymentCategory === "구매 요청" ? (columns[5]?.trim() || '') : ''
-        };
-      });
-
-      // 기존 첫 번째 행이 비어있는지 확인 (품목명이 없는 경우 비어있다고 간주)
-      const isFirstItemEmpty = currentItems.length === 1 && !currentItems[0].item_name;
-
-      if (isFirstItemEmpty) {
-        // 첫 번째 행이 비어있으면 덮어쓰기
-        update(0, { ...newItemsData[0], line_number: 1 });
-        
-        // 나머지 데이터 추가
-        const remainingItems = newItemsData.slice(1).map((item, idx) => ({
-          ...item,
-          line_number: idx + 2
-        }));
-        
-        if (remainingItems.length > 0) {
-          append(remainingItems);
-        }
+      // 현재 포커스된 행 및 필드 찾기
+      let startIndex = 0;
+      let startFieldName = 'item_name';
+      
+      const activeElement = document.activeElement as HTMLInputElement;
+      let targetInput: HTMLInputElement | null = null;
+      
+      if (activeElement && activeElement.tagName === 'INPUT') {
+        targetInput = activeElement;
       } else {
-        // 비어있지 않으면 뒤에 추가
-        const startLineNumber = currentItems.length + 1;
-        const itemsToAdd = newItemsData.map((item, idx) => ({
-          ...item,
-          line_number: startLineNumber + idx
-        }));
-        append(itemsToAdd);
+        // fallback
+        const targetElement = e.target as HTMLElement;
+        if (targetElement) {
+          let element: HTMLElement | null = targetElement;
+          while (element && element.tagName !== 'INPUT') {
+            element = element.parentElement;
+            if (element && element.tagName === 'INPUT') {
+              targetInput = element as HTMLInputElement;
+              break;
+            }
+          }
+        }
+      }
+      
+      if (targetInput) {
+        // 행 인덱스 찾기
+        const rowIndexAttr = targetInput.getAttribute('data-row-index');
+        if (rowIndexAttr !== null) {
+          const parsedIndex = parseInt(rowIndexAttr, 10);
+          if (!isNaN(parsedIndex) && parsedIndex >= 0 && parsedIndex < currentItems.length) {
+            startIndex = parsedIndex;
+          }
+        } else {
+            // data-row-index가 없으면 DOM 구조로 찾기 (fallback)
+            let parent = targetInput.parentElement;
+            while (parent && parent.tagName !== 'TR') {
+              parent = parent.parentElement;
+            }
+            
+            if (parent && parent.tagName === 'TR') {
+              const tbody = parent.parentElement;
+              if (tbody && tbody.tagName === 'TBODY') {
+                const rowIndex = Array.from(tbody.children).indexOf(parent);
+                if (rowIndex >= 0 && rowIndex < currentItems.length) {
+                  startIndex = rowIndex;
+                }
+              }
+            }
+        }
+        
+        // 필드명 찾기
+        const fieldNameAttr = targetInput.getAttribute('data-field-name');
+        if (fieldNameAttr) {
+          startFieldName = fieldNameAttr;
+        }
       }
 
-      toast.success(`${newItemsData.length}개 품목을 붙여넣었습니다.`);
+      // 필드 순서 정의 (화면상 순서와 일치해야 함)
+      const FIELDS = [
+        'item_name', 
+        'specification', 
+        'quantity', 
+        'unit_price_value', 
+        'amount_value', // ReadOnly (합계) - 건너뛰기용
+        ...(paymentCategory === "구매 요청" ? ['link'] : []),
+        'remark'
+      ];
+      
+      const startColIndex = FIELDS.indexOf(startFieldName);
+      if (startColIndex === -1) return; // 유효하지 않은 필드면 중단
+
+      // 업데이트할 데이터 준비
+      const updatedItems = [...currentItems];
+      let maxRowIndex = currentItems.length - 1;
+
+      // 붙여넣기 데이터 처리
+      rows.forEach((row, rIndex) => {
+        const columns = row.split('\t');
+        const targetRowIndex = startIndex + rIndex;
+        
+        // 필요한 경우 새 행 데이터 준비
+        if (targetRowIndex > maxRowIndex) {
+          updatedItems.push({
+            line_number: targetRowIndex + 1,
+            item_name: "",
+            specification: "",
+            quantity: 1,
+            unit_price_value: 0,
+            unit_price_currency: currency,
+            amount_value: 0,
+            amount_currency: currency,
+            remark: "",
+            link: "",
+          });
+          maxRowIndex++;
+        }
+        
+        // 현재 행 데이터
+        const currentItem = updatedItems[targetRowIndex];
+        
+        // 컬럼별 데이터 매핑
+        columns.forEach((colValue, cIndex) => {
+          const targetColIndex = startColIndex + cIndex;
+          
+          // 필드 범위를 벗어나면 무시
+          if (targetColIndex >= FIELDS.length) return;
+          
+          const fieldName = FIELDS[targetColIndex];
+          const cleanValue = colValue.trim();
+          
+          // 합계(amount_value) 필드는 입력 불가하므로 건너뜀 (데이터가 있어도 무시)
+          if (fieldName === 'amount_value') return;
+          
+          // 데이터 타입 변환 및 할당
+          if (fieldName === 'quantity') {
+             const qty = parseInt(cleanValue.replace(/,/g, '') || '0') || 0;
+             currentItem.quantity = qty;
+          } else if (fieldName === 'unit_price_value') {
+             const price = parseFloat(cleanValue.replace(/,/g, '') || '0') || 0;
+             currentItem.unit_price_value = price;
+          } else if (fieldName === 'link') {
+             currentItem.link = cleanValue;
+          } else if (fieldName === 'remark') {
+             currentItem.remark = cleanValue;
+          } else if (fieldName === 'item_name') {
+             currentItem.item_name = cleanValue;
+          } else if (fieldName === 'specification') {
+             currentItem.specification = cleanValue;
+          }
+        });
+        
+        // 금액 재계산 (수량 * 단가)
+        currentItem.amount_value = currentItem.quantity * currentItem.unit_price_value;
+        
+        // 업데이트된 행 저장
+        updatedItems[targetRowIndex] = currentItem;
+      });
+
+      // 상태 업데이트 (전체 리스트 교체 또는 개별 업데이트)
+      // useFieldArray의 update를 반복 호출하면 성능 이슈가 있을 수 있으므로,
+      // setValue로 전체를 업데이트하거나, 변경된 행만 update 호출
+      
+      // 변경된 행만 update 호출 (최적화)
+      const changedRowCount = Math.min(rows.length + (updatedItems.length - currentItems.length), updatedItems.length - startIndex);
+      
+      // 기존 행 업데이트
+      for (let i = 0; i < rows.length; i++) {
+        const targetIdx = startIndex + i;
+        if (targetIdx < currentItems.length) {
+          update(targetIdx, updatedItems[targetIdx]);
+        }
+      }
+      
+      // 새로 추가된 행 추가 (append)
+      if (updatedItems.length > currentItems.length) {
+        const newRows = updatedItems.slice(currentItems.length);
+        append(newRows);
+      }
+
+      toast.success(`${rows.length}개 행 데이터를 붙여넣었습니다.`);
       
     } catch (error) {
       console.error('Excel paste error:', error);
@@ -1298,6 +1410,8 @@ export default function PurchaseNewMain() {
                         {/* 품목 */}
                         <td className="px-2 py-1">
                           <Input
+                            data-row-index={idx}
+                            data-field-name="item_name"
                             value={item.item_name}
                             onChange={(e) => update(idx, { ...item, item_name: e.target.value })}
                             className="h-7 w-full bg-white border border-gray-200 text-xs"
@@ -1308,6 +1422,8 @@ export default function PurchaseNewMain() {
                         {/* 규격 */}
                         <td className="px-2 py-1">
                           <Input
+                            data-row-index={idx}
+                            data-field-name="specification"
                             value={item.specification}
                             onChange={(e) => update(idx, { ...item, specification: e.target.value })}
                             className="h-7 w-full bg-white border border-gray-200 text-xs"
@@ -1318,6 +1434,8 @@ export default function PurchaseNewMain() {
                         {/* 수량 */}
                         <td className="px-2 py-1">
                           <Input
+                            data-row-index={idx}
+                            data-field-name="quantity"
                             type="number"
                             min="1"
                             value={item.quantity || ''}
@@ -1334,6 +1452,8 @@ export default function PurchaseNewMain() {
                         <td className="px-2 py-1">
                           <div className="flex items-center">
                             <Input
+                              data-row-index={idx}
+                              data-field-name="unit_price_value"
                               type="text"
                               inputMode="decimal"
                               value={inputValues[`${idx}_unit_price_value`] ?? (item.unit_price_value === 0 ? "" : item.unit_price_value?.toLocaleString('ko-KR') || "")}
@@ -1381,6 +1501,8 @@ export default function PurchaseNewMain() {
                         {paymentCategory === "구매 요청" && (
                           <td className="px-2 py-1">
                             <Input
+                              data-row-index={idx}
+                              data-field-name="link"
                               value={item.link || ''}
                               onChange={(e) => update(idx, { ...item, link: e.target.value })}
                               type="url"
@@ -1393,6 +1515,8 @@ export default function PurchaseNewMain() {
                         {/* 비고 */}
                         <td className="px-2 py-1">
                           <Input
+                            data-row-index={idx}
+                            data-field-name="remark"
                             value={item.remark || ''}
                             onChange={(e) => update(idx, { ...item, remark: e.target.value })}
                             className="h-7 w-full bg-white border border-gray-200 text-xs"
