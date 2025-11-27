@@ -1,0 +1,10 @@
+{
+  "functions": [
+    {
+      "name": "process-bom",
+      "verify_jwt": true
+    }
+  ]
+}
+
+

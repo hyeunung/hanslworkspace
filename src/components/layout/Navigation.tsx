@@ -57,6 +57,12 @@ export default function Navigation({ role }: NavigationProps) {
       href: '/employee',
       icon: Users,
       roles: ['all']  // hanslwebapp과 동일하게 모든 사용자 접근 가능
+    },
+    {
+      label: 'BOM/좌표 정리',
+      href: '/bom-coordinate',
+      icon: Package,
+      roles: ['all']
     }
   ]
 

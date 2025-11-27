@@ -1,0 +1,793 @@
+[
+  {
+    "year": "2024",
+    "boardName": "H24-064_MEM-K(54B)_C50_TRIPLE_RTV_UPDOWN_COMMON2.0_6L",
+    "bom": "H24-064_MEM-K(54B)_C50_TRIPLE_RTV_UPDOWN_COMMON2.0_6L_240807part.xlsx",
+    "coordinate": "H24-064_MEM-K(54B)_C50_TRIPLE_RTV_UPDOWN_COMMON2.0_6L[좌표]_240807.txt",
+    "cleaned": "H24-064_MEM-K(54B)_C50_TRIPLE_RTV_UPDOWN_COMMON2.0_6L(2408).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-131_BOI_C70_MA_Harrison_Main_V1.0",
+    "bom": "H24-131_BOI_C70_MA_HARRISON_MAIN_V1.0_241126part.txt",
+    "coordinate": "H24-131_BOI_C70_MA_Harrison_Main_V1.0[좌표]_241126.txt",
+    "cleaned": "H24-131_BOI_C70_MA_Harrison_Main_V1.0(2411).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-068_MEM-K(54B)_C40_Module_AA_PTM3.2(ADS)",
+    "bom": "H24-068_MEM-K(54B)_C40_MODULE_AA_PTM3.2(ADS)_240821part.xlsx",
+    "coordinate": "H24-068_MEM-K(54B)_C40_Module_AA_PTM3.2(ADS)[좌표]_240822.txt",
+    "cleaned": "H24-068_MEM-K(54B)_C40_MODULE_AA_PTM3.2(ADS)(2408).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-002_MEM(R53B)_C60_UPDOWN_Zeus_Test_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1",
+    "bom": "H24-002_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1_240118part.xlsx",
+    "coordinate": "H24-002_MEM(R53B)_C60_UPDOWN_Zeus_Test_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1[좌표]_240118.txt",
+    "cleaned": "H24-002_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1(2401).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-152-3_MGL_Module_AA_AF_Gripper_Side_V1.0",
+    "bom": "H24-152-3_MGL_MODULE_AA_AF_GRIPPER_SIDE_V1.0_241217part.txt",
+    "coordinate": "H24-152-3_MGL_Module_AA_AF_Gripper_Side_V1.0[좌표]_241217.txt",
+    "cleaned": "H24-152-3_MGL_Module_AA_AF_Gripper_Side_V1.0(2412).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-094_LGIT_SAA_26Y_NPI_BOS_V1.0",
+    "bom": "H24-094_LGIT_SAA_26Y_NPI_BOS_V1.0_241202.bom.xls",
+    "coordinate": "H24-094_LGIT_SAA_26Y_NPI_BOS_V1.0_241202.좌표.xls",
+    "cleaned": "H24-094_LGIT_SAA_26Y_NPI_BOS_V1.0(2411).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-077_Paragon_Zoom_Cal_OS_Tester_V1.0",
+    "bom": "H24-077_PARAGON_ZOOM_CAL_OS_TESTER_V1.0_240905part.xlsx",
+    "coordinate": "H24-077_Paragon_Zoom_Cal_OS_Tester_V1.0[부품 중심 좌표]_240910.txt",
+    "cleaned": "H24-077_PARAGON_ZOOM_CAL_OS_TESTER_V1.0(2409).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-139_BWI25-K_C40_UPDOWN_COMMON_POWER_V1.1_DS160_6L_IPEX60",
+    "bom": "H24-139_BWI25-K_C40_UPDOWN_COMMON_POWER_V1_1_DS160_6L_IPEX60_241111part.txt",
+    "coordinate": "H24-139_BWI25-K_C40_UPDOWN_COMMON_POWER_V1.1_DS160_6L_IPEX60[좌표]_241114.txt",
+    "cleaned": "H24-139_BWI25-K_C40_UPDOWN_COMMON_POWER_V1.1_DS160_6L_IPEX60(2411).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-055_LGIT_CHS_OIS_V1.1",
+    "bom": "H24-055_LGIT_CHS_OIS_V1.1_240627part.xlsx",
+    "coordinate": "H24-055_LGIT_CHS_OIS_V1.1[좌표]_240627.txt",
+    "cleaned": "H24-055_LGIT_CHS_OIS_V1.1(2406).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-164_MEM-K_C30_Zeus_UDT_Manual_COMMON2.0_6L",
+    "bom": "H24-164_MEM-K_C30_ZEUS_UDT_MANUAL_COMMON2.0_6L_241219part.txt",
+    "coordinate": "H24-164_MEM-K_C30_Zeus_UDT_Manual_COMMON2.0_6L[좌표]_241219.txt",
+    "cleaned": "H24-164_MEM-K_C30_Zeus_UDT_Manual_COMMON2.0_6L(2412).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-004_MEM(R53B)_C60_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L_0x0321",
+    "bom": "H24-004_MEM(R53B)_C60_PRISM_LCB_TESTER_PTM3.2(ADS)_ARM3.1_6L_0X0321part.xlsx",
+    "coordinate": "H24-004_MEM(R53B)_C60_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L_0x0321[좌표]_240123.txt",
+    "cleaned": "H24-004_MEM(R53B)_C60_PRISM_LCB_TESTER_PTM3.2(ADS)_ARM3.1_6L_0X0321(2401).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-010_MEM(R53B)_C60_UPDOWN_Zeus_Test_COMMON2.0_6L",
+    "bom": "H24-010_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_COMMON2.0_6L_240221part.xlsx",
+    "coordinate": "H24-010_MEM(R53B)_C60_UPDOWN_Zeus_Test_COMMON2.0_6L[좌표]_240221.txt",
+    "cleaned": "H24-010_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_COMMON2.0_6L(2402).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-042_MEM-K(54B)_C50_Zeus_Iguana_PTM3.2(ADS)_6L",
+    "bom": "H24-042_MEM(R53B)_C50_ZEUS_IGUANA_PTM3.2(ADS)_6L_240530part.xlsx",
+    "coordinate": "H24-042_MEM-K(54B)_C50_Zeus_Iguana_PTM3.2(ADS)_6L_[좌표]240603.txt",
+    "cleaned": "H24-042_MEM(R53B)_C50_ZEUS_IGUANA_PTM3.2(ADS)_6L(2406).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-101_MEM-K(R54B)_C40_Full_Module_UDT_Auto_COMMON2.0_6L",
+    "bom": "H24-101_MEM-K(R54B)_C40_FULL_MODULE_UDT_AUTO_COMMON2.0_6L_240925part.txt",
+    "coordinate": "H24-101_MEM-K(R54B)_C40_Full_Module_UDT_Auto_COMMON2.0_6L[좌표]_240926.txt",
+    "cleaned": "H24-101_MEM-K(R54B)_C40_FULL_MODULE_UDT_AUTO_COMMON2.0_6L(2409).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-109_Paragon_Zoom_Cal_Manual_Main_V1.1",
+    "bom": "H24-109_PARAGON_ZOOM_CAL_MANUAL_MAIN_V1.1_241010part.txt",
+    "coordinate": "H24-109_Paragon_Zoom_Cal_Manual_Main_V1.1[좌표]_241014.pnp.txt",
+    "cleaned": "H24-109_Paragon_Zoom_Cal_Manual_Main_V1.1(2410).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-012_MEM(R53B)_C6.0_SFR_Bench_Module_Test_COMMON2.0_6L",
+    "bom": "H24-012_MEM(R53B)_C6.0_SFR_BENCH_MODULE_TEST_COMMON2.0_6L_240228part.xlsx",
+    "coordinate": "H24-012_MEM(R53B) C6.0 SFR Bench_Module_Test_COMMON2.0_6L[좌표]_240228.txt",
+    "cleaned": "H24-012_MEM(R53B)_C6.0_SFR_BENCH_MODULE_TEST_COMMON2.0_6L(2402).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-016_MEM(R53B)_C61_Zeus_Iguana_PTM3.2(ADS)_6L",
+    "bom": "H24-016_MEM(R53B)_C61_ZEUS_IGUANA_PTM3.2(ADS)_6L_240312part.xlsx",
+    "coordinate": "H24-016_MEM(R53B)_C61_Zeus_Iguana_PTM3.2(ADS)_6L[좌표]_240312.txt",
+    "cleaned": "H24-016_MEM(R53B)_C61_ZEUS_IGUANA_PTM3.2(ADS)_6L(2403).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-086_MEM(R53B)-F_C50_MA_TEC_Test_S.P_PTM3.2(ADS)_6L",
+    "bom": "H24-086_MEM(R53B)-F_C50_MA_TEC_TEST_S.P_PTM3.2(ADS)_6L_240909part.BOM",
+    "coordinate": "H24-086_MEM(R53B)-F_C50_MA_TEC_Test_S.P_PTM3.2(ADS)_6L[좌표]_240911.txt",
+    "cleaned": "H24-086_MEM(R53B)-F_C50_MA_TEC_Test_S.P_PTM3.2(ADS)_6L(2409).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-113_Hornet_Cube_UDT-TDP2004_V1.0",
+    "bom": "H24-113_HORNET_CUBE_UDT-TDP2004_V1.0_241104part.txt",
+    "coordinate": "H24-113_Hornet_Cube_UDT-TDP2004_V1.0[좌표]_241104.txt",
+    "cleaned": "H24-113_Hornet_Cube_UDT-TDP2004_V1.0(2411).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-138-1_AR_Glass_EOL_Panel_R-Socket_Main_V1.0",
+    "bom": "H24-138-1_AR_Glass_EOL_Panel_G-Socket_Main_V1.0_241210Part.bom.xls",
+    "coordinate": "H24-138-1_AR_Glass_EOL_Panel_R-Socket_Main_V1.0[좌표]_241210.txt",
+    "cleaned": "H24-138-1_AR_Glass_EOL_Panel_R-Socket_Main_V1.0(2412).xls"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-033_BWI25_C5.0_Z-CAL_Cube_Manual_Main_V1.0",
+    "bom": "H24-033_BWI25_C5.0_Z-CAL_CUBE_MANUAL_MAIN_V1.0_240520part.xlsx",
+    "coordinate": "H24-033_BWI25_C5.0_Z-CAL_Cube_Manual_Main_V1.0[좌표]_240520.txt",
+    "cleaned": "H24-033_BWI25_C5.0_Z-CAL_CUBE_MANUAL_MAIN_V1.0(2405).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-023_MEM(R53B)_C61_Full_Module_Lag-cal_PTM3.2(ADS)_6L",
+    "bom": "H24-023_MEM(R53B)_C61_FULL_MODULE_LAG-CAL_PTM3.2(ADS)_6L_240416part.xlsx",
+    "coordinate": "H24-023_MEM(R53B)_C61_Full_Module_Lag-cal_PTM3.2(ADS)_6L[좌표]_240416.txt",
+    "cleaned": "H24-023_MEM(R53B)_C61_FULL_MODULE_LAG-CAL_PTM3.2(ADS)_6L(2404).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-097_BOI_C70_Grid_Flare_Cube_PTM3.2(ADS)_6L",
+    "bom": "H24-097_BOI_C70_GRID_FLARE_CUBE_PTM3.2(ADS)_6L_241014part.txt",
+    "coordinate": "H24-097_BOI_C70_Grid_Flare_Cube_PTM3.2(ADS)_6L[좌표]_241014.txt",
+    "cleaned": "H24-097_BOI_C70_GRID_FLARE_CUBE_PTM3.2(ADS)_6L(2410).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-074_MEM-K(R54B)_C40_Cube_Libra_(MFG)_PTM3.2(ADS)_6L",
+    "bom": "H24-074_MEM-K(R54B)_C40_CUBE_LIBRA_(MFG)_PTM3.2(ADS)_6L_240826part.xlsx",
+    "coordinate": "H24-074_MEM-K(R54B)_C40_Cube_Libra_(MFG)_PTM3.2(ADS)_6L[좌표]_240826.txt",
+    "cleaned": "H24-074_MEM-K(R54B)_C40_CUBE_LIBRA_(MFG)_PTM3.2(ADS)_6L(2408).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-049_MEM-K(54B)_C50_Gopher_PTM3.2(ADS)_6L",
+    "bom": "H24-049_MEM-K(54B)_C50_GOPHER_PTM3.2(ADS)_6L_240603part.xlsx",
+    "coordinate": "H24-049_MEM-K(54B)_C50_Gopher_PTM3.2(ADS)_6L[좌표]_240603.txt",
+    "cleaned": "H24-049_MEM-K(54B)_C50_GOPHER_PTM3.2(ADS)_6L(2406).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-015_MEM(R53B)_C61_Full_Module_UDT_COMMON2.0_6L",
+    "bom": "H24-015_MEM(R53B)_C61_FULL_MODULE_UDT_COMMON2.0_6L_240318part.xlsx",
+    "coordinate": "H24-015_MEM(R53B)_C61_Full_Module_UDT_PTM3.2(ADS)_6L[좌표]_240318.txt",
+    "cleaned": "H24-015_MEM(R53B)_C61_FULL_MODULE_UDT_COMMON2.0_6L(2403).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-067_MEM-K(54B)_C40_SFR_Bench_Test_Cube_PTM3.2(ADS)_ARM3.1_6L",
+    "bom": "H24-067_MEM-K(54B)_C40_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L_240821part.xlsx",
+    "coordinate": "H24-067_MEM-K(54B)_C40_SFR_Bench_Test_Cube_PTM3.2(ADS)_ARM3.1_6L[좌표]_2408121.txt",
+    "cleaned": "H24-067_MEM-K(54B)_C40_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L(2408).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-095_BOI_C70_MA_APS_COMMON2.0_6L",
+    "bom": "H24-095_BOI_C70_MA_APS_COMMON2.0_6L_241017part.txt",
+    "coordinate": "H24-095_BOI_C70_MA_APS_COMMON2.0_6L[좌표]_241017.txt",
+    "cleaned": "H24-095_BOI_C70_MA_APS_COMMON2.0_6L(2410).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-134_BOI_C70_MA_Flare_COMMON2.0_6L",
+    "bom": "H24-134_BOI_C70_MA_FLARE_COMMON2.0_6L_241128part.txt",
+    "coordinate": "H24-134_BOI_C70_MA_Flare_COMMON2.0_6L[좌표]_241128.txt",
+    "cleaned": "H24-134_BOI_C70_MA_Flare_COMMON2.0_6L(2411).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-029_LGIT_SAA_25Y_CHS-S_V1.0",
+    "bom": "H24-029_LGIT_SAA_25Y_CHS-S_V1.0_240513.bom",
+    "coordinate": "H24-029_LGIT_SAA_25Y_CHS-S_V1.0[좌표]_240514.xls",
+    "cleaned": "H24-029_LGIT_SAA_25Y_CHS-S_V1.0(2405).xls"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-008_MEM(R53B)_C60_APS_Cube(Zeus)_Test_PTM3.2(ADS)_6L_0x0321",
+    "bom": "H24-008_MEM(R53B)_C60_APS_CUBE(ZEUS)_TEST_PTM3.2(ADS)_6L_0X0321_240202part.xlsx",
+    "coordinate": "H24-008_MEM(R53B)_C60_APS_Cube(Zeus)_Test_PTM3.2(ADS)_6L_0x0321[좌표]_240202.txt",
+    "cleaned": "H24-008_MEM(R53B)_C60_APS_CUBE(ZEUS)_TEST_PTM3.2(ADS)_6L_0X0321(2402).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-021_MEM(R53B)_C61_Zeus_Iguana_FA&SW_PTM3.2(ADS)_6L",
+    "bom": "H24-021_MEM(R53B)_C61_ZEUS_IGUANA_FA&SW_PTM3.2(ADS)_6L_240402part.xlsx",
+    "coordinate": "H24-021_MEM(R53B)_C61_Zeus_Iguana_FA&SW_PTM3.2(ADS)_6L[좌표]_240402.txt",
+    "cleaned": "H24-021_MEM(R53B)_C61_ZEUS_IGUANA_FA&SW_PTM3.2(ADS)_6L(2404).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-001_VR-L(R43B)_C50_UPDOWN_Flexible_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V2.0",
+    "bom": "H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0_240116part.xlsx",
+    "coordinate": "H24-001_VR-L(R43B)_C50_UPDOWN_Flexible_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V2.0[좌표]_240116.txt",
+    "cleaned": "H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0(2401).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-044_MEM-K(54B)_C50_Zeus_Pinwheel_PTM3.2(ADS)_6L",
+    "bom": "H24-044_MEM-K(54B)_C50_Zeus_Pinwheel_PTM3.2(ADS)_6L_240531part.xlsx",
+    "coordinate": "H24-044_MEM-K(54B)_C50_Zeus_Pinwheel_PTM3.2(ADS)_6L[좌표]_240531.txt",
+    "cleaned": "H24-044_MEM-K(54B)_C50_Zeus_Pinwheel_PTM3.2(ADS)_6L(2406).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-006_VR-R(R44B)_C50_UPDOWN_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1",
+    "bom": "H24-006_VR-R(R44B)_C50_UPDOWN_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1_240130part.xlsx",
+    "coordinate": "H24-006_VR-R(R44B)_C50_UPDOWN_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1[좌표]_240130.txt",
+    "cleaned": "H24-006_VR-R(R44B)_C50_UPDOWN_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1(2401).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-102_MEM-K(R54B)_C40_Full_Module_OCT_Manual_COMMON2.0_6L",
+    "bom": "H24-102_MEM-K(R54B)_C40_FULL_MODULE_OCT_MANUAL_COMMON2.0_6L_240925part.txt",
+    "coordinate": "H24-102_MEM-K(R54B)_C40_Full_Module_OCT_Manual_COMMON2.0_6L[좌표]_240930.txt",
+    "cleaned": "H24-102_MEM-K(R54B)_C40_Full_Module_OCT_Manual_COMMON2.0_6L(2409).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-135_BOI_C80_FORD_COMMON2.0_6L",
+    "bom": "H24-135_BOI_C80_FORD_COMMON2.0_6L_241107part.txt",
+    "coordinate": "H24-135_BOI_C80_FORD_COMMON2.0_6L[좌표]_241111.txt",
+    "cleaned": "H24-135_BOI_C80_FORD_COMMON2.0_6L(2411).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-018_MEM(R53B)_C61_Module(Flex)_OCT_Manual_COMMON2.0_6L",
+    "bom": "H24-018_MEM(R53B)_C61_MODULE(FLEX)_OCT_MANUAL_COMMON2.0_6L_240320part.xlsx",
+    "coordinate": "H24-018_MEM(R53B)_C61_Module(Flex)_OCT_Manual_COMMON2.0_6L[좌표]_240325.txt",
+    "cleaned": "H24-018_MEM(R53B)_C61_MODULE(FLEX)_OCT_MANUAL_COMMON2.0_6L(2403).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-116_BOI_C70_MA_Z-CAL_Main_PTM3.2(ADS)_V1.0_6L",
+    "bom": "H24-116_BOI_C70_MA_Z-CAL_MAIN_PTM3.2(ADS)_V1.0_6L_241113part.txt",
+    "coordinate": "H24-116_BOI_C70_MA_Z-CAL_Main_PTM3.2(ADS)_V1.0_6L[좌표]_241115.txt",
+    "cleaned": "H24-116_BOI_C70_MA_Z-CAL_Main_PTM3.2(ADS)_V1.0_6L(2411).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-160_BWI25_OS_Manual_Main_V1.0",
+    "bom": "H24-160_BWI25_OS_MANUAL_MAIN_V1.0_241213part.txt",
+    "coordinate": "H24-160_BWI25_OS_Manual_Main_V1.0[좌표]_241213.txt",
+    "cleaned": "H24-160_BWI25_OS_Manual_Main_V1.0(2412).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-082_MEM-K(R54B)_C40_OQC_Full_Module_Iguana_PTM3.2(ADS)_6L",
+    "bom": "H24-082_MEM-K(R54B)_C40_OQC_FULL_MODULE_IGUANA_PTM3.2(ADS)_6L_240920part.txt",
+    "coordinate": "H24-082_MEM-K(R54B)_C40_OQC_Full_Module_Iguana_PTM3.2(ADS)_6L[좌표]_240925.txt",
+    "cleaned": "H24-082_MEM-K(R54B)_C40_OQC_Full_Module_Iguana_PTM3.2(ADS)_6L(2409).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-112_BWI_Cube_UDT-DS160_V1.0",
+    "bom": "H24-112_BWI_CUBE_UDT-DS160_V1.0_241028part.txt",
+    "coordinate": "H24-112_BWI_Cube_UDT-DS160_V1.0[좌표]_241104.txt",
+    "cleaned": "H24-112_BWI_Cube_UDT-DS160_V1.0(2411).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-121_BOI_C70_Inline_Bench_Main_PTM3.2(ADS)_6L",
+    "bom": "H24-121_BOI_C70_INLINE_BENCH_MAIN_PTM3.2(ADS)_6L_241113part.txt",
+    "coordinate": "H24-121_BOI_C70_Inline_Bench_Main_PTM3.2(ADS)_6L[좌표]_241113.txt",
+    "cleaned": "H24-121_BOI_C70_Inline_Bench_Main_PTM3.2(ADS)_6L(2411).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-062_MEM-K(54B)_C50_PF_SOCKET_V1.0",
+    "bom": "H24-062_MEM-K(54B)_C50_PF_SOCKET_V1.0_240723part.xlsx",
+    "coordinate": "H24-062_MEM-K(54B)_C50_PF_SOCKET_V1.0[좌표]_240723.txt",
+    "cleaned": "H24-062_MEM-K(54B)_C50_PF_SOCKET_V1.0(2407).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-073_MEM-K(R54B)_C40_Zeus_APS_Manual_PTM3.2(ADS)_6L",
+    "bom": "H24-073_MEM-K(R54B)_C40_ZEUS_APS_MANUAL_PTM3.2(ADS)_6L_240820part.xlsx",
+    "coordinate": "H24-073_MEM-K(R54B)_C40_Zeus_APS_Manual_PTM3.2(ADS)_6L[좌표]_240820.txt",
+    "cleaned": "H24-073_MEM-K(R54B)_C40_ZEUS_APS_MANUAL_PTM3.2(ADS)_6L(2408).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-114_BOI_C70_MA_Aperture_Test_S.P_Main_V1.0",
+    "bom": "H24-114_BOI_C70_MA_Aperture_Test_S.P_Main_V1.0_241105Part.bom.xls",
+    "coordinate": "H24-114_BOI_C70_MA_Aperture_Test_S.P_Main_V1.0_241105.좌표.xls",
+    "cleaned": "H24-114_BOI_C70_MA_Aperture_Test_S.P_Main_V1.0(2410).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-011_MEM(R53B)_C6.1_SFR_Bench_Zeus_Test_COMMON2.0_6L",
+    "bom": "H24-011_MEM(R53B) C6.1 SFR BENCH_ZEUS_TEST_COMMON2.0_6L_240228part.xlsx",
+    "coordinate": "H24-011_MEM(R53B) C6.1 SFR Bench_Zeus_Test_COMMON2.0_6L[좌표]_240228.txt",
+    "cleaned": "H24-011_MEM(R53B) C6.1 SFR BENCH_ZEUS_TEST_COMMON2.0_6L(2402).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-151_MGL_G1_AA_Master_Sensor_Board_V1.0",
+    "bom": "H24-151_MGL_G1_AA_MASTER_SENSOR_BOARD_V1.0_241210part.txt",
+    "coordinate": "H24-151_MGL_G1_AA_Master_Sensor_Board_V1.0[좌표]_241211.txt",
+    "cleaned": "H24-151_MGL_G1_AA_MASTER_SENSOR_BOARD_V1.0(2412).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-038_AKC_C50_Cube_Z-CAL_OS_Board_POGO_L_V1.0",
+    "bom": "H24-038&39_AKC_C50_Cube_Z-CAL_OS_Board_POGO_L&R_V1.0_240611part.xlsx",
+    "coordinate": "H24-038&39_AKC_C50_Cube_Z-CAL_OS_Board_POGO_L&R_V1.0[좌표]_240611.txt",
+    "cleaned": "H24-038&39_AKC_C50_Cube_Z-CAL_OS_Board_POGO_L&R_V1.0(2406).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-169_BOI_C60_Manual_Bench_Main_V1.0_6L",
+    "bom": "H24-169_BOI_C60_MANUAL_BENCH_MAIN_PTM3.2(ADS)_6L_V1.0_250107part.txt",
+    "coordinate": "H24-169_BOI_C60_Manual_Bench_Main_PTM3.2(ADS)_6L_V1.0[좌표]_250107.txt",
+    "cleaned": "H24-169_BOI_C60_Manual_Bench_Main_V1.0_6L(2501).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-009_Centaur_VSA_C6.0_OS_Manual_Tester_V1.0",
+    "bom": "H24-009_Centaur_VSA_C6.0_OS_Manual_Tester_V1.0_240213.BOM",
+    "coordinate": "H24-009_Centaur_VSA_C6.0_OS_Manual_Tester_V1.0[좌표]_240213.txt",
+    "cleaned": "H24-009_Centaur_VSA_C6.0_OS_Manual_Tester_V1.0(2402).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-162_MGL_AA_Image_Sensor_Board_V1.0",
+    "bom": "H24-162_MGL_AA_IMAGE_SENSOR_BOARD_V1.0_241218part.txt",
+    "coordinate": "H24-162_MGL_AA_Image_Sensor_Board_V1.0[좌표]_241223.txt",
+    "cleaned": "H24-162_MGL_AA_IMAGE_SENSOR_BOARD_V1.0(2412).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-091_BOI_C7.0_Cube_Z-CAL_OS_Board_POGO_L_V1.0",
+    "bom": "H24-091&92_BOI_C70_CUBE_Z-CAL_BOARD_POGO_L&R_V1.0_6L_241025part.txt",
+    "coordinate": "H24-091&092_BOI_C70_Cube_Z-CAL_Board_POGO_L&R_V1.0_6L[좌표]_241031.txt",
+    "cleaned": "H24-091_BOI_C70_CUBE_Z-CAL_BOARD_POGO_L_V1.0_6L(2410).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-071_MEM-K(R54B)_C40_Iguana_Zeus_PTM3.2(ADS)_6L",
+    "bom": "H24-071_MEM-K(R54B)_C40_IGUANA_ZEUS_PTM3.2(ADS)_6L_240822part.xlsx",
+    "coordinate": "H24-071_MEM-K(R54B)_C40_Iguana_Zeus_PTM3.2(ADS)_6L[좌표]_240823.txt",
+    "cleaned": "H24-071_MEM-K(R54B)_C40_IGUANA_ZEUS_PTM3.2(ADS)_6L(2408).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-076_MEM-K(R54B)_C40_Cube&Zeus_Manual_PTM3.2(ADS)_6L",
+    "bom": "H24-076_MEM-K(R54B)_C40_Cube&Zeus_Manual_PTM3.2(ADS)_6L_2408903part.xlsx",
+    "coordinate": "H24-076_MEM-K(R54B)_C40_Cube&Zeus_Manual_PTM3.2(ADS)_6L[좌표]_240904.txt",
+    "cleaned": "H24-076_MEM-K(R54B)_C40_Cube&Zeus_Manual_PTM3.2(ADS)_6L(2409).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-085_MEM-K(R54B)_C40_Pismo_Portable_Manual_PTM3.2(ADS)_6L",
+    "bom": "H24-085_MEM-K(R54B)_C40_PISMO_PORTABLE_MANUAL_PTM3.2(ADS)_240909part.txt",
+    "coordinate": "H24-085_MEM-K(R54B)_C40_Pismo_Portable_Manual_PTM3.2(ADS)[좌표]_240923.txt",
+    "cleaned": "H24-085_MEM-K(R54B)_C40_Pismo_Portable_Manual_PTM3.2(ADS)_6L(2409).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-066_MEM-K(54B)_C40_Gopher_Arthur_Cube_PTM3.2(ADS)_6L",
+    "bom": "H24-066_MEM-K(54B)_C40_GOPHER_ARTHUR_CUBE_PTM3.2(ADS)_6L_240808part.xlsx",
+    "coordinate": "H24-066_MEM-k(54B)_C40_Gopher_Arthur_Cube_PTM3.2(ADS)_6L[좌표]_240812.txt",
+    "cleaned": "H24-066_MEM-K(54B)_C40_GOPHER_ARTHUR_CUBE_PTM3.2(ADS)_6L(2408).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-129_MEM-K(R54B)_C40_RTV_Single_UDT_COMMON2.0_6L",
+    "bom": "H24-129_MEM-K(R54B)_C40_RTV_SINGLE_UDT_COMMON2.0_6L_241107part.txt",
+    "coordinate": "H24-129_MEM-K(R54B)_C40_RTV_Single_UDT_COMMON2.0_6L[좌표]_241107.txt",
+    "cleaned": "H24-129_MEM-K(R54B)_C40_RTV_Single_UDT_COMMON2.0_6L(2411).xlsx"
+  },
+  {
+    "year": "2024",
+    "boardName": "H24-058_MEM-K(54B)_C50_SFR_Bench_Test_Cube_PTM3.2(ADS)_ARM3.1_6L",
+    "bom": "H24-058_MEM-K(54B)_C50_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L_240627part.xlsx",
+    "coordinate": "H24-058_MEM-K(54B)_C50_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L[좌표]_240627.txt",
+    "cleaned": "H24-058_MEM-K(54B)_C50_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L(2406).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-072_MEM-T_C50_Full_Module_manual_SFR_bench(OCT)_COMMON2.0_6L",
+    "bom": "H25-072_MEM-T_C50_FULL_MODULE_MANUAL_SFR_BENCH(OCT)_COMMON2.0_6L_250611part.BOM.xlsx",
+    "coordinate": "H25-072_MEM-T_C50_Full_Module_manual_SFR_bench(OCT)_COMMON2.0_6L[좌표]_250611.txt",
+    "cleaned": "H25-072_MEM-T_C50_FULL_MODULE_MANUAL_SFR_BENCH(OCT)_COMMON2.0_6L(2506).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-037_BOI_C60_Triple_Ford_COMMON2.0_6L",
+    "bom": "H25-037_BOI_C60_TRIPLE_FORD_COMMON2.0_6L_250307part.BOM.xlsx",
+    "coordinate": "H25-037_BOI_C60_Triple_Ford_COMMON2.0_6L[좌표]_250311.txt",
+    "cleaned": "H25-037_BOI_C60_TRIPLE_FORD_COMMON2.0_6L(2503).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-005_Paragon_Zoom_Cal_Manual_Main_V1.2",
+    "bom": "H25-005_PARAGON_ZOOM_CAL_MANUAL_MAIN_V1.2_250124part.xlsx",
+    "coordinate": "H25-005_Paragon_Zoom_Cal_Manual_Main_V1.2[좌표]_250124.pnp.txt",
+    "cleaned": "H25-005_Paragon_Zoom_Cal_Manual_Main_1V2(2501).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-124-3_Miltestone_Home_IOT_Outdoor_CM_Board_V1.0",
+    "bom": "H25-124-3_MILTESTONE_HOME_IOT_OUTDOOR_CM_BOARD_V1.0_251021part.BOM.xlsx",
+    "coordinate": "H25-124-3_Miltestone_Home_IOT_Outdoor_CM_Board_V1.0[좌표]_251023.txt",
+    "cleaned": "H25-124-3_MILTESTONE_HOME_IOT_OUTDOOR_CM_BOARD_V1.0(2510).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-074_AQUA_Module_Inspection_Board_V1.0",
+    "bom": "H25-074_AQUA_MODULE_INSPECTION_BOARD_MAIN_V1.0_250616part.BOM.xlsx",
+    "coordinate": "H25-074_AQUA_Module_Inspection_Board_main_V1.0[좌표]_250617.txt",
+    "cleaned": "H25-074_AQUA_MODULE_INSPECTION_BOARD_MAIN_V1.0(2506).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-028_MEM_C30_RTV_Triple_UDT_COMMON2.0_6L",
+    "bom": "H25-028_MEM_C30_RTV_TRIPLE_UDT_COMMON2.0_6L_250217part.xlsx",
+    "coordinate": "H25-028_MEM_C30_RTV_Triple_UDT_COMMON2.0_6L[좌표]_250217.txt",
+    "cleaned": "H25-028_MEM_C30_RTV_TRIPLE_UDT_COMMON2.0_6L(2502).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-004_MGL_ZOOM_CAL_BOARD_V1.0",
+    "bom": "H25-004_MGL_ZOOM_CAL_BOARD_V1.0_241221part.BOM.xlsx",
+    "coordinate": "H25-004_MGL_ZOOM_CAL_BOARD_V1.0[좌표]_250121.txt",
+    "cleaned": "H25-004_MGL_ZOOM_CAL_BOARD_V1.0(2501).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-057_MGL_ZOOM_CAL_BOARD_V1.1",
+    "bom": "H25-057_MGL_ZOOM_CAL_BOARD_V1.1_250509part.BOM.xlsx",
+    "coordinate": "H25-057_MGL_ZOOM_CAL_BOARD_V1.1[좌표]_250509.txt",
+    "cleaned": "H25-057_MGL_ZOOM_CAL_BOARD_V1.1(2505).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-010_BOI_C60_Module_Ford_COMMON2.0_6L",
+    "bom": "H25-010_BOI_C60_MODULE_FORD_COMMON2.0_6L_250206part.xlsx",
+    "coordinate": "H25-010_BOI_C60_Module_Ford_COMMON2.0_6L[좌표]_250207.txt",
+    "cleaned": "H25-010_BOI_C60_MODULE_FORD_COMMON2.0_6L(2502).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-078-2_MIRAMAR_FPCB_V6_TMR_TYPE",
+    "bom": "H25-078-2_MIRAMAR_FPCB_V6_TMR_TYPE_250805part.BOM.xlsx",
+    "coordinate": "H25-078-2_MIRAMAR_FPCB_V6_TMR_TYPE[좌표]_250805.txt",
+    "cleaned": "H25-078-2_MIRAMAR_FPCB_V6_TMR_TYPE(2508).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-120_BOI-T_C40_APS_COMMON2.0_6L",
+    "bom": "H25-120_BOI-T_C40_APS_COMMON2.0_6L_250929part.BOM.xlsx",
+    "coordinate": "H25-120_BOI-T_C40_APS_COMMON2.0_6L[좌표]_250926.txt",
+    "cleaned": "H25-120_BOI-T_C40_APS_COMMON2.0_6L(2509).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-027_UW_CM_Test_Socket_V1.0",
+    "bom": "H25-027_UW_CM_TEST_SOCKET_V1.0_250214part.xlsx",
+    "coordinate": "H25-027_UW_CM_Test_Socket_V1.0[좌표]_250217.txt",
+    "cleaned": "H25-027_UW_CM_TEST_SOCKET_V1.0(2502).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-063_MEM-T_C50_Full_Module_manual_UDT_COMMON2.0_6L",
+    "bom": "H25-063_MEM-T_C50_FULL_MODULE_MANUAL_UDT_COMMON2.0_6L_250529part.BOM.xlsx",
+    "coordinate": "H25-063_MEM-T_C50_Full_Module_manual_UDT_COMMON2.0_6L[좌표]_250530.txt",
+    "cleaned": "H25-063_MEM-T_C50_FULL_MODULE_MANUAL_UDT_COMMON2.0_6L(2506).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-094_Miramar_Top_Board_V1.0",
+    "bom": "H25-094_MIRAMAR_TOP_BOARD_V1.0_250728part.BOM.xlsx",
+    "coordinate": "H25-094_Miramar_Top_Board_V1.0[좌표]_250728.txt",
+    "cleaned": "H25-094_MIRAMAR_TOP_BOARD_V1.0(2508).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-091_Paragon_Zoom_Cal_Manual_Main_V1.3",
+    "bom": "H25-091_PARAGON_ZOOM_CAL_MANUAL_MAIN_V1.3_250722part.BOM.xlsx",
+    "coordinate": "H25-091_Paragon_Zoom_Cal_Manual_Main_V1.3[좌표]_250722.xtx.txt",
+    "cleaned": "H25-091_PARAGON_ZOOM_CAL_MANUAL_MAIN_V1.3(2507).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-118_BOI-T_C40_Ford_COMMON2.0_6L",
+    "bom": "H25-118_BOI-T_C40_FORD_COMMON2.0_6L_250929part.BOM.xlsx",
+    "coordinate": "H25-118_BOI-T_C40_Ford_COMMON2.0_6L[좌표]_250926.txt",
+    "cleaned": "H25-118_BOI-T_C40_FORD_COMMON2.0_6L(2509).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-128-1_Miltestone_Home_IOT_Doorbell_2nd_CM_BOT_Board_V1.0",
+    "bom": "H25-128-1_MILTESTONE_HOME_IOT_DOORBELL_2ND_CM_BOT_BOARD_V1.0_251105part.BOM.xlsx",
+    "coordinate": "H25-128-1_Miltestone_Home_IOT_Doorbell_2nd_CM_BOT_Board_V1.0[좌표]_251105.txt",
+    "cleaned": "H25-128-1_MILTESTONE_HOME_IOT_DOORBELL_2ND_CM_BOT_BOARD_V1.0(2510).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-084_PH_CAR_AA_Connector_Test_Board",
+    "bom": "H25-084_PH_CAR_AA_CONNECTOR_TEST_BOARD_250709part.BOM.xlsx",
+    "coordinate": "H25-084_PH_CAR_AA_Connector_Test_Board[좌표]_250709.txt",
+    "cleaned": "H25-084_PH_CAR_AA_CONNECTOR_TEST_BOARD(2507).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-052_BWI25_C30_Cube_Auto_Z-CAL-L_V1.0",
+    "bom": "H25-052&053_BWI25_C30_CUBE_AUTO_Z-CAL-L&R_V1.0_250418part.BOM.xlsx",
+    "coordinate": "H25-052&053_BWI25_C30_Cube_Auto_Z-CAL-L&R_V1.0[좌표]_250418.txt",
+    "cleaned": "H25-052&053_BWI25_C30_CUBE_AUTO_Z-CAL-L&R_V1.0(2504).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-121_BOI-T_C40_Grid_Flare_COMMON2.0_6L",
+    "bom": "H25-121_BOI-T_C40_GRID_FLARE_COMMON2.0_6L_250929part.BOM.xlsx",
+    "coordinate": "H25-121_BOI-T_C40_Grid_Flare_COMMON2.0_6L[좌표]_250930.txt",
+    "cleaned": "H25-121_BOI-T_C40_GRID_FLARE_COMMON2.0_6L(2510).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-110_LGIT_27Y_SAA_NPI_SEA_V1.0",
+    "bom": "H25-110_LGIT_27Y_SAA_NPI_SEA_V1.0.bom",
+    "coordinate": "H25-110_LGIT_27Y_SAA_NPI_SEA_V1.0_250903.Part.좌표.xls",
+    "cleaned": "H25-110_LGIT_27Y_SAA_NPI_SEA_V1.0(2509).xls"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-124-2_Miltestone_Home_IOT_Indoor_CM_Board_V1.0",
+    "bom": "H25-124-2_MILTESTONE_HOME_IOT_INDOOR_CM_BOARD_V1.0_251023part.BOM.xlsx",
+    "coordinate": "H25-124-2_Miltestone_Home_IOT_Indoor_CM_Board_V1.0[좌표]_251023.txt",
+    "cleaned": "H25-124-2_MILTESTONE_HOME_IOT_INDOOR_CM_BOARD_V1.0(2510).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-022_ATW_C61_Cube_Z-CAL_Manual_Main_V1.0",
+    "bom": "H25-022_ATW_C61_CUBE_Z-CAL_MANUAL_MAIN_V1.0_250210part.xlsx",
+    "coordinate": "H25-022_ATW_C61_Cube_Z-CAL_Manual_Main_V1.0[좌표]_250210.txt",
+    "cleaned": "H25-022_ATW_C61_CUBE_Z-CAL_MANUAL_MAIN_V1.0(2502).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-020_ATW_C61_Z-Cal_Auto_Left",
+    "bom": "H25-020&021_ATW_C61_Z-CAL_AUTO_L&R_250206part.xlsx",
+    "coordinate": "H25-020&021_ATW_C61_Z-Cal_Auto_L&R[좌표]_250107.txt",
+    "cleaned": "H25-020&021_ATW_C61_Z-CAL_AUTO_L&R(2502).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-029_MEM_C30_RTV_Single_UDT_COMMON2.0_6L",
+    "bom": "H25-029_MEM_C30_RTV_SINGLE_UDT_COMMON2.0_6L_250217part.xlsx",
+    "coordinate": "H25-029_MEM_C30_RTV_Single_UDT_COMMON2.0_6L[좌표]_250217.txt",
+    "cleaned": "H25-029_MEM_C30_RTV_SINGLE_UDT_COMMON2.0_6L(2502).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-087_AQUA_PRISM_SENSOR_SOCKET_V1.0",
+    "bom": "H25-087_AQUA_PRISM_SENSOR_SOCKET_V1.0_250710part.BOM.xlsx",
+    "coordinate": "H25-087_AQUA_PRISM_SENSOR_SOCKET_V1.0[좌표]_250710.txt",
+    "cleaned": "H25-087_AQUA_PRISM_SENSOR_SOCKET_V1.0(2507).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-127-1_BOI_C40_UAVI_M_L_Socket_Board_V1.0",
+    "bom": "H25-127-1_BOI_C40_UAVI_M_L_SOCKET_BOARD_V1.0_251111part.BOM.xlsx",
+    "coordinate": "H25-127-1_BOI_C40_UAVI_M_L_Socket_Board_V1.0[좌표]_251110.txt",
+    "cleaned": "H25-127-1_BOI_C40_UAVI_M_L_SOCKET_BOARD_V1.0(2511).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-095_Miramar_Bottom_Board_V1.0",
+    "bom": "H25-095_MIRAMAR_BOTTOM_BOARD_V1.0part.BOM.xlsx",
+    "coordinate": "H25-095_Miramar_Bottom_Board_V1.0[좌표]_250730.txt",
+    "cleaned": "H25-095_MIRAMAR_BOTTOM_BOARD_V1.0(2508).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-083_BOI_Cyclops_SFR_Bench_Tester_COMMON2.0_6L",
+    "bom": "H25-083_BOI_CYCLOPS_SFR_BENCH_TESTER_COMMON2.0_6L_250701part.BOM.xlsx",
+    "coordinate": "H25-083_BOI_Cyclops_SFR_Bench_Tester_COMMON2.0_6L[좌표]_250702.txt",
+    "cleaned": "H25-083_BOI_CYCLOPS_SFR_BENCH_TESTER_COMMON2.0_6L(2507).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-078-1_MIRAMAR_FPCB_V6_HALL_TYPE",
+    "bom": "H25-078-1_MIRAMAR_FPCB_V6_HALL_TYPE_250805part.BOM.xlsx",
+    "coordinate": "H25-078-1_MIRAMAR_FPCB_V6_HALL_TYPE[좌표]_250805.txt",
+    "cleaned": "H25-078-1_MIRAMAR_FPCB_V6_HALL_TYPE(2508).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-097_AQUA_Module_Inspection_Board_main_V1.1",
+    "bom": "H25-097_AQUA_MODULE_INSPECTION_BOARD_MAIN_V1.1_250801part.BOM.xlsx",
+    "coordinate": "H25-097_AQUA_Module_Inspection_Board_main_V1.1[좌표]_250801.txt",
+    "cleaned": "H25-097_AQUA_MODULE_INSPECTION_BOARD_MAIN_V1.1(2508).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-113_Paragon_Module_AA_Side_Board_V1.0",
+    "bom": "H25-113_PARAGON_MODULE_AA_SIDE_BOARD_V1.0_250911part.BOM.xlsx",
+    "coordinate": "H25-113_Paragon_Module_AA_Side_Board_V1.0[좌표]_250911.txt",
+    "cleaned": "H25-113_PARAGON_MODULE_AA_SIDE_BOARD_V1.0(2509).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-007_BOI_C60_Cube_Type_Harrison_Manual_Main",
+    "bom": "H25-007_BOI_C60_Cube_Type_Harrison_Manual_Main_250120Part.bom.xls",
+    "coordinate": "H25-007_BOI_C60_Cube_Type_Harrison_Manual_Main[좌표]_250122.txt",
+    "cleaned": "H25-007_BOI_C60_Cube_Type_Harrison_Manual_Main(2501).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-126_BOI_C50_Triple_Type_APS_COMMON2.0_6L",
+    "bom": "H25-126_BOI_C50_TRIPLE_TYPE_APS_COMMON2.0_6L_251021part.BOM.xlsx",
+    "coordinate": "H25-126_BOI_C50_Triple_Type_APS_COMMON2.0_6[좌표]_251021.txt",
+    "cleaned": "H25-126_BOI_C50_TRIPLE_TYPE_APS_COMMON2.0_6L(2510).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-073_BOI_Cyclops_Socket_Board_PTM3.2(ADS)_0X0321",
+    "bom": "H25-073_BOI_CYCLOPS_SOCKET_BOARD_PTM3.2(ADS)_0X0321_250604part.BOM.xlsx",
+    "coordinate": "H25-073_BOI_Cyclops_Socket_Board_PTM3.2(ADS)_0X0321[좌표]_250604.txt",
+    "cleaned": "H25-073_BOI_CYCLOPS_SOCKET_BOARD_PTM3.2(ADS)_0X0321(2506).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-068_BOI-T_C50_Module_UDT_COMMON2.0_6L",
+    "bom": "H25-068_BOI-T_C50_MODULE_UDT_COMMON2.0_6L_250609part.BOM.xlsx",
+    "coordinate": "H25-068_BOI-T_C50_Module_UDT_COMMON2.0_6L[좌표]_250611.txt",
+    "cleaned": "H25-068_BOI-T_C50_MODULE_UDT_COMMON2.0_6L(2506).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-124-1_Miltestone_Home_IOT_Doorbell_1st_CM_Board_V1.0",
+    "bom": "H25-124-1_MILTESTONE_HOME_IOT_DOORBELL_1ST_CM_BOARD_V1.0_251021part.BOM.xlsx",
+    "coordinate": "H25-124-1_Miltestone_Home_IOT_Doorbell_1st_CM_Board_V1.0[좌표]_251023.txt",
+    "cleaned": "H25-124-1_MILTESTONE_HOME_IOT_DOORBELL_1ST_CM_BOARD_V1.0(2510).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-129-2_Smart_Home_IOT_AA_Indoor_Board_V1.0",
+    "bom": "H25-129-2_SMART_HOME_IOT_AA_INDOOR_BOARD_V1.0_251114part.BOM.xlsx",
+    "coordinate": "H25-129-2_Smart_Home_IOT_AA_Indoor_Board_V1.0[좌표]_251114.txt",
+    "cleaned": "H25-129-2_SMART_HOME_IOT_AA_INDOOR_BOARD_V1.0(2511).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-129-3_Smart_Home_IOT_AA_Outdoor_Board_V1.0",
+    "bom": "H25-129-3_SMART_HOME_IOT_AA_OUTDOOR_BOARD_V1.0_251114part.BOM.xlsx",
+    "coordinate": "H25-129-3_Smart_Home_IOT_AA_Outdoor_Board_V1.0[좌표]_251117.txt",
+    "cleaned": "H25-129-3_SMART_HOME_IOT_AA_OUTDOOR_BOARD_V1.0(2511).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-111-1_LGIT_AQUA_PJT_Side_Board_V1.0",
+    "bom": "H25-111_LGIT_AQUA_PJT_BOARD_V1.0_251001part.BOM.xlsx",
+    "coordinate": "H25-111_LGIT_AQUA_PJT_Board_V1.0[좌표]_251001.txt",
+    "cleaned": "H25-111_LGIT_AQUA_PJT_BOARD_V1.0(2510).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-086_AQUA_MASTER_SENSOR_SOCKET_V1.0",
+    "bom": "H25-086_AQUA_MASTER_SENSOR_SOCKET_V1.0_250710part.BOM.xlsx",
+    "coordinate": "H25-086_AQUA_MASTER_SENSOR_SOCKET_V1.0[좌표]_250709.txt",
+    "cleaned": "H25-086_AQUA_MASTER_SENSOR_SOCKET_V1.0(2507).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-133_LGIT_SAA_C61_SBN_Socket_Board_V1.0",
+    "bom": "H25-133_LGIT_SAA_C61_SBN_SOCKET_BOARD_V1.0_251119part.BOM.xlsx",
+    "coordinate": "H25-133_LGIT_SAA_C61_SBN_Socket_Board_V1.0 좌표.xlsx",
+    "cleaned": "H25-133_LGIT_SAA_C61_SBN_SOCKET_BOARD_V1.0(2511).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-015_BOI_C60_Cube_Updown_COMMON2.0_6L",
+    "bom": "H25-015_BOI_C60_CUBE_UPDOWN_COMMON2.0_6L_250318part.BOM.xlsx",
+    "coordinate": "H25-015_BOI_C60_Cube_Updown_COMMON2.0_6L[좌표]_250318.txt",
+    "cleaned": "H25-015_BOI_C60_CUBE_UPDOWN_COMMON2.0_6L(2503).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-099_MEM26_C50_RTV_Triple_UDT_COMMON2.0_6L",
+    "bom": "H25-099_MEM26_C50_RTV_TRIPLE_UDT_COMMON2.0_6L_250807part.BOM.xlsx",
+    "coordinate": "H25-099_MEM26_C50_RTV_Triple_UDT_COMMON2.0_6L[좌표]_250807.txt",
+    "cleaned": "H25-099_MEM26_C50_RTV_TRIPLE_UDT_COMMON2.0_6L(2508).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-088_LGIT_SAA_SBN_Socket_Board_V1.0(회로수정-재발주X)",
+    "bom": "H25-088_LGIT_SAA_SBN_SOCKET_BOARD_V1.0_250721part.BOM.xlsx",
+    "coordinate": "H25-088_LGIT_SAA_SBN_Socket_Board_V1.0[좌표]_250723.txt",
+    "cleaned": "H25-088_LGIT_SAA_SBN_SOCKET_BOARD_V1.0(2507).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-045_BOI_C50_IR_EMITTER_FORD_CUBE_COMMON2.0_6L",
+    "bom": "H25-045_BOI_C50_IR_EMITTER_FORD_CUBE_COMMON2.0_6L_250509part.BOM.xlsx",
+    "coordinate": "H25-045_BOI_C50_IR_EMITTER_FORD_CUBE_COMMON2.0_6L[좌표]_250509.txt",
+    "cleaned": "H25-045_BOI_C50_IR_EMITTER_FORD_CUBE_COMMON2.0_6L(2505).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-085_Miramar_Main_V1.0",
+    "bom": "H25-085_MIRAMAR_MAIN_V1.0_250730part.BOM.xlsx",
+    "coordinate": "H25-085_Miramar_Main_V1.0[좌표]_250730.txt",
+    "cleaned": "H25-085_MIRAMAR_MAIN_V1.0(2508).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-024_BOI_C60_Module_Type_Harrison_Manual_Main",
+    "bom": "H25-024_BOI_C60_MODULE_TYPE_HARRISON_MANUAL_MAIN_250212part.xlsx",
+    "coordinate": "H25-024_BOI_C60_Module_Type_Harrison_Manual_Main[좌표]_250213.txt",
+    "cleaned": "H25-024_BOI_C60_MODULE_TYPE_HARRISON_MANUAL_MAIN(2502).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-035_BOI_C60_Triple_UDT_COMMON2.0_6L",
+    "bom": "H25-035_BOI_C60_TRIPLE_UDT_COMMON2.0_6L_250307part.BOM.xlsx",
+    "coordinate": "H25-035_BOI_C60_Triple_UDT_COMMON2.0_6L[좌표]_250311.txt",
+    "cleaned": "H25-035_BOI_C60_TRIPLE_UDT_COMMON2.0_6L(2503).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-002_MEM_C40_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L",
+    "bom": "H25-002_MEM_C40_PRISM_LCB_TESTER_PTM3.2(ADS)_ARM3.1_6L_250115part.txt",
+    "coordinate": "H25-002_MEM_C40_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L[좌표]_250114.txt",
+    "cleaned": "H25-002_MEM_C40_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L(2502).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-090_LGIT_BOS_PJT_C50_SAA_V1.1",
+    "bom": "H25-090_LGIT_BOS_PJT_C50_SAA_V1.1_250714.bom",
+    "coordinate": "H25-090_LGIT_BOS_PJT_C50_SAA_V1.1[좌표]_250714.txt",
+    "cleaned": "H25-090_LGIT_BOS_PJT_C50_SAA_V1.1(2505).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-065_MEM-T_C50_Full_Module_Auto_iCLT_PTM3.2(ADS)_6L",
+    "bom": "H25-065_MEM-T_C50_FULL_MODULE_AUTO_ICLT_PTM3.2(ADS)_6L_250530part.BOM.xlsx",
+    "coordinate": "H25-065_MEM-T_C50_Full_Module_Auto_iCLT_PTM3.2(ADS)_6L[좌표]_250530.txt",
+    "cleaned": "H25-065_MEM-T_C50_FULL_MODULE_AUTO_ICLT_PTM3.2(ADS)_6L(2506).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-069_BOI-T_C50_Module_APS_COMMON2.0_6L",
+    "bom": "H25-069_BOI-T_C50_MODULE_APS_COMMON2.0_6L_250613part.BOM.xlsx",
+    "coordinate": "H25-069_BOI-T_C50_Module_APS_COMMON2.0_6L[좌표]_250616.txt",
+    "cleaned": "H25-069_BOI-T_C50_MODULE_APS_COMMON2.0_6L(2506).xlsx"
+  },
+  {
+    "year": "2025",
+    "boardName": "H25-012_BOI_C60_Module_Updown_COMMON2.0_6L",
+    "bom": "H25-012_BOI_C60_Module_Updown_COMMON2.0_6L_250206Part.bom.xls",
+    "coordinate": "H25-012_BOI_C60_Module_Updown_COMMON2.0_6L[좌표]_250212.txt",
+    "cleaned": "H25-012_BOI_C60_Module_Updown_COMMON2.0_6L(2502).xls"
+  }
+]

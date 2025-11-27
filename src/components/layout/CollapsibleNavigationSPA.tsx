@@ -10,7 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  MessageCircle
+  MessageCircle,
+  Package
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -60,6 +61,12 @@ export default function CollapsibleNavigationSPA({ role, isOpen = false, onClose
       label: '직원 관리',
       href: '/employee',
       icon: Users,
+      roles: ['all']
+    },
+    {
+      label: 'BOM/좌표 정리',
+      href: '/bom-coordinate',
+      icon: Package,
       roles: ['all']
     }
   ]

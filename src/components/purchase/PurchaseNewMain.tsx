@@ -1,18 +1,16 @@
-import { useState, useEffect, useRef, useLayoutEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, X, Save, Calculator, Pencil, Trash2, Package } from "lucide-react";
+import { Plus, X, Save, Package } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { invalidatePurchaseMemoryCache } from '@/stores/purchaseMemoryStore';
-import { useForm as useFormRH, Controller, useFieldArray } from "react-hook-form";
+import { useForm as useFormRH, useFieldArray } from "react-hook-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { FormValues, FormItem } from "@/types/purchase";
 import { toast } from "sonner";
-import { DatePicker } from "@/components/ui/datepicker";
-import { Separator } from "@/components/ui/separator";
 import ReactSelect from 'react-select';
 
 interface EmployeeOption {
@@ -31,6 +29,11 @@ export default function PurchaseNewMain() {
   const [addCount, setAddCount] = useState(1);
   const [vendorSearchTerm, setVendorSearchTerm] = useState("");
   
+  // BOM 연동을 위한 상태
+  const [boards, setBoards] = useState<{ id: string; board_name: string }[]>([]);
+  const [selectedBoard, setSelectedBoard] = useState<{ value: string; label: string } | null>(null);
+  const [productionQuantity, setProductionQuantity] = useState<number>(100); // BOM 불러오기 시 사용할 생산 수량
+  
   // 초기 사용자 정보 로드
   useEffect(() => {
     const getUser = async () => {
@@ -39,6 +42,21 @@ export default function PurchaseNewMain() {
     };
     getUser();
   }, []);
+
+  // 보드 목록 로드 (BOM 연동)
+  useEffect(() => {
+    const loadBoards = async () => {
+      const { data, error } = await supabase
+        .from('cad_drawings')
+        .select('id, board_name')
+        .order('board_name');
+      
+      if (data && !error) {
+        setBoards(data);
+      }
+    };
+    loadBoards();
+  }, [supabase]);
 
   useEffect(() => {
     // DB에서 직원 목록 가져오기
@@ -167,7 +185,7 @@ export default function PurchaseNewMain() {
     }
   });
 
-  const { fields, append, remove, update } = useFieldArray({
+  const { fields, append, remove, update, replace } = useFieldArray({
     control,
     name: "items"
   });
@@ -450,9 +468,9 @@ export default function PurchaseNewMain() {
             specification: "",
             quantity: 1,
             unit_price_value: 0,
-            unit_price_currency: currency,
+          unit_price_currency: currency,
             amount_value: 0,
-            amount_currency: currency,
+          amount_currency: currency,
             remark: "",
             link: "",
           });
@@ -474,7 +492,7 @@ export default function PurchaseNewMain() {
           
           // 합계(amount_value) 필드는 입력 불가하므로 건너뜀 (데이터가 있어도 무시)
           if (fieldName === 'amount_value') return;
-          
+
           // 데이터 타입 변환 및 할당
           if (fieldName === 'quantity') {
              const qty = parseInt(cleanValue.replace(/,/g, '') || '0') || 0;
@@ -499,7 +517,7 @@ export default function PurchaseNewMain() {
         // 업데이트된 행 저장
         updatedItems[targetRowIndex] = currentItem;
       });
-
+        
       // 상태 업데이트 (전체 리스트 교체 또는 개별 업데이트)
       // useFieldArray의 update를 반복 호출하면 성능 이슈가 있을 수 있으므로,
       // setValue로 전체를 업데이트하거나, 변경된 행만 update 호출
@@ -527,6 +545,77 @@ export default function PurchaseNewMain() {
       console.error('Excel paste error:', error);
       toast.error('엑셀 데이터 붙여넣기 중 오류가 발생했습니다.');
     }
+  };
+
+  // 보드 선택 시 품목 자동 채우기 핸들러
+  const handleBoardSelect = async (selected: { value: string; label: string } | null) => {
+    setSelectedBoard(selected);
+    
+    if (selected) {
+      if (confirm(`"${selected.label}"의 BOM 데이터로 품목 목록을 덮어쓰시겠습니까?\n(기존 입력된 품목은 삭제됩니다)`)) {
+        try {
+          const { data: items, error } = await supabase
+            .from('bom_items')
+            .select('*')
+            .eq('cad_drawing_id', selected.value)
+            .order('line_number');
+          
+          if (error) throw error;
+          
+          if (items && items.length > 0) {
+            // BOM 데이터 매핑
+            const bomRows = items.map((item: any) => ({
+              line_number: item.line_number,
+              item_name: item.item_name,
+              specification: item.specification || '',
+              // SET 수량 * 생산 수량 = 총 수량
+              quantity: (item.set_count || 0) * productionQuantity,
+              unit_price_value: 0, // 단가는 0으로 초기화
+              unit_price_currency: currency,
+              amount_value: 0,
+              amount_currency: currency,
+              remark: item.remark || '',
+              link: ''
+            }));
+            
+            // 기존 항목 전체 교체
+            replace(bomRows);
+            toast.success(`${items.length}개 품목을 불러왔습니다.`);
+          } else {
+            toast.warning('해당 보드의 BOM 데이터가 없습니다.');
+          }
+        } catch (error) {
+          console.error('BOM load error:', error);
+          toast.error('BOM 데이터를 불러오는 중 오류가 발생했습니다.');
+        }
+      }
+    }
+  };
+
+  // 생산수량 변경 시 자동 재계산 (선택된 보드가 있을 때만)
+  const handleProductionQuantityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newQty = parseInt(e.target.value) || 0;
+    setProductionQuantity(newQty);
+    
+    if (selectedBoard && newQty > 0) {
+      // 1초 딜레이 후 재계산 (타이핑 중 빈번한 업데이트 방지)
+      // 하지만 여기서는 사용자 명시적 액션이 낫으므로, 자동으로 바꾸진 않고
+      // "재계산" 버튼을 두거나, 다시 보드를 선택하게 하는게 나을 수 있음.
+      // 일단은 심플하게 보드가 선택된 상태에서 수량 바꾸면 다시 로드하겠냐고 물어보는건 너무 귀찮을 수 있으니
+      // 수량 입력칸 옆에 [적용] 버튼을 두는게 좋겠음.
+    }
+  };
+
+  // 수량 적용 버튼 핸들러
+  const handleApplyQuantity = () => {
+    if (!selectedBoard) {
+      toast.error('먼저 보드를 선택해주세요.');
+      return;
+    }
+    
+    // 현재 리스트에 있는 항목들의 수량 업데이트
+    // (단, BOM에서 가져온 항목이라는 보장이 없으므로, 다시 DB에서 가져오는게 안전)
+    handleBoardSelect(selectedBoard);
   };
 
   // 전체 금액 계산
@@ -926,6 +1015,7 @@ export default function PurchaseNewMain() {
             </div>
             <div className="flex flex-col items-start">
               <Label className="mb-1 block text-xs">발주서 종류<span className="text-red-500 ml-1">*</span></Label>
+              <div className="flex gap-2">
               <Select value={watch('po_template_type')} onValueChange={value => setValue('po_template_type', value)}>
                 <SelectTrigger className="!h-9 !py-0 w-28 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
                   <SelectValue placeholder="종류 선택" />
@@ -939,6 +1029,73 @@ export default function PurchaseNewMain() {
               </Select>
             </div>
           </div>
+          </div>
+
+          {/* 보드명 선택 드롭다운 (발주서 종류 아래 추가) */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <Label className="mb-1 block text-xs">보드명 (BOM 자동입력)</Label>
+              {selectedBoard && (
+                <span className="text-[10px] text-blue-600 cursor-pointer hover:underline mb-1" onClick={() => setSelectedBoard(null)}>
+                  초기화
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <ReactSelect
+                  options={boards.map(b => ({ value: b.id, label: b.board_name }))}
+                  value={selectedBoard}
+                  onChange={handleBoardSelect}
+                  placeholder="보드 선택 (자동입력)"
+                  isClearable
+                  isSearchable
+                  className="text-xs"
+                  styles={{
+                    control: (base) => ({
+                      ...base,
+                      minHeight: '36px',
+                      height: '36px',
+                      fontSize: '0.75rem',
+                      backgroundColor: '#fff',
+                      borderColor: '#d2d2d7',
+                      borderRadius: '0.375rem',
+                      boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+                      '&:hover': {
+                        borderColor: '#d2d2d7',
+                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'
+                      }
+                    }),
+                    menu: (base) => ({ ...base, zIndex: 9999, fontSize: '0.75rem' }),
+                    option: (base) => ({ ...base, padding: '6px 10px' }),
+                    placeholder: (base) => ({ ...base, color: '#9ca3af' })
+                  }}
+                />
+              </div>
+              {selectedBoard && (
+                <div className="flex items-center gap-1 w-32 shrink-0">
+                  <Input
+                    type="number"
+                    min="1"
+                    value={productionQuantity}
+                    onChange={handleProductionQuantityChange}
+                    className="h-9 text-center text-xs bg-white border border-[#d2d2d7] rounded-md shadow-sm hover:shadow-md transition-shadow duration-200"
+                    placeholder="수량"
+                  />
+                  <Button 
+                    type="button" 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={handleApplyQuantity}
+                    className="h-9 px-2 text-[10px] border-[#d2d2d7] hover:bg-gray-50"
+                  >
+                    적용
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
           {watch('po_template_type') === '일반' && (
             <div className="space-y-4">
               {/* 요청 설정 */}

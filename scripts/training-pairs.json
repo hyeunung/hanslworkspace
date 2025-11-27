@@ -1,0 +1,1094 @@
+[
+  {
+    "project": "H24-001_VR-L(R43B)_C50_UPDOWN_Flexible_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V2.0",
+    "path": "sample-data/24_25_SOCKET/2024/H24-001_VR-L(R43B)_C50_UPDOWN_Flexible_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V2.0",
+    "rawBOM": "H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0_240116part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0(2401).xlsx"
+  },
+  {
+    "project": "H24-002_MEM(R53B)_C60_UPDOWN_Zeus_Test_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1",
+    "path": "sample-data/24_25_SOCKET/2024/H24-002_MEM(R53B)_C60_UPDOWN_Zeus_Test_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1",
+    "rawBOM": "H24-002_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1_240118part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-002_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1(2401).xlsx"
+  },
+  {
+    "project": "H24-004_MEM(R53B)_C60_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L_0x0321",
+    "path": "sample-data/24_25_SOCKET/2024/H24-004_MEM(R53B)_C60_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L_0x0321",
+    "rawBOM": "H24-004_MEM(R53B)_C60_PRISM_LCB_TESTER_PTM3.2(ADS)_ARM3.1_6L_0X0321part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-004_MEM(R53B)_C60_PRISM_LCB_TESTER_PTM3.2(ADS)_ARM3.1_6L_0X0321(2401).xlsx"
+  },
+  {
+    "project": "H24-005_VR-L(R43B)_C50_UPDOWN_Final_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1",
+    "path": "sample-data/24_25_SOCKET/2024/H24-005_VR-L(R43B)_C50_UPDOWN_Final_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1",
+    "rawBOM": "H24-005_VR-L(R43B)_C50_UPDOWN_FINAL_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1_240130part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-005_VR-L(R43B)_C50_UPDOWN_FINAL_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1(2401).xlsx"
+  },
+  {
+    "project": "H24-006_VR-R(R44B)_C50_UPDOWN_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1",
+    "path": "sample-data/24_25_SOCKET/2024/H24-006_VR-R(R44B)_C50_UPDOWN_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1",
+    "rawBOM": "H24-006_VR-R(R44B)_C50_UPDOWN_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1_240130part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-006_VR-R(R44B)_C50_UPDOWN_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1(2401).xlsx"
+  },
+  {
+    "project": "H24-007_LGIT_New_SAA_R33C_PDX_Rubber_C5.0_V1.0",
+    "path": "sample-data/24_25_SOCKET/2024/H24-007_LGIT_New_SAA_R33C_PDX_Rubber_C5.0_V1.0",
+    "rawBOM": "H24-007_LGIT_New_SAA_R33C_PDX_Rubber_C5.0_V1.0_240130Part.bom",
+    "coordinate": null,
+    "cleaned": "H24-007_LGIT_New_SAA_R33C_PDX_Rubber_C5.0_V1.0(2401).xlsx"
+  },
+  {
+    "project": "H24-008_MEM(R53B)_C60_APS_Cube(Zeus)_Test_PTM3.2(ADS)_6L_0x0321",
+    "path": "sample-data/24_25_SOCKET/2024/H24-008_MEM(R53B)_C60_APS_Cube(Zeus)_Test_PTM3.2(ADS)_6L_0x0321",
+    "rawBOM": "H24-008_MEM(R53B)_C60_APS_CUBE(ZEUS)_TEST_PTM3.2(ADS)_6L_0X0321_240202part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-008_MEM(R53B)_C60_APS_CUBE(ZEUS)_TEST_PTM3.2(ADS)_6L_0X0321(2402).xlsx"
+  },
+  {
+    "project": "H24-010_MEM(R53B)_C60_UPDOWN_Zeus_Test_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-010_MEM(R53B)_C60_UPDOWN_Zeus_Test_COMMON2.0_6L",
+    "rawBOM": "H24-010_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_COMMON2.0_6L_240221part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-010_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_COMMON2.0_6L(2402).xlsx"
+  },
+  {
+    "project": "H24-011_MEM(R53B)_C6.1_SFR_Bench_Zeus_Test_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-011_MEM(R53B)_C6.1_SFR_Bench_Zeus_Test_COMMON2.0_6L",
+    "rawBOM": "H24-011_MEM(R53B) C6.1 SFR BENCH_ZEUS_TEST_COMMON2.0_6L_240228part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-011_MEM(R53B) C6.1 SFR BENCH_ZEUS_TEST_COMMON2.0_6L(2402).xlsx"
+  },
+  {
+    "project": "H24-012_MEM(R53B)_C6.0_SFR_Bench_Module_Test_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-012_MEM(R53B)_C6.0_SFR_Bench_Module_Test_COMMON2.0_6L",
+    "rawBOM": "H24-012_MEM(R53B)_C6.0_SFR_BENCH_MODULE_TEST_COMMON2.0_6L_240228part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-012_MEM(R53B)_C6.0_SFR_BENCH_MODULE_TEST_COMMON2.0_6L(2402).xlsx"
+  },
+  {
+    "project": "H24-015_MEM(R53B)_C61_Full_Module_UDT_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-015_MEM(R53B)_C61_Full_Module_UDT_COMMON2.0_6L",
+    "rawBOM": "H24-015_MEM(R53B)_C61_FULL_MODULE_UDT_COMMON2.0_6L_240318part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-015_MEM(R53B)_C61_FULL_MODULE_UDT_COMMON2.0_6L(2403).xlsx"
+  },
+  {
+    "project": "H24-016_MEM(R53B)_C61_Zeus_Iguana_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-016_MEM(R53B)_C61_Zeus_Iguana_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-016_MEM(R53B)_C61_ZEUS_IGUANA_PTM3.2(ADS)_6L_240312part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-016_MEM(R53B)_C61_ZEUS_IGUANA_PTM3.2(ADS)_6L(2403).xlsx"
+  },
+  {
+    "project": "H24-017_MEM(R53B)_C61_APS_Zeus_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-017_MEM(R53B)_C61_APS_Zeus_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-017_MEM(R53B)_C61_APS_ZEUS_PTM3.2(ADS)_6L_240313part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-017_MEM(R53B)_C61_APS_ZEUS_PTM3.2(ADS)_6L(2403).xlsx"
+  },
+  {
+    "project": "H24-018_MEM(R53B)_C61_Module(Flex)_OCT_Manual_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-018_MEM(R53B)_C61_Module(Flex)_OCT_Manual_COMMON2.0_6L",
+    "rawBOM": "H24-018_MEM(R53B)_C61_MODULE(FLEX)_OCT_MANUAL_COMMON2.0_6L_240320part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-018_MEM(R53B)_C61_MODULE(FLEX)_OCT_MANUAL_COMMON2.0_6L(2403).xlsx"
+  },
+  {
+    "project": "H24-019_BWI_OS_Manual_Main_V1.0",
+    "path": "sample-data/24_25_SOCKET/2024/H24-019_BWI_OS_Manual_Main_V1.0",
+    "rawBOM": "H24-019_BWI_OS_MANUAL_MAIN_V1.0_240402part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-019_BWI_OS_MANUAL_MAIN_V1.0(2404).xlsx"
+  },
+  {
+    "project": "H24-021_MEM(R53B)_C61_Zeus_Iguana_FA&SW_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-021_MEM(R53B)_C61_Zeus_Iguana_FA&SW_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-021_MEM(R53B)_C61_ZEUS_IGUANA_FA&SW_PTM3.2(ADS)_6L_240402part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-021_MEM(R53B)_C61_ZEUS_IGUANA_FA&SW_PTM3.2(ADS)_6L(2404).xlsx"
+  },
+  {
+    "project": "H24-023_MEM(R53B)_C61_Full_Module_Lag-cal_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-023_MEM(R53B)_C61_Full_Module_Lag-cal_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-023_MEM(R53B)_C61_FULL_MODULE_LAG-CAL_PTM3.2(ADS)_6L_240416part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-023_MEM(R53B)_C61_FULL_MODULE_LAG-CAL_PTM3.2(ADS)_6L(2404).xlsx"
+  },
+  {
+    "project": "H24-025_MEM(R53B)-F_C61_MA_TEC_Test_S.P_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-025_MEM(R53B)-F_C61_MA_TEC_Test_S.P_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-025_MEM(R53B)-F_C61_MA_TEC_TEST_S.P_PTM3.2(ADS)_6L_240424part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-025_MEM(R53B)-F_C61_MA_TEC_TEST_S.P_PTM3.2(ADS)_6L(2404).xlsx"
+  },
+  {
+    "project": "H24-028_MEM-k(54B)_C50_Gopher_Arthur_Cube_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-028_MEM-k(54B)_C50_Gopher_Arthur_Cube_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-028_MEM-K(54B)_C50_GOPHER_Arthur_CUBE_PTM3.2(ADS)_6L_240510part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-028_MEM-k(54B)_C50_Gopher_Arthur_Cube_PTM3.2(ADS)_6L(2405).xlsx"
+  },
+  {
+    "project": "H24-031_BWI25_Z-CAL_CUBE_OS_AUTO_C5.0-L_V1.0",
+    "path": "sample-data/24_25_SOCKET/2024/H24-031_BWI25_Z-CAL_CUBE_OS_AUTO_C5.0-L_V1.0",
+    "rawBOM": "H24-031&32_BWI25_Z-CAL_CUBE_OS_AUTO_C5.0-L&R_V1.0_240510part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-031&32_BWI25_Z-CAL_CUBE_OS_AUTO_C5.0-L&R_V1.0(2405).xlsx"
+  },
+  {
+    "project": "H24-033_BWI25_C5.0_Z-CAL_Cube_Manual_Main_V1.0",
+    "path": "sample-data/24_25_SOCKET/2024/H24-033_BWI25_C5.0_Z-CAL_Cube_Manual_Main_V1.0",
+    "rawBOM": "H24-033_BWI25_C5.0_Z-CAL_CUBE_MANUAL_MAIN_V1.0_240520part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-033_BWI25_C5.0_Z-CAL_CUBE_MANUAL_MAIN_V1.0(2405).xlsx"
+  },
+  {
+    "project": "H24-035_MEM(R53B)_C61_TRIPLE_RTV_UPDOWN_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-035_MEM(R53B)_C61_TRIPLE_RTV_UPDOWN_COMMON2.0_6L",
+    "rawBOM": "H24-035_MEM(R53B)_C61_TRIPLE_RTV_UPDOWN_COMMON2.0_6L_240530part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-035_MEM(R53B)_C61_TRIPLE_RTV_UPDOWN_COMMON2.0_6L_(2405).xlsx"
+  },
+  {
+    "project": "H24-036_MW25_C50_Cube_Z-CAL_OS_Board_POGO_L_V1.0",
+    "path": "sample-data/24_25_SOCKET/2024/H24-036_MW25_C50_Cube_Z-CAL_OS_Board_POGO_L_V1.0",
+    "rawBOM": "H24-036&37_MW25_C50_CUBE_Z-CAL_OS_BOARD_POGO_L&R_V1.0_240611part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-036&37_MW25_C50_CUBE_Z-CAL_OS_BOARD_POGO_L&R_V1.0(2406).xlsx"
+  },
+  {
+    "project": "H24-038_AKC_C50_Cube_Z-CAL_OS_Board_POGO_L_V1.0",
+    "path": "sample-data/24_25_SOCKET/2024/H24-038_AKC_C50_Cube_Z-CAL_OS_Board_POGO_L_V1.0",
+    "rawBOM": "H24-038&39_AKC_C50_Cube_Z-CAL_OS_Board_POGO_L&R_V1.0_240611part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-038&39_AKC_C50_Cube_Z-CAL_OS_Board_POGO_L&R_V1.0(2406).xlsx"
+  },
+  {
+    "project": "H24-040_MEM-K(54B)_C50_Libra_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-040_MEM-K(54B)_C50_Libra_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-040_MEM-K(54B)_C50_Libra_PTM3.2(ADS)_6L_240530part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-040_MEM-K(54B)_C50_Libra_PTM3.2(ADS)_6L(2406).xlsx"
+  },
+  {
+    "project": "H24-041_MEM-K(54B)_C50_Pismo_Manual(LCB)_PTM3.2(ADS)",
+    "path": "sample-data/24_25_SOCKET/2024/H24-041_MEM-K(54B)_C50_Pismo_Manual(LCB)_PTM3.2(ADS)",
+    "rawBOM": "H24-041_MEM-K(54B)_C50_Pismo_Manual(LCB)_PTM3.2(ADS)_240530part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-041_MEM-K(54B)_C50_Pismo_Manual(LCB)_PTM3.2(ADS)(2406).xlsx"
+  },
+  {
+    "project": "H24-042_MEM-K(54B)_C50_Zeus_Iguana_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-042_MEM-K(54B)_C50_Zeus_Iguana_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-042_MEM(R53B)_C50_ZEUS_IGUANA_PTM3.2(ADS)_6L_240530part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-042_MEM(R53B)_C50_ZEUS_IGUANA_PTM3.2(ADS)_6L(2406).xlsx"
+  },
+  {
+    "project": "H24-043_MEM-K(54B)_C50_Zeus_Updown_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-043_MEM-K(54B)_C50_Zeus_Updown_COMMON2.0_6L",
+    "rawBOM": "H24-043_MEM-K(54B)_C50_Zeus_Updown_COMMON2.0_6L_240531part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-043_MEM-K(54B)_C50_Zeus_Updown_COMMON2.0_6L(2406).xlsx"
+  },
+  {
+    "project": "H24-044_MEM-K(54B)_C50_Zeus_Pinwheel_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-044_MEM-K(54B)_C50_Zeus_Pinwheel_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-044_MEM-K(54B)_C50_Zeus_Pinwheel_PTM3.2(ADS)_6L_240531part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-044_MEM-K(54B)_C50_Zeus_Pinwheel_PTM3.2(ADS)_6L(2406).xlsx"
+  },
+  {
+    "project": "H24-045_MEM-K(54B)_C50_Zeus_ICLT(APS)_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-045_MEM-K(54B)_C50_Zeus_ICLT(APS)_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-045_MEM-K(54B)_C50_Zeus_ICLT(APS)_PTM3.2(ADS)_6L_240531part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-045_MEM-K(54B)_C50_Zeus_ICLT(APS)_PTM3.2(ADS)_6L(2406).xlsx"
+  },
+  {
+    "project": "H24-046_MEM-K(54B)_C50_Zeus_Iguana_Sphere_Temp_Cal_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-046_MEM-K(54B)_C50_Zeus_Iguana_Sphere_Temp_Cal_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-046_MEM-K(54B)_C50_ZEUS_IGUANA_SPHERE_TEMP_CAL_PTM3.2(ADS)_6L_240603part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-046_MEM-K(54B)_C50_ZEUS_IGUANA_SPHERE_TEMP_CAL_PTM3.2(ADS)_6L(2406).xlsx"
+  },
+  {
+    "project": "H24-048_MEM-K(54B)_C50_Cube&Zeus_Manual_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-048_MEM-K(54B)_C50_Cube&Zeus_Manual_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-048_MEM-K(54B)_C50_CUBE&ZEUS_MANUAL_PTM3.2(ADS)_6L_240603part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-048_MEM-K(54B)_C50_CUBE&ZEUS_MANUAL_PTM3.2(ADS)_6L(2406).xlsx"
+  },
+  {
+    "project": "H24-049_MEM-K(54B)_C50_Gopher_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-049_MEM-K(54B)_C50_Gopher_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-049_MEM-K(54B)_C50_GOPHER_PTM3.2(ADS)_6L_240603part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-049_MEM-K(54B)_C50_GOPHER_PTM3.2(ADS)_6L(2406).xlsx"
+  },
+  {
+    "project": "H24-050_MEM-K(54B)_C50_Updown_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-050_MEM-K(54B)_C50_Updown_COMMON2.0_6L",
+    "rawBOM": "H24-050_MEM-K(54B)_C50_UPDOWN_COMMON2.0_6L_240610part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-050_MEM-K(54B)_C50_UPDOWN_COMMON2.0_6L(2406).xlsx"
+  },
+  {
+    "project": "H24-051_MEM-K(54B)_C50_ICLT(APS)_PTM3.2(ADS)",
+    "path": "sample-data/24_25_SOCKET/2024/H24-051_MEM-K(54B)_C50_ICLT(APS)_PTM3.2(ADS)",
+    "rawBOM": "H24-051_MEM-K(54B)_C50_ICLT(APS)_PTM3.2(ADS)_240610part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-051_MEM-K(54B)_C50_ICLT(APS)_PTM3.2(ADS)(2406).xlsx"
+  },
+  {
+    "project": "H24-052_BWI_C3.1_OS_DP_Dual_Tester_V1.0",
+    "path": "sample-data/24_25_SOCKET/2024/H24-052_BWI_C3.1_OS_DP_Dual_Tester_V1.0",
+    "rawBOM": "H24-052_BWI_C3.1_OS_DP_DUAL_TESTER_V1.0_240613part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-052_BWI_C3.1_OS_DP_DUAL_TESTER_V1.0(2406).xlsx"
+  },
+  {
+    "project": "H24-053_AKC_C5.0_Cube_Z-CAL_Manual_Main_V1.0",
+    "path": "sample-data/24_25_SOCKET/2024/H24-053_AKC_C5.0_Cube_Z-CAL_Manual_Main_V1.0",
+    "rawBOM": "H24-053_AKC_C5.0_CUBE_Z-CAL_MANUAL_MAIN_V1.0_240626part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-053_AKC_C5.0_CUBE_Z-CAL_MANUAL_MAIN_V1.0(2406).xlsx"
+  },
+  {
+    "project": "H24-055_LGIT_CHS_OIS_V1.1",
+    "path": "sample-data/24_25_SOCKET/2024/H24-055_LGIT_CHS_OIS_V1.1",
+    "rawBOM": "H24-055_LGIT_CHS_OIS_V1.1_240627part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-055_LGIT_CHS_OIS_V1.1(2406).xlsx"
+  },
+  {
+    "project": "H24-056_MEM-K(54B)_C50_Full_Module_SFR_Bench&OCT_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-056_MEM-K(54B)_C50_Full_Module_SFR_Bench&OCT_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-056_MEM-K(54B)_C50_FULL_MODULE_SFR_BENCH&OCT_PTM3.2(ADS)_6L_240702part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-056_MEM-K(54B)_C50_FULL_MODULE_SFR_BENCH&OCT_PTM3.2(ADS)_6L(2406).xlsx"
+  },
+  {
+    "project": "H24-057_MEM-K(54B)_C50_Full_Moudle_Lag-cal_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-057_MEM-K(54B)_C50_Full_Moudle_Lag-cal_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-057_MEM-K(54B)_C50_FULL_MOUDLE_LAG-CAL_PTM3.2(ADS)_6L_240702part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-057_MEM-K(54B)_C50_FULL_MOUDLE_LAG-CAL_PTM3.2(ADS)_6L(2406).xlsx"
+  },
+  {
+    "project": "H24-058_MEM-K(54B)_C50_SFR_Bench_Test_Cube_PTM3.2(ADS)_ARM3.1_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-058_MEM-K(54B)_C50_SFR_Bench_Test_Cube_PTM3.2(ADS)_ARM3.1_6L",
+    "rawBOM": "H24-058_MEM-K(54B)_C50_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L_240627part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-058_MEM-K(54B)_C50_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L(2406).xlsx"
+  },
+  {
+    "project": "H24-060_MEM-K(54B)_C50_Zeus_ICLT(APS)_Stage_Align_type_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-060_MEM-K(54B)_C50_Zeus_ICLT(APS)_Stage_Align_type_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-060_MEM-K(54B)_C50_ZEUS_ICLT(APS)_STAGE_ALIGN_TYPE_PTM3.2(ADS)_6L_240712part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-060_MEM-K(54B)_C50_ZEUS_ICLT(APS)_STAGE_ALIGN_TYPE_PTM3.2(ADS)_6L(2407).xlsx"
+  },
+  {
+    "project": "H24-061_MEM-K(54B)_C50_Full_Module_Iguana(OQC)_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-061_MEM-K(54B)_C50_Full_Module_Iguana(OQC)_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-061_MEM-K(54B)_C50_FULL_MODULE_IGUANA(OQC)_PTM3.2(ADS)_6L_240731part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-061_MEM-K(54B)_C50_FULL_MODULE_IGUANA(OQC)_PTM3.2(ADS)_6L(2407).xlsx"
+  },
+  {
+    "project": "H24-062_MEM-K(54B)_C50_PF_SOCKET_V1.0",
+    "path": "sample-data/24_25_SOCKET/2024/H24-062_MEM-K(54B)_C50_PF_SOCKET_V1.0",
+    "rawBOM": "H24-062_MEM-K(54B)_C50_PF_SOCKET_V1.0_240723part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-062_MEM-K(54B)_C50_PF_SOCKET_V1.0(2407).xlsx"
+  },
+  {
+    "project": "H24-063_BOI_C8.0_MA_UDT_V1.0",
+    "path": "sample-data/24_25_SOCKET/2024/H24-063_BOI_C8.0_MA_UDT_V1.0",
+    "rawBOM": "H24-063_BOI_C8.0_MA_UDT_V1.0_240805part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-063_BOI_C8.0_MA_UDT_V1.0(2408).xlsx"
+  },
+  {
+    "project": "H24-064_MEM-K(54B)_C50_TRIPLE_RTV_UPDOWN_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-064_MEM-K(54B)_C50_TRIPLE_RTV_UPDOWN_COMMON2.0_6L",
+    "rawBOM": "H24-064_MEM-K(54B)_C50_TRIPLE_RTV_UPDOWN_COMMON2.0_6L_240807part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-064_MEM-K(54B)_C50_TRIPLE_RTV_UPDOWN_COMMON2.0_6L(2408).xlsx"
+  },
+  {
+    "project": "H24-066_MEM-K(54B)_C40_Gopher_Arthur_Cube_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-066_MEM-K(54B)_C40_Gopher_Arthur_Cube_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-066_MEM-K(54B)_C40_GOPHER_ARTHUR_CUBE_PTM3.2(ADS)_6L_240808part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-066_MEM-K(54B)_C40_GOPHER_ARTHUR_CUBE_PTM3.2(ADS)_6L(2408).xlsx"
+  },
+  {
+    "project": "H24-067_MEM-K(54B)_C40_SFR_Bench_Test_Cube_PTM3.2(ADS)_ARM3.1_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-067_MEM-K(54B)_C40_SFR_Bench_Test_Cube_PTM3.2(ADS)_ARM3.1_6L",
+    "rawBOM": "H24-067_MEM-K(54B)_C40_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L_240821part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-067_MEM-K(54B)_C40_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L(2408).xlsx"
+  },
+  {
+    "project": "H24-068_MEM-K(54B)_C40_Module_AA_PTM3.2(ADS)",
+    "path": "sample-data/24_25_SOCKET/2024/H24-068_MEM-K(54B)_C40_Module_AA_PTM3.2(ADS)",
+    "rawBOM": "H24-068_MEM-K(54B)_C40_MODULE_AA_PTM3.2(ADS)_240821part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-068_MEM-K(54B)_C40_MODULE_AA_PTM3.2(ADS)(2408).xlsx"
+  },
+  {
+    "project": "H24-069_MEM-K(R54B)_C40_Zeus_Pinwheel_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-069_MEM-K(R54B)_C40_Zeus_Pinwheel_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-069_MEM-K_(R54B)_C40_ZEUS_PINWHEEL_PTM3.2(ADS)_6L_240821part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-069_MEM-K_(R54B)_C40_ZEUS_PINWHEEL_PTM3.2(ADS)_6L(2408).xlsx"
+  },
+  {
+    "project": "H24-070_Boise_C70_Cube_Auto_Updown_COMMON2.0_6L(재발주X)",
+    "path": "sample-data/24_25_SOCKET/2024/H24-070_Boise_C70_Cube_Auto_Updown_COMMON2.0_6L(재발주X)",
+    "rawBOM": "H24-070_BOISE_C70_CUBE_AUTO_UPDOWN_COMMON2.0_6L_240906part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-070_BOISE_C70_CUBE_AUTO_UPDOWN_COMMON2.0_6L(2408).xlsx"
+  },
+  {
+    "project": "H24-071_MEM-K(R54B)_C40_Iguana_Zeus_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-071_MEM-K(R54B)_C40_Iguana_Zeus_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-071_MEM-K(R54B)_C40_IGUANA_ZEUS_PTM3.2(ADS)_6L_240822part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-071_MEM-K(R54B)_C40_IGUANA_ZEUS_PTM3.2(ADS)_6L(2408).xlsx"
+  },
+  {
+    "project": "H24-072_MEM-K(R54B)_C40_Cube_Gopher(MFG)_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-072_MEM-K(R54B)_C40_Cube_Gopher(MFG)_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-072_MEM-K(R54B)_C40_CUBE_GOPHER(MFG)_PTM3.2(ADS)_6L_240823part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-072_MEM-K(R54B)_C40_CUBE_GOPHER(MFG)_PTM3.2(ADS)_6L(2408).xlsx"
+  },
+  {
+    "project": "H24-073_MEM-K(R54B)_C40_Zeus_APS_Manual_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-073_MEM-K(R54B)_C40_Zeus_APS_Manual_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-073_MEM-K(R54B)_C40_ZEUS_APS_MANUAL_PTM3.2(ADS)_6L_240820part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-073_MEM-K(R54B)_C40_ZEUS_APS_MANUAL_PTM3.2(ADS)_6L(2408).xlsx"
+  },
+  {
+    "project": "H24-074_MEM-K(R54B)_C40_Cube_Libra_(MFG)_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-074_MEM-K(R54B)_C40_Cube_Libra_(MFG)_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-074_MEM-K(R54B)_C40_CUBE_LIBRA_(MFG)_PTM3.2(ADS)_6L_240826part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-074_MEM-K(R54B)_C40_CUBE_LIBRA_(MFG)_PTM3.2(ADS)_6L(2408).xlsx"
+  },
+  {
+    "project": "H24-075_MEM-K(R54B)_C40_Iguana_Sphere_Temp_Cal_Zeus_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-075_MEM-K(R54B)_C40_Iguana_Sphere_Temp_Cal_Zeus_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-075_MEM-K(R54B)_C40_IGUANA_SPHERE_TEMP_CAL_ZEUS_PTM3.2(ADS)_6L_240828part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-075_MEM-K(R54B)_C40_IGUANA_SPHERE_TEMP_CAL_ZEUS_PTM3.2(ADS)_6L(2408).xlsx"
+  },
+  {
+    "project": "H24-076_MEM-K(R54B)_C40_Cube&Zeus_Manual_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-076_MEM-K(R54B)_C40_Cube&Zeus_Manual_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-076_MEM-K(R54B)_C40_Cube&Zeus_Manual_PTM3.2(ADS)_6L_2408903part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-076_MEM-K(R54B)_C40_Cube&Zeus_Manual_PTM3.2(ADS)_6L(2409).xlsx"
+  },
+  {
+    "project": "H24-077_Paragon_Zoom_Cal_OS_Tester_V1.0",
+    "path": "sample-data/24_25_SOCKET/2024/H24-077_Paragon_Zoom_Cal_OS_Tester_V1.0",
+    "rawBOM": "H24-077_PARAGON_ZOOM_CAL_OS_TESTER_V1.0_240905part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-077_PARAGON_ZOOM_CAL_OS_TESTER_V1.0(2409).xlsx"
+  },
+  {
+    "project": "H24-080_Paragon_Zoom_Cal_Manual_Main_V1.0",
+    "path": "sample-data/24_25_SOCKET/2024/H24-080_Paragon_Zoom_Cal_Manual_Main_V1.0",
+    "rawBOM": "H24-080_PARAGON_ZOOM_CAL_MANUAL_MAIN_V1.0_240906part.BOM",
+    "coordinate": null,
+    "cleaned": "H24-080_PARAGON_ZOOM_CAL_MANUAL_MAIN_V1.0(2409).xlsx"
+  },
+  {
+    "project": "H24-083_MEM-K_C40_Zeus_UDT_Manual_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-083_MEM-K_C40_Zeus_UDT_Manual_COMMON2.0_6L",
+    "rawBOM": "H24-083_MEM-K_C40_Zeus_UDT_Manual_COMMON2.0_6L_240903part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-083_MEM-K_C40_Zeus_UDT_Manual_COMMON2.0_6L(2409).xlsx"
+  },
+  {
+    "project": "H24-084_MEM-K_C40_Zeus_iCLT_Manual_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-084_MEM-K_C40_Zeus_iCLT_Manual_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-084_MEM-K_C40_Zeus_iCLT_Manual_PTM3.2(ADS)_6L_240903part.xlsx",
+    "coordinate": null,
+    "cleaned": "H24-084_MEM-K_C40_Zeus_iCLT_Manual_PTM3.2(ADS)_6L(2409).xlsx"
+  },
+  {
+    "project": "H24-086_MEM(R53B)-F_C50_MA_TEC_Test_S.P_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2024/H24-086_MEM(R53B)-F_C50_MA_TEC_Test_S.P_PTM3.2(ADS)_6L",
+    "rawBOM": "H24-086_MEM(R53B)-F_C50_MA_TEC_TEST_S.P_PTM3.2(ADS)_6L_240909part.BOM",
+    "coordinate": null,
+    "cleaned": "H24-086_MEM(R53B)-F_C50_MA_TEC_Test_S.P_PTM3.2(ADS)_6L(2409).xlsx"
+  },
+  {
+    "project": "H24-106_BOI_CXX_HARRISON_PTM3.2(ADS)_0X0321_lsy",
+    "path": "sample-data/24_25_SOCKET/2024/H24-106_BOI_CXX_HARRISON_PTM3.2(ADS)_0X0321_lsy",
+    "rawBOM": "H24-106_BOI_CXX_HARRISON_PTM3.2(ADS)_0X0321_241007Part.bom.xls",
+    "coordinate": null,
+    "cleaned": "H24-106_BOI_CXX_HARRISON_PTM3.2(ADS)_0X0321(2410).xlsx"
+  },
+  {
+    "project": "H24-114_BOI_C70_MA_Aperture_Test_S.P_Main_V1.0",
+    "path": "sample-data/24_25_SOCKET/2024/H24-114_BOI_C70_MA_Aperture_Test_S.P_Main_V1.0",
+    "rawBOM": "H24-114_BOI_C70_MA_Aperture_Test_S.P_Main_V1.0_241105Part.bom.xls",
+    "coordinate": null,
+    "cleaned": "H24-114_BOI_C70_MA_Aperture_Test_S.P_Main_V1.0(2410).xlsx"
+  },
+  {
+    "project": "H24-138-1_AR_Glass_EOL_Panel_R-Socket_Main_V1.0",
+    "path": "sample-data/24_25_SOCKET/2024/H24-138-1_AR_Glass_EOL_Panel_R-Socket_Main_V1.0",
+    "rawBOM": "H24-138-1_AR_Glass_EOL_Panel_G-Socket_Main_V1.0_241210Part.bom.xls",
+    "coordinate": null,
+    "cleaned": "H24-138-1_AR_Glass_EOL_Panel_R-Socket_Main_V1.0(2412).xls"
+  },
+  {
+    "project": "H25-004_MGL_ZOOM_CAL_BOARD_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-004_MGL_ZOOM_CAL_BOARD_V1.0",
+    "rawBOM": "H25-004_MGL_ZOOM_CAL_BOARD_V1.0_241221part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-004_MGL_ZOOM_CAL_BOARD_V1.0(2501).xlsx"
+  },
+  {
+    "project": "H25-005_Paragon_Zoom_Cal_Manual_Main_V1.2",
+    "path": "sample-data/24_25_SOCKET/2025/H25-005_Paragon_Zoom_Cal_Manual_Main_V1.2",
+    "rawBOM": "H25-005_PARAGON_ZOOM_CAL_MANUAL_MAIN_V1.2_250124part.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-005_Paragon_Zoom_Cal_Manual_Main_1V2(2501).xlsx"
+  },
+  {
+    "project": "H25-007_BOI_C60_Cube_Type_Harrison_Manual_Main",
+    "path": "sample-data/24_25_SOCKET/2025/H25-007_BOI_C60_Cube_Type_Harrison_Manual_Main",
+    "rawBOM": "H25-007_BOI_C60_Cube_Type_Harrison_Manual_Main_250120Part.bom.xls",
+    "coordinate": null,
+    "cleaned": "H25-007_BOI_C60_Cube_Type_Harrison_Manual_Main(2501).xlsx"
+  },
+  {
+    "project": "H25-009_MEM-K_C40_Zeus_UDT_PWR_GND_reinforced_manual_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-009_MEM-K_C40_Zeus_UDT_PWR_GND_reinforced_manual_COMMON2.0_6L",
+    "rawBOM": "H25-009_MEM-K_C40_Zeus_UDT_PWR_GND_reinforced_manual_COMMON2.0_6L_250121Part.bom.xls",
+    "coordinate": null,
+    "cleaned": "H25-009_MEM-K_C40_Zeus_UDT_PWR_GND_reinforced_manual_COMMON2.0_6L(2501).xlsx"
+  },
+  {
+    "project": "H25-010_BOI_C60_Module_Ford_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-010_BOI_C60_Module_Ford_COMMON2.0_6L",
+    "rawBOM": "H25-010_BOI_C60_MODULE_FORD_COMMON2.0_6L_250206part.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-010_BOI_C60_MODULE_FORD_COMMON2.0_6L(2502).xlsx"
+  },
+  {
+    "project": "H25-011_BOI_C60_Module_APS_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-011_BOI_C60_Module_APS_COMMON2.0_6L",
+    "rawBOM": "H25-011_BOI_C60_Module_APS_COMMON2.0_6L_250206Part.bom.xls",
+    "coordinate": null,
+    "cleaned": "H25-011_BOI_C60_Module_APS_COMMON2.0_6L(2502).xls"
+  },
+  {
+    "project": "H25-012_BOI_C60_Module_Updown_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-012_BOI_C60_Module_Updown_COMMON2.0_6L",
+    "rawBOM": "H25-012_BOI_C60_Module_Updown_COMMON2.0_6L_250206Part.bom.xls",
+    "coordinate": null,
+    "cleaned": "H25-012_BOI_C60_Module_Updown_COMMON2.0_6L(2502).xls"
+  },
+  {
+    "project": "H25-013-E_BOI_C60_Module_Grid_Flare_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-013-E_BOI_C60_Module_Grid_Flare_PTM3.2(ADS)_6L",
+    "rawBOM": "H25-013-E_BOI_C60_MODULE_GRID_FLARE_PTM3_2(ADS)_6L_250314part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-013-E_BOI_C60_MODULE_GRID_FLARE_PTM3_2(ADS)_6L(2503).xlsx"
+  },
+  {
+    "project": "H25-013_BOI_C60_Module_Grid_Flare_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-013_BOI_C60_Module_Grid_Flare_PTM3.2(ADS)_6L",
+    "rawBOM": "H25-013_BOI_C60_Module_Grid_Flare_PTM3.2(ADS)_6L_250124.Part.bom.xls",
+    "coordinate": null,
+    "cleaned": "H25-013_BOI_C60_Module_Grid_Flare_PTM3.2(ADS)_6L(2502).xls"
+  },
+  {
+    "project": "H25-015_BOI_C60_Cube_Updown_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-015_BOI_C60_Cube_Updown_COMMON2.0_6L",
+    "rawBOM": "H25-015_BOI_C60_CUBE_UPDOWN_COMMON2.0_6L_250318part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-015_BOI_C60_CUBE_UPDOWN_COMMON2.0_6L(2503).xlsx"
+  },
+  {
+    "project": "H25-020_ATW_C61_Z-Cal_Auto_Left",
+    "path": "sample-data/24_25_SOCKET/2025/H25-020_ATW_C61_Z-Cal_Auto_Left",
+    "rawBOM": "H25-020&021_ATW_C61_Z-CAL_AUTO_L&R_250206part.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-020&021_ATW_C61_Z-CAL_AUTO_L&R(2502).xlsx"
+  },
+  {
+    "project": "H25-022_ATW_C61_Cube_Z-CAL_Manual_Main_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-022_ATW_C61_Cube_Z-CAL_Manual_Main_V1.0",
+    "rawBOM": "H25-022_ATW_C61_CUBE_Z-CAL_MANUAL_MAIN_V1.0_250210part.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-022_ATW_C61_CUBE_Z-CAL_MANUAL_MAIN_V1.0(2502).xlsx"
+  },
+  {
+    "project": "H25-024_BOI_C60_Module_Type_Harrison_Manual_Main",
+    "path": "sample-data/24_25_SOCKET/2025/H25-024_BOI_C60_Module_Type_Harrison_Manual_Main",
+    "rawBOM": "H25-024_BOI_C60_MODULE_TYPE_HARRISON_MANUAL_MAIN_250212part.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-024_BOI_C60_MODULE_TYPE_HARRISON_MANUAL_MAIN(2502).xlsx"
+  },
+  {
+    "project": "H25-026_ATW_C61_LENS_AA_V1.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-026_ATW_C61_LENS_AA_V1.0_6L",
+    "rawBOM": "H25-026_ATW_C61_LENS_AA_V1.0_6L_250211part.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-026_ATW_C61_LENS_AA_V1.0_6L(2502).xlsx"
+  },
+  {
+    "project": "H25-027_UW_CM_Test_Socket_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-027_UW_CM_Test_Socket_V1.0",
+    "rawBOM": "H25-027_UW_CM_TEST_SOCKET_V1.0_250214part.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-027_UW_CM_TEST_SOCKET_V1.0(2502).xlsx"
+  },
+  {
+    "project": "H25-028_MEM_C30_RTV_Triple_UDT_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-028_MEM_C30_RTV_Triple_UDT_COMMON2.0_6L",
+    "rawBOM": "H25-028_MEM_C30_RTV_TRIPLE_UDT_COMMON2.0_6L_250217part.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-028_MEM_C30_RTV_TRIPLE_UDT_COMMON2.0_6L(2502).xlsx"
+  },
+  {
+    "project": "H25-029_MEM_C30_RTV_Single_UDT_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-029_MEM_C30_RTV_Single_UDT_COMMON2.0_6L",
+    "rawBOM": "H25-029_MEM_C30_RTV_SINGLE_UDT_COMMON2.0_6L_250217part.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-029_MEM_C30_RTV_SINGLE_UDT_COMMON2.0_6L(2502).xlsx"
+  },
+  {
+    "project": "H25-035_BOI_C60_Triple_UDT_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-035_BOI_C60_Triple_UDT_COMMON2.0_6L",
+    "rawBOM": "H25-035_BOI_C60_TRIPLE_UDT_COMMON2.0_6L_250307part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-035_BOI_C60_TRIPLE_UDT_COMMON2.0_6L(2503).xlsx"
+  },
+  {
+    "project": "H25-036_BOI_C60_Triple_APS_Main_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-036_BOI_C60_Triple_APS_Main_COMMON2.0_6L",
+    "rawBOM": "H25-036_BOI_C60_TRIPLE_APS_MAIN_COMMON2.0_6L_250318part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-036_BOI_C60_TRIPLE_APS_MAIN_COMMON2.0_6L(2503).xlsx"
+  },
+  {
+    "project": "H25-037_BOI_C60_Triple_Ford_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-037_BOI_C60_Triple_Ford_COMMON2.0_6L",
+    "rawBOM": "H25-037_BOI_C60_TRIPLE_FORD_COMMON2.0_6L_250307part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-037_BOI_C60_TRIPLE_FORD_COMMON2.0_6L(2503).xlsx"
+  },
+  {
+    "project": "H25-038_MW_AKC_Lens_AA_OS_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-038_MW_AKC_Lens_AA_OS_V1.0",
+    "rawBOM": "H25-038_MW_AKC_LENS_AA_OS_V1.0_250310part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-038_MW_AKC_LENS_AA_OS_V1.0(2503).xlsx"
+  },
+  {
+    "project": "H25-039_BOI_C70_Lens_AA_OS_V1.1_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-039_BOI_C70_Lens_AA_OS_V1.1_6L",
+    "rawBOM": "H25-039_BOI_C70_Lens_AA_OS_V1.1_6L_250319part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-039_BOI_C70_Lens_AA_OS_V1.1_6L(2503).xlsx"
+  },
+  {
+    "project": "H25-043_MW25_Lens_AA_OS_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-043_MW25_Lens_AA_OS_V1.0",
+    "rawBOM": "H25-043_MW25_LENS_AA_OS_V1.0_250402part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-043_MW25_LENS_AA_OS_V1.0(2504).xlsx"
+  },
+  {
+    "project": "H25-044_MEM_C30_RTV_Triple_APS_Manual_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-044_MEM_C30_RTV_Triple_APS_Manual_PTM3.2(ADS)_6L",
+    "rawBOM": "H25-044_MEM_C30_RTV_TRIPLE_MANUAL_PTM3.2(ADS)_6L_250331part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-044_MEM_C30_RTV_TRIPLE_MANUAL_PTM3.2(ADS)_6L(2504).xlsx"
+  },
+  {
+    "project": "H25-045_BOI_C50_IR_EMITTER_FORD_CUBE_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-045_BOI_C50_IR_EMITTER_FORD_CUBE_COMMON2.0_6L",
+    "rawBOM": "H25-045_BOI_C50_IR_EMITTER_FORD_CUBE_COMMON2.0_6L_250509part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-045_BOI_C50_IR_EMITTER_FORD_CUBE_COMMON2.0_6L(2505).xlsx"
+  },
+  {
+    "project": "H25-046_ATW_C50_Z-CAL_AUTO_Left_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-046_ATW_C50_Z-CAL_AUTO_Left_V1.0",
+    "rawBOM": "H25-046&047_ATW_C50_Z-CAL_AUTO_LEFT&RIGHT_V1.0_250408part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-046&047_ATW_C50_Z-CAL_AUTO_LEFT&RIGHT_V1.0(2504).xlsx"
+  },
+  {
+    "project": "H25-049_ATW_C50_Z-CAL_Manual_Main_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-049_ATW_C50_Z-CAL_Manual_Main_V1.0",
+    "rawBOM": "H25-049_ATW_C50_Z-CAL_MANUAL_MAIN_V1.0_250408part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-049_ATW_C50_Z-CAL_MANUAL_MAIN_V1.0(2504).xlsx"
+  },
+  {
+    "project": "H25-050_BOI_Cube_Cyclops_GIS_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-050_BOI_Cube_Cyclops_GIS_Board_V1.0",
+    "rawBOM": "H25-050_BOI_CUBE_CYCLOPS_GIS_BOARD_V1.0_250402part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-050_BOI_CUBE_CYCLOPS_GIS_BOARD_V1.0(2504).xlsx"
+  },
+  {
+    "project": "H25-051_ATW_C50_Lens_AA_V1.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-051_ATW_C50_Lens_AA_V1.0_6L",
+    "rawBOM": "H25-051_ATW_C50_LENS_AA_V1.0_6L_250409part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-051_ATW_C50_LENS_AA_V1.0_6L(2504).xlsx"
+  },
+  {
+    "project": "H25-052_BWI25_C30_Cube_Auto_Z-CAL-L_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-052_BWI25_C30_Cube_Auto_Z-CAL-L_V1.0",
+    "rawBOM": "H25-052&053_BWI25_C30_CUBE_AUTO_Z-CAL-L&R_V1.0_250418part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-052&053_BWI25_C30_CUBE_AUTO_Z-CAL-L&R_V1.0(2504).xlsx"
+  },
+  {
+    "project": "H25-054_AKC_C50_Cube_Auto_Z-CAL_L_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-054_AKC_C50_Cube_Auto_Z-CAL_L_V1.0",
+    "rawBOM": "H25-054&055_AKC_C50_CUBE_AUTO_Z-CAL_L&R_V1.0_250422part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-054&055_AKC_C50_CUBE_AUTO_Z-CAL_L&R_V1.0(2504).xlsx"
+  },
+  {
+    "project": "H25-056_BOI_C50_Cube_Updown_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-056_BOI_C50_Cube_Updown_COMMON2.0_6L",
+    "rawBOM": "H25-056_BOI_C50_CUBE_UPDOWN_COMMON2.0_6L_250429part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-056_BOI_C50_CUBE_UPDOWN_COMMON2.0_6L(2504).xlsx"
+  },
+  {
+    "project": "H25-057_MGL_ZOOM_CAL_BOARD_V1.1",
+    "path": "sample-data/24_25_SOCKET/2025/H25-057_MGL_ZOOM_CAL_BOARD_V1.1",
+    "rawBOM": "H25-057_MGL_ZOOM_CAL_BOARD_V1.1_250509part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-057_MGL_ZOOM_CAL_BOARD_V1.1(2505).xlsx"
+  },
+  {
+    "project": "H25-062_MEM-T_C50_Full_Module_Auto_UDT_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-062_MEM-T_C50_Full_Module_Auto_UDT_COMMON2.0_6L",
+    "rawBOM": "H25-062_MEM-T_C50_FULL_MODULE_AUTO_UDT_COMMON2.0_6L_250526part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-062_MEM-T_C50_FULL_MODULE_AUTO_UDT_COMMON2.0_6L(2505).xlsx"
+  },
+  {
+    "project": "H25-063_MEM-T_C50_Full_Module_manual_UDT_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-063_MEM-T_C50_Full_Module_manual_UDT_COMMON2.0_6L",
+    "rawBOM": "H25-063_MEM-T_C50_FULL_MODULE_MANUAL_UDT_COMMON2.0_6L_250529part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-063_MEM-T_C50_FULL_MODULE_MANUAL_UDT_COMMON2.0_6L(2506).xlsx"
+  },
+  {
+    "project": "H25-064_MEM-T_C50_Full_Module_Auto_Iguana_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-064_MEM-T_C50_Full_Module_Auto_Iguana_PTM3.2(ADS)_6L",
+    "rawBOM": "H25-064_MEM-T_C50_FULL_MODULE_AUTO_IGUANA_PTM3.2(ADS)_6L_240527part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-064_MEM-T_C50_FULL_MODULE_AUTO_IGUANA_PTM3.2(ADS)_6L(2506).xlsx"
+  },
+  {
+    "project": "H25-065_MEM-T_C50_Full_Module_Auto_iCLT_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-065_MEM-T_C50_Full_Module_Auto_iCLT_PTM3.2(ADS)_6L",
+    "rawBOM": "H25-065_MEM-T_C50_FULL_MODULE_AUTO_ICLT_PTM3.2(ADS)_6L_250530part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-065_MEM-T_C50_FULL_MODULE_AUTO_ICLT_PTM3.2(ADS)_6L(2506).xlsx"
+  },
+  {
+    "project": "H25-066_BOI_Ford_Tester_PCT_Heater_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-066_BOI_Ford_Tester_PCT_Heater_COMMON2.0_6L",
+    "rawBOM": "H25-066_BOI_FORD_TESTER_PTC_HEATER_COMMON2.0_6L_250604part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-066_BOI_FORD_TESTER_PTC_HEATER_COMMON2.0_6L(2506).xlsx"
+  },
+  {
+    "project": "H25-067_Paragon_Zoom_Cal_Bridge_Board_V1.1",
+    "path": "sample-data/24_25_SOCKET/2025/H25-067_Paragon_Zoom_Cal_Bridge_Board_V1.1",
+    "rawBOM": "H25-067_PARAGON_ZOOM_CAL_BRIDGE_BOARD_V1.1_250602part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-067_PARAGON_ZOOM_CAL_BRIDGE_BOARD_V1.1(2506).xlsx"
+  },
+  {
+    "project": "H25-068_BOI-T_C50_Module_UDT_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-068_BOI-T_C50_Module_UDT_COMMON2.0_6L",
+    "rawBOM": "H25-068_BOI-T_C50_MODULE_UDT_COMMON2.0_6L_250609part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-068_BOI-T_C50_MODULE_UDT_COMMON2.0_6L(2506).xlsx"
+  },
+  {
+    "project": "H25-069_BOI-T_C50_Module_APS_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-069_BOI-T_C50_Module_APS_COMMON2.0_6L",
+    "rawBOM": "H25-069_BOI-T_C50_MODULE_APS_COMMON2.0_6L_250613part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-069_BOI-T_C50_MODULE_APS_COMMON2.0_6L(2506).xlsx"
+  },
+  {
+    "project": "H25-070_BOI-T_C50_Module_Ford_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-070_BOI-T_C50_Module_Ford_COMMON2.0_6L",
+    "rawBOM": "H25-070_BOI-T_C50_MODULE_FORD_COMMON2.0_6L_250612part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-070_BOI-T_C50_MODULE_FORD_COMMON2.0_6L(2506).xlsx"
+  },
+  {
+    "project": "H25-071_BOI-T_C50_Module_Grid_Flare_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-071_BOI-T_C50_Module_Grid_Flare_COMMON2.0_6L",
+    "rawBOM": "H25-071_BOI-T_C50_MODULE_GRID_FLARE_COMMON2.0_6L_250613part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-071_BOI-T_C50_MODULE_GRID_FLARE_COMMON2.0_6L(2506).xlsx"
+  },
+  {
+    "project": "H25-072_MEM-T_C50_Full_Module_manual_SFR_bench(OCT)_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-072_MEM-T_C50_Full_Module_manual_SFR_bench(OCT)_COMMON2.0_6L",
+    "rawBOM": "H25-072_MEM-T_C50_FULL_MODULE_MANUAL_SFR_BENCH(OCT)_COMMON2.0_6L_250611part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-072_MEM-T_C50_FULL_MODULE_MANUAL_SFR_BENCH(OCT)_COMMON2.0_6L(2506).xlsx"
+  },
+  {
+    "project": "H25-073_BOI_Cyclops_Socket_Board_PTM3.2(ADS)_0X0321",
+    "path": "sample-data/24_25_SOCKET/2025/H25-073_BOI_Cyclops_Socket_Board_PTM3.2(ADS)_0X0321",
+    "rawBOM": "H25-073_BOI_CYCLOPS_SOCKET_BOARD_PTM3.2(ADS)_0X0321_250604part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-073_BOI_CYCLOPS_SOCKET_BOARD_PTM3.2(ADS)_0X0321(2506).xlsx"
+  },
+  {
+    "project": "H25-074_AQUA_Module_Inspection_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-074_AQUA_Module_Inspection_Board_V1.0",
+    "rawBOM": "H25-074_AQUA_MODULE_INSPECTION_BOARD_MAIN_V1.0_250616part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-074_AQUA_MODULE_INSPECTION_BOARD_MAIN_V1.0(2506).xlsx"
+  },
+  {
+    "project": "H25-076_MW25_Lens_AA_OS_V1.1",
+    "path": "sample-data/24_25_SOCKET/2025/H25-076_MW25_Lens_AA_OS_V1.1",
+    "rawBOM": "H25-076_MW25_LENS_AA_OS_V1.1_250611part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-076_MW25_LENS_AA_OS_V1.1(2506).xlsx"
+  },
+  {
+    "project": "H25-077_MEM_C40_MA(Cube_Zeus)_Gopher_Side_Pusher_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-077_MEM_C40_MA(Cube_Zeus)_Gopher_Side_Pusher_PTM3.2(ADS)_6L",
+    "rawBOM": "H25-077_MEM_C40_MA(CUBE_ZEUS)_GOPHER_SIDE_PUSHER_PTM3.2(ADS)_6L_250620part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-077_MEM_C40_MA(CUBE_ZEUS)_GOPHER_SIDE_PUSHER_PTM3.2(ADS)_6L(2506).xlsx"
+  },
+  {
+    "project": "H25-078-1_MIRAMAR_FPCB_V6_HALL_TYPE",
+    "path": "sample-data/24_25_SOCKET/2025/H25-078-1_MIRAMAR_FPCB_V6_HALL_TYPE",
+    "rawBOM": "H25-078-1_MIRAMAR_FPCB_V6_HALL_TYPE_250805part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-078-2_MIRAMAR_FPCB_V6_TMR_TYPE(2508).xlsx"
+  },
+  {
+    "project": "H25-078-2_MIRAMAR_FPCB_V6_TMR_TYPE",
+    "path": "sample-data/24_25_SOCKET/2025/H25-078-2_MIRAMAR_FPCB_V6_TMR_TYPE",
+    "rawBOM": "H25-078-2_MIRAMAR_FPCB_V6_TMR_TYPE_250805part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-078-2_MIRAMAR_FPCB_V6_TMR_TYPE(2508).xlsx"
+  },
+  {
+    "project": "H25-079_BWI25_C30_DP_OS_Manual_Dual_Tester_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-079_BWI25_C30_DP_OS_Manual_Dual_Tester_V1.0",
+    "rawBOM": "H25-079_BWI25_C30_DP_OS_MANUAL_DUAL_TESTER_V1.0_250623part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-079_BWI25_C30_DP_OS_MANUAL_DUAL_TESTER_V1.0(2506).xlsx"
+  },
+  {
+    "project": "H25-083_BOI_Cyclops_SFR_Bench_Tester_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-083_BOI_Cyclops_SFR_Bench_Tester_COMMON2.0_6L",
+    "rawBOM": "H25-083_BOI_CYCLOPS_SFR_BENCH_TESTER_COMMON2.0_6L_250701part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-083_BOI_CYCLOPS_SFR_BENCH_TESTER_COMMON2.0_6L(2507).xlsx"
+  },
+  {
+    "project": "H25-084_PH_CAR_AA_Connector_Test_Board",
+    "path": "sample-data/24_25_SOCKET/2025/H25-084_PH_CAR_AA_Connector_Test_Board",
+    "rawBOM": "H25-084_PH_CAR_AA_CONNECTOR_TEST_BOARD_250709part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-084_PH_CAR_AA_CONNECTOR_TEST_BOARD(2507).xlsx"
+  },
+  {
+    "project": "H25-085_Miramar_Main_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-085_Miramar_Main_V1.0",
+    "rawBOM": "H25-085_MIRAMAR_MAIN_V1.0_250730part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-085_MIRAMAR_MAIN_V1.0(2508).xlsx"
+  },
+  {
+    "project": "H25-086_AQUA_MASTER_SENSOR_SOCKET_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-086_AQUA_MASTER_SENSOR_SOCKET_V1.0",
+    "rawBOM": "H25-086_AQUA_MASTER_SENSOR_SOCKET_V1.0_250710part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-086_AQUA_MASTER_SENSOR_SOCKET_V1.0(2507).xlsx"
+  },
+  {
+    "project": "H25-087_AQUA_PRISM_SENSOR_SOCKET_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-087_AQUA_PRISM_SENSOR_SOCKET_V1.0",
+    "rawBOM": "H25-087_AQUA_PRISM_SENSOR_SOCKET_V1.0_250710part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-087_AQUA_PRISM_SENSOR_SOCKET_V1.0(2507).xlsx"
+  },
+  {
+    "project": "H25-088_LGIT_SAA_SBN_Socket_Board_V1.0(회로수정-재발주X)",
+    "path": "sample-data/24_25_SOCKET/2025/H25-088_LGIT_SAA_SBN_Socket_Board_V1.0(회로수정-재발주X)",
+    "rawBOM": "H25-088_LGIT_SAA_SBN_SOCKET_BOARD_V1.0_250721part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-088_LGIT_SAA_SBN_SOCKET_BOARD_V1.0(2507).xlsx"
+  },
+  {
+    "project": "H25-089_LGIT_OIS_Tester_SBN_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-089_LGIT_OIS_Tester_SBN_V1.0",
+    "rawBOM": "H25-089_LGIT_OIS_TESTER_SBN_V1.0_250724part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-089_LGIT_OIS_TESTER_SBN_V1.0(2507).xlsx"
+  },
+  {
+    "project": "H25-091_Paragon_Zoom_Cal_Manual_Main_V1.3",
+    "path": "sample-data/24_25_SOCKET/2025/H25-091_Paragon_Zoom_Cal_Manual_Main_V1.3",
+    "rawBOM": "H25-091_PARAGON_ZOOM_CAL_MANUAL_MAIN_V1.3_250722part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-091_PARAGON_ZOOM_CAL_MANUAL_MAIN_V1.3(2507).xlsx"
+  },
+  {
+    "project": "H25-094_Miramar_Top_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-094_Miramar_Top_Board_V1.0",
+    "rawBOM": "H25-094_MIRAMAR_TOP_BOARD_V1.0_250728part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-094_MIRAMAR_TOP_BOARD_V1.0(2508).xlsx"
+  },
+  {
+    "project": "H25-095_Miramar_Bottom_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-095_Miramar_Bottom_Board_V1.0",
+    "rawBOM": "H25-095_MIRAMAR_BOTTOM_BOARD_V1.0part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-095_MIRAMAR_BOTTOM_BOARD_V1.0(2508).xlsx"
+  },
+  {
+    "project": "H25-097_AQUA_Module_Inspection_Board_main_V1.1",
+    "path": "sample-data/24_25_SOCKET/2025/H25-097_AQUA_Module_Inspection_Board_main_V1.1",
+    "rawBOM": "H25-097_AQUA_MODULE_INSPECTION_BOARD_MAIN_V1.1_250801part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-097_AQUA_MODULE_INSPECTION_BOARD_MAIN_V1.1(2508).xlsx"
+  },
+  {
+    "project": "H25-099_MEM26_C50_RTV_Triple_UDT_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-099_MEM26_C50_RTV_Triple_UDT_COMMON2.0_6L",
+    "rawBOM": "H25-099_MEM26_C50_RTV_TRIPLE_UDT_COMMON2.0_6L_250807part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-099_MEM26_C50_RTV_TRIPLE_UDT_COMMON2.0_6L(2508).xlsx"
+  },
+  {
+    "project": "H25-100_AQUA_PRISM_SENSOR_SOCKET_V1.1",
+    "path": "sample-data/24_25_SOCKET/2025/H25-100_AQUA_PRISM_SENSOR_SOCKET_V1.1",
+    "rawBOM": "H25-100_AQUA_PRISM_SENSOR_SOCKET_V1.1_250804part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-100_AQUA_PRISM_SENSOR_SOCKET_V1.1(2508).xlsx"
+  },
+  {
+    "project": "H25-103_Miramar_A9.0_Adapter_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-103_Miramar_A9.0_Adapter_Board_V1.0",
+    "rawBOM": "H25-103_MIRAMAR_A9.0_ADAPTER_BOARD_V1.0_250812part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-103_MIRAMAR_A9.0_ADAPTER_BOARD_V1.0(2508).xlsx"
+  },
+  {
+    "project": "H25-104_BOI_C50_Module_Type_Harrison_Manual_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-104_BOI_C50_Module_Type_Harrison_Manual_V1.0",
+    "rawBOM": "H25-104_BOI_C50_MODULE_TYPE_HARRISON_MANUAL_V1.0_250820part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-104_BOI_C50_MODULE_TYPE_HARRISON_MANUAL_V1.0(2508).xlsx"
+  },
+  {
+    "project": "H25-105_BOI_C40_Cube_Updown_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-105_BOI_C40_Cube_Updown_COMMON2.0_6L",
+    "rawBOM": "H25-105_BOI_C40_CUBE_UPDOWN_COMMON2.0_6L_250828part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-105_BOI_C40_CUBE_UPDOWN_COMMON2.0_6L(2509).xlsx"
+  },
+  {
+    "project": "H25-106_BOI_C40_FORD_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-106_BOI_C40_FORD_COMMON2.0_6L",
+    "rawBOM": "H25-106_BOI_C40_FORD_COMMON2.0_6L_250904part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-106_BOI_C40_FORD_COMMON2.0_6L(2509).xlsx"
+  },
+  {
+    "project": "H25-107_BOI_C40_Grid_Flare_Cube_PTM3.2(ADS)_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-107_BOI_C40_Grid_Flare_Cube_PTM3.2(ADS)_6L",
+    "rawBOM": "H25-107_BOI_C40_GRID_FLARE_CUBE_PTM3.2(ADS)_6L_250904part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-107_BOI_C40_GRID_FLARE_CUBE_PTM3.2(ADS)_6L(2509).xlsx"
+  },
+  {
+    "project": "H25-109_BOI_C40_Cube_APS_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-109_BOI_C40_Cube_APS_COMMON2.0_6L",
+    "rawBOM": "H25-109_BOI_C40_CUBE_APS_COMMON2.0_6L_250903part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-109_BOI_C40_CUBE_APS_COMMON2.0_6L(2509).xlsx"
+  },
+  {
+    "project": "H25-111-1_LGIT_AQUA_PJT_Side_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-111-1_LGIT_AQUA_PJT_Side_Board_V1.0",
+    "rawBOM": "H25-111_LGIT_AQUA_PJT_BOARD_V1.0_251001part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-111_LGIT_AQUA_PJT_BOARD_V1.0(2510).xlsx"
+  },
+  {
+    "project": "H25-112_Miramar_Dual_Meissner_Gender_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-112_Miramar_Dual_Meissner_Gender_Board_V1.0",
+    "rawBOM": "H25-112_Miramar_Dual_Meissner_Gender_Board_V1.0_250911part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-112_Miramar_Dual_Meissner_Gender_Board_V1.0(2509).xlsx"
+  },
+  {
+    "project": "H25-113_Paragon_Module_AA_Side_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-113_Paragon_Module_AA_Side_Board_V1.0",
+    "rawBOM": "H25-113_PARAGON_MODULE_AA_SIDE_BOARD_V1.0_250911part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-113_PARAGON_MODULE_AA_SIDE_BOARD_V1.0(2509).xlsx"
+  },
+  {
+    "project": "H25-115_MEM-T_C40_Full_Module_Auto_UDT_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-115_MEM-T_C40_Full_Module_Auto_UDT_COMMON2.0_6L",
+    "rawBOM": "H25-115_MEM-T_C40_FULL_MODULE_AUTO_UDT_COMMON2.0_6L_250912part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-115_MEM-T_C40_FULL_MODULE_AUTO_UDT_COMMON2.0_6L(2509).xlsx"
+  },
+  {
+    "project": "H25-116_MEM-T_C40_Full_Module_Manual_UDT_Common2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-116_MEM-T_C40_Full_Module_Manual_UDT_Common2.0_6L",
+    "rawBOM": "H25-116_MEM-T_C40_FULL_MODULE_MANUAL_UDT_COMMON2.0_6L_250923part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-116_MEM-T_C40_FULL_MODULE_MANUAL_UDT_COMMON2.0_6L(2509).xlsx"
+  },
+  {
+    "project": "H25-118_BOI-T_C40_Ford_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-118_BOI-T_C40_Ford_COMMON2.0_6L",
+    "rawBOM": "H25-118_BOI-T_C40_FORD_COMMON2.0_6L_250929part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-118_BOI-T_C40_FORD_COMMON2.0_6L(2509).xlsx"
+  },
+  {
+    "project": "H25-119_BOI-T_C40_UDT_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-119_BOI-T_C40_UDT_COMMON2.0_6L",
+    "rawBOM": "H25-119_BOI-T_C40_UDT_COMMON2.0_6L_250929part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-119_BOI-T_C40_UDT_COMMON2.0_6L(2509).xlsx"
+  },
+  {
+    "project": "H25-120_BOI-T_C40_APS_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-120_BOI-T_C40_APS_COMMON2.0_6L",
+    "rawBOM": "H25-120_BOI-T_C40_APS_COMMON2.0_6L_250929part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-120_BOI-T_C40_APS_COMMON2.0_6L(2509).xlsx"
+  },
+  {
+    "project": "H25-121_BOI-T_C40_Grid_Flare_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-121_BOI-T_C40_Grid_Flare_COMMON2.0_6L",
+    "rawBOM": "H25-121_BOI-T_C40_GRID_FLARE_COMMON2.0_6L_250929part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-121_BOI-T_C40_GRID_FLARE_COMMON2.0_6L(2510).xlsx"
+  },
+  {
+    "project": "H25-124-1_Miltestone_Home_IOT_Doorbell_1st_CM_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-124-1_Miltestone_Home_IOT_Doorbell_1st_CM_Board_V1.0",
+    "rawBOM": "H25-124-1_MILTESTONE_HOME_IOT_DOORBELL_1ST_CM_BOARD_V1.0_251021part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-124-1_MILTESTONE_HOME_IOT_DOORBELL_1ST_CM_BOARD_V1.0(2510).xlsx"
+  },
+  {
+    "project": "H25-124-2_Miltestone_Home_IOT_Indoor_CM_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-124-2_Miltestone_Home_IOT_Indoor_CM_Board_V1.0",
+    "rawBOM": "H25-124-2_MILTESTONE_HOME_IOT_INDOOR_CM_BOARD_V1.0_251023part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-124-2_MILTESTONE_HOME_IOT_INDOOR_CM_BOARD_V1.0(2510).xlsx"
+  },
+  {
+    "project": "H25-124-3_Miltestone_Home_IOT_Outdoor_CM_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-124-3_Miltestone_Home_IOT_Outdoor_CM_Board_V1.0",
+    "rawBOM": "H25-124-3_MILTESTONE_HOME_IOT_OUTDOOR_CM_BOARD_V1.0_251021part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-124-3_MILTESTONE_HOME_IOT_OUTDOOR_CM_BOARD_V1.0(2510).xlsx"
+  },
+  {
+    "project": "H25-126_BOI_C50_Triple_Type_APS_COMMON2.0_6L",
+    "path": "sample-data/24_25_SOCKET/2025/H25-126_BOI_C50_Triple_Type_APS_COMMON2.0_6L",
+    "rawBOM": "H25-126_BOI_C50_TRIPLE_TYPE_APS_COMMON2.0_6L_251021part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-126_BOI_C50_TRIPLE_TYPE_APS_COMMON2.0_6L(2510).xlsx"
+  },
+  {
+    "project": "H25-127-1_BOI_C40_UAVI_M_L_Socket_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-127-1_BOI_C40_UAVI_M_L_Socket_Board_V1.0",
+    "rawBOM": "H25-127-1_BOI_C40_UAVI_M_L_SOCKET_BOARD_V1.0_251111part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-127-1_BOI_C40_UAVI_M_L_SOCKET_BOARD_V1.0(2511).xlsx"
+  },
+  {
+    "project": "H25-127-2_BOI_C40_UAVI_M_R_Socket_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-127-2_BOI_C40_UAVI_M_R_Socket_Board_V1.0",
+    "rawBOM": "H25-127-2_BOI_C40_UAVI_M_R_SOCKET_BOARD_V1.0_251111part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-127-2_BOI_C40_UAVI_M_R_SOCKET_BOARD_V1.0(2511).xlsx"
+  },
+  {
+    "project": "H25-128-1_Miltestone_Home_IOT_Doorbell_2nd_CM_BOT_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-128-1_Miltestone_Home_IOT_Doorbell_2nd_CM_BOT_Board_V1.0",
+    "rawBOM": "H25-128-1_MILTESTONE_HOME_IOT_DOORBELL_2ND_CM_BOT_BOARD_V1.0_251105part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-128-1_MILTESTONE_HOME_IOT_DOORBELL_2ND_CM_BOT_BOARD_V1.0(2510).xlsx"
+  },
+  {
+    "project": "H25-129-1_Smart_Home_IOT_AA_Doorbell_1st_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-129-1_Smart_Home_IOT_AA_Doorbell_1st_Board_V1.0",
+    "rawBOM": "H25-129-1_SMART_HOME_IOT_AA_DOORBELL_1ST_BOARD_V1.0_251114part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-129-1_SMART_HOME_IOT_AA_DOORBELL_1ST_BOARD_V1.0(2511).xlsx"
+  },
+  {
+    "project": "H25-129-2_Smart_Home_IOT_AA_Indoor_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-129-2_Smart_Home_IOT_AA_Indoor_Board_V1.0",
+    "rawBOM": "H25-129-2_SMART_HOME_IOT_AA_INDOOR_BOARD_V1.0_251114part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-129-2_SMART_HOME_IOT_AA_INDOOR_BOARD_V1.0(2511).xlsx"
+  },
+  {
+    "project": "H25-129-3_Smart_Home_IOT_AA_Outdoor_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-129-3_Smart_Home_IOT_AA_Outdoor_Board_V1.0",
+    "rawBOM": "H25-129-3_SMART_HOME_IOT_AA_OUTDOOR_BOARD_V1.0_251114part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-129-3_SMART_HOME_IOT_AA_OUTDOOR_BOARD_V1.0(2511).xlsx"
+  },
+  {
+    "project": "H25-133_LGIT_SAA_C61_SBN_Socket_Board_V1.0",
+    "path": "sample-data/24_25_SOCKET/2025/H25-133_LGIT_SAA_C61_SBN_Socket_Board_V1.0",
+    "rawBOM": "H25-133_LGIT_SAA_C61_SBN_SOCKET_BOARD_V1.0_251119part.BOM.xlsx",
+    "coordinate": null,
+    "cleaned": "H25-133_LGIT_SAA_C61_SBN_SOCKET_BOARD_V1.0(2511).xlsx"
+  },
+  {
+    "project": "Lumiere_MCU_GENDER_V1.0_250122(한대별)",
+    "path": "sample-data/24_25_SOCKET/2025/Lumiere_MCU_GENDER_V1.0_250122(한대별)",
+    "rawBOM": "Lumiere_MCU_GENDER_V1.0_250124Part.bom.xls",
+    "coordinate": null,
+    "cleaned": "Lumiere_MCU_GENDER_V1.0(2501).xls"
+  }
+]

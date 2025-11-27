@@ -7,7 +7,8 @@ import {
   FileText,
   X,
   MessageCircle,
-  Receipt
+  Receipt,
+  Package
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -62,6 +63,12 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
       label: '직원 관리',
       href: '/employee',
       icon: Users,
+      roles: ['all']
+    },
+    {
+      label: 'BOM/좌표 정리',
+      href: '/bom-coordinate',
+      icon: Package,
       roles: ['all']
     }
   ]

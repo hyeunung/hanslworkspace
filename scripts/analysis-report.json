@@ -1,0 +1,4723 @@
+{
+  "totalFiles": 346,
+  "patterns": {
+    "unknown": {
+      "count": 344,
+      "samples": [
+        {
+          "fileName": "H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0(2401).xlsx",
+          "filePath": "sample-data/24_25_SOCKET/2024/H24-001_VR-L(R43B)_C50_UPDOWN_Flexible_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V2.0/H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0(2401).xlsx",
+          "signature": null,
+          "headerInfo": {}
+        },
+        {
+          "fileName": "H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0(2401)_dup.xlsx",
+          "filePath": "sample-data/24_25_SOCKET/2024/H24-001_VR-L(R43B)_C50_UPDOWN_Flexible_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V2.0/H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0(2401)_dup.xlsx",
+          "signature": null,
+          "headerInfo": {}
+        },
+        {
+          "fileName": "H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0_240116part.xlsx",
+          "filePath": "sample-data/24_25_SOCKET/2024/H24-001_VR-L(R43B)_C50_UPDOWN_Flexible_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V2.0/H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0_240116part.xlsx",
+          "signature": null,
+          "headerInfo": {}
+        }
+      ]
+    },
+    "P-CAD": {
+      "count": 1,
+      "samples": [
+        {
+          "fileName": "H25-133_LGIT_SAA_C61_SBN_Socket_Board_V1.0 좌표.xlsx",
+          "filePath": "sample-data/24_25_SOCKET/2025/H25-133_LGIT_SAA_C61_SBN_Socket_Board_V1.0/H25-133_LGIT_SAA_C61_SBN_Socket_Board_V1.0 좌표.xlsx",
+          "signature": "P-CAD Pick and Place",
+          "headerInfo": {}
+        }
+      ]
+    }
+  },
+  "fileDetails": [
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-001_VR-L(R43B)_C50_UPDOWN_Flexible_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V2.0/H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0(2401).xlsx",
+      "fileName": "H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0(2401).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-001_VR-L(R43B)_C50_UPDOWN_F",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-001_VR-L(R43B)_C50_UPDOWN_Flexible_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V2.0/H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0(2401)_dup.xlsx",
+      "fileName": "H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0(2401)_dup.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-001_VR-L(R43B)_C50_UPDOWN_F",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-001_VR-L(R43B)_C50_UPDOWN_Flexible_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V2.0/H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0_240116part.xlsx",
+      "fileName": "H24-001_VR-L(R43B)_C50_UPDOWN_FLEXIBLE_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V2.0_240116part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-001_VR-L(R43B)_C50_UPDOWN_F"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-002_MEM(R53B)_C60_UPDOWN_Zeus_Test_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1/H24-002_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1(2401).xlsx",
+      "fileName": "H24-002_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1(2401).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-002_MEM(R53B)_C60_UPDOWN_ZE",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-002_MEM(R53B)_C60_UPDOWN_Zeus_Test_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1/H24-002_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1_240118part.xlsx",
+      "fileName": "H24-002_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1_240118part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-002_MEM(R53B)_C60_UPDOWN_ZE"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-004_MEM(R53B)_C60_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L_0x0321/H24-004_MEM(R53B)_C60_PRISM_LCB_TESTER_PTM3.2(ADS)_ARM3.1_6L_0X0321(2401).xlsx",
+      "fileName": "H24-004_MEM(R53B)_C60_PRISM_LCB_TESTER_PTM3.2(ADS)_ARM3.1_6L_0X0321(2401).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-004_MEM(R53B)_C60_PRISM_LCB",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-004_MEM(R53B)_C60_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L_0x0321/H24-004_MEM(R53B)_C60_PRISM_LCB_TESTER_PTM3.2(ADS)_ARM3.1_6L_0X0321part.xlsx",
+      "fileName": "H24-004_MEM(R53B)_C60_PRISM_LCB_TESTER_PTM3.2(ADS)_ARM3.1_6L_0X0321part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-004_MEM(R53B)_C60_PRISM_LCB"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-005_VR-L(R43B)_C50_UPDOWN_Final_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1/H24-005_VR-L(R43B)_C50_UPDOWN_FINAL_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1(2401).xlsx",
+      "fileName": "H24-005_VR-L(R43B)_C50_UPDOWN_FINAL_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1(2401).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-005_VR-L(R43B)_C50_UPDOWN_F",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-005_VR-L(R43B)_C50_UPDOWN_Final_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1/H24-005_VR-L(R43B)_C50_UPDOWN_FINAL_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1_240130part.xlsx",
+      "fileName": "H24-005_VR-L(R43B)_C50_UPDOWN_FINAL_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1_240130part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-005_VR-L(R43B)_C50_UPDOWN_F"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-006_VR-R(R44B)_C50_UPDOWN_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1/H24-006_VR-R(R44B)_C50_UPDOWN_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1(2401).xlsx",
+      "fileName": "H24-006_VR-R(R44B)_C50_UPDOWN_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1(2401).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-006_VR-R(R44B)_C50_UPDOWN_A",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-006_VR-R(R44B)_C50_UPDOWN_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1/H24-006_VR-R(R44B)_C50_UPDOWN_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1_240130part.xlsx",
+      "fileName": "H24-006_VR-R(R44B)_C50_UPDOWN_AUTO_PTM3.2(ADC)_COMMON2.0_6L_0X0320_V1.1_240130part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-006_VR-R(R44B)_C50_UPDOWN_A"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-007_LGIT_New_SAA_R33C_PDX_Rubber_C5.0_V1.0/H24-007_LGIT_New_SAA_R33C_PDX_Rubber_C5.0_V1.0(2401).xlsx",
+      "fileName": "H24-007_LGIT_New_SAA_R33C_PDX_Rubber_C5.0_V1.0(2401).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-007_LGIT_New_SAA_R33C_PDX_R",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-007_LGIT_New_SAA_R33C_PDX_Rubber_C5.0_V1.0/H24-007_LGIT_New_SAA_R33C_PDX_Rubber_C5.0_V1.0_bom_240130.xlsx",
+      "fileName": "H24-007_LGIT_New_SAA_R33C_PDX_Rubber_C5.0_V1.0_bom_240130.xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "bom",
+        "좌표",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-008_MEM(R53B)_C60_APS_Cube(Zeus)_Test_PTM3.2(ADS)_6L_0x0321/H24-008_MEM(R53B)_C60_APS_CUBE(ZEUS)_TEST_PTM3.2(ADS)_6L_0X0321(2402).xlsx",
+      "fileName": "H24-008_MEM(R53B)_C60_APS_CUBE(ZEUS)_TEST_PTM3.2(ADS)_6L_0X0321(2402).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-008_MEM(R53B)_C60_APS_CUBE(",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-008_MEM(R53B)_C60_APS_Cube(Zeus)_Test_PTM3.2(ADS)_6L_0x0321/H24-008_MEM(R53B)_C60_APS_CUBE(ZEUS)_TEST_PTM3.2(ADS)_6L_0X0321_240202part.xlsx",
+      "fileName": "H24-008_MEM(R53B)_C60_APS_CUBE(ZEUS)_TEST_PTM3.2(ADS)_6L_0X0321_240202part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-008_MEM(R53B)_C60_APS_CUBE("
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-009_Centaur_VSA_C6.0_OS_Manual_Tester_V1.0/H24-009_Centaur_VSA_C6.0_OS_Manual_Tester_V1.0(2402).xlsx",
+      "fileName": "H24-009_Centaur_VSA_C6.0_OS_Manual_Tester_V1.0(2402).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-009_Centaur_VSA_C6.0_OS_Man",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-010_MEM(R53B)_C60_UPDOWN_Zeus_Test_COMMON2.0_6L/H24-010_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_COMMON2.0_6L(2402).xlsx",
+      "fileName": "H24-010_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_COMMON2.0_6L(2402).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-010_MEM(R53B)_C60_UPDOWN_ZE",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-010_MEM(R53B)_C60_UPDOWN_Zeus_Test_COMMON2.0_6L/H24-010_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_COMMON2.0_6L_240221part.xlsx",
+      "fileName": "H24-010_MEM(R53B)_C60_UPDOWN_ZEUS_TEST_COMMON2.0_6L_240221part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-010_MEM(R53B)_C60_UPDOWN_ZE"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-011_MEM(R53B)_C6.1_SFR_Bench_Zeus_Test_COMMON2.0_6L/H24-011_MEM(R53B) C6.1 SFR BENCH_ZEUS_TEST_COMMON2.0_6L(2402).xlsx",
+      "fileName": "H24-011_MEM(R53B) C6.1 SFR BENCH_ZEUS_TEST_COMMON2.0_6L(2402).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-011_MEM(R53B) C6.1 SFR BENC",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-011_MEM(R53B)_C6.1_SFR_Bench_Zeus_Test_COMMON2.0_6L/H24-011_MEM(R53B) C6.1 SFR BENCH_ZEUS_TEST_COMMON2.0_6L_240228part.xlsx",
+      "fileName": "H24-011_MEM(R53B) C6.1 SFR BENCH_ZEUS_TEST_COMMON2.0_6L_240228part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-011_MEM(R53B) C6.1 SFR BENC"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-012_MEM(R53B)_C6.0_SFR_Bench_Module_Test_COMMON2.0_6L/H24-012_MEM(R53B)_C6.0_SFR_BENCH_MODULE_TEST_COMMON2.0_6L(2402).xlsx",
+      "fileName": "H24-012_MEM(R53B)_C6.0_SFR_BENCH_MODULE_TEST_COMMON2.0_6L(2402).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-012_MEM(R53B)_C6.0_SFR_BENC",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-012_MEM(R53B)_C6.0_SFR_Bench_Module_Test_COMMON2.0_6L/H24-012_MEM(R53B)_C6.0_SFR_BENCH_MODULE_TEST_COMMON2.0_6L_240228part.xlsx",
+      "fileName": "H24-012_MEM(R53B)_C6.0_SFR_BENCH_MODULE_TEST_COMMON2.0_6L_240228part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-012_MEM(R53B)_C6.0_SFR_BENC"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-015_MEM(R53B)_C61_Full_Module_UDT_COMMON2.0_6L/H24-015_MEM(R53B)_C61_FULL_MODULE_UDT_COMMON2.0_6L(2403).xlsx",
+      "fileName": "H24-015_MEM(R53B)_C61_FULL_MODULE_UDT_COMMON2.0_6L(2403).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-015_MEM(R53B)_C61_Full_Modu",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-015_MEM(R53B)_C61_Full_Module_UDT_COMMON2.0_6L/H24-015_MEM(R53B)_C61_FULL_MODULE_UDT_COMMON2.0_6L_240318part.xlsx",
+      "fileName": "H24-015_MEM(R53B)_C61_FULL_MODULE_UDT_COMMON2.0_6L_240318part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-015_MEM(R53B)_C61_FULL_MODU"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-016_MEM(R53B)_C61_Zeus_Iguana_PTM3.2(ADS)_6L/H24-016_MEM(R53B)_C61_ZEUS_IGUANA_PTM3.2(ADS)_6L(2403).xlsx",
+      "fileName": "H24-016_MEM(R53B)_C61_ZEUS_IGUANA_PTM3.2(ADS)_6L(2403).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-016_MEM(R53B)_C61_ZEUS_IGUA",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-016_MEM(R53B)_C61_Zeus_Iguana_PTM3.2(ADS)_6L/H24-016_MEM(R53B)_C61_ZEUS_IGUANA_PTM3.2(ADS)_6L_240312part.xlsx",
+      "fileName": "H24-016_MEM(R53B)_C61_ZEUS_IGUANA_PTM3.2(ADS)_6L_240312part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-016_MEM(R53B)_C61_ZEUS_IGUA"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-017_MEM(R53B)_C61_APS_Zeus_PTM3.2(ADS)_6L/H24-017_MEM(R53B)_C61_APS_ZEUS_PTM3.2(ADS)_6L(2403).xlsx",
+      "fileName": "H24-017_MEM(R53B)_C61_APS_ZEUS_PTM3.2(ADS)_6L(2403).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-017_MEM(R53B)_C61_APS_ZEUS_",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-017_MEM(R53B)_C61_APS_Zeus_PTM3.2(ADS)_6L/H24-017_MEM(R53B)_C61_APS_ZEUS_PTM3.2(ADS)_6L_240313part.xlsx",
+      "fileName": "H24-017_MEM(R53B)_C61_APS_ZEUS_PTM3.2(ADS)_6L_240313part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-017_MEM(R53B)_C61_APS_ZEUS_"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-018_MEM(R53B)_C61_Module(Flex)_OCT_Manual_COMMON2.0_6L/H24-018_MEM(R53B)_C61_MODULE(FLEX)_OCT_MANUAL_COMMON2.0_6L(2403).xlsx",
+      "fileName": "H24-018_MEM(R53B)_C61_MODULE(FLEX)_OCT_MANUAL_COMMON2.0_6L(2403).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-018_MEM(R53B)_C61_MODULE(FL",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-018_MEM(R53B)_C61_Module(Flex)_OCT_Manual_COMMON2.0_6L/H24-018_MEM(R53B)_C61_MODULE(FLEX)_OCT_MANUAL_COMMON2.0_6L_240320part.xlsx",
+      "fileName": "H24-018_MEM(R53B)_C61_MODULE(FLEX)_OCT_MANUAL_COMMON2.0_6L_240320part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-018_MEM(R53B)_C61_MODULE(FL"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-019_BWI_OS_Manual_Main_V1.0/H24-019_BWI_OS_MANUAL_MAIN_V1.0(2404).xlsx",
+      "fileName": "H24-019_BWI_OS_MANUAL_MAIN_V1.0(2404).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-019_BWI_OS_MANUAL_MAIN_V1.0",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-019_BWI_OS_Manual_Main_V1.0/H24-019_BWI_OS_MANUAL_MAIN_V1.0_240402part.xlsx",
+      "fileName": "H24-019_BWI_OS_MANUAL_MAIN_V1.0_240402part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-019_BWI_OS_MANUAL_MAIN_V1.0"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-021_MEM(R53B)_C61_Zeus_Iguana_FA&SW_PTM3.2(ADS)_6L/H24-021_MEM(R53B)_C61_ZEUS_IGUANA_FA&SW_PTM3.2(ADS)_6L(2404).xlsx",
+      "fileName": "H24-021_MEM(R53B)_C61_ZEUS_IGUANA_FA&SW_PTM3.2(ADS)_6L(2404).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-021_MEM(R53B)_C61_ZEUS_IGUA",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-021_MEM(R53B)_C61_Zeus_Iguana_FA&SW_PTM3.2(ADS)_6L/H24-021_MEM(R53B)_C61_ZEUS_IGUANA_FA&SW_PTM3.2(ADS)_6L_240402part.xlsx",
+      "fileName": "H24-021_MEM(R53B)_C61_ZEUS_IGUANA_FA&SW_PTM3.2(ADS)_6L_240402part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-021_MEM(R53B)_C61_ZEUS_IGUA"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-023_MEM(R53B)_C61_Full_Module_Lag-cal_PTM3.2(ADS)_6L/H24-023_MEM(R53B)_C61_FULL_MODULE_LAG-CAL_PTM3.2(ADS)_6L(2404).xlsx",
+      "fileName": "H24-023_MEM(R53B)_C61_FULL_MODULE_LAG-CAL_PTM3.2(ADS)_6L(2404).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-023_MEM(R53B)_C61_FULL_MODU",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-023_MEM(R53B)_C61_Full_Module_Lag-cal_PTM3.2(ADS)_6L/H24-023_MEM(R53B)_C61_FULL_MODULE_LAG-CAL_PTM3.2(ADS)_6L_240416part.xlsx",
+      "fileName": "H24-023_MEM(R53B)_C61_FULL_MODULE_LAG-CAL_PTM3.2(ADS)_6L_240416part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-023_MEM(R53B)_C61_FULL_MODU"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-025_MEM(R53B)-F_C61_MA_TEC_Test_S.P_PTM3.2(ADS)_6L/H24-025_MEM(R53B)-F_C61_MA_TEC_TEST_S.P_PTM3.2(ADS)_6L(2404).xlsx",
+      "fileName": "H24-025_MEM(R53B)-F_C61_MA_TEC_TEST_S.P_PTM3.2(ADS)_6L(2404).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-025_MEM(R53B)-F_C61_MA_TEC_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-025_MEM(R53B)-F_C61_MA_TEC_Test_S.P_PTM3.2(ADS)_6L/H24-025_MEM(R53B)-F_C61_MA_TEC_TEST_S.P_PTM3.2(ADS)_6L_240424part.xlsx",
+      "fileName": "H24-025_MEM(R53B)-F_C61_MA_TEC_TEST_S.P_PTM3.2(ADS)_6L_240424part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-025_MEM(R53B)-F_C61_MA_TEC_"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-028_MEM-k(54B)_C50_Gopher_Arthur_Cube_PTM3.2(ADS)_6L/H24-028_MEM-K(54B)_C50_GOPHER_Arthur_CUBE_PTM3.2(ADS)_6L_240510part.xlsx",
+      "fileName": "H24-028_MEM-K(54B)_C50_GOPHER_Arthur_CUBE_PTM3.2(ADS)_6L_240510part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-028_MEM-K(54B)_C50_GOPHER_A"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-028_MEM-k(54B)_C50_Gopher_Arthur_Cube_PTM3.2(ADS)_6L/H24-028_MEM-k(54B)_C50_Gopher_Arthur_Cube_PTM3.2(ADS)_6L(2405).xlsx",
+      "fileName": "H24-028_MEM-k(54B)_C50_Gopher_Arthur_Cube_PTM3.2(ADS)_6L(2405).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-028_MEM-k(54B)_C50_Gopher_A",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-029_LGIT_SAA_25Y_CHS-S_V1.0/H24-029_LGIT_SAA_25Y_CHS-S_V1.0(2405).xls",
+      "fileName": "H24-029_LGIT_SAA_25Y_CHS-S_V1.0(2405).xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-029_LGIT_SAA_25Y_CHS-S_V1.0/H24-029_LGIT_SAA_25Y_CHS-S_V1.0[좌표]_240514.xls",
+      "fileName": "H24-029_LGIT_SAA_25Y_CHS-S_V1.0[좌표]_240514.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-029_LGIT_SAA_25Y_CHS-S_V1.0/H24-029_LGIT_SAA_25Y_CHS-S_V1.0_240513.bom.xls",
+      "fileName": "H24-029_LGIT_SAA_25Y_CHS-S_V1.0_240513.bom.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-030_LGIT_SAA_25Y_CHS-Z_V1.0/H24-030_LGIT_SAA_25Y_CHS-Z_V1.0(2405).xls",
+      "fileName": "H24-030_LGIT_SAA_25Y_CHS-Z_V1.0(2405).xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-030_LGIT_SAA_25Y_CHS-Z_V1.0/H24-030_LGIT_SAA_25Y_CHS-Z_V1.0[좌표]_240514.xls",
+      "fileName": "H24-030_LGIT_SAA_25Y_CHS-Z_V1.0[좌표]_240514.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-030_LGIT_SAA_25Y_CHS-Z_V1.0/H24-030_LGIT_SAA_25Y_CHS-Z_V1.0_240513.bom.xls",
+      "fileName": "H24-030_LGIT_SAA_25Y_CHS-Z_V1.0_240513.bom.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-031_BWI25_Z-CAL_CUBE_OS_AUTO_C5.0-L_V1.0/H24-031&32_BWI25_Z-CAL_CUBE_OS_AUTO_C5.0-L&R_V1.0(2405).xlsx",
+      "fileName": "H24-031&32_BWI25_Z-CAL_CUBE_OS_AUTO_C5.0-L&R_V1.0(2405).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-031&32_BWI25_Z-CAL_CUBE_OS_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-031_BWI25_Z-CAL_CUBE_OS_AUTO_C5.0-L_V1.0/H24-031&32_BWI25_Z-CAL_CUBE_OS_AUTO_C5.0-L&R_V1.0_240510part.xlsx",
+      "fileName": "H24-031&32_BWI25_Z-CAL_CUBE_OS_AUTO_C5.0-L&R_V1.0_240510part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-031&32_BWI25_Z-CAL_CUBE_OS_"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-033_BWI25_C5.0_Z-CAL_Cube_Manual_Main_V1.0/H24-033_BWI25_C5.0_Z-CAL_CUBE_MANUAL_MAIN_V1.0(2405).xlsx",
+      "fileName": "H24-033_BWI25_C5.0_Z-CAL_CUBE_MANUAL_MAIN_V1.0(2405).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-033_BWI25_C5.0_Z-CAL_CUBE_M",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-033_BWI25_C5.0_Z-CAL_Cube_Manual_Main_V1.0/H24-033_BWI25_C5.0_Z-CAL_CUBE_MANUAL_MAIN_V1.0_240520part.xlsx",
+      "fileName": "H24-033_BWI25_C5.0_Z-CAL_CUBE_MANUAL_MAIN_V1.0_240520part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-033_BWI25_C5.0_Z-CAL_CUBE_M"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-035_MEM(R53B)_C61_TRIPLE_RTV_UPDOWN_COMMON2.0_6L/H24-035_MEM(R53B)_C61_TRIPLE_RTV_UPDOWN_COMMON2.0_6L(2405).xlsx",
+      "fileName": "H24-035_MEM(R53B)_C61_TRIPLE_RTV_UPDOWN_COMMON2.0_6L(2405).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-035_MEM(R53B)_C61_TRIPLE_RT",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-035_MEM(R53B)_C61_TRIPLE_RTV_UPDOWN_COMMON2.0_6L/H24-035_MEM(R53B)_C61_TRIPLE_RTV_UPDOWN_COMMON2.0_6L_(2405).xlsx",
+      "fileName": "H24-035_MEM(R53B)_C61_TRIPLE_RTV_UPDOWN_COMMON2.0_6L_(2405).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-035_MEM(R53B)_C61_TRIPLE_RT",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-035_MEM(R53B)_C61_TRIPLE_RTV_UPDOWN_COMMON2.0_6L/H24-035_MEM(R53B)_C61_TRIPLE_RTV_UPDOWN_COMMON2.0_6L_240530part.xlsx",
+      "fileName": "H24-035_MEM(R53B)_C61_TRIPLE_RTV_UPDOWN_COMMON2.0_6L_240530part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-035_MEM(R53B)_C61_TRIPLE_RT"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-036_MW25_C50_Cube_Z-CAL_OS_Board_POGO_L_V1.0/H24-036&37_MW25_C50_CUBE_Z-CAL_OS_BOARD_POGO_L&R_V1.0(2406).xlsx",
+      "fileName": "H24-036&37_MW25_C50_CUBE_Z-CAL_OS_BOARD_POGO_L&R_V1.0(2406).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-036&37_MW25_C50_CUBE_Z-CAL_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-036_MW25_C50_Cube_Z-CAL_OS_Board_POGO_L_V1.0/H24-036&37_MW25_C50_CUBE_Z-CAL_OS_BOARD_POGO_L&R_V1.0_240611part.xlsx",
+      "fileName": "H24-036&37_MW25_C50_CUBE_Z-CAL_OS_BOARD_POGO_L&R_V1.0_240611part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-036&37_MW25_C50_CUBE_Z-CAL_"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-038_AKC_C50_Cube_Z-CAL_OS_Board_POGO_L_V1.0/H24-038&39_AKC_C50_Cube_Z-CAL_OS_Board_POGO_L&R_V1.0(2406).xlsx",
+      "fileName": "H24-038&39_AKC_C50_Cube_Z-CAL_OS_Board_POGO_L&R_V1.0(2406).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-036&37_MW25_C50_CUBE_Z-CAL_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-038_AKC_C50_Cube_Z-CAL_OS_Board_POGO_L_V1.0/H24-038&39_AKC_C50_Cube_Z-CAL_OS_Board_POGO_L&R_V1.0_240611part.xlsx",
+      "fileName": "H24-038&39_AKC_C50_Cube_Z-CAL_OS_Board_POGO_L&R_V1.0_240611part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-038&39_AKC_C50_Cube_Z-CAL_O"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-040_MEM-K(54B)_C50_Libra_PTM3.2(ADS)_6L/H24-040_MEM-K(54B)_C50_Libra_PTM3.2(ADS)_6L(2406).xlsx",
+      "fileName": "H24-040_MEM-K(54B)_C50_Libra_PTM3.2(ADS)_6L(2406).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-040_MEM-K(54B)_C50_Libra_PT",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-040_MEM-K(54B)_C50_Libra_PTM3.2(ADS)_6L/H24-040_MEM-K(54B)_C50_Libra_PTM3.2(ADS)_6L_240530part.xlsx",
+      "fileName": "H24-040_MEM-K(54B)_C50_Libra_PTM3.2(ADS)_6L_240530part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-040_MEM(R53B)_C50_LIBRA_PTM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-041_MEM-K(54B)_C50_Pismo_Manual(LCB)_PTM3.2(ADS)/H24-041_MEM-K(54B)_C50_Pismo_Manual(LCB)_PTM3.2(ADS)(2406).xlsx",
+      "fileName": "H24-041_MEM-K(54B)_C50_Pismo_Manual(LCB)_PTM3.2(ADS)(2406).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-041_MEM-K(54B)_C50_Pismo_Ma",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-041_MEM-K(54B)_C50_Pismo_Manual(LCB)_PTM3.2(ADS)/H24-041_MEM-K(54B)_C50_Pismo_Manual(LCB)_PTM3.2(ADS)_240530part.xlsx",
+      "fileName": "H24-041_MEM-K(54B)_C50_Pismo_Manual(LCB)_PTM3.2(ADS)_240530part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-041_MEM_C50_PISMO_MANUAL(LC"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-042_MEM-K(54B)_C50_Zeus_Iguana_PTM3.2(ADS)_6L/H24-042_MEM(R53B)_C50_ZEUS_IGUANA_PTM3.2(ADS)_6L(2406).xlsx",
+      "fileName": "H24-042_MEM(R53B)_C50_ZEUS_IGUANA_PTM3.2(ADS)_6L(2406).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-042_MEM(R53B)_C50_ZEUS_IGUA",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-042_MEM-K(54B)_C50_Zeus_Iguana_PTM3.2(ADS)_6L/H24-042_MEM(R53B)_C50_ZEUS_IGUANA_PTM3.2(ADS)_6L_240530part.xlsx",
+      "fileName": "H24-042_MEM(R53B)_C50_ZEUS_IGUANA_PTM3.2(ADS)_6L_240530part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-042_MEM(R53B)_C50_ZEUS_IGUA"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-043_MEM-K(54B)_C50_Zeus_Updown_COMMON2.0_6L/H24-043_MEM-K(54B)_C50_Zeus_Updown_COMMON2.0_6L(2406).xlsx",
+      "fileName": "H24-043_MEM-K(54B)_C50_Zeus_Updown_COMMON2.0_6L(2406).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-043_MEM(R53B)_C50_ZEUS_UPDO",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-043_MEM-K(54B)_C50_Zeus_Updown_COMMON2.0_6L/H24-043_MEM-K(54B)_C50_Zeus_Updown_COMMON2.0_6L_240531part.xlsx",
+      "fileName": "H24-043_MEM-K(54B)_C50_Zeus_Updown_COMMON2.0_6L_240531part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-043_MEM(R53B)_C50_ZEUS_UPDO"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-044_MEM-K(54B)_C50_Zeus_Pinwheel_PTM3.2(ADS)_6L/H24-044_MEM-K(54B)_C50_Zeus_Pinwheel_PTM3.2(ADS)_6L(2406).xlsx",
+      "fileName": "H24-044_MEM-K(54B)_C50_Zeus_Pinwheel_PTM3.2(ADS)_6L(2406).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-044_MEM(R53B)_C50_ZEUS_PINW",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-044_MEM-K(54B)_C50_Zeus_Pinwheel_PTM3.2(ADS)_6L/H24-044_MEM-K(54B)_C50_Zeus_Pinwheel_PTM3.2(ADS)_6L_240531part.xlsx",
+      "fileName": "H24-044_MEM-K(54B)_C50_Zeus_Pinwheel_PTM3.2(ADS)_6L_240531part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-044_MEM(R53B)_C50_ZEUS_PINW"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-045_MEM-K(54B)_C50_Zeus_ICLT(APS)_PTM3.2(ADS)_6L/H24-045_MEM-K(54B)_C50_Zeus_ICLT(APS)_PTM3.2(ADS)_6L(2406).xlsx",
+      "fileName": "H24-045_MEM-K(54B)_C50_Zeus_ICLT(APS)_PTM3.2(ADS)_6L(2406).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-045_MEM(R53B)_C50_ZEUS_ICLT",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-045_MEM-K(54B)_C50_Zeus_ICLT(APS)_PTM3.2(ADS)_6L/H24-045_MEM-K(54B)_C50_Zeus_ICLT(APS)_PTM3.2(ADS)_6L_240531part.xlsx",
+      "fileName": "H24-045_MEM-K(54B)_C50_Zeus_ICLT(APS)_PTM3.2(ADS)_6L_240531part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-045_MEM(R53B)_C50_ZEUS_ICLT"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-046_MEM-K(54B)_C50_Zeus_Iguana_Sphere_Temp_Cal_PTM3.2(ADS)_6L/H24-046_MEM-K(54B)_C50_ZEUS_IGUANA_SPHERE_TEMP_CAL_PTM3.2(ADS)_6L(2406).xlsx",
+      "fileName": "H24-046_MEM-K(54B)_C50_ZEUS_IGUANA_SPHERE_TEMP_CAL_PTM3.2(ADS)_6L(2406).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-046_MEM-K(54B)_C50_ZEUS_IGU",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-046_MEM-K(54B)_C50_Zeus_Iguana_Sphere_Temp_Cal_PTM3.2(ADS)_6L/H24-046_MEM-K(54B)_C50_ZEUS_IGUANA_SPHERE_TEMP_CAL_PTM3.2(ADS)_6L_240603part.xlsx",
+      "fileName": "H24-046_MEM-K(54B)_C50_ZEUS_IGUANA_SPHERE_TEMP_CAL_PTM3.2(ADS)_6L_240603part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-046_MEM-K(54B)_C50_ZEUS_IGU"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-048_MEM-K(54B)_C50_Cube&Zeus_Manual_PTM3.2(ADS)_6L/H24-048_MEM-K(54B)_C50_CUBE&ZEUS_MANUAL_PTM3.2(ADS)_6L(2406).xlsx",
+      "fileName": "H24-048_MEM-K(54B)_C50_CUBE&ZEUS_MANUAL_PTM3.2(ADS)_6L(2406).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-048_MEM-K(54B)_C50_CUBE&ZEU",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-048_MEM-K(54B)_C50_Cube&Zeus_Manual_PTM3.2(ADS)_6L/H24-048_MEM-K(54B)_C50_CUBE&ZEUS_MANUAL_PTM3.2(ADS)_6L_240603part.xlsx",
+      "fileName": "H24-048_MEM-K(54B)_C50_CUBE&ZEUS_MANUAL_PTM3.2(ADS)_6L_240603part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-048_MEM-K(54B)_C50_CUBE&ZEU"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-049_MEM-K(54B)_C50_Gopher_PTM3.2(ADS)_6L/H24-049_MEM-K(54B)_C50_GOPHER_PTM3.2(ADS)_6L(2406).xlsx",
+      "fileName": "H24-049_MEM-K(54B)_C50_GOPHER_PTM3.2(ADS)_6L(2406).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-049_MEM-K(54B)_C50_GOPHER_P",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-049_MEM-K(54B)_C50_Gopher_PTM3.2(ADS)_6L/H24-049_MEM-K(54B)_C50_GOPHER_PTM3.2(ADS)_6L_240603part.xlsx",
+      "fileName": "H24-049_MEM-K(54B)_C50_GOPHER_PTM3.2(ADS)_6L_240603part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-049_MEM-K(54B)_C50_GOPHER_P"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-050_MEM-K(54B)_C50_Updown_COMMON2.0_6L/H24-050_MEM-K(54B)_C50_UPDOWN_COMMON2.0_6L(2406).xlsx",
+      "fileName": "H24-050_MEM-K(54B)_C50_UPDOWN_COMMON2.0_6L(2406).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-050_MEM-K(54B)_C50_UPDOWN_C",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-050_MEM-K(54B)_C50_Updown_COMMON2.0_6L/H24-050_MEM-K(54B)_C50_UPDOWN_COMMON2.0_6L_240610part.xlsx",
+      "fileName": "H24-050_MEM-K(54B)_C50_UPDOWN_COMMON2.0_6L_240610part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-050_MEM-K(54B)_C50_UPDOWN_C"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-051_MEM-K(54B)_C50_ICLT(APS)_PTM3.2(ADS)/H24-051_MEM-K(54B)_C50_ICLT(APS)_PTM3.2(ADS)(2406).xlsx",
+      "fileName": "H24-051_MEM-K(54B)_C50_ICLT(APS)_PTM3.2(ADS)(2406).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-051_MEM-K(54B)_C50_ICLT(APS",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-051_MEM-K(54B)_C50_ICLT(APS)_PTM3.2(ADS)/H24-051_MEM-K(54B)_C50_ICLT(APS)_PTM3.2(ADS)_240610part.xlsx",
+      "fileName": "H24-051_MEM-K(54B)_C50_ICLT(APS)_PTM3.2(ADS)_240610part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-051_MEM-K(54B)_C50_ICLT(APS"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-052_BWI_C3.1_OS_DP_Dual_Tester_V1.0/H24-052_BWI_C3.1_OS_DP_DUAL_TESTER_V1.0(2406).xlsx",
+      "fileName": "H24-052_BWI_C3.1_OS_DP_DUAL_TESTER_V1.0(2406).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-052_BWI_C3.1_OS_DP_DUAL_TES",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-052_BWI_C3.1_OS_DP_Dual_Tester_V1.0/H24-052_BWI_C3.1_OS_DP_DUAL_TESTER_V1.0_240613part.xlsx",
+      "fileName": "H24-052_BWI_C3.1_OS_DP_DUAL_TESTER_V1.0_240613part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-052_BWI_C3.1_OS_DP_DUAL_TES"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-053_AKC_C5.0_Cube_Z-CAL_Manual_Main_V1.0/H24-053_AKC_C5.0_CUBE_Z-CAL_MANUAL_MAIN_V1.0(2406).xlsx",
+      "fileName": "H24-053_AKC_C5.0_CUBE_Z-CAL_MANUAL_MAIN_V1.0(2406).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-053_AKC_C5.0_CUBE_Z-CAL_MAN",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-053_AKC_C5.0_Cube_Z-CAL_Manual_Main_V1.0/H24-053_AKC_C5.0_CUBE_Z-CAL_MANUAL_MAIN_V1.0_240626part.xlsx",
+      "fileName": "H24-053_AKC_C5.0_CUBE_Z-CAL_MANUAL_MAIN_V1.0_240626part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-053_AKC_C5.0_CUBE_Z-CAL_MAN"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-055_LGIT_CHS_OIS_V1.1/H24-055_LGIT_CHS_OIS_V1.1(2406).xlsx",
+      "fileName": "H24-055_LGIT_CHS_OIS_V1.1(2406).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-055_LGIT_CHS_OIS_V1.1_24061",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-055_LGIT_CHS_OIS_V1.1/H24-055_LGIT_CHS_OIS_V1.1_240627part.xlsx",
+      "fileName": "H24-055_LGIT_CHS_OIS_V1.1_240627part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-055_LGIT_CHS_OIS_V1.1_24061"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-056_MEM-K(54B)_C50_Full_Module_SFR_Bench&OCT_PTM3.2(ADS)_6L/H24-056_MEM-K(54B)_C50_FULL_MODULE_SFR_BENCH&OCT_PTM3.2(ADS)_6L(2406).xlsx",
+      "fileName": "H24-056_MEM-K(54B)_C50_FULL_MODULE_SFR_BENCH&OCT_PTM3.2(ADS)_6L(2406).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-056_MEM-K(54B)_C50_FULL_MOD",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-056_MEM-K(54B)_C50_Full_Module_SFR_Bench&OCT_PTM3.2(ADS)_6L/H24-056_MEM-K(54B)_C50_FULL_MODULE_SFR_BENCH&OCT_PTM3.2(ADS)_6L_240702part.xlsx",
+      "fileName": "H24-056_MEM-K(54B)_C50_FULL_MODULE_SFR_BENCH&OCT_PTM3.2(ADS)_6L_240702part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-056_MEM-K(54B)_C50_FULL_MOD"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-057_MEM-K(54B)_C50_Full_Moudle_Lag-cal_PTM3.2(ADS)_6L/H24-057_MEM-K(54B)_C50_FULL_MOUDLE_LAG-CAL_PTM3.2(ADS)_6L(2406).xlsx",
+      "fileName": "H24-057_MEM-K(54B)_C50_FULL_MOUDLE_LAG-CAL_PTM3.2(ADS)_6L(2406).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-057_MEM-K(54B)_C50_FULL_MOU",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-057_MEM-K(54B)_C50_Full_Moudle_Lag-cal_PTM3.2(ADS)_6L/H24-057_MEM-K(54B)_C50_FULL_MOUDLE_LAG-CAL_PTM3.2(ADS)_6L_240702part.xlsx",
+      "fileName": "H24-057_MEM-K(54B)_C50_FULL_MOUDLE_LAG-CAL_PTM3.2(ADS)_6L_240702part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-057_MEM-K(54B)_C50_FULL_MOU"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-058_MEM-K(54B)_C50_SFR_Bench_Test_Cube_PTM3.2(ADS)_ARM3.1_6L/H24-058_MEM-K(54B)_C50_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L(2406).xlsx",
+      "fileName": "H24-058_MEM-K(54B)_C50_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L(2406).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-058_MEM-K(54B)_C50_SFR_BENC",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-058_MEM-K(54B)_C50_SFR_Bench_Test_Cube_PTM3.2(ADS)_ARM3.1_6L/H24-058_MEM-K(54B)_C50_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L_240627part.xlsx",
+      "fileName": "H24-058_MEM-K(54B)_C50_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L_240627part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-058_MEM-K(54B)_C50_SFR_BENC"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-060_MEM-K(54B)_C50_Zeus_ICLT(APS)_Stage_Align_type_PTM3.2(ADS)_6L/H24-060_MEM-K(54B)_C50_ZEUS_ICLT(APS)_STAGE_ALIGN_TYPE_PTM3.2(ADS)_6L(2407).xlsx",
+      "fileName": "H24-060_MEM-K(54B)_C50_ZEUS_ICLT(APS)_STAGE_ALIGN_TYPE_PTM3.2(ADS)_6L(2407).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-060_MEM-K(54B)_C50_ZEUS_ICL",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-060_MEM-K(54B)_C50_Zeus_ICLT(APS)_Stage_Align_type_PTM3.2(ADS)_6L/H24-060_MEM-K(54B)_C50_ZEUS_ICLT(APS)_STAGE_ALIGN_TYPE_PTM3.2(ADS)_6L_240712part.xlsx",
+      "fileName": "H24-060_MEM-K(54B)_C50_ZEUS_ICLT(APS)_STAGE_ALIGN_TYPE_PTM3.2(ADS)_6L_240712part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 6,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-061_MEM-K(54B)_C50_Full_Module_Iguana(OQC)_PTM3.2(ADS)_6L/H24-061_MEM-K(54B)_C50_FULL_MODULE_IGUANA(OQC)_PTM3.2(ADS)_6L(2407).xlsx",
+      "fileName": "H24-061_MEM-K(54B)_C50_FULL_MODULE_IGUANA(OQC)_PTM3.2(ADS)_6L(2407).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-061_MEM-K(54B)_C50_Full_Mod",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-061_MEM-K(54B)_C50_Full_Module_Iguana(OQC)_PTM3.2(ADS)_6L/H24-061_MEM-K(54B)_C50_FULL_MODULE_IGUANA(OQC)_PTM3.2(ADS)_6L_240731part.xlsx",
+      "fileName": "H24-061_MEM-K(54B)_C50_FULL_MODULE_IGUANA(OQC)_PTM3.2(ADS)_6L_240731part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 5,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-062_MEM-K(54B)_C50_PF_SOCKET_V1.0/H24-062_MEM-K(54B)_C50_PF_SOCKET_V1.0(2407).xlsx",
+      "fileName": "H24-062_MEM-K(54B)_C50_PF_SOCKET_V1.0(2407).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-062_MEM-K(54B)_C50_PF_SOCKE",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-062_MEM-K(54B)_C50_PF_SOCKET_V1.0/H24-062_MEM-K(54B)_C50_PF_SOCKET_V1.0_240723part.xlsx",
+      "fileName": "H24-062_MEM-K(54B)_C50_PF_SOCKET_V1.0_240723part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 6,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-063_BOI_C8.0_MA_UDT_V1.0/H24-063_BOI_C8.0_MA_UDT_V1.0(2408).xlsx",
+      "fileName": "H24-063_BOI_C8.0_MA_UDT_V1.0(2408).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-063_BOI_C8.0_MA_UDT_V1.0",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-063_BOI_C8.0_MA_UDT_V1.0/H24-063_BOI_C8.0_MA_UDT_V1.0_240805part.xlsx",
+      "fileName": "H24-063_BOI_C8.0_MA_UDT_V1.0_240805part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 5,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-064_MEM-K(54B)_C50_TRIPLE_RTV_UPDOWN_COMMON2.0_6L/H24-064_MEM-K(54B)_C50_TRIPLE_RTV_UPDOWN_COMMON2.0_6L(2408).xlsx",
+      "fileName": "H24-064_MEM-K(54B)_C50_TRIPLE_RTV_UPDOWN_COMMON2.0_6L(2408).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-064_MEM-K(54B)_C50_TRIPLE_R",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-064_MEM-K(54B)_C50_TRIPLE_RTV_UPDOWN_COMMON2.0_6L/H24-064_MEM-K(54B)_C50_TRIPLE_RTV_UPDOWN_COMMON2.0_6L_240807part.xlsx",
+      "fileName": "H24-064_MEM-K(54B)_C50_TRIPLE_RTV_UPDOWN_COMMON2.0_6L_240807part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 5,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-066_MEM-K(54B)_C40_Gopher_Arthur_Cube_PTM3.2(ADS)_6L/H24-066_MEM-K(54B)_C40_GOPHER_ARTHUR_CUBE_PTM3.2(ADS)_6L(2408).xlsx",
+      "fileName": "H24-066_MEM-K(54B)_C40_GOPHER_ARTHUR_CUBE_PTM3.2(ADS)_6L(2408).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-066_MEM-K(54B)_C40_GOPHER_A",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-066_MEM-K(54B)_C40_Gopher_Arthur_Cube_PTM3.2(ADS)_6L/H24-066_MEM-K(54B)_C40_GOPHER_ARTHUR_CUBE_PTM3.2(ADS)_6L_240808part.xlsx",
+      "fileName": "H24-066_MEM-K(54B)_C40_GOPHER_ARTHUR_CUBE_PTM3.2(ADS)_6L_240808part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 6,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-067_MEM-K(54B)_C40_SFR_Bench_Test_Cube_PTM3.2(ADS)_ARM3.1_6L/H24-067_MEM-K(54B)_C40_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L(2408).xlsx",
+      "fileName": "H24-067_MEM-K(54B)_C40_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L(2408).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-067_MEM-K(54B)_C40_SFR_BENC",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-067_MEM-K(54B)_C40_SFR_Bench_Test_Cube_PTM3.2(ADS)_ARM3.1_6L/H24-067_MEM-K(54B)_C40_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L_240821part.xlsx",
+      "fileName": "H24-067_MEM-K(54B)_C40_SFR_BENCH_TEST_CUBE_PTM3.2(ADS)_ARM3.1_6L_240821part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 5,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-068_MEM-K(54B)_C40_Module_AA_PTM3.2(ADS)/H24-068_MEM-K(54B)_C40_MODULE_AA_PTM3.2(ADS)(2408).xlsx",
+      "fileName": "H24-068_MEM-K(54B)_C40_MODULE_AA_PTM3.2(ADS)(2408).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-068_MEM-K(54B)_C40_MODULE_A",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-068_MEM-K(54B)_C40_Module_AA_PTM3.2(ADS)/H24-068_MEM-K(54B)_C40_MODULE_AA_PTM3.2(ADS)_240821part.xlsx",
+      "fileName": "H24-068_MEM-K(54B)_C40_MODULE_AA_PTM3.2(ADS)_240821part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 5,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-069_MEM-K(R54B)_C40_Zeus_Pinwheel_PTM3.2(ADS)_6L/H24-069_MEM-K_(R54B)_C40_ZEUS_PINWHEEL_PTM3.2(ADS)_6L(2408).xlsx",
+      "fileName": "H24-069_MEM-K_(R54B)_C40_ZEUS_PINWHEEL_PTM3.2(ADS)_6L(2408).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-069_MEM-K_(R54B)_C40_ZEUS_P",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-069_MEM-K(R54B)_C40_Zeus_Pinwheel_PTM3.2(ADS)_6L/H24-069_MEM-K_(R54B)_C40_ZEUS_PINWHEEL_PTM3.2(ADS)_6L_240821part.xlsx",
+      "fileName": "H24-069_MEM-K_(R54B)_C40_ZEUS_PINWHEEL_PTM3.2(ADS)_6L_240821part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 5,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-070_Boise_C70_Cube_Auto_Updown_COMMON2.0_6L(재발주X)/H24-070_BOISE_C70_CUBE_AUTO_UPDOWN_COMMON2.0_6L(2408).xlsx",
+      "fileName": "H24-070_BOISE_C70_CUBE_AUTO_UPDOWN_COMMON2.0_6L(2408).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-070_BOISE_C70_CUBE_AUTO_UPD",
+        "BOTTOM(자재중심좌표)",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-070_Boise_C70_Cube_Auto_Updown_COMMON2.0_6L(재발주X)/H24-070_BOISE_C70_CUBE_AUTO_UPDOWN_COMMON2.0_6L_240906part.xlsx",
+      "fileName": "H24-070_BOISE_C70_CUBE_AUTO_UPDOWN_COMMON2.0_6L_240906part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 5,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-071_MEM-K(R54B)_C40_Iguana_Zeus_PTM3.2(ADS)_6L/H24-071_MEM-K(R54B)_C40_IGUANA_ZEUS_PTM3.2(ADS)_6L(2408).xlsx",
+      "fileName": "H24-071_MEM-K(R54B)_C40_IGUANA_ZEUS_PTM3.2(ADS)_6L(2408).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-071_MEM-K(R54B)_C40_IGUANA_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-071_MEM-K(R54B)_C40_Iguana_Zeus_PTM3.2(ADS)_6L/H24-071_MEM-K(R54B)_C40_IGUANA_ZEUS_PTM3.2(ADS)_6L_240822part.xlsx",
+      "fileName": "H24-071_MEM-K(R54B)_C40_IGUANA_ZEUS_PTM3.2(ADS)_6L_240822part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 5,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-072_MEM-K(R54B)_C40_Cube_Gopher(MFG)_PTM3.2(ADS)_6L/H24-072_MEM-K(R54B)_C40_CUBE_GOPHER(MFG)_PTM3.2(ADS)_6L(2408).xlsx",
+      "fileName": "H24-072_MEM-K(R54B)_C40_CUBE_GOPHER(MFG)_PTM3.2(ADS)_6L(2408).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-072_MEM-K(R54B)_C40_CUBE_GO",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-072_MEM-K(R54B)_C40_Cube_Gopher(MFG)_PTM3.2(ADS)_6L/H24-072_MEM-K(R54B)_C40_CUBE_GOPHER(MFG)_PTM3.2(ADS)_6L_240823part.xlsx",
+      "fileName": "H24-072_MEM-K(R54B)_C40_CUBE_GOPHER(MFG)_PTM3.2(ADS)_6L_240823part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 5,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-073_MEM-K(R54B)_C40_Zeus_APS_Manual_PTM3.2(ADS)_6L/H24-073_MEM-K(R54B)_C40_ZEUS_APS_MANUAL_PTM3.2(ADS)_6L(2408).xlsx",
+      "fileName": "H24-073_MEM-K(R54B)_C40_ZEUS_APS_MANUAL_PTM3.2(ADS)_6L(2408).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-073_MEM-K(R54B)_C40_ZEUS_AP",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-073_MEM-K(R54B)_C40_Zeus_APS_Manual_PTM3.2(ADS)_6L/H24-073_MEM-K(R54B)_C40_ZEUS_APS_MANUAL_PTM3.2(ADS)_6L_240820part.xlsx",
+      "fileName": "H24-073_MEM-K(R54B)_C40_ZEUS_APS_MANUAL_PTM3.2(ADS)_6L_240820part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 5,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-074_MEM-K(R54B)_C40_Cube_Libra_(MFG)_PTM3.2(ADS)_6L/H24-074_MEM-K(R54B)_C40_CUBE_LIBRA_(MFG)_PTM3.2(ADS)_6L(2408).xlsx",
+      "fileName": "H24-074_MEM-K(R54B)_C40_CUBE_LIBRA_(MFG)_PTM3.2(ADS)_6L(2408).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-074_MEM-K(R54B)_C40_CUBE_LI",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-074_MEM-K(R54B)_C40_Cube_Libra_(MFG)_PTM3.2(ADS)_6L/H24-074_MEM-K(R54B)_C40_CUBE_LIBRA_(MFG)_PTM3.2(ADS)_6L_240826part.xlsx",
+      "fileName": "H24-074_MEM-K(R54B)_C40_CUBE_LIBRA_(MFG)_PTM3.2(ADS)_6L_240826part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 5,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-075_MEM-K(R54B)_C40_Iguana_Sphere_Temp_Cal_Zeus_PTM3.2(ADS)_6L/H24-075_MEM-K(R54B)_C40_IGUANA_SPHERE_TEMP_CAL_ZEUS_PTM3.2(ADS)_6L(2408).xlsx",
+      "fileName": "H24-075_MEM-K(R54B)_C40_IGUANA_SPHERE_TEMP_CAL_ZEUS_PTM3.2(ADS)_6L(2408).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-075_MEM-K(R54B)_C40_IGUANA_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-075_MEM-K(R54B)_C40_Iguana_Sphere_Temp_Cal_Zeus_PTM3.2(ADS)_6L/H24-075_MEM-K(R54B)_C40_IGUANA_SPHERE_TEMP_CAL_ZEUS_PTM3.2(ADS)_6L_240828part.xlsx",
+      "fileName": "H24-075_MEM-K(R54B)_C40_IGUANA_SPHERE_TEMP_CAL_ZEUS_PTM3.2(ADS)_6L_240828part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 5,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-076_MEM-K(R54B)_C40_Cube&Zeus_Manual_PTM3.2(ADS)_6L/H24-076_MEM-K(R54B)_C40_Cube&Zeus_Manual_PTM3.2(ADS)_6L(2409).xlsx",
+      "fileName": "H24-076_MEM-K(R54B)_C40_Cube&Zeus_Manual_PTM3.2(ADS)_6L(2409).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-076_MEM-K(R54B)_C40_Cube&Ze",
+        "Top",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-076_MEM-K(R54B)_C40_Cube&Zeus_Manual_PTM3.2(ADS)_6L/H24-076_MEM-K(R54B)_C40_Cube&Zeus_Manual_PTM3.2(ADS)_6L_2408903part.xlsx",
+      "fileName": "H24-076_MEM-K(R54B)_C40_Cube&Zeus_Manual_PTM3.2(ADS)_6L_2408903part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 5,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-077_Paragon_Zoom_Cal_OS_Tester_V1.0/H24-077_PARAGON_ZOOM_CAL_OS_TESTER_V1.0(2409).xlsx",
+      "fileName": "H24-077_PARAGON_ZOOM_CAL_OS_TESTER_V1.0(2409).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-077_PARAGON_ZOOM_CAL_OS_TES",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-077_Paragon_Zoom_Cal_OS_Tester_V1.0/H24-077_PARAGON_ZOOM_CAL_OS_TESTER_V1.0_240905part.xlsx",
+      "fileName": "H24-077_PARAGON_ZOOM_CAL_OS_TESTER_V1.0_240905part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 5,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-080_Paragon_Zoom_Cal_Manual_Main_V1.0/H24-080_PARAGON_ZOOM_CAL_MANUAL_MAIN_V1.0(2409).xlsx",
+      "fileName": "H24-080_PARAGON_ZOOM_CAL_MANUAL_MAIN_V1.0(2409).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-080_PARAGON_ZOOM_CAL_MANUAL",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-082_MEM-K(R54B)_C40_OQC_Full_Module_Iguana_PTM3.2(ADS)_6L/H24-082_MEM-K(R54B)_C40_OQC_Full_Module_Iguana_PTM3.2(ADS)_6L(2409).xlsx",
+      "fileName": "H24-082_MEM-K(R54B)_C40_OQC_Full_Module_Iguana_PTM3.2(ADS)_6L(2409).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-082_MEM-K(R54B)_C40_OQC_Ful",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-083_MEM-K_C40_Zeus_UDT_Manual_COMMON2.0_6L/H24-083_MEM-K_C40_Zeus_UDT_Manual_COMMON2.0_6L(2409).xlsx",
+      "fileName": "H24-083_MEM-K_C40_Zeus_UDT_Manual_COMMON2.0_6L(2409).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-083_MEM-K_C40_Zeus_UDT_Manu",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-083_MEM-K_C40_Zeus_UDT_Manual_COMMON2.0_6L/H24-083_MEM-K_C40_Zeus_UDT_Manual_COMMON2.0_6L_240903part.xlsx",
+      "fileName": "H24-083_MEM-K_C40_Zeus_UDT_Manual_COMMON2.0_6L_240903part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 5,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-084_MEM-K_C40_Zeus_iCLT_Manual_PTM3.2(ADS)_6L/H24-084_MEM-K_C40_Zeus_iCLT_Manual_PTM3.2(ADS)_6L(2409).xlsx",
+      "fileName": "H24-084_MEM-K_C40_Zeus_iCLT_Manual_PTM3.2(ADS)_6L(2409).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-084_MEM-K_C40_Zeus_iCLT_Man",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-084_MEM-K_C40_Zeus_iCLT_Manual_PTM3.2(ADS)_6L/H24-084_MEM-K_C40_Zeus_iCLT_Manual_PTM3.2(ADS)_6L_240903part.xlsx",
+      "fileName": "H24-084_MEM-K_C40_Zeus_iCLT_Manual_PTM3.2(ADS)_6L_240903part.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "Sheet2",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 13,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-085_MEM-K(R54B)_C40_Pismo_Portable_Manual_PTM3.2(ADS)_6L/H24-085_MEM-K(R54B)_C40_Pismo_Portable_Manual_PTM3.2(ADS)_6L(2409).xlsx",
+      "fileName": "H24-085_MEM-K(R54B)_C40_Pismo_Portable_Manual_PTM3.2(ADS)_6L(2409).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-085_MEM-K(R54B)_C40_Pismo_P",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-086_MEM(R53B)-F_C50_MA_TEC_Test_S.P_PTM3.2(ADS)_6L/H24-086_MEM(R53B)-F_C50_MA_TEC_Test_S.P_PTM3.2(ADS)_6L(2409).xlsx",
+      "fileName": "H24-086_MEM(R53B)-F_C50_MA_TEC_Test_S.P_PTM3.2(ADS)_6L(2409).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-086_MEM(R53B)-F_C50_MA_TEC_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-087_Centaur-K_C4.0_VSA_Manual_Tester_2CH_V1.0/H24-087_Centaur-K_C4.0_VSA_Manual_Tester_2CH_V1.0(2409).xls",
+      "fileName": "H24-087_Centaur-K_C4.0_VSA_Manual_Tester_2CH_V1.0(2409).xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-087_Centaur-K_C4.0_VSA_Manual_Tester_2CH_V1.0/H24-087_Centaur-K_C4.0_VSA_Manual_Tester_2CH_V1.0_240913.bom.xls",
+      "fileName": "H24-087_Centaur-K_C4.0_VSA_Manual_Tester_2CH_V1.0_240913.bom.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-087_Centaur-K_C4.0_VSA_Manual_Tester_2CH_V1.0/H24-087_Centaur-K_C4.0_VSA_Manual_Tester_2CH_V1.0_240913좌표.xls",
+      "fileName": "H24-087_Centaur-K_C4.0_VSA_Manual_Tester_2CH_V1.0_240913좌표.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-088_Minotaur-Z_C4.0_VSA_Manual_Tester_2CH_V1.0/H24-088_Minotaur-Z_C4.0_VSA_Manual_Tester_2CH_V1.0(2409).xls",
+      "fileName": "H24-088_Minotaur-Z_C4.0_VSA_Manual_Tester_2CH_V1.0(2409).xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-088_Minotaur-Z_C4.0_VSA_Manual_Tester_2CH_V1.0/H24-088_Minotaur-Z_C4.0_VSA_Manual_Tester_2CH_V1.0[좌표]_240919.xls",
+      "fileName": "H24-088_Minotaur-Z_C4.0_VSA_Manual_Tester_2CH_V1.0[좌표]_240919.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-088_Minotaur-Z_C4.0_VSA_Manual_Tester_2CH_V1.0/H24-088_Minotaur-Z_C4.0_VSA_Manual_Tester_2CH_V1.0_240919.bom.xls",
+      "fileName": "H24-088_Minotaur-Z_C4.0_VSA_Manual_Tester_2CH_V1.0_240919.bom.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-089_BWI25_C3.0 DOE_Cube_Auto_Z-CAL-L_V1.0/H24-089&90_BWI25_C3.0 DOE_CUBE_AUTO_Z-CAL-L&R_V1.0(2409).xlsx",
+      "fileName": "H24-089&90_BWI25_C3.0 DOE_CUBE_AUTO_Z-CAL-L&R_V1.0(2409).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-089&90_BWI25_C3.0 DOE_CUBE_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-091_BOI_C7.0_Cube_Z-CAL_OS_Board_POGO_L_V1.0/H24-091_BOI_C70_CUBE_Z-CAL_BOARD_POGO_L_V1.0_6L(2410).xlsx",
+      "fileName": "H24-091_BOI_C70_CUBE_Z-CAL_BOARD_POGO_L_V1.0_6L(2410).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-091&92_BOI_C70_CUBE_Z-CAL_B",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-093_BWI_Cube_Harrison_Con_Sel_Board_V1.0/H24-093_BWI_CUBE_HARRISON_CON_SEL_BOARD_V1.0(2410).xlsx",
+      "fileName": "H24-093_BWI_CUBE_HARRISON_CON_SEL_BOARD_V1.0(2410).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-093_BWI_CUBE_HARRISON_CON_S",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-094_LGIT_SAA_26Y_NPI_BOS_V1.0/H24-094_LGIT_SAA_26Y_NPI_BOS_V1.0(2411).xlsx",
+      "fileName": "H24-094_LGIT_SAA_26Y_NPI_BOS_V1.0(2411).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-094_LGIT_SAA_26Y_NPI_BOS_V1",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-094_LGIT_SAA_26Y_NPI_BOS_V1.0/H24-094_LGIT_SAA_26Y_NPI_BOS_V1.0_241202.bom.xls",
+      "fileName": "H24-094_LGIT_SAA_26Y_NPI_BOS_V1.0_241202.bom.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-094_LGIT_SAA_26Y_NPI_BOS_V1.0/H24-094_LGIT_SAA_26Y_NPI_BOS_V1.0_241202.좌표.xls",
+      "fileName": "H24-094_LGIT_SAA_26Y_NPI_BOS_V1.0_241202.좌표.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-095_BOI_C70_MA_APS_COMMON2.0_6L/H24-095_BOI_C70_MA_APS_COMMON2.0_6L(2410).xlsx",
+      "fileName": "H24-095_BOI_C70_MA_APS_COMMON2.0_6L(2410).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-095_BOI_C70_MA_APS_COMMON2.",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-097_BOI_C70_Grid_Flare_Cube_PTM3.2(ADS)_6L/H24-097_BOI_C70_GRID_FLARE_CUBE_PTM3.2(ADS)_6L(2410).xlsx",
+      "fileName": "H24-097_BOI_C70_GRID_FLARE_CUBE_PTM3.2(ADS)_6L(2410).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-097_BOI_C70_GRID_FLARE_CUBE",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-098_MEM-K(R54B)_C40_Cube_Zeus_REL_Test_Manual_Main_PTM3.2(ADS)_6L/H24-098_MEM-K(R54B)_C40_Cube_Zeus_REL_Test_Manual_Main_PTM3.2(ADS)_6L(2410).xlsx",
+      "fileName": "H24-098_MEM-K(R54B)_C40_Cube_Zeus_REL_Test_Manual_Main_PTM3.2(ADS)_6L(2410).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-098_MEM-K(R54B)_C40_CUBE_ZE",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-100_MEM-K(R54B)_C40_Full_Module_UDT_Manual_COMMON2.0_6L/H24-100_MEM-K(R54B)_C40_FULL_MODULE_UDT_MANUAL_COMMON2.0_6L(2409).xlsx",
+      "fileName": "H24-100_MEM-K(R54B)_C40_FULL_MODULE_UDT_MANUAL_COMMON2.0_6L(2409).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-100_MEM-K(R54B)_C40_FULL_MO",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-101_MEM-K(R54B)_C40_Full_Module_UDT_Auto_COMMON2.0_6L/H24-101_MEM-K(R54B)_C40_FULL_MODULE_UDT_AUTO_COMMON2.0_6L(2409).xlsx",
+      "fileName": "H24-101_MEM-K(R54B)_C40_FULL_MODULE_UDT_AUTO_COMMON2.0_6L(2409).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-101_MEM-K(R54B)_C40_FULL_MO",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-102_MEM-K(R54B)_C40_Full_Module_OCT_Manual_COMMON2.0_6L/H24-102_MEM-K(R54B)_C40_Full_Module_OCT_Manual_COMMON2.0_6L(2409).xlsx",
+      "fileName": "H24-102_MEM-K(R54B)_C40_Full_Module_OCT_Manual_COMMON2.0_6L(2409).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-102_MEM-K(R54B)_C40_FULL_MO",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-103_MEM-K(R54B)_C40_Full_Module_APS_Manual_PTM3.2(ADS)_6L/H24-103_MEM-K(R54B)_C40_Full_Module_APS_Manual_PTM3.2(ADS)_6L(2409).xlsx",
+      "fileName": "H24-103_MEM-K(R54B)_C40_Full_Module_APS_Manual_PTM3.2(ADS)_6L(2409).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-103_MEM-K(R54B)_C40_Full_Mo",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-104_MEM-K(R54B)_C40_Full_Module_Lag_Cal_Manual_Main_PTM3.2(ADS)_6L/H24-104_MEM-K(R54B)_C40_Full_Module_Lag_Cal_Manual_Main_PTM3.2(ADS)_6L(2409).xlsx",
+      "fileName": "H24-104_MEM-K(R54B)_C40_Full_Module_Lag_Cal_Manual_Main_PTM3.2(ADS)_6L(2409).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-104_MEM-K(R54B)_C40_FULL_MO",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-106_BOI_CXX_HARRISON_PTM3.2(ADS)_0X0321_lsy/H24-106_BOI_CXX_HARRISON_PTM3.2(ADS)_0X0321(2410).xlsx",
+      "fileName": "H24-106_BOI_CXX_HARRISON_PTM3.2(ADS)_0X0321(2410).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-106_BOI_CXX_HARRISON_PTM3.2",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-106_BOI_CXX_HARRISON_PTM3.2(ADS)_0X0321_lsy/H24-106_BOI_CXX_HARRISON_PTM3.2(ADS)_0X0321_241007좌표.pnp.xls",
+      "fileName": "H24-106_BOI_CXX_HARRISON_PTM3.2(ADS)_0X0321_241007좌표.pnp.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-109_Paragon_Zoom_Cal_Manual_Main_V1.1/H24-109_Paragon_Zoom_Cal_Manual_Main_V1.1(2410).xlsx",
+      "fileName": "H24-109_Paragon_Zoom_Cal_Manual_Main_V1.1(2410).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-109_PARAGON_ZOOM_CAL_MANUAL",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-111_AKC_Lens_AA_OS_V1.0/H24-111_AKC_LENS_AA_OS_V1.0(2411).xlsx",
+      "fileName": "H24-111_AKC_LENS_AA_OS_V1.0(2411).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-111_AKC_LENS_AA_OS_V1_0_241",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-112_BWI_Cube_UDT-DS160_V1.0/H24-112_BWI_Cube_UDT-DS160_V1.0(2411).xlsx",
+      "fileName": "H24-112_BWI_Cube_UDT-DS160_V1.0(2411).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-112_BWI_CUBE_UDT-DS160_V1.0",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-113_Hornet_Cube_UDT-TDP2004_V1.0/H24-113_Hornet_Cube_UDT-TDP2004_V1.0(2411).xlsx",
+      "fileName": "H24-113_Hornet_Cube_UDT-TDP2004_V1.0(2411).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-113_HORNET_CUBE_UDT-TDP2004",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-114_BOI_C70_MA_Aperture_Test_S.P_Main_V1.0/H24-114_BOI_C70_MA_Aperture_Test_S.P_Main_V1.0(2410).xlsx",
+      "fileName": "H24-114_BOI_C70_MA_Aperture_Test_S.P_Main_V1.0(2410).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-114_BOI_C70_MA_APERTURE_TE",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-114_BOI_C70_MA_Aperture_Test_S.P_Main_V1.0/H24-114_BOI_C70_MA_Aperture_Test_S.P_Main_V1.0_241105.좌표.xls",
+      "fileName": "H24-114_BOI_C70_MA_Aperture_Test_S.P_Main_V1.0_241105.좌표.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-116_BOI_C70_MA_Z-CAL_Main_PTM3.2(ADS)_V1.0_6L/H24-116_BOI_C70_MA_Z-CAL_Main_PTM3.2(ADS)_V1.0_6L(2411).xlsx",
+      "fileName": "H24-116_BOI_C70_MA_Z-CAL_Main_PTM3.2(ADS)_V1.0_6L(2411).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-116_BOI_C70_MA_Z-CAL_MAIN_P",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-120_BOI_C70_Lens_AA_OS_V1.0_6L/H24-120_BOI_C70_Lens_AA_OS_V1.0_6L(2410).xlsx",
+      "fileName": "H24-120_BOI_C70_Lens_AA_OS_V1.0_6L(2410).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-120_BOI_C70_LENS_AA_OS_V1.0",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-121_BOI_C70_Inline_Bench_Main_PTM3.2(ADS)_6L/H24-121_BOI_C70_Inline_Bench_Main_PTM3.2(ADS)_6L(2411).xlsx",
+      "fileName": "H24-121_BOI_C70_Inline_Bench_Main_PTM3.2(ADS)_6L(2411).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-121_BOI_C70_Inline_Bench_Ma",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-123_Paragon_Zoom_Cal_Tester_V1.0/H24-123_Paragon_Zoom_Cal_Tester_V1.0(2410).xlsx",
+      "fileName": "H24-123_Paragon_Zoom_Cal_Tester_V1.0(2410).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-123_Paragon_Zoom_Cal_Tester",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-125_BOI_C70_JIG_Lens_Main_PTM3.2_V1.0_6L/H24-125_BOI_C70_JIG_Lens_Main_PTM3.2_V1.0_6L(2411).xlsx",
+      "fileName": "H24-125_BOI_C70_JIG_Lens_Main_PTM3.2_V1.0_6L(2411).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-121_BOI_C70_INLINE_BENCH_MA",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-127_LGIT_CHS_OIS_V1.2(재발주X)/H24-127_LGIT_CHS_OIS_V1.2(2411).xlsx",
+      "fileName": "H24-127_LGIT_CHS_OIS_V1.2(2411).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-127_LGIT_CHS_OIS_V1.2",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-128_MEM-K(R54B)_C40_Triple_RTV_UDT_COMMON2.0_6L/H24-128_MEM-K(R54B)_C40_Triple_RTV_UDT_COMMON2.0_6L(2411).xlsx",
+      "fileName": "H24-128_MEM-K(R54B)_C40_Triple_RTV_UDT_COMMON2.0_6L(2411).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-128_MEM-K(R54B)_C40_TRIPLE_",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-129_MEM-K(R54B)_C40_RTV_Single_UDT_COMMON2.0_6L/H24-129_MEM-K(R54B)_C40_RTV_Single_UDT_COMMON2.0_6L(2411).xlsx",
+      "fileName": "H24-129_MEM-K(R54B)_C40_RTV_Single_UDT_COMMON2.0_6L(2411).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-129_MEM-K(R54B)_C40_RTV_SIN",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-130_BOI_C70_FORD_COMMON2.0_6L/BOI_C7.0_Pinmap(ACF pad,B2B).xlsx",
+      "fileName": "BOI_C7.0_Pinmap(ACF pad,B2B).xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "pin map"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-130_BOI_C70_FORD_COMMON2.0_6L/H24-130_BOI_C70_FORD_COMMON2.0_6L(2411).xlsx",
+      "fileName": "H24-130_BOI_C70_FORD_COMMON2.0_6L(2411).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-130_BOI_C70_FORD_COMMON2.0_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-131_BOI_C70_MA_Harrison_Main_V1.0/H24-131_BOI_C70_MA_Harrison_Main_V1.0(2411).xlsx",
+      "fileName": "H24-131_BOI_C70_MA_Harrison_Main_V1.0(2411).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-131_BOI_C70_MA_Harrison_Mai",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-133_BOI_C70_UDT_M_SET_COMMON2.0_6L/H24-133_BOI_C70_UDT_M_SET_COMMON2.0_6L(2411).xlsx",
+      "fileName": "H24-133_BOI_C70_UDT_M_SET_COMMON2.0_6L(2411).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-133_BOI_C70_UDT_M_SET_COMMO",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-134_BOI_C70_MA_Flare_COMMON2.0_6L/H24-134_BOI_C70_MA_Flare_COMMON2.0_6L(2411).xlsx",
+      "fileName": "H24-134_BOI_C70_MA_Flare_COMMON2.0_6L(2411).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-134_BOI_C70_MA_FLARE_COMMON",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-135_BOI_C80_FORD_COMMON2.0_6L/H24-135_BOI_C80_FORD_COMMON2.0_6L(2411).xlsx",
+      "fileName": "H24-135_BOI_C80_FORD_COMMON2.0_6L(2411).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-135_BOI_C80_FORD_COMMON2.0_",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-136_BOI_C80_MA_APS_COMMON2.0_6L/H24-136_BOI_C80_MA_APS_COMMON2.0_6L(2411).xlsx",
+      "fileName": "H24-136_BOI_C80_MA_APS_COMMON2.0_6L(2411).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-136_BOI_C80_MA_APS_COMMON2.",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-137_MEM-K(R54B)_C40_PF_SOCKET_V1.0/H24-137_MEM-K(R54B)_C40_PF_SOCKET_V1.0(2411).xlsx",
+      "fileName": "H24-137_MEM-K(R54B)_C40_PF_SOCKET_V1.0(2411).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-137_MEM-K(R54B)_C40_PF_SOCK",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-138-1_AR_Glass_EOL_Panel_R-Socket_Main_V1.0/H24-138-1_AR_Glass_EOL_Panel_R-Socket_Main_V1.0(2412).xls",
+      "fileName": "H24-138-1_AR_Glass_EOL_Panel_R-Socket_Main_V1.0(2412).xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-138-1_AR_Glass_EOL_Panel_R-Socket_Main_V1.0/H24-138-1_AR_Glass_EOL_Panel_R-Socket_Main_V1.0_241210.좌표.xls",
+      "fileName": "H24-138-1_AR_Glass_EOL_Panel_R-Socket_Main_V1.0_241210.좌표.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-139_BWI25-K_C40_UPDOWN_COMMON_POWER_V1.1_DS160_6L_IPEX60/H24-139_BWI25-K_C40_UPDOWN_COMMON_POWER_V1.1_DS160_6L_IPEX60(2411).xlsx",
+      "fileName": "H24-139_BWI25-K_C40_UPDOWN_COMMON_POWER_V1.1_DS160_6L_IPEX60(2411).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-139_BWI25-K_C40_UPDOWN_COMM",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-141_BOI_C70_FORD_B2B_COMMON2.0_6L/H24-141_BOI_C70_FORD_B2B_COMMON2.0_6L(2411).xlsx",
+      "fileName": "H24-141_BOI_C70_FORD_B2B_COMMON2.0_6L(2411).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-141E_BOI_C70_FORD_B2B_COMMO",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-142_BOI_C70_APS_B2B_COMMON2.0_6L/H24-142_BOI_C70_APS_B2B_COMMON2.0_6L(2411).xlsx",
+      "fileName": "H24-142_BOI_C70_APS_B2B_COMMON2.0_6L(2411).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-142_BOI_C70_APS_B2B_COMMON2",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-143_MGL_MANUAL_CNT_BOARD_V1.0/H24-143_MGL_MANUAL_CNT_BOARD_V1.0(2412).xlsx",
+      "fileName": "H24-143_MGL_MANUAL_CNT_BOARD_V1.0(2412).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-143_MGL_MANUAL_CNT_BOARD_V1",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-147_AKC_LENS_AA_OS_V1.1_6L/H24-147_AKC_LENS_AA_OS_V1.1_6L(2411).xlsx",
+      "fileName": "H24-147_AKC_LENS_AA_OS_V1.1_6L(2411).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-147_AKC_LENS_AA_OS_V1.1_6L",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-149_ATW_C60_Cube_Z-Cal_Manual_Main_V1.0/H24-149_ATW_C60_Cube_Z-Cal_Manual_Main_V1.0(2412).xlsx",
+      "fileName": "H24-149_ATW_C60_Cube_Z-Cal_Manual_Main_V1.0(2412).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-149_ATW_C60_CUBE_Z-CAL_MANU",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-151_MGL_G1_AA_Master_Sensor_Board_V1.0/H24-151_MGL_G1_AA_MASTER_SENSOR_BOARD_V1.0(2412).xlsx",
+      "fileName": "H24-151_MGL_G1_AA_MASTER_SENSOR_BOARD_V1.0(2412).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-151_MGL_G1_AA_MASTER_SENSOR",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-152-1_MGL_G1_AF_Housing_Side_V1.0/H24-152-1_MGL_G1_AF_Housing_Side_V1.0(2412).xlsx",
+      "fileName": "H24-152-1_MGL_G1_AF_Housing_Side_V1.0(2412).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-152-1_MGL_G1_AF_HOUSING_SID",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-152-2_MGL_G1_AA_Gripper_Side_V1.0/H24-152-2_MGL_G1_AA_Gripper_Side_V1.0(2412).xlsx",
+      "fileName": "H24-152-2_MGL_G1_AA_Gripper_Side_V1.0(2412).xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-152-2_MGL_G1_AA_GRIPPER_SID"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-152-3_MGL_Module_AA_AF_Gripper_Side_V1.0/H24-152-3_MGL_Module_AA_AF_Gripper_Side_V1.0(2412).xlsx",
+      "fileName": "H24-152-3_MGL_Module_AA_AF_Gripper_Side_V1.0(2412).xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-152-4_MGL_G1_Attach_Side_V1.0/H24-152-4_MGL_G1_Attach_Side_V1.0(2412).xlsx",
+      "fileName": "H24-152-4_MGL_G1_Attach_Side_V1.0(2412).xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H24-152-4_MGL_G1_ATTACH_SIDE_V1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-153_ATW_C60_Cube_Z-CAL_Board_POGO_L_V1.0/H24-153&154_ATW_C60_Cube_Z-CAL_Board_POGO_L&R_V1.0(2412).xlsx",
+      "fileName": "H24-153&154_ATW_C60_Cube_Z-CAL_Board_POGO_L&R_V1.0(2412).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-153&154_ATW_C60_CUBE_Z-CAL_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-155_MEM-k(54B)_C40_Gopher_90_Arthur_V3_PTM3.2(ADS)_6L/H24-155_MEM-k(54B)_C40_Gopher_90_Arthur_V3_PTM3.2(ADS)_6L(2412).xlsx",
+      "fileName": "H24-155_MEM-k(54B)_C40_Gopher_90_Arthur_V3_PTM3.2(ADS)_6L(2412).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-155_MEM-K(54B)_C40_GOPHER_9",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-156_MEM-K(R54B)_C40_Full_Module_UDT_Auto_COMMON2.0_6L_V1.1/H24-156_MEM-K(R54B)_C40_Full_Module_UDT_Auto_COMMON2.0_6L_V1.1(2412).xlsx",
+      "fileName": "H24-156_MEM-K(R54B)_C40_Full_Module_UDT_Auto_COMMON2.0_6L_V1.1(2412).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-156_MEM-K(R54B)_C40_FULL_MO",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-157_LGIT_SAA_RN_PJT_V1.0/H24-157_LGIT_SAA_RN_PJT_V1.0(2502).xls",
+      "fileName": "H24-157_LGIT_SAA_RN_PJT_V1.0(2502).xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-157_LGIT_SAA_RN_PJT_V1.0/H24-157_LGIT_SAA_RN_PJT_V1.0_250206.bom_좌표.xls",
+      "fileName": "H24-157_LGIT_SAA_RN_PJT_V1.0_250206.bom_좌표.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-158_AKC_OS_Manual_Main_V1.0/H24-158_AKC_OS_Manual_Main_V1.0(2412).xlsx",
+      "fileName": "H24-158_AKC_OS_Manual_Main_V1.0(2412).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-158_AKC_OS_MANUAL_MAIN_V1.0",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-160_BWI25_OS_Manual_Main_V1.0/H24-160_BWI25_OS_Manual_Main_V1.0(2412).xlsx",
+      "fileName": "H24-160_BWI25_OS_Manual_Main_V1.0(2412).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-160_BWI25_OS_Manual_Main_V1",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-162_MGL_AA_Image_Sensor_Board_V1.0/H24-162_MGL_AA_IMAGE_SENSOR_BOARD_V1.0(2412).xlsx",
+      "fileName": "H24-162_MGL_AA_IMAGE_SENSOR_BOARD_V1.0(2412).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-162_MGL_AA_IMAGE_SENSOR_BOA",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-164_MEM-K_C30_Zeus_UDT_Manual_COMMON2.0_6L/H24-164_MEM-K_C30_Zeus_UDT_Manual_COMMON2.0_6L(2412).xlsx",
+      "fileName": "H24-164_MEM-K_C30_Zeus_UDT_Manual_COMMON2.0_6L(2412).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-164_MEM-K_C30_ZEUS_UDT_MANU",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-166_BOI_C60_MA_APS_ARM3.1_COMMON2.0_6L/H24-166_BOI_C60_MA_APS_ARM3.1_COMMON2.0_6L(2412).xlsx",
+      "fileName": "H24-166_BOI_C60_MA_APS_ARM3.1_COMMON2.0_6L(2412).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-166_BOI_C70_MA_APS_ARM3.1_C",
+        "TOP",
+        "BOT"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-167_BOI_C70_Anne_MA_Harrison_Main_V1.0/H24-167_BOI_C70_Anne_MA_Harrison_Main_V1.0(2412).xlsx",
+      "fileName": "H24-167_BOI_C70_Anne_MA_Harrison_Main_V1.0(2412).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-167_BOI_C70_ANNE_MA_HARRISO",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-168_BOI_C60_Grid_Flare_Cube_PTM3.2(ADS)_6L/H24-168_BOI_C60_GRID_FLARE_CUBE_PTM3.2(ADS)_6L(2412).xlsx",
+      "fileName": "H24-168_BOI_C60_GRID_FLARE_CUBE_PTM3.2(ADS)_6L(2412).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H24-168_BOI_C60_GRID_FLARE_CUBE",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2024/H24-169_BOI_C60_Manual_Bench_Main_V1.0_6L/H24-169_BOI_C60_Manual_Bench_Main_V1.0_6L(2501).xlsx",
+      "fileName": "H24-169_BOI_C60_Manual_Bench_Main_V1.0_6L(2501).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H24-169_BOI_C60_MANUAL_BENCH_MA",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-002_MEM_C40_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L/H25-002_MEM_C40_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L(2501).xlsx",
+      "fileName": "H25-002_MEM_C40_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L(2501).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-002_MEM_C40_PRISM_LCB_TESTE",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-002_MEM_C40_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L/H25-002_MEM_C40_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L(2502).xlsx",
+      "fileName": "H25-002_MEM_C40_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L(2502).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-002_MEM_C40_PRISM_LCB_TESTE",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-003_BOI_C60_MA_APS_COMMON2.0_6L/H25-003_BOI_C60_MA_APS_COMMON2.0_6L(2501).xlsx",
+      "fileName": "H25-003_BOI_C60_MA_APS_COMMON2.0_6L(2501).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-003_BOI_C60_MA_APS_COMMON2.",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-004_MGL_ZOOM_CAL_BOARD_V1.0/H25-004_MGL_ZOOM_CAL_BOARD_V1.0(2501).xlsx",
+      "fileName": "H25-004_MGL_ZOOM_CAL_BOARD_V1.0(2501).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-004_MGL_ZOOM_CAL_BOARD_V1.0",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-005_Paragon_Zoom_Cal_Manual_Main_V1.2/H25-005_PARAGON_ZOOM_CAL_MANUAL_MAIN_V1.2_250124part.xlsx",
+      "fileName": "H25-005_PARAGON_ZOOM_CAL_MANUAL_MAIN_V1.2_250124part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-005_PARAGON_ZOOM_CAL_MANUAL"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-005_Paragon_Zoom_Cal_Manual_Main_V1.2/H25-005_Paragon_Zoom_Cal_Manual_Main_1V2(2501).xlsx",
+      "fileName": "H25-005_Paragon_Zoom_Cal_Manual_Main_1V2(2501).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-005_Paragon_Zoom_Cal_Manual",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-007_BOI_C60_Cube_Type_Harrison_Manual_Main/H25-007_BOI_C60_Cube_Type_Harrison_Manual_Main(2501).xlsx",
+      "fileName": "H25-007_BOI_C60_Cube_Type_Harrison_Manual_Main(2501).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-007_BOI_C60_Cube_Type_Harri",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-009_MEM-K_C40_Zeus_UDT_PWR_GND_reinforced_manual_COMMON2.0_6L/H25-009_MEM-K_C40_Zeus_UDT_PWR_GND_reinforced_manual_COMMON2.0_6L(2501).xlsx",
+      "fileName": "H25-009_MEM-K_C40_Zeus_UDT_PWR_GND_reinforced_manual_COMMON2.0_6L(2501).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-009_MEM-K_C40_Zeus_UDT_PWR_",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-009_MEM-K_C40_Zeus_UDT_PWR_GND_reinforced_manual_COMMON2.0_6L/요청내용.xlsx",
+      "fileName": "요청내용.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "견적자료"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-010_BOI_C60_Module_Ford_COMMON2.0_6L/H25-010_BOI_C60_MODULE_FORD_COMMON2.0_6L(2502).xlsx",
+      "fileName": "H25-010_BOI_C60_MODULE_FORD_COMMON2.0_6L(2502).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-010_BOI_C60_MODULE_FORD_COM",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-010_BOI_C60_Module_Ford_COMMON2.0_6L/H25-010_BOI_C60_MODULE_FORD_COMMON2.0_6L_250206part.xlsx",
+      "fileName": "H25-010_BOI_C60_MODULE_FORD_COMMON2.0_6L_250206part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-010_BOI_C60_MODULE_FORD_COM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-010_BOI_C60_Module_Ford_COMMON2.0_6L/요청내용.xlsx",
+      "fileName": "요청내용.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "견적자료"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-011_BOI_C60_Module_APS_COMMON2.0_6L/H25-011_BOI_C60_Module_APS_COMMON2.0_6L(2502).xls",
+      "fileName": "H25-011_BOI_C60_Module_APS_COMMON2.0_6L(2502).xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-011_BOI_C60_Module_APS_COMMON2.0_6L/요청내용.xlsx",
+      "fileName": "요청내용.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "견적자료"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-012_BOI_C60_Module_Updown_COMMON2.0_6L/H25-012_BOI_C60_Module_Updown_COMMON2.0_6L(2502).xls",
+      "fileName": "H25-012_BOI_C60_Module_Updown_COMMON2.0_6L(2502).xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-012_BOI_C60_Module_Updown_COMMON2.0_6L/요청내용.xlsx",
+      "fileName": "요청내용.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "견적자료"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-013-E_BOI_C60_Module_Grid_Flare_PTM3.2(ADS)_6L/H25-013-E_BOI_C60_MODULE_GRID_FLARE_PTM3_2(ADS)_6L(2503).xlsx",
+      "fileName": "H25-013-E_BOI_C60_MODULE_GRID_FLARE_PTM3_2(ADS)_6L(2503).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-013-E_BOI_C60_MODULE_GRID_F",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-013_BOI_C60_Module_Grid_Flare_PTM3.2(ADS)_6L/BOI_C6.0_B2B_Pinmap_250115.xlsx",
+      "fileName": "BOI_C6.0_B2B_Pinmap_250115.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-013_BOI_C60_Module_Grid_Flare_PTM3.2(ADS)_6L/H25-013_BOI_C60_Module_Grid_Flare_PTM3.2(ADS)_6L(2502).xls",
+      "fileName": "H25-013_BOI_C60_Module_Grid_Flare_PTM3.2(ADS)_6L(2502).xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-013_BOI_C60_Module_Grid_Flare_PTM3.2(ADS)_6L/요청내용.xlsx",
+      "fileName": "요청내용.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "견적자료"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-015_BOI_C60_Cube_Updown_COMMON2.0_6L/H25-015_BOI_C60_CUBE_UPDOWN_COMMON2.0_6L(2503).xlsx",
+      "fileName": "H25-015_BOI_C60_CUBE_UPDOWN_COMMON2.0_6L(2503).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-015_BOI_C60_CUBE_UPDOWN_COM",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-015_BOI_C60_Cube_Updown_COMMON2.0_6L/요청내용.xlsx",
+      "fileName": "요청내용.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "견적자료"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-016_ATW_C61_UDT_Cube_Auto_COMMON1.1_6L(취소)/H25-016_ATW_C61_UDT_CUBE_AUTO_COMMON1.1_6L_250204part.xlsx",
+      "fileName": "H25-016_ATW_C61_UDT_CUBE_AUTO_COMMON1.1_6L_250204part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-016_ATW_C61_UDT_CUBE_AUTO_C"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-016_ATW_C61_UDT_Cube_Auto_COMMON1.1_6L(취소)/생기원자료.xlsx",
+      "fileName": "생기원자료.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "R2501229758",
+        "R2501219727"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-020_ATW_C61_Z-Cal_Auto_Left/H25-020&021_ATW_C61_Z-CAL_AUTO_L&R(2502).xlsx",
+      "fileName": "H25-020&021_ATW_C61_Z-CAL_AUTO_L&R(2502).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-020&021_ATW_C61_Z-CAL_AUTO_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-020_ATW_C61_Z-Cal_Auto_Left/H25-020&021_ATW_C61_Z-CAL_AUTO_L&R_250206part.xlsx",
+      "fileName": "H25-020&021_ATW_C61_Z-CAL_AUTO_L&R_250206part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-020&021_ATW_C61_Z-CAL_AUTO_"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-020_ATW_C61_Z-Cal_Auto_Left/생기원자료.xlsx",
+      "fileName": "생기원자료.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "R2501219731"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-022_ATW_C61_Cube_Z-CAL_Manual_Main_V1.0/H25-022_ATW_C61_CUBE_Z-CAL_MANUAL_MAIN_V1.0(2502).xlsx",
+      "fileName": "H25-022_ATW_C61_CUBE_Z-CAL_MANUAL_MAIN_V1.0(2502).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-022_ATW_C61_CUBE_Z-CAL_MANU",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-022_ATW_C61_Cube_Z-CAL_Manual_Main_V1.0/H25-022_ATW_C61_CUBE_Z-CAL_MANUAL_MAIN_V1.0_250210part.xlsx",
+      "fileName": "H25-022_ATW_C61_CUBE_Z-CAL_MANUAL_MAIN_V1.0_250210part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-022_ATW_C61_CUBE_Z-CAL_MANU"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-022_ATW_C61_Cube_Z-CAL_Manual_Main_V1.0/생기원자료.xlsx",
+      "fileName": "생기원자료.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "R2501229762"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-022_ATW_C61_Cube_Z-CAL_Manual_Main_V1.0/생기원자료_dup.xlsx",
+      "fileName": "생기원자료_dup.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "R2501229763"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-024_BOI_C60_Module_Type_Harrison_Manual_Main/H25-024_BOI_C60_MODULE_TYPE_HARRISON_MANUAL_MAIN(2502).xlsx",
+      "fileName": "H25-024_BOI_C60_MODULE_TYPE_HARRISON_MANUAL_MAIN(2502).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-024_BOI_C60_MODULE_TYPE_HAR",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-024_BOI_C60_Module_Type_Harrison_Manual_Main/H25-024_BOI_C60_MODULE_TYPE_HARRISON_MANUAL_MAIN_250212part.xlsx",
+      "fileName": "H25-024_BOI_C60_MODULE_TYPE_HARRISON_MANUAL_MAIN_250212part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-024_BOI_C60_MODULE_TYPE_HAR"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-024_BOI_C60_Module_Type_Harrison_Manual_Main/생기원자료.xlsx",
+      "fileName": "생기원자료.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-026_ATW_C61_LENS_AA_V1.0_6L/H25-026_ATW_C61_LENS_AA_V1.0_6L(2502).xlsx",
+      "fileName": "H25-026_ATW_C61_LENS_AA_V1.0_6L(2502).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-026_ATW_C61_LENS_AA_V1.0_6L",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-026_ATW_C61_LENS_AA_V1.0_6L/H25-026_ATW_C61_LENS_AA_V1.0_6L_250211part.xlsx",
+      "fileName": "H25-026_ATW_C61_LENS_AA_V1.0_6L_250211part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-026_ATW_C61_LENS_AA_V1.0_6L"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-027_UW_CM_Test_Socket_V1.0/H25-027_UW_CM_TEST_SOCKET_V1.0(2502).xlsx",
+      "fileName": "H25-027_UW_CM_TEST_SOCKET_V1.0(2502).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-027_UW_CM_TEST_SOCKET_V1.0_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-027_UW_CM_Test_Socket_V1.0/H25-027_UW_CM_TEST_SOCKET_V1.0_250214part.xlsx",
+      "fileName": "H25-027_UW_CM_TEST_SOCKET_V1.0_250214part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-027_UW_CM_TEST_SOCKET_V1.0_"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-028_MEM_C30_RTV_Triple_UDT_COMMON2.0_6L/H25-028_MEM_C30_RTV_TRIPLE_UDT_COMMON2.0_6L(2502).xlsx",
+      "fileName": "H25-028_MEM_C30_RTV_TRIPLE_UDT_COMMON2.0_6L(2502).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-028_MEM_C30_RTV_TRIPLE_UDT_",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-028_MEM_C30_RTV_Triple_UDT_COMMON2.0_6L/H25-028_MEM_C30_RTV_TRIPLE_UDT_COMMON2.0_6L_250217part.xlsx",
+      "fileName": "H25-028_MEM_C30_RTV_TRIPLE_UDT_COMMON2.0_6L_250217part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-028_MEM_C30_RTV_TRIPLE_UDT_"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-028_MEM_C30_RTV_Triple_UDT_COMMON2.0_6L/R2502079868.xlsx",
+      "fileName": "R2502079868.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-029_MEM_C30_RTV_Single_UDT_COMMON2.0_6L/H25-029_MEM_C30_RTV_SINGLE_UDT_COMMON2.0_6L(2502).xlsx",
+      "fileName": "H25-029_MEM_C30_RTV_SINGLE_UDT_COMMON2.0_6L(2502).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-029_MEM_C30_RTV_SINGLE_UDT_",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-029_MEM_C30_RTV_Single_UDT_COMMON2.0_6L/H25-029_MEM_C30_RTV_SINGLE_UDT_COMMON2.0_6L_250217part.xlsx",
+      "fileName": "H25-029_MEM_C30_RTV_SINGLE_UDT_COMMON2.0_6L_250217part.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-029_MEM_C30_RTV_SINGLE_UDT_"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {
+        "row": 12,
+        "columns": [
+          "Item",
+          "Quantity",
+          "Reference",
+          "Part",
+          "PCB Footprint"
+        ]
+      }
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-029_MEM_C30_RTV_Single_UDT_COMMON2.0_6L/R2502079869.xlsx",
+      "fileName": "R2502079869.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-035_BOI_C60_Triple_UDT_COMMON2.0_6L/H25-035_BOI_C60_TRIPLE_UDT_COMMON2.0_6L(2503).xlsx",
+      "fileName": "H25-035_BOI_C60_TRIPLE_UDT_COMMON2.0_6L(2503).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-035_BOI_C60_TRIPLE_UDT_COMM",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-035_BOI_C60_Triple_UDT_COMMON2.0_6L/R2502260078.xlsx",
+      "fileName": "R2502260078.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-036_BOI_C60_Triple_APS_Main_COMMON2.0_6L/H25-036_BOI_C60_TRIPLE_APS_MAIN_COMMON2.0_6L(2503).xlsx",
+      "fileName": "H25-036_BOI_C60_TRIPLE_APS_MAIN_COMMON2.0_6L(2503).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-036_BOI_C60_TRIPLE_APS_MAIN",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-037_BOI_C60_Triple_Ford_COMMON2.0_6L/H25-037_BOI_C60_TRIPLE_FORD_COMMON2.0_6L(2503).xlsx",
+      "fileName": "H25-037_BOI_C60_TRIPLE_FORD_COMMON2.0_6L(2503).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-037_BOI_C60_TRIPLE_FORD_COM",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-037_BOI_C60_Triple_Ford_COMMON2.0_6L/R2502260080.xlsx",
+      "fileName": "R2502260080.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-038_MW_AKC_Lens_AA_OS_V1.0/H25-038_MW_AKC_LENS_AA_OS_V1.0(2503).xlsx",
+      "fileName": "H25-038_MW_AKC_LENS_AA_OS_V1.0(2503).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-038_MW_AKC_LENS_AA_OS_V1.0_",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-039_BOI_C70_Lens_AA_OS_V1.1_6L/H25-039_BOI_C70_Lens_AA_OS_V1.1_6L(2503).xlsx",
+      "fileName": "H25-039_BOI_C70_Lens_AA_OS_V1.1_6L(2503).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-039_BOI_C70_LENS_AA_OS_V1.0",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-043_MW25_Lens_AA_OS_V1.0/H25-043_MW25_LENS_AA_OS_V1.0(2504).xlsx",
+      "fileName": "H25-043_MW25_LENS_AA_OS_V1.0(2504).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-043_MW25_LENS_AA_OS_V1.0_25",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-044_MEM_C30_RTV_Triple_APS_Manual_PTM3.2(ADS)_6L/H25-044_MEM_C30_RTV_TRIPLE_MANUAL_PTM3.2(ADS)_6L(2504).xlsx",
+      "fileName": "H25-044_MEM_C30_RTV_TRIPLE_MANUAL_PTM3.2(ADS)_6L(2504).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-044_MEM_C30_RTV_TRIPLE_MANU",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-044_MEM_C30_RTV_Triple_APS_Manual_PTM3.2(ADS)_6L/R2503260469.xlsx",
+      "fileName": "R2503260469.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-045_BOI_C50_IR_EMITTER_FORD_CUBE_COMMON2.0_6L/H25-045_BOI_C50_IR_EMITTER_FORD_CUBE_COMMON2.0_6L(2505).xlsx",
+      "fileName": "H25-045_BOI_C50_IR_EMITTER_FORD_CUBE_COMMON2.0_6L(2505).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-045_BOI_C50_IR_EMITTER_FORD",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-045_BOI_C50_IR_EMITTER_FORD_CUBE_COMMON2.0_6L/R2503280505.xlsx",
+      "fileName": "R2503280505.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-046_ATW_C50_Z-CAL_AUTO_Left_V1.0/H25-046&047_ATW_C50_Z-CAL_AUTO_LEFT&RIGHT_V1.0(2504).xlsx",
+      "fileName": "H25-046&047_ATW_C50_Z-CAL_AUTO_LEFT&RIGHT_V1.0(2504).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-046&047_ATW_C50_Z-CAL_AUTO_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-046_ATW_C50_Z-CAL_AUTO_Left_V1.0/R2503310523.xlsx",
+      "fileName": "R2503310523.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-049_ATW_C50_Z-CAL_Manual_Main_V1.0/H25-049_ATW_C50_Z-CAL_MANUAL_MAIN_V1.0(2504).xlsx",
+      "fileName": "H25-049_ATW_C50_Z-CAL_MANUAL_MAIN_V1.0(2504).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-049_ATW_C50_Z-CAL_MANUAL_MA",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-049_ATW_C50_Z-CAL_Manual_Main_V1.0/R2503310528.xlsx",
+      "fileName": "R2503310528.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-049_ATW_C50_Z-CAL_Manual_Main_V1.0/R2503310530.xlsx",
+      "fileName": "R2503310530.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-050_BOI_Cube_Cyclops_GIS_Board_V1.0/H25-050_BOI_CUBE_CYCLOPS_GIS_BOARD_V1.0(2504).xlsx",
+      "fileName": "H25-050_BOI_CUBE_CYCLOPS_GIS_BOARD_V1.0(2504).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-050_BOI_CUBE_CYCLOPS_GIS_BO",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-051_ATW_C50_Lens_AA_V1.0_6L/H25-051_ATW_C50_LENS_AA_V1.0_6L(2504).xlsx",
+      "fileName": "H25-051_ATW_C50_LENS_AA_V1.0_6L(2504).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-051_ATW_C50_LENS_AA_V1.0_6L",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-052_BWI25_C30_Cube_Auto_Z-CAL-L_V1.0/H25-052&053_BWI25_C30_CUBE_AUTO_Z-CAL-L&R_V1.0(2504).xlsx",
+      "fileName": "H25-052&053_BWI25_C30_CUBE_AUTO_Z-CAL-L&R_V1.0(2504).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-052&053_BWI25_C30_CUBE_AUTO",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-054_AKC_C50_Cube_Auto_Z-CAL_L_V1.0/H25-054&055_AKC_C50_CUBE_AUTO_Z-CAL_L&R_V1.0(2504).xlsx",
+      "fileName": "H25-054&055_AKC_C50_CUBE_AUTO_Z-CAL_L&R_V1.0(2504).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-054&055_AKC_C50_CUBE_AUTO_Z",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-056_BOI_C50_Cube_Updown_COMMON2.0_6L/H25-056_BOI_C50_CUBE_UPDOWN_COMMON2.0_6L(2504).xlsx",
+      "fileName": "H25-056_BOI_C50_CUBE_UPDOWN_COMMON2.0_6L(2504).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-056_BOI_C50_CUBE_UPDOWN_COM",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-057_MGL_ZOOM_CAL_BOARD_V1.1/H25-057_MGL_ZOOM_CAL_BOARD_V1.1(2505).xlsx",
+      "fileName": "H25-057_MGL_ZOOM_CAL_BOARD_V1.1(2505).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-057_MGL_ZOOM_CAL_BOARD_V1.1",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-062_MEM-T_C50_Full_Module_Auto_UDT_COMMON2.0_6L/H25-062_MEM-T_C50_FULL_MODULE_AUTO_UDT_COMMON2.0_6L(2505).xlsx",
+      "fileName": "H25-062_MEM-T_C50_FULL_MODULE_AUTO_UDT_COMMON2.0_6L(2505).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-062_MEM-T_C50_FULL_MODULE_A",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-063_MEM-T_C50_Full_Module_manual_UDT_COMMON2.0_6L/H25-063_MEM-T_C50_FULL_MODULE_MANUAL_UDT_COMMON2.0_6L(2506).xlsx",
+      "fileName": "H25-063_MEM-T_C50_FULL_MODULE_MANUAL_UDT_COMMON2.0_6L(2506).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-063_MEM-T_C50_FULL_MODULE_M",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-064_MEM-T_C50_Full_Module_Auto_Iguana_PTM3.2(ADS)_6L/H25-064_MEM-T_C50_FULL_MODULE_AUTO_IGUANA_PTM3.2(ADS)_6L(2506).xlsx",
+      "fileName": "H25-064_MEM-T_C50_FULL_MODULE_AUTO_IGUANA_PTM3.2(ADS)_6L(2506).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-064_MEM-T_C50_FULL_MODULE_A",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-065_MEM-T_C50_Full_Module_Auto_iCLT_PTM3.2(ADS)_6L/H25-065_MEM-T_C50_FULL_MODULE_AUTO_ICLT_PTM3.2(ADS)_6L(2506).xlsx",
+      "fileName": "H25-065_MEM-T_C50_FULL_MODULE_AUTO_ICLT_PTM3.2(ADS)_6L(2506).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-065_MEM-T_C50_FULL_MODULE_A",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-066_BOI_Ford_Tester_PCT_Heater_COMMON2.0_6L/H25-066_BOI_FORD_TESTER_PTC_HEATER_COMMON2.0_6L(2506).xlsx",
+      "fileName": "H25-066_BOI_FORD_TESTER_PTC_HEATER_COMMON2.0_6L(2506).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-066_BOI_FORD_TESTER_PTC_HEA",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-067_Paragon_Zoom_Cal_Bridge_Board_V1.1/H25-067_PARAGON_ZOOM_CAL_BRIDGE_BOARD_V1.1(2506).xlsx",
+      "fileName": "H25-067_PARAGON_ZOOM_CAL_BRIDGE_BOARD_V1.1(2506).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-067_PARAGON_ZOOM_CAL_BRIDGE",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-068_BOI-T_C50_Module_UDT_COMMON2.0_6L/H25-068_BOI-T_C50_MODULE_UDT_COMMON2.0_6L(2506).xlsx",
+      "fileName": "H25-068_BOI-T_C50_MODULE_UDT_COMMON2.0_6L(2506).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-068_BOI-T_C50_MODULE_UDT_CO",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-069_BOI-T_C50_Module_APS_COMMON2.0_6L/H25-069_BOI-T_C50_MODULE_APS_COMMON2.0_6L(2506).xlsx",
+      "fileName": "H25-069_BOI-T_C50_MODULE_APS_COMMON2.0_6L(2506).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-069_BOI-T_C50_MODULE_APS_CO",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-070_BOI-T_C50_Module_Ford_COMMON2.0_6L/H25-070_BOI-T_C50_MODULE_FORD_COMMON2.0_6L(2506).xlsx",
+      "fileName": "H25-070_BOI-T_C50_MODULE_FORD_COMMON2.0_6L(2506).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-070_BOI-T_C50_MODULE_FORD_C",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-071_BOI-T_C50_Module_Grid_Flare_COMMON2.0_6L/H25-071_BOI-T_C50_MODULE_GRID_FLARE_COMMON2.0_6L(2506).xlsx",
+      "fileName": "H25-071_BOI-T_C50_MODULE_GRID_FLARE_COMMON2.0_6L(2506).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-071_BOI-T_C50_MODULE_GRID_F",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-072_MEM-T_C50_Full_Module_manual_SFR_bench(OCT)_COMMON2.0_6L/H25-072_MEM-T_C50_FULL_MODULE_MANUAL_SFR_BENCH(OCT)_COMMON2.0_6L(2506).xlsx",
+      "fileName": "H25-072_MEM-T_C50_FULL_MODULE_MANUAL_SFR_BENCH(OCT)_COMMON2.0_6L(2506).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-072_MEM-T_C50_FULL_MODULE_M",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-073_BOI_Cyclops_Socket_Board_PTM3.2(ADS)_0X0321/H25-073_BOI_CYCLOPS_SOCKET_BOARD_PTM3.2(ADS)_0X0321(2506).xlsx",
+      "fileName": "H25-073_BOI_CYCLOPS_SOCKET_BOARD_PTM3.2(ADS)_0X0321(2506).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-073_BOI_CYCLOPS_SOCKET_BOAR",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-074_AQUA_Module_Inspection_Board_V1.0/H25-074_AQUA_MODULE_INSPECTION_BOARD_MAIN_V1.0(2506).xlsx",
+      "fileName": "H25-074_AQUA_MODULE_INSPECTION_BOARD_MAIN_V1.0(2506).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-074_AQUA_MODULE_INSPECTION_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-076_MW25_Lens_AA_OS_V1.1/H25-076_MW25_LENS_AA_OS_V1.1(2506).xlsx",
+      "fileName": "H25-076_MW25_LENS_AA_OS_V1.1(2506).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-076_MW25_LENS_AA_OS_V1.1_25",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-077_MEM_C40_MA(Cube_Zeus)_Gopher_Side_Pusher_PTM3.2(ADS)_6L/H25-077_MEM_C40_MA(CUBE_ZEUS)_GOPHER_SIDE_PUSHER_PTM3.2(ADS)_6L(2506).xlsx",
+      "fileName": "H25-077_MEM_C40_MA(CUBE_ZEUS)_GOPHER_SIDE_PUSHER_PTM3.2(ADS)_6L(2506).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-077_MEM_C40_MA(CUBE_ZEUS)_G",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-078-1_MIRAMAR_FPCB_V6_HALL_TYPE/H25-078-1,2 STRUCTURE.xlsx",
+      "fileName": "H25-078-1,2 STRUCTURE.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-078-1,2"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-078-1_MIRAMAR_FPCB_V6_HALL_TYPE/H25-078-1_MIRAMAR_FPCB_V6_HALL_TYPE(2508).xlsx",
+      "fileName": "H25-078-1_MIRAMAR_FPCB_V6_HALL_TYPE(2508).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-078-1_MIRAMAR_FPCB_V6_HALL_",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-078-1_MIRAMAR_FPCB_V6_HALL_TYPE/H25-078-2_MIRAMAR_FPCB_V6_TMR_TYPE(2508).xlsx",
+      "fileName": "H25-078-2_MIRAMAR_FPCB_V6_TMR_TYPE(2508).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-078-2_MIRAMAR_FPCB_V6_TMR_T",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-078-2_MIRAMAR_FPCB_V6_TMR_TYPE/H25-078-1,2 STRUCTURE.xlsx",
+      "fileName": "H25-078-1,2 STRUCTURE.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-078-1,2"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-078-2_MIRAMAR_FPCB_V6_TMR_TYPE/H25-078-2_MIRAMAR_FPCB_V6_TMR_TYPE(2508).xlsx",
+      "fileName": "H25-078-2_MIRAMAR_FPCB_V6_TMR_TYPE(2508).xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-078-2_MIRAMAR_FPCB_V6_TMR_T"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-079_BWI25_C30_DP_OS_Manual_Dual_Tester_V1.0/H25-079_BWI25_C30_DP_OS_MANUAL_DUAL_TESTER_V1.0(2506).xlsx",
+      "fileName": "H25-079_BWI25_C30_DP_OS_MANUAL_DUAL_TESTER_V1.0(2506).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-079_BWI25_C30_DP_OS_MANUAL_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-083_BOI_Cyclops_SFR_Bench_Tester_COMMON2.0_6L/H25-083_BOI_CYCLOPS_SFR_BENCH_TESTER_COMMON2.0_6L(2507).xlsx",
+      "fileName": "H25-083_BOI_CYCLOPS_SFR_BENCH_TESTER_COMMON2.0_6L(2507).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-083_BOI_CYCLOPS_SFR_BENCH_T",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-084_PH_CAR_AA_Connector_Test_Board/H25-084_PH_CAR_AA_CONNECTOR_TEST_BOARD(2507).xlsx",
+      "fileName": "H25-084_PH_CAR_AA_CONNECTOR_TEST_BOARD(2507).xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-084_PH_CAR_AA_CONNECTOR_TES"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-084_PH_CAR_AA_Connector_Test_Board/검사 성적서 - H25-084_PH_CAR_AA_Connector_Test_Board (250717).xlsx",
+      "fileName": "검사 성적서 - H25-084_PH_CAR_AA_Connector_Test_Board (250717).xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "검사 성적서"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-085_Miramar_Main_V1.0/H25-085_MIRAMAR_MAIN_V1.0(2508).xlsx",
+      "fileName": "H25-085_MIRAMAR_MAIN_V1.0(2508).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-085_MIRAMAR_MAIN_V1.0",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-086_AQUA_MASTER_SENSOR_SOCKET_V1.0/H25-086_AQUA_MASTER_SENSOR_SOCKET_V1.0(2507).xlsx",
+      "fileName": "H25-086_AQUA_MASTER_SENSOR_SOCKET_V1.0(2507).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-086_AQUA_MASTER_SENSOR_SOCK",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-087_AQUA_PRISM_SENSOR_SOCKET_V1.0/H25-087_AQUA_PRISM_SENSOR_SOCKET_V1.0(2507).xlsx",
+      "fileName": "H25-087_AQUA_PRISM_SENSOR_SOCKET_V1.0(2507).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-087_AQUA_PRISM_SENSOR_SOCKE",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-088_LGIT_SAA_SBN_Socket_Board_V1.0(회로수정-재발주X)/H25-088_LGIT_SAA_SBN_SOCKET_BOARD_V1.0(2507).xlsx",
+      "fileName": "H25-088_LGIT_SAA_SBN_SOCKET_BOARD_V1.0(2507).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-088_LGIT_SAA_SBN_SOCKET_BOA",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-089_LGIT_OIS_Tester_SBN_V1.0/H25-089_LGIT_OIS_TESTER_SBN_V1.0(2507).xlsx",
+      "fileName": "H25-089_LGIT_OIS_TESTER_SBN_V1.0(2507).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-089_LGIT_OIS_TESTER_SBN_V1.",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-090_LGIT_BOS_PJT_C50_SAA_V1.1/H25-090_LGIT_BOS_PJT_C50_SAA_V1.1(2505).xlsx",
+      "fileName": "H25-090_LGIT_BOS_PJT_C50_SAA_V1.1(2505).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-090_LGIT_BOS_PJT_C50_SAA_V1",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-090_LGIT_BOS_PJT_C50_SAA_V1.1/H25-090_LGIT_BOS_PJT_C50_SAA_V1.1_BOM_250714.xlsx",
+      "fileName": "H25-090_LGIT_BOS_PJT_C50_SAA_V1.1_BOM_250714.xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-090_LGIT_BOS_PJT_C50_SAA_V1",
+        "H25-090_LGIT_BOS_PJT_C50_SAA(2)",
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-091_Paragon_Zoom_Cal_Manual_Main_V1.3/H25-091_PARAGON_ZOOM_CAL_MANUAL_MAIN_V1.3(2507).xlsx",
+      "fileName": "H25-091_PARAGON_ZOOM_CAL_MANUAL_MAIN_V1.3(2507).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-091_PARAGON_ZOOM_CAL_MANUAL",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-093_LGIT_SAA_PDX_26Y_V1.0/H25-093_LGIT_SAA_PDX_26Y_V1.0(2507).xlsx",
+      "fileName": "H25-093_LGIT_SAA_PDX_26Y_V1.0(2507).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-093_LGIT_SAA_PDX_26Y_V1.0",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-094_Miramar_Top_Board_V1.0/H25-094_MIRAMAR_TOP_BOARD_V1.0(2508).xlsx",
+      "fileName": "H25-094_MIRAMAR_TOP_BOARD_V1.0(2508).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-094_MIRAMAR_TOP_BOARD_V1.0_",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-095_Miramar_Bottom_Board_V1.0/H25-095_MIRAMAR_BOTTOM_BOARD_V1.0(2508).xlsx",
+      "fileName": "H25-095_MIRAMAR_BOTTOM_BOARD_V1.0(2508).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-095_MIRAMAR_BOTTOM_BOARD_V1",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-097_AQUA_Module_Inspection_Board_main_V1.1/H25-097_AQUA_MODULE_INSPECTION_BOARD_MAIN_V1.1(2508).xlsx",
+      "fileName": "H25-097_AQUA_MODULE_INSPECTION_BOARD_MAIN_V1.1(2508).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-097_AQUA_MODULE_INSPECTION_",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-097_AQUA_Module_Inspection_Board_main_V1.1/cots.xlsx",
+      "fileName": "cots.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "Sheet1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-099_MEM26_C50_RTV_Triple_UDT_COMMON2.0_6L/H25-099_MEM26_C50_RTV_TRIPLE_UDT_COMMON2.0_6L(2508).xlsx",
+      "fileName": "H25-099_MEM26_C50_RTV_TRIPLE_UDT_COMMON2.0_6L(2508).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-099_MEM26_C50_RTV_TRIPLE_UD",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-100_AQUA_PRISM_SENSOR_SOCKET_V1.1/H25-100_AQUA_PRISM_SENSOR_SOCKET_V1.1(2508).xlsx",
+      "fileName": "H25-100_AQUA_PRISM_SENSOR_SOCKET_V1.1(2508).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-100_AQUA_PRISM_SENSOR_SOCKE",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-103_Miramar_A9.0_Adapter_Board_V1.0/H25-103_MIRAMAR_A9.0_ADAPTER_BOARD_V1.0(2508).xlsx",
+      "fileName": "H25-103_MIRAMAR_A9.0_ADAPTER_BOARD_V1.0(2508).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-103_MIRAMAR_A9.0_ADAPTER_BO",
+        "좌표"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-104_BOI_C50_Module_Type_Harrison_Manual_V1.0/H25-104_BOI_C50_MODULE_TYPE_HARRISON_MANUAL_V1.0(2508).xlsx",
+      "fileName": "H25-104_BOI_C50_MODULE_TYPE_HARRISON_MANUAL_V1.0(2508).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-104_BOI_C50_MODULE_TYPE_HAR",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-105_BOI_C40_Cube_Updown_COMMON2.0_6L/H25-105_BOI_C40_CUBE_UPDOWN_COMMON2.0_6L(2509).xlsx",
+      "fileName": "H25-105_BOI_C40_CUBE_UPDOWN_COMMON2.0_6L(2509).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-105_BOI_C40_CUBE_UPDOWN_COM",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-106_BOI_C40_FORD_COMMON2.0_6L/H25-106_BOI_C40_FORD_COMMON2.0_6L(2509).xlsx",
+      "fileName": "H25-106_BOI_C40_FORD_COMMON2.0_6L(2509).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-106_BOI_C40_FORD_COMMON2.0_",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-107_BOI_C40_Grid_Flare_Cube_PTM3.2(ADS)_6L/H25-107_BOI_C40_GRID_FLARE_CUBE_PTM3.2(ADS)_6L(2509).xlsx",
+      "fileName": "H25-107_BOI_C40_GRID_FLARE_CUBE_PTM3.2(ADS)_6L(2509).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-107_BOI_C40_GRID_FLARE_CUBE",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-109_BOI_C40_Cube_APS_COMMON2.0_6L/H25-109_BOI_C40_CUBE_APS_COMMON2.0_6L(2509).xlsx",
+      "fileName": "H25-109_BOI_C40_CUBE_APS_COMMON2.0_6L(2509).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-109_BOI_C40_CUBE_APS_COMMON",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-110_LGIT_27Y_SAA_NPI_SEA_V1.0/H25-110_LGIT_27Y_SAA_NPI_SEA_V1.0(2509).xls",
+      "fileName": "H25-110_LGIT_27Y_SAA_NPI_SEA_V1.0(2509).xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-110_LGIT_27Y_SAA_NPI_SEA_V1.0/H25-110_LGIT_27Y_SAA_NPI_SEA_V1.0_250903.Part.좌표.xls",
+      "fileName": "H25-110_LGIT_27Y_SAA_NPI_SEA_V1.0_250903.Part.좌표.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-111-1_LGIT_AQUA_PJT_Side_Board_V1.0/H25-111_LGIT_AQUA_PJT_BOARD_V1.0(2510).xlsx",
+      "fileName": "H25-111_LGIT_AQUA_PJT_BOARD_V1.0(2510).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-111_LGIT_AQUA_PJT_BOARD_V1.",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-112_Miramar_Dual_Meissner_Gender_Board_V1.0/H25-112_Miramar_Dual_Meissner_Gender_Board_V1.0(2509).xlsx",
+      "fileName": "H25-112_Miramar_Dual_Meissner_Gender_Board_V1.0(2509).xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-112_MIRAMAR_DUAL_MEISSNER_G"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-113_Paragon_Module_AA_Side_Board_V1.0/H25-113_PARAGON_MODULE_AA_SIDE_BOARD_V1.0(2509).xlsx",
+      "fileName": "H25-113_PARAGON_MODULE_AA_SIDE_BOARD_V1.0(2509).xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-113_PARAGON_MODULE_AA_SIDE_"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-115_MEM-T_C40_Full_Module_Auto_UDT_COMMON2.0_6L/H25-115_MEM-T_C40_FULL_MODULE_AUTO_UDT_COMMON2.0_6L(2509).xlsx",
+      "fileName": "H25-115_MEM-T_C40_FULL_MODULE_AUTO_UDT_COMMON2.0_6L(2509).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-115_MEM-T_C40_FULL_MODULE_A",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-116_MEM-T_C40_Full_Module_Manual_UDT_Common2.0_6L/H25-116_MEM-T_C40_FULL_MODULE_MANUAL_UDT_COMMON2.0_6L(2509).xlsx",
+      "fileName": "H25-116_MEM-T_C40_FULL_MODULE_MANUAL_UDT_COMMON2.0_6L(2509).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-116_MEM-T_C40_FULL_MODULE_M",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-118_BOI-T_C40_Ford_COMMON2.0_6L/H25-118_BOI-T_C40_FORD_COMMON2.0_6L(2509).xlsx",
+      "fileName": "H25-118_BOI-T_C40_FORD_COMMON2.0_6L(2509).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-118_BOI-T_C40_FORD_COMMON2.",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-119_BOI-T_C40_UDT_COMMON2.0_6L/H25-119_BOI-T_C40_UDT_COMMON2.0_6L(2509).xlsx",
+      "fileName": "H25-119_BOI-T_C40_UDT_COMMON2.0_6L(2509).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-119_BOI-T_C40_UDT_COMMON2.0",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-120_BOI-T_C40_APS_COMMON2.0_6L/H25-120_BOI-T_C40_APS_COMMON2.0_6L(2509).xlsx",
+      "fileName": "H25-120_BOI-T_C40_APS_COMMON2.0_6L(2509).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-120_BOI-T_C40_APS_COMMON2.0",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-121_BOI-T_C40_Grid_Flare_COMMON2.0_6L/H25-121_BOI-T_C40_GRID_FLARE_COMMON2.0_6L(2510).xlsx",
+      "fileName": "H25-121_BOI-T_C40_GRID_FLARE_COMMON2.0_6L(2510).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-121_BOI-T_C40_GRID_FLARE_CO",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-124-1_Miltestone_Home_IOT_Doorbell_1st_CM_Board_V1.0/H25-124-1_MILTESTONE_HOME_IOT_DOORBELL_1ST_CM_BOARD_V1.0(2510).xlsx",
+      "fileName": "H25-124-1_MILTESTONE_HOME_IOT_DOORBELL_1ST_CM_BOARD_V1.0(2510).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-124-1_MILTESTONE_HOME_IOT_D",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-124-2_Miltestone_Home_IOT_Indoor_CM_Board_V1.0/H25-124-2_MILTESTONE_HOME_IOT_INDOOR_CM_BOARD_V1.0(2510).xlsx",
+      "fileName": "H25-124-2_MILTESTONE_HOME_IOT_INDOOR_CM_BOARD_V1.0(2510).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-124-2_MILTESTONE_HOME_IOT_I",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-124-3_Miltestone_Home_IOT_Outdoor_CM_Board_V1.0/H25-124-3_MILTESTONE_HOME_IOT_OUTDOOR_CM_BOARD_V1.0(2510).xlsx",
+      "fileName": "H25-124-3_MILTESTONE_HOME_IOT_OUTDOOR_CM_BOARD_V1.0(2510).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-124-3_MILTESTONE_HOME_IOT_O",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-126_BOI_C50_Triple_Type_APS_COMMON2.0_6L/H25-126_BOI_C50_TRIPLE_TYPE_APS_COMMON2.0_6L(2510).xlsx",
+      "fileName": "H25-126_BOI_C50_TRIPLE_TYPE_APS_COMMON2.0_6L(2510).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-126_BOI_C50_TRIPLE_TYPE_APS",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-127-1_BOI_C40_UAVI_M_L_Socket_Board_V1.0/H25-127-1_BOI_C40_UAVI_M_L_SOCKET_BOARD_V1.0(2511).xlsx",
+      "fileName": "H25-127-1_BOI_C40_UAVI_M_L_SOCKET_BOARD_V1.0(2511).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-127-1_BOI_C40_UAVI_M_L_SOCK",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-127-2_BOI_C40_UAVI_M_R_Socket_Board_V1.0/H25-127-2_BOI_C40_UAVI_M_R_SOCKET_BOARD_V1.0(2511).xlsx",
+      "fileName": "H25-127-2_BOI_C40_UAVI_M_R_SOCKET_BOARD_V1.0(2511).xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-127-2_BOI_C40_UAVI_M_R_SOCK",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-127-2_BOI_C40_UAVI_M_R_Socket_Board_V1.0/H25-127-2_BOI_C40_UAVI_M_R_SOCKET_BOARD_V1.0(2511)_dup.xlsx",
+      "fileName": "H25-127-2_BOI_C40_UAVI_M_R_SOCKET_BOARD_V1.0(2511)_dup.xlsx",
+      "sheetCount": 2,
+      "sheetNames": [
+        "H25-127-2_BOI_C40_UAVI_M_R_SOCK",
+        "TOP"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-128-1_Miltestone_Home_IOT_Doorbell_2nd_CM_BOT_Board_V1.0/H25-128-1_MILTESTONE_HOME_IOT_DOORBELL_2ND_CM_BOT_BOARD_V1.0(2510).xlsx",
+      "fileName": "H25-128-1_MILTESTONE_HOME_IOT_DOORBELL_2ND_CM_BOT_BOARD_V1.0(2510).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-128-1_MILTESTONE_HOME_IOT_D",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-129-1_Smart_Home_IOT_AA_Doorbell_1st_Board_V1.0/H25-129-1_SMART_HOME_IOT_AA_DOORBELL_1ST_BOARD_V1.0(2511).xlsx",
+      "fileName": "H25-129-1_SMART_HOME_IOT_AA_DOORBELL_1ST_BOARD_V1.0(2511).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-129-1_SMART_HOME_IOT_AA_DOO",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-129-2_Smart_Home_IOT_AA_Indoor_Board_V1.0/H25-129-2_SMART_HOME_IOT_AA_INDOOR_BOARD_V1.0(2511).xlsx",
+      "fileName": "H25-129-2_SMART_HOME_IOT_AA_INDOOR_BOARD_V1.0(2511).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-129-2_SMART_HOME_IOT_AA_IND",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-129-3_Smart_Home_IOT_AA_Outdoor_Board_V1.0/H25-129-3_SMART_HOME_IOT_AA_OUTDOOR_BOARD_V1.0(2511).xlsx",
+      "fileName": "H25-129-3_SMART_HOME_IOT_AA_OUTDOOR_BOARD_V1.0(2511).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-129-3_SMART_HOME_IOT_AA_OUT",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-132_LGIT_27Y_SAA_NPI_SEA_V1.1/H25-132_LGIT_27Y_SAA_NPI_SEA_V1.1 BOM.xlsx",
+      "fileName": "H25-132_LGIT_27Y_SAA_NPI_SEA_V1.1 BOM.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-132_LGIT_27Y_SAA_NPI_SEA_V1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-132_LGIT_27Y_SAA_NPI_SEA_V1.1/H25-132_LGIT_27Y_SAA_NPI_SEA_V1.1 좌표.xlsx",
+      "fileName": "H25-132_LGIT_27Y_SAA_NPI_SEA_V1.1 좌표.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-132_LGIT_27Y_SAA_NPI_SEA_V1"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-132_LGIT_27Y_SAA_NPI_SEA_V1.1/H25-132_LGIT_27Y_SAA_NPI_SEA_V1.1(2511).xls",
+      "fileName": "H25-132_LGIT_27Y_SAA_NPI_SEA_V1.1(2511).xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-132_LGIT_27Y_SAA_NPI_SEA_V1.1/H25-132_LGIT_27Y_SAA_NPI_SEA_V1.1_251112.Part.좌표.xls",
+      "fileName": "H25-132_LGIT_27Y_SAA_NPI_SEA_V1.1_251112.Part.좌표.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-133_LGIT_SAA_C61_SBN_Socket_Board_V1.0/H25-133_LGIT_SAA_C61_SBN_SOCKET_BOARD_V1.0(2511).xlsx",
+      "fileName": "H25-133_LGIT_SAA_C61_SBN_SOCKET_BOARD_V1.0(2511).xlsx",
+      "sheetCount": 3,
+      "sheetNames": [
+        "H25-133_LGIT_SAA_C61_SBN_SOCKET",
+        "TOP",
+        "BOTTOM"
+      ],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/H25-133_LGIT_SAA_C61_SBN_Socket_Board_V1.0/H25-133_LGIT_SAA_C61_SBN_Socket_Board_V1.0 좌표.xlsx",
+      "fileName": "H25-133_LGIT_SAA_C61_SBN_Socket_Board_V1.0 좌표.xlsx",
+      "sheetCount": 1,
+      "sheetNames": [
+        "H25-133_LGIT_SAA_C61_SBN_Socket"
+      ],
+      "pattern": "P-CAD",
+      "signature": "P-CAD Pick and Place",
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/Lumiere_MCU_GENDER_V1.0_250122(한대별)/Lumiere_MCU_GENDER_V1.0(2501).xls",
+      "fileName": "Lumiere_MCU_GENDER_V1.0(2501).xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    },
+    {
+      "filePath": "sample-data/24_25_SOCKET/2025/Lumiere_MCU_GENDER_V1.0_250122(한대별)/Lumiere_MCU_GENDER_V1.0_250124좌표.pnp.xls",
+      "fileName": "Lumiere_MCU_GENDER_V1.0_250124좌표.pnp.xls",
+      "sheetCount": 0,
+      "sheetNames": [],
+      "pattern": "unknown",
+      "signature": null,
+      "headerInfo": {}
+    }
+  ]
+}
