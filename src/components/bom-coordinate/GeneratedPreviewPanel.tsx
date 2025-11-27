@@ -84,54 +84,54 @@ export default function GeneratedPreviewPanel({
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <div>
-          <h3 className="text-lg font-semibold">정리된 BOM 미리보기</h3>
-          <p className="text-sm text-gray-500">
+    <div className="space-y-3 sm:space-y-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4">
+        <div className="flex-1">
+          <h3 className="text-base sm:text-lg font-semibold">정리된 BOM 미리보기</h3>
+          <p className="text-xs sm:text-sm text-gray-500 mt-1">
             데이터를 클릭하여 직접 수정할 수 있습니다. 확인 후 엑셀로 다운로드하세요.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
           <Button 
             onClick={handleReset}
-            className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+            className="flex-1 sm:flex-initial button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 text-xs sm:text-sm"
           >
-            <RotateCcw className="w-4 h-4 mr-2" />
+            <RotateCcw className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
             초기화
           </Button>
           <Button 
             onClick={handleSave}
-            className="button-base bg-blue-500 hover:bg-blue-600 text-white"
+            className="flex-1 sm:flex-initial button-base bg-blue-500 hover:bg-blue-600 text-white text-xs sm:text-sm"
           >
-            <Save className="w-4 h-4 mr-2" />
-            변경사항 저장
+            <Save className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            저장
           </Button>
           <Button 
             onClick={handleDownload} 
-            className="button-base bg-green-500 hover:bg-green-600 text-white"
+            className="flex-1 sm:flex-initial button-base bg-green-500 hover:bg-green-600 text-white text-xs sm:text-sm"
           >
-            <Download className="w-4 h-4 mr-2" />
-            Excel 다운로드
+            <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            Excel
           </Button>
         </div>
       </div>
 
       <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
-        <div className="overflow-x-auto max-h-[600px]">
+        <div className="overflow-x-auto max-h-[400px] sm:max-h-[500px] lg:max-h-[600px]">
           <Table>
             <TableHeader className="bg-gray-50 sticky top-0 z-10">
               <TableRow>
-                <TableHead className="w-[50px] text-center">No</TableHead>
-                <TableHead className="w-[80px] text-center">종류</TableHead>
-                <TableHead className="w-[200px]">품명</TableHead>
-                <TableHead className="w-[60px] text-center">SET</TableHead>
-                <TableHead className="w-[80px] text-center">수량</TableHead>
-                <TableHead className="w-[60px] text-center">재고</TableHead>
-                <TableHead className="w-[80px] text-center">CHECK</TableHead>
-                <TableHead className="min-w-[200px]">REF</TableHead>
-                <TableHead className="w-[150px]">대체품</TableHead>
-                <TableHead className="w-[150px]">비고</TableHead>
+                <TableHead className="w-[40px] sm:w-[50px] text-center text-xs">No</TableHead>
+                <TableHead className="w-[60px] sm:w-[80px] text-center text-xs">종류</TableHead>
+                <TableHead className="min-w-[120px] sm:min-w-[200px] text-xs">품명</TableHead>
+                <TableHead className="w-[50px] sm:w-[60px] text-center text-xs">SET</TableHead>
+                <TableHead className="w-[60px] sm:w-[80px] text-center text-xs">수량</TableHead>
+                <TableHead className="w-[50px] sm:w-[60px] text-center text-xs hidden sm:table-cell">재고</TableHead>
+                <TableHead className="w-[70px] sm:w-[80px] text-center text-xs">CHECK</TableHead>
+                <TableHead className="min-w-[120px] sm:min-w-[200px] text-xs">REF</TableHead>
+                <TableHead className="w-[100px] sm:w-[150px] text-xs hidden md:table-cell">대체품</TableHead>
+                <TableHead className="w-[100px] sm:w-[150px] text-xs">비고</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -142,7 +142,7 @@ export default function GeneratedPreviewPanel({
                   {/* 종류 */}
                   <TableCell className="p-1">
                     <Input 
-                      className="h-8 text-center border-transparent hover:border-gray-200 focus:border-primary"
+                      className="h-7 sm:h-8 text-center border-transparent hover:border-gray-200 focus:border-primary text-xs"
                       value={item.itemType || ''}
                       onChange={(e) => handleCellChange(index, 'itemType', e.target.value)}
                     />
@@ -151,7 +151,7 @@ export default function GeneratedPreviewPanel({
                   {/* 품명 */}
                   <TableCell className="p-1">
                     <Input 
-                      className="h-8 border-transparent hover:border-gray-200 focus:border-primary font-medium"
+                      className="h-7 sm:h-8 border-transparent hover:border-gray-200 focus:border-primary font-medium text-xs"
                       value={item.itemName}
                       onChange={(e) => handleCellChange(index, 'itemName', e.target.value)}
                     />
@@ -161,7 +161,7 @@ export default function GeneratedPreviewPanel({
                   <TableCell className="p-1">
                     <Input 
                       type="number"
-                      className="h-8 text-center border-transparent hover:border-gray-200 focus:border-primary"
+                      className="h-7 sm:h-8 text-center border-transparent hover:border-gray-200 focus:border-primary text-xs"
                       value={item.setCount}
                       onChange={(e) => handleCellChange(index, 'setCount', e.target.value)}
                     />
@@ -171,7 +171,7 @@ export default function GeneratedPreviewPanel({
                   <TableCell className="p-1">
                     <Input 
                       type="number"
-                      className="h-8 text-center border-transparent hover:border-gray-200 focus:border-primary bg-gray-50"
+                      className="h-7 sm:h-8 text-center border-transparent hover:border-gray-200 focus:border-primary bg-gray-50 text-xs"
                       value={item.totalQuantity}
                       readOnly // 수량은 보통 계산값이므로 읽기 전용 (필요 시 해제)
                       onChange={(e) => handleCellChange(index, 'totalQuantity', e.target.value)}
@@ -179,10 +179,10 @@ export default function GeneratedPreviewPanel({
                   </TableCell>
 
                   {/* 재고 */}
-                  <TableCell className="p-1">
+                  <TableCell className="p-1 hidden sm:table-cell">
                     <Input 
                       type="number"
-                      className="h-8 text-center border-transparent hover:border-gray-200 focus:border-primary"
+                      className="h-8 text-center border-transparent hover:border-gray-200 focus:border-primary text-xs"
                       value={item.stockQuantity || ''}
                       placeholder="0"
                       onChange={(e) => handleCellChange(index, 'stockQuantity', e.target.value)}
@@ -192,7 +192,7 @@ export default function GeneratedPreviewPanel({
                   {/* CHECK */}
                   <TableCell className="p-1">
                     <select 
-                      className="w-full h-8 text-center text-sm border-transparent hover:border-gray-200 focus:border-primary bg-transparent rounded outline-none cursor-pointer"
+                      className="w-full h-7 sm:h-8 text-center text-xs border-transparent hover:border-gray-200 focus:border-primary bg-transparent rounded outline-none cursor-pointer"
                       value={item.checkStatus || '□양호'}
                       onChange={(e) => handleCellChange(index, 'checkStatus', e.target.value)}
                     >
@@ -205,7 +205,7 @@ export default function GeneratedPreviewPanel({
                   {/* REF */}
                   <TableCell className="p-1">
                     <textarea
-                      className="w-full min-h-[32px] p-1 text-sm border border-transparent hover:border-gray-200 focus:border-primary rounded resize-y bg-transparent outline-none"
+                      className="w-full min-h-[28px] sm:min-h-[32px] p-1 text-xs border border-transparent hover:border-gray-200 focus:border-primary rounded resize-y bg-transparent outline-none"
                       value={item.refList || ''}
                       onChange={(e) => handleCellChange(index, 'refList', e.target.value)}
                       rows={1}
@@ -213,9 +213,9 @@ export default function GeneratedPreviewPanel({
                   </TableCell>
 
                   {/* 대체품 */}
-                  <TableCell className="p-1">
+                  <TableCell className="p-1 hidden md:table-cell">
                     <Input 
-                      className="h-8 border-transparent hover:border-gray-200 focus:border-primary"
+                      className="h-8 border-transparent hover:border-gray-200 focus:border-primary text-xs"
                       value={item.alternativeItem || ''}
                       onChange={(e) => handleCellChange(index, 'alternativeItem', e.target.value)}
                     />
@@ -224,7 +224,7 @@ export default function GeneratedPreviewPanel({
                   {/* 비고 */}
                   <TableCell className="p-1">
                     <Input 
-                      className={`h-8 border-transparent hover:border-gray-200 focus:border-primary ${item.remark === '미삽' ? 'text-red-500 font-bold' : ''}`}
+                      className={`h-7 sm:h-8 border-transparent hover:border-gray-200 focus:border-primary text-xs ${item.remark === '미삽' ? 'text-red-500 font-bold' : ''}`}
                       value={item.remark || ''}
                       onChange={(e) => handleCellChange(index, 'remark', e.target.value)}
                     />
@@ -234,9 +234,9 @@ export default function GeneratedPreviewPanel({
             </TableBody>
           </Table>
         </div>
-        <div className="bg-gray-50 p-3 border-t text-xs text-gray-500 flex justify-between items-center">
+        <div className="bg-gray-50 p-2 sm:p-3 border-t text-xs text-gray-500 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
           <span>총 {items.length}개 항목</span>
-          <span>* 셀을 클릭하여 직접 수정할 수 있습니다. 수정 후 '변경사항 저장'을 눌러주세요.</span>
+          <span className="text-[10px] sm:text-xs">* 셀을 클릭하여 직접 수정할 수 있습니다. 수정 후 '변경사항 저장'을 눌러주세요.</span>
         </div>
       </div>
     </div>
