@@ -21,17 +21,13 @@ class VendorService {
       if (filters?.search) {
         query = query.or(`
           vendor_name.ilike.%${filters.search}%,
-          business_number.ilike.%${filters.search}%,
-          representative.ilike.%${filters.search}%,
-          contact_phone.ilike.%${filters.search}%,
-          email.ilike.%${filters.search}%
+          vendor_phone.ilike.%${filters.search}%,
+          vendor_fax.ilike.%${filters.search}%,
+          vendor_address.ilike.%${filters.search}%
         `);
       }
 
-      // 활성 상태 필터 적용
-      if (filters?.is_active !== undefined) {
-        query = query.eq('is_active', filters.is_active);
-      }
+      // 활성 상태 필터는 제거 (DB에 is_active 컄럼 없음)
 
       const { data, error } = await query;
 
@@ -71,18 +67,7 @@ class VendorService {
   // 업체 생성
   async createVendor(vendorData: VendorFormData): Promise<{ success: boolean; data?: Vendor; error?: string }> {
     try {
-      // 사업자번호 중복 체크
-      if (vendorData.business_number) {
-        const { data: existingVendor } = await this.supabase
-          .from('vendors')
-          .select('id')
-          .eq('business_number', vendorData.business_number)
-          .single();
-
-        if (existingVendor) {
-          return { success: false, error: '이미 등록된 사업자번호입니다.' };
-        }
-      }
+      // 사업자번호 중복 체크 제거 (DB에 해당 컄럼 없음)
 
       // 업체명 중복 체크
       const { data: existingVendorByName } = await this.supabase
@@ -97,10 +82,7 @@ class VendorService {
 
       const { data, error } = await this.supabase
         .from('vendors')
-        .insert({
-          ...vendorData,
-          is_active: true
-        })
+        .insert(vendorData)
         .select()
         .single();
 
@@ -119,19 +101,7 @@ class VendorService {
   // 업체 수정
   async updateVendor(id: number, vendorData: Partial<VendorFormData>): Promise<{ success: boolean; data?: Vendor; error?: string }> {
     try {
-      // 사업자번호 중복 체크 (자신 제외)
-      if (vendorData.business_number) {
-        const { data: existingVendor } = await this.supabase
-          .from('vendors')
-          .select('id')
-          .eq('business_number', vendorData.business_number)
-          .neq('id', id)
-          .single();
-
-        if (existingVendor) {
-          return { success: false, error: '이미 등록된 사업자번호입니다.' };
-        }
-      }
+      // 사업자번호 중복 체크 제거 (DB에 해당 컄럼 없음)
 
       // 업체명 중복 체크 (자신 제외)
       if (vendorData.vendor_name) {
@@ -166,7 +136,7 @@ class VendorService {
     }
   }
 
-  // 업체 삭제 (소프트 삭제)
+  // 업체 삭제
   async deleteVendor(id: number): Promise<{ success: boolean; error?: string }> {
     try {
       // 발주 요청과 연결된 업체인지 확인
@@ -177,15 +147,11 @@ class VendorService {
         .limit(1);
 
       if (purchaseRequests && purchaseRequests.length > 0) {
-        // 발주 요청과 연결된 업체는 비활성화만 가능
-        const { error } = await this.supabase
-          .from('vendors')
-          .update({ is_active: false })
-          .eq('id', id);
-
-        if (error) throw error;
-
-        return { success: true };
+        // 발주 요청과 연결된 업체는 삭제 불가
+        return { 
+          success: false, 
+          error: '발주 요청과 연결된 업체는 삭제할 수 없습니다.' 
+        };
       } else {
         // 연결된 데이터가 없으면 완전 삭제
         const { error } = await this.supabase
@@ -206,37 +172,8 @@ class VendorService {
     }
   }
 
-  // 업체 활성화/비활성화 토글
-  async toggleVendorStatus(id: number): Promise<{ success: boolean; data?: Vendor; error?: string }> {
-    try {
-      // 현재 상태 조회
-      const { data: currentVendor, error: selectError } = await this.supabase
-        .from('vendors')
-        .select('is_active')
-        .eq('id', id)
-        .single();
-
-      if (selectError) throw selectError;
-
-      // 상태 토글
-      const { data, error } = await this.supabase
-        .from('vendors')
-        .update({ is_active: !currentVendor.is_active })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      return { success: true, data };
-    } catch (error) {
-      logger.error('업체 상태 변경 실패', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.' 
-      };
-    }
-  }
+  // 업체 활성화/비활성화 토글 - is_active 컄럼이 없어서 제거
+  // 필요 시 나중에 DB에 is_active 컄럼 추가 필요
 
   // 업체 연락처 조회
   async getVendorContacts(vendorId: number): Promise<{ success: boolean; data?: VendorContact[]; error?: string }> {
@@ -270,14 +207,13 @@ class VendorService {
       if (error) throw error;
 
       // Excel 형식에 맞게 데이터 변환
-      const exportData = (data || []).map(vendor => ({
+      const exportData = (data || []).map((vendor: any) => ({
         '업체명': vendor.vendor_name,
-        '사업자번호': vendor.business_number || '',
-        '대표자': vendor.representative || '',
-        '연락처': vendor.contact_phone || '',
-        '주소': vendor.address || '',
-        '이메일': vendor.email || '',
-        '상태': vendor.is_active ? '활성' : '비활성',
+        '전화번호': vendor.vendor_phone || '',
+        '팩스번호': vendor.vendor_fax || '',
+        '결제조건': vendor.vendor_payment_schedule || '',
+        '주소': vendor.vendor_address || '',
+        '비고': vendor.note || '',
         '등록일': vendor.created_at ? new Date(vendor.created_at).toLocaleDateString('ko-KR') : ''
       }));
 

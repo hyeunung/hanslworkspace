@@ -26,7 +26,7 @@ export interface UseProgressiveLoadingResult {
   reset: () => void;
   setData: (data: Purchase[]) => void;
   isNearEnd: boolean;
-  loadingRef: React.RefObject<HTMLDivElement>;
+  loadingRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export const useProgressiveLoading = (

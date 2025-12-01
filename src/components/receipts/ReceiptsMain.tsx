@@ -417,7 +417,7 @@ export default function ReceiptsMain() {
           .remove([filePath]);
 
         if (storageError) {
-          logger.warn('Storage 파일 삭제 실패', storageError, { filePath });
+          logger.warn('Storage 파일 삭제 실패', { storageError, filePath });
         }
       }
 

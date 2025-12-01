@@ -56,7 +56,7 @@ class NavigationOptimizer {
         this.preloadTimeouts.delete(path)
         logger.debug(`✅ Pre-loaded: ${path}`)
       } catch (error) {
-        logger.warn(`❌ Failed to preload ${path}:`, error)
+        logger.warn(`❌ Failed to preload ${path}`, { error })
         this.preloadTimeouts.delete(path)
       }
     }, delay)
@@ -70,7 +70,7 @@ class NavigationOptimizer {
     const routeImporters = this.getRouteImporters()
     
     relatedRoutes.forEach((route, index) => {
-      const importer = routeImporters[route]
+      const importer = routeImporters[route as keyof typeof routeImporters]
       if (importer && !this.cache[route]) {
         // 우선순위에 따라 지연 시간 조정
         const delay = index * 150
@@ -81,7 +81,7 @@ class NavigationOptimizer {
   
   // 현재 경로 기준 관련 라우트 반환
   private getRelatedRoutes(currentPath: string): string[] {
-    const routes = {
+    const routes: Record<string, string[]> = {
       '/dashboard': ['/purchase/list', '/purchase/new', '/vendor', '/employee'],
       '/purchase': ['/purchase/new', '/dashboard', '/vendor'],
       '/purchase/list': ['/purchase/new', '/dashboard', '/vendor'],

@@ -16,7 +16,6 @@ export interface BOMItem {
 }
 
 export interface CoordinateItem {
-  refDes?: string;  // 더미 데이터에서 사용하는 필드
   ref?: string;     // 실제 데이터에서 사용할 수 있는 필드
   partName?: string;
   partType?: string;
@@ -34,18 +33,20 @@ export interface CoordinateItem {
 export async function generateCleanedBOMExcel(
   bomItems: BOMItem[],
   coordinates: CoordinateItem[],
-  boardName: string
+  boardName: string,
+  productionQuantity?: number
 ): Promise<Blob> {
   const workbook = new ExcelJS.Workbook();
   
   try {
     // 1. 템플릿 파일 로드 시도
-    const response = await fetch('/templates/BOM_Automation(Default).xlsx');
+    const response = await fetch('/templates/BOM_Template.xlsx');
     if (response.ok) {
       const buffer = await response.arrayBuffer();
       await workbook.xlsx.load(buffer);
       console.log('Template loaded successfully');
     } else {
+      console.error('Template loading failed:', response.status, response.statusText);
       console.warn('Template not found, creating new workbook');
       // 템플릿이 없으면 새 시트 생성
       const bomSheet = workbook.addWorksheet('BOM');
@@ -66,26 +67,77 @@ export async function generateCleanedBOMExcel(
   workbook.modified = new Date();
 
   // 2. BOM 시트 데이터 채우기
-  // 템플릿의 첫 번째 시트를 BOM 시트로 가정하거나 이름으로 찾음
   let bomSheet = workbook.getWorksheet('BOM');
   if (!bomSheet) {
-    // 시트가 없으면 첫 번째 시트 사용 또는 생성
-    bomSheet = workbook.worksheets[0] || workbook.addWorksheet('BOM');
+    // 시트가 없으면 첫 번째 시트 사용
+    bomSheet = workbook.worksheets[0];
   }
 
-  // 데이터 시작 행 (헤더가 1행이라고 가정하고 2행부터 시작)
-  const startRow = 2;
-
-  // 기존 데이터가 있다면 지우기 (헤더 제외)
-  const rowCount = bomSheet.rowCount;
-  for (let i = rowCount; i >= startRow; i--) {
-    bomSheet.spliceRows(i, 1);
+  if (!bomSheet) {
+     bomSheet = workbook.addWorksheet('BOM');
   }
 
-  // 템플릿의 스타일을 가져오기 위해 2행(또는 1행)의 스타일 참조 가능
-  // 여기서는 데이터 쓰면서 스타일 적용
+  // 데이터 시작 행 찾기 (헤더가 있는 행을 찾음)
+  let startRow = 6; // 기본값
+  let headerFound = false;
+  
+  bomSheet.eachRow((row, rowNumber) => {
+    if (headerFound) return;
+    const values = row.values;
+    if (Array.isArray(values)) {
+      // '번호' 또는 'No'가 포함된 행을 헤더로 간주
+      if (values.some(v => v && v.toString().includes('번호')) || values.some(v => v && v.toString().includes('No'))) {
+        startRow = rowNumber + 1;
+        headerFound = true;
+      }
+    }
+  });
+
+  // 템플릿의 제목 위치 업데이트 (예: "[보드명] 부품리스트")
+  if (boardName) {
+      let titleCellFound = false;
+      // 제목 찾기 (보통 위쪽에 있음)
+      for (let i = 1; i < startRow; i++) {
+          const row = bomSheet.getRow(i);
+          row.eachCell((cell) => {
+              if (cell.value && cell.value.toString().includes('부품리스트')) {
+                  // 기존 포맷 유지하면서 보드명만 교체 시도
+                  // 예: "H25-133... 부품리스트"
+                  cell.value = `${boardName} 부품리스트`;
+                  titleCellFound = true;
+              }
+          });
+          if (titleCellFound) break;
+      }
+  }
+
+  // 데이터 시작 위치 조정 (헤더 아래에 보드 정보 행 추가)
+  // 스크린샷을 보면 헤더(번호, 종류...) 바로 아래 행에 "** [보드명]... [수량] SET" 가 있음
+  // 따라서 데이터는 헤더 + 2 행부터 시작해야 함
+  const infoRowIndex = startRow; // 헤더 바로 다음 행
+  const dataStartIndex = startRow + 1; // 그 다음 행부터 데이터
+
+  // 보드 정보 행 내용 작성 (스타일 유지하며 값 입력)
+  const infoRow = bomSheet.getRow(infoRowIndex);
+  
+  // 생산 수량 계산
+  let productionQty = productionQuantity || 0;
+  if (productionQty === 0 && bomItems.length > 0 && bomItems[0].setCount > 0) {
+      productionQty = Math.round(bomItems[0].totalQuantity / bomItems[0].setCount);
+  }
+
+  // 3번 컬럼(품명)에 정보 입력
+  infoRow.getCell(3).value = `** ${boardName}   ${productionQty} SET`;
+  infoRow.getCell(3).font = { bold: true, name: '맑은 고딕', size: 10 };
+  infoRow.getCell(3).alignment = { horizontal: 'left', vertical: 'middle' };
+
   bomItems.forEach((item, index) => {
-    const row = bomSheet.getRow(startRow + index);
+    const currentRowNum = dataStartIndex + index;
+    let row = bomSheet.getRow(currentRowNum);
+    
+    // 템플릿 행의 스타일 복사 (첫 번째 데이터인 경우 템플릿 행 사용, 그 이후는 복사)
+    // ExcelJS에서 스타일 복사는 까다로우므로, 기본 스타일을 코드에서 지정하는 게 안전할 수 있음.
+    // 하지만 사용자 요청은 "템플릿 그대로" 이므로 최대한 보존 노력.
     
     // 값 설정
     row.getCell(1).value = index + 1;                    // 번호
@@ -99,9 +151,11 @@ export async function generateCleanedBOMExcel(
     row.getCell(9).value = item.alternativeItem || '';   // 대체가능품목
     row.getCell(10).value = item.remark || '';           // 비고
 
-    // 스타일 적용 (모든 셀에 공통 스타일)
+    // 스타일 적용 (템플릿 스타일이 없을 경우에만 기본 스타일 적용)
+    // 사용자가 "개판"이라고 했으므로 코드로 스타일을 강제하는 게 나을 수 있음 (템플릿 스타일이 깨졌을 수도 있으니)
+    // 하지만 "템플릿 그대로"를 원하므로, 
+    // border, alignment, font 등을 명시적으로 지정하여 깔끔하게 만듦.
     row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-        // 1~10 컬럼까지만 스타일 적용
         if (colNumber <= 10) {
             cell.border = {
                 top: { style: 'thin' },
@@ -109,23 +163,22 @@ export async function generateCleanedBOMExcel(
                 bottom: { style: 'thin' },
                 right: { style: 'thin' }
             };
-            cell.font = { name: '맑은 고딕', size: 10 };
             cell.alignment = { vertical: 'middle', wrapText: true };
+            // 폰트는 템플릿 폰트 유지 또는 지정
+            // cell.font = { name: '맑은 고딕', size: 10 }; 
             
-            // 가운데 정렬 컬럼들 (번호, 종류, SET, 수량, 재고, CHECK, 비고)
             if ([1, 2, 4, 5, 6, 7, 10].includes(colNumber)) {
                 cell.alignment = { ...cell.alignment, horizontal: 'center' };
-            }
-            // 왼쪽 정렬 (품명, REF, 대체품)
-            else {
+            } else {
                 cell.alignment = { ...cell.alignment, horizontal: 'left' };
             }
         }
     });
+    
+    row.commit();
   });
 
-  // 3. 좌표 시트 처리 (TOP/BOTTOM)
-  // 템플릿에 시트가 있으면 쓰고, 없으면 생성
+  // 3. 좌표 시트 처리 (TOP/BOTTOM) - 컬럼 매핑 수정
   const topCoords = coordinates.filter(c => 
     c.side?.toUpperCase().includes('TOP') || c.layer?.toUpperCase().includes('TOP')
   );
@@ -147,36 +200,52 @@ async function writeCoordinateSheet(workbook: ExcelJS.Workbook, sheetName: strin
   let sheet = workbook.getWorksheet(sheetName);
   if (!sheet) {
     sheet = workbook.addWorksheet(sheetName);
-    // 새 시트인 경우 헤더 생성
-    sheet.getRow(1).values = ['Ref', 'Part Name', 'Type', 'Side', 'X', 'Y', 'Angle'];
+    // 새 시트인 경우 헤더 생성 (수동 파일 양식에 맞춤)
+    // Type, RefDes, Layer, LocationX, LocationY, Rotation
+    sheet.getRow(1).values = ['Type', 'RefDes', 'Layer', 'LocationX', 'LocationY', 'Rotation'];
     sheet.getRow(1).font = { bold: true };
+  } else {
+    // 기존 시트가 있으면 헤더는 유지하고 데이터만 추가
+    // 만약 헤더가 없다면 추가
+    if (sheet.rowCount === 0) {
+        sheet.getRow(1).values = ['Type', 'RefDes', 'Layer', 'LocationX', 'LocationY', 'Rotation'];
+    }
   }
 
   // 데이터 시작 행
   const startRow = 2;
   
-  // 기존 데이터 삭제
-  if (sheet.rowCount >= startRow) {
-      sheet.spliceRows(startRow, sheet.rowCount - startRow + 1);
-  }
+  // 기존 데이터 삭제 (필요 시)
+  // if (sheet.rowCount >= startRow) {
+  //     sheet.spliceRows(startRow, sheet.rowCount - startRow + 1);
+  // }
 
   coords.forEach((coord, index) => {
     const row = sheet.getRow(startRow + index);
+    // 수동 파일 양식: Type | RefDes | Layer | LocationX | LocationY | Rotation
     row.values = [
-      coord.ref || coord.refDes || '',
-      coord.partName || '',
-      coord.partType || 'SMD',
-      coord.side || coord.layer || '',
-      coord.x,
-      coord.y,
-      coord.angle || coord.rotation || 0
+      coord.partType || 'SMD',           // Type
+      coord.ref || '',                   // RefDes
+      coord.side || coord.layer || '',   // Layer (TOP/BOTTOM)
+      coord.x,                           // LocationX
+      coord.y,                           // LocationY
+      coord.angle || coord.rotation || 0 // Rotation
     ];
-    row.alignment = { horizontal: 'center' };
+    
+    // 스타일 적용
+    row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+        };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
   });
   
-  // 컬럼 너비 자동 조정 (대략적으로)
+  // 컬럼 너비 자동 조정
   sheet.columns.forEach(col => {
       col.width = 15;
   });
-  sheet.getColumn(2).width = 30; // Part Name
 }

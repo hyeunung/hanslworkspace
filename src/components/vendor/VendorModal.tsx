@@ -37,11 +37,11 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
   const form = useForm<VendorFormData>({
     defaultValues: {
       vendor_name: '',
-      business_number: '',
-      representative: '',
-      contact_phone: '',
-      address: '',
-      email: '',
+      vendor_phone: '',
+      vendor_fax: '',
+      vendor_payment_schedule: '',
+      vendor_address: '',
+      note: ''
     }
   })
 
@@ -49,20 +49,20 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
     if (vendor && isOpen) {
       form.reset({
         vendor_name: vendor.vendor_name || '',
-        business_number: vendor.business_number || '',
-        representative: vendor.representative || '',
-        contact_phone: vendor.contact_phone || '',
-        address: vendor.address || '',
-        email: vendor.email || '',
+        vendor_phone: vendor.vendor_phone || '',
+        vendor_fax: vendor.vendor_fax || '',
+        vendor_payment_schedule: vendor.vendor_payment_schedule || '',
+        vendor_address: vendor.vendor_address || '',
+        note: vendor.note || ''
       })
     } else if (!vendor && isOpen) {
       form.reset({
         vendor_name: '',
-        business_number: '',
-        representative: '',
-        contact_phone: '',
-        address: '',
-        email: '',
+        vendor_phone: '',
+        vendor_fax: '',
+        vendor_payment_schedule: '',
+        vendor_address: '',
+        note: ''
       })
     }
   }, [vendor, isOpen, form])
@@ -137,14 +137,14 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
 
               <FormField
                 control={form.control}
-                name="business_number"
+                name="vendor_phone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>사업자번호</FormLabel>
+                    <FormLabel>전화번호</FormLabel>
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="000-00-00000"
+                        placeholder="02-1234-5678"
                         disabled={isReadOnly}
                       />
                     </FormControl>
@@ -155,14 +155,14 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
 
               <FormField
                 control={form.control}
-                name="representative"
+                name="vendor_fax"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>대표자</FormLabel>
+                    <FormLabel>팩스번호</FormLabel>
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="대표자명을 입력하세요"
+                        placeholder="02-1234-5679"
                         disabled={isReadOnly}
                       />
                     </FormControl>
@@ -173,33 +173,14 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
 
               <FormField
                 control={form.control}
-                name="contact_phone"
+                name="vendor_payment_schedule"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>연락처</FormLabel>
+                    <FormLabel>결제조건</FormLabel>
                     <FormControl>
                       <Input 
                         {...field} 
-                        placeholder="010-0000-0000"
-                        disabled={isReadOnly}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>이메일</FormLabel>
-                    <FormControl>
-                      <Input 
-                        {...field} 
-                        type="email"
-                        placeholder="company@example.com"
+                        placeholder="월말결제, 현금결제 등"
                         disabled={isReadOnly}
                       />
                     </FormControl>
@@ -211,7 +192,7 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
 
             <FormField
               control={form.control}
-              name="address"
+              name="vendor_address"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>주소</FormLabel>
@@ -228,17 +209,32 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
               )}
             />
 
+            <FormField
+              control={form.control}
+              name="note"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>비고</FormLabel>
+                  <FormControl>
+                    <Textarea 
+                      {...field} 
+                      placeholder="메모 사항을 입력하세요"
+                      className="min-h-[60px]"
+                      disabled={isReadOnly}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             {mode === 'view' && vendor && (
               <div className="pt-4 border-t">
                 <div className="grid grid-cols-2 gap-4 modal-subtitle">
                   <div>
                     <span className="text-gray-500">상태:</span>
-                    <span className={`ml-2 px-2 py-1 business-radius-badge badge-text ${
-                      vendor.is_active 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {vendor.is_active ? '활성' : '비활성'}
+                    <span className={`ml-2 px-2 py-1 business-radius-badge badge-text bg-green-100 text-green-800`}>
+                      활성
                     </span>
                   </div>
                   <div>

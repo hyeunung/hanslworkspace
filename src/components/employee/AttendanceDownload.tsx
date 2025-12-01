@@ -92,7 +92,7 @@ export default function AttendanceDownload({ employees, isOpen, onClose }: Atten
 
       // 출근 기록을 날짜별로 매핑
       const recordMap = new Map()
-      attendanceRecords?.forEach(record => {
+      attendanceRecords?.forEach((record: any) => {
         recordMap.set(record.date, record)
       })
 

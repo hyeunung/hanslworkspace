@@ -181,6 +181,8 @@ export const AUTHORIZED_ROLES = [
   'ceo',
   'final_approver',
   'purchase_manager',
+  'lead buyer',
+  'accounting',
 ];
 
 // 칼럼 그룹 (설정 UI에서 그룹핑용)

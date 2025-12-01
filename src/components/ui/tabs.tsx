@@ -46,8 +46,8 @@ const TabsList = React.forwardRef<
       "inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground",
       className
     )}
-    {...props}
-  />
+      {...props}
+    />
 ))
 TabsList.displayName = "TabsList"
 

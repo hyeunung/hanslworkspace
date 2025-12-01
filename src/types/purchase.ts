@@ -13,12 +13,8 @@ export interface Vendor extends BaseEntity {
   vendor_phone?: string
   vendor_fax?: string
   vendor_payment_schedule?: string
-  business_number?: string
-  representative?: string
-  contact_phone?: string
-  address?: string
-  email?: string
-  is_active: boolean
+  vendor_address?: string
+  note?: string
   vendor_contacts?: VendorContact[]
 }
 
@@ -33,11 +29,8 @@ export interface VendorFormData {
   vendor_phone?: string
   vendor_fax?: string
   vendor_payment_schedule?: string
-  business_number?: string
-  representative?: string
-  contact_phone?: string
-  address?: string
-  email?: string
+  vendor_address?: string
+  note?: string
 }
 
 export interface EmployeeFilters {
@@ -134,7 +127,6 @@ export interface PurchaseRequest {
   requester_phone?: string
   requester_address?: string
   vendor_id?: number
-  contact_id?: number
   sales_order_number?: string
   project_vendor?: string
   project_item?: string

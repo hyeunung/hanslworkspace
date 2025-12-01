@@ -133,7 +133,7 @@ export default function PurchaseStatusModal({
       if (error) throw error
       
       // 로컬 상태 업데이트
-      setLocalItem(prev => ({
+      setLocalItem((prev: any) => ({
         ...prev,
         purchase_request_items: prev.purchase_request_items?.map((item: any) =>
           item.id === itemId ? { 

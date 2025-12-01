@@ -1,5 +1,5 @@
 import React, { memo, useMemo, useCallback, forwardRef, useImperativeHandle, useRef } from 'react';
-import { FixedSizeList } from 'react-window';
+import { List } from 'react-window';
 import { Purchase } from '@/types/purchase';
 import { formatDateShort } from '@/utils/helpers';
 
@@ -78,16 +78,13 @@ export interface VirtualizedTableHandle {
 const TableRow = memo<{
   index: number;
   style: React.CSSProperties;
-  data: {
-    purchases: Purchase[];
-    activeTab: string;
-    currentUserRoles: string[];
-    onPaymentComplete?: (id: number) => Promise<void>;
-    onReceiptComplete?: (id: number) => Promise<void>;
-    columnVisibility?: any;
-  };
-}>(({ index, style, data }) => {
-  const { purchases, activeTab, currentUserRoles, onPaymentComplete, onReceiptComplete, columnVisibility } = data;
+  purchases: Purchase[];
+  activeTab: string;
+  currentUserRoles: string[];
+  onPaymentComplete?: (id: number) => Promise<void>;
+  onReceiptComplete?: (id: number) => Promise<void>;
+  columnVisibility?: any;
+}>(({ index, style, purchases, activeTab, currentUserRoles, onPaymentComplete, onReceiptComplete, columnVisibility }) => {
   const purchase = purchases[index];
 
   // 칼럼 표시 여부 체크 함수 - FastPurchaseTable과 동일
@@ -493,23 +490,23 @@ const VirtualizedPurchaseTable = forwardRef<VirtualizedTableHandle, VirtualizedP
   const listRef = useRef<any>(null);
   
   // 칼럼 설정 훅 (전체항목 탭에서만 사용)
-  const { columnVisibility } = useColumnSettings();
+  const { columnVisibility, applyColumnSettings, resetToDefault } = useColumnSettings();
 
   // 외부에서 스크롤 제어할 수 있도록 함수 제공
   useImperativeHandle(ref, () => ({
-    scrollToItem: (index: number, align = 'auto') => {
-      listRef.current?.scrollToItem(index, align);
+    scrollToItem: (index: number, align: 'auto' | 'center' | 'end' | 'smart' | 'start' = 'auto') => {
+      listRef.current?.scrollToRow({ index, align });
     },
     scrollToTop: () => {
-      listRef.current?.scrollToItem(0, 'start');
+      listRef.current?.scrollToRow({ index: 0, align: 'start' });
     },
     scrollToBottom: () => {
-      listRef.current?.scrollToItem(purchases.length - 1, 'end');
+      listRef.current?.scrollToRow({ index: purchases.length - 1, align: 'end' });
     },
   }), [purchases.length]);
 
-  // 데이터 메모이제이션
-  const itemData = useMemo(() => ({
+  // 데이터 메모이제이션 (rowProps로 전달)
+  const rowProps = useMemo(() => ({
     purchases,
     activeTab,
     currentUserRoles,
@@ -528,7 +525,13 @@ const VirtualizedPurchaseTable = forwardRef<VirtualizedTableHandle, VirtualizedP
       {/* 칼럼 설정 UI 표시 */}
       {showColumnSettings && activeTab === 'done' && (
         <div className="mb-3 flex justify-end p-3">
-          <ColumnSettingsDropdown isVisible={true} className="" />
+          <ColumnSettingsDropdown 
+            isVisible={true} 
+            className=""
+            columnVisibility={columnVisibility}
+            applyColumnSettings={applyColumnSettings}
+            resetToDefault={resetToDefault}
+          />
         </div>
       )}
       
@@ -553,19 +556,16 @@ const VirtualizedPurchaseTable = forwardRef<VirtualizedTableHandle, VirtualizedP
             <tbody>
               <tr>
                 <td colSpan={20} style={{ padding: 0 }}>
-                  <FixedSizeList
-                    ref={listRef}
-                    height={height}
-                    width="100%"
-                    itemCount={purchases.length}
-                    itemSize={itemHeight}
-                    itemData={itemData}
+                  <List
+                    listRef={listRef}
+                    defaultHeight={height}
+                    rowCount={purchases.length}
+                    rowHeight={itemHeight}
+                    rowProps={rowProps}
+                    rowComponent={(props) => <TableRow {...props} {...rowProps} />}
                     overscanCount={overscanCount}
-                    onScroll={handleScroll}
                     className="virtualized-table-list"
-                  >
-                    {TableRow}
-                  </FixedSizeList>
+                  />
                 </td>
               </tr>
             </tbody>

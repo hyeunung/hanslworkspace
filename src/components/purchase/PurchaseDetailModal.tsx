@@ -326,9 +326,10 @@ function PurchaseDetailModal({
                   effectiveRoles.includes('ceo')
   const isRequester = purchase?.requester_name === currentUserName
   
-  // 거래명세서 확인 & UTK 확인 권한: app_admin과 lead buyer만 가능
+  // 거래명세서 확인 & UTK 확인 권한: app_admin과 lead buyer, accounting만 가능
   const canReceiptCheck = effectiveRoles.includes('app_admin') || 
-                         effectiveRoles.includes('lead buyer')
+                         effectiveRoles.includes('lead buyer') ||
+                         effectiveRoles.includes('accounting')
   
   // 입고 처리 권한: app_admin 또는 본인이 요청한 건
   const canProcessReceipt = effectiveRoles.includes('app_admin') || isRequester

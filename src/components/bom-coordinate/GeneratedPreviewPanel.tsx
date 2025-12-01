@@ -10,6 +10,7 @@ interface GeneratedPreviewPanelProps {
   bomItems: BOMItem[];
   coordinates: CoordinateItem[];
   boardName: string;
+  productionQuantity: number;
   onSave: (items: BOMItem[]) => void;
 }
 
@@ -17,6 +18,7 @@ export default function GeneratedPreviewPanel({
   bomItems: initialItems, 
   coordinates, 
   boardName,
+  productionQuantity,
   onSave 
 }: GeneratedPreviewPanelProps) {
   const [items, setItems] = useState<BOMItem[]>(initialItems);
@@ -31,15 +33,39 @@ export default function GeneratedPreviewPanel({
         boardName 
       });
       
-      const blob = await generateCleanedBOMExcel(items, coordinates, boardName);
+      // 데이터 검증
+      if (!items || items.length === 0) {
+        throw new Error('BOM 데이터가 없습니다. 데이터를 확인해주세요.');
+      }
+      
+      if (!boardName || boardName.trim() === '') {
+        throw new Error('보드 이름이 설정되지 않았습니다.');
+      }
+      
+      // 필수 필드 검증
+      const invalidItems = items.filter((item, idx) => {
+        return !item.itemName || item.setCount === undefined || item.totalQuantity === undefined;
+      });
+      
+      if (invalidItems.length > 0) {
+        console.warn('Invalid items found:', invalidItems);
+        throw new Error(`${invalidItems.length}개 항목에 필수 데이터가 누락되었습니다. (품명, SET, 수량 확인 필요)`);
+      }
+      
+      const blob = await generateCleanedBOMExcel(items, coordinates, boardName, productionQuantity);
       
       console.log('Blob generated:', { size: blob.size, type: blob.type });
+      
+      if (!blob || blob.size === 0) {
+        throw new Error('엑셀 파일 생성에 실패했습니다. (빈 파일)');
+      }
       
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      // 파일명 형식: [보드명]_BOM_정리.xlsx
-      a.download = `${boardName}_BOM_정리.xlsx`;
+      
+      // 보드 이름에 이미 날짜와 _정리본이 포함되어 있으므로 그대로 사용
+      a.download = `${boardName}.xlsx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -47,7 +73,22 @@ export default function GeneratedPreviewPanel({
       toast.success('엑셀 파일이 다운로드되었습니다.');
     } catch (error) {
       console.error('Download error details:', error);
-      toast.error(`다운로드 중 오류가 발생했습니다: ${error.message || '알 수 없는 오류'}`);
+      let errorMessage = '알 수 없는 오류';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        
+        // 구체적인 에러 메시지 제공
+        if (errorMessage.includes('Template') || errorMessage.includes('템플릿')) {
+          errorMessage = '템플릿 파일을 불러오는데 실패했습니다. 관리자에게 문의하세요.';
+        } else if (errorMessage.includes('parse') || errorMessage.includes('파싱')) {
+          errorMessage = '데이터 형식이 올바르지 않습니다. 데이터를 확인해주세요.';
+        } else if (errorMessage.includes('memory') || errorMessage.includes('메모리')) {
+          errorMessage = '파일이 너무 커서 처리할 수 없습니다. 데이터를 줄여주세요.';
+        }
+      }
+      
+      toast.error(`다운로드 중 오류가 발생했습니다: ${errorMessage}`);
     }
   };
 

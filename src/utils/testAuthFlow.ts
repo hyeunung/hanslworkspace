@@ -65,10 +65,10 @@ export function measureAuthPerformance() {
   if (performanceEntries.length > 0) {
     const navigation = performanceEntries[0] as PerformanceNavigationTiming
     
-    logger.info('[AuthPerformance] 페이지 로딩 성능:', {
+    logger.info('[AuthPerformance] 페이지 로딩 성능', {
       domContentLoaded: `${navigation.domContentLoadedEventEnd - navigation.domContentLoadedEventStart}ms`,
       pageLoad: `${navigation.loadEventEnd - navigation.loadEventStart}ms`,
-      totalTime: `${navigation.loadEventEnd - navigation.navigationStart}ms`
+      totalTime: `${navigation.loadEventEnd - navigation.fetchStart}ms`
     })
   }
   
@@ -82,7 +82,7 @@ export function measureAuthPerformance() {
     const authFlowMeasure = measures.find(m => m.name === 'auth-flow-render')
     
     if (authFlowMeasure) {
-      logger.info('[AuthPerformance] 인증 플로우 렌더링 시간:', `${authFlowMeasure.duration}ms`)
+      logger.info('[AuthPerformance] 인증 플로우 렌더링 시간', { duration: `${authFlowMeasure.duration}ms` })
     }
   }, 100)
 }

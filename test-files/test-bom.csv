@@ -1,6 +1,0 @@
-Line,Type,Part Number,Description,Quantity,Set Count,Remark
-1,Capacitor,C0603-100nF,Ceramic Capacitor 100nF 50V,10,1,
-2,Resistor,R0603-10K,SMD Resistor 10K 1%,15,1,
-3,IC,STM32F103,Microcontroller STM32F103,1,1,Main MCU
-4,LED,LED0603-RED,Red LED 0603,5,1,Indicator
-5,Connector,CONN-USB-C,USB Type-C Connector,1,1,Power Input

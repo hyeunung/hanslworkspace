@@ -1,17 +1,21 @@
 import { useState, useCallback, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { Package, Upload, FileText, X, AlertCircle, Loader2, Download, Eye, Plus } from 'lucide-react';
+import { Package, Upload, FileText, X, AlertCircle, Loader2, Download, Eye, Plus, Check, ChevronsUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import GeneratedPreviewPanel from './GeneratedPreviewPanel';
 import CoordinatePreviewPanel from './CoordinatePreviewPanel';
 import { BOMItem, CoordinateItem, generateCleanedBOMExcel } from '@/utils/excel-generator';
+import { processBOMWithAI } from '@/utils/bom-processor';
 
 interface FileInfo {
   bomFile: File | null;
@@ -38,12 +42,13 @@ export default function BomCoordinateIntegrated() {
     boardName: '',
     artworkManager: '',
     productionManager: '',
-    productionQuantity: 100
+    productionQuantity: 0
   });
   const [employees, setEmployees] = useState<{ id: string; name: string }[]>([]);
   const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [openProductionManager, setOpenProductionManager] = useState(false);
   const [processedResult, setProcessedResult] = useState<any>(null);
   const [dragActive, setDragActive] = useState<string | null>(null);
   const [savedBoards, setSavedBoards] = useState<Array<{
@@ -55,6 +60,9 @@ export default function BomCoordinateIntegrated() {
   const [loadingBoards, setLoadingBoards] = useState(false);
   const [selectedBoardForView, setSelectedBoardForView] = useState<string | null>(null);
   const [uploadedFilePaths, setUploadedFilePaths] = useState<{ bomPath: string; coordPath: string } | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [loadingText, setLoadingText] = useState('');
 
   const supabase = createClient();
 
@@ -115,7 +123,7 @@ export default function BomCoordinateIntegrated() {
         
         // 각 보드의 아이템 개수 가져오기
         const boardsWithCount = await Promise.all(
-          (boards || []).map(async (board) => {
+          (boards || []).map(async (board: any) => {
             const { count } = await supabase
               .from('bom_items')
               .select('*', { count: 'exact', head: true })
@@ -143,8 +151,22 @@ export default function BomCoordinateIntegrated() {
   // 파일명에서 보드 이름 추측
   useEffect(() => {
     if (fileInfo.bomFile) {
-      let name = fileInfo.bomFile.name.replace(/\.(xlsx|xls|bom)$/i, '');
+      let name = fileInfo.bomFile.name;
+      // 확장자 제거
+      name = name.replace(/\.(xlsx|xls|csv)$/i, '');
+      // .part.BOM, .BOM, _BOM, part.BOM 등 불필요한 접미사 제거 (대소문자 무관)
+      name = name.replace(/(\.|_|\s)?(part)?(\.|_|\s)?bom$/i, '');
+      // 앞부분의 타임스탬프나 불필요한 접두사 제거
       name = name.replace(/^\d+_bom_/, '');
+      
+      // 날짜 포맷 (YYMMDD) 및 _정리본 추가
+      const today = new Date();
+      const dateStr = today.getFullYear().toString().slice(2) + 
+        (today.getMonth() + 1).toString().padStart(2, '0') + 
+        today.getDate().toString().padStart(2, '0');
+      
+      name = `${name}_${dateStr}_정리본`;
+
       setMetadata(prev => ({ ...prev, boardName: name }));
     }
   }, [fileInfo.bomFile]);
@@ -204,16 +226,59 @@ export default function BomCoordinateIntegrated() {
       return;
     }
 
-    if (metadata.productionQuantity <= 0) {
-      toast.error('생산 수량은 1개 이상이어야 합니다.');
+    if (!metadata.productionManager || metadata.productionManager === 'none') {
+      toast.error('생산 담당자를 선택해주세요.');
       return;
     }
+
+    if (metadata.productionQuantity <= 0) {
+      toast.error('생산 수량을 입력해주세요 (1 이상).');
+      return;
+    }
+
+    let timer: NodeJS.Timeout | null = null;
+    let textTimer: NodeJS.Timeout | null = null;
 
     try {
       setUploading(true);
       setStep('processing');
+      setErrorMessage(null);
+      setProgress(0);
+      setLoadingText('파일 업로드 준비 중...');
 
-      // 1. 파일 업로드
+      // 예상 소요 시간 계산
+      const totalSize = (fileInfo.bomFile?.size || 0) + (fileInfo.coordFile?.size || 0);
+      const estimatedDuration = 15000 + (totalSize / 1024) * 50; 
+      
+      const updateInterval = 500;
+      const totalSteps = estimatedDuration / updateInterval;
+      const incrementPerStep = 90 / totalSteps;
+
+      // 진행률 애니메이션 시작
+      timer = setInterval(() => {
+        setProgress((oldProgress) => {
+          if (oldProgress >= 95) {
+            return oldProgress;
+          }
+          const randomFactor = Math.random() * 0.5 + 0.8;
+          return Math.min(oldProgress + (incrementPerStep * randomFactor), 95);
+        });
+      }, updateInterval);
+
+      // 텍스트 변경 타이머
+      textTimer = setInterval(() => {
+        setLoadingText((current) => {
+          if (current === '파일 업로드 준비 중...') return 'BOM 파일 읽는 중...';
+          if (current === 'BOM 파일 읽는 중...') return '데이터 구조 분석 중...';
+          if (current === '데이터 구조 분석 중...') return '좌표 데이터 매칭 중...';
+          if (current === '좌표 데이터 매칭 중...') return 'AI가 최종 정리 중입니다...';
+          if (current === 'AI가 최종 정리 중입니다...') return '거의 다 되었습니다. 잠시만요!';
+          return current;
+        });
+      }, estimatedDuration / 5);
+
+      // 1. 파일 업로드 (Storage) - 로직 유지
+      // ... (파일 업로드 코드는 그대로 둠) ...
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('로그인이 필요합니다.');
 
@@ -266,57 +331,55 @@ export default function BomCoordinateIntegrated() {
       // 업로드된 파일 경로 저장 (나중에 DB에 저장할 때 사용)
       setUploadedFilePaths({ bomPath, coordPath });
 
-      // 2. 처리 (임시 더미 데이터)
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // 2. Client-side AI Processing (CORS 우회)
+      console.log('Processing BOM with AI (Client-side)...');
+      
+      // 파일 객체 직접 전달
+      const processedData = await processBOMWithAI(
+        fileInfo.bomFile,
+        fileInfo.coordFile,
+        metadata.productionQuantity
+      );
 
-      const dummyResult = {
+      if (timer) clearInterval(timer);
+      if (textTimer) clearInterval(textTimer);
+      setProgress(100);
+      setLoadingText('완료!');
+
+      if (!processedData || !processedData.bomItems) {
+        throw new Error('AI 처리 결과가 올바르지 않습니다.');
+      }
+
+      // 3. 결과 데이터 구조화 (임시 ID 부여)
+      const resultWithId = {
         cadDrawingId: `cad_${Date.now()}`,
         processedData: {
-          bomItems: [
-            {
-              lineNumber: 1,
-              itemType: 'Capacitor',
-              itemName: 'C0603-100nF',
-              specification: 'Ceramic Capacitor 100nF 50V',
-              setCount: 1,
-              totalQuantity: metadata.productionQuantity * 10,
-              stockQuantity: 0,
-              checkStatus: '발주필요',
-              refList: 'C1,C2,C3,C4,C5,C6,C7,C8,C9,C10',
-              alternativeItem: '',
-              remark: ''
-            },
-            {
-              lineNumber: 2,
-              itemType: 'Resistor',
-              itemName: 'R0603-10K',
-              specification: 'SMD Resistor 10K 1%',
-              setCount: 1,
-              totalQuantity: metadata.productionQuantity * 15,
-              stockQuantity: 100,
-              checkStatus: '재고충분',
-              refList: 'R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12,R13,R14,R15',
-              alternativeItem: 'R0603-10K-5%',
-              remark: '5% 공차도 사용 가능'
-            }
-          ],
-          coordinates: [
-            { refDes: 'C1', x: '10.5', y: '20.3', layer: 'TOP', rotation: '0' },
-            { refDes: 'R1', x: '10.5', y: '25.5', layer: 'TOP', rotation: '90' }
-          ]
+          bomItems: processedData.bomItems,
+          coordinates: processedData.coordinates
         }
       };
 
-      setProcessedResult(dummyResult);
+      setProcessedResult(resultWithId);
       toast.success('BOM 분석 및 정리가 완료되었습니다.');
       setStep('preview');
 
     } catch (error: any) {
       console.error('Processing error:', error);
-      toast.error(`처리 중 오류가 발생했습니다: ${error.message}`);
-      setStep('input');
-    } finally {
+      const msg = `처리 중 오류가 발생했습니다: ${error.message || error}`;
+      setErrorMessage(msg);
+      
+      if (timer) clearInterval(timer);
+      if (textTimer) clearInterval(textTimer);
+      
       setUploading(false);
+      setStep('input'); 
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } finally {
+      // 성공 시에는 위에서 clearInterval 등을 처리했음
+      // 실패 시에만 여기가 실행될 수 있는데, 중복 실행 방지
+      if (step === 'processing' && errorMessage) {
+         setUploading(false);
+      }
     }
   };
 
@@ -417,12 +480,12 @@ export default function BomCoordinateIntegrated() {
 
       if (deleteError) throw deleteError;
 
-      const { error: insertError } = await supabase
-        .from('bom_items')
-        .insert(
-          items.map(item => ({
-            cad_drawing_id: cadDrawingId,
-            line_number: item.lineNumber,
+        const { error: insertError } = await supabase
+          .from('bom_items')
+          .insert(
+            items.map((item: BOMItem) => ({
+              cad_drawing_id: cadDrawingId,
+              line_number: item.lineNumber,
             item_type: item.itemType,
             item_name: item.itemName,
             specification: item.specification,
@@ -456,13 +519,38 @@ export default function BomCoordinateIntegrated() {
               part_name: coord.partName,
               part_type: coord.partType,
               side: coord.side,
-              x_coordinate: parseFloat(coord.x) || 0,
-              y_coordinate: parseFloat(coord.y) || 0,
-              angle: coord.angle ? parseFloat(coord.angle) : null
+              x_coordinate: parseFloat(coord.x?.toString() || '0'),
+              y_coordinate: parseFloat(coord.y?.toString() || '0'),
+              angle: coord.angle ? parseFloat(coord.angle.toString()) : null
             }))
           );
 
         if (insertCoordError) throw insertCoordError;
+      }
+
+      // 5. AI 학습 데이터 저장 (중요: 지속적인 학습을 위해 원본과 결과 저장)
+      // 사용자가 최종 수정한 데이터(items, processedResult.processedData.coordinates)가 정답 데이터가 됨
+      if (uploadedFilePaths) { // 원본 파일 경로가 있을 때만
+        // 텍스트 내용은 클라이언트에서 다시 읽어오기 번거로우므로, 일단 파일 경로와 결과 데이터만 저장하거나
+        // 추후 Edge Function이 복구되면 거기서 처리. 
+        // 현재는 DB에 파일 경로와 결과 JSON을 저장하여 나중에 파인튜닝에 활용
+        
+        /* 학습 데이터 저장 로직 (ai_learning_records 테이블) */
+        const { error: learningError } = await supabase
+          .from('ai_learning_records')
+          .insert({
+            cad_drawing_id: cadDrawingId,
+            // 원본 데이터는 URL로 참조하거나, 필요시 텍스트로 저장해야 함. 
+            // 여기서는 메타데이터 위주로 저장
+            processed_bom_data: items, // 사용자가 검수/수정한 최종 BOM
+            processed_coordinate_data: processedResult.processedData?.coordinates,
+            cad_program_type: 'unknown', // 추후 분석 가능
+            created_at: new Date().toISOString()
+          });
+          
+        if (learningError) {
+            console.warn('학습 데이터 저장 실패 (기능에는 영향 없음):', learningError);
+        }
       }
       
       // cadDrawingId 업데이트
@@ -495,7 +583,7 @@ export default function BomCoordinateIntegrated() {
       ...prev,
       boardName: '',
       productionManager: '',
-      productionQuantity: 100
+      productionQuantity: 0
     }));
     setProcessedResult(null);
     setUploadedFilePaths(null);
@@ -522,7 +610,7 @@ export default function BomCoordinateIntegrated() {
       if (coordError) throw coordError;
 
       // BOMItem 형식으로 변환
-      const convertedBOMItems: BOMItem[] = (bomItems || []).map(item => ({
+      const convertedBOMItems: BOMItem[] = (bomItems || []).map((item: any) => ({
         lineNumber: item.line_number,
         itemType: item.item_type || '',
         itemName: item.item_name,
@@ -537,7 +625,7 @@ export default function BomCoordinateIntegrated() {
       }));
 
       // CoordinateItem 형식으로 변환
-      const convertedCoords: CoordinateItem[] = (coordinates || []).map(coord => ({
+      const convertedCoords: CoordinateItem[] = (coordinates || []).map((coord: any) => ({
         ref: coord.ref,
         partName: coord.part_name,
         partType: coord.part_type || 'SMD',
@@ -548,11 +636,16 @@ export default function BomCoordinateIntegrated() {
       }));
 
       // Excel 생성 및 다운로드
+      // 저장된 BOM은 productionQuantity 정보를 따로 저장하지 않았으므로(로그에만 있음), 
+      // BOM 아이템 역산을 통해 추정하거나 0으로 처리해야 함.
+      // 일단 0으로 넘기고 excel-generator 내부에서 역산 로직 활용
       const blob = await generateCleanedBOMExcel(convertedBOMItems, convertedCoords, boardName);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${boardName}_BOM_정리.xlsx`;
+      
+      // 보드 이름에 이미 날짜와 _정리본이 포함되어 있으므로 그대로 사용
+      a.download = `${boardName}.xlsx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -593,7 +686,7 @@ export default function BomCoordinateIntegrated() {
         .single();
 
       // BOMItem 형식으로 변환
-      const convertedBOMItems: BOMItem[] = (bomItems || []).map(item => ({
+      const convertedBOMItems: BOMItem[] = (bomItems || []).map((item: any) => ({
         lineNumber: item.line_number,
         itemType: item.item_type || '',
         itemName: item.item_name,
@@ -608,7 +701,7 @@ export default function BomCoordinateIntegrated() {
       }));
 
       // CoordinateItem 형식으로 변환
-      const convertedCoords: CoordinateItem[] = (coordinates || []).map(coord => ({
+      const convertedCoords: CoordinateItem[] = (coordinates || []).map((coord: any) => ({
         ref: coord.ref,
         partName: coord.part_name,
         partType: coord.part_type || 'SMD',
@@ -773,6 +866,21 @@ export default function BomCoordinateIntegrated() {
       {/* 메인 컨텐츠 */}
       {step === 'input' && (
         <div className="space-y-4">
+          {errorMessage && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-6 py-4 rounded-lg text-sm flex flex-col gap-2 shadow-sm animate-in fade-in slide-in-from-top-2">
+              <div className="flex items-center gap-2 font-semibold">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-600" />
+                <span>오류가 발생했습니다</span>
+              </div>
+              <p className="pl-7">{errorMessage}</p>
+              {errorMessage.includes('quota') && (
+                <p className="pl-7 text-xs text-red-600 mt-1">
+                  * OpenAI 결제 정보가 반영되기까지 최대 10~20분이 소요될 수 있습니다. 잠시 후 다시 시도해주세요.
+                </p>
+              )}
+            </div>
+          )}
+          
           {/* 파일 업로드 영역 */}
           <Card>
             <CardContent className="py-4">
@@ -896,40 +1004,65 @@ export default function BomCoordinateIntegrated() {
 
                     {/* 생산 담당자 */}
                     <div className="space-y-1">
-                      <Label className="text-[10px] text-gray-500">생산 담당자</Label>
-                      <Select 
-                        value={metadata.productionManager} 
-                        onValueChange={(value) => setMetadata(prev => ({ ...prev, productionManager: value }))}
-                      >
-                        <SelectTrigger 
-                          className="w-full bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200 px-2 flex items-center"
-                          style={{ height: '32px', minHeight: '32px' }}
-                        >
-                          <SelectValue placeholder="선택" />
-                        </SelectTrigger>
-                        <SelectContent position="popper" className="z-[9999]">
-                          <SelectItem value="none">선택안함</SelectItem>
-                          {employees.map((emp) => (
-                            <SelectItem key={emp.id} value={emp.id}>
-                              {emp.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Label className="text-[10px] text-gray-500">생산 담당자 <span className="text-red-500">*</span></Label>
+                      <Popover open={openProductionManager} onOpenChange={setOpenProductionManager}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={openProductionManager}
+                            className="w-full justify-between text-xs h-8 min-h-[32px] px-2 bg-white border-[#d2d2d7] shadow-sm hover:bg-gray-50"
+                          >
+                            {metadata.productionManager
+                              ? employees.find((emp) => emp.id === metadata.productionManager)?.name
+                              : "담당자 선택"}
+                            <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[200px] p-0">
+                          <Command>
+                            <CommandInput placeholder="이름 검색..." className="h-8 text-xs" />
+                            <CommandList>
+                              <CommandEmpty>검색 결과 없음</CommandEmpty>
+                              <CommandGroup>
+                                {employees.map((emp) => (
+                                  <CommandItem
+                                    key={emp.id}
+                                    value={emp.name}
+                                    onSelect={() => {
+                                      setMetadata(prev => ({ ...prev, productionManager: emp.id }));
+                                      setOpenProductionManager(false);
+                                    }}
+                                    className="text-xs"
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-3 w-3",
+                                        metadata.productionManager === emp.id ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                    {emp.name}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                     </div>
 
                     {/* 생산 수량 */}
                     <div className="space-y-1">
-                      <Label className="text-[10px] text-gray-500">생산 수량</Label>
+                      <Label className="text-[10px] text-gray-500">생산 수량 <span className="text-red-500">*</span></Label>
                       <div className="relative">
                         <Input
                           type="number"
-                          min="1"
-                          value={metadata.productionQuantity}
+                          min="0"
+                          value={metadata.productionQuantity === 0 ? '' : metadata.productionQuantity}
                           onChange={(e) => setMetadata(prev => ({ ...prev, productionQuantity: parseInt(e.target.value) || 0 }))}
                           className="w-full bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200 pr-8"
                           style={{ height: '32px' }}
-                          placeholder="수량"
+                          placeholder="0"
                         />
                         <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-500 font-medium pointer-events-none">SET</span>
                       </div>
@@ -943,7 +1076,7 @@ export default function BomCoordinateIntegrated() {
                         className="w-full bg-hansl-600 hover:bg-hansl-700 text-white shadow-sm text-xs"
                         style={{ height: '32px' }}
                       >
-                        BOM 생성
+                        정리 및 생성
                       </Button>
                     </div>
                   </div>
@@ -966,10 +1099,15 @@ export default function BomCoordinateIntegrated() {
       {step === 'processing' && (
         <Card>
           <CardContent className="py-12 sm:py-16 lg:py-20">
-            <div className="flex flex-col items-center justify-center">
-              <Loader2 className="w-8 h-8 sm:w-10 sm:h-10 text-hansl-600 animate-spin mb-4" />
-              <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-center">AI가 BOM을 분석하고 있습니다</h3>
-              <p className="text-xs sm:text-sm text-gray-600 mt-2 text-center px-4">잠시만 기다려주세요... (약 30초 ~ 1분 소요)</p>
+            <div className="flex flex-col items-center justify-center max-w-md mx-auto">
+              <Loader2 className="w-8 h-8 sm:w-10 sm:h-10 text-hansl-600 animate-spin mb-6" />
+              <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-center mb-2">{loadingText || 'AI가 BOM을 분석하고 있습니다'}</h3>
+              <p className="text-xs sm:text-sm text-gray-600 mb-6 text-center px-4">잠시만 기다려주세요... (약 30초 ~ 1분 소요)</p>
+              
+              <div className="w-full px-4">
+                <Progress value={progress} className="h-2" />
+                <p className="text-right text-xs text-gray-500 mt-1">{Math.round(progress)}%</p>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -1008,6 +1146,7 @@ export default function BomCoordinateIntegrated() {
                 bomItems={processedResult.processedData?.bomItems || []}
                 coordinates={processedResult.processedData?.coordinates || []}
                 boardName={metadata.boardName || 'Board'}
+                productionQuantity={metadata.productionQuantity}
                 onSave={handleSaveBOM}
               />
             </div>

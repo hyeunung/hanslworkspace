@@ -64,7 +64,7 @@ export default function OptimizedRoutes() {
             }
             setPreloadedComponents(prev => new Set([...prev, page]))
           } catch (error) {
-            logger.warn(`Failed to preload ${page}:`, error)
+            logger.warn(`Failed to preload ${page}`, { error })
           }
         })
       }, { timeout: 1000 })

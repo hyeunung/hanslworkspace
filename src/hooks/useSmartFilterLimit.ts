@@ -128,6 +128,6 @@ export const hasActiveFiltersDetected = (
   return (
     activeFilters.length > 0 ||
     searchTerm.trim().length > 0 ||
-    (selectedEmployee && selectedEmployee !== 'all' && selectedEmployee !== '전체')
+    Boolean(selectedEmployee && selectedEmployee !== 'all' && selectedEmployee !== '전체')
   );
 };

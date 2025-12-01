@@ -14,7 +14,8 @@ export type PurchaseRole =
   | 'requester' 
   | 'lead buyer' 
   | 'buyer' 
-  | 'hr';
+  | 'hr'
+  | 'accounting';
 
 // 관리자 권한 목록
 export const MANAGER_ROLES: PurchaseRole[] = [

@@ -42,23 +42,7 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
   const [loadingId, setLoadingId] = useState<number | null>(null)
   const { sortedData, sortConfig, handleSort } = useTableSort(vendors, 'vendor_name', 'asc')
 
-  const handleToggleStatus = async (vendor: Vendor) => {
-    setLoadingId(vendor.id)
-    try {
-      const result = await vendorService.toggleVendorStatus(vendor.id)
-      
-      if (result.success) {
-        toast.success(`업체가 ${vendor.is_active ? '비활성화' : '활성화'}되었습니다.`)
-        onRefresh()
-      } else {
-        toast.error(result.error || '상태 변경에 실패했습니다.')
-      }
-    } catch (error) {
-      toast.error('상태 변경 중 오류가 발생했습니다.')
-    } finally {
-      setLoadingId(null)
-    }
-  }
+  // is_active 컄럼이 없어서 토글 기능 제거
 
   const handleDelete = async (vendor: Vendor) => {
     if (!confirm(`정말로 '${vendor.vendor_name}' 업체를 삭제하시겠습니까?`)) {
@@ -193,19 +177,6 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                       <DropdownMenuItem onClick={() => onEdit(vendor)}>
                         <Edit className="mr-2 h-4 w-4" />
                         수정
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleToggleStatus(vendor)}>
-                        {vendor.is_active ? (
-                          <>
-                            <ToggleLeft className="mr-2 h-4 w-4" />
-                            비활성화
-                          </>
-                        ) : (
-                          <>
-                            <ToggleRight className="mr-2 h-4 w-4" />
-                            활성화
-                          </>
-                        )}
                       </DropdownMenuItem>
                       <DropdownMenuItem 
                         onClick={() => handleDelete(vendor)}
@@ -390,18 +361,6 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                   onClick={() => onEdit(vendor)}
                 >
                   <Edit className="w-4 h-4" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleToggleStatus(vendor)}
-                  disabled={loadingId === vendor.id}
-                >
-                  {vendor.is_active ? (
-                    <ToggleLeft className="w-4 h-4" />
-                  ) : (
-                    <ToggleRight className="w-4 h-4" />
-                  )}
                 </Button>
                 <Button
                   size="sm"
