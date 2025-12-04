@@ -4764,6 +4764,7 @@ function PurchaseDetailModal({
                           if (purchase) {
                             // 삭제 확인 다이얼로그를 열기만 함 (실제 삭제는 확인 다이얼로그에서 처리)
                             onDelete(purchase);
+                            // 삭제 버튼을 누른 후 모달을 즉시 닫지 않고 삭제 확인 다이얼로그가 처리하도록 함
                           }
                         }}
                         className="button-base button-action-danger"

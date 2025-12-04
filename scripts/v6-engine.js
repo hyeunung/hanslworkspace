@@ -398,6 +398,8 @@ ${answerText.substring(0, 30000)}
 
 /**
  * 결과 비교
+ * - Ref를 기준으로 원본 품명 ↔ 정리본 품명 매핑
+ * - 품명 변환 규칙 학습을 위한 매핑 생성
  */
 function compare(studentBOM, studentCoords, trueBOM, trueCoords, round) {
   const stats = {
@@ -409,7 +411,29 @@ function compare(studentBOM, studentCoords, trueBOM, trueCoords, round) {
   };
 
   const trueItems = trueBOM.items || [];
-  const trueBOMMap = new Map(trueItems.map(i => [normalize(i.itemName), i]));
+  
+  // === Ref 기반 품명 매핑 생성 ===
+  // 원본(student): Ref → 원본 품명
+  const studentRefToName = new Map();
+  studentBOM.forEach(item => {
+    (item.refs || []).forEach(ref => {
+      studentRefToName.set(normalize(ref), item.itemName);
+    });
+  });
+  
+  // 정리본(true): Ref → 정리본 품명, 종류
+  const trueRefToItem = new Map();
+  trueItems.forEach(item => {
+    (item.refs || []).forEach(ref => {
+      trueRefToItem.set(normalize(ref), {
+        itemName: item.itemName,
+        itemType: item.itemType
+      });
+    });
+  });
+  
+  // 품명 변환 매핑 (원본 → 정리본)
+  const nameMapping = new Map();  // 원본품명 → 정리본품명
   
   // === BOM 비교 ===
   
@@ -423,47 +447,57 @@ function compare(studentBOM, studentCoords, trueBOM, trueCoords, round) {
     stats.SET.errors.push(`총합 불일치: AI(${studentTotalQty}) vs 정답(${trueTotalQty})`);
   }
 
-  // 품명 비교
-  const studentNames = new Set(studentBOM.map(i => normalize(i.itemName)));
-  const trueNames = new Set(trueItems.map(i => normalize(i.itemName)));
-  stats.품명.total = trueNames.size;
-  
-  for (const name of trueNames) {
-    if (studentNames.has(name)) {
-      stats.품명.match++;
-    } else {
-      const original = trueItems.find(i => normalize(i.itemName) === name);
-      stats.품명.errors.push(original?.itemName || name);
-    }
-  }
-
-  // Ref 비교
-  const studentRefs = new Set();
-  studentBOM.forEach(item => (item.refs || []).forEach(ref => studentRefs.add(normalize(ref))));
-  
-  const trueRefs = new Set();
-  trueItems.forEach(item => (item.refs || []).forEach(ref => trueRefs.add(normalize(ref))));
+  // Ref 비교 & 품명 매핑 생성
+  const studentRefs = new Set(studentRefToName.keys());
+  const trueRefs = new Set(trueRefToItem.keys());
   
   stats.Ref.total = trueRefs.size;
   for (const ref of trueRefs) {
     if (studentRefs.has(ref)) {
       stats.Ref.match++;
+      
+      // Ref가 일치하면 품명 매핑 생성 (원본 → 정리본)
+      const studentName = studentRefToName.get(ref);
+      const trueItem = trueRefToItem.get(ref);
+      if (studentName && trueItem) {
+        nameMapping.set(studentName, trueItem.itemName);
+      }
     } else {
       stats.Ref.errors.push(ref);
     }
   }
 
+  // 품명 비교 (Ref 기반 매핑으로 비교)
+  // 정리본의 고유 품명 수
+  const trueUniqueNames = new Set(trueItems.map(i => i.itemName));
+  const mappedNames = new Set(nameMapping.values());
+  
+  stats.품명.total = trueUniqueNames.size;
+  for (const trueName of trueUniqueNames) {
+    if (mappedNames.has(trueName)) {
+      stats.품명.match++;
+    } else {
+      stats.품명.errors.push(trueName);
+    }
+  }
+
   // 종류 비교 (Round 2부터)
   if (round >= 2) {
+    // Ref 기반으로 종류 비교
     stats.종류.total = trueItems.length;
+    
     for (const sItem of studentBOM) {
-      const key = normalize(sItem.itemName);
-      const truth = trueBOMMap.get(key);
-      if (truth) {
-        if (normalize(sItem.itemType) === normalize(truth.itemType)) {
-          stats.종류.match++;
-        } else {
-          stats.종류.errors.push(`${sItem.itemName}: AI(${sItem.itemType || '없음'}) vs 정답(${truth.itemType})`);
+      const sRefs = sItem.refs || [];
+      for (const ref of sRefs) {
+        const normRef = normalize(ref);
+        const trueItem = trueRefToItem.get(normRef);
+        if (trueItem) {
+          if (normalize(sItem.itemType || '') === normalize(trueItem.itemType || '')) {
+            stats.종류.match++;
+          } else {
+            stats.종류.errors.push(`${ref}: AI(${sItem.itemType || '없음'}) vs 정답(${trueItem.itemType})`);
+          }
+          break; // 한 품목당 한 번만 체크
         }
       }
     }
@@ -479,10 +513,10 @@ function compare(studentBOM, studentCoords, trueBOM, trueCoords, round) {
     const trueCoord = trueCoords[ref];
     
     if (studentCoord) {
-      // X, Y, Rotation, Layer 비교
-      const xMatch = Math.abs(parseFloat(studentCoord.x || 0) - parseFloat(trueCoord.x || 0)) < 0.1;
-      const yMatch = Math.abs(parseFloat(studentCoord.y || 0) - parseFloat(trueCoord.y || 0)) < 0.1;
-      const rotMatch = String(studentCoord.rot || '0') === String(trueCoord.rot || '0');
+      // X, Y, Rotation 비교 (소수점 정리: 4.500 == 4.5)
+      const xMatch = Math.abs(parseFloat(studentCoord.x || 0) - parseFloat(trueCoord.x || 0)) < 0.01;
+      const yMatch = Math.abs(parseFloat(studentCoord.y || 0) - parseFloat(trueCoord.y || 0)) < 0.01;
+      const rotMatch = parseFloat(studentCoord.rot || 0) === parseFloat(trueCoord.rot || 0);
       
       if (xMatch && yMatch && rotMatch) {
         stats.좌표.match++;
@@ -494,19 +528,42 @@ function compare(studentBOM, studentCoords, trueBOM, trueCoords, round) {
     }
   }
 
+  // 품명 매핑 반환 (학습용)
+  stats.nameMapping = nameMapping;
+
   return stats;
 }
 
 /**
  * 학습 데이터 저장 (성공한 보드만)
+ * - 품명 변환 매핑 포함 (원본 품명 → 정리본 품명)
  */
-async function saveTrainingData(bomText, coordText, trueBOM, trueCoords) {
-  const bomCompletion = JSON.stringify({ items: trueBOM.items, typeOrder: trueBOM.typeOrder });
+async function saveTrainingData(bomText, coordText, trueBOM, trueCoords, nameMapping) {
+  // 품명 변환 매핑을 배열로 변환
+  const nameMappingArray = [];
+  if (nameMapping) {
+    for (const [original, converted] of nameMapping) {
+      nameMappingArray.push({ original, converted });
+    }
+  }
+  
+  const bomCompletion = JSON.stringify({ 
+    items: trueBOM.items, 
+    typeOrder: trueBOM.typeOrder,
+    nameMapping: nameMappingArray  // 품명 변환 규칙 추가
+  });
   const coordCompletion = JSON.stringify(trueCoords);
   
   const bomLine = JSON.stringify({
     messages: [
-      { role: 'system', content: 'BOM 파일에서 품명, SET, Ref를 추출하고 종류를 분류합니다. TP로 시작하는 Ref는 제외합니다.' },
+      { 
+        role: 'system', 
+        content: `BOM 파일에서 품명, SET, Ref를 추출하고 종류를 분류합니다.
+규칙:
+1. TP로 시작하는 Ref는 제외
+2. 품명은 원본에서 추출 후 정리본 형식으로 변환 (예: 24LC256ISN → 24LC256-I/SN)
+3. 종류는 정리본에서 학습한 대로 분류` 
+      },
       { role: 'user', content: bomText.substring(0, 15000) },
       { role: 'assistant', content: bomCompletion }
     ]
@@ -514,7 +571,13 @@ async function saveTrainingData(bomText, coordText, trueBOM, trueCoords) {
   
   const coordLine = JSON.stringify({
     messages: [
-      { role: 'system', content: '좌표 파일에서 RefDes, Layer, X, Y, Rotation을 추출합니다. 숫자만 있는 RefDes와 TP는 제외합니다.' },
+      { 
+        role: 'system', 
+        content: `좌표 파일에서 RefDes, Layer, X, Y, Rotation을 추출합니다.
+규칙:
+1. 숫자만 있는 RefDes와 TP는 제외
+2. 좌표값은 소수점 정리 (4.500 → 4.5, 0.0 → 0)` 
+      },
       { role: 'user', content: coordText.substring(0, 15000) },
       { role: 'assistant', content: coordCompletion }
     ]
@@ -529,36 +592,32 @@ async function saveTrainingData(bomText, coordText, trueBOM, trueCoords) {
 function printLog(boardName, stats, round) {
   const parts = [];
   
-  // SET
-  const setRate = stats.SET.total > 0 ? Math.round((stats.SET.match / stats.SET.total) * 100) : 0;
-  parts.push(setRate === 100 ? `✅ SET:일치` : `❌ SET:불일치`);
+  // SET - errors.length 기준으로 판단
+  const setOk = stats.SET.errors.length === 0;
+  parts.push(setOk ? `✅ SET:일치` : `❌ SET:불일치`);
   
-  // 품명
-  const nameRate = stats.품명.total > 0 ? Math.round((stats.품명.match / stats.품명.total) * 100) : 0;
-  parts.push(nameRate === 100 ? `✅ 품명:일치` : `❌ 품명:${stats.품명.errors.length}건 누락`);
+  // 품명 - errors.length 기준으로 판단
+  const nameOk = stats.품명.errors.length === 0;
+  parts.push(nameOk ? `✅ 품명:일치` : `❌ 품명:${stats.품명.errors.length}건 누락`);
   
-  // Ref
-  const refRate = stats.Ref.total > 0 ? Math.round((stats.Ref.match / stats.Ref.total) * 100) : 0;
-  parts.push(refRate === 100 ? `✅ Ref:일치` : `❌ Ref:${stats.Ref.errors.length}건 누락`);
+  // Ref - errors.length 기준으로 판단
+  const refOk = stats.Ref.errors.length === 0;
+  parts.push(refOk ? `✅ Ref:일치` : `❌ Ref:${stats.Ref.errors.length}건 누락`);
   
-  // 종류 (Round 2부터)
+  // 종류 (Round 2부터) - errors.length 기준으로 판단
   if (round >= 2) {
-    const typeRate = stats.종류.total > 0 ? Math.round((stats.종류.match / stats.종류.total) * 100) : 0;
-    parts.push(typeRate === 100 ? `✅ 종류:일치` : `❌ 종류:${stats.종류.errors.length}건 불일치`);
+    const typeOk = stats.종류.errors.length === 0;
+    parts.push(typeOk ? `✅ 종류:일치` : `❌ 종류:${stats.종류.errors.length}건 불일치`);
   } else {
     parts.push(`⏸️ 종류:학습전`);
   }
   
-  // 좌표
-  const coordRate = stats.좌표.total > 0 ? Math.round((stats.좌표.match / stats.좌표.total) * 100) : 0;
-  parts.push(coordRate === 100 ? `✅ 좌표:일치` : `❌ 좌표:${stats.좌표.errors.length}건 불일치`);
+  // 좌표 - errors.length 기준으로 판단
+  const coordOk = stats.좌표.errors.length === 0;
+  parts.push(coordOk ? `✅ 좌표:일치` : `❌ 좌표:${stats.좌표.errors.length}건 불일치`);
   
   // 전체 성공 여부
-  const isSuccess = stats.SET.errors.length === 0 && 
-                    stats.품명.errors.length === 0 && 
-                    stats.Ref.errors.length === 0 &&
-                    stats.좌표.errors.length === 0 &&
-                    (round < 2 || stats.종류.errors.length === 0);
+  const isSuccess = setOk && nameOk && refOk && coordOk && (round < 2 || stats.종류.errors.length === 0);
   
   const icon = isSuccess ? '✅' : '❌';
   console.log(`   ${icon} ${boardName}`);
@@ -766,13 +825,14 @@ async function main() {
           roundSuccess++;
           progress.successBoards.push(result.name);
           
-          // 성공한 보드만 학습 데이터 저장
+          // 성공한 보드만 학습 데이터 저장 (품명 변환 매핑 포함)
           if (result.trueBOM?.items?.length > 0) {
             await saveTrainingData(
               result.bomText, 
               result.coordText, 
               result.trueBOM, 
-              result.trueCoords
+              result.trueCoords,
+              result.stats?.nameMapping  // 품명 변환 매핑 전달
             );
           }
         } else {

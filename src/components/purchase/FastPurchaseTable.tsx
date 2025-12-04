@@ -1027,8 +1027,17 @@ const FastPurchaseTable = ({
   }, [supabase]);
 
   const handleConfirmDelete = useCallback(async () => {
-    if (!purchaseToDelete) return;
+    if (!purchaseToDelete) {
+      logger.error('[handleConfirmDelete] purchaseToDelete가 null입니다');
+      toast.error('삭제할 발주요청을 찾을 수 없습니다.');
+      return;
+    }
 
+    logger.info('🚀 [handleConfirmDelete] 삭제 시작', {
+      purchaseId: purchaseToDelete.id,
+      purchaseOrderNumber: purchaseToDelete.purchase_order_number,
+      type: typeof purchaseToDelete.id
+    });
 
     try {
       // Supabase 환경 변수 확인
@@ -1084,12 +1093,26 @@ const FastPurchaseTable = ({
 
 
       if (!canDeleteThis) {
+        logger.warn('[handleConfirmDelete] 삭제 권한 없음', {
+          canEdit,
+          isApproved,
+          isRequester,
+          roles,
+          employeeName: employee.name
+        });
         toast.error("삭제 권한이 없습니다.");
         return;
       }
 
+      logger.info('✅ [handleConfirmDelete] 권한 확인 완료, 삭제 진행', {
+        purchaseId: purchaseToDelete.id
+      });
 
       // 모든 아이템 삭제
+      logger.info('🗑️ [handleConfirmDelete] 품목 삭제 시작', {
+        purchaseId: purchaseToDelete.id
+      });
+      
       const { data: deletedItems, error: itemsError } = await supabase
         .from('purchase_request_items')
         .delete()
@@ -1097,17 +1120,26 @@ const FastPurchaseTable = ({
         .select();
 
       if (itemsError) {
-        logger.error('아이템 삭제 중 오류 발생', itemsError, {
+        logger.error('❌ [handleConfirmDelete] 아이템 삭제 중 오류 발생', itemsError, {
           code: itemsError.code,
           message: itemsError.message,
           details: itemsError.details,
-          hint: itemsError.hint
+          hint: itemsError.hint,
+          purchaseId: purchaseToDelete.id
         });
         throw itemsError;
       }
 
+      logger.info('✅ [handleConfirmDelete] 품목 삭제 완료', {
+        purchaseId: purchaseToDelete.id,
+        deletedItemsCount: deletedItems?.length || 0
+      });
 
       // 발주요청 삭제
+      logger.info('🗑️ [handleConfirmDelete] 발주기본정보 삭제 시작', {
+        purchaseId: purchaseToDelete.id
+      });
+      
       const { data: deletedRequest, error: requestError } = await supabase
         .from('purchase_requests')
         .delete()
@@ -1115,51 +1147,77 @@ const FastPurchaseTable = ({
         .select();
 
       if (requestError) {
-        logger.error('발주요청 삭제 중 오류 발생', requestError, {
+        logger.error('❌ [handleConfirmDelete] 발주요청 삭제 중 오류 발생', requestError, {
           code: requestError.code,
           message: requestError.message,
           details: requestError.details,
-          hint: requestError.hint
+          hint: requestError.hint,
+          purchaseId: purchaseToDelete.id,
+          note: '품목은 이미 삭제되었지만 발주요청은 삭제되지 않았습니다.'
         });
         throw requestError;
       }
 
+      logger.info('✅ [handleConfirmDelete] 발주기본정보 삭제 완료', {
+        purchaseId: purchaseToDelete.id,
+        deletedRequest: deletedRequest?.[0]
+      });
+
 
       // 🚀 메모리 캐시에서 즉시 삭제 (구매완료 등과 동일한 패턴)
-      const memoryUpdated = removePurchaseFromMemory(purchaseToDelete.id);
-      if (!memoryUpdated) {
-        logger.warn('[handleConfirmDelete] 메모리 캐시에서 발주서 삭제 실패', { 
-          purchaseId: purchaseToDelete.id 
-        });
+      const purchaseIdNumber = Number(purchaseToDelete.id);
+      if (!Number.isNaN(purchaseIdNumber)) {
+        const memoryUpdated = removePurchaseFromMemory(purchaseIdNumber);
+        if (!memoryUpdated) {
+          logger.warn('[handleConfirmDelete] 메모리 캐시에서 발주서 삭제 실패', { 
+            purchaseId: purchaseIdNumber,
+            originalId: purchaseToDelete.id
+          });
+        } else {
+          logger.info('✅ [handleConfirmDelete] 메모리 캐시에서 발주서 삭제 성공', { 
+            purchaseId: purchaseIdNumber,
+            originalId: purchaseToDelete.id
+          });
+        }
       } else {
-        logger.info('✅ [handleConfirmDelete] 메모리 캐시에서 발주서 삭제 성공', { 
-          purchaseId: purchaseToDelete.id 
+        logger.error('[handleConfirmDelete] purchaseId 변환 실패', {
+          originalId: purchaseToDelete.id,
+          type: typeof purchaseToDelete.id
         });
       }
 
       toast.success("발주요청 내역이 삭제되었습니다.");
       
-      // 삭제 완료 후 모달 닫기
+      // 삭제 완료 후 모달 닫기 (상세 모달과 삭제 확인 다이얼로그 모두 닫기)
       setIsModalOpen(false);
       setSelectedPurchaseId(null);
+      setDeleteConfirmOpen(false);
+      setPurchaseToDelete(null);
       
-      // 데이터 새로고침
-      onRefresh?.();
+      // 데이터 새로고침 (강제 새로고침) - 메모리 캐시 업데이트 후 UI 갱신
+      if (onRefresh) {
+        // 잠시 대기 후 새로고침하여 UI가 업데이트되도록 함
+        setTimeout(async () => {
+          await onRefresh(true, { silent: false });
+        }, 100);
+      }
     } catch (error) {
       const errorObj = error as any;
-      logger.error('발주요청 삭제 중 예외 발생', errorObj, {
+      logger.error('❌ [handleConfirmDelete] 발주요청 삭제 중 예외 발생', errorObj, {
         name: errorObj?.name,
         message: errorObj?.message,
         code: errorObj?.code,
         details: errorObj?.details,
         hint: errorObj?.hint,
-        stack: errorObj?.stack
+        stack: errorObj?.stack,
+        purchaseId: purchaseToDelete?.id,
+        purchaseOrderNumber: purchaseToDelete?.purchase_order_number
       });
       toast.error(`삭제 중 오류가 발생했습니다: ${errorObj?.message || '알 수 없는 오류'}`);
+    } finally {
+      setDeleteConfirmOpen(false);
+      setPurchaseToDelete(null);
     }
-    
-    setDeleteConfirmOpen(false);
-    setPurchaseToDelete(null);
   }, [supabase, purchaseToDelete, onRefresh]);
 
   // 칼럼 표시 여부 체크 함수
