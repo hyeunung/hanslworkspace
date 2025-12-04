@@ -97,19 +97,23 @@ export const removePurchaseFromMemory = (purchaseId: number | string): boolean =
     return false
   }
   
-  // 해당 발주서를 배열에서 제거
-  const originalLength = purchaseMemoryCache.allPurchases.length
-  purchaseMemoryCache.allPurchases = purchaseMemoryCache.allPurchases.filter(purchase => purchase.id !== id)
-  
-  // 실제로 제거되었는지 확인
-  const wasRemoved = purchaseMemoryCache.allPurchases.length < originalLength
-  
-  if (wasRemoved) {
-    // 실시간 UI 반영을 위해 lastFetch 업데이트 (다른 함수들과 동일)
-    purchaseMemoryCache.lastFetch = Date.now()
+  // 해당 발주서의 인덱스 찾기
+  const index = purchaseMemoryCache.allPurchases.findIndex(purchase => purchase.id === id)
+  if (index === -1) {
+    return false
   }
   
-  return wasRemoved
+  // 🚀 배열 참조를 변경하여 React가 즉시 변경을 감지하도록 함 (실시간 업데이트)
+  // updatePurchaseInMemory와 동일한 패턴으로 명시적으로 새 배열 생성
+  purchaseMemoryCache.allPurchases = [
+    ...purchaseMemoryCache.allPurchases.slice(0, index),
+    ...purchaseMemoryCache.allPurchases.slice(index + 1)
+  ]
+  
+  // 실시간 UI 반영을 위해 lastFetch 업데이트 (다른 함수들과 동일)
+  purchaseMemoryCache.lastFetch = Date.now()
+  
+  return true
 }
 
 // 캐시 유효성 검사

@@ -1138,6 +1138,12 @@ const FastPurchaseTable = ({
       }
 
       toast.success("발주요청 내역이 삭제되었습니다.");
+      
+      // 삭제 완료 후 모달 닫기
+      setIsModalOpen(false);
+      setSelectedPurchaseId(null);
+      
+      // 데이터 새로고침
       onRefresh?.();
     } catch (error) {
       const errorObj = error as any;

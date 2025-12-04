@@ -8,6 +8,7 @@ import { MessageCircle, Send, Calendar, Search, CheckCircle, Clock, AlertCircle,
 import { supportService, type SupportInquiry } from '@/services/supportService'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import { removePurchaseFromMemory } from '@/stores/purchaseMemoryStore'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -349,6 +350,18 @@ ${purchaseInfo}`;
     const result = await supportService.deletePurchaseRequest(selectedInquiryDetail.id)
 
     if (result.success) {
+      // 🚀 메모리 캐시에서 즉시 삭제 (실시간 반영)
+      const memoryUpdated = removePurchaseFromMemory(selectedInquiryDetail.id)
+      if (!memoryUpdated) {
+        console.warn('[deletePurchaseRequest] 메모리 캐시에서 발주서 삭제 실패', { 
+          purchaseId: selectedInquiryDetail.id 
+        })
+      } else {
+        console.info('✅ [deletePurchaseRequest] 메모리 캐시에서 발주서 삭제 성공', { 
+          purchaseId: selectedInquiryDetail.id 
+        })
+      }
+
       toast.success('발주요청이 삭제되었습니다.')
       setShowDetailModal(false)
       setSelectedInquiryDetail(null)

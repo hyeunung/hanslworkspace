@@ -281,23 +281,54 @@ class SupportService {
   async deletePurchaseRequest(requestId: string): Promise<{ success: boolean; error?: string }> {
     try {
       // 먼저 관련 품목들 삭제
-      const { error: itemsError } = await this.supabase
+      const { data: deletedItems, error: itemsError } = await this.supabase
         .from('purchase_request_items')
         .delete()
         .eq('purchase_request_id', requestId)
+        .select()
 
-      if (itemsError) throw itemsError
+      if (itemsError) {
+        console.error('[deletePurchaseRequest] 품목 삭제 실패', {
+          requestId,
+          error: itemsError
+        })
+        throw itemsError
+      }
+
+      console.log('[deletePurchaseRequest] 품목 삭제 성공', {
+        requestId,
+        deletedItemsCount: deletedItems?.length || 0
+      })
 
       // 발주요청 삭제
-      const { error } = await this.supabase
+      const { data: deletedRequest, error: requestError } = await this.supabase
         .from('purchase_requests')
         .delete()
         .eq('id', requestId)
+        .select()
 
-      if (error) throw error
+      if (requestError) {
+        console.error('[deletePurchaseRequest] 발주요청 삭제 실패', {
+          requestId,
+          error: requestError,
+          note: '품목은 이미 삭제되었지만 발주요청은 삭제되지 않았습니다.'
+        })
+        throw requestError
+      }
+
+      console.log('[deletePurchaseRequest] 발주요청 삭제 성공', {
+        requestId,
+        deletedRequest: deletedRequest?.[0]
+      })
+
       return { success: true }
     } catch (e) {
-      return { success: false, error: e instanceof Error ? e.message : '발주요청 삭제 실패' }
+      const errorMessage = e instanceof Error ? e.message : '발주요청 삭제 실패'
+      console.error('[deletePurchaseRequest] 전체 삭제 실패', {
+        requestId,
+        error: errorMessage
+      })
+      return { success: false, error: errorMessage }
     }
   }
 

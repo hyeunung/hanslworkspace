@@ -1,0 +1,24 @@
+# Vercel ignore file
+
+# Large data folders
+sample-data/
+assets/
+
+# Development files
+*.log
+*.md
+debug_*
+test_*
+extract_products.py
+test_output.xlsx
+
+# Git
+.git/
+.gitignore
+
+# Other workspace folders
+hansl/
+servers-main/
+
+# Scripts folder (not needed for deployment)
+scripts/v5*

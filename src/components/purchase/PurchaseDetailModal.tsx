@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails, Purchase, Vendor } from '@/types/purchase'
-import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPaymentCompleted, markItemAsReceived, markPurchaseAsReceived, markItemAsPaymentCanceled, markItemAsStatementReceived, markItemAsStatementCanceled, usePurchaseMemory, updatePurchaseInMemory, removeItemFromMemory, markItemAsExpenditureSet } from '@/stores/purchaseMemoryStore'
+import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPaymentCompleted, markItemAsReceived, markPurchaseAsReceived, markItemAsPaymentCanceled, markItemAsStatementReceived, markItemAsStatementCanceled, usePurchaseMemory, updatePurchaseInMemory, removeItemFromMemory, markItemAsExpenditureSet, removePurchaseFromMemory } from '@/stores/purchaseMemoryStore'
 import { formatDate } from '@/utils/helpers'
 import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { DateAmountPickerPopover } from '@/components/ui/date-amount-picker-popover'
@@ -1432,6 +1432,53 @@ function PurchaseDetailModal({
           .in('id', deletedItemIds)
 
         if (deleteError) throw deleteError
+      }
+
+      // 모든 품목이 삭제된 경우 발주기본정보도 삭제
+      if (editedItems.length === 0) {
+        logger.info('🚀 모든 품목이 삭제되어 발주기본정보도 삭제합니다', {
+          purchaseId: purchase.id,
+          deletedItemIds: deletedItemIds
+        })
+
+        // 발주기본정보 삭제
+        const { error: requestDeleteError } = await supabase
+          .from('purchase_requests')
+          .delete()
+          .eq('id', purchase.id)
+
+        if (requestDeleteError) {
+          logger.error('발주기본정보 삭제 실패', requestDeleteError)
+          throw requestDeleteError
+        }
+
+        // 메모리 캐시에서 제거
+        const purchaseIdNumber = Number(purchase.id)
+        if (!Number.isNaN(purchaseIdNumber)) {
+          const memoryUpdated = removePurchaseFromMemory(purchaseIdNumber)
+          if (!memoryUpdated) {
+            logger.warn('[handleSave] 발주기본정보 삭제 메모리 캐시 업데이트 실패', { 
+              purchaseId: purchaseIdNumber
+            })
+          } else {
+            logger.info('✅ [handleSave] 발주기본정보 삭제 메모리 캐시 업데이트 성공', { 
+              purchaseId: purchaseIdNumber
+            })
+          }
+        }
+
+        toast.success('모든 품목이 삭제되어 발주요청이 삭제되었습니다.')
+        handleEditToggle(false)
+        setDeletedItemIds([])
+        onClose() // 모달 닫기
+        
+        // 데이터 새로고침
+        const refreshResult = onRefresh?.(true, { silent: false })
+        if (refreshResult instanceof Promise) {
+          await refreshResult
+        }
+        
+        return // 여기서 함수 종료
       }
 
       // 각 아이템 업데이트 또는 생성
@@ -4713,20 +4760,10 @@ function PurchaseDetailModal({
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={async () => {
+                        onClick={() => {
                           if (purchase) {
-                            try {
-                              await onDelete(purchase);
-                              
-                              // 삭제 후 모달 닫기 및 새로고침
-                              onClose();
-                              if (onRefresh) {
-                                await onRefresh(true); // 강제 새로고침
-                              }
-                            } catch (error) {
-                              logger.error('발주 삭제 중 오류 발생', error);
-                              toast.error('삭제 중 오류가 발생했습니다.');
-                            }
+                            // 삭제 확인 다이얼로그를 열기만 함 (실제 삭제는 확인 다이얼로그에서 처리)
+                            onDelete(purchase);
                           }
                         }}
                         className="button-base button-action-danger"

@@ -1,0 +1,23 @@
+{
+  "round": 1,
+  "completedBoards": [
+    "H24-002_MEM(R53B)_C60_UPDOWN_Zeus_Test_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1",
+    "H24-004_MEM(R53B)_C60_Prism_LCB_Tester_PTM3.2(ADS)_ARM3.1_6L_0x0321",
+    "H24-005_VR-L(R43B)_C50_UPDOWN_Final_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1",
+    "H24-006_VR-R(R44B)_C50_UPDOWN_Auto_PTM3.2(ADC)_COMMON2.0_6L_0x0320_V1.1",
+    "H24-008_MEM(R53B)_C60_APS_Cube(Zeus)_Test_PTM3.2(ADS)_6L_0x0321",
+    "H24-009_Centaur_VSA_C6.0_OS_Manual_Tester_V1.0",
+    "H24-010_MEM(R53B)_C60_UPDOWN_Zeus_Test_COMMON2.0_6L",
+    "H24-011_MEM(R53B)_C6.1_SFR_Bench_Zeus_Test_COMMON2.0_6L",
+    "H24-012_MEM(R53B)_C6.0_SFR_Bench_Module_Test_COMMON2.0_6L",
+    "H24-015_MEM(R53B)_C61_Full_Module_UDT_COMMON2.0_6L",
+    "H24-016_MEM(R53B)_C61_Zeus_Iguana_PTM3.2(ADS)_6L",
+    "H24-017_MEM(R53B)_C61_APS_Zeus_PTM3.2(ADS)_6L",
+    "H24-018_MEM(R53B)_C61_Module(Flex)_OCT_Manual_COMMON2.0_6L",
+    "H24-019_BWI_OS_Manual_Main_V1.0",
+    "H24-021_MEM(R53B)_C61_Zeus_Iguana_FA&SW_PTM3.2(ADS)_6L"
+  ],
+  "successBoards": [
+    "H24-012_MEM(R53B)_C6.0_SFR_Bench_Module_Test_COMMON2.0_6L"
+  ]
+}
