@@ -19,6 +19,10 @@ export async function processBOMWithAI(
     throw new Error('OpenAI API Key가 설정되지 않았습니다. .env 파일을 확인해주세요.');
   }
 
+  // 학습된 모델 ID 가져오기 (환경 변수 또는 기본 모델)
+  const finetunedModelId = import.meta.env.VITE_FINETUNED_MODEL_ID || 'gpt-4o-mini-2024-07-18';
+  const modelToUse = finetunedModelId.startsWith('ft:') ? finetunedModelId : 'gpt-4o-mini-2024-07-18';
+
   // Fine-tuned Model에 최적화된 간결한 프롬프트
   const prompt = `
 Analyze the provided BOM and Coordinate data and generate a structured TSV (Tab-Separated Values) output based on the patterns you have learned.
@@ -48,7 +52,7 @@ Example Output:
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini-2024-07-18', // 2차 재학습 완료된 모델 (최신)
+        model: modelToUse, // 학습된 모델 사용 (환경 변수에서 가져옴)
         messages: [
           { role: 'system', content: 'You are a helpful assistant that outputs TSV data only.' },
           { role: 'user', content: prompt }

@@ -471,7 +471,9 @@ function PurchaseDetailModal({
         vendor: {
           id: memoryPurchase.vendor_id,
           vendor_name: memoryPurchase.vendor_name || '알 수 없음',
-          is_active: true
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         } as Vendor,
         vendor_contacts: []
       } as PurchaseRequestWithDetails;
@@ -837,7 +839,9 @@ function PurchaseDetailModal({
           vendor: (memoryPurchase as any).vendor || (memoryPurchase.vendor_id ? {
             id: memoryPurchase.vendor_id,
             vendor_name: memoryPurchase.vendor_name || '알 수 없음',
-            is_active: true
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
           } as Vendor : null),
           vendor_contacts: (memoryPurchase as any).vendor_contacts || []
         } as PurchaseRequestWithDetails
@@ -1136,7 +1140,9 @@ function PurchaseDetailModal({
           vendor: (memoryPurchase as any).vendor || (memoryPurchase.vendor_id ? {
             id: memoryPurchase.vendor_id,
             vendor_name: memoryPurchase.vendor_name || '알 수 없음',
-            is_active: true
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
           } as Vendor : null),
           vendor_contacts: (memoryPurchase as any).vendor_contacts || []
         } as PurchaseRequestWithDetails

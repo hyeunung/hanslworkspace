@@ -187,16 +187,23 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     }
   }, []); // 최초 마운트 시에만 실행
 
-  // URL 쿼리 파라미터 변경 시 처리
+  // URL 쿼리 파라미터 변경 시 탭 상태 동기화
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     const tab = searchParams.get('tab');
     if (tab && ['pending', 'purchase', 'receipt', 'done'].includes(tab)) {
       setActiveTab(tab);
-      // 탭에 맞는 기본 직원 필터 설정 (미리 계산된 값 사용)
-      setSelectedEmployee(defaultEmployeeByTab[tab as keyof typeof defaultEmployeeByTab] || 'all');
     }
-  }, [location.search, defaultEmployeeByTab]);
+  }, [location.search]);
+
+  // 탭 변경 또는 기본 직원 정보 로드 시 직원 필터 자동 설정
+  useEffect(() => {
+    const defaultEmp = defaultEmployeeByTab[activeTab as keyof typeof defaultEmployeeByTab];
+    // 'all'도 유효한 값이므로 undefined 체크만 수행
+    if (defaultEmp !== undefined) {
+      setSelectedEmployee(defaultEmp);
+    }
+  }, [activeTab, defaultEmployeeByTab]);
 
   // 캐시 상태 확인 및 필요시 데이터 새로고침
   useEffect(() => {
@@ -858,6 +865,11 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
                   isPending
                 });
                 
+                // URL 업데이트 추가 (탭 상태 유지를 위해)
+                const searchParams = new URLSearchParams(location.search);
+                searchParams.set('tab', tab.key);
+                navigate({ search: searchParams.toString() }, { replace: true });
+
                 // startTransition이 문제일 수 있어 직접 상태 업데이트로 변경
                 try {
                   const newEmployeeValue = defaultEmployeeByTab[tab.key as keyof typeof defaultEmployeeByTab];
