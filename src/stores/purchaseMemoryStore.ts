@@ -507,6 +507,35 @@ export const markItemAsExpenditureSet = (purchaseId: number | string, itemId: nu
   return result
 }
 
+// 일괄 지출 정보 처리를 위한 헬퍼 함수
+export const markBulkExpenditureSet = (purchaseId: number | string, expenditureDate: string, totalAmount: number): boolean => {
+  const result = updatePurchaseInMemory(purchaseId, (purchase) => {
+    // 현재 items 배열 선택
+    const currentItems = (purchase.items && purchase.items.length > 0) ? purchase.items : (purchase.purchase_request_items || [])
+    
+    // 모든 품목을 지출 정보로 업데이트 (금액은 null)
+    const updatedItems = currentItems.map(item => ({
+      ...item,
+      expenditure_date: expenditureDate,
+      expenditure_amount: null
+    }))
+    
+    return {
+      ...purchase,
+      items: purchase.items ? updatedItems : purchase.items,
+      purchase_request_items: purchase.purchase_request_items ? updatedItems : purchase.purchase_request_items,
+      total_expenditure_amount: totalAmount
+    }
+  })
+  
+  // 실시간 UI 반영을 위해 lastFetch 업데이트
+  if (result) {
+    purchaseMemoryCache.lastFetch = Date.now()
+  }
+  
+  return result
+}
+
 // React 훅: 메모리 캐시 상태를 구독하여 실시간 변경 감지
 export const usePurchaseMemory = () => {
   const [memoryState, setMemoryState] = useState(purchaseMemoryCache);

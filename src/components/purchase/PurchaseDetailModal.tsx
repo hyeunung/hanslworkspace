@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails, Purchase, Vendor } from '@/types/purchase'
-import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPaymentCompleted, markItemAsReceived, markPurchaseAsReceived, markItemAsPaymentCanceled, markItemAsStatementReceived, markItemAsStatementCanceled, usePurchaseMemory, updatePurchaseInMemory, removeItemFromMemory, markItemAsExpenditureSet, removePurchaseFromMemory } from '@/stores/purchaseMemoryStore'
+import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPaymentCompleted, markItemAsReceived, markPurchaseAsReceived, markItemAsPaymentCanceled, markItemAsStatementReceived, markItemAsStatementCanceled, usePurchaseMemory, updatePurchaseInMemory, removeItemFromMemory, markItemAsExpenditureSet, markBulkExpenditureSet, removePurchaseFromMemory } from '@/stores/purchaseMemoryStore'
 import { formatDate } from '@/utils/helpers'
 import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { DateAmountPickerPopover } from '@/components/ui/date-amount-picker-popover'
@@ -2359,7 +2359,7 @@ function PurchaseDetailModal({
       return
     }
 
-    const confirmMessage = `발주번호: ${purchase.purchase_order_number}\n\n일괄 지출 정보를 입력하시겠습니까?\n날짜: ${date.toLocaleDateString('ko-KR')}\n금액: ${amount.toLocaleString()}원`
+    const confirmMessage = `발주번호: ${purchase.purchase_order_number}\n\n일괄 지출 정보를 입력하시겠습니까?\n날짜: ${date.toLocaleDateString('ko-KR')}\n총 금액: ${amount.toLocaleString()}원\n\n* 주의: 기존에 입력된 개별 품목의 지출 정보가 모두 초기화되고, 입력하신 총 금액으로 설정됩니다.`
     
     if (!window.confirm(confirmMessage)) {
       return
@@ -2370,17 +2370,16 @@ function PurchaseDetailModal({
     const applyOptimisticUpdate = () => {
       if (!Number.isNaN(purchaseIdNumber)) {
         onOptimisticUpdate?.(purchaseIdNumber, prev => {
-          const updatedItems = (prev.items || []).map(item =>
-            // 이미 개별 입력된 항목은 제외
-            item.expenditure_date && item.expenditure_amount
-              ? item
-              : {
-                  ...item,
-                  expenditure_date: date.toISOString(),
-                  expenditure_amount: amount
-                }
-          )
-          return { ...prev, items: updatedItems }
+          const updatedItems = (prev.items || []).map(item => ({
+            ...item,
+            expenditure_date: date.toISOString(),
+            expenditure_amount: null
+          }))
+          return { 
+            ...prev, 
+            items: updatedItems,
+            total_expenditure_amount: amount
+          }
         })
       }
     }
@@ -2388,101 +2387,61 @@ function PurchaseDetailModal({
     try {
       applyOptimisticUpdate()
 
-      // 이미 개별 입력된 항목 제외하고 일괄 업데이트
       const allItems = purchase.items || purchase.purchase_request_items || []
-      const pendingItems = allItems.filter(item => !item.expenditure_date || !item.expenditure_amount)
       
-      if (pendingItems.length === 0) {
-        toast.info('모든 품목에 이미 지출 정보가 입력되어 있습니다.')
+      if (allItems.length === 0) {
+        toast.error('품목이 없습니다.')
         return
       }
 
-      // 로컬 상태 즉시 업데이트 (items와 purchase_request_items 모두 업데이트)
+      // 로컬 상태 즉시 업데이트
       setPurchase(prev => {
         if (!prev) return null
         const allItems = prev.items || prev.purchase_request_items || []
-        const updatedItems = allItems.map(item =>
-          // 이미 개별 입력된 항목은 제외
-          item.expenditure_date && item.expenditure_amount
-            ? item
-            : {
-                ...item,
-                expenditure_date: date.toISOString(),
-                expenditure_amount: amount
-              }
-        )
-        const totalExpenditure = updatedItems.reduce((sum, item) => sum + (item.expenditure_amount || 0), 0)
-        // 새 객체를 반환하여 React가 변경을 감지하도록 함
+        const updatedItems = allItems.map(item => ({
+            ...item,
+            expenditure_date: date.toISOString(),
+            expenditure_amount: null
+        }))
+        
         return { 
           ...prev, 
           items: updatedItems,
           purchase_request_items: updatedItems,
-          total_expenditure_amount: totalExpenditure,
-          updated_at: new Date().toISOString() // 강제로 객체 참조 변경
+          total_expenditure_amount: amount,
+          updated_at: new Date().toISOString()
         }
       })
 
-      for (const item of pendingItems) {
-        const { error } = await supabase
-          .from('purchase_request_items')
-          .update({
-            expenditure_date: date.toISOString(),
-            expenditure_amount: amount
-          })
-          .eq('id', item.id)
+      // DB 업데이트 - 전체 아이템 (금액은 null)
+      const { error: itemsError } = await supabase
+        .from('purchase_request_items')
+        .update({
+          expenditure_date: date.toISOString(),
+          expenditure_amount: null
+        })
+        .in('id', allItems.map(item => item.id))
 
-        if (error) {
-          logger.error('일괄 지출 정보 DB 업데이트 실패', { error, itemId: item.id })
-          throw error
-        }
+      if (itemsError) {
+        logger.error('일괄 지출 정보 아이템 DB 업데이트 실패', { error: itemsError })
+        throw itemsError
       }
 
-      // purchase_requests의 total_expenditure_amount 업데이트
-      const totalExpenditure = allItems.reduce((sum, item) => {
-        if (pendingItems.find(pi => pi.id === item.id)) {
-          return sum + amount
-        }
-        return sum + (item.expenditure_amount || 0)
-      }, 0)
-
-      await supabase
+      // DB 업데이트 - 요청 총액
+      const { error: requestError } = await supabase
         .from('purchase_requests')
-        .update({ total_expenditure_amount: totalExpenditure })
+        .update({ total_expenditure_amount: amount })
         .eq('id', purchaseIdNumber)
 
-      // 🚀 메모리 캐시 즉시 업데이트 (실시간 UI 반영) - DB 업데이트 후에 호출
-      for (const item of pendingItems) {
-        const memoryUpdated = markItemAsExpenditureSet(purchase.id, item.id, date.toISOString(), amount)
-        if (!memoryUpdated) {
-          logger.warn('[PurchaseDetailModal] 메모리 캐시 일괄 지출 정보 업데이트 실패', { 
-            purchaseId: purchase.id, 
-            itemId: item.id 
-          })
-        }
+      if (requestError) {
+        logger.error('일괄 지출 정보 총액 DB 업데이트 실패', { error: requestError })
+        throw requestError
       }
 
-      // 메모리 캐시 업데이트 후 즉시 로컬 상태도 동기화 (실시간 반영)
-      const memoryPurchase = findPurchaseInMemory(purchase.id)
-      if (memoryPurchase) {
-        const normalizedItems = (memoryPurchase.items && memoryPurchase.items.length > 0) 
-          ? memoryPurchase.items 
-          : (memoryPurchase.purchase_request_items || [])
-        const totalExpenditure = normalizedItems.reduce((sum, item) => sum + (item.expenditure_amount || 0), 0)
-        setPurchase(prev => ({
-          ...prev!,
-          items: normalizedItems,
-          purchase_request_items: normalizedItems,
-          total_expenditure_amount: totalExpenditure
-        }))
-      }
+      // 🚀 메모리 캐시 즉시 업데이트 (실시간 UI 반영)
+      markBulkExpenditureSet(purchase.id, date.toISOString(), amount)
 
-      toast.success(`${pendingItems.length}개 품목의 지출 정보가 일괄 입력되었습니다.`)
-
-      await refreshModalData()
-      const refreshResult = onRefresh?.(true, { silent: true })
-      if (refreshResult instanceof Promise) {
-        await refreshResult
-      }
+      toast.success('일괄 지출 정보가 입력되었습니다.')
     } catch (error) {
       logger.error('일괄 지출 정보 입력 중 오류', error)
       toast.error('일괄 지출 정보 입력 중 오류가 발생했습니다.')
@@ -4055,9 +4014,9 @@ function PurchaseDetailModal({
                             {activeTab === 'done' && purchase.payment_category === '발주' && (
                               <div className="text-center flex justify-center items-center">
                                 {(() => {
-                                  const hasExpenditure = item.expenditure_date && 
-                                                        item.expenditure_amount !== null && 
-                                                        item.expenditure_amount !== undefined
+                                  // 금액 체크 제거 (날짜만 있으면 지출된 것으로 간주)
+                                  const hasExpenditure = !!item.expenditure_date
+                                  const hasExpenditureAmount = item.expenditure_amount !== null && item.expenditure_amount !== undefined
                                   
                                   if (canReceiptCheck) {
                                     return hasExpenditure ? (
@@ -4074,7 +4033,7 @@ function PurchaseDetailModal({
                                         <div className="text-gray-700 text-[9px] leading-[1.1] font-normal">
                                           {!canViewFinancialInfo 
                                             ? '-' 
-                                            : `₩${Number(item.expenditure_amount).toLocaleString()}`}
+                                            : (hasExpenditureAmount ? `₩${Number(item.expenditure_amount).toLocaleString()}` : '')}
                                         </div>
                                       </div>
                                     ) : (
@@ -4104,7 +4063,7 @@ function PurchaseDetailModal({
                                         <div className="text-gray-700 text-[9px] leading-[1.1] font-normal">
                                           {!canViewFinancialInfo 
                                             ? '-' 
-                                            : `₩${Number(item.expenditure_amount).toLocaleString()}`}
+                                            : (hasExpenditureAmount ? `₩${Number(item.expenditure_amount).toLocaleString()}` : '')}
                                         </div>
                                       </div>
                                     ) : (
