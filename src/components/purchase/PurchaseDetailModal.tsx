@@ -4447,9 +4447,10 @@ function PurchaseDetailModal({
                                 {!canViewFinancialInfo 
                                   ? '-' 
                                   : `₩${formatCurrency(
-                                      (isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
+                                      purchase.total_expenditure_amount ?? 
+                                      ((isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
                                         return sum + (Number(item.expenditure_amount) || 0)
-                                      }, 0) || 0
+                                      }, 0) || 0)
                                     )}`}
                               </div>
                             </div>
@@ -4558,9 +4559,10 @@ function PurchaseDetailModal({
                           {!canViewFinancialInfo 
                             ? '-' 
                             : `₩${formatCurrency(
-                                (isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
+                                purchase.total_expenditure_amount ??
+                                ((isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
                                   return sum + (Number(item.expenditure_amount) || 0)
-                                }, 0) || 0
+                                }, 0) || 0)
                               )}`}
                         </span>
                       </div>

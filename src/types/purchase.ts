@@ -299,6 +299,7 @@ export interface Purchase {
   currency: string;
   request_type: string;
   total_amount: number;
+  total_expenditure_amount?: number | null;
   unit_price_currency: string;
   po_template_type: string;
   is_po_download?: boolean;
