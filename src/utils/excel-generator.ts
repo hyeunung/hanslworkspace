@@ -329,7 +329,32 @@ function fillCoordinateSheet(
 // 파일 다운로드 헬퍼
 // ============================================================
 
-export function downloadExcelBlob(blob: Blob, filename: string) {
+export async function downloadExcelBlob(blob: Blob, filename: string) {
+  // showSaveFilePicker API 지원 여부 확인 (Chrome/Edge에서만 지원)
+  if ('showSaveFilePicker' in window) {
+    try {
+      const handle = await (window as any).showSaveFilePicker({
+        suggestedName: filename,
+        types: [{
+          description: 'Excel 파일',
+          accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] },
+        }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    } catch (err: any) {
+      // 사용자가 취소한 경우
+      if (err.name === 'AbortError') {
+        return;
+      }
+      // 다른 오류면 fallback으로 진행
+      console.warn('showSaveFilePicker 실패, fallback 사용:', err);
+    }
+  }
+  
+  // Fallback: 기존 방식 (바로 다운로드)
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
