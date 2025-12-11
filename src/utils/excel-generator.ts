@@ -162,8 +162,16 @@ function fillBOMSheet(
     // D: SET
     row.getCell('D').value = item.setCount || 0;
     
-    // 미삽 여부 확인 (v7-generator에서 이미 판단해서 remark에 '미삽' 설정됨)
-    const isMisap = item.remark === '미삽';
+    // 미삽 여부 확인 
+    // 1. remark에 '미삽'이 있거나
+    // 2. 품명에 OPEN, NC, POGO, PAD 등 미삽 키워드가 포함된 경우
+    const itemNameUpper = (item.itemName || '').toUpperCase();
+    const remarkUpper = (item.remark || '').toUpperCase();
+    const isMisap = remarkUpper.includes('미삽') || 
+      itemNameUpper.includes('OPEN') ||
+      itemNameUpper.includes('POGO') ||
+      itemNameUpper.includes('PAD') ||
+      /(?:^|_)NC(?:$|_)/.test(itemNameUpper);
     
     // E: 수량 (미삽이면 0, 아니면 생산수량 × SET)
     const setCount = item.setCount || 0;
@@ -179,28 +187,35 @@ function fillBOMSheet(
     
     // I: 비움 (대체품)
     
-    // J: 비고
-    row.getCell('J').value = item.remark || '';
+    // J: 비고 (미삽이면 '미삽' 표시)
+    row.getCell('J').value = isMisap ? '미삽' : (item.remark || '');
 
     // 데이터가 있는 모든 셀에 테두리 및 스타일 적용 (A~J열)
     // 중앙 정렬 열: A(1), D(4), E(5), G(7), J(10)
     const centerAlignCols = [1, 4, 5, 7, 10];
+    
+    // 기본 폰트 (theme 색상 제거하고 argb 직접 지정)
+    const baseFont: Partial<ExcelJS.Font> = {
+      size: 11,
+      name: '굴림체',
+      family: 3,
+      charset: 129,
+      color: isMisap ? { argb: 'FFFF0000' } : { argb: 'FF000000' },
+    };
+    
     for (let col = 1; col <= 10; col++) {
       const cell = row.getCell(col);
-      cell.border = border;
-      // 명시적으로 정렬 설정 (템플릿 스타일 덮어쓰기)
-      if (centerAlignCols.includes(col)) {
-        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-      } else {
-        cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
-      }
       
-      // 글자색 설정: 미삽이면 빨간색, 아니면 검은색 (템플릿 스타일 초기화)
-      if (isMisap) {
-        cell.font = { color: { argb: 'FFFF0000' } };
-      } else {
-        cell.font = { color: { argb: 'FF000000' } };
-      }
+      // style 객체 전체를 새로 할당 (템플릿 스타일 완전 덮어쓰기)
+      cell.style = {
+        font: baseFont,
+        border: border,
+        alignment: {
+          vertical: 'middle',
+          horizontal: centerAlignCols.includes(col) ? 'center' : 'left',
+          wrapText: true,
+        },
+      };
     }
     
     // H열(Ref)은 특히 줄바꿈이 필요하므로 행 높이 자동 조정

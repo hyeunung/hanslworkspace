@@ -80,6 +80,21 @@ export default function BomCoordinateIntegrated() {
   const [isMerged, setIsMerged] = useState(false);
   const [deletingBoardId, setDeletingBoardId] = useState<string | null>(null);
 
+  // 합칠 수 있는 동일 항목이 있는지 체크
+  const hasMergeableItems = (() => {
+    const bomItems = processedResult?.processedData?.bomItems || [];
+    if (bomItems.length === 0) return false;
+    
+    const grouped = new Map<string, number>();
+    bomItems.forEach((item: BOMItem) => {
+      if (item.itemName?.includes('데이터 없음') || item.itemType === '데이터 없음') return;
+      const key = `${item.itemType}|${item.itemName}`;
+      grouped.set(key, (grouped.get(key) || 0) + 1);
+    });
+    
+    return Array.from(grouped.values()).some(count => count > 1);
+  })();
+
   const supabase = createClient();
   const previewPanelRef = useRef<GeneratedPreviewPanelRef>(null);
   const { currentUserRoles } = useAuth();
@@ -1501,10 +1516,13 @@ export default function BomCoordinateIntegrated() {
                 <div className="flex gap-2">
                   <Button 
                     onClick={() => previewPanelRef.current?.handleMerge()}
+                    disabled={!hasMergeableItems && !isMerged}
                     className={`button-base border ${
-                      isMerged 
-                        ? 'border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100' 
-                        : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                      !hasMergeableItems && !isMerged
+                        ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : isMerged 
+                          ? 'border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100' 
+                          : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                     }`}
                   >
                     <Link2 className="w-4 h-4 mr-2" />
