@@ -307,8 +307,8 @@ console.error('에러:', error);  // DON'T DO THIS
    - 발주서 삭제 가능
 
 2. **Limited Edit (제한적 수정)** - `lead buyer`
-   - **수정 가능**: 수량(quantity), 단가(unit_price), 금액(amount) 필드만
-   - **수정 불가**: 품목명, 규격, 비고 등 다른 필드
+   - **수정 가능**: 품목명(item_name), 규격(specification), 수량(quantity), 단가(unit_price), 금액(amount) 필드
+   - **수정 불가**: 비고(remark) 등 다른 필드
    - **삭제 불가**: 발주서 삭제 권한 없음
    - **품목 추가/삭제**: 불가
 
@@ -334,7 +334,7 @@ const canEdit = canEditAll || canEditLimited
 
 // UI에서 필드 제한
 <Input 
-  disabled={canEditLimited && !canEditAll}  // lead buyer는 특정 필드 수정 불가
+  disabled={canEditLimited && !canEditAll}  // lead buyer는 비고 등 일부 필드만 수정 불가
 />
 ```
 

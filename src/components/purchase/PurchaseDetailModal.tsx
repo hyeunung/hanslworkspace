@@ -1674,13 +1674,19 @@ function PurchaseDetailModal({
     const newItems = [...editedItems]
     
     if (field === 'quantity' || field === 'unit_price_value') {
-      // 수량이나 단가를 수정한 경우 금액 자동 계산
+      // 수량이나 단가를 수정한 경우 금액 및 세액 자동 계산
       const quantity = field === 'quantity' ? value : newItems[index].quantity
       const unitPrice = field === 'unit_price_value' ? value : newItems[index].unit_price_value
+      const amount = (quantity || 0) * (unitPrice || 0)
+      
+      // 발주 카테고리인 경우 세액(10%) 자동 계산
+      const taxAmount = purchase?.payment_category === '발주' ? Math.round(amount * 0.1) : 0
+      
       newItems[index] = {
         ...newItems[index],
         [field]: value,
-        amount_value: (quantity || 0) * (unitPrice || 0)  // null 체크 추가
+        amount_value: amount,
+        tax_amount_value: taxAmount
       }
     } else {
       // 기타 필드 수정 (amount_value 직접 수정은 제거됨)
@@ -3589,7 +3595,6 @@ function PurchaseDetailModal({
                                       : '!h-5 !truncate'
                                   }`}
                                   placeholder="품목명"
-                                  disabled={canEditLimited && !canEditAll}  // lead buyer는 품목명 수정 불가
                                 />
                               ) : (
                                 <div 
@@ -3630,7 +3635,6 @@ function PurchaseDetailModal({
                                       : '!h-5 !truncate'
                                   }`}
                                   placeholder="규격"
-                                  disabled={canEditLimited && !canEditAll}  // lead buyer는 규격 수정 불가
                                 />
                               ) : (
                                 <div 
@@ -4092,7 +4096,6 @@ function PurchaseDetailModal({
                                         : '!h-5 !truncate'
                                     }`}
                                     placeholder="품목명"
-                                    disabled={canEditLimited && !canEditAll}  // lead buyer는 품목명 수정 불가
                                   />
                                 ) : (
                                   <div className="modal-value font-medium">{item.item_name || '품목명 없음'}</div>
@@ -4109,7 +4112,6 @@ function PurchaseDetailModal({
                                         : '!h-5 !truncate'
                                     }`}
                                     placeholder="규격"
-                                    disabled={canEditLimited && !canEditAll}  // lead buyer는 규격 수정 불가
                                   />
                                 ) : (
                                   <div className="modal-subtitle text-gray-500">{item.specification || '-'}</div>

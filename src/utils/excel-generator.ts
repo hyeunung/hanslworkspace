@@ -1,251 +1,267 @@
-import ExcelJS from 'exceljs';
-
-// BOM 아이템 타입 정의
-export interface BOMItem {
-  lineNumber: number;
-  itemType?: string;
-  itemName: string;
-  specification?: string;
-  setCount: number;
-  totalQuantity: number;
-  stockQuantity?: number;
-  checkStatus?: string;
-  refList: string | string[];  // 문자열 또는 배열 둘 다 허용
-  alternativeItem?: string;
-  remark?: string;
-}
-
-export interface CoordinateItem {
-  ref?: string;     // 실제 데이터에서 사용할 수 있는 필드
-  partName?: string;
-  partType?: string;
-  side?: string;
-  layer?: string;   // TOP/BOTTOM을 나타내는 다른 필드
-  x: number | string;
-  y: number | string;
-  angle?: number | string;
-  rotation?: number | string;  // angle 대신 rotation을 사용할 수도 있음
-}
-
 /**
- * 템플릿 기반 정리된 BOM 및 좌표 데이터를 Excel 파일로 생성
+ * BOM 템플릿 기반 엑셀 생성기
+ * 
+ * BOM_Template.xlsx를 기반으로 정리된 BOM 데이터를 채워서 생성
+ * 
+ * === BOM 시트 구조 ===
+ * A2: Artwork 담당자
+ * C2: 생산 담당자
+ * H3: 품번 (보드명)
+ * A7: "보드명  |  SET : 수량"
+ * Row 8~: BOM 데이터
+ *   - A: 번호 (1, 2, 3...)
+ *   - B: 종류
+ *   - C: 품명
+ *   - D: SET
+ *   - E: 수량 (생산수량 × SET)
+ *   - H: Ref
+ *   - J: 비고
  */
-export async function generateCleanedBOMExcel(
+
+import ExcelJS from 'exceljs';
+import type { BOMItem, CoordinateItem } from './v7-generator';
+
+// ============================================================
+// 타입 정의
+// ============================================================
+
+export interface ExcelMetadata {
+  boardName: string;
+  artworkManager: string;
+  productionManager: string;
+  productionQuantity: number;
+}
+
+// ============================================================
+// 메인 함수: 템플릿 기반 엑셀 생성
+// ============================================================
+
+export async function generateBOMExcelFromTemplate(
   bomItems: BOMItem[],
-  coordinates: CoordinateItem[],
-  boardName: string,
-  productionQuantity?: number
+  topCoordinates: CoordinateItem[],
+  bottomCoordinates: CoordinateItem[],
+  metadata: ExcelMetadata
 ): Promise<Blob> {
   const workbook = new ExcelJS.Workbook();
   
   try {
-    // 1. 템플릿 파일 로드 시도
+    // 템플릿 로드
     const response = await fetch('/templates/BOM_Template.xlsx');
-    if (response.ok) {
-      const buffer = await response.arrayBuffer();
-      await workbook.xlsx.load(buffer);
-      console.log('Template loaded successfully');
-    } else {
-      console.error('Template loading failed:', response.status, response.statusText);
-      console.warn('Template not found, creating new workbook');
-      // 템플릿이 없으면 새 시트 생성
-      const bomSheet = workbook.addWorksheet('BOM');
-      // 헤더 추가
-      bomSheet.getRow(1).values = ['No', '종류', '품명', 'SET', '수량', '재고', 'CHECK', 'REF', '대체가능품목', '비고'];
-      bomSheet.getRow(1).font = { bold: true };
+    if (!response.ok) {
+      throw new Error('템플릿 파일을 찾을 수 없습니다.');
     }
+    
+    const buffer = await response.arrayBuffer();
+    await workbook.xlsx.load(buffer);
+    console.log('✅ 템플릿 로드 완료');
+    
   } catch (error) {
-    console.error('Template load error:', error);
-    // 오류 발생 시 새 시트 생성
-    const bomSheet = workbook.addWorksheet('BOM');
-    bomSheet.getRow(1).values = ['No', '종류', '품명', 'SET', '수량', '재고', 'CHECK', 'REF', '대체가능품목', '비고'];
-    bomSheet.getRow(1).font = { bold: true };
+    console.error('템플릿 로드 실패:', error);
+    throw new Error('템플릿 파일 로드에 실패했습니다.');
   }
 
-  // 워크북 메타데이터 설정
-  workbook.creator = 'HANSL AI System';
+  // 워크북 메타데이터
+  workbook.creator = 'HANSL BOM System';
   workbook.modified = new Date();
 
-  // 2. BOM 시트 데이터 채우기
-  let bomSheet = workbook.getWorksheet('BOM');
-  if (!bomSheet) {
-    // 시트가 없으면 첫 번째 시트 사용
-    bomSheet = workbook.worksheets[0];
-  }
+  // BOM 시트 채우기
+  fillBOMSheet(workbook, bomItems, metadata);
 
-  if (!bomSheet) {
-     bomSheet = workbook.addWorksheet('BOM');
-  }
-
-  // 데이터 시작 행 찾기 (헤더가 있는 행을 찾음)
-  let startRow = 6; // 기본값
-  let headerFound = false;
-  
-  bomSheet.eachRow((row, rowNumber) => {
-    if (headerFound) return;
-    const values = row.values;
-    if (Array.isArray(values)) {
-      // '번호' 또는 'No'가 포함된 행을 헤더로 간주
-      if (values.some(v => v && v.toString().includes('번호')) || values.some(v => v && v.toString().includes('No'))) {
-        startRow = rowNumber + 1;
-        headerFound = true;
-      }
-    }
-  });
-
-  // 템플릿의 제목 위치 업데이트 (예: "[보드명] 부품리스트")
-  if (boardName) {
-      let titleCellFound = false;
-      // 제목 찾기 (보통 위쪽에 있음)
-      for (let i = 1; i < startRow; i++) {
-          const row = bomSheet.getRow(i);
-          row.eachCell((cell) => {
-              if (cell.value && cell.value.toString().includes('부품리스트')) {
-                  // 기존 포맷 유지하면서 보드명만 교체 시도
-                  // 예: "H25-133... 부품리스트"
-                  cell.value = `${boardName} 부품리스트`;
-                  titleCellFound = true;
-              }
-          });
-          if (titleCellFound) break;
-      }
-  }
-
-  // 데이터 시작 위치 조정 (헤더 아래에 보드 정보 행 추가)
-  // 스크린샷을 보면 헤더(번호, 종류...) 바로 아래 행에 "** [보드명]... [수량] SET" 가 있음
-  // 따라서 데이터는 헤더 + 2 행부터 시작해야 함
-  const infoRowIndex = startRow; // 헤더 바로 다음 행
-  const dataStartIndex = startRow + 1; // 그 다음 행부터 데이터
-
-  // 보드 정보 행 내용 작성 (스타일 유지하며 값 입력)
-  const infoRow = bomSheet.getRow(infoRowIndex);
-  
-  // 생산 수량 계산
-  let productionQty = productionQuantity || 0;
-  if (productionQty === 0 && bomItems.length > 0 && bomItems[0].setCount > 0) {
-      productionQty = Math.round(bomItems[0].totalQuantity / bomItems[0].setCount);
-  }
-
-  // 3번 컬럼(품명)에 정보 입력
-  infoRow.getCell(3).value = `** ${boardName}   ${productionQty} SET`;
-  infoRow.getCell(3).font = { bold: true, name: '맑은 고딕', size: 10 };
-  infoRow.getCell(3).alignment = { horizontal: 'left', vertical: 'middle' };
-
-  bomItems.forEach((item, index) => {
-    const currentRowNum = dataStartIndex + index;
-    let row = bomSheet.getRow(currentRowNum);
-    
-    // 템플릿 행의 스타일 복사 (첫 번째 데이터인 경우 템플릿 행 사용, 그 이후는 복사)
-    // ExcelJS에서 스타일 복사는 까다로우므로, 기본 스타일을 코드에서 지정하는 게 안전할 수 있음.
-    // 하지만 사용자 요청은 "템플릿 그대로" 이므로 최대한 보존 노력.
-    
-    // 값 설정
-    row.getCell(1).value = index + 1;                    // 번호
-    row.getCell(2).value = item.itemType || '';          // 종류
-    row.getCell(3).value = item.itemName;                // 품명
-    row.getCell(4).value = item.setCount;                // SET
-    row.getCell(5).value = item.totalQuantity;           // 수량
-    row.getCell(6).value = item.stockQuantity || '';     // 재고
-    row.getCell(7).value = item.checkStatus || '□양호';  // CHECK
-    row.getCell(8).value = Array.isArray(item.refList) ? item.refList.join(', ') : item.refList;      // REF
-    row.getCell(9).value = item.alternativeItem || '';   // 대체가능품목
-    row.getCell(10).value = item.remark || '';           // 비고
-
-    // 스타일 적용 (템플릿 스타일이 없을 경우에만 기본 스타일 적용)
-    // 사용자가 "개판"이라고 했으므로 코드로 스타일을 강제하는 게 나을 수 있음 (템플릿 스타일이 깨졌을 수도 있으니)
-    // 하지만 "템플릿 그대로"를 원하므로, 
-    // border, alignment, font 등을 명시적으로 지정하여 깔끔하게 만듦.
-    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-        if (colNumber <= 10) {
-            cell.border = {
-                top: { style: 'thin' },
-                left: { style: 'thin' },
-                bottom: { style: 'thin' },
-                right: { style: 'thin' }
-            };
-            cell.alignment = { vertical: 'middle', wrapText: true };
-            // 폰트는 템플릿 폰트 유지 또는 지정
-            // cell.font = { name: '맑은 고딕', size: 10 }; 
-            
-            if ([1, 2, 4, 5, 6, 7, 10].includes(colNumber)) {
-                cell.alignment = { ...cell.alignment, horizontal: 'center' };
-            } else {
-                cell.alignment = { ...cell.alignment, horizontal: 'left' };
-            }
-        }
-    });
-    
-    row.commit();
-  });
-
-  // 3. 좌표 시트 처리 (TOP/BOTTOM) - 컬럼 매핑 수정
-  const topCoords = coordinates.filter(c => 
-    c.side?.toUpperCase().includes('TOP') || c.layer?.toUpperCase().includes('TOP')
-  );
-  const bottomCoords = coordinates.filter(c => 
-    c.side?.toUpperCase().includes('BOT') || c.layer?.toUpperCase().includes('BOT')
-  );
-  
-  await writeCoordinateSheet(workbook, 'TOP', topCoords);
-  await writeCoordinateSheet(workbook, 'BOTTOM', bottomCoords);
+  // 좌표 시트 채우기
+  fillCoordinateSheet(workbook, 'TOP', topCoordinates);
+  fillCoordinateSheet(workbook, 'BOTTOM', bottomCoordinates);
 
   // Blob으로 반환
   const outBuffer = await workbook.xlsx.writeBuffer();
-  return new Blob([outBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  return new Blob([outBuffer], { 
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+  });
 }
 
-async function writeCoordinateSheet(workbook: ExcelJS.Workbook, sheetName: string, coords: CoordinateItem[]) {
-  if (coords.length === 0) return;
+// ============================================================
+// BOM 시트 채우기
+// ============================================================
 
-  let sheet = workbook.getWorksheet(sheetName);
-  if (!sheet) {
-    sheet = workbook.addWorksheet(sheetName);
-    // 새 시트인 경우 헤더 생성 (수동 파일 양식에 맞춤)
-    // Type, RefDes, Layer, LocationX, LocationY, Rotation
-    sheet.getRow(1).values = ['Type', 'RefDes', 'Layer', 'LocationX', 'LocationY', 'Rotation'];
-    sheet.getRow(1).font = { bold: true };
-  } else {
-    // 기존 시트가 있으면 헤더는 유지하고 데이터만 추가
-    // 만약 헤더가 없다면 추가
-    if (sheet.rowCount === 0) {
-        sheet.getRow(1).values = ['Type', 'RefDes', 'Layer', 'LocationX', 'LocationY', 'Rotation'];
-    }
+function fillBOMSheet(
+  workbook: ExcelJS.Workbook, 
+  bomItems: BOMItem[], 
+  metadata: ExcelMetadata
+) {
+  // 첫 번째 시트 (BOM 시트)
+  const bomSheet = workbook.worksheets[0];
+  if (!bomSheet) {
+    throw new Error('BOM 시트를 찾을 수 없습니다.');
   }
 
-  // 데이터 시작 행
-  const startRow = 2;
+  // 보드명에서 _정리본 및 날짜 패턴(_YYMMDD) 제거 (엑셀 내부에는 제외)
+  // 순서 중요: 복합 패턴 먼저 제거
+  const cleanBoardName = (metadata.boardName || '')
+    .trim()
+    .replace(/_\d{6}_정리본$/, '')      // _YYMMDD_정리본 형식 먼저 제거
+    .replace(/_정리본$/, '')            // _정리본 제거
+    .replace(/_\d{6}$/, '');            // _YYMMDD 형식 제거 (예: _250722)
   
-  // 기존 데이터 삭제 (필요 시)
-  // if (sheet.rowCount >= startRow) {
-  //     sheet.spliceRows(startRow, sheet.rowCount - startRow + 1);
-  // }
+  // 시트 이름 변경 (보드명, 31자 제한)
+  if (cleanBoardName) {
+    bomSheet.name = cleanBoardName.substring(0, 31);
+  }
 
-  coords.forEach((coord, index) => {
-    const row = sheet.getRow(startRow + index);
-    // 수동 파일 양식: Type | RefDes | Layer | LocationX | LocationY | Rotation
-    row.values = [
-      coord.partType || 'SMD',           // Type
-      coord.ref || '',                   // RefDes
-      coord.side || coord.layer || '',   // Layer (TOP/BOTTOM)
-      coord.x,                           // LocationX
-      coord.y,                           // LocationY
-      coord.angle || coord.rotation || 0 // Rotation
-    ];
-    
-    // 스타일 적용
-    row.eachCell({ includeEmpty: true }, (cell) => {
-        cell.border = {
-            top: { style: 'thin' },
-            left: { style: 'thin' },
-            bottom: { style: 'thin' },
-            right: { style: 'thin' }
-        };
-        cell.alignment = { horizontal: 'center', vertical: 'middle' };
-    });
-  });
+  // === 상단 정보 ===
+  // A2: Artwork 담당자
+  bomSheet.getCell('A2').value = metadata.artworkManager || '';
   
-  // 컬럼 너비 자동 조정
-  sheet.columns.forEach(col => {
-      col.width = 15;
+  // C2: 생산 담당자
+  bomSheet.getCell('C2').value = metadata.productionManager || '';
+  
+  // H3: 품번 (보드명, _정리본 제외)
+  bomSheet.getCell('H3').value = cleanBoardName;
+  
+  // H5: 보드명 + 부품리스트
+  bomSheet.getCell('H5').value = `${cleanBoardName} 부품리스트`;
+
+  // === A7: 보드명 | SET : 수량 (A7~J7 병합, _정리본 제외) ===
+  bomSheet.mergeCells('A7:J7');
+  const infoCell = bomSheet.getCell('A7');
+  infoCell.value = `${cleanBoardName}  |  SET : ${metadata.productionQuantity}`;
+  infoCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  infoCell.font = { bold: true };
+
+  // === Row 8~: BOM 데이터 ===
+  const dataStartRow = 8;
+  
+  // 테두리 스타일
+  const border: Partial<ExcelJS.Borders> = {
+    top: { style: 'thin' },
+    left: { style: 'thin' },
+    bottom: { style: 'thin' },
+    right: { style: 'thin' },
+  };
+  
+  // 이전 종류 추적 (같은 종류가 연속이면 빈칸 처리)
+  let prevItemType = '';
+  
+  bomItems.forEach((item, index) => {
+    const rowNum = dataStartRow + index;
+    const row = bomSheet.getRow(rowNum);
+    
+    // A: 번호 (1, 2, 3...)
+    row.getCell('A').value = index + 1;
+    
+    // B: 종류 (같은 종류가 연속이면 첫 번째만 표시, 나머지는 빈칸)
+    const currentType = item.itemType || '';
+    if (currentType !== prevItemType) {
+      row.getCell('B').value = currentType;
+      prevItemType = currentType;
+    } else {
+      row.getCell('B').value = ''; // 빈칸
+    }
+    
+    // C: 품명
+    row.getCell('C').value = item.itemName || '';
+    
+    // D: SET
+    row.getCell('D').value = item.setCount || 0;
+    
+    // 미삽 여부 확인 (v7-generator에서 이미 판단해서 remark에 '미삽' 설정됨)
+    const isMisap = item.remark === '미삽';
+    
+    // E: 수량 (미삽이면 0, 아니면 생산수량 × SET)
+    const setCount = item.setCount || 0;
+    row.getCell('E').value = isMisap ? 0 : metadata.productionQuantity * setCount;
+    
+    // F: 비움 (재고)
+    
+    // G: CHECK
+    row.getCell('G').value = '□양호 □불량';
+    
+    // H: Ref
+    row.getCell('H').value = item.refList || '';
+    
+    // I: 비움 (대체품)
+    
+    // J: 비고
+    row.getCell('J').value = item.remark || '';
+
+    // 데이터가 있는 모든 셀에 테두리 및 스타일 적용 (A~J열)
+    // 중앙 정렬 열: A(1), D(4), E(5), G(7), J(10)
+    const centerAlignCols = [1, 4, 5, 7, 10];
+    for (let col = 1; col <= 10; col++) {
+      const cell = row.getCell(col);
+      cell.border = border;
+      // 명시적으로 정렬 설정 (템플릿 스타일 덮어쓰기)
+      if (centerAlignCols.includes(col)) {
+        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      } else {
+        cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+      }
+      
+      // 글자색 설정: 미삽이면 빨간색, 아니면 검은색 (템플릿 스타일 초기화)
+      if (isMisap) {
+        cell.font = { color: { argb: 'FFFF0000' } };
+      } else {
+        cell.font = { color: { argb: 'FF000000' } };
+      }
+    }
+    
+    // H열(Ref)은 특히 줄바꿈이 필요하므로 행 높이 자동 조정
+    const refText = item.refList || '';
+    const refLength = refText.length;
+    if (refLength > 50) {
+      // Ref 텍스트가 길면 행 높이 자동 증가 (대략적 계산)
+      const estimatedLines = Math.ceil(refLength / 50);
+      row.height = Math.max(15, estimatedLines * 15);
+    }
+
+    row.commit();
   });
+}
+
+// ============================================================
+// 좌표 시트 채우기
+// ============================================================
+
+function fillCoordinateSheet(
+  workbook: ExcelJS.Workbook,
+  sheetName: 'TOP' | 'BOTTOM',
+  coordinates: CoordinateItem[]
+) {
+  if (coordinates.length === 0) return;
+
+  // 시트 가져오기
+  const sheet = workbook.getWorksheet(sheetName);
+  if (!sheet) {
+    console.warn(`${sheetName} 시트를 찾을 수 없습니다.`);
+    return;
+  }
+
+  // Row 2부터 데이터 입력 (Row 1은 헤더)
+  coordinates.forEach((coord, index) => {
+    const row = sheet.getRow(2 + index);
+    
+    row.getCell('A').value = coord.type || '';        // 종류
+    row.getCell('B').value = coord.partName || '';    // Type (품명)
+    row.getCell('C').value = coord.refDes || '';      // RefDes
+    row.getCell('D').value = coord.layer || sheetName; // Layer
+    row.getCell('E').value = coord.locationX || 0;    // LocationX
+    row.getCell('F').value = coord.locationY || 0;    // LocationY
+    row.getCell('G').value = coord.rotation || 0;     // Rotation
+    row.getCell('H').value = coord.remark || '';      // 비고
+
+    row.commit();
+  });
+}
+
+// ============================================================
+// 파일 다운로드 헬퍼
+// ============================================================
+
+export function downloadExcelBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }

@@ -1,0 +1,26 @@
+{
+  "round": 2,
+  "timestamp": "2025-12-08T14:59:05.204Z",
+  "summary": {
+    "total": 173,
+    "typeMatch": 173,
+    "partNameMatch": 171,
+    "refMatch": 173,
+    "coordMatch": 173
+  },
+  "details": {
+    "type": [],
+    "partName": [
+      {
+        "board": "H24-015_MEM(R53B)_C61_Full_Module_UDT_COMMON2.0_6L",
+        "matchRate": 99.4
+      },
+      {
+        "board": "H24-109_Paragon_Zoom_Cal_Manual_Main_V1.1",
+        "matchRate": 98.4
+      }
+    ],
+    "ref": [],
+    "coord": []
+  }
+}
