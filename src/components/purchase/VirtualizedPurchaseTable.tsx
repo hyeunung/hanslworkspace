@@ -539,7 +539,7 @@ const VirtualizedPurchaseTable = forwardRef<VirtualizedTableHandle, VirtualizedP
       <div className="virtual-scroll-container overflow-x-auto">
         <table className={activeTab === 'done' ? 'table-fit-left' : 'w-full'}>
           {/* 고정 헤더 */}
-          <thead className="sticky top-0 z-10 bg-white">
+          <thead className="sticky top-0 z-30 bg-gray-50" style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)' }}>
             <TableHeader activeTab={activeTab} columnVisibility={activeTab === 'done' ? columnVisibility : undefined} />
           </thead>
           

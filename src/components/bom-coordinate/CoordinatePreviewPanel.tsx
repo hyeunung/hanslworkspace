@@ -23,15 +23,15 @@ export default function CoordinatePreviewPanel({ coordinates }: CoordinatePrevie
             BOTTOM
             <span className="ml-1 text-gray-400">{bottomCoords.length}</span>
           </TabsTrigger>
-        </TabsList>
+          </TabsList>
 
-        <TabsContent value="top" className="mt-0">
-          <CoordinateTable data={topCoords} />
-        </TabsContent>
-        <TabsContent value="bottom" className="mt-0">
-          <CoordinateTable data={bottomCoords} />
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="top" className="mt-0">
+            <CoordinateTable data={topCoords} />
+          </TabsContent>
+          <TabsContent value="bottom" className="mt-0">
+            <CoordinateTable data={bottomCoords} />
+          </TabsContent>
+        </Tabs>
     </div>
   );
 }
@@ -43,7 +43,7 @@ function CoordinateTable({ data }: { data: CoordinateItem[] }) {
     <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
       <div className="overflow-x-auto">
         <Table className="table-auto !w-auto">
-          <TableHeader className="bg-gray-50 sticky top-0 z-10">
+        <TableHeader className="bg-gray-50 sticky top-0 z-10">
             <TableRow className="h-6">
               <TableHead className="w-[40px] text-center !h-auto !py-0.5 !px-2">
                 <span className="card-description">No</span>
@@ -72,16 +72,16 @@ function CoordinateTable({ data }: { data: CoordinateItem[] }) {
               <TableHead className="w-[80px] !h-auto !py-0.5 !px-2">
                 <span className="card-description">비고</span>
               </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.length === 0 ? (
-              <TableRow>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {data.length === 0 ? (
+            <TableRow>
                 <TableCell colSpan={9} className="text-center py-6 card-description">
-                  데이터가 없습니다.
-                </TableCell>
-              </TableRow>
-            ) : (
+                데이터가 없습니다.
+              </TableCell>
+            </TableRow>
+          ) : (
               data.map((item, index) => {
                 // 연속된 동일 종류는 첫 번째만 표시
                 const prevType = index > 0 ? data[index - 1].type : null;
@@ -105,15 +105,15 @@ function CoordinateTable({ data }: { data: CoordinateItem[] }) {
                   </TableCell>
                   <TableCell className="text-center py-1 px-2">
                     <span className="text-[10px] font-medium text-gray-900">{item.refDes}</span>
-                  </TableCell>
+                </TableCell>
                   <TableCell className="text-center py-1 px-2">
                     <Badge 
                       variant={item.layer === 'TOP' ? 'default' : 'secondary'} 
                       className="text-[9px] px-1.5 py-0 h-4"
                     >
                       {item.layer}
-                    </Badge>
-                  </TableCell>
+                  </Badge>
+                </TableCell>
                   <TableCell className="text-center py-1 px-2">
                     <span className="text-[10px] font-mono text-gray-600">{item.locationX?.toFixed(2)}</span>
                   </TableCell>
@@ -128,10 +128,10 @@ function CoordinateTable({ data }: { data: CoordinateItem[] }) {
                       {item.remark || ''}
                     </span>
                   </TableCell>
-                </TableRow>
+              </TableRow>
               )})
-            )}
-          </TableBody>
+          )}
+        </TableBody>
           {/* 푸터 */}
           <tfoot className="bg-gray-50 border-t">
             <tr>
@@ -148,7 +148,7 @@ function CoordinateTable({ data }: { data: CoordinateItem[] }) {
               </td>
             </tr>
           </tfoot>
-        </Table>
+      </Table>
       </div>
     </div>
   );

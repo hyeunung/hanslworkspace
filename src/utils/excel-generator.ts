@@ -215,7 +215,7 @@ function fillBOMSheet(
       let cellBorder = border;
       if (col === 2) {
         cellBorder = {
-          left: { style: 'thin' },
+                left: { style: 'thin' },
           right: { style: 'thin' },
           top: isFirstOfGroup ? { style: 'thin' } : undefined,
           bottom: isLastOfGroup ? { style: 'thin' } : undefined,

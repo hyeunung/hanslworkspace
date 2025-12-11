@@ -144,13 +144,17 @@ const VirtualScrollTable = memo<VirtualScrollTableProps>(({
         onScroll={handleScroll}
       >
         {/* 고정 헤더 - 스크롤과 함께 움직이지 않도록 설정 */}
-        <div style={{ 
-          position: 'sticky', 
-          top: 0, 
-          zIndex: 10,
-          backgroundColor: 'white',
-          borderBottom: '1px solid #e5e7eb'
-        }}>
+        <div 
+          className="sticky-header-container"
+          style={{ 
+            position: 'sticky', 
+            top: 0, 
+            zIndex: 30,
+            backgroundColor: '#f9fafb',
+            borderBottom: '1px solid #e5e7eb',
+            willChange: 'transform'
+          }}
+        >
           <table className={shouldUseFitLayout ? `table-fit-left ${activeTab}-tab` : 'w-full min-w-[1790px] border-collapse'}>
             {tableHeader}
           </table>

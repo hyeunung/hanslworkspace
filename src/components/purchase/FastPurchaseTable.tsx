@@ -1348,7 +1348,7 @@ const FastPurchaseTable = ({
   const tableHeader = useMemo(() => {
     if (activeTab === 'pending') {
       return (
-        <thead className="bg-gray-50">
+        <thead className="sticky top-0 z-30 bg-gray-50" style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)' }}>
           <tr>
             <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.approvalStatus}`}>승인상태</th>
             {isColumnVisible('purchase_order_number') && (
@@ -1413,7 +1413,7 @@ const FastPurchaseTable = ({
     
     if (activeTab === 'purchase') {
       return (
-        <thead className="bg-gray-50">
+        <thead className="sticky top-0 z-30 bg-gray-50" style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)' }}>
           <tr>
             <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.receiptProgress}`}>구매진행</th>
             {isColumnVisible('purchase_order_number') && (
@@ -1592,7 +1592,7 @@ const FastPurchaseTable = ({
     }
 
     return (
-      <thead className="bg-gray-50">
+      <thead className="sticky top-0 z-30 bg-gray-50" style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)' }}>
         <tr>
           {/* 입고현황 탭에서는 입고진행을 맨 앞에 */}
           {activeTab === 'receipt' && isColumnVisible('receipt_progress') && (
@@ -1625,7 +1625,7 @@ const FastPurchaseTable = ({
   return (
     <>
       {/* 데스크톱 테이블 뷰 - 실제 데이터 1,979건 분석 기반 최적 너비 */}
-      <div className={`hidden md:block ${shouldUseFitLayout ? 'w-fit' : 'w-full'}`}>
+      <div className="hidden md:block w-full max-w-full">
         
 {shouldUseVirtualScroll ? (
           // 진짜 가상 스크롤 테이블 (100개 이상 항목) - DOM 노드 대폭 감소
@@ -1646,7 +1646,7 @@ const FastPurchaseTable = ({
           />
         ) : (
           // 기존 테이블 (100개 미만 항목)
-          <div className={shouldUseFitLayout ? 'table-container-fit-left' : 'overflow-x-auto border rounded-lg'}>
+          <div className={shouldUseFitLayout ? 'table-container-fit-left max-h-[70vh] overflow-auto' : 'overflow-x-auto overflow-y-auto max-h-[70vh] border rounded-lg'}>
             <table className={shouldUseFitLayout ? `table-fit-left ${activeTab}-tab` : 'w-full min-w-[1790px] border-collapse'}>
               {tableHeader}
               <tbody>
@@ -1675,7 +1675,7 @@ const FastPurchaseTable = ({
       <div className="hidden sm:block md:hidden w-full">
         <div className="overflow-x-auto border rounded-lg">
           <table className="w-full min-w-[600px] card-title">
-            <thead className="bg-gray-50">
+            <thead className="sticky top-0 z-30 bg-gray-50" style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)' }}>
               <tr>
                 <th className="text-left p-2 modal-label text-gray-900 w-24">발주번호</th>
                 <th className="text-left p-2 modal-label text-gray-900 w-16">요청자</th>

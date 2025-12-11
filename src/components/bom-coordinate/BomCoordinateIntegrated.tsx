@@ -17,6 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { cn } from '@/lib/utils';
 import GeneratedPreviewPanel, { type GeneratedPreviewPanelRef } from './GeneratedPreviewPanel';
 import CoordinatePreviewPanel from './CoordinatePreviewPanel';
+import BomDetailModal from './BomDetailModal';
 import { 
   processBOMAndCoordinates, 
   type BOMItem, 
@@ -72,13 +73,14 @@ export default function BomCoordinateIntegrated() {
     production_manager?: string;
   }>>([]);
   const [loadingBoards, setLoadingBoards] = useState(false);
-  const [selectedBoardForView, setSelectedBoardForView] = useState<string | null>(null);
   const [uploadedFilePaths, setUploadedFilePaths] = useState<{ bomPath: string; coordPath: string } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [loadingText, setLoadingText] = useState('');
   const [isMerged, setIsMerged] = useState(false);
   const [deletingBoardId, setDeletingBoardId] = useState<string | null>(null);
+  const [detailModalBoardId, setDetailModalBoardId] = useState<string | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   // 합칠 수 있는 동일 항목이 있는지 체크
   const hasMergeableItems = (() => {
@@ -506,44 +508,46 @@ export default function BomCoordinateIntegrated() {
       
       // cadDrawingId가 임시 ID인 경우 (새로 생성)
       if (cadDrawingId.startsWith('cad_')) {
-        const { data: existingBoard, error: checkError } = await supabase
+        // 보드명에서 기존 날짜/정리본 패턴 제거 후 새 날짜 추가
+        const today = new Date();
+        const dateStr = today.getFullYear().toString().slice(2) + 
+          String(today.getMonth() + 1).padStart(2, '0') + 
+          String(today.getDate()).padStart(2, '0');
+        
+        // 기존 패턴 제거 후 새 날짜 추가
+        const cleanBoardName = metadata.boardName.trim()
+          .replace(/_\d{6}_정리본$/, '')
+          .replace(/_정리본$/, '')
+          .replace(/_\d{6}$/, '');
+        const saveBoardName = `${cleanBoardName}_${dateStr}_정리본`;
+
+        // 항상 새로 생성 (날짜로 구분되므로)
+        const { data: newBoard, error: boardError } = await supabase
           .from('cad_drawings')
+          .insert({ 
+            board_name: saveBoardName,
+            artwork_manager: artworkManagerName,
+            production_manager: productionManagerName,
+            production_quantity: metadata.productionQuantity
+          })
           .select('id')
-          .eq('board_name', metadata.boardName)
           .single();
 
-        if (checkError && checkError.code !== 'PGRST116') {
-          throw checkError;
-        }
-        
-        if (existingBoard) {
-          cadDrawingId = existingBoard.id;
-        } else {
-          const { data: newBoard, error: boardError } = await supabase
-            .from('cad_drawings')
-            .insert({ 
-              board_name: metadata.boardName,
-              artwork_manager: artworkManagerName,
-              production_manager: productionManagerName,
-              production_quantity: metadata.productionQuantity
-            })
-            .select('id')
-            .single();
-
-          if (boardError) throw boardError;
-          cadDrawingId = newBoard.id;
-        }
+        if (boardError) throw boardError;
+        cadDrawingId = newBoard.id;
       }
       
-      // 담당자 정보 항상 업데이트
-      await supabase
-        .from('cad_drawings')
-        .update({ 
-          artwork_manager: artworkManagerName,
-          production_manager: productionManagerName,
-          production_quantity: metadata.productionQuantity
-        })
-        .eq('id', cadDrawingId);
+      // 담당자 정보 업데이트 (기존 보드인 경우에만)
+      if (!processedResult.cadDrawingId.startsWith('cad_')) {
+        await supabase
+          .from('cad_drawings')
+          .update({ 
+            artwork_manager: artworkManagerName,
+            production_manager: productionManagerName,
+            production_quantity: metadata.productionQuantity
+          })
+          .eq('id', cadDrawingId);
+      }
 
       // 2. 원본 파일 정보 저장 (bom_raw_files)
       if (fileInfo.bomFile && fileInfo.coordFile && uploadedFilePaths) {
@@ -863,82 +867,6 @@ export default function BomCoordinateIntegrated() {
     }
   };
 
-  // 저장된 BOM 상세 보기
-  const handleViewSavedBOM = async (boardId: string) => {
-    try {
-      // BOM 아이템 가져오기
-      const { data: bomItems, error: bomError } = await supabase
-        .from('bom_items')
-        .select('*')
-        .eq('cad_drawing_id', boardId)
-        .order('line_number');
-      
-      if (bomError) throw bomError;
-
-      // 좌표 데이터 가져오기
-      const { data: coordinates, error: coordError } = await supabase
-        .from('part_placements')
-        .select('*')
-        .eq('cad_drawing_id', boardId);
-      
-      if (coordError) throw coordError;
-
-      // 보드 정보 가져오기
-      const { data: boardData } = await supabase
-        .from('cad_drawings')
-        .select('board_name')
-        .eq('id', boardId)
-        .single();
-
-      // BOMItem 형식으로 변환
-      const convertedBOMItems: BOMItem[] = (bomItems || []).map((item: any) => ({
-        lineNumber: item.line_number,
-        itemType: item.item_type || '',
-        itemName: item.item_name,
-        specification: item.specification || '',
-        setCount: item.set_count,
-        totalQuantity: item.total_quantity || 0,
-        stockQuantity: item.stock_quantity || 0,
-        checkStatus: item.check_status || '□양호',
-        refList: Array.isArray(item.ref_list) ? item.ref_list.join(',') : (item.ref_list || ''),
-        alternativeItem: item.alternative_item || '',
-        remark: item.remark || ''
-      }));
-
-      // CoordinateItem 형식으로 변환
-      const convertedCoords: CoordinateItem[] = (coordinates || []).map((coord: any) => ({
-        ref: coord.ref,
-        partName: coord.part_name,
-        partType: coord.part_type || 'SMD',
-        side: coord.side,
-        x: coord.x_coordinate.toString(),
-        y: coord.y_coordinate.toString(),
-        angle: coord.angle?.toString() || '0'
-      }));
-
-      setProcessedResult({
-        cadDrawingId: boardId,
-        processedData: {
-          bomItems: convertedBOMItems,
-          coordinates: convertedCoords
-        }
-      });
-
-      setMetadata(prev => ({
-        ...prev,
-        boardName: boardData?.board_name || ''
-      }));
-
-      setSelectedBoardForView(boardId);
-      setViewMode('create');
-      setStep('preview');
-      
-      toast.success('저장된 BOM을 불러왔습니다.');
-    } catch (error: any) {
-      console.error('View error:', error);
-      toast.error(`BOM을 불러오는데 실패했습니다: ${error.message}`);
-    }
-  };
 
   // 저장된 BOM 삭제 (app_admin만 가능)
   const handleDeleteSavedBOM = async (boardId: string, boardName: string) => {
@@ -975,7 +903,36 @@ export default function BomCoordinateIntegrated() {
         console.warn('part_placements 삭제 실패:', placementsError);
       }
 
-      // bom_raw_files 삭제
+      // bom_raw_files에서 파일 경로 가져온 후 삭제
+      const { data: rawFilesData } = await supabase
+        .from('bom_raw_files')
+        .select('bom_file_url, coordinate_file_url')
+        .eq('cad_drawing_id', boardId);
+
+      // Storage에서 파일 삭제 (URL에서 경로 추출)
+      if (rawFilesData && rawFilesData.length > 0) {
+        for (const file of rawFilesData) {
+          // URL에서 Storage 경로 추출 (예: bom-files/uploads/xxx.xlsx)
+          try {
+            if (file.bom_file_url) {
+              const bomPath = file.bom_file_url.split('/bom-files/')[1]?.split('?')[0];
+              if (bomPath) {
+                await supabase.storage.from('bom-files').remove([decodeURIComponent(bomPath)]);
+              }
+            }
+            if (file.coordinate_file_url) {
+              const coordPath = file.coordinate_file_url.split('/bom-files/')[1]?.split('?')[0];
+              if (coordPath) {
+                await supabase.storage.from('bom-files').remove([decodeURIComponent(coordPath)]);
+              }
+            }
+          } catch (storageError) {
+            console.warn('Storage 파일 삭제 실패:', storageError);
+          }
+        }
+      }
+
+      // bom_raw_files 레코드 삭제
       const { error: rawFilesError } = await supabase
         .from('bom_raw_files')
         .delete()
@@ -985,15 +942,7 @@ export default function BomCoordinateIntegrated() {
         console.warn('bom_raw_files 삭제 실패:', rawFilesError);
       }
 
-      // ai_learning_records 삭제
-      const { error: learningError } = await supabase
-        .from('ai_learning_records')
-        .delete()
-        .eq('cad_drawing_id', boardId);
-      
-      if (learningError) {
-        console.warn('ai_learning_records 삭제 실패:', learningError);
-      }
+      // ai_learning_records는 학습 데이터이므로 삭제하지 않음 (유지)
 
       // 2. 메인 cad_drawings 삭제
       const { error: cadError } = await supabase
@@ -1028,7 +977,6 @@ export default function BomCoordinateIntegrated() {
                 onClick={() => {
                   setViewMode('create');
                   setStep('input');
-                  setSelectedBoardForView(null);
                   handleReset();
                   clearTempData(); // 새로 만들기 시 임시 데이터 삭제
                 }}
@@ -1045,7 +993,6 @@ export default function BomCoordinateIntegrated() {
                 onClick={() => {
                   setViewMode('list');
                   setStep('input');
-                  setSelectedBoardForView(null);
                 }}
                 className={`button-base ${
                   viewMode === 'list' 
@@ -1111,19 +1058,21 @@ export default function BomCoordinateIntegrated() {
                             <TableHead className="w-[100px] text-center !py-1 !h-auto">
                               <span className="card-description">생성일</span>
                             </TableHead>
-                            <TableHead className="w-[150px] text-center !py-1 !h-auto">
+                            <TableHead className="w-[120px] text-center !py-1 !h-auto">
                               <span className="card-description">액션</span>
                             </TableHead>
-                            {isAdmin && (
-                              <TableHead className="w-[60px] text-center !py-1 !h-auto">
-                                <span className="card-description">삭제</span>
-                              </TableHead>
-                            )}
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {savedBoards.map((board, index) => (
-                            <TableRow key={board.id} className="hover:bg-gray-50">
+                            <TableRow 
+                              key={board.id} 
+                              className="hover:bg-gray-50 cursor-pointer"
+                              onClick={() => {
+                                setDetailModalBoardId(board.id);
+                                setIsDetailModalOpen(true);
+                              }}
+                            >
                               <TableCell className="text-center py-1">
                                 <span className="card-subtitle">{index + 1}</span>
                               </TableCell>
@@ -1145,45 +1094,34 @@ export default function BomCoordinateIntegrated() {
                                   })}
                                 </span>
                               </TableCell>
-                              <TableCell className="text-center py-1">
+                              <TableCell className="text-center py-1" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex gap-1 justify-center">
-                                  <Button
-                                    onClick={() => handleViewSavedBOM(board.id)}
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-6 px-2 text-[10px]"
-                                  >
-                                    <Eye className="w-3 h-3 mr-1" />
-                                    보기
-                                  </Button>
                                   <Button
                                     onClick={() => handleDownloadSavedBOM(board.id, board.board_name)}
                                     variant="outline"
                                     size="sm"
-                                    className="h-6 px-2 text-[10px]"
+                                    className="h-6 px-2 text-[10px] text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
                                   >
                                     <Download className="w-3 h-3 mr-1" />
                                     Excel
                                   </Button>
+                                  {isAdmin && (
+                                    <Button
+                                      onClick={() => handleDeleteSavedBOM(board.id, board.board_name)}
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={deletingBoardId === board.id}
+                                      className="h-6 px-2 text-[10px] text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                                    >
+                                      {deletingBoardId === board.id ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="w-3 h-3" />
+                                      )}
+                                    </Button>
+                                  )}
                                 </div>
                               </TableCell>
-                              {isAdmin && (
-                                <TableCell className="text-center py-1">
-                                  <Button
-                                    onClick={() => handleDeleteSavedBOM(board.id, board.board_name)}
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={deletingBoardId === board.id}
-                                    className="h-6 px-2 text-[10px] text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                                  >
-                                    {deletingBoardId === board.id ? (
-                                      <Loader2 className="w-3 h-3 animate-spin" />
-                                    ) : (
-                                      <Trash2 className="w-3 h-3" />
-                                    )}
-                                  </Button>
-                                </TableCell>
-                              )}
                             </TableRow>
                           ))}
                         </TableBody>
@@ -1610,6 +1548,16 @@ export default function BomCoordinateIntegrated() {
       )}
         </>
       )}
+
+      {/* BOM 상세 모달 */}
+      <BomDetailModal
+        boardId={detailModalBoardId}
+        isOpen={isDetailModalOpen}
+        onClose={() => {
+          setIsDetailModalOpen(false);
+          setDetailModalBoardId(null);
+        }}
+      />
     </div>
   );
 }

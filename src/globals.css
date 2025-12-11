@@ -670,7 +670,7 @@
 .table-container-fit-left {
   @apply overflow-x-auto border business-radius-card;
   /* 테이블이 컨텐츠에 맞게 좌측 정렬되도록 설정 */
-  width: fit-content !important;
+  width: 100%;
   max-width: 100%;
 }
 
@@ -947,6 +947,25 @@ input[type="number"] {
   background-color: white;
   z-index: 10;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* VirtualScrollTable 헤더 고정 */
+.sticky-header-container {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 30 !important;
+  background-color: #f9fafb !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  will-change: transform;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.sticky-header-container table {
+  width: 100%;
+}
+
+.sticky-header-container thead th {
+  background-color: #f9fafb !important;
 }
 
 
