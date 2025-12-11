@@ -51,8 +51,8 @@ export async function generateBOMExcelFromTemplate(
       throw new Error('템플릿 파일을 찾을 수 없습니다.');
     }
     
-    const buffer = await response.arrayBuffer();
-    await workbook.xlsx.load(buffer);
+      const buffer = await response.arrayBuffer();
+      await workbook.xlsx.load(buffer);
     console.log('✅ 템플릿 로드 완료');
     
   } catch (error) {
@@ -139,7 +139,7 @@ function fillBOMSheet(
   
   // 이전 종류 추적 (같은 종류가 연속이면 빈칸 처리)
   let prevItemType = '';
-  
+
   bomItems.forEach((item, index) => {
     const rowNum = dataStartRow + index;
     const row = bomSheet.getRow(rowNum);
@@ -164,14 +164,14 @@ function fillBOMSheet(
     
     // 미삽 여부 확인 
     // 1. remark에 '미삽'이 있거나
-    // 2. 품명에 OPEN, NC, POGO, PAD 등 미삽 키워드가 포함된 경우
+    // 2. 품명에 _OPEN, OPEN_, _POGO, POGO_, _PAD, PAD_, _NC, NC_ 등 키워드가 _로 구분되어 포함된 경우
     const itemNameUpper = (item.itemName || '').toUpperCase();
     const remarkUpper = (item.remark || '').toUpperCase();
     const isMisap = remarkUpper.includes('미삽') || 
-      itemNameUpper.includes('OPEN') ||
-      itemNameUpper.includes('POGO') ||
-      itemNameUpper.includes('PAD') ||
-      /(?:^|_)NC(?:$|_)/.test(itemNameUpper);
+      itemNameUpper.includes('_OPEN') || itemNameUpper.includes('OPEN_') ||
+      itemNameUpper.includes('_POGO') || itemNameUpper.includes('POGO_') ||
+      itemNameUpper.includes('_PAD') || itemNameUpper.includes('PAD_') ||
+      itemNameUpper.includes('_NC') || itemNameUpper.includes('NC_');
     
     // E: 수량 (미삽이면 0, 아니면 생산수량 × SET)
     const setCount = item.setCount || 0;
@@ -203,13 +203,29 @@ function fillBOMSheet(
       color: isMisap ? { argb: 'FFFF0000' } : { argb: 'FF000000' },
     };
     
+    // 다음 행의 종류 확인 (B열 테두리 조정용)
+    const nextItemType = index < bomItems.length - 1 ? (bomItems[index + 1].itemType || '') : '';
+    const isLastOfGroup = currentType !== nextItemType; // 같은 종류 그룹의 마지막 행인지
+    const isFirstOfGroup = currentType !== (index > 0 ? (bomItems[index - 1].itemType || '') : ''); // 같은 종류 그룹의 첫 행인지
+    
     for (let col = 1; col <= 10; col++) {
       const cell = row.getCell(col);
+      
+      // B열(col 2)은 같은 종류 그룹 내에서 중간 테두리 제거
+      let cellBorder = border;
+      if (col === 2) {
+        cellBorder = {
+          left: { style: 'thin' },
+          right: { style: 'thin' },
+          top: isFirstOfGroup ? { style: 'thin' } : undefined,
+          bottom: isLastOfGroup ? { style: 'thin' } : undefined,
+        };
+      }
       
       // style 객체 전체를 새로 할당 (템플릿 스타일 완전 덮어쓰기)
       cell.style = {
         font: baseFont,
-        border: border,
+        border: cellBorder,
         alignment: {
           vertical: 'middle',
           horizontal: centerAlignCols.includes(col) ? 'center' : 'left',
@@ -225,8 +241,8 @@ function fillBOMSheet(
       // Ref 텍스트가 길면 행 높이 자동 증가 (대략적 계산)
       const estimatedLines = Math.ceil(refLength / 50);
       row.height = Math.max(15, estimatedLines * 15);
-    }
-
+            }
+    
     row.commit();
   });
 }
@@ -250,10 +266,25 @@ function fillCoordinateSheet(
   }
 
   // Row 2부터 데이터 입력 (Row 1은 헤더)
+  // 연속된 동일 종류는 첫 번째만 표시
+  let prevType = '';
+  
   coordinates.forEach((coord, index) => {
     const row = sheet.getRow(2 + index);
     
-    row.getCell('A').value = coord.type || '';        // 종류
+    const currentType = coord.type || '';
+    const nextType = index < coordinates.length - 1 ? (coordinates[index + 1].type || '') : '';
+    const isFirstOfGroup = currentType !== prevType; // 종류 그룹 첫 행
+    const isLastRow = index === coordinates.length - 1; // 마지막 데이터 행
+    
+    // 같은 종류가 연속이면 빈칸, 아니면 표시
+    if (isFirstOfGroup) {
+      row.getCell('A').value = currentType;
+      prevType = currentType;
+    } else {
+      row.getCell('A').value = '';
+    }
+    
     row.getCell('B').value = coord.partName || '';    // Type (품명)
     row.getCell('C').value = coord.refDes || '';      // RefDes
     row.getCell('D').value = coord.layer || sheetName; // Layer
@@ -261,6 +292,34 @@ function fillCoordinateSheet(
     row.getCell('F').value = coord.locationY || 0;    // LocationY
     row.getCell('G').value = coord.rotation || 0;     // Rotation
     row.getCell('H').value = coord.remark || '';      // 비고
+
+    // 미삽 여부 확인 (BOM과 동일한 조건)
+    const partNameUpper = (coord.partName || '').toUpperCase();
+    const coordRemarkUpper = (coord.remark || '').toUpperCase();
+    const isCoordMisap = coordRemarkUpper.includes('미삽') || 
+      partNameUpper.includes('_OPEN') || partNameUpper.includes('OPEN_') ||
+      partNameUpper.includes('_POGO') || partNameUpper.includes('POGO_') ||
+      partNameUpper.includes('_PAD') || partNameUpper.includes('PAD_') ||
+      partNameUpper.includes('_NC') || partNameUpper.includes('NC_');
+
+    // 테두리 및 스타일 설정
+    for (let col = 1; col <= 8; col++) {
+      const cell = row.getCell(col);
+      cell.style = {
+        font: { 
+          size: 10, 
+          name: '굴림체',
+          color: isCoordMisap ? { argb: 'FFFF0000' } : { argb: 'FF000000' },
+        },
+        alignment: { vertical: 'middle', horizontal: col <= 2 ? 'left' : 'center' },
+        border: {
+          top: isFirstOfGroup ? { style: 'thick' } : undefined,
+          bottom: isLastRow ? { style: 'thick' } : undefined,
+          left: undefined,
+          right: undefined,
+        },
+      };
+    }
 
     row.commit();
   });

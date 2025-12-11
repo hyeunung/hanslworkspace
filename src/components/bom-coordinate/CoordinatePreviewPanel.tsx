@@ -13,12 +13,8 @@ export default function CoordinatePreviewPanel({ coordinates }: CoordinatePrevie
 
   return (
     <div className="space-y-3">
-      <Tabs defaultValue="all" className="w-full">
-        <TabsList className="mb-3 grid grid-cols-3 h-8">
-          <TabsTrigger value="all" className="text-[10px] h-7">
-            전체
-            <span className="ml-1 text-gray-400">{coordinates.length}</span>
-          </TabsTrigger>
+      <Tabs defaultValue="top" className="w-full">
+        <TabsList className="mb-3 grid grid-cols-2 h-8">
           <TabsTrigger value="top" className="text-[10px] h-7">
             TOP
             <span className="ml-1 text-gray-400">{topCoords.length}</span>
@@ -29,9 +25,6 @@ export default function CoordinatePreviewPanel({ coordinates }: CoordinatePrevie
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="all" className="mt-0">
-          <CoordinateTable data={coordinates} />
-        </TabsContent>
         <TabsContent value="top" className="mt-0">
           <CoordinateTable data={topCoords} />
         </TabsContent>
@@ -55,14 +48,14 @@ function CoordinateTable({ data }: { data: CoordinateItem[] }) {
               <TableHead className="w-[40px] text-center !h-auto !py-0.5 !px-2">
                 <span className="card-description">No</span>
               </TableHead>
-              <TableHead className="w-[80px] text-center !h-auto !py-0.5 !px-2">
-                <span className="card-description">RefDes</span>
-              </TableHead>
               <TableHead className="text-center whitespace-nowrap !h-auto !py-0.5 !px-2">
                 <span className="card-description">종류</span>
               </TableHead>
               <TableHead className="whitespace-nowrap !h-auto !py-0.5 !px-2">
                 <span className="card-description">품명</span>
+              </TableHead>
+              <TableHead className="w-[80px] text-center !h-auto !py-0.5 !px-2">
+                <span className="card-description">RefDes</span>
               </TableHead>
               <TableHead className="w-[60px] text-center !h-auto !py-0.5 !px-2">
                 <span className="card-description">Layer</span>
@@ -89,7 +82,12 @@ function CoordinateTable({ data }: { data: CoordinateItem[] }) {
                 </TableCell>
               </TableRow>
             ) : (
-              data.map((item, index) => (
+              data.map((item, index) => {
+                // 연속된 동일 종류는 첫 번째만 표시
+                const prevType = index > 0 ? data[index - 1].type : null;
+                const showType = item.type !== prevType;
+                
+                return (
                 <TableRow 
                   key={index} 
                   className={`hover:bg-gray-50 ${item.remark === '미삽' ? 'bg-gray-50' : ''}`}
@@ -97,16 +95,16 @@ function CoordinateTable({ data }: { data: CoordinateItem[] }) {
                   <TableCell className="text-center py-1 px-2">
                     <span className="text-[10px] text-gray-500">{index + 1}</span>
                   </TableCell>
-                  <TableCell className="text-center py-1 px-2">
-                    <span className="text-[10px] font-medium text-gray-900">{item.refDes}</span>
-                  </TableCell>
                   <TableCell className="text-center py-1 px-1 whitespace-nowrap">
-                    <span className="text-[10px] text-gray-600">{item.type || '-'}</span>
+                    <span className="text-[10px] text-gray-600">{showType ? (item.type || '-') : ''}</span>
                   </TableCell>
                   <TableCell className="py-1 px-1 whitespace-nowrap">
                     <span className={`text-[10px] ${item.remark === '미삽' ? 'text-gray-400' : 'text-gray-600'}`}>
                       {item.partName || '-'}
                     </span>
+                  </TableCell>
+                  <TableCell className="text-center py-1 px-2">
+                    <span className="text-[10px] font-medium text-gray-900">{item.refDes}</span>
                   </TableCell>
                   <TableCell className="text-center py-1 px-2">
                     <Badge 
@@ -131,7 +129,7 @@ function CoordinateTable({ data }: { data: CoordinateItem[] }) {
                     </span>
                   </TableCell>
                 </TableRow>
-              ))
+              )})
             )}
           </TableBody>
           {/* 푸터 */}

@@ -1575,7 +1575,10 @@ export default function BomCoordinateIntegrated() {
                   >
                     <span className="whitespace-nowrap">좌표 데이터</span>
                     <span className="badge-stats data-[state=active]:bg-hansl-50 data-[state=active]:text-hansl-700 bg-gray-100 text-gray-600">
-                      {processedResult.processedData?.coordinates?.length || 0}
+                      {processedResult.processedData?.coordinates?.filter((c: CoordinateItem) => c.layer === 'TOP').length || 0}
+                    </span>
+                    <span className="badge-stats data-[state=active]:bg-orange-50 data-[state=active]:text-orange-700 bg-gray-100 text-gray-600">
+                      {processedResult.processedData?.coordinates?.filter((c: CoordinateItem) => c.layer === 'BOTTOM').length || 0}
                     </span>
                   </TabsTrigger>
                 </TabsList>

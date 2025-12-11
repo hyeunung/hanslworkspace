@@ -920,6 +920,18 @@ export async function processBOMAndCoordinates(
     return 'CONNECTOR';
   };
   
+  // 미삽 여부 체크 함수
+  const checkIsMisap = (itemName: string, remark: string) => {
+    const nameUpper = (itemName || '').toUpperCase();
+    const remarkUpper = (remark || '').toUpperCase();
+    const result = remarkUpper.includes('미삽') || 
+      nameUpper.includes('_OPEN') || nameUpper.includes('OPEN_') ||
+      nameUpper.includes('_POGO') || nameUpper.includes('POGO_') ||
+      nameUpper.includes('_PAD') || nameUpper.includes('PAD_') ||
+      nameUpper.includes('_NC') || nameUpper.includes('NC_');
+    return result;
+  };
+  
   bomItems.sort((a, b) => {
     const groupA = guessTypeGroupForSort(a);
     const groupB = guessTypeGroupForSort(b);
@@ -938,7 +950,14 @@ export async function processBOMAndCoordinates(
       return (a.itemType || '').localeCompare(b.itemType || '');
     }
     
-    // 같은 종류면 품명순
+    // 같은 종류 내에서 미삽 항목은 맨 아래로
+    const aMisap = checkIsMisap(a.itemName, a.remark);
+    const bMisap = checkIsMisap(b.itemName, b.remark);
+    if (aMisap !== bMisap) {
+      return aMisap ? 1 : -1; // 미삽이면 뒤로
+    }
+    
+    // 같은 종류, 같은 미삽 상태면 품명순
     return (a.itemName || '').localeCompare(b.itemName || '');
   });
   
@@ -946,6 +965,57 @@ export async function processBOMAndCoordinates(
   bomItems.forEach((item, idx) => {
     item.lineNumber = idx + 1;
   });
+  
+  // 좌표 데이터도 동일한 정렬 로직 적용
+  const sortCoordinates = (coords: CoordinateItem[]) => {
+    return coords.sort((a, b) => {
+      // type 기준으로 대분류 그룹 결정
+      const getGroup = (type: string) => {
+        const t = (type || '').toUpperCase();
+        if (t.includes('IC')) return 'IC';
+        if (t.includes('DIODE')) return 'DIODE';
+        if (t.includes('C/C') || t.includes('C_C')) return 'C/C';
+        if (t.includes('저항')) return '저항';
+        if (t.includes('BEAD')) return 'BEAD';
+        if (t.includes('S/W') || t.includes('SW')) return 'S/W';
+        if (t.includes('CONNECTOR') || t.includes('CONN')) return 'CONNECTOR';
+        return 'ETC';
+      };
+      
+      const groupA = getGroup(a.type || '');
+      const groupB = getGroup(b.type || '');
+      
+      const orderA = TYPE_GROUP_ORDER.indexOf(groupA);
+      const orderB = TYPE_GROUP_ORDER.indexOf(groupB);
+      
+      const idxA = orderA === -1 ? 999 : orderA;
+      const idxB = orderB === -1 ? 999 : orderB;
+      
+      if (idxA !== idxB) return idxA - idxB;
+      
+      // 같은 대분류면 type 순
+      if (a.type !== b.type) {
+        return (a.type || '').localeCompare(b.type || '');
+      }
+      
+      // 같은 종류 내에서 미삽 항목은 맨 아래로
+      const aMisap = checkIsMisap(a.partName || '', a.remark || '');
+      const bMisap = checkIsMisap(b.partName || '', b.remark || '');
+      if (aMisap !== bMisap) {
+        return aMisap ? 1 : -1; // 미삽이면 뒤로
+      }
+      
+      // 같은 type, 같은 미삽 상태면 refDes 순
+      return (a.refDes || '').localeCompare(b.refDes || '');
+    });
+  };
+  
+  sortCoordinates(topCoordinates);
+  sortCoordinates(bottomCoordinates);
+  
+  // 미삽 정렬 확인용 디버그 로그
+  const misapItems = bomItems.filter(item => checkIsMisap(item.itemName, item.remark));
+  console.log('🔴 미삽 항목들:', misapItems.map(item => `${item.itemType} - ${item.itemName}`));
   
   console.log('✅ BOM/좌표 처리 완료');
   console.log(`  - 총 항목: ${bomItems.length}`);
