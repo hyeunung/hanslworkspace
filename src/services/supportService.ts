@@ -185,16 +185,17 @@ class SupportService {
 
       let query = this.supabase
         .from('purchase_requests')
-        .select('id,purchase_order_number,vendor_name,request_date,requester_name,purchase_request_items(item_name,specification,quantity)')
+        .select('id,purchase_order_number,vendor_name,request_date,created_at,requester_name,middle_manager_status,final_manager_status,purchase_request_items(item_name,specification,quantity)')
         .eq('requester_name', employee.name)
-        .order('request_date', { ascending: false })
+        // 승인대기 항목은 request_date가 비어있는 경우가 있어 created_at 기준으로 정렬/필터링
+        .order('created_at', { ascending: false })
 
       // 날짜 필터 적용
       if (startDate) {
-        query = query.gte('request_date', startDate)
+        query = query.gte('created_at', `${startDate}T00:00:00`)
       }
       if (endDate) {
-        query = query.lte('request_date', endDate)
+        query = query.lte('created_at', `${endDate}T23:59:59.999`)
       }
 
       const { data, error } = await query.limit(100)

@@ -12,6 +12,16 @@ import { removePurchaseFromMemory } from '@/stores/purchaseMemoryStore'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { DateRange } from 'react-day-picker'
 import PurchaseDetailModal from '@/components/purchase/PurchaseDetailModal'
@@ -36,6 +46,7 @@ export default function SupportMain() {
   const [inquiries, setInquiries] = useState<SupportInquiry[]>([])
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
   const [currentUserEmail, setCurrentUserEmail] = useState('')
+  const [currentUserId, setCurrentUserId] = useState<string>('')
   const [currentUserRoles, setCurrentUserRoles] = useState<string[]>([])
   const [loadingInquiries, setLoadingInquiries] = useState(true)
   const [expandedInquiry, setExpandedInquiry] = useState<number | null>(null)
@@ -50,6 +61,10 @@ export default function SupportMain() {
   // 전체항목 탭 상세모달(PurchaseDetailModal) 재사용
   const [purchaseDetailModalOpen, setPurchaseDetailModalOpen] = useState(false)
   const [purchaseDetailId, setPurchaseDetailId] = useState<number | null>(null)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [purchaseToDelete, setPurchaseToDelete] = useState<any>(null)
+  const [purchaseMissingOpen, setPurchaseMissingOpen] = useState(false)
+  const [purchaseMissingMessage, setPurchaseMissingMessage] = useState('발주내역이 삭제 되었거나 없습니다.')
 
   // 초기 데이터 로드
   useEffect(() => {
@@ -60,14 +75,71 @@ export default function SupportMain() {
     
     // 실시간 구독 설정
     const subscription = supportService.subscribeToInquiries((payload) => {
-      // 권한 상태 확인 후 적절한 목록 로드
-      checkUserRole()
+      // isAdmin 확인 전에는 처리하지 않음
+      if (isAdmin === null) return
+
+      const eventType = payload?.eventType as 'INSERT' | 'UPDATE' | 'DELETE' | undefined
+      const newRow = payload?.new as SupportInquiry | undefined
+      const oldRow = payload?.old as SupportInquiry | undefined
+
+      const isRelevantRow = (row?: SupportInquiry) => {
+        if (!row) return false
+        if (isAdmin) return true
+        return !!currentUserId && row.user_id === currentUserId
+      }
+
+      // 이벤트에 따라 inquiries state를 직접 갱신 (페이지 새로고침 없이 실시간 반영)
+      if (eventType === 'DELETE') {
+        const deletedId = oldRow?.id
+        if (!deletedId) return
+        setInquiries(prev => {
+          const next = prev.filter(i => i.id !== deletedId)
+          return next
+        })
+        if (expandedInquiry === deletedId) {
+          setExpandedInquiry(null)
+        }
+        return
+      }
+
+      // INSERT/UPDATE
+      const row = newRow
+      if (!row?.id) return
+
+      setInquiries(prev => {
+        // 비관리자는 내 문의만 유지
+        const relevant = isRelevantRow(row)
+        const idx = prev.findIndex(i => i.id === row.id)
+
+        // 관련 없는 row면 기존에 있던 것만 제거
+        if (!relevant) {
+          if (idx === -1) return prev
+          const next = prev.filter(i => i.id !== row.id)
+          return next
+        }
+
+        // upsert
+        const next = [...prev]
+        if (idx >= 0) {
+          next[idx] = row
+        } else {
+          next.unshift(row)
+        }
+
+        // 최신순 정렬 (created_at 내림차순)
+        next.sort((a, b) => {
+          const at = a.created_at ? new Date(a.created_at).getTime() : 0
+          const bt = b.created_at ? new Date(b.created_at).getTime() : 0
+          return bt - at
+        })
+        return next
+      })
     })
     
     return () => {
       subscription.unsubscribe()
     }
-  }, [])
+  }, [isAdmin, currentUserId, expandedInquiry])
 
   // 사용자 권한 확인
   const checkUserRole = async () => {
@@ -76,6 +148,7 @@ export default function SupportMain() {
     if (!user) return
 
     setCurrentUserEmail(user.email || '')
+    setCurrentUserId(user.id)
 
     const { data: employee } = await supabase
       .from('employees')
@@ -199,10 +272,17 @@ export default function SupportMain() {
         `- ${item.item_name} (${item.specification}) ${item.quantity}개`
       ).join('\n');
       
+      const poNumberText = selectedPurchase.purchase_order_number || '(승인대기)'
       purchaseInfo = `발주번호: ${selectedPurchase.purchase_order_number}
 업체: ${selectedPurchase.vendor_name}
 요청자: ${selectedPurchase.requester_name}
 요청일: ${selectedPurchase.request_date}
+품목:
+${itemsText}`;
+      purchaseInfo = `발주번호: ${poNumberText}
+업체: ${selectedPurchase.vendor_name}
+요청자: ${selectedPurchase.requester_name}
+요청일: ${selectedPurchase.request_date || selectedPurchase.created_at || '-'}
 품목:
 ${itemsText}`;
 
@@ -301,7 +381,8 @@ ${purchaseInfo}`;
       // 2) 과거 데이터 호환: purchase_order_number로 purchase_requests에서 id 조회
       const orderNumber = inquiry.purchase_order_number?.trim()
       if (!orderNumber) {
-        toast.error('연결된 발주번호가 없습니다.')
+        setPurchaseMissingMessage('발주내역이 삭제 되었거나 없습니다.')
+        setPurchaseMissingOpen(true)
         return
       }
 
@@ -315,14 +396,16 @@ ${purchaseInfo}`;
 
       if (error) throw error
       if (!data?.id) {
-        toast.error('해당 발주를 찾을 수 없습니다.')
+        setPurchaseMissingMessage('발주내역이 삭제 되었거나 없습니다.')
+        setPurchaseMissingOpen(true)
         return
       }
 
       setPurchaseDetailId(data.id)
       setPurchaseDetailModalOpen(true)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '발주 상세 정보를 여는 중 오류가 발생했습니다.')
+      setPurchaseMissingMessage('발주내역이 삭제 되었거나 없습니다.')
+      setPurchaseMissingOpen(true)
     }
   }
 
@@ -414,6 +497,69 @@ ${purchaseInfo}`;
       loadInquiries()
     } else {
       toast.error(result.error || '발주요청 삭제 실패')
+    }
+  }
+
+  const handleConfirmDeleteFromPurchaseModal = async () => {
+    if (!purchaseToDelete?.id) {
+      toast.error('삭제할 발주 정보가 없습니다.')
+      return
+    }
+
+    const supabase = createClient()
+
+    try {
+      const purchaseIdForDelete =
+        typeof purchaseToDelete.id === 'string' ? parseInt(purchaseToDelete.id, 10) : purchaseToDelete.id
+
+      if (!purchaseIdForDelete || Number.isNaN(purchaseIdForDelete)) {
+        toast.error('발주 ID가 올바르지 않습니다.')
+        return
+      }
+
+      // 1) 문의 기록 보존: support_inquires에서 purchase_request_id만 null로 변경
+      const { error: inquiryUpdateError } = await supabase
+        .from('support_inquires')
+        .update({ purchase_request_id: null })
+        .eq('purchase_request_id', purchaseIdForDelete)
+
+      if (inquiryUpdateError) {
+        // 여기서 막지 않고 계속 진행하면 FK로 삭제가 실패할 수 있어 중단하는 편이 안전
+        throw inquiryUpdateError
+      }
+
+      // 2) 품목 삭제
+      const { error: itemsError } = await supabase
+        .from('purchase_request_items')
+        .delete()
+        .eq('purchase_request_id', purchaseIdForDelete)
+      if (itemsError) throw itemsError
+
+      // 3) 발주요청 삭제
+      const { error: requestError } = await supabase
+        .from('purchase_requests')
+        .delete()
+        .eq('id', purchaseIdForDelete)
+      if (requestError) throw requestError
+
+      // 4) 메모리 캐시 즉시 반영
+      removePurchaseFromMemory(purchaseIdForDelete)
+
+      toast.success('발주요청이 삭제되었습니다. (문의 기록은 보존됩니다)')
+
+      // UI 정리
+      setDeleteConfirmOpen(false)
+      setPurchaseToDelete(null)
+      setPurchaseDetailModalOpen(false)
+      setPurchaseDetailId(null)
+
+      // 문의 목록 갱신
+      loadInquiries()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '삭제 중 오류가 발생했습니다.')
+    } finally {
+      setDeleteConfirmOpen(false)
+      setPurchaseToDelete(null)
     }
   }
 
@@ -556,8 +702,21 @@ ${purchaseInfo}`;
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="flex items-center gap-3 flex-1 min-w-0">
                                     <span className="modal-value whitespace-nowrap">
-                                      {pr.purchase_order_number || 'N/A'}
+                                      {pr.purchase_order_number || '(승인대기)'}
                                     </span>
+                                    {(pr.final_manager_status && pr.final_manager_status !== 'approved') && (
+                                      <span
+                                        className={`badge-stats whitespace-nowrap ${
+                                          pr.final_manager_status === 'rejected' || pr.middle_manager_status === 'rejected'
+                                            ? 'bg-red-100 text-red-800'
+                                            : 'bg-yellow-100 text-yellow-800'
+                                        }`}
+                                      >
+                                        {pr.final_manager_status === 'rejected' || pr.middle_manager_status === 'rejected'
+                                          ? '반려'
+                                          : '승인대기'}
+                                      </span>
+                                    )}
                                     <span className="text-gray-600 truncate">
                                       {pr.vendor_name}
                                     </span>
@@ -570,7 +729,7 @@ ${purchaseInfo}`;
                                       )}
                                     </span>
                                     <span className="text-gray-400 whitespace-nowrap ml-auto">
-                                      {pr.request_date && format(new Date(pr.request_date), 'MM/dd')}
+                                      {(pr.request_date || pr.created_at) && format(new Date(pr.request_date || pr.created_at), 'MM/dd')}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-1">
@@ -1137,7 +1296,59 @@ ${purchaseInfo}`;
         }}
         currentUserRoles={currentUserRoles}
         activeTab="done"
+        onDelete={(purchase) => {
+          setPurchaseToDelete(purchase)
+          setDeleteConfirmOpen(true)
+        }}
       />
+
+      {/* 삭제 확인 다이얼로그 (PurchaseDetailModal 연동) */}
+      <AlertDialog
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => {
+          setDeleteConfirmOpen(open)
+          if (!open) setPurchaseToDelete(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>발주요청 내역 삭제</AlertDialogTitle>
+            <AlertDialogDescription>
+              발주요청번호 <strong>{purchaseToDelete?.purchase_order_number || '알 수 없음'}</strong>를 삭제하시겠습니까?
+              <br />
+              이 작업은 되돌릴 수 없습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDeleteFromPurchaseModal}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              삭제
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 삭제/없음 안내 모달 (문의에서 발주를 못 찾는 경우) */}
+      <Dialog open={purchaseMissingOpen} onOpenChange={setPurchaseMissingOpen}>
+        <DialogContent
+          showCloseButton={false}
+          maxWidth="sm:max-w-md"
+          className="p-0 overflow-hidden"
+        >
+          <div className="px-8 py-10 text-center">
+            <div className="text-xl font-semibold text-gray-900">안내</div>
+            <div className="mt-4 text-base text-gray-700 whitespace-pre-wrap">
+              {purchaseMissingMessage}
+            </div>
+            <div className="mt-6 text-sm text-gray-400">
+              화면을 클릭하거나 ESC로 닫을 수 있습니다.
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

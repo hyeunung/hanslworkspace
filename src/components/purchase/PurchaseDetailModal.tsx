@@ -4592,9 +4592,30 @@ function PurchaseDetailModal({
         </div>
       ) : (
         <div className="text-center py-12">
-          <span className="modal-subtitle">
-            발주 정보를 불러올 수 없습니다.
-          </span>
+          {loading ? (
+            <div className="flex items-center justify-center gap-2">
+              <div className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+              <span className="modal-subtitle">불러오는 중...</span>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <span className="modal-subtitle">
+                발주내역이 삭제 되었거나 없습니다.
+              </span>
+              {!embedded && (
+                <div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={onClose}
+                    className="button-base button-action-secondary"
+                  >
+                    닫기
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
