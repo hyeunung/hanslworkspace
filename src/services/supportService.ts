@@ -56,6 +56,7 @@ class SupportService {
           inquiry_type: payload.inquiry_type,
           subject: payload.subject,
           message: payload.message,
+          purchase_request_id: payload.purchase_request_id ?? null,
           purchase_info: payload.purchase_info,
           purchase_order_number: payload.purchase_order_number,
           status: 'open'

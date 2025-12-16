@@ -14,6 +14,7 @@ import { ko } from 'date-fns/locale'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { DateRange } from 'react-day-picker'
+import PurchaseDetailModal from '@/components/purchase/PurchaseDetailModal'
 
 export default function SupportMain() {
   const [inquiryType, setInquiryType] = useState('')
@@ -35,6 +36,7 @@ export default function SupportMain() {
   const [inquiries, setInquiries] = useState<SupportInquiry[]>([])
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
   const [currentUserEmail, setCurrentUserEmail] = useState('')
+  const [currentUserRoles, setCurrentUserRoles] = useState<string[]>([])
   const [loadingInquiries, setLoadingInquiries] = useState(true)
   const [expandedInquiry, setExpandedInquiry] = useState<number | null>(null)
   
@@ -44,6 +46,10 @@ export default function SupportMain() {
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [editingItem, setEditingItem] = useState<any>(null)
+
+  // 전체항목 탭 상세모달(PurchaseDetailModal) 재사용
+  const [purchaseDetailModalOpen, setPurchaseDetailModalOpen] = useState(false)
+  const [purchaseDetailId, setPurchaseDetailId] = useState<number | null>(null)
 
   // 초기 데이터 로드
   useEffect(() => {
@@ -82,6 +88,7 @@ export default function SupportMain() {
         ? employee.purchase_role
         : employee.purchase_role?.split(',').map((r: string) => r.trim()) || []
       
+      setCurrentUserRoles(roles)
       const adminStatus = roles.includes('app_admin')
       setIsAdmin(adminStatus)
       
@@ -209,6 +216,7 @@ ${purchaseInfo}`;
       inquiry_type: inquiryType as any,
       subject,
       message: finalMessage,
+      purchase_request_id: selectedPurchase?.id,
       purchase_info: purchaseInfo,
       purchase_order_number: selectedPurchase?.purchase_order_number
     })
@@ -279,6 +287,43 @@ ${purchaseInfo}`;
   const viewInquiryDetail = (inquiry: SupportInquiry) => {
     setSelectedInquiryDetail(inquiry)
     setShowDetailModal(true)
+  }
+
+  const openPurchaseDetailFromInquiry = async (inquiry: SupportInquiry) => {
+    try {
+      // 1) 가장 정확한 값: purchase_request_id (신규 문의부터 저장됨)
+      if (inquiry.purchase_request_id) {
+        setPurchaseDetailId(inquiry.purchase_request_id)
+        setPurchaseDetailModalOpen(true)
+        return
+      }
+
+      // 2) 과거 데이터 호환: purchase_order_number로 purchase_requests에서 id 조회
+      const orderNumber = inquiry.purchase_order_number?.trim()
+      if (!orderNumber) {
+        toast.error('연결된 발주번호가 없습니다.')
+        return
+      }
+
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('purchase_requests')
+        .select('id')
+        .eq('purchase_order_number', orderNumber)
+        .limit(1)
+        .maybeSingle()
+
+      if (error) throw error
+      if (!data?.id) {
+        toast.error('해당 발주를 찾을 수 없습니다.')
+        return
+      }
+
+      setPurchaseDetailId(data.id)
+      setPurchaseDetailModalOpen(true)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '발주 상세 정보를 여는 중 오류가 발생했습니다.')
+    }
   }
 
   // 품목 수정 시작
@@ -717,9 +762,17 @@ ${purchaseInfo}`;
                               </span>
                             )}
                             {inquiry.purchase_order_number && (
-                              <span className="badge-text text-blue-600">
+                              <button
+                                type="button"
+                                className="badge-text text-blue-600 hover:underline"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openPurchaseDetailFromInquiry(inquiry)
+                                }}
+                                title="발주 상세 열기"
+                              >
                                 [{inquiry.purchase_order_number}]
-                              </span>
+                              </button>
                             )}
                             <span className="badge-text text-gray-400 ml-auto whitespace-nowrap">
                               {inquiry.created_at && format(new Date(inquiry.created_at), 'MM/dd HH:mm')}
@@ -791,7 +844,17 @@ ${purchaseInfo}`;
                             {inquiry.purchase_order_number && (
                               <div>
                                 <span className="modal-value text-gray-700">관련 발주번호:</span>
-                                <span className="text-blue-600 ml-2">{inquiry.purchase_order_number}</span>
+                                <button
+                                  type="button"
+                                  className="text-blue-600 ml-2 hover:underline"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    openPurchaseDetailFromInquiry(inquiry)
+                                  }}
+                                  title="발주 상세 열기"
+                                >
+                                  {inquiry.purchase_order_number}
+                                </button>
                               </div>
                             )}
                             {inquiry.handled_by && (
@@ -1063,6 +1126,18 @@ ${purchaseInfo}`;
           )}
         </DialogContent>
       </Dialog>
+
+      {/* 전체항목 탭 상세모달(재사용) */}
+      <PurchaseDetailModal
+        purchaseId={purchaseDetailId}
+        isOpen={purchaseDetailModalOpen}
+        onClose={() => {
+          setPurchaseDetailModalOpen(false)
+          setPurchaseDetailId(null)
+        }}
+        currentUserRoles={currentUserRoles}
+        activeTab="done"
+      />
     </div>
   )
 }
