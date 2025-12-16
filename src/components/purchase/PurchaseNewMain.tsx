@@ -1008,49 +1008,34 @@ export default function PurchaseNewMain() {
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
         {/* 발주 기본 정보 - 모바일: 전체폭, 데스크톱: 1/4 폭 */}
         <div className="w-full lg:w-1/4 relative bg-muted/20 border border-border rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 p-4 lg:p-5 space-y-4">
-          <div className="flex flex-row items-start justify-between w-full mb-4">
-            <div className="flex flex-col">
-              <h4 className="font-semibold text-foreground">발주 기본 정보</h4>
-              <p className="text-xs text-muted-foreground mt-0.5">Basic Information</p>
-            </div>
-            <div className="flex flex-col items-start">
-              <Label className="mb-1 block text-xs">발주서 종류<span className="text-red-500 ml-1">*</span></Label>
-              <div className="flex gap-2">
-              <Select value={watch('po_template_type')} onValueChange={value => setValue('po_template_type', value)}>
-                <SelectTrigger className="!h-9 !py-0 w-28 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
-                  <SelectValue placeholder="종류 선택" />
-                </SelectTrigger>
-                <SelectContent position="popper" className="z-[9999]">
-                  <SelectItem value="일반">일반</SelectItem>
-                  <SelectItem value="PCB">PCB</SelectItem>
-                  <SelectItem value="소모품">소모품</SelectItem>
-                  <SelectItem value="기타">기타</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+        <div className="flex flex-row items-start justify-between w-full mb-4">
+          <div className="flex flex-col">
+            <h4 className="font-semibold text-foreground">발주 기본 정보</h4>
+            <p className="text-xs text-muted-foreground mt-0.5">Basic Information</p>
           </div>
-          </div>
-
-          {/* 보드명 선택 드롭다운 (발주서 종류 아래 추가) */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
+          <div className="flex flex-col items-start gap-1 shrink-0 self-end">
+            <div className="flex items-center justify-start w-full gap-2">
               <Label className="mb-1 block text-xs">보드명 (BOM 자동입력)</Label>
               {selectedBoard && (
-                <span className="text-[10px] text-blue-600 cursor-pointer hover:underline mb-1" onClick={() => setSelectedBoard(null)}>
+                <span
+                  className="text-[10px] text-blue-600 cursor-pointer hover:underline mb-1"
+                  onClick={() => setSelectedBoard(null)}
+                >
                   초기화
                 </span>
               )}
             </div>
-            <div className="flex gap-2">
-              <div className="flex-1">
+            <div className="flex gap-2 w-full justify-start">
+              <div className="w-28 sm:w-32">
                 <ReactSelect
                   options={boards.map(b => ({ value: b.id, label: b.board_name }))}
                   value={selectedBoard}
                   onChange={handleBoardSelect}
-                  placeholder="보드 선택 (자동입력)"
+                  placeholder="보드 선택"
                   isClearable
                   isSearchable
                   className="text-xs"
+                  menuPortalTarget={document.body}
                   styles={{
                     control: (base) => ({
                       ...base,
@@ -1066,9 +1051,18 @@ export default function PurchaseNewMain() {
                         boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'
                       }
                     }),
-                    menu: (base) => ({ ...base, zIndex: 9999, fontSize: '0.75rem' }),
-                    option: (base) => ({ ...base, padding: '6px 10px' }),
-                    placeholder: (base) => ({ ...base, color: '#9ca3af' })
+                    menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+                    menu: (base) => ({ 
+                      ...base, 
+                      zIndex: 9999, 
+                      fontSize: '0.75rem',
+                      minWidth: '240px',
+                      width: 'auto',
+                      whiteSpace: 'nowrap'
+                    }),
+                    option: (base) => ({ ...base, padding: '6px 10px', whiteSpace: 'nowrap' }),
+                    placeholder: (base) => ({ ...base, color: '#9ca3af' }),
+                    indicatorSeparator: () => ({ display: 'none' })
                   }}
                 />
               </div>
@@ -1095,6 +1089,7 @@ export default function PurchaseNewMain() {
               )}
             </div>
           </div>
+        </div>
 
           {watch('po_template_type') === '일반' && (
             <div className="space-y-4">
@@ -1457,15 +1452,22 @@ export default function PurchaseNewMain() {
                     {fields.length}개
                   </span>
                 </div>
-                <Select value={currency} onValueChange={setCurrency}>
-                  <SelectTrigger className="w-20 text-xs border-border business-radius-badge shadow-sm hover:shadow-md transition-shadow duration-200 bg-white" style={{ height: 'auto', padding: '2.5px 10px', minHeight: 'auto' }}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-md">
-                    <SelectItem value="KRW">KRW</SelectItem>
-                    <SelectItem value="USD">USD</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  <Select value={currency} onValueChange={setCurrency}>
+                    <SelectTrigger className="w-20 text-xs border-border business-radius-badge shadow-sm hover:shadow-md transition-shadow duration-200 bg-white" style={{ height: 'auto', padding: '2.5px 10px', minHeight: 'auto' }}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-md">
+                      <SelectItem value="KRW">KRW</SelectItem>
+                      <SelectItem value="USD">USD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {selectedBoard?.label && (
+                    <span className="text-[11px] text-gray-400">
+                      보드명: {selectedBoard.label}
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="flex items-center justify-end gap-2 flex-wrap sm:flex-nowrap">
                 <span className="badge-stats text-hansl-500 text-[10px] px-1.5 py-0.5 whitespace-nowrap flex-shrink-0 bg-hansl-50 business-radius-badge">
