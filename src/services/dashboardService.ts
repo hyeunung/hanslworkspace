@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import { logger } from '@/lib/logger'
+import { purchaseMemoryCache } from '@/stores/purchaseMemoryStore'
 import type { 
   DashboardData, 
   DashboardStats, 
@@ -7,7 +8,8 @@ import type {
   MyRequestStatus, 
   QuickAction,
   Employee,
-  PurchaseRequestWithDetails 
+  PurchaseRequestWithDetails,
+  Purchase
 } from '@/types/purchase'
 
 // 대시보드 데이터 캐시
@@ -20,6 +22,16 @@ const dashboardCache = {
 
 export class DashboardService {
   private supabase = createClient()
+
+  private hasValidPurchaseMemory(employee?: Employee | null): boolean {
+    if (!purchaseMemoryCache.allPurchases || purchaseMemoryCache.allPurchases.length === 0) return false
+    if (!employee?.id) return false
+    return purchaseMemoryCache.currentUser?.id === String(employee.id)
+  }
+
+  private getPurchaseMemory(): Purchase[] {
+    return (purchaseMemoryCache.allPurchases || []) as Purchase[]
+  }
 
   // 역할 파싱 유틸: 배열/CSV 문자열/단일 문자열을 모두 배열로 정규화
   private parseRoles(purchaseRole: string | string[] | null | undefined): string[] {
@@ -56,13 +68,18 @@ export class DashboardService {
       return dashboardCache.data
     }
 
+    // ✅ 발주요청 관리와 동일한 방식: 메모리 캐시(최근 2000건 + 품목) 기반으로 대시보드 구성
+    // - DataInitializer에서 이미 loadAllPurchaseData를 수행하므로 대시보드 진입 시 추가 DB 쿼리를 줄일 수 있음
+    // - 메모리가 없으면 기존 Supabase 쿼리 방식으로 폴백
+    const useMemory = this.hasValidPurchaseMemory(employee)
+
     const results = await Promise.allSettled([
-      this.getDashboardStats(employee),
-      this.getMyRecentRequests(employee),
-      this.getPendingApprovals(employee),
-      this.getQuickActions(employee),
-      this.getTodaySummary(employee),
-      this.getMyPurchaseStatus(employee)
+      useMemory ? this.getDashboardStatsFromMemory(employee) : this.getDashboardStats(employee),
+      useMemory ? this.getMyRecentRequestsFromMemory(employee) : this.getMyRecentRequests(employee),
+      useMemory ? this.getPendingApprovalsFromMemory(employee) : this.getPendingApprovals(employee),
+      useMemory ? this.getQuickActionsFromMemory(employee) : this.getQuickActions(employee),
+      useMemory ? this.getTodaySummaryFromMemory(employee) : this.getTodaySummary(employee),
+      useMemory ? this.getMyPurchaseStatusFromMemory(employee) : this.getMyPurchaseStatus(employee)
     ])
     
     const statsResult = results[0]
@@ -133,6 +150,296 @@ export class DashboardService {
     dashboardCache.employeeId = employee.id
 
     return dashboardData
+  }
+
+  // ===== Memory-based implementations (발주요청 관리와 동일: 메모리 캐시 기반) =====
+
+  private isPendingStatus(status: any): boolean {
+    return status === 'pending' || status === '대기' || status === '' || status === null || status === undefined
+  }
+
+  private toTime(value?: string | null): number {
+    if (!value) return 0
+    const t = new Date(value).getTime()
+    return Number.isFinite(t) ? t : 0
+  }
+
+  async getDashboardStatsFromMemory(employee: Employee): Promise<DashboardStats> {
+    const purchases = this.getPurchaseMemory()
+    const today = new Date().toISOString().split('T')[0]
+    const roles = this.parseRoles(employee.purchase_role)
+
+    const requesterName = employee.name || employee.email
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+
+    const total = purchases.length
+    const myRequests = purchases.filter(p => (p.requester_name || '') === employee.name).length
+    const pending = await this.getPendingCountFromMemory(employee, roles)
+    const completed = purchases.filter(p => p.is_received === true && this.toTime(p.received_at) >= this.toTime(monthStart)).length
+    const urgent = this.getUrgentCountFromMemory(employee, roles, threeDaysAgo)
+    const todayActions = this.getTodayActionsCountFromMemory(employee, today)
+
+    return { total, myRequests, pending, completed, urgent, todayActions }
+  }
+
+  async getMyRecentRequestsFromMemory(employee: Employee): Promise<MyRequestStatus[]> {
+    const purchases = this.getPurchaseMemory()
+    const requesterName = employee.name || employee.email
+
+    const filtered = purchases
+      .filter((item: any) => (item.requester_name || '') === requesterName)
+      .filter((item: any) => {
+        // 승인 진행중인 항목만 (승인 대기는 제외)
+        const middleApproved = item.middle_manager_status === 'approved'
+        const finalPending = this.isPendingStatus(item.final_manager_status)
+        const finalApproved = item.final_manager_status === 'approved'
+        const notPaid = !item.is_payment_completed
+        return (middleApproved && finalPending) || (finalApproved && notPaid)
+      })
+      .sort((a: any, b: any) => this.toTime(b.created_at) - this.toTime(a.created_at))
+      .slice(0, 5)
+
+    return filtered.map((item: any) => ({
+      ...item,
+      vendor_name: item.vendor_name,
+      total_items: (item.purchase_request_items || []).length,
+      progress_percentage: this.calculateProgress(item),
+      current_step: this.getCurrentStep(item),
+      next_action: this.getNextAction(item),
+      estimated_completion: this.estimateCompletion(item)
+    })) as MyRequestStatus[]
+  }
+
+  async getPendingApprovalsFromMemory(employee: Employee): Promise<PurchaseRequestWithDetails[]> {
+    const roles = this.parseRoles(employee.purchase_role)
+    if (roles.length === 0) return []
+
+    const purchases = this.getPurchaseMemory()
+
+    // 최신 순 정렬 후 처리 (기존 쿼리: request_date desc, limit 100)
+    const sorted = [...purchases].sort((a: any, b: any) => this.toTime(b.request_date) - this.toTime(a.request_date))
+
+    // 승인 대기인 항목만 필터링
+    const filteredPending = sorted.filter((item: any) => {
+      const middlePending = this.isPendingStatus(item.middle_manager_status)
+      const finalPending = this.isPendingStatus(item.final_manager_status)
+
+      // 반려된 경우는 제외
+      const middleRejected = item.middle_manager_status === 'rejected'
+      const finalRejected = item.final_manager_status === 'rejected'
+      if (middleRejected || finalRejected) return false
+
+      return middlePending || finalPending
+    })
+
+    // 역할별 권한에 따른 추가 필터링
+    let roleFiltered = filteredPending
+
+    if (roles.includes('app_admin')) {
+      // all
+    } else if (roles.includes('middle_manager')) {
+      roleFiltered = filteredPending.filter((item: any) => this.isPendingStatus(item.middle_manager_status))
+    } else if (roles.includes('final_approver') || roles.includes('ceo')) {
+      roleFiltered = filteredPending.filter((item: any) => item.middle_manager_status === 'approved' && this.isPendingStatus(item.final_manager_status))
+    } else if (roles.includes('raw_material_manager') || roles.includes('consumable_manager')) {
+      roleFiltered = filteredPending.filter((item: any) => item.middle_manager_status === 'approved' && this.isPendingStatus(item.final_manager_status))
+    } else if (roles.includes('lead buyer')) {
+      roleFiltered = filteredPending.filter((item: any) => item.final_manager_status === 'approved' && !item.is_payment_completed)
+    } else {
+      roleFiltered = []
+    }
+
+    // 데이터 가공: total_amount 보강
+    const enhanced = roleFiltered.slice(0, 100).map((item: any) => {
+      const items = item.purchase_request_items || item.items || []
+      const total_amount = Number(item.total_amount) || items.reduce((sum: number, i: any) => {
+        const amount = Number(i?.amount_value) || (Number(i?.quantity) || 0) * (Number(i?.unit_price_value) || 0)
+        return sum + amount
+      }, 0)
+
+      return {
+        ...item,
+        purchase_request_items: items,
+        items,
+        total_amount,
+        vendor_name: item.vendor_name || item.project_vendor || item.vendor?.vendor_name
+      }
+    })
+
+    return enhanced as PurchaseRequestWithDetails[]
+  }
+
+  async getQuickActionsFromMemory(employee: Employee): Promise<QuickAction[]> {
+    const roles = this.parseRoles(employee.purchase_role)
+    const actions: QuickAction[] = []
+
+    if (roles.includes('app_admin') || roles.includes('middle_manager') || roles.includes('final_approver') || roles.includes('ceo')) {
+      const pendingCount = await this.getPendingCountFromMemory(employee, roles)
+      if (pendingCount > 0) {
+        actions.push({
+          id: 'approve',
+          type: 'approve',
+          label: '승인 대기',
+          description: `${pendingCount}건의 승인 대기 중`,
+          count: pendingCount,
+          color: 'red'
+        })
+      }
+    }
+
+    if (roles.includes('lead buyer') || roles.includes('lead buyer')) {
+      const purchases = this.getPurchaseMemory()
+      const purchaseCount = purchases.filter((p: any) => p.final_manager_status === 'approved' && p.is_payment_completed === false).length
+      if (purchaseCount > 0) {
+        actions.push({
+          id: 'purchase',
+          type: 'purchase',
+          label: '구매 처리',
+          description: `${purchaseCount}건의 구매 대기 중`,
+          count: purchaseCount,
+          color: 'yellow'
+        })
+      }
+    }
+
+    return actions
+  }
+
+  async getTodaySummaryFromMemory(employee: Employee) {
+    const purchases = this.getPurchaseMemory()
+    const today = new Date().toISOString().split('T')[0]
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    const inRange = (ts?: string | null) => {
+      const t = this.toTime(ts)
+      return t >= this.toTime(today) && t < this.toTime(tomorrow)
+    }
+
+    const approved = purchases.filter((p: any) => inRange(p.updated_at) && (p.middle_manager_status === 'approved' || p.final_manager_status === 'approved')).length
+    const requested = purchases.filter((p: any) => (p.requester_name || '') === employee.name && inRange(p.created_at)).length
+    const received = purchases.filter((p: any) => p.is_received === true && inRange(p.received_at)).length
+
+    return { approved, requested, received }
+  }
+
+  async getMyPurchaseStatusFromMemory(employee: Employee): Promise<{ waitingPurchase: PurchaseRequestWithDetails[], waitingDelivery: PurchaseRequestWithDetails[], recentCompleted: PurchaseRequestWithDetails[] }> {
+    const roles = this.parseRoles(employee.purchase_role)
+    const isLeadBuyer = roles.includes('lead buyer') || roles.includes('app_admin')
+
+    const requesterName = employee.name || employee.email
+    const purchases = this.getPurchaseMemory()
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
+    // lead buyer/app_admin: 전체, 그 외: 본인 것만
+    const allMyRequests = isLeadBuyer
+      ? purchases
+      : purchases.filter((p: any) => (p.requester_name || '') === requesterName)
+
+    const waitingPurchase = allMyRequests.filter((item: any) => {
+      const category = (item.payment_category || '').trim()
+      const isPurchaseRequest = category === '구매 요청'
+      const notPaid = !item.is_payment_completed
+      if (!isPurchaseRequest || !notPaid) return false
+
+      const isSeonJin = (item.progress_type || '').includes('선진행')
+      if (isSeonJin) return true
+
+      const isIlban = (item.progress_type || '').includes('일반') || !item.progress_type || item.progress_type === ''
+      const finalApproved = item.final_manager_status === 'approved'
+      return isIlban && finalApproved
+    })
+
+    const waitingDelivery = purchases.filter((item: any) => {
+      const notReceived = !item.is_received
+      const isSeonJin = (item.progress_type || '').includes('선진행')
+
+      // 입고 대기는 항상 본인 것만 (기존 로직)
+      if ((item.requester_name || '') !== requesterName) return false
+
+      if (notReceived && isSeonJin) return true
+
+      const finalApproved = item.final_manager_status === 'approved'
+      return notReceived && finalApproved
+    })
+
+    const recentCompleted = purchases.filter((item: any) => {
+      if (item.is_received !== true) return false
+      if (!item.received_at) return false
+      if ((item.requester_name || '') !== requesterName) return false
+      return this.toTime(item.received_at) >= this.toTime(sevenDaysAgo)
+    })
+
+    // 대시보드 UI용: 최신순 정렬 (created_at desc)
+    const sortDesc = (a: any, b: any) => this.toTime(b.created_at) - this.toTime(a.created_at)
+
+    return {
+      waitingPurchase: [...waitingPurchase].sort(sortDesc) as any,
+      waitingDelivery: [...waitingDelivery].sort(sortDesc) as any,
+      recentCompleted: [...recentCompleted].sort(sortDesc) as any
+    }
+  }
+
+  private async getPendingCountFromMemory(employee: Employee, roles: string[]): Promise<number> {
+    const purchases = this.getPurchaseMemory()
+
+    if (roles.includes('app_admin')) {
+      const mid = purchases.filter((p: any) => this.isPendingStatus(p.middle_manager_status)).length
+      const fin = purchases.filter((p: any) => p.middle_manager_status === 'approved' && this.isPendingStatus(p.final_manager_status)).length
+      const pur = purchases.filter((p: any) => p.final_manager_status === 'approved' && p.is_payment_completed === false).length
+      return mid + fin + pur
+    }
+
+    if (roles.includes('middle_manager')) {
+      return purchases.filter((p: any) => this.isPendingStatus(p.middle_manager_status)).length
+    }
+
+    if (roles.includes('final_approver') || roles.includes('ceo')) {
+      return purchases.filter((p: any) => p.middle_manager_status === 'approved' && this.isPendingStatus(p.final_manager_status)).length
+    }
+
+    if (roles.includes('lead buyer')) {
+      return purchases.filter((p: any) => p.final_manager_status === 'approved' && p.is_payment_completed === false).length
+    }
+
+    return 0
+  }
+
+  private getUrgentCountFromMemory(employee: Employee, roles: string[], threeDaysAgoIso: string): number {
+    const purchases = this.getPurchaseMemory()
+    const threeDaysAgo = this.toTime(threeDaysAgoIso)
+
+    const base = purchases.filter((p: any) => this.toTime(p.created_at) > 0 && this.toTime(p.created_at) < threeDaysAgo)
+
+    if (roles.includes('app_admin')) {
+      return base.filter((p: any) =>
+        p.middle_manager_status === 'pending' ||
+        p.final_manager_status === 'pending' ||
+        p.is_payment_completed === false
+      ).length
+    }
+    if (roles.includes('middle_manager')) {
+      return base.filter((p: any) => p.middle_manager_status === 'pending').length
+    }
+    if (roles.includes('final_approver') || roles.includes('ceo')) {
+      return base.filter((p: any) => p.middle_manager_status === 'approved' && p.final_manager_status === 'pending').length
+    }
+    if (roles.includes('lead buyer')) {
+      return base.filter((p: any) => p.final_manager_status === 'approved' && p.is_payment_completed === false).length
+    }
+    return 0
+  }
+
+  private getTodayActionsCountFromMemory(employee: Employee, todayIsoDate: string): number {
+    const purchases = this.getPurchaseMemory()
+    const tomorrowIsoDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
+    const inRange = (ts?: string | null) => {
+      const t = this.toTime(ts)
+      return t >= this.toTime(todayIsoDate) && t < this.toTime(tomorrowIsoDate)
+    }
+
+    return purchases.filter((p: any) => inRange(p.updated_at) && (p.requester_name || '') === employee.name).length
   }
 
   // 통계 정보 (우선순위 재정렬)
@@ -811,6 +1118,22 @@ export class DashboardService {
       return []
     }
 
+    // ✅ 메모리 캐시가 있으면 DB 조회 없이 즉시 계산 (대시보드 체감 속도 개선)
+    if (this.hasValidPurchaseMemory(employee)) {
+      const purchases = this.getPurchaseMemory()
+        .filter((item: any) => item.is_po_download !== true) // NULL/false 포함
+        .sort((a: any, b: any) => this.toTime(b.created_at) - this.toTime(a.created_at))
+        .slice(0, 500)
+
+      const filteredData = purchases.filter((item: any) => {
+        if (item.is_po_download === true) return false
+        if (item.progress_type === '선진행') return true
+        return item.final_manager_status === 'approved'
+      })
+
+      return filteredData as any
+    }
+
     try {
       // 미다운로드 발주서만 먼저 가져오기 (NULL이거나 false인 것들)
       const { data, error } = await this.supabase
@@ -836,64 +1159,10 @@ export class DashboardService {
       }
 
       // 클라이언트 사이드에서 조건에 맞는 것만 필터링
-      const filteredData = (data || []).filter((item: any, index: number) => {
-        // 디버깅: 처음 5개 항목의 상세 정보 로깅
-        if (index < 5) {
-          logger.info('[미다운로드 필터링 디버그]', {
-            index,
-            id: item.id,
-            purchase_order_number: item.purchase_order_number,
-            progress_type: item.progress_type,
-            final_manager_status: item.final_manager_status,
-            middle_manager_status: item.middle_manager_status,
-            is_po_download: item.is_po_download,
-            payment_category: item.payment_category,
-            requester_name: item.requester_name
-          })
-        }
-        
-        // is_po_download가 true인 것만 제외 (실제 다운로드 완료된 것)
-        if (item.is_po_download === true) {
-          if (index < 5) logger.info(`[필터링] ${item.purchase_order_number}: 다운로드 완료 -> 제외`)
-          return false
-        }
-        
-        // 선진행 건은 승인 여부와 관계없이 포함
-        if (item.progress_type === '선진행') {
-          if (index < 5) logger.info(`[필터링] ${item.purchase_order_number}: 선진행 -> 포함`)
-          return true
-        }
-        
-        // 일반 건은 최종승인(final_manager_status)이 난 것만 포함
-        if (item.final_manager_status === 'approved') {
-          if (index < 5) logger.info(`[필터링] ${item.purchase_order_number}: 일반 + 최종승인 완료 -> 포함`)
-          return true
-        }
-        
-        // 그 외는 제외
-        if (index < 5) {
-          logger.info(`[필터링] ${item.purchase_order_number}: 조건 미충족 -> 제외`, {
-            progress_type: item.progress_type,
-            final_manager_status: item.final_manager_status
-          })
-        }
-        return false
-      })
-
-      logger.info('[DashboardService] 미다운로드 발주서 필터링 결과:', {
-        totalFetched: data?.length || 0,
-        afterFilter: filteredData.length,
-        roles,
-        employeeName: employee.name,
-        sampleItems: filteredData.slice(0, 3).map((item: any) => ({
-          id: item.id,
-          purchase_order_number: item.purchase_order_number,
-          requester_name: item.requester_name,
-          payment_category: item.payment_category,
-          progress_type: item.progress_type,
-          is_po_download: item.is_po_download,
-          is_payment_completed: item.is_payment_completed
-        }))
+      const filteredData = (data || []).filter((item: any) => {
+        if (item.is_po_download === true) return false
+        if (item.progress_type === '선진행') return true
+        return item.final_manager_status === 'approved'
       })
 
       return filteredData

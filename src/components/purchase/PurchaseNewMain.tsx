@@ -789,11 +789,11 @@ export default function PurchaseNewMain() {
         }
       }
 
-      // 품목들 저장
+      // 품목들 저장 - 배열 순서 그대로 저장 (엑셀 붙여넣기 순서 유지)
       for (const [idx, item] of fields.entries()) {
         const { error: itemErr } = await supabase.from("purchase_request_items").insert({
           purchase_request_id: prId,
-          line_number: idx + 1,
+          line_number: idx + 1, // 배열 순서대로 1, 2, 3... 설정
           item_name: item.item_name,
           specification: item.specification,
           quantity: item.quantity,
