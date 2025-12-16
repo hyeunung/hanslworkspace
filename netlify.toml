@@ -3,6 +3,20 @@
   to = "/index.html"
   status = 200
 
+[headers]
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+    X-Content-Type-Options = "nosniff"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "no-store"
+    X-Content-Type-Options = "nosniff"
+
 [build]
   publish = "dist"
 
