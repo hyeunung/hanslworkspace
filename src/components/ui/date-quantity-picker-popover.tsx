@@ -44,6 +44,12 @@ export function DateQuantityPickerPopover({
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(defaultDate)
   const [quantity, setQuantity] = useState<string>(defaultQuantity?.toString() || '')
 
+  const handleFillRequestedQuantity = () => {
+    if (maxQuantity !== undefined) {
+      setQuantity(maxQuantity.toString())
+    }
+  }
+
   const handleConfirm = () => {
     if (!selectedDate) {
       return
@@ -125,9 +131,22 @@ export function DateQuantityPickerPopover({
           />
           {!hideQuantityInput && (
             <div className="mt-3 px-1">
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                실제입고수량
-              </label>
+              <div className="flex items-center justify-between mb-1 gap-2">
+                <label className="block text-xs font-medium text-gray-700">
+                  실제입고수량
+                </label>
+                {maxQuantity !== undefined && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleFillRequestedQuantity}
+                    className="h-6 px-2 text-[10px] border-gray-200 text-hansl-600"
+                  >
+                    요청수량과 동일
+                  </Button>
+                )}
+              </div>
               <Input
                 type="number"
                 value={quantity}
