@@ -159,7 +159,11 @@ function PurchaseDetailModal({
       // 캐시에서 최신 데이터 가져와서 로컬 상태 업데이트
       const updatedPurchase = findPurchaseInMemory(purchaseId)
       if (updatedPurchase) {
-        setPurchase(updatedPurchase as PurchaseRequestWithDetails)
+        setPurchase({
+          ...updatedPurchase,
+          id: String(updatedPurchase.id),
+          is_po_generated: false
+        } as PurchaseRequestWithDetails)
       }
     }
 
