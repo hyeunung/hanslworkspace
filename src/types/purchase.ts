@@ -135,6 +135,10 @@ export interface PurchaseRequest {
   desired_delivery_date?: string
   delivery_request_date?: string
   revised_delivery_request_date?: string
+  // 입고일 수정 요청 관련 필드
+  delivery_revision_requested?: boolean
+  delivery_revision_requested_at?: string | null
+  delivery_revision_requested_by?: string | null
   payment_category?: string
   request_type?: string
   progress_type?: string
@@ -294,6 +298,11 @@ export interface Purchase {
   request_date: string;
   delivery_request_date?: string;
   revised_delivery_request_date?: string;
+  delivery_status?: 'pending' | 'partial' | 'completed';
+  // 입고일 수정 요청 관련 필드
+  delivery_revision_requested?: boolean;
+  delivery_revision_requested_at?: string | null;
+  delivery_revision_requested_by?: string | null;
   progress_type: string;
   payment_category: string;
   currency: string;

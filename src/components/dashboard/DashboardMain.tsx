@@ -1,9 +1,10 @@
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { dashboardService } from '@/services/dashboardService'
 import { createClient } from '@/lib/supabase/client'
 import { updatePurchaseInMemory } from '@/services/purchaseDataLoader'
+import { addCacheListener } from '@/stores/purchaseMemoryStore'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -98,6 +99,23 @@ export default function DashboardMain() {
 
   useEffect(() => {
     loadDashboardData()
+  }, [loadDashboardData])
+
+  // 🚀 Realtime 이벤트 구독 - DB 변경 시 자동 새로고침
+  const isFirstMount = useRef(true)
+  useEffect(() => {
+    const handleCacheUpdate = () => {
+      // 첫 마운트 시에는 무시 (초기 로드와 중복 방지)
+      if (isFirstMount.current) {
+        isFirstMount.current = false
+        return
+      }
+      // Realtime 이벤트 발생 시 백그라운드 새로고침
+      loadDashboardData(false, true)
+    }
+
+    const unsubscribe = addCacheListener(handleCacheUpdate)
+    return () => unsubscribe()
   }, [loadDashboardData])
 
   const handleQuickApprove = async (requestId: string) => {

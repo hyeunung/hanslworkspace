@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { logger } from '@/lib/logger'
+import { purchaseRealtimeService } from '@/services/purchaseRealtimeService'
 import type { Employee } from '@/types/purchase'
 
 interface AuthContextType {
@@ -101,6 +102,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
           email: employeeData.email, 
           roles: parseRoles(employeeData.purchase_role) 
         })
+
+        // 🚀 Realtime 구독 시작 (로그인 성공 시)
+        purchaseRealtimeService.subscribe()
+        logger.info('[AuthContext] Realtime 구독 시작됨')
       }
     } catch (error) {
       logger.error('[AuthContext] 인증 데이터 로드 중 오류', error)
@@ -142,6 +147,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
       } else if (event === 'SIGNED_OUT') {
         logger.info('[AuthContext] User signed out')
+        
+        // 🚀 Realtime 구독 해제 (로그아웃 시)
+        purchaseRealtimeService.unsubscribe()
+        logger.info('[AuthContext] Realtime 구독 해제됨')
+        
         setUser(null)
         setEmployee(null)
         setLoading(false)

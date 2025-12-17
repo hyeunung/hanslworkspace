@@ -8,13 +8,16 @@ import FastPurchaseTable from "@/components/purchase/FastPurchaseTable";
 import FilterToolbar, { FilterRule, SortRule } from "@/components/purchase/FilterToolbar";
 import { updatePurchaseInMemory, loadAllPurchaseData } from "@/services/purchaseDataLoader";
 import { markPurchaseAsPaymentCompleted, markPurchaseAsReceived, isCacheValid, purchaseMemoryCache } from '@/stores/purchaseMemoryStore';
+import DeliveryDateWarningModal, { useDeliveryWarningCount } from "@/components/purchase/DeliveryDateWarningModal";
 
-import { Package, Info } from "lucide-react";
+import { Package, Info, AlertTriangle } from "lucide-react";
 import { downloadPurchaseOrderExcel } from '@/utils/excelDownload';
 
 // Lazy load modal for better performance
 const PurchaseItemsModal = lazy(() => import("@/components/purchase/PurchaseItemsModal"));
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Purchase } from "@/types/purchase";
@@ -41,6 +44,12 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   const supabase = createClient();
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isWarningModalOpen, setIsWarningModalOpen] = useState(false);
+  
+  // 세션 스토리지 키로 컴포넌트 리마운트되어도 플래그 유지
+  const SHOWN_WARNING_KEY = 'delivery_warning_shown';
+  const getHasShownWarning = () => sessionStorage.getItem(SHOWN_WARNING_KEY) === 'true';
+  const setHasShownWarning = () => sessionStorage.setItem(SHOWN_WARNING_KEY, 'true');
   
   // 고급 필터 상태 관리
   const [activeFilters, setActiveFilters] = useState<FilterRule[]>([]);
@@ -170,6 +179,25 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   const visiblePurchases = useMemo(() => {
     return filterByEmployeeVisibility(purchases, currentUserRoles);
   }, [purchases, currentUserRoles]);
+
+  // 입고 일정 경고 항목 수 계산 (본인 발주만)
+  const deliveryWarningCount = useDeliveryWarningCount(visiblePurchases, currentUserName);
+  
+  // 로딩 완료 후 경고 모달 자동 표시 (세션당 1회, 세션 스토리지로 관리)
+  useEffect(() => {
+    // 이미 표시했으면 무시 (세션 스토리지 체크)
+    if (getHasShownWarning()) return;
+    
+    if (!loading && deliveryWarningCount > 0 && visiblePurchases.length > 0) {
+      const timer = setTimeout(() => {
+        if (!getHasShownWarning()) { // 타이머 실행 시점에 다시 체크
+          setHasShownWarning();
+          setIsWarningModalOpen(true);
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, deliveryWarningCount, visiblePurchases.length]);
 
 
   // 초기 selectedEmployee 설정 (defaultEmployeeByTab이 계산된 후)
@@ -810,13 +838,37 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     };
   }, [selectedPurchase]);
 
+  // 경고 모달에서 항목 클릭 시 상세 모달 열기
+  const handleWarningItemClick = useCallback((purchase: Purchase) => {
+    setIsWarningModalOpen(false);
+    setSelectedPurchase(purchase);
+    setIsModalOpen(true);
+  }, []);
+
   return (
     <div className="w-full">
       {/* Header */}
       <div className="mb-4">
-        <div>
-          <h1 className="page-title">발주요청 관리</h1>
-          <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Purchase Management</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="page-title">발주요청 관리</h1>
+            <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Purchase Management</p>
+          </div>
+          
+          {/* 입고 지연 경고 버튼 */}
+          {deliveryWarningCount > 0 && (
+            <Button
+              onClick={() => setIsWarningModalOpen(true)}
+              variant="outline"
+              className="flex items-center gap-2 border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 hover:border-orange-400"
+            >
+              <AlertTriangle className="w-4 h-4" />
+              <span className="text-xs font-medium">입고 지연</span>
+              <Badge variant="outline" className="bg-orange-100 text-orange-700 border-orange-300 text-[10px] px-1.5 py-0">
+                {deliveryWarningCount}건
+              </Badge>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1035,6 +1087,17 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
           />
         </Suspense>
       )}
+      
+      {/* 입고 일정 지연 경고 모달 */}
+      <DeliveryDateWarningModal
+        isOpen={isWarningModalOpen}
+        onClose={() => {
+          setHasShownWarning(); // 세션 스토리지에 저장 (재오픈 방지)
+          setIsWarningModalOpen(false);
+        }}
+        purchases={visiblePurchases}
+        currentUserName={currentUserName}
+      />
     </div>
   );
 }

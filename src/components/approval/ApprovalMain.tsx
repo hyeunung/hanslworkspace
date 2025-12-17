@@ -1,8 +1,9 @@
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAuth } from '@/contexts/AuthContext'
 import { PurchaseRequestWithDetails } from '@/types/purchase'
+import { addCacheListener } from '@/stores/purchaseMemoryStore'
 import ApprovalCard from '@/components/approval/ApprovalCard'
 import ApprovalModal from '@/components/approval/ApprovalModal'
 import BatchApprovalButton from '@/components/approval/BatchApprovalButton'
@@ -46,6 +47,23 @@ export default function ApprovalMain() {
       loadApprovals()
     }
   }, [employee, refreshTrigger])
+
+  // 🚀 Realtime 이벤트 구독 - DB 변경 시 자동 새로고침
+  const isFirstMount = useRef(true)
+  useEffect(() => {
+    const handleCacheUpdate = () => {
+      // 첫 마운트 시에는 무시 (초기 로드와 중복 방지)
+      if (isFirstMount.current) {
+        isFirstMount.current = false
+        return
+      }
+      // Realtime 이벤트 발생 시 데이터 새로고침
+      setRefreshTrigger(prev => prev + 1)
+    }
+
+    const unsubscribe = addCacheListener(handleCacheUpdate)
+    return () => unsubscribe()
+  }, [])
 
   const loadApprovals = async () => {
     if (!employee) return

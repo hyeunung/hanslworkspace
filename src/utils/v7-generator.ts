@@ -428,7 +428,7 @@ async function parseCoordinateFile(file: File): Promise<ParsedCoordItem[]> {
       const cols = trimmed.split(/\s{2,}|\t/);
       if (cols.length < 4) continue;
       
-      const ref = cols[colMap.ref]?.trim() || '';
+      const ref = (cols[colMap.ref]?.trim() || '').toUpperCase();
       if (!ref || Utils.isTP(ref)) continue;
       
       items.push({
@@ -472,7 +472,7 @@ async function parseCoordinateFile(file: File): Promise<ParsedCoordItem[]> {
       const row = rows[r];
       if (!row) continue;
       
-      const ref = String(row[colMap.ref] || '').trim();
+      const ref = String(row[colMap.ref] || '').trim().toUpperCase();
       if (!ref || Utils.isTP(ref)) continue;
       
       items.push({
@@ -596,13 +596,22 @@ export async function processBOMAndCoordinates(
   // 2. 파일 파싱
   const parsedBOM = await parseBOMFile(bomFile);
   const parsedCoord = await parseCoordinateFile(coordFile);
+
+  // Ref를 대문자로 정규화해 매핑 실패 방지
+  parsedBOM.forEach(item => {
+    item.refs = item.refs.map(ref => ref.toUpperCase());
+  });
+  const normalizedCoord = parsedCoord.map(coord => ({
+    ...coord,
+    ref: coord.ref.toUpperCase(),
+  }));
   
   console.log(`📄 BOM 항목: ${parsedBOM.length}개`);
-  console.log(`📍 좌표 항목: ${parsedCoord.length}개`);
+  console.log(`📍 좌표 항목: ${normalizedCoord.length}개`);
   
   // 3. Ref → 좌표 맵 생성
   const coordMap = new Map<string, ParsedCoordItem>();
-  for (const coord of parsedCoord) {
+  for (const coord of normalizedCoord) {
     coordMap.set(coord.ref, coord);
   }
   
@@ -767,7 +776,7 @@ export async function processBOMAndCoordinates(
     
     // 좌표 처리
     for (const ref of item.refs) {
-      const coord = coordMap.get(ref);
+      const coord = coordMap.get(ref.toUpperCase());
       if (!coord) continue;
       
       const coordItem: CoordinateItem = {

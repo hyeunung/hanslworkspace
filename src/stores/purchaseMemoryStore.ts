@@ -1,10 +1,14 @@
 /**
  * 메모리 기반 구매 데이터 관리 시스템
  * 초기 로딩 시 모든 데이터를 메모리에 저장하고 클라이언트에서 필터링
+ * 
+ * Realtime 연동:
+ * - purchaseRealtimeService에서 DB 변경 감지 시 자동으로 캐시 업데이트
+ * - 기존 폴링(10ms, 50ms) 방식 제거하고 이벤트 기반으로 전환
  */
 
 import type { Purchase, Employee } from '@/types/purchase'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 // 전역 메모리 캐시
 export interface PurchaseMemoryCache {
@@ -536,22 +540,48 @@ export const markBulkExpenditureSet = (purchaseId: number | string, expenditureD
   return result
 }
 
+// ============================================================
+// 🚀 Realtime 이벤트 리스너 시스템
+// 폴링 완전 제거 - DB 변화가 있을 때만 UI 업데이트
+// ============================================================
+
+// 구독자 콜백 저장소
+type CacheUpdateListener = () => void
+const cacheListeners = new Set<CacheUpdateListener>()
+
+// 리스너 등록 (Realtime 서비스에서 호출)
+export const addCacheListener = (listener: CacheUpdateListener): (() => void) => {
+  cacheListeners.add(listener)
+  return () => cacheListeners.delete(listener)
+}
+
+// 모든 리스너에게 변경 알림 (Realtime 서비스에서 호출)
+export const notifyCacheListeners = () => {
+  cacheListeners.forEach(listener => {
+    try {
+      listener()
+    } catch (error) {
+      console.error('[CacheListener] 에러:', error)
+    }
+  })
+}
+
 // React 훅: 메모리 캐시 상태를 구독하여 실시간 변경 감지
-export const usePurchaseMemory = () => {
-  const [memoryState, setMemoryState] = useState(purchaseMemoryCache);
-  const [lastFetch, setLastFetch] = useState(purchaseMemoryCache.lastFetch);
+// 🚀 순수 이벤트 기반 - 폴링 없음!
+export const usePurchaseMemoryStore = () => {
+  const [memoryState, setMemoryState] = useState(purchaseMemoryCache)
 
   useEffect(() => {
-    // lastFetch 시간 변경을 기반으로 효율적인 변경 감지
-    const interval = setInterval(() => {
-      if (purchaseMemoryCache.lastFetch !== lastFetch) {
-        setMemoryState({ ...purchaseMemoryCache });
-        setLastFetch(purchaseMemoryCache.lastFetch);
-      }
-    }, 50); // 50ms마다 lastFetch만 확인
+    // 캐시 변경 시 상태 업데이트
+    const handleCacheUpdate = () => {
+      setMemoryState({ ...purchaseMemoryCache })
+    }
 
-    return () => clearInterval(interval);
-  }, [lastFetch]);
+    // 리스너 등록
+    const unsubscribe = addCacheListener(handleCacheUpdate)
+
+    return () => unsubscribe()
+  }, [])
 
   return {
     allPurchases: memoryState.allPurchases,
@@ -560,5 +590,8 @@ export const usePurchaseMemory = () => {
     error: memoryState.error,
     stats: memoryState.stats,
     lastFetch: memoryState.lastFetch
-  };
-};
+  }
+}
+
+// 호환성을 위한 alias (기존 이름 유지)
+export const usePurchaseMemory = usePurchaseMemoryStore

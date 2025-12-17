@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { 
   Dialog, 
   DialogContent,
   DialogHeader,
   DialogTitle
 } from '@/components/ui/dialog'
+import { addCacheListener } from '@/stores/purchaseMemoryStore'
 import { Button } from '@/components/ui/button'
 import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { 
@@ -73,6 +74,24 @@ export default function PurchaseStatusModal({
     }
     fetchUserRoles()
   }, [type])
+
+  // 🚀 Realtime 이벤트 구독 - 모달이 열려있는 동안 실시간 업데이트
+  const isFirstMount = useRef(true)
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleCacheUpdate = () => {
+      if (isFirstMount.current) {
+        isFirstMount.current = false
+        return
+      }
+      // Realtime 이벤트 발생 시 부모에게 새로고침 요청
+      onRefresh?.()
+    }
+
+    const unsubscribe = addCacheListener(handleCacheUpdate)
+    return () => unsubscribe()
+  }, [isOpen, onRefresh])
 
   // 구매완료 처리 함수 (작동하는 버전)
   const handlePurchaseComplete = async (itemId: string) => {

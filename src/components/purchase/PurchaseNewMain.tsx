@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, X, Save, Package } from "lucide-react";
+import { Plus, X, Save, Package, Copy, Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { invalidatePurchaseMemoryCache } from '@/stores/purchaseMemoryStore';
@@ -152,6 +152,9 @@ export default function PurchaseNewMain() {
   const [hasChanges, setHasChanges] = useState(false);
   // 중복 제출 방지용 ref
   const isSubmittingRef = useRef(false);
+  
+  // 전체복사 버튼 상태
+  const [isCopied, setIsCopied] = useState(false);
 
   const { control, handleSubmit: rhHandleSubmit, watch, setValue, reset, getValues } = useFormRH<FormValues>({
     defaultValues: {
@@ -1008,11 +1011,11 @@ export default function PurchaseNewMain() {
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
         {/* 발주 기본 정보 - 모바일: 전체폭, 데스크톱: 1/4 폭 */}
         <div className="w-full lg:w-1/4 relative bg-muted/20 border border-border rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 p-4 lg:p-5 space-y-4">
-        <div className="flex flex-row items-start justify-between w-full mb-4">
-          <div className="flex flex-col">
-            <h4 className="font-semibold text-foreground">발주 기본 정보</h4>
-            <p className="text-xs text-muted-foreground mt-0.5">Basic Information</p>
-          </div>
+          <div className="flex flex-row items-start justify-between w-full mb-4">
+            <div className="flex flex-col">
+              <h4 className="font-semibold text-foreground">발주 기본 정보</h4>
+              <p className="text-xs text-muted-foreground mt-0.5">Basic Information</p>
+            </div>
           <div className="flex flex-col items-start gap-1 shrink-0 self-end">
             <div className="flex items-center justify-start w-full gap-2">
               <Label className="mb-1 block text-xs">보드명 (BOM 자동입력)</Label>
@@ -1088,8 +1091,8 @@ export default function PurchaseNewMain() {
                 </div>
               )}
             </div>
+            </div>
           </div>
-        </div>
 
           {watch('po_template_type') === '일반' && (
             <div className="space-y-4">
@@ -1453,15 +1456,15 @@ export default function PurchaseNewMain() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Select value={currency} onValueChange={setCurrency}>
-                    <SelectTrigger className="w-20 text-xs border-border business-radius-badge shadow-sm hover:shadow-md transition-shadow duration-200 bg-white" style={{ height: 'auto', padding: '2.5px 10px', minHeight: 'auto' }}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-md">
-                      <SelectItem value="KRW">KRW</SelectItem>
-                      <SelectItem value="USD">USD</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <Select value={currency} onValueChange={setCurrency}>
+                  <SelectTrigger className="w-20 text-xs border-border business-radius-badge shadow-sm hover:shadow-md transition-shadow duration-200 bg-white" style={{ height: 'auto', padding: '2.5px 10px', minHeight: 'auto' }}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-md">
+                    <SelectItem value="KRW">KRW</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                  </SelectContent>
+                </Select>
                   {selectedBoard?.label && (
                     <span className="text-[11px] text-gray-400">
                       보드명: {selectedBoard.label}
@@ -1473,6 +1476,102 @@ export default function PurchaseNewMain() {
                 <span className="badge-stats text-hansl-500 text-[10px] px-1.5 py-0.5 whitespace-nowrap flex-shrink-0 bg-hansl-50 business-radius-badge">
                   총액: {totalAmount.toLocaleString('ko-KR')} {currency}
                 </span>
+                <Button 
+                  type="button" 
+                  className={`button-base border transition-all duration-200 ${
+                    isCopied 
+                      ? 'border-green-400 text-green-600 bg-green-50' 
+                      : 'border-gray-300 text-gray-600 bg-white hover:bg-blue-50 hover:text-blue-600'
+                  }`}
+                  disabled={isCopied}
+                  onClick={async () => { 
+                    const showCopiedFeedback = () => {
+                      setIsCopied(true);
+                      setTimeout(() => setIsCopied(false), 1000);
+                    };
+                    
+                    try {
+                      // 품목 데이터를 TSV 형식으로 변환 (탭으로 열 구분, 줄바꿈으로 행 구분)
+                      const headers = paymentCategory === "구매 요청" 
+                        ? ['품목', '규격', '수량', '단가', '합계', '링크', '비고']
+                        : ['품목', '규격', '수량', '단가', '합계', '비고'];
+                      
+                      const rows = fields.map(item => {
+                        const baseRow = [
+                          item.item_name || '',
+                          item.specification || '',
+                          item.quantity?.toString() || '0',
+                          item.unit_price_value?.toString() || '0',
+                          item.amount_value?.toString() || '0',
+                        ];
+                        
+                        if (paymentCategory === "구매 요청") {
+                          baseRow.push(item.link || '');
+                        }
+                        baseRow.push(item.remark || '');
+                        
+                        return baseRow.join('\t');
+                      });
+                      
+                      const tsvData = [headers.join('\t'), ...rows].join('\n');
+                      
+                      await navigator.clipboard.writeText(tsvData);
+                      showCopiedFeedback();
+                      toast.success(`📋 ${fields.length}개 품목 복사 완료! 엑셀에 붙여넣기 하세요.`);
+                    } catch (err) {
+                      // Fallback: 구형 브라우저 대응
+                      try {
+                        const headers = paymentCategory === "구매 요청" 
+                          ? ['품목', '규격', '수량', '단가', '합계', '링크', '비고']
+                          : ['품목', '규격', '수량', '단가', '합계', '비고'];
+                        
+                        const rows = fields.map(item => {
+                          const baseRow = [
+                            item.item_name || '',
+                            item.specification || '',
+                            item.quantity?.toString() || '0',
+                            item.unit_price_value?.toString() || '0',
+                            item.amount_value?.toString() || '0',
+                          ];
+                          
+                          if (paymentCategory === "구매 요청") {
+                            baseRow.push(item.link || '');
+                          }
+                          baseRow.push(item.remark || '');
+                          
+                          return baseRow.join('\t');
+                        });
+                        
+                        const tsvData = [headers.join('\t'), ...rows].join('\n');
+                        
+                        const textArea = document.createElement('textarea');
+                        textArea.value = tsvData;
+                        textArea.style.position = 'fixed';
+                        textArea.style.left = '-9999px';
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textArea);
+                        showCopiedFeedback();
+                        toast.success(`📋 ${fields.length}개 품목 복사 완료! 엑셀에 붙여넣기 하세요.`);
+                      } catch (fallbackErr) {
+                        toast.error('클립보드 복사에 실패했습니다. 브라우저 권한을 확인해주세요.');
+                      }
+                    }
+                  }}
+                >
+                  {isCopied ? (
+                    <>
+                      <Check className="w-3 h-3 mr-0.5" />
+                      복사됨
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3 mr-0.5" />
+                      전체복사
+                    </>
+                  )}
+                </Button>
                 <Button 
                   type="button" 
                   className="button-base border border-gray-300 text-gray-600 bg-white hover:bg-red-50 hover:text-red-600" 

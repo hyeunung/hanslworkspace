@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { X, Edit2, Save, Trash2, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { ReceiptDownloadButton } from "./ReceiptDownloadButton";
 import { DatePickerPopover } from "@/components/ui/date-picker-popover";
 import { useConfirmDateAction } from '@/hooks/useConfirmDateAction';
 import { logger } from '@/lib/logger';
+import { addCacheListener } from '@/stores/purchaseMemoryStore';
 
 interface PurchaseItem {
   id?: number | string;
@@ -106,6 +107,24 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
       loadData();
     }
   }, [isOpen, supabase, purchase.id]);
+
+  // 🚀 Realtime 이벤트 구독 - 모달이 열려있는 동안 실시간 업데이트
+  const realtimeFirstMount = useRef(true);
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleCacheUpdate = () => {
+      if (realtimeFirstMount.current) {
+        realtimeFirstMount.current = false;
+        return;
+      }
+      // Realtime 이벤트 발생 시 부모에게 새로고침 요청
+      onUpdate?.();
+    };
+
+    const unsubscribe = addCacheListener(handleCacheUpdate);
+    return () => unsubscribe();
+  }, [isOpen, onUpdate]);
 
   // 권한 체크
   const isRequester = purchase?.requester_name === currentUserName

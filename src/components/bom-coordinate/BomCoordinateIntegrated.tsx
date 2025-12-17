@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { Package, Upload, FileText, X, AlertCircle, Loader2, Download, Eye, Plus, Check, ChevronsUpDown, RotateCcw, Save, Link2, Trash2 } from 'lucide-react';
@@ -81,6 +81,37 @@ export default function BomCoordinateIntegrated() {
   const [deletingBoardId, setDeletingBoardId] = useState<string | null>(null);
   const [detailModalBoardId, setDetailModalBoardId] = useState<string | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // REF 불일치 수 계산 (BOM vs 좌표)
+  const mismatchCount = useMemo(() => {
+    const bomItems = processedResult?.processedData?.bomItems ?? [];
+    const coords = processedResult?.processedData?.coordinates ?? [];
+
+    const bomRefs = new Set<string>();
+    bomItems.forEach((item: BOMItem) => {
+      const refs = (item.refList || '').split(',').map(r => r.trim().toUpperCase()).filter(Boolean);
+      refs.forEach(ref => bomRefs.add(ref));
+    });
+
+    const coordRefs = new Set<string>();
+    coords.forEach((coord: CoordinateItem) => {
+      const ref = coord?.refDes;
+      if (ref) coordRefs.add(ref.trim().toUpperCase());
+    });
+
+    let missingInCoord = 0;
+    bomRefs.forEach(ref => {
+      if (!coordRefs.has(ref)) missingInCoord += 1;
+    });
+
+    let missingInBom = 0;
+    coordRefs.forEach(ref => {
+      if (!bomRefs.has(ref)) missingInBom += 1;
+    });
+
+    return missingInCoord + missingInBom;
+  }, [processedResult?.processedData?.bomItems, processedResult?.processedData?.coordinates]);
 
   // 합칠 수 있는 동일 항목이 있는지 체크
   const hasMergeableItems = (() => {
@@ -695,8 +726,9 @@ export default function BomCoordinateIntegrated() {
 
       toast.success('수정사항이 저장되었습니다.');
       
-      // 저장 완료 시 임시 데이터 삭제
+      // 저장 완료 시 임시 데이터 삭제 및 로컬 상태 초기화
       clearTempData();
+      handleReset();
       
       // 목록 뷰로 전환하여 새로 저장된 항목 확인 가능
       setTimeout(() => {
@@ -1475,10 +1507,20 @@ export default function BomCoordinateIntegrated() {
                   </Button>
                   <Button 
                     onClick={() => previewPanelRef.current?.handleSave()}
+                    disabled={isSaving}
                     className="button-base bg-hansl-500 hover:bg-hansl-600 text-white"
                   >
-                    <Save className="w-4 h-4 mr-2" />
-                    저장
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        저장 중...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-2" />
+                        저장
+                      </>
+                    )}
                   </Button>
                   <Button 
                     onClick={() => previewPanelRef.current?.handleDownload()}
@@ -1499,11 +1541,19 @@ export default function BomCoordinateIntegrated() {
                   >
                     <span className="whitespace-nowrap">정리된 BOM</span>
                     <span className="badge-stats data-[state=active]:bg-hansl-50 data-[state=active]:text-hansl-700 bg-gray-100 text-gray-600">
-                      {processedResult.processedData?.bomItems?.length || 0}
+                      {(processedResult.processedData?.bomItems ?? []).reduce(
+                        (sum: number, item: BOMItem) => sum + (item.setCount || 0),
+                        0
+                      )}
                     </span>
                     {(processedResult.processedData?.bomItems?.filter((item: { isManualRequired?: boolean }) => item.isManualRequired).length ?? 0) > 0 && (
                       <span className="badge-stats bg-yellow-100 text-yellow-700 border border-yellow-300">
                         ⚠️ 수동 작성: {processedResult.processedData?.bomItems?.filter((item: { isManualRequired?: boolean }) => item.isManualRequired).length}
+                      </span>
+                    )}
+                    {mismatchCount > 0 && (
+                      <span className="badge-stats bg-red-100 text-red-700 border border-red-200">
+                        REF 불일치: {mismatchCount}
                       </span>
                     )}
                   </TabsTrigger>

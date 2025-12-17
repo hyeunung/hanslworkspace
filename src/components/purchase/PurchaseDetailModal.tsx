@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails, Purchase, Vendor } from '@/types/purchase'
-import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPaymentCompleted, markItemAsReceived, markPurchaseAsReceived, markItemAsPaymentCanceled, markItemAsStatementReceived, markItemAsStatementCanceled, usePurchaseMemory, updatePurchaseInMemory, removeItemFromMemory, markItemAsExpenditureSet, markBulkExpenditureSet, removePurchaseFromMemory } from '@/stores/purchaseMemoryStore'
+import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPaymentCompleted, markItemAsReceived, markPurchaseAsReceived, markItemAsPaymentCanceled, markItemAsStatementReceived, markItemAsStatementCanceled, usePurchaseMemory, updatePurchaseInMemory, removeItemFromMemory, markItemAsExpenditureSet, markBulkExpenditureSet, removePurchaseFromMemory, addCacheListener } from '@/stores/purchaseMemoryStore'
 import { formatDate } from '@/utils/helpers'
 import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { DateAmountPickerPopover } from '@/components/ui/date-amount-picker-popover'
@@ -23,7 +23,8 @@ import {
   XCircle,
   Check,
   Truck,
-  MessageSquarePlus
+  MessageSquarePlus,
+  Loader2
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -81,6 +82,9 @@ function PurchaseDetailModal({
   const [modifySubject, setModifySubject] = useState('')
   const [modifyMessage, setModifyMessage] = useState('')
   const [isSendingModify, setIsSendingModify] = useState(false)
+  
+  // 저장 로딩 상태
+  const [isSaving, setIsSaving] = useState(false)
 
   // 수정요청 초기값 설정
   useEffect(() => {
@@ -141,6 +145,27 @@ function PurchaseDetailModal({
   }
 
   // 메모리 캐시 동기화는 useEffect에서 처리
+
+  // 🚀 Realtime 이벤트 구독 - 모달이 열려있는 동안 다른 화면에서 발생한 변경 실시간 반영
+  const realtimeFirstMount = useRef(true)
+  useEffect(() => {
+    if (!isOpen || !purchaseId) return
+
+    const handleCacheUpdate = () => {
+      if (realtimeFirstMount.current) {
+        realtimeFirstMount.current = false
+        return
+      }
+      // 캐시에서 최신 데이터 가져와서 로컬 상태 업데이트
+      const updatedPurchase = findPurchaseInMemory(purchaseId)
+      if (updatedPurchase) {
+        setPurchase(updatedPurchase as PurchaseRequestWithDetails)
+      }
+    }
+
+    const unsubscribe = addCacheListener(handleCacheUpdate)
+    return () => unsubscribe()
+  }, [isOpen, purchaseId])
 
   // 🚀 실시간 items 데이터 (로컬 purchase state를 우선 사용)
   const currentItems = useMemo(() => {
@@ -1263,6 +1288,9 @@ function PurchaseDetailModal({
       return
     }
     
+    // 🚀 저장 로딩 상태 시작
+    setIsSaving(true)
+    
     logger.info('handleSave 시작:', { 
       purchaseId: purchase.id,
       vendor_id: editedPurchase.vendor_id,
@@ -1538,13 +1566,25 @@ function PurchaseDetailModal({
             created_at: new Date().toISOString()
           };
           
-          const { error } = await supabase
+          // 🚀 INSERT 후 새 ID 받기 (.select() 추가)
+          const { data: insertedItem, error } = await supabase
             .from('purchase_request_items')
             .insert(insertData)
+            .select()
+            .single()
 
           if (error) {
             logger.error('새 항목 생성 오류', error);
             throw error;
+          }
+          
+          // 🚀 반환된 새 ID로 editedItems 업데이트
+          if (insertedItem) {
+            const itemIndex = editedItems.indexOf(item)
+            if (itemIndex !== -1) {
+              editedItems[itemIndex] = { ...editedItems[itemIndex], ...insertedItem }
+              logger.info('✅ 새 항목 ID 할당됨:', { id: insertedItem.id, itemIndex })
+            }
           }
         }
       }
@@ -1667,6 +1707,9 @@ function PurchaseDetailModal({
       logger.error('저장 중 전체 오류', error);
       const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다'
       toast.error(`저장 실패: ${errorMessage}`)
+    } finally {
+      // 🚀 저장 로딩 상태 종료
+      setIsSaving(false)
     }
   }
 
@@ -4778,10 +4821,20 @@ function PurchaseDetailModal({
                     <Button
                       size="sm"
                       onClick={handleSave}
+                      disabled={isSaving}
                       className="button-base button-action-primary"
                     >
-                      <Save className="w-4 h-4 mr-2" />
-                      저장
+                      {isSaving ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          저장 중...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4 mr-2" />
+                          저장
+                        </>
+                      )}
                     </Button>
                   </>
                 )}

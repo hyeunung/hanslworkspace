@@ -1,10 +1,14 @@
 /**
  * 메모리 기반 구매 데이터 Hook
  * 캐시된 데이터를 즉시 필터링하여 반환
+ * 
+ * 🚀 Realtime 이벤트 기반으로 전환 (기존 10ms 폴링 제거)
+ * - CPU 사용량 대폭 감소
+ * - DB 변경 시 자동 업데이트
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { purchaseMemoryCache } from '@/stores/purchaseMemoryStore'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { purchaseMemoryCache, addCacheListener } from '@/stores/purchaseMemoryStore'
 import { applyAllFilters, calculateTabCounts, type FilterOptions, type TabType } from '@/utils/purchaseFilters'
 import type { Purchase } from '@/types/purchase'
 
@@ -19,55 +23,41 @@ export function usePurchaseMemory() {
   const [loading, setLoading] = useState(initialLoading)
   const [error, setError] = useState<string | null>(purchaseMemoryCache.error)
   
+  // 변경 감지용 ref
+  const lastFetchRef = useRef(purchaseMemoryCache.lastFetch)
+  
   // 현재 사용자 정보
   const currentUser = purchaseMemoryCache.currentUser
   
-  // 캐시 데이터 구독
+  // 🚀 Realtime 이벤트 기반 캐시 구독 (폴링 없음!)
+  // DB 변화가 있을 때만 purchaseRealtimeService가 notifyCacheListeners 호출
   useEffect(() => {
-    let lastArrayRef = purchaseMemoryCache.allPurchases
-    let lastFetchTime = purchaseMemoryCache.lastFetch
-    
-    // 캐시가 업데이트되면 즉시 반영
-    const checkCache = () => {
-      // 배열 참조가 변경되었거나 lastFetch가 변경되었는지 확인
-      const arrayChanged = purchaseMemoryCache.allPurchases !== lastArrayRef
-      const fetchTimeChanged = purchaseMemoryCache.lastFetch !== lastFetchTime
-      
-      if (arrayChanged || fetchTimeChanged || purchases.length === 0) {
-        console.log('🔄 [usePurchaseMemory] 캐시 변경 감지', {
-          arrayChanged,
-          fetchTimeChanged,
-          currentLastFetch: purchaseMemoryCache.lastFetch,
-          prevLastFetch: lastFetchTime,
-          purchasesCount: purchaseMemoryCache.allPurchases?.length || 0,
-          currentPurchasesCount: purchases.length
-        })
-        
-        if (purchaseMemoryCache.allPurchases) {
-          setPurchases([...purchaseMemoryCache.allPurchases]) // 새 배열로 복사하여 리렌더링 보장
-          setLoading(false)
-          lastArrayRef = purchaseMemoryCache.allPurchases
-          lastFetchTime = purchaseMemoryCache.lastFetch
-          
-          console.log('✅ [usePurchaseMemory] purchases 상태 업데이트 완료', {
-            newPurchasesCount: purchaseMemoryCache.allPurchases.length
-          })
-        } else {
-          setLoading(purchaseMemoryCache.isLoading)
-        }
-        setError(purchaseMemoryCache.error)
+    // 캐시 변경 시 상태 업데이트
+    const handleCacheUpdate = () => {
+      if (purchaseMemoryCache.allPurchases) {
+        setPurchases([...purchaseMemoryCache.allPurchases])
+        setLoading(false)
+      } else {
+        setLoading(purchaseMemoryCache.isLoading)
       }
+      setError(purchaseMemoryCache.error)
+      lastFetchRef.current = purchaseMemoryCache.lastFetch
     }
     
-    // 초기 체크
-    checkCache()
-    
-    // 폴링으로 캐시 업데이트 감지 (더 빠른 반응을 위해 10ms로 단축)
-    // 배열 참조 변경 시 즉시 감지되지만, 폴링도 유지하여 안전성 보장
-    const interval = setInterval(checkCache, 10)
-    
-    return () => clearInterval(interval)
-  }, [purchases.length]) // purchases.length 추가하여 state가 비어있을 때도 체크
+    // 캐시 리스너 등록 - DB 변경 시에만 호출됨
+    const unsubscribe = addCacheListener(handleCacheUpdate)
+
+    // 초기 동기화 (첫 마운트 시, 이미 캐시가 있는 경우)
+    if (purchaseMemoryCache.allPurchases && purchases.length === 0) {
+      setPurchases([...purchaseMemoryCache.allPurchases])
+      setLoading(false)
+      lastFetchRef.current = purchaseMemoryCache.lastFetch
+    }
+
+    return () => {
+      unsubscribe()
+    }
+  }, []) // 빈 의존성 배열 - 마운트 시에만 실행
   
   // 필터링된 데이터 반환 함수
   const getFilteredPurchases = useCallback((options: FilterOptions): Purchase[] => {

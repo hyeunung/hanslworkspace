@@ -501,6 +501,230 @@ export const calculateTabCounts = (
   }
 }
 
+// ============================================================
+// 🚀 대시보드용 필터 함수들
+// ============================================================
+
+/**
+ * 승인 대기 항목 필터 (대시보드/승인 페이지용)
+ */
+export const filterPendingApprovals = (
+  purchases: Purchase[],
+  currentUser: Employee | null
+): Purchase[] => {
+  if (!purchases || !currentUser) return []
+  
+  const userRoles = parseRoles(currentUser.purchase_role)
+  
+  return purchases.filter(purchase => {
+    // 이미 양쪽 승인 완료되었거나 반려된 경우 제외
+    if (purchase.middle_manager_status === 'approved' && 
+        purchase.final_manager_status === 'approved') {
+      return false
+    }
+    if (purchase.middle_manager_status === 'rejected' || 
+        purchase.final_manager_status === 'rejected') {
+      return false
+    }
+    
+    // app_admin, ceo는 모든 승인 대기 항목 볼 수 있음
+    if (userRoles.includes('app_admin') || userRoles.includes('ceo')) {
+      return true
+    }
+    
+    // middle_manager는 1차 승인 대기 항목만
+    if (userRoles.includes('middle_manager')) {
+      return purchase.middle_manager_status === 'pending'
+    }
+    
+    // final_approver는 1차 승인 완료 + 최종 대기 항목만
+    if (userRoles.includes('final_approver')) {
+      return purchase.middle_manager_status === 'approved' && 
+             purchase.final_manager_status === 'pending'
+    }
+    
+    // 카테고리별 관리자
+    if (userRoles.includes('consumable_manager')) {
+      return purchase.payment_category === '구매 요청' && 
+             purchase.middle_manager_status === 'pending'
+    }
+    if (userRoles.includes('raw_material_manager')) {
+      return purchase.payment_category === '발주' && 
+             purchase.middle_manager_status === 'pending'
+    }
+    
+    return false
+  })
+}
+
+/**
+ * 1차 승인 대기 필터 (ApprovalMain용)
+ */
+export const filterMiddlePendingApprovals = (
+  purchases: Purchase[],
+  currentUser: Employee | null
+): Purchase[] => {
+  if (!purchases || !currentUser) return []
+  
+  const userRoles = parseRoles(currentUser.purchase_role)
+  
+  return purchases.filter(purchase => {
+    // 1차 승인 대기 상태
+    if (purchase.middle_manager_status !== 'pending') return false
+    
+    // app_admin, ceo는 모두 볼 수 있음
+    if (userRoles.includes('app_admin') || userRoles.includes('ceo')) {
+      return true
+    }
+    
+    // middle_manager 권한
+    if (userRoles.includes('middle_manager')) {
+      return true
+    }
+    
+    // 카테고리별 관리자
+    if (userRoles.includes('consumable_manager') && purchase.payment_category === '구매 요청') {
+      return true
+    }
+    if (userRoles.includes('raw_material_manager') && purchase.payment_category === '발주') {
+      return true
+    }
+    
+    return false
+  })
+}
+
+/**
+ * 최종 승인 대기 필터 (ApprovalMain용)
+ */
+export const filterFinalPendingApprovals = (
+  purchases: Purchase[],
+  currentUser: Employee | null
+): Purchase[] => {
+  if (!purchases || !currentUser) return []
+  
+  const userRoles = parseRoles(currentUser.purchase_role)
+  
+  return purchases.filter(purchase => {
+    // 1차 승인 완료 + 최종 대기
+    if (purchase.middle_manager_status !== 'approved' || 
+        purchase.final_manager_status !== 'pending') {
+      return false
+    }
+    
+    // app_admin, ceo는 모두 볼 수 있음
+    if (userRoles.includes('app_admin') || userRoles.includes('ceo')) {
+      return true
+    }
+    
+    // final_approver 권한
+    if (userRoles.includes('final_approver')) {
+      return true
+    }
+    
+    return false
+  })
+}
+
+/**
+ * 구매 진행중 필터 (대시보드용)
+ * - 구매 요청 + 승인 완료 + 결제 미완료
+ */
+export const filterPurchaseInProgress = (
+  purchases: Purchase[],
+  currentUser: Employee | null
+): Purchase[] => {
+  if (!purchases || !currentUser) return []
+  
+  const userRoles = parseRoles(currentUser.purchase_role)
+  const hasManagerRole = userRoles.some(role => 
+    ['app_admin', 'ceo', 'lead buyer', 'finance_team', 'purchase_manager'].includes(role)
+  )
+  
+  return purchases.filter(purchase => {
+    const isRequest = purchase.payment_category === '구매 요청'
+    const notPaid = !purchase.is_payment_completed
+    
+    if (!isRequest || !notPaid) return false
+    
+    // 선진행이거나 최종 승인 완료
+    const isSeonJin = (purchase.progress_type || '').includes('선진행')
+    const finalApproved = purchase.final_manager_status === 'approved'
+    
+    if (!isSeonJin && !finalApproved) return false
+    
+    // 관리자는 모든 항목, 일반은 본인 것만
+    return hasManagerRole || purchase.requester_name === currentUser.name
+  })
+}
+
+/**
+ * 입고 대기 필터 (대시보드용)
+ */
+export const filterDeliveryPending = (
+  purchases: Purchase[],
+  currentUser: Employee | null
+): Purchase[] => {
+  if (!purchases || !currentUser) return []
+  
+  const userRoles = parseRoles(currentUser.purchase_role)
+  const hasManagerRole = userRoles.some(role => 
+    ['app_admin', 'ceo', 'hr', 'finance_team', 'purchase_manager'].includes(role)
+  )
+  
+  return purchases.filter(purchase => {
+    if (purchase.is_received) return false
+    
+    // 선진행이거나 최종 승인 완료
+    const isSeonJin = (purchase.progress_type || '').includes('선진행')
+    const finalApproved = purchase.final_manager_status === 'approved'
+    
+    if (!isSeonJin && !finalApproved) return false
+    
+    // 관리자는 모든 항목, 일반은 본인 것만
+    return hasManagerRole || purchase.requester_name === currentUser.name
+  })
+}
+
+/**
+ * 미다운로드 발주서 필터 (대시보드용)
+ */
+export const filterUndownloadedOrders = (
+  purchases: Purchase[]
+): Purchase[] => {
+  if (!purchases) return []
+  
+  return purchases.filter(purchase => {
+    // 최종 승인 완료
+    const finalApproved = purchase.final_manager_status === 'approved'
+    // PO 미다운로드
+    const notDownloaded = !purchase.is_po_download
+    
+    return finalApproved && notDownloaded
+  })
+}
+
+/**
+ * 역할 파싱 헬퍼 함수
+ */
+const parseRoles = (purchaseRole: string | string[] | null | undefined): string[] => {
+  if (!purchaseRole) return []
+  
+  if (Array.isArray(purchaseRole)) {
+    return purchaseRole.map(r => r.trim()).filter(Boolean)
+  }
+  
+  if (typeof purchaseRole === 'string') {
+    return purchaseRole.split(',').map(r => r.trim()).filter(Boolean)
+  }
+  
+  return []
+}
+
+// ============================================================
+// 통합 필터링 함수
+// ============================================================
+
 /**
  * 통합 필터링 함수
  */
