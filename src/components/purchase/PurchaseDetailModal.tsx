@@ -1731,8 +1731,20 @@ function PurchaseDetailModal({
         amount_value: amount,
         tax_amount_value: taxAmount
       }
+    } else if (field === 'amount_value') {
+      // 합계금액을 직접 수정한 경우
+      const amount = Number(value) || 0
+      
+      // 발주 카테고리인 경우 세액(10%) 자동 계산
+      const taxAmount = purchase?.payment_category === '발주' ? Math.round(amount * 0.1) : 0
+      
+      newItems[index] = {
+        ...newItems[index],
+        amount_value: amount,
+        tax_amount_value: taxAmount
+      }
     } else {
-      // 기타 필드 수정 (amount_value 직접 수정은 제거됨)
+      // 기타 필드 수정
       newItems[index] = {
         ...newItems[index],
         [field]: value
@@ -2987,6 +2999,7 @@ function PurchaseDetailModal({
                           onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, request_type: e.target.value } : null)}
                           className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
                           placeholder="일반"
+                          disabled={canEditLimited && !canEditAll}
                         />
                       ) : (
                         <p className="modal-value">{purchase.request_type || '일반'}</p>
@@ -3000,6 +3013,7 @@ function PurchaseDetailModal({
                           onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, payment_category: e.target.value } : null)}
                           className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
                           placeholder="발주/구매요청/현장결제"
+                          disabled={canEditLimited && !canEditAll}
                         />
                       ) : (
                         <p className="modal-value">{purchase.payment_category || '-'}</p>
@@ -3025,6 +3039,7 @@ function PurchaseDetailModal({
                           <Button
                             variant="outline"
                             className="mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] justify-start text-left font-normal business-radius-input"
+                            disabled={canEditLimited && !canEditAll}
                           >
                             <Calendar className="mr-1 h-3 w-3" />
                             {editedPurchase?.delivery_request_date ? 
@@ -3054,6 +3069,7 @@ function PurchaseDetailModal({
                           <Button
                             variant="outline"
                             className="mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] justify-start text-left font-normal business-radius-input"
+                            disabled={canEditLimited && !canEditAll}
                           >
                             <Calendar className="mr-1 h-3 w-3" />
                             {editedPurchase?.revised_delivery_request_date ? 
@@ -3093,6 +3109,7 @@ function PurchaseDetailModal({
                             value: editedPurchase.vendor_id.toString(),
                             label: editedPurchase.vendor_name || vendors.find(v => v.id === editedPurchase.vendor_id)?.vendor_name || ''
                           } : null}
+                          isDisabled={canEditLimited && !canEditAll}
                           onChange={(option) => {
                             logger.info('ReactSelect onChange:', { option })
                             if (option) {
@@ -3236,6 +3253,7 @@ function PurchaseDetailModal({
                       {isEditing ? (
                         editedPurchase?.vendor_id ? (
                           <ReactSelect
+                            isDisabled={canEditLimited && !canEditAll}
                             options={(() => {
                               const contacts = Array.isArray(editedPurchase.vendor_contacts) ? editedPurchase.vendor_contacts : []
                               // 중복 제거: id 기준으로 중복 제거 (같은 ID는 같은 사람)
@@ -3413,6 +3431,7 @@ function PurchaseDetailModal({
                           onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, project_vendor: e.target.value } : null)}
                           className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
                           placeholder="입력"
+                          disabled={canEditLimited && !canEditAll}
                         />
                       ) : (
                         <p className="modal-value">{purchase.project_vendor || '-'}</p>
@@ -3426,6 +3445,7 @@ function PurchaseDetailModal({
                           onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, project_item: e.target.value } : null)}
                           className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
                           placeholder="입력"
+                          disabled={canEditLimited && !canEditAll}
                         />
                       ) : (
                         <p className="modal-subtitle">{purchase.project_item || '-'}</p>
@@ -3442,6 +3462,7 @@ function PurchaseDetailModal({
                           onChange={(e) => setEditedPurchase(prev => prev ? { ...prev, sales_order_number: e.target.value } : null)}
                           className="mt-1 rounded-lg border-gray-200 focus:border-blue-400 w-full h-5 px-1.5 py-0.5 text-[10px]"
                           placeholder="입력"
+                          disabled={canEditLimited && !canEditAll}
                         />
                       ) : (
                         <p className="modal-subtitle">{purchase.sales_order_number || '-'}</p>
@@ -3716,6 +3737,7 @@ function PurchaseDetailModal({
                                       className="border-gray-200 rounded-lg text-center w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
                                       placeholder="요청수량"
                                       max="99999"
+                                      disabled={canEditLimited && !canEditAll}
                                     />
                                     <div className="flex items-center gap-0.5 w-full">
                                       <span className="text-[9px] text-gray-500">/</span>
@@ -3726,6 +3748,7 @@ function PurchaseDetailModal({
                                         className="border-gray-200 rounded-lg text-center flex-1 !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
                                         placeholder="실제입고"
                                         max="99999"
+                                        disabled={canEditLimited && !canEditAll}
                                       />
                                     </div>
                                   </div>
@@ -3737,6 +3760,7 @@ function PurchaseDetailModal({
                                     className="border-gray-200 rounded-lg text-center w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
                                     placeholder="수량"
                                     max="99999"
+                                    disabled={canEditLimited && !canEditAll}
                                   />
                                 )
                               ) : (
@@ -3789,13 +3813,23 @@ function PurchaseDetailModal({
                               )}
                             </div>
                             
-                            {/* 합계 (자동계산, 수정 불가) */}
+                            {/* 합계 (수동 입력 가능) */}
                             <div className="text-right min-w-0 flex items-center justify-end">
-                              <span className={isEditing ? "modal-subtitle" : "modal-value"}>
-                                {activeTab === 'done' && !canViewFinancialInfo 
-                                  ? '-' 
-                                  : `₩${formatCurrency(item.amount_value || 0)}`}
-                              </span>
+                              {isEditing ? (
+                                <Input
+                                  type="number"
+                                  value={item.amount_value || 0}
+                                  onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
+                                  className="border-gray-200 rounded-lg w-full !h-6 !px-1.5 !py-0.5 !text-[10px] font-normal text-gray-600 focus:border-blue-400 text-right"
+                                  placeholder="합계"
+                                />
+                              ) : (
+                                <span className="modal-value">
+                                  {activeTab === 'done' && !canViewFinancialInfo 
+                                    ? '-' 
+                                    : `₩${formatCurrency(item.amount_value || 0)}`}
+                                </span>
+                              )}
                             </div>
                             
                             {/* 세액 - 발주 카테고리인 경우 모든 탭에서 표시 */}
@@ -3863,6 +3897,7 @@ function PurchaseDetailModal({
                                     variant="ghost"
                                     onClick={() => handleRemoveItem(index)}
                                     className="text-red-600 hover:bg-red-50 rounded-lg p-1 h-6 w-6"
+                                    disabled={canEditLimited && !canEditAll}
                                   >
                                     <Trash2 className="w-3 h-3" />
                                   </Button>
@@ -4161,7 +4196,17 @@ function PurchaseDetailModal({
                                 )}
                               </div>
                               <div className="ml-3 text-right flex-shrink-0">
-                                <div className={`${isEditing ? "modal-subtitle" : "modal-value"} font-semibold`}>₩{formatCurrency(item.amount_value || 0)}</div>
+                                {isEditing ? (
+                                  <Input
+                                    type="number"
+                                    value={item.amount_value || 0}
+                                    onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
+                                    className="border-gray-200 rounded-lg w-24 !h-6 !px-1.5 !py-0.5 !text-[10px] font-normal text-gray-600 focus:border-blue-400 text-right"
+                                    placeholder="합계"
+                                  />
+                                ) : (
+                                  <div className="modal-value font-semibold">₩{formatCurrency(item.amount_value || 0)}</div>
+                                )}
                               </div>
                             </div>
                             
@@ -4175,6 +4220,7 @@ function PurchaseDetailModal({
                                     onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
                                     className="border-gray-200 rounded-lg mt-1 w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
                                     placeholder="수량"
+                                    disabled={canEditLimited && !canEditAll}
                                   />
                                 ) : (
                                   <div className="modal-subtitle">{item.quantity || 0}</div>
@@ -4207,6 +4253,7 @@ function PurchaseDetailModal({
                                       variant="ghost"
                                       onClick={() => handleRemoveItem(index)}
                                       className="text-red-600 hover:bg-red-50 rounded-lg p-1 h-6 w-6"
+                                      disabled={canEditLimited && !canEditAll}
                                     >
                                       <Trash2 className="w-3 h-3" />
                                     </Button>
@@ -4682,7 +4729,39 @@ function PurchaseDetailModal({
         {/* Apple-style Header */}
         <div className="relative px-3 sm:px-6 pt-0 sm:pt-3 lg:pt-4 pb-0 sm:pb-2 lg:pb-3 flex-shrink-0">
           <div className="absolute right-3 sm:right-6 top-3 sm:top-3 lg:top-4 flex items-center gap-2 z-10">
-            {/* 수정요청 버튼 (관리자 제외, 일반 직원용) */}
+            {/* 수정 버튼 (app_admin, final_approver, ceo, lead_buyer) */}
+            {!isEditing && canEdit && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleEditToggle(true)}
+                className="button-base button-action-secondary h-8 text-xs px-3"
+              >
+                <Edit2 className="w-3.5 h-3.5 mr-1.5" />
+                수정
+              </Button>
+            )}
+            
+            {/* 삭제 버튼 */}
+            {!isEditing && canDelete && onDelete && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (purchase) {
+                    // 삭제 확인 다이얼로그를 열기만 함 (실제 삭제는 확인 다이얼로그에서 처리)
+                    onDelete(purchase);
+                    // 삭제 버튼을 누른 후 모달을 즉시 닫지 않고 삭제 확인 다이얼로그가 처리하도록 함
+                  }
+                }}
+                className="button-base button-action-danger h-8 text-xs px-3"
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+                삭제
+              </Button>
+            )}
+            
+            {/* 수정요청 버튼 (관리자 제외, 일반 직원 및 lead_buyer용) */}
             {!isAdmin && !isEditing && (
               <Popover open={isModifyRequestOpen} onOpenChange={setIsModifyRequestOpen}>
                 <PopoverTrigger asChild>
@@ -4772,36 +4851,6 @@ function PurchaseDetailModal({
                 </h1>
               </div>
               <div className="flex items-center gap-3">
-                {!isEditing && canEdit && (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleEditToggle(true)}
-                      className="button-base button-action-secondary"
-                    >
-                      <Edit2 className="w-4 h-4 mr-2" />
-                      수정
-                    </Button>
-                    {canDelete && onDelete && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          if (purchase) {
-                            // 삭제 확인 다이얼로그를 열기만 함 (실제 삭제는 확인 다이얼로그에서 처리)
-                            onDelete(purchase);
-                            // 삭제 버튼을 누른 후 모달을 즉시 닫지 않고 삭제 확인 다이얼로그가 처리하도록 함
-                          }
-                        }}
-                        className="button-base button-action-danger"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        삭제
-                      </Button>
-                    )}
-                  </>
-                )}
                 {isEditing && (
                   <>
                     <Button

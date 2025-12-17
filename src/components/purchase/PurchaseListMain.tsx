@@ -1,5 +1,5 @@
 
-import { useState, lazy, Suspense, useEffect, useCallback, useMemo, useTransition } from "react";
+import { useState, lazy, Suspense, useEffect, useCallback, useMemo, useTransition, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { usePurchaseMemory } from "@/hooks/usePurchaseMemory";
 import { useColumnSettings } from "@/hooks/useColumnSettings";
@@ -45,11 +45,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isWarningModalOpen, setIsWarningModalOpen] = useState(false);
-  
-  // 세션 스토리지 키로 컴포넌트 리마운트되어도 플래그 유지
-  const SHOWN_WARNING_KEY = 'delivery_warning_shown';
-  const getHasShownWarning = () => sessionStorage.getItem(SHOWN_WARNING_KEY) === 'true';
-  const setHasShownWarning = () => sessionStorage.setItem(SHOWN_WARNING_KEY, 'true');
+  const hasShownWarningRef = useRef(false); // 현재 마운트에서 이미 모달 표시했는지
   
   // 고급 필터 상태 관리
   const [activeFilters, setActiveFilters] = useState<FilterRule[]>([]);
@@ -183,15 +179,15 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   // 입고 일정 경고 항목 수 계산 (본인 발주만)
   const deliveryWarningCount = useDeliveryWarningCount(visiblePurchases, currentUserName);
   
-  // 로딩 완료 후 경고 모달 자동 표시 (세션당 1회, 세션 스토리지로 관리)
+  // 로딩 완료 후 경고 모달 자동 표시 (마운트당 1회)
   useEffect(() => {
-    // 이미 표시했으면 무시 (세션 스토리지 체크)
-    if (getHasShownWarning()) return;
+    // 이미 표시했으면 무시
+    if (hasShownWarningRef.current) return;
     
     if (!loading && deliveryWarningCount > 0 && visiblePurchases.length > 0) {
       const timer = setTimeout(() => {
-        if (!getHasShownWarning()) { // 타이머 실행 시점에 다시 체크
-          setHasShownWarning();
+        if (!hasShownWarningRef.current) {
+          hasShownWarningRef.current = true;
           setIsWarningModalOpen(true);
         }
       }, 500);
@@ -1092,8 +1088,9 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       <DeliveryDateWarningModal
         isOpen={isWarningModalOpen}
         onClose={() => {
-          setHasShownWarning(); // 세션 스토리지에 저장 (재오픈 방지)
+          // 모달 닫고 새로고침 (자동 닫기 + 데이터 최신화)
           setIsWarningModalOpen(false);
+          window.location.reload();
         }}
         purchases={visiblePurchases}
         currentUserName={currentUserName}

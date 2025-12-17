@@ -1,4 +1,4 @@
-import { useState, useEffect, forwardRef, useImperativeHandle, useRef, useLayoutEffect } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle, useRef, useLayoutEffect, useMemo } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, Plus } from 'lucide-react';
@@ -67,6 +67,25 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
   const misapCount = items.filter(i => i.remark === '미삽').length;
   const totalSetCount = items.reduce((sum, item) => sum + (item.setCount || 0), 0);
   
+  // 좌표 REF Set 생성 (빠른 조회를 위해)
+  const coordRefSet = useMemo(() => {
+    const refSet = new Set<string>();
+    coordinates.forEach((coord: CoordinateItem) => {
+      if (coord.refDes) {
+        refSet.add(coord.refDes.trim().toUpperCase());
+      }
+    });
+    return refSet;
+  }, [coordinates]);
+  
+  // BOM에는 있지만 좌표에 없는 품목 체크
+  const hasMissingCoordinate = (item: BOMItem): boolean => {
+    if (!item.refList) return false;
+    const refs = item.refList.split(',').map(r => r.trim().toUpperCase()).filter(Boolean);
+    // 하나라도 좌표에 없으면 true
+    return refs.some(ref => !coordRefSet.has(ref));
+  };
+  
   // 캔버스로 텍스트 실제 너비 측정
   const measureTextWidth = (text: string, fontSize: number = 10): number => {
     const canvas = document.createElement('canvas');
@@ -76,18 +95,40 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
     return Math.ceil(ctx.measureText(text).width);
   };
   
-  // 종류, 품명 컬럼 너비 계산 (실제 텍스트 기준 + 충분한 여유분)
+  // 컬럼 너비 계산 (실제 텍스트 기준 + 여유분)
   const maxTypeWidth = Math.max(
     ...items.map(i => measureTextWidth(i.itemType || '', 10)),
     measureTextWidth('종류', 10),
     50
-  ) + 30; // 여유분 추가
+  ) + 20;
   
   const maxNameWidth = Math.max(
     ...items.map(i => measureTextWidth(i.itemName || '', 10)),
     measureTextWidth('품명', 10),
     100
-  ) + 40; // 여유분 추가
+  ) + 20;
+  
+  // REF 컬럼 너비 계산 (15~16개 REF가 보이도록)
+  // 평균 REF 길이 계산 (예: "C10, C11" 형태에서 개별 REF 길이 평균)
+  const allRefs = items.flatMap(i => {
+    const refs = (i.refList || '').split(',').map(r => r.trim()).filter(r => r);
+    return refs;
+  });
+  
+  const avgRefWidth = allRefs.length > 0
+    ? allRefs.reduce((sum, ref) => sum + measureTextWidth(ref, 10), 0) / allRefs.length
+    : measureTextWidth('C10', 10); // 기본값
+  
+  // 15~16개 REF + 쉼표와 공백 고려
+  const refWidthPerItem = avgRefWidth + measureTextWidth(', ', 10); // REF + ", "
+  const maxRefWidth = Math.ceil(refWidthPerItem * 15.5) + 20; // 15.5개 기준 + 여유분
+  
+  // NO 컬럼 너비 계산 (최대 항목 수 기준)
+  const maxNoWidth = Math.max(
+    measureTextWidth(String(items.length), 10),
+    measureTextWidth('No', 10),
+    30
+  ) + 20;
   
   // 엑셀 다운로드 핸들러
   const handleDownload = async () => {
@@ -303,7 +344,10 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
   // 행 배경색 결정
   const getRowClassName = (item: BOMItem) => {
     if (item.isManualRequired) return 'bg-yellow-50 hover:bg-yellow-100';
-    if (item.isNewPart) return 'bg-red-50 hover:bg-red-100';
+    // BOM에는 있지만 좌표에 없는 경우 (빨간색)
+    if (hasMissingCoordinate(item)) return 'bg-red-50 hover:bg-red-100';
+    // 학습 데이터에 없는 새로운 부품 (회색)
+    if (item.isNewPart) return 'bg-gray-100 hover:bg-gray-200';
     if (item.remark === '미삽') return 'bg-gray-50 hover:bg-gray-100';
     return 'hover:bg-gray-50';
   };
@@ -312,36 +356,36 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
     <div className="space-y-3">
 
       {/* 테이블 */}
-      <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <Table className="table-auto !w-auto">
+      <div className="border rounded-lg overflow-hidden bg-white shadow-sm w-full">
+        <div className="overflow-x-auto w-full max-w-full">
+          <Table className="w-full" style={{ tableLayout: 'fixed' }}>
             <TableHeader className="bg-gray-50 sticky top-0 z-10">
               <TableRow className="h-6">
-                <TableHead className="w-[40px] sm:w-[50px] text-center !h-auto !py-0.5 !px-2">
+                <TableHead className="text-center !h-auto !py-0.5 !px-2" style={{ width: `${maxNoWidth}px` }}>
                   <span className="card-description">No</span>
                 </TableHead>
-                <TableHead className="text-center whitespace-nowrap !h-auto !py-0.5 !px-2">
+                <TableHead className="text-center whitespace-nowrap !h-auto !py-0.5 !px-2" style={{ width: `${maxTypeWidth}px` }}>
                   <span className="card-description">종류</span>
                 </TableHead>
-                <TableHead className="whitespace-nowrap !h-auto !py-0.5 !px-2">
+                <TableHead className="whitespace-nowrap !h-auto !py-0.5 !px-2" style={{ width: `${maxNameWidth}px` }}>
                   <span className="card-description">품명</span>
                 </TableHead>
-                <TableHead className="w-[50px] sm:w-[60px] text-center !h-auto !py-0.5 !px-2">
+                <TableHead className="w-[60px] text-center !h-auto !py-0.5 !px-2">
                   <span className="card-description">SET</span>
                 </TableHead>
-                <TableHead className="w-[60px] sm:w-[80px] text-center !h-auto !py-0.5 !px-2">
+                <TableHead className="w-[70px] text-center !h-auto !py-0.5 !px-2">
                   <span className="card-description">수량</span>
                 </TableHead>
-                <TableHead className="w-[50px] sm:w-[60px] text-center hidden sm:table-cell !h-auto !py-0.5 !px-2">
+                <TableHead className="w-[60px] text-center hidden sm:table-cell !h-auto !py-0.5 !px-2">
                   <span className="card-description">재고</span>
                 </TableHead>
-                <TableHead className="min-w-[200px] sm:min-w-[300px] !h-auto !py-0.5 !px-2">
+                <TableHead className="!h-auto !py-0.5 !px-2" style={{ width: `${Math.min(maxRefWidth, 350)}px` }}>
                   <span className="card-description">REF</span>
                 </TableHead>
-                <TableHead className="w-[100px] sm:w-[150px] hidden md:table-cell !h-auto !py-0.5 !px-2">
+                <TableHead className="hidden md:table-cell !h-auto !py-0.5 !px-2" style={{ width: '240px' }}>
                   <span className="card-description">대체품</span>
                 </TableHead>
-                <TableHead className="w-[100px] sm:w-[150px] !h-auto !py-0.5 !px-2">
+                <TableHead className="!h-auto !py-0.5 !px-2">
                   <span className="card-description">비고</span>
                 </TableHead>
               </TableRow>
@@ -357,10 +401,10 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
                   <TableCell className="text-center py-1 px-1 whitespace-nowrap">
                     <input 
                       type="text"
-                      className={`text-[10px] text-gray-600 text-center border border-transparent hover:border-gray-200 focus:border-primary focus:outline-none rounded px-1 ${
+                      className={`w-full text-[10px] text-gray-600 text-center border border-transparent hover:border-gray-200 focus:border-primary focus:outline-none rounded px-1 ${
                         item.itemType === '데이터 없음' ? '!text-red-500 font-bold bg-red-50' : 'bg-transparent'
                       }`}
-                      style={{ fontSize: '10px', height: '24px', width: `${Math.max((item.itemType?.length || 4) * 7 + 16, 50)}px` }}
+                      style={{ fontSize: '10px', height: '24px' }}
                       value={item.itemType || ''}
                       onChange={(e) => handleCellChange(index, 'itemType', e.target.value)}
                       placeholder="종류"
@@ -371,10 +415,16 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
                   <TableCell className="py-1 px-1 whitespace-nowrap">
                     <input 
                       type="text"
-                      className={`text-[10px] text-gray-500 border border-transparent hover:border-gray-200 focus:border-primary focus:outline-none rounded px-1 ${
-                        item.isManualRequired || item.isNewPart ? 'text-red-600 bg-yellow-50' : 'bg-transparent'
+                      className={`w-full text-[10px] border border-transparent hover:border-gray-200 focus:border-primary focus:outline-none rounded px-1 ${
+                        hasMissingCoordinate(item)
+                          ? 'text-gray-500 bg-red-50'
+                          : item.isNewPart 
+                            ? 'text-gray-500 bg-gray-100' 
+                            : item.isManualRequired 
+                              ? 'text-red-600 bg-yellow-50' 
+                              : 'text-gray-500 bg-transparent'
                       }`}
-                      style={{ fontSize: '10px', height: '24px', width: `${Math.max((item.itemName?.length || 6) * 7 + 16, 80)}px` }}
+                      style={{ fontSize: '10px', height: '24px' }}
                       value={item.itemName}
                       onChange={(e) => handleCellChange(index, 'itemName', e.target.value)}
                       placeholder="품명 입력"
@@ -418,14 +468,12 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
                   </TableCell>
 
                   {/* REF */}
-                  <TableCell className="px-1 py-1 align-middle" style={{ width: '300px', maxWidth: '300px' }}>
+                  <TableCell className="px-1 py-1 align-middle">
                     <div
                       contentEditable
                       suppressContentEditableWarning
-                      className="text-[10px] text-gray-600 outline-none"
+                      className="text-[10px] text-gray-600 outline-none w-full"
                       style={{ 
-                        width: '300px',
-                        maxWidth: '300px',
                         lineHeight: '14px',
                         wordWrap: 'break-word',
                         overflowWrap: 'break-word',

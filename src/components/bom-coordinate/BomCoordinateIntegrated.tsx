@@ -82,9 +82,10 @@ export default function BomCoordinateIntegrated() {
   const [detailModalBoardId, setDetailModalBoardId] = useState<string | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [skipTempDataLoad, setSkipTempDataLoad] = useState(false);
 
   // REF 불일치 수 계산 (BOM vs 좌표)
-  const mismatchCount = useMemo(() => {
+  const { mismatchCount, missingInCoord, missingInBom } = useMemo(() => {
     const bomItems = processedResult?.processedData?.bomItems ?? [];
     const coords = processedResult?.processedData?.coordinates ?? [];
 
@@ -110,7 +111,11 @@ export default function BomCoordinateIntegrated() {
       if (!bomRefs.has(ref)) missingInBom += 1;
     });
 
-    return missingInCoord + missingInBom;
+    return {
+      mismatchCount: missingInCoord + missingInBom,
+      missingInCoord,
+      missingInBom
+    };
   }, [processedResult?.processedData?.bomItems, processedResult?.processedData?.coordinates]);
 
   // 합칠 수 있는 동일 항목이 있는지 체크
@@ -157,30 +162,47 @@ export default function BomCoordinateIntegrated() {
   };
   
   // 임시 데이터 불러오기
-  const loadTempData = async (userId: string) => {
+  const loadTempData = async (userId: string, skipIfEmpty = false) => {
     try {
+      // skipTempDataLoad 플래그가 설정되어 있으면 복원하지 않음
+      if (skipTempDataLoad) {
+        console.log('⏭️ 새로 만들기로 인해 임시 데이터 복원 건너뜀');
+        return;
+      }
+      
       const saved = localStorage.getItem(getTempStorageKey(userId));
-      if (saved) {
-        const tempData = JSON.parse(saved);
-        
-        // 24시간 이상 된 데이터는 삭제
-        const savedAt = new Date(tempData.savedAt);
-        const now = new Date();
-        const hoursDiff = (now.getTime() - savedAt.getTime()) / (1000 * 60 * 60);
-        
-        if (hoursDiff > 24) {
-          localStorage.removeItem(getTempStorageKey(userId));
-          console.log('⏰ 24시간 지난 임시 데이터 삭제됨');
+      if (!saved) return;
+      
+      const tempData = JSON.parse(saved);
+      
+      // skipIfEmpty가 true이고 현재 상태가 비어있지 않으면 복원하지 않음
+      if (skipIfEmpty) {
+        const hasData = processedResult || 
+                       (metadata.boardName || metadata.productionManager || metadata.productionQuantity > 0) ||
+                       fileInfo.bomFile || fileInfo.coordFile;
+        if (hasData) {
+          console.log('⏭️ 현재 데이터가 있어 임시 데이터 복원 건너뜀');
           return;
         }
-        
-        // 데이터 복원
-        setStep(tempData.step);
-        setMetadata(tempData.metadata);
-        setProcessedResult(tempData.processedResult);
-        setViewMode('create');
-        console.log('✅ 임시 데이터 복원됨');
       }
+      
+      // 24시간 이상 된 데이터는 삭제
+      const savedAt = new Date(tempData.savedAt);
+      const now = new Date();
+      const hoursDiff = (now.getTime() - savedAt.getTime()) / (1000 * 60 * 60);
+      
+      if (hoursDiff > 24) {
+        localStorage.removeItem(getTempStorageKey(userId));
+        console.log('⏰ 24시간 지난 임시 데이터 삭제됨');
+        return;
+      }
+      
+      // 데이터 복원
+      setStep(tempData.step);
+      setMetadata(tempData.metadata);
+      setProcessedResult(tempData.processedResult);
+      setViewMode('create');
+      console.log('✅ 임시 데이터 복원됨');
     } catch (error) {
       console.error('임시 데이터 불러오기 실패:', error);
     }
@@ -227,14 +249,21 @@ export default function BomCoordinateIntegrated() {
             name: userData?.name || user.email.split('@')[0]
           });
           
-          // Artwork 담당자 초기값을 현재 사용자 ID로 설정
-          setMetadata(prev => ({
-            ...prev,
-            artworkManager: userData?.id || ''
-          }));
+          // Artwork 담당자 초기값을 현재 사용자 ID로 설정 (metadata가 비어있을 때만)
+          setMetadata(prev => {
+            if (!prev.boardName && !prev.productionManager && prev.productionQuantity === 0 && !skipTempDataLoad) {
+              return {
+                ...prev,
+                artworkManager: userData?.id || ''
+              };
+            }
+            return prev;
+          });
           
-          // 임시 저장 데이터 복원
-          loadTempData(user.id);
+          // 임시 저장 데이터 복원 (초기 로드 시에만, 현재 데이터가 없을 때만, skipTempDataLoad가 false일 때만)
+          if (!skipTempDataLoad) {
+            loadTempData(user.id, true);
+          }
         }
       } catch (error) {
         console.error('Error loading data:', error);
@@ -711,6 +740,11 @@ export default function BomCoordinateIntegrated() {
           
         if (learningError) {
             console.warn('학습 데이터 저장 실패 (기능에는 영향 없음):', learningError);
+        } else {
+          // 학습 데이터 저장 성공 시 캐시 리셋하여 다음에 새 데이터 반영되도록 함
+          const { resetLearningDataCache } = await import('@/utils/v7-generator');
+          resetLearningDataCache();
+          console.log('✅ 학습 데이터 캐시 리셋 완료');
         }
       }
       
@@ -744,14 +778,21 @@ export default function BomCoordinateIntegrated() {
   const handleReset = () => {
     setStep('input');
     setFileInfo({ bomFile: null, coordFile: null });
-    setMetadata(prev => ({
-      ...prev,
+    // artworkManager는 빈 문자열로 두고, useEffect에서 자동으로 현재 사용자로 설정됨
+    setMetadata({
       boardName: '',
+      artworkManager: '',
       productionManager: '',
       productionQuantity: 0
-    }));
+    });
     setProcessedResult(null);
     setUploadedFilePaths(null);
+    setErrorMessage(null);
+    setProgress(0);
+    setLoadingText('');
+    setIsMerged(false);
+    // 새로 만들기 시 임시 데이터 로드 방지 플래그 설정
+    setSkipTempDataLoad(true);
     // 초기화 시에는 임시 데이터 유지 (저장/24시간 경과만 삭제)
   };
 
@@ -1006,11 +1047,19 @@ export default function BomCoordinateIntegrated() {
             <p className="page-subtitle mb-0">BOM & Coordinate Management</p>
             <div className="flex gap-2">
               <Button
-                onClick={() => {
+                onClick={async () => {
+                  // 먼저 임시 데이터 삭제
+                  await clearTempData();
+                  // 플래그 설정하여 임시 데이터 로드 방지
+                  setSkipTempDataLoad(true);
+                  // 상태 완전 초기화
+                  handleReset();
                   setViewMode('create');
                   setStep('input');
-                  handleReset();
-                  clearTempData(); // 새로 만들기 시 임시 데이터 삭제
+                  // 약간의 지연 후 플래그 해제 (다음 새로고침 시에는 복원 가능하도록)
+                  setTimeout(() => {
+                    setSkipTempDataLoad(false);
+                  }, 1000);
                 }}
                 className={`button-base ${
                   viewMode === 'create' 
@@ -1476,7 +1525,7 @@ export default function BomCoordinateIntegrated() {
       {step === 'preview' && processedResult && (
         <div className="space-y-4">
           <Card>
-            <CardContent className="p-4 sm:p-6">
+            <CardContent className="p-4 sm:p-6 w-full max-w-full overflow-hidden">
               {/* 제목 / 부제 + 버튼 */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3 mb-4">
                 <div>
@@ -1533,8 +1582,8 @@ export default function BomCoordinateIntegrated() {
               </div>
 
               {/* 탭 */}
-              <Tabs defaultValue="bom" className="w-full">
-                <TabsList className="flex space-x-1 bg-gray-50 p-1 business-radius-card border border-gray-200 mb-4">
+              <Tabs defaultValue="bom" className="w-full max-w-full">
+                <TabsList className="flex space-x-1 bg-gray-50 p-1 business-radius-card border border-gray-200 mb-4 w-full">
                   <TabsTrigger 
                     value="bom" 
                     className="flex-1 flex items-center justify-center space-x-2 py-1.5 px-3 sm:px-4 business-radius-button !text-xs font-medium transition-colors data-[state=active]:text-hansl-600 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-gray-200 data-[state=inactive]:text-gray-600 data-[state=inactive]:bg-transparent data-[state=inactive]:hover:text-gray-900 data-[state=inactive]:hover:bg-white/50"
@@ -1556,6 +1605,11 @@ export default function BomCoordinateIntegrated() {
                         REF 불일치: {mismatchCount}
                       </span>
                     )}
+                    {missingInCoord > 0 && (
+                      <span className="badge-stats bg-red-100 text-red-700 border border-red-200">
+                        좌표에 없음: {missingInCoord}개
+                      </span>
+                    )}
                   </TabsTrigger>
                   <TabsTrigger 
                     value="coord" 
@@ -1568,10 +1622,15 @@ export default function BomCoordinateIntegrated() {
                     <span className="badge-stats data-[state=active]:bg-orange-50 data-[state=active]:text-orange-700 bg-gray-100 text-gray-600">
                       {processedResult.processedData?.coordinates?.filter((c: CoordinateItem) => c.layer === 'BOTTOM').length || 0}
                     </span>
+                    {missingInBom > 0 && (
+                      <span className="badge-stats bg-red-100 text-red-700 border border-red-200">
+                        BOM에 없음: {missingInBom}개
+                      </span>
+                    )}
                   </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="bom" className="mt-0">
+                <TabsContent value="bom" className="mt-0 w-full max-w-full overflow-hidden">
                   <GeneratedPreviewPanel 
                     ref={previewPanelRef}
                     bomItems={processedResult.processedData?.bomItems || []}
@@ -1586,9 +1645,10 @@ export default function BomCoordinateIntegrated() {
                   />
                 </TabsContent>
 
-                <TabsContent value="coord" className="mt-0">
+                <TabsContent value="coord" className="mt-0 w-full max-w-full overflow-hidden">
                   <CoordinatePreviewPanel 
                     coordinates={processedResult.processedData?.coordinates || []}
+                    bomItems={processedResult.processedData?.bomItems || []}
                   />
                 </TabsContent>
               </Tabs>

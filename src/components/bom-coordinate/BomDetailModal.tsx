@@ -279,12 +279,12 @@ export default function BomDetailModal({ boardId, isOpen, onClose }: BomDetailMo
 
               {/* TOP 탭 */}
               <TabsContent value="top" className="flex-1 overflow-auto mt-0">
-                <CoordinateTable coordinates={boardData.topCoordinates} checkIsMisap={checkIsMisap} />
+                <CoordinateTable coordinates={boardData.topCoordinates} bomItems={boardData.bomItems} checkIsMisap={checkIsMisap} />
               </TabsContent>
 
               {/* BOTTOM 탭 */}
               <TabsContent value="bottom" className="flex-1 overflow-auto mt-0">
-                <CoordinateTable coordinates={boardData.bottomCoordinates} checkIsMisap={checkIsMisap} />
+                <CoordinateTable coordinates={boardData.bottomCoordinates} bomItems={boardData.bomItems} checkIsMisap={checkIsMisap} />
               </TabsContent>
             </Tabs>
           ) : (
@@ -502,13 +502,24 @@ function BOMTable({
 // ============================================================================
 function CoordinateTable({ 
   coordinates, 
+  bomItems = [],
   checkIsMisap 
 }: { 
   coordinates: CoordinateItem[]; 
+  bomItems?: BOMItem[];
   checkIsMisap: (name: string, remark: string) => boolean;
 }) {
   let prevType = '';
   const totalCount = coordinates.length;
+  
+  // BOM의 REF Set 생성 (빠른 조회를 위해)
+  const bomRefSet = new Set<string>();
+  bomItems.forEach((item: BOMItem) => {
+    if (item.refList) {
+      const refs = item.refList.split(',').map(r => r.trim().toUpperCase()).filter(Boolean);
+      refs.forEach(ref => bomRefSet.add(ref));
+    }
+  });
   
   return (
     <div className="border rounded-lg bg-white shadow-sm max-h-[55vh] overflow-auto">
@@ -556,11 +567,13 @@ function CoordinateTable({
                 const isMisap = checkIsMisap(coord.partName || '', coord.remark || '');
                 const showType = coord.type !== prevType;
                 prevType = coord.type || '';
+                // 좌표에는 있지만 BOM에는 없는 경우 체크
+                const isMissingInBom = coord.refDes && !bomRefSet.has(coord.refDes.toUpperCase());
                 
                 return (
                   <tr 
                     key={index} 
-                    className={`hover:bg-gray-50 border-b border-gray-100 ${isMisap ? 'bg-gray-50' : ''}`}
+                    className={`hover:bg-gray-50 border-b border-gray-100 ${isMisap ? 'bg-gray-50' : ''} ${isMissingInBom ? 'bg-red-50/60' : ''}`}
                   >
                     {/* No */}
                     <td className="text-center py-1 px-2">
@@ -569,21 +582,21 @@ function CoordinateTable({
                     
                     {/* 종류 - 연속 동일 종류는 첫 번째만 표시 */}
                     <td className="text-center py-1 px-1 whitespace-nowrap">
-                      <span className={`text-[10px] ${isMisap ? 'text-red-600' : 'text-gray-600'}`}>
+                      <span className={`text-[10px] ${isMisap || isMissingInBom ? 'text-red-600' : 'text-gray-600'}`}>
                         {showType ? (coord.type || '-') : ''}
                       </span>
                     </td>
                     
                     {/* 품명 */}
                     <td className="py-1 px-1 whitespace-nowrap">
-                      <span className={`text-[10px] ${isMisap ? 'text-red-600' : 'text-gray-600'}`}>
+                      <span className={`text-[10px] ${isMisap || isMissingInBom ? 'text-red-600' : 'text-gray-600'}`}>
                         {coord.partName || '-'}
                       </span>
                     </td>
                     
                     {/* RefDes */}
                     <td className="text-center py-1 px-2">
-                      <span className={`text-[10px] font-medium ${isMisap ? 'text-red-600' : 'text-gray-900'}`}>
+                      <span className={`text-[10px] font-medium ${isMisap || isMissingInBom ? 'text-red-700' : 'text-gray-900'}`}>
                         {coord.refDes}
                       </span>
                     </td>
@@ -592,7 +605,7 @@ function CoordinateTable({
                     <td className="text-center py-1 px-2">
                       <Badge 
                         variant={coord.layer === 'TOP' ? 'default' : 'secondary'} 
-                        className="text-[9px] px-1.5 py-0 h-4"
+                        className={`text-[9px] px-1.5 py-0 h-4 ${isMissingInBom ? 'bg-red-100 text-red-700 border border-red-200' : ''}`}
                       >
                         {coord.layer}
                       </Badge>
@@ -600,29 +613,29 @@ function CoordinateTable({
                     
                     {/* X */}
                     <td className="text-center py-1 px-2">
-                      <span className={`text-[10px] font-mono ${isMisap ? 'text-red-600' : 'text-gray-600'}`}>
+                      <span className={`text-[10px] font-mono ${isMisap || isMissingInBom ? 'text-red-600' : 'text-gray-600'}`}>
                         {coord.locationX?.toFixed(2)}
                       </span>
                     </td>
                     
                     {/* Y */}
                     <td className="text-center py-1 px-2">
-                      <span className={`text-[10px] font-mono ${isMisap ? 'text-red-600' : 'text-gray-600'}`}>
+                      <span className={`text-[10px] font-mono ${isMisap || isMissingInBom ? 'text-red-600' : 'text-gray-600'}`}>
                         {coord.locationY?.toFixed(2)}
                       </span>
                     </td>
                     
                     {/* Angle */}
                     <td className="text-center py-1 px-2">
-                      <span className={`text-[10px] font-mono ${isMisap ? 'text-red-600' : 'text-gray-600'}`}>
+                      <span className={`text-[10px] font-mono ${isMisap || isMissingInBom ? 'text-red-600' : 'text-gray-600'}`}>
                         {coord.rotation || 0}
                       </span>
                     </td>
                     
                     {/* 비고 */}
                     <td className="py-1 px-2">
-                      <span className={`text-[10px] ${isMisap ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
-                        {coord.remark || ''}
+                      <span className={`text-[10px] ${isMisap ? 'text-red-600 font-medium' : isMissingInBom ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
+                        {isMissingInBom ? 'BOM에 없음' : (coord.remark || '')}
                       </span>
                     </td>
                   </tr>
@@ -640,6 +653,10 @@ function CoordinateTable({
                     <span className="flex items-center gap-1">
                       <span className="w-3 h-3 bg-gray-100 border border-gray-300 rounded"></span>
                       미삽
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-3 bg-red-50 border border-red-200 rounded"></span>
+                      BOM에 없음
                     </span>
                   </div>
                 </div>

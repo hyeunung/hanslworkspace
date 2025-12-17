@@ -6,6 +6,7 @@
  */
 
 import * as XLSX from 'xlsx';
+import { createClient } from '@/lib/supabase/client';
 
 // ============================================================
 // 타입 정의
@@ -130,6 +131,7 @@ export async function loadLearningData(): Promise<LearningDataType> {
   try {
     console.log('📂 학습 데이터 로드 시작...');
     
+    // 1. 정적 JSON 파일 로드
     const [
       typeMappingRes,
       partNameMappingRes,
@@ -157,11 +159,85 @@ export async function loadLearningData(): Promise<LearningDataType> {
     const typeSortOrder = await typeSortOrderRes.json();
     const misapKeywords = await misapKeywordsRes.json();
 
-    // 고정 매핑 적용
-    const mergedPartNameMapping = { ...partNameMapping, ...FIXED_MAPPINGS };
+    // 고정 매핑 적용 (기존 정적 JSON 데이터 + 고정 매핑)
+    let mergedPartNameMapping = { ...partNameMapping, ...FIXED_MAPPINGS };
+    let mergedTypeMapping = { ...typeMapping };
+
+    // 2. DB에서 사용자가 수동으로 입력한 학습 데이터 로드 및 병합
+    try {
+      console.log('📊 DB 학습 데이터 로드 중...');
+      const supabase = createClient();
+      const { data: learningRecords, error: dbError } = await supabase
+        .from('ai_learning_records')
+        .select('processed_bom_data')
+        .not('processed_bom_data', 'is', null)
+        .order('created_at', { ascending: false }); // 최신 데이터 우선
+
+      if (dbError) {
+        console.warn('⚠️ DB 학습 데이터 로드 실패 (기본 데이터만 사용):', dbError);
+      } else if (learningRecords && learningRecords.length > 0) {
+        console.log(`📚 ${learningRecords.length}개의 학습 레코드 발견`);
+        
+        let dbPartNameCount = 0;
+        let dbTypeCount = 0;
+        
+        // 각 레코드에서 학습 데이터 추출
+        for (const record of learningRecords) {
+          const bomData = record.processed_bom_data;
+          if (!Array.isArray(bomData)) continue;
+
+          for (const item of bomData) {
+            // 원본 데이터가 있어야 매핑 가능
+            if (!item.originalPart && !item.originalFootprint) continue;
+            
+            const part = (item.originalPart || '').trim();
+            const footprint = (item.originalFootprint || '').trim().toUpperCase();
+            const itemName = (item.itemName || '').trim();
+            const itemType = (item.itemType || '').trim();
+
+            // 품명 매핑 추가 (Footprint → 품명)
+            // 사용자가 수동으로 수정한 데이터는 항상 반영
+            if (footprint && itemName && itemName !== '데이터 없음 (수동 확인 필요)') {
+              // 사용자가 수정한 경우인지 확인 (footprint와 itemName이 다름)
+              const isUserModified = itemName !== footprint && itemName.toUpperCase() !== footprint;
+              
+              // Part|Footprint 조합으로 저장
+              if (part) {
+                const combo = `${part}|${footprint}`;
+                // 사용자가 수정한 경우는 항상 반영, 아니면 기존 데이터가 없을 때만 추가
+                if (isUserModified || !mergedPartNameMapping[combo]) {
+                  mergedPartNameMapping[combo] = itemName;
+                  dbPartNameCount++;
+                }
+              }
+              
+              // Footprint만으로도 저장
+              // 사용자가 수정한 경우는 항상 반영, 아니면 기존 데이터가 없을 때만 추가
+              if (isUserModified || !mergedPartNameMapping[footprint]) {
+                mergedPartNameMapping[footprint] = itemName;
+                dbPartNameCount++;
+              }
+            }
+
+            // 종류 매핑 추가 (품명 → 종류)
+            // 기존 정적 JSON에 없거나, DB 데이터가 더 최신이면 추가/업데이트
+            if (itemName && itemType && itemType !== '데이터 없음') {
+              if (!mergedTypeMapping[itemName] || mergedTypeMapping[itemName] !== itemType) {
+                mergedTypeMapping[itemName] = itemType;
+                dbTypeCount++;
+              }
+            }
+          }
+        }
+        
+        console.log(`✅ DB 학습 데이터 반영 완료 (품명: +${dbPartNameCount}개, 종류: +${dbTypeCount}개)`);
+      }
+    } catch (dbLoadError) {
+      console.warn('⚠️ DB 학습 데이터 로드 중 오류 (기본 데이터만 사용):', dbLoadError);
+    }
 
     learningDataCache = {
-      typeMapping,
+      typeMapping: mergedTypeMapping,
       partNameMapping: mergedPartNameMapping,
       partNameConflicts,
       typeSortOrder,
@@ -400,7 +476,7 @@ async function parseCoordinateFile(file: File): Promise<ParsedCoordItem[]> {
     const lines = text.split('\n');
     
     let headerFound = false;
-    let colMap = { ref: 0, x: 3, y: 4, rotation: 5, layer: 2 };
+    let colMap = { ref: 0, x: 1, y: 2, rotation: 3, layer: 4 };
     
     for (const line of lines) {
       const trimmed = line.trim();
@@ -411,33 +487,66 @@ async function parseCoordinateFile(file: File): Promise<ParsedCoordItem[]> {
         const lower = trimmed.toLowerCase();
         if (lower.includes('refdes') || lower.includes('ref') || lower.includes('designator')) {
           headerFound = true;
-          const cols = trimmed.split(/\s{2,}|\t/).map(c => c.toLowerCase().trim());
+          // 탭 또는 공백으로 분리
+          const cols = trimmed.split(/\t|\s{2,}/).map(c => c.trim().replace(/"/g, ''));
+          console.log('📍 좌표 헤더 발견:', cols);
+          
           cols.forEach((col, idx) => {
-            if (col.includes('ref') || col.includes('designator')) colMap.ref = idx;
-            if (col.includes('locationx') || col === 'x') colMap.x = idx;
-            if (col.includes('locationy') || col === 'y') colMap.y = idx;
-            if (col.includes('rotation') || col.includes('angle')) colMap.rotation = idx;
-            if (col.includes('layer') || col.includes('side')) colMap.layer = idx;
+            const colLower = col.toLowerCase();
+            if (colLower.includes('ref') || colLower.includes('designator')) {
+              colMap.ref = idx;
+              console.log(`  - Ref 컬럼: ${idx} (${col})`);
+            }
+            if (colLower.includes('locationx') || colLower === 'x' || (colLower === 'x' && idx === 1)) {
+              colMap.x = idx;
+              console.log(`  - X 컬럼: ${idx} (${col})`);
+            }
+            if (colLower.includes('locationy') || colLower === 'y' || (colLower === 'y' && idx === 2)) {
+              colMap.y = idx;
+              console.log(`  - Y 컬럼: ${idx} (${col})`);
+            }
+            if (colLower.includes('rotation') || colLower.includes('angle') || colLower.includes('rot')) {
+              colMap.rotation = idx;
+              console.log(`  - Rotation 컬럼: ${idx} (${col})`);
+            }
+            if (colLower.includes('layer') || colLower.includes('side')) {
+              colMap.layer = idx;
+              console.log(`  - Layer 컬럼: ${idx} (${col})`);
+            }
           });
+          
+          console.log('📍 최종 컬럼 매핑:', colMap);
           continue;
         }
         continue;
       }
       
       // 데이터 행 파싱
-      const cols = trimmed.split(/\s{2,}|\t/);
-      if (cols.length < 4) continue;
+      // 탭 또는 공백으로 분리 (큰 공백 우선)
+      const cols = trimmed.split(/\t|\s{2,}/).map(c => c.trim().replace(/"/g, ''));
+      if (cols.length < 3) continue;
       
-      const ref = (cols[colMap.ref]?.trim() || '').toUpperCase();
-      if (!ref || Utils.isTP(ref)) continue;
+      const ref = (cols[colMap.ref] || '').trim().toUpperCase().replace(/"/g, '');
+      if (!ref || Utils.isTP(ref) || /^\d+$/.test(ref)) continue; // 숫자만 있는 REF 제외
+      
+      const x = parseFloat(cols[colMap.x] || '0');
+      const y = parseFloat(cols[colMap.y] || '0');
+      const rotation = parseFloat(cols[colMap.rotation] || '0');
+      const layerStr = (cols[colMap.layer] || '').toUpperCase().replace(/"/g, '');
+      const layer = layerStr.includes('BOT') ? 'BOTTOM' : 'TOP';
       
       items.push({
         ref,
-        x: parseFloat(cols[colMap.x]) || 0,
-        y: parseFloat(cols[colMap.y]) || 0,
-        rotation: parseFloat(cols[colMap.rotation]) || 0,
-        layer: cols[colMap.layer]?.toUpperCase().includes('BOT') ? 'BOTTOM' : 'TOP',
+        x,
+        y,
+        rotation,
+        layer,
       });
+    }
+    
+    console.log(`📍 파싱된 좌표: ${items.length}개`);
+    if (items.length > 0) {
+      console.log('📍 첫 번째 좌표 샘플:', items[0]);
     }
   } else {
     // 엑셀 파일 파싱
@@ -473,7 +582,7 @@ async function parseCoordinateFile(file: File): Promise<ParsedCoordItem[]> {
       if (!row) continue;
       
       const ref = String(row[colMap.ref] || '').trim().toUpperCase();
-      if (!ref || Utils.isTP(ref)) continue;
+      if (!ref || Utils.isTP(ref) || /^\d+$/.test(ref)) continue; // 숫자만 있는 REF 제외
       
       items.push({
         ref,
@@ -776,7 +885,8 @@ export async function processBOMAndCoordinates(
     
     // 좌표 처리
     for (const ref of item.refs) {
-      const coord = coordMap.get(ref.toUpperCase());
+      const normRef = ref.toUpperCase();
+      const coord = coordMap.get(normRef);
       if (!coord) continue;
       
       const coordItem: CoordinateItem = {
@@ -795,8 +905,31 @@ export async function processBOMAndCoordinates(
       } else {
         bottomCoordinates.push(coordItem);
       }
+
+      // 매칭된 좌표는 제거하여 나중에 좌표만 존재하는 항목을 분리 처리
+      coordMap.delete(normRef);
     }
   }
+
+  // 4-1. BOM에 없는 좌표만 존재하는 REF를 좌표 리스트에 추가
+  coordMap.forEach((coord) => {
+    const coordItem: CoordinateItem = {
+      type: '좌표만 존재',
+      partName: 'BOM 없음',
+      refDes: coord.ref,
+      layer: coord.layer,
+      locationX: coord.x,
+      locationY: coord.y,
+      rotation: coord.rotation,
+      remark: 'BOM 미존재',
+    };
+
+    if (coord.layer === 'TOP') {
+      topCoordinates.push(coordItem);
+    } else {
+      bottomCoordinates.push(coordItem);
+    }
+  });
   
   // 5. 종류별 정렬 (대분류 기준으로 그룹핑)
   // 대분류 순서 (세부 사이즈 무시하고 같은 그룹으로 묶음)

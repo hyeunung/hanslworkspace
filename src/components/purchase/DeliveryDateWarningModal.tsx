@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
 import { AlertCircle, Calendar, Loader2, MessageSquarePlus, Check } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Purchase } from '@/types/purchase';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { addCacheListener } from '@/stores/purchaseMemoryStore';
+import { addCacheListener, updatePurchaseInMemory, notifyCacheListeners } from '@/stores/purchaseMemoryStore';
+
+// 상세 모달 lazy load
+const PurchaseDetailModal = lazy(() => import('./PurchaseDetailModal'));
 
 interface DeliveryDateWarningModalProps {
   isOpen: boolean;
@@ -35,15 +38,29 @@ export default function DeliveryDateWarningModal({
 }: DeliveryDateWarningModalProps) {
   // 완료된 항목 ID 목록 (로컬 상태로 즉시 UI 반영)
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set());
+  // 모달이 열릴 때 고정된 경고 항목 (이후 재계산 방지)
+  const [fixedWarningItems, setFixedWarningItems] = useState<WarningItem[]>([]);
+  // 이미 항목을 고정했는지 추적 (한 번만 고정)
+  const hasFixedItemsRef = useRef(false);
+  // 자동 닫기가 이미 실행되었는지 추적 (중복 방지)
+  const hasClosedRef = useRef(false);
   const [openPopoverId, setOpenPopoverId] = useState<number | null>(null);
   const [modifySubject, setModifySubject] = useState('');
   const [modifyMessage, setModifyMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const autoCloseTimer = useRef<NodeJS.Timeout | null>(null);
+  
+  // 상세 모달 상태
+  const [detailModalPurchaseId, setDetailModalPurchaseId] = useState<number | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  
+  // onClose를 ref로 감싸서 useEffect 의존성 문제 해결
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  
   const supabase = createClient();
 
-  // 경고 항목 계산
-  const warningItems = useMemo(() => {
+  // 경고 항목 계산 함수
+  const calculateWarningItems = useCallback(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
@@ -88,18 +105,26 @@ export default function DeliveryDateWarningModal({
     return items.sort((a, b) => b.daysOverdue - a.daysOverdue);
   }, [purchases, currentUserName]);
 
-  // 모달 열릴 때 상태 초기화
+  // 모달이 열릴 때 경고 항목 고정 (이후 메모리 캐시 업데이트로 재계산되지 않음)
+  const warningItems = fixedWarningItems;
+
+  // 모달 열릴 때 상태 초기화 및 경고 항목 고정 (한 번만)
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !hasFixedItemsRef.current) {
       setCompletedIds(new Set());
       setOpenPopoverId(null);
+      hasClosedRef.current = false; // 자동 닫기 플래그 초기화
+      // 모달 열릴 때 경고 항목 고정 (이후 재계산 방지)
+      const items = calculateWarningItems();
+      setFixedWarningItems(items);
+      hasFixedItemsRef.current = true;
     }
-    return () => {
-      if (autoCloseTimer.current) {
-        clearTimeout(autoCloseTimer.current);
-      }
-    };
-  }, [isOpen]);
+    
+    // 모달이 닫히면 플래그 초기화
+    if (!isOpen) {
+      hasFixedItemsRef.current = false;
+    }
+  }, [isOpen, calculateWarningItems]);
 
   // 모든 항목 완료 여부
   const allCompleted = useMemo(() => {
@@ -113,19 +138,16 @@ export default function DeliveryDateWarningModal({
     return Math.round((completedIds.size / warningItems.length) * 100);
   }, [warningItems.length, completedIds.size]);
 
-  // 모든 항목 완료 시 0.2초 후 자동 닫기 (onRefresh 호출하지 않음)
+  // 100% 완료 시 자동 닫기
   useEffect(() => {
-    if (allCompleted && warningItems.length > 0 && completedIds.size > 0) {
-      autoCloseTimer.current = setTimeout(() => {
-        onClose();
-      }, 200);
+    if (progress === 100 && warningItems.length > 0 && !hasClosedRef.current) {
+      hasClosedRef.current = true;
+      // 300ms 후 모달 자동 닫기
+      setTimeout(() => {
+        onCloseRef.current();
+      }, 300);
     }
-    return () => {
-      if (autoCloseTimer.current) {
-        clearTimeout(autoCloseTimer.current);
-      }
-    };
-  }, [allCompleted, warningItems.length, completedIds.size, onClose]);
+  }, [progress, warningItems.length]);
 
   // 🚀 Realtime 이벤트 구독 - 모달이 열려있는 동안 실시간 업데이트
   const realtimeFirstMount = useRef(true);
@@ -202,7 +224,18 @@ export default function DeliveryDateWarningModal({
 
       if (updateError) throw updateError;
 
-      // 3. 로컬 상태 즉시 업데이트 (UI 즉시 반영)
+      // 3. 메모리 캐시 즉시 업데이트 (deliveryWarningCount 재계산용)
+      const updated = updatePurchaseInMemory(purchase.id, (p) => ({
+        ...p,
+        delivery_revision_requested: true,
+        delivery_revision_requested_at: new Date().toISOString(),
+        delivery_revision_requested_by: currentUserName || 'unknown'
+      }));
+      if (updated) {
+        notifyCacheListeners(); // 구독자들에게 알림
+      }
+
+      // 4. 로컬 상태 즉시 업데이트 (UI 즉시 반영)
       setCompletedIds(prev => new Set(prev).add(purchase.id));
       setOpenPopoverId(null);
       setModifySubject('');
@@ -233,170 +266,194 @@ export default function DeliveryDateWarningModal({
     return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
   };
 
+  // 카드 클릭 시 상세 모달 열기
+  const handleCardClick = useCallback((purchaseId: number) => {
+    setDetailModalPurchaseId(purchaseId);
+    setIsDetailModalOpen(true);
+  }, []);
+
+  // 상세 모달 닫기
+  const handleDetailModalClose = useCallback(() => {
+    setIsDetailModalOpen(false);
+    setDetailModalPurchaseId(null);
+  }, []);
+
   if (warningItems.length === 0) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col p-0 gap-0" showCloseButton={false}>
-        {/* 헤더 */}
-        <DialogHeader className="px-5 py-4 border-b">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-red-500" />
-              <DialogTitle className="page-title text-base">
-                입고 일정 지연 알림
-              </DialogTitle>
+    <>
+      <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
+        <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col p-0 gap-0" showCloseButton={false}>
+          {/* 헤더 */}
+          <DialogHeader className="px-5 py-4 border-b">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-red-500" />
+                <DialogTitle className="page-title text-base">
+                  입고 일정 지연 알림
+                </DialogTitle>
+              </div>
+              <span className="text-xs text-gray-500">
+                {completedIds.size}/{warningItems.length} 완료
+              </span>
             </div>
-            <span className="text-xs text-gray-500">
-              {completedIds.size}/{warningItems.length} 완료
-            </span>
-          </div>
-          <Progress value={progress} className="h-1 mt-3" />
-        </DialogHeader>
+            <Progress value={progress} className="h-1 mt-3" />
+          </DialogHeader>
 
-        {/* 본문 */}
-        <div className="flex-1 overflow-auto p-4 space-y-2">
-          {warningItems.map((item) => {
-            const isCompleted = completedIds.has(item.purchase.id);
+          {/* 본문 */}
+          <div className="flex-1 overflow-auto p-4 space-y-2">
+            {warningItems.map((item) => {
+              const isCompleted = completedIds.has(item.purchase.id);
 
-            return (
-              <div
-                key={item.purchase.id}
-                className={`border rounded-lg p-3 transition-all duration-200 ${
-                  isCompleted ? 'bg-gray-50 opacity-60' : 'bg-white'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  {/* 정보 */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-medium text-gray-900">
-                        {item.purchase.purchase_order_number}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {item.purchase.vendor_name}
-                      </span>
+              return (
+                <div
+                  key={item.purchase.id}
+                  className={`border rounded-lg p-3 transition-all duration-200 cursor-pointer hover:border-hansl-400 ${
+                    isCompleted ? 'bg-gray-50 opacity-60' : 'bg-white'
+                  }`}
+                  onClick={() => handleCardClick(item.purchase.id)}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    {/* 정보 */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-medium text-gray-900">
+                          {item.purchase.purchase_order_number}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {item.purchase.vendor_name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          입고요청: {formatDate(item.purchase.delivery_request_date)}
+                        </span>
+                        {item.purchase.revised_delivery_request_date && (
+                          <span>변경: {formatDate(item.purchase.revised_delivery_request_date)}</span>
+                        )}
+                        <span className="text-red-500">{item.daysOverdue}일 경과</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        입고요청: {formatDate(item.purchase.delivery_request_date)}
-                      </span>
-                      {item.purchase.revised_delivery_request_date && (
-                        <span>변경: {formatDate(item.purchase.revised_delivery_request_date)}</span>
-                      )}
-                      <span className="text-red-500">{item.daysOverdue}일 경과</span>
-                    </div>
-                  </div>
 
-                  {/* 버튼 */}
-                  <div className="flex-shrink-0">
-                    {isCompleted ? (
-                      <Button
-                        size="sm"
-                        disabled
-                        className="button-base bg-gray-100 text-gray-500 h-7 px-3 text-xs"
-                      >
-                        <Check className="w-3 h-3 mr-1" />
-                        요청 완료
-                      </Button>
-                    ) : (
-                      <Popover
-                        open={openPopoverId === item.purchase.id}
-                        onOpenChange={(open) => {
-                          if (open) {
-                            openPopover(item.purchase.id, item.purchase.purchase_order_number);
-                          } else {
-                            setOpenPopoverId(null);
-                          }
-                        }}
-                      >
-                        <PopoverTrigger asChild>
-                          <Button
-                            size="sm"
-                            className="button-base bg-hansl-600 hover:bg-hansl-700 text-white h-7 px-3 text-xs"
-                          >
-                            <MessageSquarePlus className="w-3 h-3 mr-1" />
-                            수정 요청
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent
-                          className="w-80 p-4"
-                          align="end"
-                          onOpenAutoFocus={(e) => e.preventDefault()}
+                    {/* 버튼 */}
+                    <div className="flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      {isCompleted ? (
+                        <Button
+                          size="sm"
+                          disabled
+                          className="button-base bg-gray-100 text-gray-500 h-7 px-3 text-xs"
                         >
-                          <div className="space-y-3">
-                            <div>
-                              <h4 className="font-medium text-sm">입고일 수정 요청</h4>
-                              <p className="text-xs text-gray-500 mt-0.5">
-                                {item.purchase.vendor_name}
-                              </p>
-                            </div>
-                            <div className="space-y-2">
+                          <Check className="w-3 h-3 mr-1" />
+                          요청 완료
+                        </Button>
+                      ) : (
+                        <Popover
+                          open={openPopoverId === item.purchase.id}
+                          onOpenChange={(open) => {
+                            if (open) {
+                              openPopover(item.purchase.id, item.purchase.purchase_order_number);
+                            } else {
+                              setOpenPopoverId(null);
+                            }
+                          }}
+                        >
+                          <PopoverTrigger asChild>
+                            <Button
+                              size="sm"
+                              className="button-base bg-hansl-600 hover:bg-hansl-700 text-white h-7 px-3 text-xs"
+                            >
+                              <MessageSquarePlus className="w-3 h-3 mr-1" />
+                              수정 요청
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            className="w-80 p-4"
+                            align="end"
+                            onOpenAutoFocus={(e) => e.preventDefault()}
+                          >
+                            <div className="space-y-3">
                               <div>
-                                <Label className="text-xs">제목</Label>
-                                <Input
-                                  value={modifySubject}
-                                  onChange={(e) => setModifySubject(e.target.value)}
-                                  className="h-8 text-xs mt-1"
-                                />
+                                <h4 className="font-medium text-sm">입고일 수정 요청</h4>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                  {item.purchase.vendor_name}
+                                </p>
                               </div>
-                              <div>
-                                <Label className="text-xs">내용</Label>
-                                <Textarea
-                                  value={modifyMessage}
-                                  onChange={(e) => setModifyMessage(e.target.value)}
-                                  className="min-h-[80px] text-xs mt-1"
-                                  placeholder="변경 요청 내용을 입력하세요"
-                                />
+                              <div className="space-y-2">
+                                <div>
+                                  <Label className="text-xs">제목</Label>
+                                  <Input
+                                    value={modifySubject}
+                                    onChange={(e) => setModifySubject(e.target.value)}
+                                    className="h-8 text-xs mt-1"
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">내용</Label>
+                                  <Textarea
+                                    value={modifyMessage}
+                                    onChange={(e) => setModifyMessage(e.target.value)}
+                                    className="min-h-[80px] text-xs mt-1"
+                                    placeholder="변경 요청 내용을 입력하세요"
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setOpenPopoverId(null)}
+                                  className="button-base h-7 text-xs"
+                                >
+                                  취소
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  onClick={() => sendRequest(item.purchase)}
+                                  disabled={isSending}
+                                  className="button-base bg-hansl-600 hover:bg-hansl-700 text-white h-7 text-xs"
+                                >
+                                  {isSending && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
+                                  요청 전송
+                                </Button>
                               </div>
                             </div>
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setOpenPopoverId(null)}
-                                className="button-base h-7 text-xs"
-                              >
-                                취소
-                              </Button>
-                              <Button
-                                size="sm"
-                                onClick={() => sendRequest(item.purchase)}
-                                disabled={isSending}
-                                className="button-base bg-hansl-600 hover:bg-hansl-700 text-white h-7 text-xs"
-                              >
-                                {isSending && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
-                                요청 전송
-                              </Button>
-                            </div>
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-                    )}
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
 
-        {/* 푸터 */}
-        <div className="border-t px-5 py-3 flex justify-end">
-          <Button
-            onClick={handleClose}
-            disabled={!allCompleted}
-            className={`button-base h-8 px-4 text-sm ${
-              allCompleted
-                ? 'bg-hansl-600 hover:bg-hansl-700 text-white'
-                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-            }`}
-          >
-            {allCompleted ? '확인' : `${warningItems.length - completedIds.size}건 남음`}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+          {/* 푸터 */}
+          <div className="border-t px-5 py-3">
+            <p className="text-xs text-gray-500 text-center">
+              ℹ️ 모든 수정 요청이 완료되면 이 창이 자동으로 닫힙니다
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 상세 모달 - 발주요청관리 > 입고현황 탭의 상세 모달과 동일 */}
+      {detailModalPurchaseId && (
+        <Suspense fallback={
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100]">
+            <Loader2 className="w-8 h-8 animate-spin text-white" />
+          </div>
+        }>
+          <PurchaseDetailModal
+            purchaseId={detailModalPurchaseId}
+            isOpen={isDetailModalOpen}
+            onClose={handleDetailModalClose}
+            activeTab="receipt"
+            onRefresh={onRefresh}
+          />
+        </Suspense>
+      )}
+    </>
   );
 }
 
