@@ -350,7 +350,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
     }
 
     const columnDefs = [
-      { key: 'index', base: 64, header: 'No.', accessor: (_item: PurchaseItem, index: number) => `${index + 1}` },
+      { key: 'line_number', base: 32, header: '#', accessor: (item: PurchaseItem, index: number) => `${item.line_number || index + 1}` },
       { key: 'item_name', base: 150, max: 320, header: '품목', accessor: (item: PurchaseItem) => item.item_name },
       { key: 'specification', base: 150, max: 320, header: '규격', accessor: (item: PurchaseItem) => item.specification },
       { key: 'quantity', base: 90, header: '수량', accessor: (item: PurchaseItem) => item.quantity != null ? item.quantity.toLocaleString() : '' },
@@ -494,7 +494,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                 <table className="w-full text-[13px] leading-[1.6] border-collapse" style={{ minWidth: `${tableMinWidth}px` }}>
               <thead className="sticky top-0 bg-white z-10 shadow-sm">
                 <tr>
-                  <th className="px-3 py-2 text-left font-medium text-gray-600 w-16 min-w-[64px]">No.</th>
+                  <th className="py-2 text-center font-medium text-gray-600 w-[32px] min-w-[32px]">#</th>
                   <th className="px-3 py-2 text-left font-medium text-gray-600 min-w-[140px]">품목</th>
                   <th className="px-3 py-2 text-left font-medium text-gray-600 min-w-[120px]">규격</th>
                   <th className="px-3 py-2 text-right font-medium text-gray-600 min-w-[80px]">수량</th>
@@ -523,7 +523,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
               <tbody>
               {(isEditing ? editingItems : items).map((item: any, index: number) => (
                   <tr key={item.id || index} className="border-b last:border-b-0">
-                    <td className="px-3 py-2 text-center align-top modal-value">{item.line_number || index + 1}</td>
+                    <td className="py-2 text-center align-top modal-value">{item.line_number || index + 1}</td>
                     <td className="px-3 py-2 align-top min-w-[140px]">
                     {isEditing ? (
                       <Input
