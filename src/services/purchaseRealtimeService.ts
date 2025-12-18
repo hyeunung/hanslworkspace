@@ -14,7 +14,8 @@ import {
   updatePurchaseInMemory,
   removePurchaseFromMemory,
   removeItemFromMemory,
-  notifyCacheListeners
+  notifyCacheListeners,
+  invalidatePurchaseMemoryCache
 } from '@/stores/purchaseMemoryStore'
 import type { Purchase } from '@/types/purchase'
 import { logger } from '@/lib/logger'
@@ -133,7 +134,8 @@ class PurchaseRealtimeService {
     })
 
     if (!purchaseMemoryCache.allPurchases) {
-      logger.warn('⚠️ [Realtime] 캐시가 초기화되지 않음, 무시')
+      logger.warn('⚠️ [Realtime] 캐시가 초기화되지 않음, 캐시 무효화 후 종료')
+      invalidatePurchaseMemoryCache()
       return
     }
 
@@ -166,7 +168,8 @@ class PurchaseRealtimeService {
     })
 
     if (!purchaseMemoryCache.allPurchases) {
-      logger.warn('⚠️ [Realtime] 캐시가 초기화되지 않음, 무시')
+      logger.warn('⚠️ [Realtime] 캐시가 초기화되지 않음, 캐시 무효화 후 종료')
+      invalidatePurchaseMemoryCache()
       return
     }
 

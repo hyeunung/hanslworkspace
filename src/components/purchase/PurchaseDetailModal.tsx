@@ -1,4 +1,7 @@
-import { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo, memo, type CSSProperties } from 'react'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails, Purchase, Vendor } from '@/types/purchase'
 import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPaymentCompleted, markItemAsReceived, markPurchaseAsReceived, markItemAsPaymentCanceled, markItemAsStatementReceived, markItemAsStatementCanceled, usePurchaseMemory, updatePurchaseInMemory, removeItemFromMemory, markItemAsExpenditureSet, markBulkExpenditureSet, removePurchaseFromMemory, addCacheListener } from '@/stores/purchaseMemoryStore'
@@ -24,7 +27,8 @@ import {
   Check,
   Truck,
   MessageSquarePlus,
-  Loader2
+  Loader2,
+  GripVertical
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -49,6 +53,19 @@ interface PurchaseDetailModalProps {
   onRefresh?: (forceRefresh?: boolean, options?: { silent?: boolean }) => void | Promise<void>
   onOptimisticUpdate?: (purchaseId: number, updater: (prev: Purchase) => Purchase) => void
   onDelete?: (purchase: PurchaseRequestWithDetails) => void
+}
+
+type SortableRenderProps = {
+  setNodeRef: (element: HTMLElement | null) => void
+  style: CSSProperties
+  attributes: any
+  listeners: any
+  isDragging: boolean
+}
+
+type SortableRowProps = {
+  id: string
+  children: (props: SortableRenderProps) => React.ReactNode
 }
 
 function PurchaseDetailModal({ 
@@ -85,6 +102,48 @@ function PurchaseDetailModal({
   
   // 저장 로딩 상태
   const [isSaving, setIsSaving] = useState(false)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
+  )
+
+  const getSortableId = useCallback((item: any, index: number) => {
+    if (item?.id) return `item-${item.id}`
+    if (item?.line_number) return `line-${item.line_number}`
+    return `temp-${index}`
+  }, [])
+
+  const SortableRow = ({ id, children }: SortableRowProps) => {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+    const style: CSSProperties = {
+      transform: CSS.Transform.toString(transform),
+      transition
+    }
+
+    return (
+      <>
+        {children({ setNodeRef, attributes, listeners, isDragging, style })}
+      </>
+    )
+  }
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    setEditedItems(prev => {
+      const oldIndex = prev.findIndex((item, index) => getSortableId(item, index) === active.id)
+      const newIndex = prev.findIndex((item, index) => getSortableId(item, index) === over.id)
+      if (oldIndex === -1 || newIndex === -1) return prev
+
+      const reordered = arrayMove(prev, oldIndex, newIndex).map((item, idx) => ({
+        ...item,
+        line_number: idx + 1
+      }))
+
+      return reordered
+    })
+  }, [getSortableId])
 
   // 수정요청 초기값 설정
   useEffect(() => {
@@ -332,6 +391,15 @@ function PurchaseDetailModal({
   
   // 재무 정보 열람 권한 체크
   const canViewFinancialInfo = effectiveRoles.some(role => AUTHORIZED_ROLES.includes(role))
+  
+  const normalizedRoles = effectiveRoles.map(r => (r || '').toLowerCase().replace(/_/g, ' ').trim())
+  const isLeadBuyerRole = normalizedRoles.includes('lead buyer')
+  const isPurchaseOrderCategory = (purchase?.payment_category || '').replace(/\s+/g, '').includes('발주')
+  
+  const showStatementColumns = isPurchaseOrderCategory && (
+    activeTab === 'done' || (activeTab === 'receipt' && isLeadBuyerRole)
+  )
+  const showExpenditureColumn = isPurchaseOrderCategory && activeTab === 'done'
   
   // 삭제 권한: 관리자 또는 요청자 본인 (단, 승인된 요청은 관리자만, lead buyer는 삭제 불가)
   const isApproved = purchase?.final_manager_status === 'approved';
@@ -923,16 +991,19 @@ function PurchaseDetailModal({
         columnConfigs.push(
           { key: 'actual_receipt_date', minWidth: 100, maxWidth: 160, baseWidth: 100, isFixed: false }
         )
-      }
-      if (activeTab === 'done') {
-        // 발주인 경우에만 거래명세서 확인, 회계상 입고일, 지출정보 칼럼 추가
-        if (purchase?.payment_category === '발주') {
+        if (showStatementColumns) {
           columnConfigs.push(
-            { key: 'transaction_confirm', minWidth: 85, maxWidth: 120, baseWidth: 85, isFixed: false }, // 거래명세서 확인 칼럼 너비 축소
-            { key: 'accounting_date', minWidth: 70, maxWidth: 70, baseWidth: 70, isFixed: true }, // 회계상 입고일 칼럼 너비 축소
-            { key: 'expenditure_info', minWidth: 90, maxWidth: 150, baseWidth: 90, isFixed: false } // 지출정보 칼럼 너비 축소
+            { key: 'transaction_confirm', minWidth: 85, maxWidth: 120, baseWidth: 85, isFixed: false },
+            { key: 'accounting_date', minWidth: 70, maxWidth: 70, baseWidth: 70, isFixed: true }
           )
         }
+      }
+      if (activeTab === 'done' && purchase?.payment_category === '발주') {
+        columnConfigs.push(
+          { key: 'transaction_confirm', minWidth: 85, maxWidth: 120, baseWidth: 85, isFixed: false }, // 거래명세서 확인 칼럼 너비 축소
+          { key: 'accounting_date', minWidth: 70, maxWidth: 70, baseWidth: 70, isFixed: true }, // 회계상 입고일 칼럼 너비 축소
+          { key: 'expenditure_info', minWidth: 90, maxWidth: 150, baseWidth: 90, isFixed: false } // 지출정보 칼럼 너비 축소
+        )
       }
 
     const calculatedWidths = columnConfigs.map((config, index) => {
@@ -955,12 +1026,18 @@ function PurchaseDetailModal({
           ? ['품목명', '규격', quantityHeader, '단가', '합계', purchase?.payment_category === '발주' ? '세액' : null, '비고'].filter(h => h !== null)
           : ['품목명', '규격', quantityHeader, '단가', '합계', purchase?.payment_category === '발주' ? '세액' : null, '비고', statusHeader].filter(h => h !== null)
         if (activeTab === 'receipt') {
-          return [...baseHeaders, '실제입고일']
+          const receiptHeaders = [...baseHeaders, '실제입고일']
+          if (showStatementColumns) {
+            receiptHeaders.push('거래명세서 확인', '회계상 입고일')
+          }
+          return receiptHeaders
         } else if (activeTab === 'done') {
           const doneHeaders = [...baseHeaders]
-          // 발주인 경우에만 거래명세서 확인, 회계상 입고일, 지출정보 칼럼 추가
-          if (purchase?.payment_category === '발주') {
-            doneHeaders.push('거래명세서 확인', '회계상 입고일', '지출정보')
+          if (showStatementColumns) {
+            doneHeaders.push('거래명세서 확인', '회계상 입고일')
+            if (showExpenditureColumn) {
+              doneHeaders.push('지출정보')
+            }
           }
           return doneHeaders
         }
@@ -1068,7 +1145,7 @@ function PurchaseDetailModal({
 
     setColumnWidths(calculatedWidths)
     return calculatedWidths
-  }, [purchase, activeTab])
+  }, [purchase, activeTab, showStatementColumns, showExpenditureColumn])
 
   // 상태 표시 텍스트 반환 함수
   const getStatusDisplay = (item: any) => {
@@ -1116,12 +1193,18 @@ function PurchaseDetailModal({
     
     // 탭별 추가 칼럼
     if (activeTab === 'receipt') {
-      return [...baseColumns, '100px'].join(' ')
+      const receiptColumns = [...baseColumns, '100px'] // 실제입고일
+      if (showStatementColumns) {
+        receiptColumns.push('100px', '80px') // 거래명세서 확인, 회계상 입고일
+      }
+      return receiptColumns.join(' ')
     } else if (activeTab === 'done') {
       const doneColumns = [...baseColumns]
-      // 발주인 경우에만 거래명세서 확인, 회계상 입고일, 지출정보 칼럼 추가
-      if (purchase?.payment_category === '발주') {
-        doneColumns.push('100px', '80px', '110px') // 거래명세서 확인, 회계상 입고일, 지출정보
+      if (showStatementColumns) {
+        doneColumns.push('100px', '80px') // 거래명세서 확인, 회계상 입고일
+        if (showExpenditureColumn) {
+          doneColumns.push('110px') // 지출정보
+        }
       }
       return doneColumns.join(' ')
     }
@@ -1311,9 +1394,37 @@ function PurchaseDetailModal({
     
     try {
       const supabase = createClient()
+
+      const toNumber = (value: any, fallback = 0) => {
+        const parsed = Number(value)
+        return Number.isFinite(parsed) ? parsed : fallback
+      }
+      
+      const itemsForSave = editedItems.map((item, index) => {
+        const quantity = toNumber(item.quantity)
+        const unitPrice = toNumber(item.unit_price_value)
+        const rawAmount = Number(item.amount_value)
+        const amount = Number.isFinite(rawAmount) ? rawAmount : quantity * unitPrice
+        const tax = purchase?.payment_category === '발주'
+          ? Math.round(amount * 0.1)
+          : toNumber(item.tax_amount_value, 0)
+
+        return {
+          ...item,
+          quantity,
+          unit_price_value: unitPrice,
+          amount_value: amount,
+          tax_amount_value: tax,
+          line_number: index + 1
+        }
+      })
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PurchaseDetailModal.tsx:handleSave:itemsForSave',message:'Normalized items before save',data:{purchaseId:purchase.id,items:itemsForSave.map(i=>({id:i.id,item_name:i.item_name,quantity:i.quantity,unit_price_value:i.unit_price_value,amount_value:i.amount_value,tax_amount_value:i.tax_amount_value}))},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A,B'})}).catch(()=>{})
+      // #endregion
       
       // 발주 기본 정보 업데이트
-      const totalAmount = editedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
+      const totalAmount = itemsForSave.reduce((sum, item) => sum + (item.amount_value || 0), 0)
       
       logger.info('Update payload:', {
         purchase_order_number: editedPurchase.purchase_order_number || null,
@@ -1473,7 +1584,7 @@ function PurchaseDetailModal({
       }
 
       // 모든 품목이 삭제된 경우 발주기본정보도 삭제
-      if (editedItems.length === 0) {
+      if (itemsForSave.length === 0) {
         logger.info('🚀 모든 품목이 삭제되어 발주기본정보도 삭제합니다', {
           purchaseId: purchase.id,
           deletedItemIds: deletedItemIds
@@ -1521,7 +1632,12 @@ function PurchaseDetailModal({
 
       // 각 아이템 업데이트 또는 생성
       
-      for (const item of editedItems) {
+      for (let index = 0; index < itemsForSave.length; index++) {
+        const item = itemsForSave[index]
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PurchaseDetailModal.tsx:handleSave:itemLoop',message:'Upserting item',data:{purchaseId:purchase.id,index,itemId:item.id,quantity:item.quantity,unit_price_value:item.unit_price_value,amount_value:item.amount_value,tax_amount_value:item.tax_amount_value},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A,B'})}).catch(()=>{})
+        // #endregion
         
         // 필수 필드 검증
         if (!item.item_name || !item.item_name.trim()) {
@@ -1544,12 +1660,13 @@ function PurchaseDetailModal({
             .update({
               item_name: item.item_name.trim(),
               specification: item.specification || null,
-              quantity: Number(item.quantity),
+              quantity: item.quantity,
               received_quantity: item.received_quantity !== null && item.received_quantity !== undefined ? Number(item.received_quantity) : null,
-              unit_price_value: Number(item.unit_price_value),
+              unit_price_value: item.unit_price_value,
               unit_price_currency: purchase.currency || 'KRW',
-              amount_value: Number(item.amount_value),
+              amount_value: item.amount_value,
               amount_currency: purchase.currency || 'KRW',
+              tax_amount_value: item.tax_amount_value ?? null,
               remark: item.remark || null,
               updated_at: new Date().toISOString()
             })
@@ -1557,6 +1674,9 @@ function PurchaseDetailModal({
 
           if (error) {
             logger.error('기존 항목 업데이트 오류', error);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PurchaseDetailModal.tsx:handleSave:itemUpdateError',message:'Update item failed',data:{itemId:item.id,error:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{})
+            // #endregion
             throw error;
           }
         } else {
@@ -1565,14 +1685,15 @@ function PurchaseDetailModal({
             purchase_request_id: purchase.id,
             item_name: item.item_name.trim(),
             specification: item.specification || null,
-            quantity: Number(item.quantity),
+            quantity: item.quantity,
             received_quantity: item.received_quantity !== null && item.received_quantity !== undefined ? Number(item.received_quantity) : null,
-            unit_price_value: Number(item.unit_price_value),
+            unit_price_value: item.unit_price_value,
             unit_price_currency: purchase.currency || 'KRW',
-            amount_value: Number(item.amount_value),
+            amount_value: item.amount_value,
             amount_currency: purchase.currency || 'KRW',
+            tax_amount_value: item.tax_amount_value ?? null,
             remark: item.remark || null,
-            line_number: item.line_number || editedItems.indexOf(item) + 1,
+            line_number: item.line_number || index + 1,
             created_at: new Date().toISOString()
           };
           
@@ -1585,19 +1706,25 @@ function PurchaseDetailModal({
 
           if (error) {
             logger.error('새 항목 생성 오류', error);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PurchaseDetailModal.tsx:handleSave:itemInsertError',message:'Insert item failed',data:{itemIndex:index,error:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C'})}).catch(()=>{})
+            // #endregion
             throw error;
           }
           
           // 🚀 반환된 새 ID로 editedItems 업데이트
           if (insertedItem) {
-            const itemIndex = editedItems.indexOf(item)
-            if (itemIndex !== -1) {
-              editedItems[itemIndex] = { ...editedItems[itemIndex], ...insertedItem }
-              logger.info('✅ 새 항목 ID 할당됨:', { id: insertedItem.id, itemIndex })
-            }
+            itemsForSave[index] = { ...itemsForSave[index], ...insertedItem }
+            logger.info('✅ 새 항목 ID 할당됨:', { id: insertedItem.id, itemIndex: index })
           }
         }
       }
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PurchaseDetailModal.tsx:handleSave:completedLoop',message:'All items processed',data:{purchaseId:purchase.id,itemCount:itemsForSave.length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A,B'})}).catch(()=>{})
+      // #endregion
+
+      setEditedItems(itemsForSave)
 
       // 🚀 전체완료 함수와 정확히 동일한 패턴 적용 (메모리 캐시 포함)
       const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
@@ -1631,12 +1758,12 @@ function PurchaseDetailModal({
       // 2. 발주 기본 정보 메모리 캐시 업데이트 (수정된 필드들만)
       if (!Number.isNaN(purchaseIdNumber)) {
         const memoryUpdated = updatePurchaseInMemory(purchaseIdNumber, (prev) => {
-          const totalAmount = editedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
+          const totalAmount = itemsForSave.reduce((sum, item) => sum + (item.amount_value || 0), 0)
           
           logger.info('🚀 [메모리 캐시] 발주 기본 정보 업데이트', {
             purchaseId: purchaseIdNumber,
             newTotalAmount: totalAmount,
-            itemsCount: editedItems.length
+            itemsCount: itemsForSave.length
           })
           
           return {
@@ -1665,7 +1792,7 @@ function PurchaseDetailModal({
       const applyOptimisticUpdate = () => {
         if (!Number.isNaN(purchaseIdNumber) && onOptimisticUpdate) {
           onOptimisticUpdate(purchaseIdNumber, prev => {
-            const finalItems = editedItems // 삭제된 항목이 이미 제외됨
+            const finalItems = itemsForSave // 삭제된 항목이 이미 제외됨
             const totalAmount = finalItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
             
             logger.info('🚀 [onOptimisticUpdate] 즉시 UI 업데이트', {
@@ -2830,6 +2957,942 @@ function PurchaseDetailModal({
     }
   }
 
+  const renderItemRow = (item: any, index: number, dragProps?: SortableRenderProps, rowKey?: string) => {
+    const rowClass = `px-2 sm:px-3 py-1 border-b border-gray-50 hover:bg-gray-50/50 relative overflow-visible w-fit ${isEditing ? 'pl-7 sm:pl-8' : ''} ${dragProps?.isDragging ? 'shadow-lg ring-2 ring-blue-200 bg-white' : ''}`
+    const rowProps: any = {
+      className: rowClass
+    }
+    if (dragProps?.setNodeRef) {
+      rowProps.ref = dragProps.setNodeRef
+    }
+    if (dragProps?.style) {
+      rowProps.style = dragProps.style
+    }
+    if (rowKey) {
+      rowProps.key = rowKey
+    }
+
+    return (
+      <div {...rowProps}>
+        {isEditing && dragProps && (
+          <button
+            className="absolute left-1 top-2 sm:top-3 text-gray-400 hover:text-gray-600 p-1 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200"
+            {...dragProps.attributes}
+            {...dragProps.listeners}
+            aria-label="드래그하여 품목 순서 변경"
+          >
+            <GripVertical className="w-3.5 h-3.5" />
+          </button>
+        )}
+        {/* Desktop Layout */}
+        <div className={`hidden sm:grid items-center gap-1 overflow-visible w-fit`} style={{
+          gridTemplateColumns: getGridTemplateColumns()
+        }}>
+          {/* 품목명 */}
+          <div className="min-w-0 relative overflow-visible flex items-center">
+            {isEditing ? (
+              <Input
+                value={item.item_name}
+                onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
+                onFocus={() => setFocusedInput(`item_name_${index}`)}
+                onBlur={() => setFocusedInput(null)}
+                className={`modal-label border-gray-200 rounded-lg w-full !px-1.5 !py-0.5 !text-[10px] focus:border-blue-400 transition-all duration-200 ${
+                  focusedInput === `item_name_${index}` 
+                    ? '!h-auto !min-h-[20px] !absolute !z-[9999] !bg-white !shadow-lg !left-0 !right-0 !-translate-y-1/2 !top-1/2 !whitespace-normal' 
+                    : '!h-5 !truncate'
+                }`}
+                placeholder="품목명"
+              />
+            ) : (
+              <div 
+                className="modal-value" 
+                style={{
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-all', // 어디서든 줄바꿈 가능 (하이픈 무시)
+                  overflowWrap: 'break-word',
+                  hyphens: 'none', // 하이픈에서 자동 줄바꿈 방지
+                  WebkitHyphens: 'none',
+                  MozHyphens: 'none',
+                  msHyphens: 'none',
+                  lineHeight: '1.4',
+                  maxHeight: '2.8em', // 최대 2행 높이
+                  overflow: 'hidden',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical'
+                }}
+                title={item.item_name || '품목명 없음'}
+              >
+                {item.item_name || '품목명 없음'}
+              </div>
+            )}
+          </div>
+          
+          {/* 규격 */}
+          <div className="min-w-0 relative overflow-visible flex items-center" style={{ width: '200px', maxWidth: '200px', minWidth: '200px' }}>
+            {isEditing ? (
+              <Input
+                value={item.specification}
+                onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
+                onFocus={() => setFocusedInput(`specification_${index}`)}
+                onBlur={() => setFocusedInput(null)}
+                className={`modal-label border-gray-200 rounded-lg w-full !px-1.5 !py-0.5 !text-[10px] focus:border-blue-400 transition-all duration-200 ${
+                  focusedInput === `specification_${index}` 
+                    ? '!h-auto !min-h-[20px] !absolute !z-[9999] !bg-white !shadow-lg !left-1/2 !-translate-x-1/2 !-translate-y-1/2 !top-1/2 !whitespace-normal !w-[300px]' 
+                    : '!h-5 !truncate'
+                }`}
+                placeholder="규격"
+              />
+            ) : (
+              <div 
+                className="text-[11px] text-gray-600 font-medium" 
+                style={{
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-all', // 어디서든 줄바꿈 가능 (하이픈 무시)
+                  overflowWrap: 'break-word',
+                  hyphens: 'none', // 하이픈에서 자동 줄바꿈 방지
+                  WebkitHyphens: 'none', // Safari 지원
+                  MozHyphens: 'none', // Firefox 지원
+                  msHyphens: 'none', // IE 지원
+                  lineHeight: '1.4',
+                  maxHeight: '2.8em', // 최대 2행 높이
+                  overflow: 'hidden',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2, // 최대 2행까지만 표시
+                  WebkitBoxOrient: 'vertical'
+                }}
+                title={item.specification || '-'}
+              >
+                {item.specification || '-'}
+              </div>
+            )}
+          </div>
+          
+          {/* 수량 */}
+          <div className="text-center min-w-0 flex items-center justify-center">
+            {isEditing ? (
+              (activeTab === 'receipt' || activeTab === 'done') ? (
+                <div className="flex flex-col items-center gap-0.5 w-full">
+                  <Input
+                    type="number"
+                    value={item.quantity}
+                    onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
+                    className="border-gray-200 rounded-lg text-center w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
+                    placeholder="요청수량"
+                    max="99999"
+                    disabled={canEditLimited && !canEditAll}
+                  />
+                  <div className="flex items-center gap-0.5 w-full">
+                    <span className="text-[9px] text-gray-500">/</span>
+                    <Input
+                      type="number"
+                      value={item.received_quantity ?? ''}
+                      onChange={(e) => handleItemChange(index, 'received_quantity', e.target.value ? Number(e.target.value) : null)}
+                      className="border-gray-200 rounded-lg text-center flex-1 !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
+                      placeholder="실제입고"
+                      max="99999"
+                      disabled={canEditLimited && !canEditAll}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <Input
+                  type="number"
+                  value={item.quantity}
+                  onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
+                  className="border-gray-200 rounded-lg text-center w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
+                  placeholder="수량"
+                  max="99999"
+                  disabled={canEditLimited && !canEditAll}
+                />
+              )
+            ) : (
+              (activeTab === 'receipt' || activeTab === 'done') ? (
+                (() => {
+                  const quantity = item.quantity || 0
+                  const receivedQuantity = item.received_quantity ?? 0
+                  const shouldWrap = quantity >= 100 || receivedQuantity >= 100
+                  const hasReceived = receivedQuantity > 0
+                  
+                  if (shouldWrap) {
+                    return (
+                      <div className="flex flex-col items-center leading-tight">
+                        <div className={`modal-subtitle ${hasReceived ? 'text-gray-400' : ''}`}>{quantity}</div>
+                        <div className={`modal-subtitle ${hasReceived ? '' : 'text-gray-400'}`}>/{receivedQuantity}</div>
+                      </div>
+                    )
+                  } else {
+                    return (
+                      <span className="modal-subtitle">
+                        <span className={hasReceived ? 'text-gray-400' : ''}>{quantity}</span>
+                        <span className={hasReceived ? '' : 'text-gray-400'}>/{receivedQuantity}</span>
+                      </span>
+                    )
+                  }
+                })()
+              ) : (
+                <span className="modal-subtitle">{item.quantity || 0}</span>
+              )
+            )}
+          </div>
+          
+          {/* 단가 */}
+          <div className="text-right min-w-0 flex items-center justify-end">
+            {isEditing ? (
+              <Input
+                type="number"
+                value={item.unit_price_value}
+                onChange={(e) => handleItemChange(index, 'unit_price_value', Number(e.target.value))}
+                className="border-gray-200 rounded-lg text-right w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
+                placeholder="단가"
+                max="100000000000"
+              />
+            ) : (
+              <span className="modal-subtitle">
+                {activeTab === 'done' && !canViewFinancialInfo 
+                  ? '-' 
+                  : `₩${formatCurrency(item.unit_price_value)}`}
+              </span>
+            )}
+          </div>
+          
+          {/* 합계 (수동 입력 가능) */}
+          <div className="text-right min-w-0 flex items-center justify-end">
+            {isEditing ? (
+              <Input
+                type="number"
+                value={item.amount_value || 0}
+                onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
+                className="border-gray-200 rounded-lg w-full !h-6 !px-1.5 !py-0.5 !text-[10px] font-normal text-gray-600 focus:border-blue-400 text-right"
+                placeholder="합계"
+              />
+            ) : (
+              <span className="modal-value">
+                {activeTab === 'done' && !canViewFinancialInfo 
+                  ? '-' 
+                  : `₩${formatCurrency(item.amount_value || 0)}`}
+              </span>
+            )}
+          </div>
+          
+          {/* 세액 - 발주 카테고리인 경우 모든 탭에서 표시 */}
+          {purchase?.payment_category === '발주' && (
+            <div className="text-right min-w-0 flex items-center justify-end">
+              <span className={isEditing ? "modal-subtitle" : "modal-value"}>
+                {activeTab === 'done' && !canViewFinancialInfo 
+                  ? '-' 
+                  : `₩${formatCurrency(item.tax_amount_value || 0)}`}
+              </span>
+            </div>
+          )}
+          
+          {/* 링크 */}
+          <div className="text-center min-w-0 flex items-center justify-center">
+            {item.link ? (
+              <a
+                href={item.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:text-blue-800 underline text-[11px]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                링크
+              </a>
+            ) : (
+              <span className="text-gray-400 text-[11px]">-</span>
+            )}
+          </div>
+          
+          {/* 비고 */}
+          <div className="min-w-0 flex justify-center items-center text-center relative overflow-visible" style={{ width: '150px', maxWidth: '150px', minWidth: '150px' }}>
+            {isEditing ? (
+              <Input
+                value={item.remark || ''}
+                disabled={canEditLimited && !canEditAll}  // lead buyer는 비고 수정 불가
+                onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
+                onFocus={() => setFocusedInput(`remark_${index}`)}
+                onBlur={() => setFocusedInput(null)}
+                className={`modal-label border-gray-200 rounded-lg text-center w-full !px-1.5 !py-0.5 !text-[10px] focus:border-blue-400 transition-all duration-200 ${
+                  focusedInput === `remark_${index}` 
+                    ? '!h-auto !min-h-[20px] !absolute !z-[9999] !bg-white !shadow-lg !left-0 !right-0 !-translate-y-1/2 !top-1/2 !whitespace-normal !text-left' 
+                    : '!h-5 !truncate'
+                }`}
+                placeholder="비고"
+              />
+            ) : (
+              <div 
+                className="text-[11px] text-gray-600 font-medium"
+                style={{
+                  width: '150px',
+                  maxWidth: '150px',
+                  minWidth: '150px',
+                  boxSizing: 'border-box',
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-all',
+                  overflowWrap: 'break-word',
+                  hyphens: 'none',
+                  WebkitHyphens: 'none',
+                  MozHyphens: 'none',
+                  msHyphens: 'none',
+                  lineHeight: '1.4',
+                  maxHeight: '2.8em',
+                  overflow: 'hidden',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical'
+                }}
+                title={item.remark || '-'}
+              >
+                {item.remark || '-'}
+              </div>
+            )}
+          </div>
+          
+          {/* 상태/액션 - 승인대기탭에서는 제외 */}
+          {activeTab !== 'pending' && (
+            <div className="text-center flex justify-center items-center">
+              {isEditing ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleRemoveItem(index)}
+                  className="text-red-600 hover:bg-red-50 rounded-lg p-1 h-6 w-6"
+                  disabled={canEditLimited && !canEditAll}
+                >
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              ) : (
+                <>
+                  {/* 구매 탭에서의 구매완료 상태 */}
+                  {activeTab === 'purchase' && (
+                  <div className="flex justify-center">
+                    {canPurchase ? (
+                      <button
+                        onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
+                        className={`${
+                          item.is_payment_completed
+                            ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
+                            : 'button-toggle-inactive'
+                        }`}
+                      >
+                        {item.is_payment_completed ? '구매완료' : '구매대기'}
+                      </button>
+                    ) : (
+                      <span className={`${
+                        item.is_payment_completed 
+                          ? 'button-toggle-active bg-orange-500 text-white' 
+                          : 'button-waiting-inactive'
+                      }`}>
+                        {item.is_payment_completed ? '구매완료' : '구매대기'}
+                      </span>
+                    )}
+                  </div>
+                )}
+                
+                {/* 입고 탭에서의 입고완료 상태 */}
+                {activeTab === 'receipt' && (
+                  <div className="flex justify-center">
+                    {canReceiveItems ? (
+                      actualReceivedAction.isCompleted(item) ? (
+                        <button
+                          onClick={() => {
+                            actualReceivedAction.handleCancel(item.id, {
+                              item_name: item.item_name,
+                              specification: item.specification,
+                              quantity: item.quantity,
+                              unit_price_value: item.unit_price_value,
+                              amount_value: item.amount_value,
+                              remark: item.remark
+                            })
+                          }}
+                          className="button-action-primary"
+                        >
+                          {actualReceivedAction.config.completedText}
+                        </button>
+                      ) : (
+                        <DateQuantityPickerPopover
+                          onConfirm={(date, quantity) => {
+                            handleItemReceiptToggle(item.id, date, quantity)
+                          }}
+                          placeholder="날짜와 실제입고수량을 입력하세요"
+                          align="center"
+                          side="bottom"
+                          defaultQuantity={item.received_quantity ?? undefined}
+                          maxQuantity={item.quantity}
+                        >
+                          <button className="button-toggle-inactive">
+                            {actualReceivedAction.config.waitingText}
+                          </button>
+                        </DateQuantityPickerPopover>
+                      )
+                    ) : (
+                      <span className={`${
+                        actualReceivedAction.isCompleted(item)
+                          ? 'button-action-primary' 
+                          : 'button-waiting-inactive'
+                      }`}>
+                        {actualReceivedAction.isCompleted(item) ? actualReceivedAction.config.completedText : actualReceivedAction.config.waitingText}
+                      </span>
+                    )}
+                  </div>
+                )}
+                
+                {/* 전체 항목 탭에서는 입고 상태만 표시 (클릭 불가) */}
+                {activeTab === 'done' && (
+                  <div className="flex justify-center">
+                    <span className={`button-base ${
+                      actualReceivedAction.isCompleted(item)
+                        ? 'bg-blue-500 hover:bg-blue-600 text-white' 
+                        : 'border border-gray-300 text-gray-600 bg-white hover:bg-gray-50'
+                    }`}>
+                      {actualReceivedAction.isCompleted(item) ? '입고완료' : '입고대기'}
+                    </span>
+                  </div>
+                )}
+                
+                {/* 기타 탭에서는 기본 상태 표시 */}
+                {activeTab !== 'purchase' && activeTab !== 'receipt' && activeTab !== 'done' && (
+                  <div className="flex justify-center">
+                    <span className="badge-text">-</span>
+                  </div>
+                )}
+              </>
+            )}
+            </div>
+          )}
+          
+          {/* 실제 입고 날짜 - 입고 탭에서만 표시 (상태 컬럼 오른쪽) */}
+          {activeTab === 'receipt' && (
+            <div className="text-center flex justify-center items-center pl-2">
+              {actualReceivedAction.getCompletedDate(item) ? (
+                <div className="modal-subtitle text-green-700">
+                  {new Date(actualReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                  })}
+                </div>
+              ) : (
+                <span className="modal-subtitle text-gray-400">-</span>
+              )}
+            </div>
+          )}
+
+          {/* 거래명세서 확인 - 발주 + 리드바이어 입고현황/전체항목 */}
+          {showStatementColumns && (
+            <div className="text-center flex justify-center items-center">
+              {canReceiptCheck ? (
+                statementReceivedAction.isCompleted(item) ? (
+                  <button
+                    onClick={() => {
+                      statementReceivedAction.handleCancel(item.id, {
+                        item_name: item.item_name,
+                        specification: item.specification,
+                        quantity: item.quantity,
+                        unit_price_value: item.unit_price_value,
+                        amount_value: item.amount_value,
+                        remark: item.remark
+                      })
+                    }}
+                    className="button-action-primary hover:bg-green-600"
+                    title="클릭하여 거래명세서 확인 취소"
+                  >
+                    {statementReceivedAction.config.completedText}
+                  </button>
+                ) : (
+                  <DatePickerPopover
+                    onDateSelect={(date) => {
+                      statementReceivedAction.handleConfirm(item.id, date, {
+                        item_name: item.item_name,
+                        specification: item.specification,
+                        quantity: item.quantity,
+                        unit_price_value: item.unit_price_value,
+                        amount_value: item.amount_value,
+                        remark: item.remark
+                      })
+                    }}
+                    placeholder="회계상 입고일을 선택하세요"
+                    align="center"
+                    side="bottom"
+                  >
+                    <button 
+                      className="button-toggle-inactive"
+                      onClick={() => {}}
+                    >
+                      {statementReceivedAction.config.waitingText}
+                    </button>
+                  </DatePickerPopover>
+                )
+              ) : (
+                <span className={`${
+                  statementReceivedAction.isCompleted(item)
+                    ? 'button-action-primary' 
+                    : 'button-waiting-inactive'
+                }`}>
+                  {statementReceivedAction.isCompleted(item) ? statementReceivedAction.config.completedText : statementReceivedAction.config.waitingText}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* 회계상 입고일 - 발주 + 리드바이어 입고현황/전체항목 */}
+          {showStatementColumns && (
+            <div className="text-center flex justify-center items-center">
+              {statementReceivedAction.getCompletedDate(item) ? (
+                <div className="modal-subtitle text-blue-700">
+                  {new Date(statementReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                  })}
+                </div>
+              ) : (
+                <span className="modal-subtitle text-gray-400">-</span>
+              )}
+            </div>
+          )}
+
+          {/* 지출정보 - 발주인 경우에만 전체항목 탭에서 표시 */}
+          {showExpenditureColumn && (
+            <div className="text-center flex justify-center items-center">
+              {(() => {
+                // 금액 체크 제거 (날짜만 있으면 지출된 것으로 간주)
+                const hasExpenditure = !!item.expenditure_date
+                const hasExpenditureAmount = item.expenditure_amount !== null && item.expenditure_amount !== undefined
+                
+                if (canReceiptCheck) {
+                  return hasExpenditure ? (
+                    <div className="w-full px-1 leading-none">
+                      <div className="text-blue-700 text-[9px] leading-[1.1] font-normal">
+                        {(() => {
+                          const date = new Date(item.expenditure_date)
+                          const year = date.getFullYear().toString().slice(-2)
+                          const month = (date.getMonth() + 1).toString().padStart(2, '0')
+                          const day = date.getDate().toString().padStart(2, '0')
+                          return `${year}.${month}.${day}`
+                        })()}
+                      </div>
+                      <div className="text-gray-700 text-[9px] leading-[1.1] font-normal">
+                        {!canViewFinancialInfo 
+                          ? '-' 
+                          : (hasExpenditureAmount ? `₩${Number(item.expenditure_amount).toLocaleString()}` : '')}
+                      </div>
+                    </div>
+                  ) : (
+                    <DateAmountPickerPopover
+                      onConfirm={(date, amount) => handleItemExpenditure(item.id, date, amount)}
+                      placeholder="지출 날짜와 금액을 입력하세요"
+                      align="center"
+                      side="bottom"
+                    >
+                      <button className="button-toggle-inactive">
+                        지출입력
+                      </button>
+                    </DateAmountPickerPopover>
+                  )
+                } else {
+                  return hasExpenditure ? (
+                    <div className="w-full px-1 leading-none">
+                      <div className="text-blue-700 text-[9px] leading-[1.1] font-normal">
+                        {(() => {
+                          const date = new Date(item.expenditure_date)
+                          const year = date.getFullYear().toString().slice(-2)
+                          const month = (date.getMonth() + 1).toString().padStart(2, '0')
+                          const day = date.getDate().toString().padStart(2, '0')
+                          return `${year}.${month}.${day}`
+                        })()}
+                      </div>
+                      <div className="text-gray-700 text-[9px] leading-[1.1] font-normal">
+                        {!canViewFinancialInfo 
+                          ? '-' 
+                          : (hasExpenditureAmount ? `₩${Number(item.expenditure_amount).toLocaleString()}` : '')}
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="modal-subtitle text-gray-400">-</span>
+                  )
+                }
+              })()}
+            </div>
+          )}
+
+        </div>
+        
+        {/* Mobile Layout */}
+        <div className="block sm:hidden space-y-2">
+          <div className="flex justify-between items-start">
+            <div className="flex-1 min-w-0 relative">
+              {isEditing ? (
+                <Input
+                  value={item.item_name}
+                  onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
+                  onFocus={() => setFocusedInput(`m_item_name_${index}`)}
+                  onBlur={() => setFocusedInput(null)}
+                  className={`modal-label border-gray-200 rounded-lg w-full !px-1.5 !py-0.5 !text-[10px] focus:border-blue-400 transition-all duration-200 ${
+                    focusedInput === `m_item_name_${index}` 
+                      ? '!h-auto !min-h-[20px] !absolute !z-[9999] !bg-white !shadow-lg !left-0 !right-0 !-translate-y-1/2 !top-1/2 !whitespace-normal' 
+                      : '!h-5 !truncate'
+                  }`}
+                  placeholder="품목명"
+                />
+              ) : (
+                <div className="modal-value font-medium">{item.item_name || '품목명 없음'}</div>
+              )}
+              {isEditing ? (
+                <Input
+                  value={item.specification}
+                  onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
+                  onFocus={() => setFocusedInput(`m_specification_${index}`)}
+                  onBlur={() => setFocusedInput(null)}
+                  className={`modal-label border-gray-200 rounded-lg mt-1 w-full !px-1.5 !py-0.5 !text-[10px] focus:border-blue-400 transition-all duration-200 ${
+                    focusedInput === `m_specification_${index}` 
+                      ? '!h-auto !min-h-[20px] !absolute !z-[9999] !bg-white !shadow-lg !left-0 !right-0 !-translate-y-1/2 !top-1/2 !whitespace-normal !w-full' 
+                      : '!h-5 !truncate'
+                  }`}
+                  placeholder="규격"
+                />
+              ) : (
+                <div className="modal-subtitle text-gray-500">{item.specification || '-'}</div>
+              )}
+            </div>
+            <div className="ml-3 text-right flex-shrink-0">
+              {isEditing ? (
+                <Input
+                  type="number"
+                  value={item.amount_value || 0}
+                  onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
+                  className="border-gray-200 rounded-lg w-24 !h-6 !px-1.5 !py-0.5 !text-[10px] font-normal text-gray-600 focus:border-blue-400 text-right"
+                  placeholder="합계"
+                />
+              ) : (
+                <div className="modal-value font-semibold">₩{formatCurrency(item.amount_value || 0)}</div>
+              )}
+              <div className="text-[10px] text-gray-500 mt-0.5">
+                {activeTab === 'done' && !canViewFinancialInfo 
+                  ? '-' 
+                  : `₩${formatCurrency(item.unit_price_value || 0)}`} / 단가
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <span className="text-gray-500 text-xs">수량</span>
+              {isEditing ? (
+                (activeTab === 'receipt' || activeTab === 'done') ? (
+                  <div className="grid grid-cols-2 gap-1 mt-1">
+                    <Input
+                      type="number"
+                      value={item.quantity}
+                      onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
+                      className="border-gray-200 rounded-lg text-center w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                      placeholder="요청수량"
+                      max="99999"
+                    />
+                    <Input
+                      type="number"
+                      value={item.received_quantity ?? ''}
+                      onChange={(e) => handleItemChange(index, 'received_quantity', e.target.value ? Number(e.target.value) : null)}
+                      className="border-gray-200 rounded-lg text-center w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                      placeholder="실제입고"
+                      max="99999"
+                    />
+                  </div>
+                ) : (
+                  <Input
+                    type="number"
+                    value={item.quantity}
+                    onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
+                    className="border-gray-200 rounded-lg text-center w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400 mt-1"
+                    placeholder="수량"
+                    max="99999"
+                  />
+                )
+              ) : (
+                <div className="modal-subtitle mt-1">
+                  {activeTab === 'receipt' || activeTab === 'done' ? (
+                    <>
+                      <span className="text-gray-500">{item.quantity || 0}</span>
+                      <span className="text-gray-400">/{item.received_quantity ?? 0}</span>
+                    </>
+                  ) : (
+                    item.quantity || 0
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <span className="text-gray-500 text-xs">링크</span>
+              <div className="mt-1">
+                {item.link ? (
+                  <a
+                    href={item.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 underline text-[11px] break-all"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {item.link}
+                  </a>
+                ) : (
+                  <span className="text-gray-400 text-[11px]">-</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 상태/액션 */}
+          <div className="grid grid-cols-2 gap-2 items-center">
+            <div>
+              <span className="text-gray-500 text-xs">상태</span>
+              <div className="mt-1">
+                {activeTab === 'pending' ? (
+                  <span className="text-xs text-gray-400">-</span>
+                ) : (
+                  <>
+                    {activeTab === 'purchase' && (
+                      <div className="flex items-center gap-2">
+                        {canPurchase ? (
+                          <button
+                            onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
+                            className={`text-xs px-2 py-1 rounded ${
+                              item.is_payment_completed
+                                ? 'button-action-primary'
+                                : 'bg-gray-100 text-gray-600'
+                            }`}
+                          >
+                            {item.is_payment_completed ? '구매완료' : '구매대기'}
+                          </button>
+                        ) : (
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            item.is_payment_completed 
+                              ? 'button-action-primary' 
+                              : 'bg-gray-100 text-gray-400'
+                          }`}>
+                            {item.is_payment_completed ? '구매완료' : '구매대기'}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {activeTab === 'receipt' && (
+                      <div className="flex items-center gap-2">
+                        {canReceiveItems ? (
+                          actualReceivedAction.isCompleted(item) ? (
+                            <button
+                              onClick={() => {
+                                actualReceivedAction.handleCancel(item.id, {
+                                  item_name: item.item_name,
+                                  specification: item.specification,
+                                  quantity: item.quantity,
+                                  unit_price_value: item.unit_price_value,
+                                  amount_value: item.amount_value,
+                                  remark: item.remark
+                                })
+                              }}
+                              className="text-xs px-2 py-1 rounded button-action-primary"
+                            >
+                              {actualReceivedAction.config.completedText}
+                            </button>
+                          ) : (
+                            <DatePickerPopover
+                              onDateSelect={(date) => {
+                                actualReceivedAction.handleConfirm(item.id, date, {
+                                  item_name: item.item_name,
+                                  specification: item.specification,
+                                  quantity: item.quantity,
+                                  unit_price_value: item.unit_price_value,
+                                  amount_value: item.amount_value,
+                                  remark: item.remark
+                                })
+                              }}
+                              placeholder="실제 입고된 날짜를 선택하세요"
+                              align="center"
+                              side="bottom"
+                            >
+                              <button className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600">
+                                {actualReceivedAction.config.waitingText}
+                              </button>
+                            </DatePickerPopover>
+                          )
+                        ) : (
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            actualReceivedAction.isCompleted(item)
+                              ? 'button-action-primary' 
+                              : 'bg-gray-100 text-gray-400'
+                          }`}>
+                            {actualReceivedAction.isCompleted(item) ? actualReceivedAction.config.completedText : actualReceivedAction.config.waitingText}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    
+                    {activeTab === 'done' && (
+                      <>
+                        {/* 전체 항목 탭에서는 입고 상태만 표시 (클릭 불가) */}
+                        <span className={`button-base ${
+                          actualReceivedAction.isCompleted(item)
+                            ? 'bg-green-500 text-white' 
+                            : 'border border-gray-300 text-gray-600 bg-white'
+                        }`}>
+                          {actualReceivedAction.isCompleted(item) ? '입고완료' : '입고대기'}
+                        </span>
+                      </>
+                    )}
+                    
+                    {activeTab !== 'purchase' && activeTab !== 'receipt' && activeTab !== 'done' && (
+                      <span className="text-xs text-gray-400">-</span>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {(item.remark || isEditing) && (
+              <div>
+                <span className="text-gray-500 text-xs">비고:</span>
+                {isEditing ? (
+                  <Input
+                    value={item.remark || ''}
+                    onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
+                    className="modal-label border-gray-200 rounded-lg mt-1 w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                    placeholder="비고"
+                  />
+                ) : (
+                  <div className="modal-subtitle text-gray-500 mt-1">{item.remark || '-'}</div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* 모바일에서 실제 입고 날짜 표시 */}
+          {!isEditing && activeTab === 'receipt' && actualReceivedAction.getCompletedDate(item) && (
+            <div>
+              <span className="text-gray-500 text-xs">실제입고일:</span>
+              <div className="mt-1">
+                <div className="modal-subtitle text-green-700">
+                  {new Date(actualReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                  })}
+                </div>
+                <div className="text-[9px] text-gray-500">
+                  {new Date(actualReceivedAction.getCompletedDate(item)).toLocaleTimeString('ko-KR', {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 모바일에서 거래명세서 확인 표시 - 발주 + 리드바이어 입고현황/전체항목 */}
+          {!isEditing && showStatementColumns && (
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500 text-xs">거래명세서 확인:</span>
+              <div className="flex items-center gap-2">
+                {canReceiptCheck ? (
+                  statementReceivedAction.isCompleted(item) ? (
+                    <button
+                      onClick={() => {
+                        statementReceivedAction.handleCancel(item.id, {
+                          item_name: item.item_name,
+                          specification: item.specification,
+                          quantity: item.quantity,
+                          unit_price_value: item.unit_price_value,
+                          amount_value: item.amount_value,
+                          remark: item.remark
+                        })
+                      }}
+                      className="text-xs px-2 py-1 rounded button-action-primary"
+                    >
+                      {statementReceivedAction.config.completedText}
+                    </button>
+                  ) : (
+                    <DatePickerPopover
+                      onDateSelect={(date) => {
+                        statementReceivedAction.handleConfirm(item.id, date, {
+                          item_name: item.item_name,
+                          specification: item.specification,
+                          quantity: item.quantity,
+                          unit_price_value: item.unit_price_value,
+                          amount_value: item.amount_value,
+                          remark: item.remark
+                        })
+                      }}
+                      placeholder="회계상 입고일을 선택하세요"
+                      align="center"
+                      side="bottom"
+                    >
+                      <button className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600">
+                        {statementReceivedAction.config.waitingText}
+                      </button>
+                    </DatePickerPopover>
+                  )
+                ) : (
+                  <span className={`text-xs px-2 py-1 rounded ${
+                    statementReceivedAction.isCompleted(item)
+                      ? 'button-action-primary' 
+                      : 'bg-gray-100 text-gray-400'
+                  }`}>
+                    {statementReceivedAction.isCompleted(item) ? statementReceivedAction.config.completedText : statementReceivedAction.config.waitingText}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 모바일에서 회계상 입고일 표시 - 발주 + 리드바이어 입고현황/전체항목 */}
+          {!isEditing && showStatementColumns && statementReceivedAction.getCompletedDate(item) && (
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500 text-xs">회계상 입고일:</span>
+              <span className="modal-subtitle text-blue-700">
+                {new Date(statementReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit'
+                })}
+              </span>
+            </div>
+          )}
+
+          {/* 모바일에서 지출정보 표시 - 전체항목 탭 + 발주 카테고리 */}
+          {!isEditing && showExpenditureColumn && (
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500 text-xs">지출정보:</span>
+              <div className="text-right">
+                {item.expenditure_date ? (
+                  <>
+                    <div className="text-blue-700 text-[11px]">
+                      {(() => {
+                        const date = new Date(item.expenditure_date)
+                        const year = date.getFullYear().toString().slice(-2)
+                        const month = (date.getMonth() + 1).toString().padStart(2, '0')
+                        const day = date.getDate().toString().padStart(2, '0')
+                        return `${year}.${month}.${day}`
+                      })()}
+                    </div>
+                    <div className="text-gray-700 text-[11px]">
+                      {!canViewFinancialInfo 
+                        ? '-' 
+                        : (item.expenditure_amount !== null && item.expenditure_amount !== undefined
+                          ? `₩${Number(item.expenditure_amount).toLocaleString()}`
+                          : '')}
+                    </div>
+                  </>
+                ) : (
+                  <span className="text-gray-400 text-[11px]">-</span>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   const content = (
     <div className="space-y-1 sm:space-y-4">
       {loading ? (
@@ -3608,7 +4671,7 @@ function PurchaseDetailModal({
                           </Button>
                         </DateQuantityPickerPopover>
                       )}
-                      {activeTab === 'done' && canReceiptCheck && canViewFinancialInfo && purchase.payment_category === '발주' && (
+                      {showStatementColumns && canReceiptCheck && canViewFinancialInfo && (
                         <div className="flex items-center gap-2">
                           <DatePickerPopover
                             onDateSelect={handleCompleteAllStatement}
@@ -3624,7 +4687,7 @@ function PurchaseDetailModal({
                               거래명세서 확인
                             </Button>
                           </DatePickerPopover>
-                          {purchase.payment_category === '발주' && (
+                          {activeTab === 'done' && purchase.payment_category === '발주' && (
                             <DateAmountPickerPopover
                               onConfirm={handleBulkExpenditure}
                               placeholder="일괄 지출 날짜와 금액을 입력하세요"
@@ -3690,15 +4753,11 @@ function PurchaseDetailModal({
                                 <div className="text-center">실제입고일</div>
                               </>
                             )}
-                            {activeTab === 'done' && (
+                            {showStatementColumns && (
                               <>
-                                {purchase.payment_category === '발주' && (
-                                  <>
-                                    <div className="text-center">거래명세서 확인</div>
-                                    <div className="text-center">회계상 입고일</div>
-                                    <div className="text-center">지출정보</div>
-                                  </>
-                                )}
+                                <div className="text-center">거래명세서 확인</div>
+                                <div className="text-center">회계상 입고일</div>
+                                {showExpenditureColumn && <div className="text-center">지출정보</div>}
                               </>
                             )}
                           </>
@@ -3711,28 +4770,38 @@ function PurchaseDetailModal({
                                 ? '입고상태'
                                 : '상태'}
                             </div>
-                            {activeTab === 'done' && (
-                              <>
-                                {purchase.payment_category === '발주' && (
-                                  <>
-                                    <div className="text-center">거래명세서 확인</div>
-                                    <div className="text-center">회계상 입고일</div>
-                                    <div className="text-center">지출정보</div>
-                                  </>
-                                )}
-                              </>
-                            )}
                             {activeTab === 'receipt' && (
                               <>
                                 <div className="text-center">실제입고일</div>
+                              </>
+                            )}
+                            {showStatementColumns && (
+                              <>
+                                <div className="text-center">거래명세서 확인</div>
+                                <div className="text-center">회계상 입고일</div>
+                                {showExpenditureColumn && <div className="text-center">지출정보</div>}
                               </>
                             )}
                           </>
                         )}
                       </div>
                     </div>
+                    {isEditing && (
+                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                        <SortableContext
+                          items={(editedItems || []).map((item, idx) => getSortableId(item, idx))}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          {(editedItems || []).map((item, index) => (
+                            <SortableRow key={getSortableId(item, index)} id={getSortableId(item, index)}>
+                              {(dragProps) => renderItemRow(item, index, dragProps)}
+                            </SortableRow>
+                          ))}
+                        </SortableContext>
+                      </DndContext>
+                    )}
                     <div className="divide-y divide-gray-100 overflow-visible w-fit">
-                      {(isEditing ? editedItems : currentItems)?.map((item, index) => (
+                      {((isEditing ? [] : currentItems) || []).map((item, index) => (
                         <div key={index} className="px-2 sm:px-3 py-1 border-b border-gray-50 hover:bg-gray-50/50 relative overflow-visible">
                           {/* Desktop Layout */}
                           <div className={`hidden sm:grid items-center gap-1 overflow-visible w-fit`} style={{
@@ -4128,8 +5197,8 @@ function PurchaseDetailModal({
                               </div>
                             )}
 
-                            {/* 거래명세서 확인 - 발주인 경우에만 전체항목 탭에서 표시 */}
-                            {activeTab === 'done' && purchase.payment_category === '발주' && (
+                            {/* 거래명세서 확인 - 발주 + 리드바이어 입고현황/전체항목 */}
+                            {showStatementColumns && (
                               <div className="text-center flex justify-center items-center">
                                 {canReceiptCheck ? (
                                   statementReceivedAction.isCompleted(item) ? (
@@ -4185,8 +5254,8 @@ function PurchaseDetailModal({
                               </div>
                             )}
 
-                            {/* 회계상 입고일 - 발주인 경우에만 전체항목 탭에서 표시 */}
-                            {activeTab === 'done' && purchase.payment_category === '발주' && (
+                            {/* 회계상 입고일 - 발주 + 리드바이어 입고현황/전체항목 */}
+                            {showStatementColumns && (
                               <div className="text-center flex justify-center items-center">
                                 {statementReceivedAction.getCompletedDate(item) ? (
                                   <div className="modal-subtitle text-blue-700">
@@ -4203,7 +5272,7 @@ function PurchaseDetailModal({
                             )}
 
                             {/* 지출정보 - 발주인 경우에만 전체항목 탭에서 표시 */}
-                            {activeTab === 'done' && purchase.payment_category === '발주' && (
+                            {showExpenditureColumn && (
                               <div className="text-center flex justify-center items-center">
                                 {(() => {
                                   // 금액 체크 제거 (날짜만 있으면 지출된 것으로 간주)
@@ -4506,8 +5575,8 @@ function PurchaseDetailModal({
                               </div>
                             )}
 
-                            {/* 모바일에서 거래명세서 확인 표시 - 발주인 경우에만 전체항목 탭에서 표시 */}
-                            {!isEditing && activeTab === 'done' && purchase.payment_category === '발주' && (
+                            {/* 모바일에서 거래명세서 확인 표시 - 발주 + 리드바이어 입고현황/전체항목 */}
+                            {!isEditing && showStatementColumns && (
                               <div className="flex items-center justify-between">
                                 <span className="text-gray-500 text-xs">거래명세서 확인:</span>
                                 <div className="flex items-center gap-2">
@@ -4566,8 +5635,8 @@ function PurchaseDetailModal({
                               </div>
                             )}
 
-                            {/* 모바일에서 회계상 입고일 표시 - 발주인 경우에만 전체항목 탭에서 표시 */}
-                            {!isEditing && activeTab === 'done' && purchase.payment_category === '발주' && statementReceivedAction.getCompletedDate(item) && (
+                            {/* 모바일에서 회계상 입고일 표시 - 발주 + 리드바이어 입고현황/전체항목 */}
+                            {!isEditing && showStatementColumns && statementReceivedAction.getCompletedDate(item) && (
                               <div>
                                 <span className="text-gray-500 text-xs">회계상 입고일:</span>
                                 <div className="mt-1">

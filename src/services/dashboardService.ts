@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import { logger } from '@/lib/logger'
-import { purchaseMemoryCache } from '@/stores/purchaseMemoryStore'
+import { purchaseMemoryCache, CACHE_DURATION } from '@/stores/purchaseMemoryStore'
 import type { 
   DashboardData, 
   DashboardStats, 
@@ -26,7 +26,13 @@ export class DashboardService {
   private hasValidPurchaseMemory(employee?: Employee | null): boolean {
     if (!purchaseMemoryCache.allPurchases || purchaseMemoryCache.allPurchases.length === 0) return false
     if (!employee?.id) return false
-    return purchaseMemoryCache.currentUser?.id === String(employee.id)
+    
+    const now = Date.now()
+    const lastFetch = purchaseMemoryCache.lastFetch || 0
+    const isFresh = (now - lastFetch) < CACHE_DURATION
+    const isSameUser = purchaseMemoryCache.currentUser?.id === String(employee.id)
+    
+    return isFresh && isSameUser
   }
 
   private getPurchaseMemory(): Purchase[] {
