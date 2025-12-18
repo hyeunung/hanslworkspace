@@ -117,6 +117,9 @@ export const removePurchaseFromMemory = (purchaseId: number | string): boolean =
   // 실시간 UI 반영을 위해 lastFetch 업데이트 (다른 함수들과 동일)
   purchaseMemoryCache.lastFetch = Date.now()
   
+  // 🚀 모든 리스너에게 변경 알림 (대시보드 등 실시간 업데이트)
+  notifyCacheListeners()
+  
   return true
 }
 
@@ -170,6 +173,10 @@ export const updatePurchaseInMemory = (purchaseId: number | string, updater: (pu
   
   // 🚀 React 감지를 위한 lastFetch 업데이트 (UI 즉시 반영)
   purchaseMemoryCache.lastFetch = Date.now()
+  
+  // 🚀 모든 리스너에게 변경 알림 (대시보드 등 실시간 업데이트)
+  notifyCacheListeners()
+  
   return true
 }
 

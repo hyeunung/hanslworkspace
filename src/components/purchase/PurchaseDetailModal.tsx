@@ -2182,6 +2182,15 @@ function PurchaseDetailModal({
         setPurchase(prev => prev ? { ...prev, final_manager_status: 'approved' } : null)
       }
 
+      // 🚀 메모리 캐시 즉시 업데이트 (자동으로 notifyCacheListeners 호출됨 -> 대시보드 등 실시간 반영)
+      updatePurchaseInMemory(String(purchase.id), (prev) => ({
+        ...prev,
+        ...(type === 'middle' 
+          ? { middle_manager_status: 'approved' as any }
+          : { final_manager_status: 'approved' as any }
+        )
+      }))
+
       // Optimistic Update로 리스트 즉시 반영 (구매완료/입고완료와 동일한 패턴)
       if (purchase && onOptimisticUpdate) {
         const purchaseIdNumber = Number(purchase.id)
@@ -3489,6 +3498,79 @@ function PurchaseDetailModal({
                     <span className="ml-2 badge-stats bg-gray-500 text-white">
                       {currentItems?.length || 0}개
                     </span>
+                    {isEditing ? (
+                      <ReactSelect
+                        isDisabled={canEditLimited && !canEditAll}
+                        options={[
+                          { value: 'KRW', label: 'KRW' },
+                          { value: 'USD', label: 'USD' },
+                          { value: 'EUR', label: 'EUR' },
+                          { value: 'JPY', label: 'JPY' },
+                          { value: 'CNY', label: 'CNY' },
+                        ]}
+                        value={editedPurchase?.currency ? {
+                          value: editedPurchase.currency,
+                          label: editedPurchase.currency
+                        } : { value: 'KRW', label: 'KRW' }}
+                        onChange={(option) => {
+                          if (option) {
+                            setEditedPurchase(prev => prev ? { ...prev, currency: option.value as 'KRW' | 'USD' } : null)
+                          }
+                        }}
+                        menuPortalTarget={document.body}
+                        styles={{
+                          control: (base) => ({
+                            ...base,
+                            minHeight: '20px',
+                            height: '20px',
+                            width: '75px',
+                            fontSize: '10px',
+                            borderRadius: '8px',
+                            borderColor: '#e5e7eb',
+                            marginLeft: '8px',
+                          }),
+                          valueContainer: (base) => ({
+                            ...base,
+                            padding: '0 6px',
+                            height: '20px',
+                          }),
+                          singleValue: (base) => ({
+                            ...base,
+                            margin: 0,
+                            position: 'absolute',
+                            top: '50%',
+                            transform: 'translateY(-50%)',
+                          }),
+                          input: (base) => ({
+                            ...base,
+                            margin: 0,
+                            padding: 0,
+                          }),
+                          indicatorsContainer: (base) => ({
+                            ...base,
+                            height: '20px',
+                          }),
+                          indicatorSeparator: () => ({ display: 'none' }),
+                          dropdownIndicator: (base) => ({
+                            ...base,
+                            padding: '0 4px',
+                          }),
+                          option: (base) => ({
+                            ...base,
+                            fontSize: '10px',
+                            padding: '4px 8px',
+                          }),
+                          menuPortal: (base) => ({
+                            ...base,
+                            zIndex: 9999,
+                          }),
+                        }}
+                      />
+                    ) : (
+                      <span className="ml-2 badge-stats bg-blue-500 text-white">
+                        {purchase.currency || 'KRW'}
+                      </span>
+                    )}
                   </h3>
                   {!isEditing && (
                     <>
@@ -4502,7 +4584,7 @@ function PurchaseDetailModal({
                       <span className="text-[12px] font-bold text-gray-900">
                         {activeTab === 'done' && !canViewFinancialInfo 
                           ? '-' 
-                          : `₩${formatCurrency(
+                          : `${(isEditing ? editedPurchase?.currency : purchase.currency) === 'USD' ? '$' : '₩'}${formatCurrency(
                               (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
                             )}`}
                       </span>
@@ -4514,7 +4596,7 @@ function PurchaseDetailModal({
                         <span className="text-[12px] font-bold text-gray-900">
                           {activeTab === 'done' && !canViewFinancialInfo 
                             ? '-' 
-                            : `₩${formatCurrency(
+                            : `${(isEditing ? editedPurchase?.currency : purchase.currency) === 'USD' ? '$' : '₩'}${formatCurrency(
                                 (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.tax_amount_value || 0), 0) || 0
                               )}`}
                         </span>

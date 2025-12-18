@@ -3,8 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { dashboardService } from '@/services/dashboardService'
 import { createClient } from '@/lib/supabase/client'
-import { updatePurchaseInMemory } from '@/services/purchaseDataLoader'
-import { addCacheListener } from '@/stores/purchaseMemoryStore'
+import { updatePurchaseInMemory, addCacheListener, markPurchaseAsPaymentCompleted } from '@/stores/purchaseMemoryStore'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -119,13 +118,22 @@ export default function DashboardMain() {
   }, [loadDashboardData])
 
   const handleQuickApprove = async (requestId: string) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DashboardMain.tsx:handleQuickApprove:entry',message:'handleQuickApprove called',data:{requestId,hasEmployee:!!data?.employee,actionLoading},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,D,E'})}).catch(()=>{});
+    // #endregion
     if (!data?.employee) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DashboardMain.tsx:handleQuickApprove:noEmployee',message:'No employee data - early return',data:{requestId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
       toast.error('사용자 정보를 찾을 수 없습니다.')
       return
     }
 
     // 승인 확인 메시지
     if (!confirm('정말로 승인하시겠습니까?')) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DashboardMain.tsx:handleQuickApprove:confirmCancelled',message:'User cancelled confirm dialog',data:{requestId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       return
     }
 
@@ -149,7 +157,13 @@ export default function DashboardMain() {
     })
 
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DashboardMain.tsx:handleQuickApprove:beforeQuickApprove',message:'Calling dashboardService.quickApprove',data:{requestId,employeeId:data.employee.id},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       const result = await dashboardService.quickApprove(requestId, data.employee)
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DashboardMain.tsx:handleQuickApprove:afterQuickApprove',message:'quickApprove result',data:{requestId,success:result.success,error:result.error},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       
       if (result.success) {
         toast.success('승인이 완료되었습니다.')
@@ -163,6 +177,9 @@ export default function DashboardMain() {
         toast.error(result.error || '승인 처리 중 오류가 발생했습니다.')
       }
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DashboardMain.tsx:handleQuickApprove:error',message:'quickApprove threw error',data:{requestId,error:String(error)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       // 에러 시 원래 데이터로 롤백
       setData(originalData)
       toast.error('승인 처리 중 오류가 발생했습니다.')
@@ -609,8 +626,10 @@ export default function DashboardMain() {
 
                                       if (error) throw error
                                       
+                                      // 🚀 메모리 캐시 즉시 업데이트 (자동으로 notifyCacheListeners 호출됨)
+                                      markPurchaseAsPaymentCompleted(item.id)
+                                      
                                       toast.success('구매완료 처리되었습니다.')
-                                      loadDashboardData(false) // 데이터 새로고침
                                     } catch (error) {
                                       toast.error('처리 중 오류가 발생했습니다.')
                                     }
