@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { dashboardService } from '@/services/dashboardService'
 import { createClient } from '@/lib/supabase/client'
@@ -196,7 +196,7 @@ export default function DashboardMain() {
   }
 
   // 검색 필터링 함수
-  const filterItems = (items: any[], searchTerm: string) => {
+  const filterItems = useCallback((items: any[], searchTerm: string) => {
     if (!searchTerm.trim()) return items
     
     return items.filter(item => {
@@ -211,7 +211,13 @@ export default function DashboardMain() {
         .toLowerCase()
         .includes(searchTerm.toLowerCase())
     })
-  }
+  }, [])
+
+  // 필터링된 결과 메모이제이션 (입력할 때마다 재계산 방지)
+  const filteredUndownloaded = useMemo(() => filterItems(undownloadedOrders, searchTerms.undownloaded), [undownloadedOrders, searchTerms.undownloaded, filterItems])
+  const filteredPending = useMemo(() => filterItems(data?.pendingApprovals || [], searchTerms.pending), [data?.pendingApprovals, searchTerms.pending, filterItems])
+  const filteredPurchase = useMemo(() => filterItems(data?.myPurchaseStatus?.waitingPurchase || [], searchTerms.purchase), [data?.myPurchaseStatus?.waitingPurchase, searchTerms.purchase, filterItems])
+  const filteredDelivery = useMemo(() => filterItems(data?.myPurchaseStatus?.waitingDelivery || [], searchTerms.delivery), [data?.myPurchaseStatus?.waitingDelivery, searchTerms.delivery, filterItems])
 
   const handleDownloadExcel = async (purchase: any) => {
     try {
@@ -358,13 +364,13 @@ export default function DashboardMain() {
                   
                   {/* 항목 리스트 */}
                   <div className="space-y-2 h-[36rem] overflow-y-auto">
-                    {filterItems(undownloadedOrders, searchTerms.undownloaded).length === 0 ? (
+                    {filteredUndownloaded.length === 0 ? (
                       <div className="text-center py-12 text-gray-400">
                         <Download className="w-10 h-10 mx-auto mb-3 text-gray-300" />
                         <p className="card-subtitle">미다운로드 발주서가 없습니다</p>
                       </div>
                     ) : (
-                      filterItems(undownloadedOrders, searchTerms.undownloaded).map((item, index) => {
+                      filteredUndownloaded.map((item, index) => {
                         const items = item.purchase_request_items || []
                         const firstItem = items[0] || {}
                         const isAdvance = item.progress_type === '선진행'
@@ -415,16 +421,16 @@ export default function DashboardMain() {
                       )
                       })
                     )}
-                    {filterItems(undownloadedOrders, searchTerms.undownloaded).length >= 100 && (
+                    {filteredUndownloaded.length >= 100 && (
                       <div className="text-center text-xs text-gray-500 mt-3 pb-2">
-                        표시된 항목: {filterItems(undownloadedOrders, searchTerms.undownloaded).length}개
+                        표시된 항목: {filteredUndownloaded.length}개
                         <br />
                         더 많은 항목이 있을 수 있습니다. 검색으로 필터링하세요.
                       </div>
                     )}
-                    {filterItems(undownloadedOrders, searchTerms.undownloaded).length > 0 && (
+                    {filteredUndownloaded.length > 0 && (
                       <div className="text-center text-xs text-gray-400 mt-2 pb-2">
-                        총 {filterItems(undownloadedOrders, searchTerms.undownloaded).length}개 미다운로드 발주서
+                        총 {filteredUndownloaded.length}개 미다운로드 발주서
                       </div>
                     )}
                   </div>
@@ -471,7 +477,7 @@ export default function DashboardMain() {
                     
                     {/* 항목 리스트 */}
                     <div className="space-y-2 h-[36rem] overflow-y-auto">
-                      {filterItems(data.pendingApprovals, searchTerms.pending).slice(0, 10).map((approval, index) => {
+                      {filteredPending.slice(0, 10).map((approval, index) => {
                         const items = approval.purchase_request_items || []
                         const firstItem = items[0] || {}
                         const totalAmount = approval.total_amount || items.reduce((sum: number, i: any) => sum + (Number(i.amount_value) || 0), 0)
@@ -568,7 +574,7 @@ export default function DashboardMain() {
                     
                     {/* 항목 리스트 */}
                     <div className="space-y-2 h-[36rem] overflow-y-auto">
-                      {filterItems(data.myPurchaseStatus.waitingPurchase, searchTerms.purchase).map((item) => {
+                      {filteredPurchase.map((item) => {
                         const items = item.purchase_request_items || []
                         const firstItem = items[0]
                         const totalAmount = items.reduce((sum: number, i: any) => sum + (Number(i.amount_value) || 0), 0)
@@ -693,7 +699,7 @@ export default function DashboardMain() {
                     
                     {/* 항목 리스트 */}
                     <div className="space-y-2 h-[36rem] overflow-y-auto">
-                      {filterItems(data.myPurchaseStatus.waitingDelivery, searchTerms.delivery).slice(0, 10).map((item) => {
+                      {filteredDelivery.slice(0, 10).map((item) => {
                         const items = item.purchase_request_items || []
                         const firstItem = items[0]
                         const totalItems = items.length
