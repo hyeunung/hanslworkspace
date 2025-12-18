@@ -910,6 +910,9 @@ function PurchaseDetailModal({
       columnConfigs.push({ key: 'tax_amount', minWidth: 80, maxWidth: 150, baseWidth: 80 })
     }
     
+    // 링크 칼럼 추가 (합계 다음, 비고 전)
+    columnConfigs.push({ key: 'link', minWidth: 60, maxWidth: 80, baseWidth: 60, isFixed: true })
+    
     columnConfigs.push(
       { key: 'remarks', minWidth: 150, maxWidth: 150, baseWidth: 150, isFixed: true }, // 고정 너비 150px
       { key: 'status', minWidth: 70, maxWidth: 100, baseWidth: 70 } // 입고상태 칼럼 너비 축소
@@ -1097,6 +1100,9 @@ function PurchaseDetailModal({
     if (purchase?.payment_category === '발주') {
       baseColumns.push('100px') // 세액
     }
+    
+    // 링크 칼럼 추가
+    baseColumns.push('60px')
     
     // 비고 칼럼 추가
     baseColumns.push('150px')
@@ -3674,6 +3680,7 @@ function PurchaseDetailModal({
                         {purchase.payment_category === '발주' && (
                           <div className="text-right">세액</div>
                         )}
+                        <div className="text-center">링크</div>
                         <div className="text-center">비고</div>
                         {isEditing ? (
                           <>
@@ -3928,6 +3935,23 @@ function PurchaseDetailModal({
                                 </span>
                               </div>
                             )}
+                            
+                            {/* 링크 */}
+                            <div className="text-center min-w-0 flex items-center justify-center">
+                              {item.link ? (
+                                <a
+                                  href={item.link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:text-blue-800 underline text-[11px]"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  링크
+                                </a>
+                              ) : (
+                                <span className="text-gray-400 text-[11px]">-</span>
+                              )}
+                            </div>
                             
                             {/* 비고 */}
                             <div className="min-w-0 flex justify-center items-center text-center relative overflow-visible" style={{ width: '150px', maxWidth: '150px', minWidth: '150px' }}>
@@ -4602,6 +4626,8 @@ function PurchaseDetailModal({
                         </span>
                       </div>
                     )}
+                    {/* 링크 */}
+                    <div></div>
                     {/* 비고 */}
                     <div></div>
                     {/* 상태 또는 삭제 - 발주인 경우 지출총합 텍스트 표시 */}
@@ -4671,6 +4697,8 @@ function PurchaseDetailModal({
                               )}`}
                         </span>
                       </div>
+                      {/* 링크 칼럼 - 빈칸 */}
+                      <div></div>
                       {/* 나머지 빈 칸들 */}
                       <div></div>
                       {isEditing ? <div></div> : <div></div>}
