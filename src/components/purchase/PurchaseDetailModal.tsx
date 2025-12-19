@@ -2134,7 +2134,7 @@ function PurchaseDetailModal({
     }
   }
 
-  // 개별 품목 입고완료 처리 (날짜 선택 + 실제입고수량)
+  // 개별 품목 입고완료 처리 (날짜 선택 + 실제입고수량) - 분할 입고 지원
   const handleItemReceiptToggle = async (itemId: number | string, selectedDate: Date, receivedQuantity?: number) => {
     if (!canReceiveItems) {
       toast.error('입고 처리 권한이 없습니다.')
@@ -2149,6 +2149,28 @@ function PurchaseDetailModal({
       return
     }
 
+    // 현재 품목 정보 가져오기
+    const currentItem = purchase?.items?.find(item => String(item.id) === itemIdStr) 
+      || purchase?.purchase_request_items?.find(item => String(item.id) === itemIdStr)
+    
+    const requestedQty = currentItem?.quantity || 0
+    const currentReceivedQty = currentItem?.received_quantity || 0
+    const newReceivedQty = receivedQuantity !== undefined ? receivedQuantity : requestedQty
+    const totalReceivedQty = currentReceivedQty + newReceivedQty
+    const isFullyReceived = totalReceivedQty >= requestedQty
+    const deliveryStatus: 'pending' | 'partial' | 'received' = totalReceivedQty === 0 ? 'pending' : (isFullyReceived ? 'received' : 'partial')
+
+    // 기존 입고 이력 가져오기
+    const existingHistory = (currentItem?.receipt_history as any[]) || []
+    const nextSeq = existingHistory.length + 1
+    const newHistoryItem = {
+      seq: nextSeq,
+      qty: newReceivedQty,
+      date: selectedDate.toISOString(),
+      by: currentUserName || '알수없음'
+    }
+    const updatedHistory = [...existingHistory, newHistoryItem]
+
     const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
 
     const applyOptimisticUpdate = () => {
@@ -2158,9 +2180,11 @@ function PurchaseDetailModal({
             String(item.id) === itemIdStr
               ? {
                   ...item,
-                  is_received: true,
+                  is_received: isFullyReceived,
+                  delivery_status: deliveryStatus,
                   actual_received_date: selectedDate.toISOString(),
-                  received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.received_quantity
+                  received_quantity: totalReceivedQty,
+                  receipt_history: updatedHistory
                 }
               : item
           )
@@ -2182,18 +2206,20 @@ function PurchaseDetailModal({
       const { error } = await supabase
         .from('purchase_request_items')
         .update({
-          is_received: true,
+          is_received: isFullyReceived,
+          delivery_status: deliveryStatus,
           received_at: new Date().toISOString(),
           actual_received_date: selectedDate.toISOString(),
-          received_quantity: receivedQuantity !== undefined ? receivedQuantity : null
+          received_quantity: totalReceivedQty,
+          receipt_history: updatedHistory
         })
         .eq('id', numericId)
 
       if (error) throw error
 
-      // 🚀 메모리 캐시 즉시 업데이트 (개별 품목 입고완료)
+      // 🚀 메모리 캐시 즉시 업데이트 (분할 입고 지원)
       if (purchase) {
-        const memoryUpdated = markItemAsReceived(purchase.id, numericId, selectedDate.toISOString(), receivedQuantity);
+        const memoryUpdated = markItemAsReceived(purchase.id, numericId, selectedDate.toISOString(), totalReceivedQty);
         if (!memoryUpdated) {
           logger.warn('[PurchaseDetailModal] 메모리 캐시 개별 품목 입고완료 업데이트 실패', { 
             purchaseId: purchase.id, 
@@ -2202,17 +2228,19 @@ function PurchaseDetailModal({
         }
       }
 
-      // 로컬 상태 즉시 업데이트
+      // 로컬 상태 즉시 업데이트 (분할 입고 지원)
       setPurchase(prev => {
         if (!prev) return null
         const updatedItems = prev.items?.map(item => 
           String(item.id) === itemIdStr 
             ? { 
                 ...item, 
-                is_received: true, 
+                is_received: isFullyReceived, 
+                delivery_status: deliveryStatus,
                 received_at: new Date().toISOString(),
                 actual_received_date: selectedDate.toISOString(),
-                received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.received_quantity
+                received_quantity: totalReceivedQty,
+                receipt_history: updatedHistory
               }
             : item
         )
@@ -2220,10 +2248,12 @@ function PurchaseDetailModal({
           String(item.id) === itemIdStr 
             ? { 
                 ...item, 
-                is_received: true, 
+                is_received: isFullyReceived, 
+                delivery_status: deliveryStatus,
                 received_at: new Date().toISOString(),
                 actual_received_date: selectedDate.toISOString(),
-                received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.received_quantity
+                received_quantity: totalReceivedQty,
+                receipt_history: updatedHistory
               }
             : item
         )
@@ -3348,6 +3378,7 @@ function PurchaseDetailModal({
                   <div className="flex justify-center">
                     {canReceiveItems ? (
                       actualReceivedAction.isCompleted(item) ? (
+                        // 입고완료 상태 - 진파랑
                         <button
                           onClick={() => {
                             actualReceivedAction.handleCancel(item.id, {
@@ -3363,7 +3394,24 @@ function PurchaseDetailModal({
                         >
                           {actualReceivedAction.config.completedText}
                         </button>
+                      ) : actualReceivedAction.isPartiallyReceived(item) ? (
+                        // 부분입고 상태 - 연파랑 (추가 입고 가능)
+                        <DateQuantityPickerPopover
+                          onConfirm={(date, quantity) => {
+                            handleItemReceiptToggle(item.id, date, quantity)
+                          }}
+                          placeholder="추가 입고수량을 입력하세요"
+                          align="center"
+                          side="bottom"
+                          maxQuantity={actualReceivedAction.getRemainingQuantity(item)}
+                          quantityInfoText={`미입고: ${actualReceivedAction.getRemainingQuantity(item)}개`}
+                        >
+                          <button className="button-base bg-blue-300 hover:bg-blue-400 text-white">
+                            부분입고
+                          </button>
+                        </DateQuantityPickerPopover>
                       ) : (
+                        // 입고대기 상태 - 회색
                         <DateQuantityPickerPopover
                           onConfirm={(date, quantity) => {
                             handleItemReceiptToggle(item.id, date, quantity)
@@ -3383,9 +3431,15 @@ function PurchaseDetailModal({
                       <span className={`${
                         actualReceivedAction.isCompleted(item)
                           ? 'button-action-primary' 
+                          : actualReceivedAction.isPartiallyReceived(item)
+                          ? 'button-base bg-blue-300 text-white'
                           : 'button-waiting-inactive'
                       }`}>
-                        {actualReceivedAction.isCompleted(item) ? actualReceivedAction.config.completedText : actualReceivedAction.config.waitingText}
+                        {actualReceivedAction.isCompleted(item) 
+                          ? actualReceivedAction.config.completedText 
+                          : actualReceivedAction.isPartiallyReceived(item)
+                          ? '부분입고'
+                          : actualReceivedAction.config.waitingText}
                       </span>
                     )}
                   </div>
@@ -3396,9 +3450,15 @@ function PurchaseDetailModal({
                     <span className={`button-base ${
                       actualReceivedAction.isCompleted(item)
                         ? 'bg-blue-500 hover:bg-blue-600 text-white' 
+                        : actualReceivedAction.isPartiallyReceived(item)
+                        ? 'bg-blue-300 text-white'
                         : 'border border-gray-300 text-gray-600 bg-white hover:bg-gray-50'
                     }`}>
-                      {actualReceivedAction.isCompleted(item) ? '입고완료' : '입고대기'}
+                      {actualReceivedAction.isCompleted(item) 
+                        ? '입고완료' 
+                        : actualReceivedAction.isPartiallyReceived(item)
+                        ? '부분입고'
+                        : '입고대기'}
                     </span>
                   </div>
                 )}

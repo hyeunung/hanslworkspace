@@ -133,7 +133,7 @@ export function DateQuantityPickerPopover({
             <div className="mt-3 px-1">
               <div className="flex items-center justify-between mb-1 gap-2">
                 <label className="block text-xs font-medium text-gray-700">
-                  실제입고수량
+                  {quantityInfoText?.includes('미입고') ? '추가입고수량' : '실제입고수량'}
                 </label>
                 {maxQuantity !== undefined && (
                   <Button
@@ -143,7 +143,7 @@ export function DateQuantityPickerPopover({
                     onClick={handleFillRequestedQuantity}
                     className="h-6 px-2 text-[10px] border-gray-200 text-hansl-600"
                   >
-                    요청수량과 동일
+                    {quantityInfoText?.includes('미입고') ? '미입고 수량 전체' : '요청수량과 동일'}
                   </Button>
                 )}
               </div>
@@ -157,7 +157,9 @@ export function DateQuantityPickerPopover({
                 max={maxQuantity}
               />
               {maxQuantity && (
-                <p className="text-xs text-gray-500 mt-1">최대: {maxQuantity.toLocaleString()}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {quantityInfoText?.includes('미입고') ? quantityInfoText : `최대: ${maxQuantity.toLocaleString()}`}
+                </p>
               )}
             </div>
           )}

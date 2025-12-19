@@ -282,7 +282,7 @@ export const markItemAsPaymentCanceled = (purchaseId: number | string, itemId: n
   })
 }
 
-// 특정 품목의 입고완료 처리를 위한 헬퍼 함수
+// 특정 품목의 입고완료 처리를 위한 헬퍼 함수 (분할 입고 지원)
 export const markItemAsReceived = (purchaseId: number | string, itemId: number | string, selectedDate?: string, receivedQuantity?: number): boolean => {
   const result = updatePurchaseInMemory(purchaseId, (purchase) => {
     const currentTime = new Date().toISOString()
@@ -292,19 +292,30 @@ export const markItemAsReceived = (purchaseId: number | string, itemId: number |
     // 현재 items 배열 선택
     const currentItems = (purchase.items && purchase.items.length > 0) ? purchase.items : (purchase.purchase_request_items || [])
     
-    // 해당 품목만 입고완료로 업데이트
-    const updatedItems = currentItems.map(item => 
-      String(item.id) === targetItemId 
-        ? { 
-            ...item, 
-            is_received: true, 
-            delivery_status: 'received' as const, 
-            received_at: currentTime,
-            actual_received_date: actualReceivedDate,  // 🚀 사용자가 선택한 날짜 사용
-            received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.received_quantity
-          }
-        : item
-    )
+    // 해당 품목만 입고 업데이트 (분할 입고 지원)
+    const updatedItems = currentItems.map(item => {
+      if (String(item.id) !== targetItemId) return item
+      
+      const requestedQty = item.quantity || 0
+      const newReceivedQty = receivedQuantity !== undefined ? receivedQuantity : requestedQty
+      const isFullyReceived = newReceivedQty >= requestedQty
+      
+      // 입고 상태 결정
+      const deliveryStatus = newReceivedQty === 0 
+        ? 'pending' as const 
+        : isFullyReceived 
+        ? 'received' as const 
+        : 'partial' as const
+      
+      return { 
+        ...item, 
+        is_received: isFullyReceived, 
+        delivery_status: deliveryStatus, 
+        received_at: currentTime,
+        actual_received_date: actualReceivedDate,
+        received_quantity: newReceivedQty
+      }
+    })
     
     // 모든 품목이 입고완료되었는지 확인
     const allItemsReceived = updatedItems.every(item => item.is_received)
@@ -326,7 +337,7 @@ export const markItemAsReceived = (purchaseId: number | string, itemId: number |
   return result
 }
 
-// 특정 품목의 입고완료 취소 처리를 위한 헬퍼 함수
+// 특정 품목의 입고완료 취소 처리를 위한 헬퍼 함수 (분할 입고 이력도 초기화)
 export const markItemAsReceiptCanceled = (purchaseId: number | string, itemId: number | string): boolean => {
   const result = updatePurchaseInMemory(purchaseId, (purchase) => {
     const targetItemId = String(itemId)
@@ -334,7 +345,7 @@ export const markItemAsReceiptCanceled = (purchaseId: number | string, itemId: n
     // 현재 items 배열 선택
     const currentItems = (purchase.items && purchase.items.length > 0) ? purchase.items : (purchase.purchase_request_items || [])
     
-    // 해당 품목만 입고완료 취소로 업데이트
+    // 해당 품목만 입고완료 취소로 업데이트 (분할 입고 이력도 초기화)
     const updatedItems = currentItems.map(item => 
       String(item.id) === targetItemId 
         ? { 
@@ -342,7 +353,9 @@ export const markItemAsReceiptCanceled = (purchaseId: number | string, itemId: n
             is_received: false, 
             delivery_status: 'pending' as const, 
             received_at: null, 
-            actual_received_date: undefined  // 🚀 실제입고일도 함께 초기화
+            actual_received_date: undefined,
+            received_quantity: 0,
+            receipt_history: []  // 🚀 분할 입고 이력 초기화
           }
         : item
     )

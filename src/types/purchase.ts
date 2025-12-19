@@ -77,6 +77,15 @@ export interface Employee {
   remaining_annual_leave?: number
 }
 
+// 분할 입고 이력 항목
+export interface ReceiptHistoryItem {
+  seq: number           // 입고 순번 (1차, 2차...)
+  qty: number           // 입고 수량
+  date: string          // 입고 날짜 (ISO string)
+  by: string            // 입고 처리자 이름
+  notes?: string        // 메모
+}
+
 export interface PurchaseRequestItem {
   expenditure_date?: string | null
   expenditure_amount?: number | null
@@ -115,6 +124,8 @@ export interface PurchaseRequestItem {
   statement_received_by_name?: string | null
   // UTK 확인
   is_utk_checked?: boolean
+  // 분할 입고 이력
+  receipt_history?: ReceiptHistoryItem[]
   created_at: string
   updated_at: string
 }

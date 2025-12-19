@@ -107,11 +107,51 @@ ${config.confirmMessage.confirm}`
           statement_received_by_name: currentUserName
         }
       } else if (config.field === 'actual_received') {
+        // 분할 입고 처리: receipt_history에 이력 추가
+        const requestedQuantity = itemInfo?.quantity || 0
+        const currentReceivedQuantity = itemInfo?.received_quantity || 0
+        const newReceivedQuantity = receivedQuantity !== undefined ? receivedQuantity : requestedQuantity
+        const totalReceivedQuantity = currentReceivedQuantity + newReceivedQuantity
+        
+        // 기존 이력 가져오기 위해 먼저 조회
+        const { data: existingItem } = await supabase
+          .from('purchase_request_items')
+          .select('receipt_history')
+          .eq('id', numericId)
+          .single()
+        
+        const existingHistory = (existingItem?.receipt_history as any[]) || []
+        const nextSeq = existingHistory.length + 1
+        
+        // 새 입고 이력 항목
+        const newHistoryItem = {
+          seq: nextSeq,
+          qty: newReceivedQuantity,
+          date: selectedDate.toISOString(),
+          by: currentUserName || '알수없음'
+        }
+        
+        const updatedHistory = [...existingHistory, newHistoryItem]
+        
+        // 입고 완료 여부 판단: 누적 입고량 >= 요청 수량
+        const isFullyReceived = totalReceivedQuantity >= requestedQuantity
+        
         updateData = {
           actual_received_date: selectedDate.toISOString(),
-          is_received: true,
-          received_quantity: receivedQuantity !== undefined ? receivedQuantity : (itemInfo?.received_quantity !== undefined ? itemInfo.received_quantity : null)
+          is_received: isFullyReceived,
+          received_quantity: totalReceivedQuantity,
+          delivery_status: totalReceivedQuantity === 0 ? 'pending' : (isFullyReceived ? 'received' : 'partial'),
+          receipt_history: updatedHistory
         }
+        
+        logger.debug('📦 분할 입고 처리:', {
+          requestedQuantity,
+          currentReceivedQuantity,
+          newReceivedQuantity,
+          totalReceivedQuantity,
+          isFullyReceived,
+          historyCount: updatedHistory.length
+        })
       }
 
       logger.debug('📝 업데이트할 데이터:', updateData)
@@ -230,9 +270,13 @@ ${config.confirmMessage.cancel}`
           statement_received_by_name: null
         }
       } else if (config.field === 'actual_received') {
+        // 분할 입고 취소: receipt_history 전체 초기화
         updateData = {
           actual_received_date: null,
-          is_received: false
+          is_received: false,
+          received_quantity: 0,
+          delivery_status: 'pending',
+          receipt_history: []
         }
       }
 
@@ -303,6 +347,23 @@ ${config.confirmMessage.cancel}`
     return false
   }, [config.field])
 
+  // 부분 입고 상태 확인 (분할 입고용)
+  const isPartiallyReceived = useCallback((item: any) => {
+    if (config.field === 'actual_received') {
+      const receivedQty = item.received_quantity || 0
+      const requestedQty = item.quantity || 0
+      return receivedQty > 0 && receivedQty < requestedQty
+    }
+    return false
+  }, [config.field])
+
+  // 미입고 수량 계산
+  const getRemainingQuantity = useCallback((item: any) => {
+    const receivedQty = item.received_quantity || 0
+    const requestedQty = item.quantity || 0
+    return Math.max(0, requestedQty - receivedQty)
+  }, [])
+
   const getCompletedDate = useCallback((item: any) => {
     if (config.field === 'statement_received') {
       return item.statement_received_date
@@ -327,6 +388,8 @@ ${config.confirmMessage.cancel}`
     handleConfirm,
     handleCancel,
     isCompleted,
+    isPartiallyReceived,
+    getRemainingQuantity,
     getCompletedDate,
     getCompletedByName
   }
