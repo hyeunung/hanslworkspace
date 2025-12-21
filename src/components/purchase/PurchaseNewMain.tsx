@@ -12,6 +12,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import { FormValues, FormItem } from "@/types/purchase";
 import { toast } from "sonner";
 import ReactSelect from 'react-select';
+import { DatePickerPopover } from '@/components/ui/date-picker-popover';
+import { format } from 'date-fns';
+import { Calendar as CalendarIcon } from 'lucide-react';
 
 interface EmployeeOption {
   value: string;
@@ -1009,99 +1012,116 @@ export default function PurchaseNewMain() {
       }}
     >
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
-        {/* 발주 기본 정보 - 모바일: 전체폭, 데스크톱: 1/4 폭 */}
-        <div className="w-full lg:w-1/4 relative bg-muted/20 border border-border rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 p-4 lg:p-5 space-y-4">
-          <div className="flex flex-row items-start justify-between w-full mb-4">
-            <div className="flex flex-col">
-              <h4 className="font-semibold text-foreground">발주 기본 정보</h4>
-              <p className="text-xs text-muted-foreground mt-0.5">Basic Information</p>
+        {/* 발주 기본 정보 - 모바일: 전체 폭, 데스크톱: 280px 고정 */}
+        <div className="w-full lg:w-[280px] lg:min-w-[280px] lg:flex-shrink-0 relative bg-muted/20 border border-border rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 p-3 lg:p-4 space-y-2.5">
+          {/* 헤더: 제목만 */}
+          <div className="flex flex-col">
+            <h4 className="font-semibold text-foreground text-sm">발주 기본 정보</h4>
+            <p className="text-[10px] text-muted-foreground">Basic Information</p>
+          </div>
+
+          {/* 템플릿 + 보드명 - 같은 행 */}
+          <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+            <div>
+              <Label className="mb-0.5 block text-[10px] sm:text-xs">템플릿</Label>
+              <Select value={watch('po_template_type')} onValueChange={(value) => setValue('po_template_type', value)}>
+                <SelectTrigger className="!h-7 !py-0 !leading-none bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200 [&>svg]:hidden">
+                  <SelectValue placeholder="선택" />
+                </SelectTrigger>
+                <SelectContent position="popper" className="z-[9999]">
+                  <SelectItem value="일반">일반</SelectItem>
+                  <SelectItem value="프로젝트">프로젝트</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          <div className="flex flex-col items-start gap-1 shrink-0 self-end">
-            <div className="flex items-center justify-start w-full gap-2">
-              <Label className="mb-1 block text-xs">보드명 (BOM 자동입력)</Label>
-              {selectedBoard && (
-                <span
-                  className="text-[10px] text-blue-600 cursor-pointer hover:underline mb-1"
-                  onClick={() => setSelectedBoard(null)}
-                >
-                  초기화
-                </span>
-              )}
-            </div>
-            <div className="flex gap-2 w-full justify-start">
-              <div className="w-28 sm:w-32">
+            <div>
+              <div className="flex items-center gap-1 mb-0.5">
+                <Label className="text-[10px] sm:text-xs">보드명</Label>
+                {selectedBoard && (
+                  <span
+                    className="text-[9px] text-blue-600 cursor-pointer hover:underline"
+                    onClick={() => setSelectedBoard(null)}
+                  >
+                    초기화
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
                 <ReactSelect
                   options={boards.map(b => ({ value: b.id, label: b.board_name }))}
                   value={selectedBoard}
                   onChange={handleBoardSelect}
-                  placeholder="보드 선택"
+                  placeholder="선택"
                   isClearable
                   isSearchable
-                  className="text-xs"
+                  className="text-xs flex-1"
                   menuPortalTarget={document.body}
                   styles={{
                     control: (base) => ({
                       ...base,
-                      minHeight: '36px',
-                      height: '36px',
+                      minHeight: '28px',
+                      height: '28px',
                       fontSize: '0.75rem',
                       backgroundColor: '#fff',
                       borderColor: '#d2d2d7',
-                      borderRadius: '0.375rem',
+                      borderRadius: '6px',
                       boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
                       '&:hover': {
                         borderColor: '#d2d2d7',
                         boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'
                       }
                     }),
+                    valueContainer: (base) => ({ ...base, padding: '0 6px' }),
                     menuPortal: (base) => ({ ...base, zIndex: 9999 }),
                     menu: (base) => ({ 
                       ...base, 
                       zIndex: 9999, 
                       fontSize: '0.75rem',
-                      minWidth: '240px',
+                      minWidth: '160px',
                       width: 'auto',
                       whiteSpace: 'nowrap'
                     }),
-                    option: (base) => ({ ...base, padding: '6px 10px', whiteSpace: 'nowrap' }),
+                    option: (base) => ({ ...base, padding: '4px 8px', whiteSpace: 'nowrap' }),
                     placeholder: (base) => ({ ...base, color: '#9ca3af' }),
+                    dropdownIndicator: () => ({ display: 'none' }),
+                    clearIndicator: (base) => ({ ...base, padding: '2px' }),
                     indicatorSeparator: () => ({ display: 'none' })
                   }}
                 />
+                {selectedBoard && (
+                  <>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={productionQuantity}
+                      onChange={handleProductionQuantityChange}
+                      className="h-7 w-12 text-center text-xs bg-white border border-[#d2d2d7] rounded-md shadow-sm hover:shadow-md transition-shadow duration-200"
+                      placeholder="수량"
+                    />
+                    <Button 
+                      type="button" 
+                      size="sm" 
+                      variant="outline" 
+                      onClick={handleApplyQuantity}
+                      className="h-7 px-2 text-[10px] border-[#d2d2d7] hover:bg-gray-50"
+                    >
+                      적용
+                    </Button>
+                  </>
+                )}
               </div>
-              {selectedBoard && (
-                <div className="flex items-center gap-1 w-32 shrink-0">
-                  <Input
-                    type="number"
-                    min="1"
-                    value={productionQuantity}
-                    onChange={handleProductionQuantityChange}
-                    className="h-9 text-center text-xs bg-white border border-[#d2d2d7] rounded-md shadow-sm hover:shadow-md transition-shadow duration-200"
-                    placeholder="수량"
-                  />
-                  <Button 
-                    type="button" 
-                    size="sm" 
-                    variant="outline" 
-                    onClick={handleApplyQuantity}
-                    className="h-9 px-2 text-[10px] border-[#d2d2d7] hover:bg-gray-50"
-                  >
-                    적용
-                  </Button>
-                </div>
-              )}
-            </div>
             </div>
           </div>
-
+              
           {watch('po_template_type') === '일반' && (
-            <div className="space-y-4">
+            <div className="space-y-2.5">
+              
               {/* 요청 설정 */}
               <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">요청 유형<span className="text-red-500 ml-0.5">*</span></Label>
                   <Select value={watch('request_type')} onValueChange={(value) => setValue('request_type', value)}>
-                    <SelectTrigger className="!h-9 !py-0 !leading-none bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="!h-7 !py-0 !leading-none bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200 [&>svg]:hidden">
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -1113,7 +1133,7 @@ export default function PurchaseNewMain() {
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">진행 종류<span className="text-red-500 ml-0.5">*</span></Label>
                   <Select value={watch('progress_type')} onValueChange={(value) => setValue('progress_type', value)}>
-                    <SelectTrigger className="!h-9 !py-0 !leading-none bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="!h-7 !py-0 !leading-none bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200 [&>svg]:hidden">
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -1125,7 +1145,7 @@ export default function PurchaseNewMain() {
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">결제 종류<span className="text-red-500 ml-0.5">*</span></Label>
                   <Select value={watch('payment_category')} onValueChange={(value) => setValue('payment_category', value)}>
-                    <SelectTrigger className="!h-9 !py-0 !leading-none bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="!h-7 !py-0 !leading-none bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200 [&>svg]:hidden">
                       <SelectValue placeholder="선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -1155,7 +1175,7 @@ export default function PurchaseNewMain() {
                         }
                       }}
                       placeholder="업체 선택"
-                      isClearable
+                      isClearable={false}
                       isSearchable
                       closeMenuOnSelect={false}
                       classNamePrefix="vendor-select"
@@ -1169,9 +1189,9 @@ export default function PurchaseNewMain() {
                         container: base => ({ ...base, width: '100%' }),
                         control: base => ({ 
                           ...base, 
-                          height: '36px !important',
-                          minHeight: '36px !important',
-                          maxHeight: '36px !important',
+                          height: '28px !important',
+                          minHeight: '28px !important',
+                          maxHeight: '28px !important',
                           background: '#fff',
                           border: '1px solid #d2d2d7',
                           borderRadius: '6px',
@@ -1190,10 +1210,10 @@ export default function PurchaseNewMain() {
                         }),
                         valueContainer: base => ({ 
                           ...base, 
-                          height: '36px !important',
-                          minHeight: '36px !important',
-                          maxHeight: '36px !important',
-                          padding: '0 14px !important',
+                          height: '28px !important',
+                          minHeight: '28px !important',
+                          maxHeight: '28px !important',
+                          padding: '0 8px !important',
                           margin: '0 !important',
                           fontSize: '0.75rem',
                           alignItems: 'center',
@@ -1206,41 +1226,35 @@ export default function PurchaseNewMain() {
                           margin: '0 !important', 
                           padding: '0 !important', 
                           fontSize: '0.75rem',
-                          lineHeight: '1',
-                          position: 'relative',
-                          top: '0'
+                          lineHeight: '28px'
                         }),
                         singleValue: base => ({
                           ...base,
                           margin: '0 !important',
                           padding: '0 !important',
                           fontSize: '0.75rem',
-                          lineHeight: '1',
-                          position: 'relative',
-                          top: '0',
-                          transform: 'none'
+                          lineHeight: '28px'
                         }),
                         placeholder: base => ({
                           ...base,
                           margin: '0 !important',
                           padding: '0 !important',
                           fontSize: '0.75rem',
-                          lineHeight: '1',
-                          position: 'relative',
-                          top: '0',
-                          transform: 'none'
+                          lineHeight: '28px',
+                          color: '#9ca3af'
                         }),
                         indicatorsContainer: base => ({ 
                           ...base, 
-                          height: '36px !important',
-                          padding: '0 8px !important',
+                          height: '28px !important',
+                          padding: '0 4px !important',
                           alignItems: 'center',
                           display: 'flex'
                         }),
                         indicatorSeparator: () => ({ display: 'none' }),
-                        dropdownIndicator: base => ({ ...base, padding: '4px !important' }),
-                        clearIndicator: base => ({ ...base, padding: '4px !important' }),
-                        menuPortal: base => ({ ...base, zIndex: 1400 })
+                        dropdownIndicator: () => ({ display: 'none' }),
+                        clearIndicator: base => ({ ...base, padding: '2px !important' }),
+                        menuPortal: base => ({ ...base, zIndex: 1400 }),
+                        option: base => ({ ...base, padding: '4px 8px' })
                       }}
                     />
                 </div>
@@ -1261,7 +1275,7 @@ export default function PurchaseNewMain() {
                       setValue('contact_id', val ? Number(val) : undefined);
                     }}
                   >
-                    <SelectTrigger className="!h-9 !py-0 !leading-none bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200">
+                    <SelectTrigger className="!h-7 !py-0 !leading-none bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200 [&>svg]:hidden">
                       <SelectValue placeholder="담당자 선택" />
                     </SelectTrigger>
                     <SelectContent position="popper" className="z-[9999]">
@@ -1304,9 +1318,9 @@ export default function PurchaseNewMain() {
                       styles={{
                         control: (base) => ({
                           ...base,
-                          height: '36px !important',
-                          minHeight: '36px !important',
-                          maxHeight: '36px !important',
+                          height: '28px !important',
+                          minHeight: '28px !important',
+                          maxHeight: '28px !important',
                           background: '#fff',
                           border: '1px solid #d2d2d7',
                           borderRadius: '6px',
@@ -1326,78 +1340,87 @@ export default function PurchaseNewMain() {
                         }),
                         valueContainer: (base) => ({
                           ...base,
-                          height: '36px !important',
-                          minHeight: '36px !important',
-                          maxHeight: '36px !important',
-                          padding: '0 14px !important',
+                          height: '28px !important',
+                          minHeight: '28px !important',
+                          maxHeight: '28px !important',
+                          padding: '0 8px !important',
                           margin: '0 !important',
                           fontSize: '0.75rem',
                           alignItems: 'center',
                           display: 'flex',
-                          lineHeight: '1',
-                          justifyContent: 'flex-start'
+                          lineHeight: '28px',
+                          justifyContent: 'flex-start',
+                          overflow: 'visible'
                         }),
                         input: (base) => ({ 
                           ...base, 
                           margin: '0 !important', 
                           padding: '0 !important', 
                           fontSize: '0.75rem',
-                          lineHeight: '1',
-                          position: 'relative',
-                          top: '0'
+                          lineHeight: '28px'
                         }),
                         singleValue: base => ({
                           ...base,
                           margin: '0 !important',
                           padding: '0 !important',
                           fontSize: '0.75rem',
-                          lineHeight: '1',
-                          position: 'relative',
-                          top: '0',
-                          transform: 'none'
+                          lineHeight: '28px',
+                          overflow: 'visible',
+                          textOverflow: 'clip',
+                          whiteSpace: 'nowrap'
                         }),
                         placeholder: base => ({
                           ...base,
                           margin: '0 !important',
                           padding: '0 !important',
                           fontSize: '0.75rem',
-                          lineHeight: '1',
-                          position: 'relative',
-                          top: '0',
-                          transform: 'none'
+                          lineHeight: '28px',
+                          color: '#9ca3af'
                         }),
                         indicatorsContainer: (base) => ({ 
                           ...base, 
-                          height: '36px !important',
-                          padding: '0 8px !important',
+                          height: '28px !important',
+                          padding: '0 4px !important',
                           alignItems: 'center',
                           display: 'flex'
                         }),
                         indicatorSeparator: () => ({ display: 'none' }),
-                        dropdownIndicator: base => ({ ...base, padding: '4px !important' }),
-                        clearIndicator: base => ({ ...base, padding: '4px !important' }),
+                        dropdownIndicator: () => ({ display: 'none' }),
+                        clearIndicator: base => ({ ...base, padding: '2px !important' }),
                         menu: (base) => ({ ...base, fontSize: '0.75rem', zIndex: 9999 }),
-                        option: (base) => ({ ...base, fontSize: '0.75rem', padding: '6px 10px' })
+                        option: (base) => ({ ...base, fontSize: '0.75rem', padding: '4px 8px' })
                       }}
                     />
                 </div>
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">청구일</Label>
-                  <Input
-                    type="date"
-                    value={watch('request_date')}
-                    onChange={e => setValue('request_date', e.target.value)}
-                    className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200"
-                  />
+                  <DatePickerPopover
+                    onDateSelect={(date) => {
+                      setValue('request_date', format(date, 'yyyy-MM-dd'));
+                    }}
+                    placeholder="청구일 선택"
+                    align="start"
+                  >
+                    <div className="h-7 w-full bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md hover:bg-gray-50 transition-all duration-200 flex items-center justify-center gap-1 cursor-pointer">
+                      <span>{watch('request_date') ? watch('request_date').slice(2).replace(/-/g, '.') : <span className="text-gray-400">연도.월.일</span>}</span>
+                      <CalendarIcon className="w-3 h-3 text-gray-400" />
+                    </div>
+                  </DatePickerPopover>
                 </div>
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">입고 요청일</Label>
-                  <Input
-                    type="date"
-                    value={watch('delivery_request_date')}
-                    onChange={e => setValue('delivery_request_date', e.target.value)}
-                    className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200"
-                  />
+                  <DatePickerPopover
+                    onDateSelect={(date) => {
+                      setValue('delivery_request_date', format(date, 'yyyy-MM-dd'));
+                    }}
+                    placeholder="입고 요청일 선택"
+                    align="start"
+                  >
+                    <div className="h-7 w-full bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md hover:bg-gray-50 transition-all duration-200 flex items-center justify-center gap-1 cursor-pointer">
+                      <span>{watch('delivery_request_date') ? watch('delivery_request_date').slice(2).replace(/-/g, '.') : <span className="text-gray-400">연도.월.일</span>}</span>
+                      <CalendarIcon className="w-3 h-3 text-gray-400" />
+                    </div>
+                  </DatePickerPopover>
                 </div>
               </div>
 
@@ -1410,7 +1433,7 @@ export default function PurchaseNewMain() {
                     value={watch('project_vendor')} 
                     onChange={(e) => setValue('project_vendor', e.target.value)} 
                     placeholder="입력"
-                    className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
+                    className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
                   />
                 </div>
                 <div>
@@ -1420,7 +1443,7 @@ export default function PurchaseNewMain() {
                     value={watch('sales_order_number')} 
                     onChange={(e) => setValue('sales_order_number', e.target.value)} 
                     placeholder="입력"
-                    className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
+                    className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
                   />
                 </div>
                 <div>
@@ -1430,7 +1453,7 @@ export default function PurchaseNewMain() {
                     value={watch('project_item')} 
                     onChange={(e) => setValue('project_item', e.target.value)} 
                     placeholder="입력"
-                    className="h-9 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
+                    className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
                   />
                 </div>
               </div>
@@ -1457,7 +1480,7 @@ export default function PurchaseNewMain() {
                 </div>
                 <div className="flex items-center gap-2">
                 <Select value={currency} onValueChange={setCurrency}>
-                  <SelectTrigger className="w-20 text-xs border-border business-radius-badge shadow-sm hover:shadow-md transition-shadow duration-200 bg-white" style={{ height: 'auto', padding: '2.5px 10px', minHeight: 'auto' }}>
+                  <SelectTrigger className="w-20 text-xs border-border business-radius-badge shadow-sm hover:shadow-md transition-shadow duration-200 bg-white [&>svg]:hidden" style={{ height: 'auto', padding: '2.5px 10px', minHeight: 'auto' }}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="rounded-md">

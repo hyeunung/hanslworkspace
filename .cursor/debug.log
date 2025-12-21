@@ -9,3 +9,21 @@
 {"sessionId":"debug-session","runId":"pre-fix2","hypothesisId":"E","location":"PurchaseListMain.tsx:updatePurchaseOptimistic","message":"onOptimisticUpdate invoked from child","data":{"purchaseId":2889,"hasPurchases":true,"tab":"pending"},"timestamp":1766048998910}
 {"sessionId":"debug-session","runId":"pre-fix","hypothesisId":"C","location":"PurchaseDetailModal.tsx:applyOptimisticUpdate","message":"Optimistic update payload","data":{"purchaseId":2889,"firstItem":{"id":7589,"unit_price_value":330,"amount_value":33000},"itemsCount":27},"timestamp":1766048998910}
 {"sessionId":"debug-session","runId":"pre-fix","hypothesisId":"B","location":"PurchaseDetailModal.tsx:useEffect(load from memory)","message":"Loaded purchase from memory","data":{"purchaseId":2889,"firstItem":{}},"timestamp":1766049036119}
+{"location":"PurchaseNewMain.tsx:1392","message":"청구일 div clicked","data":{"target":"SPAN"},"timestamp":1766127377963,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1394","message":"청구일 input found, calling showPicker","data":{"inputExists":true,"showPickerExists":"function"},"timestamp":1766127377963,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1420","message":"입고요청일 div clicked","data":{"target":"SPAN"},"timestamp":1766127378822,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1422","message":"입고요청일 input found, calling showPicker","data":{"inputExists":true,"showPickerExists":"function"},"timestamp":1766127378823,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1420","message":"입고요청일 div clicked","data":{"target":"SPAN"},"timestamp":1766127379210,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1422","message":"입고요청일 input found, calling showPicker","data":{"inputExists":true,"showPickerExists":"function"},"timestamp":1766127379210,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1392","message":"청구일 div clicked","data":{"target":"svg"},"timestamp":1766127379663,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1394","message":"청구일 input found, calling showPicker","data":{"inputExists":true,"showPickerExists":"function"},"timestamp":1766127379664,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1420","message":"입고요청일 div clicked","data":{"target":"SPAN"},"timestamp":1766127384505,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1422","message":"입고요청일 input found, calling showPicker","data":{"inputExists":true,"showPickerExists":"function"},"timestamp":1766127384506,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1392","message":"청구일 div clicked","data":{"target":"SPAN"},"timestamp":1766127452548,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1394","message":"청구일 input found, calling showPicker","data":{"inputExists":true,"showPickerExists":"function"},"timestamp":1766127452548,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1420","message":"입고요청일 div clicked","data":{"target":"svg"},"timestamp":1766127453521,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1422","message":"입고요청일 input found, calling showPicker","data":{"inputExists":true,"showPickerExists":"function"},"timestamp":1766127453522,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1392","message":"청구일 div clicked","data":{"target":"SPAN"},"timestamp":1766127455498,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1394","message":"청구일 input found, calling showPicker","data":{"inputExists":true,"showPickerExists":"function"},"timestamp":1766127455499,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1420","message":"입고요청일 div clicked","data":{"target":"DIV"},"timestamp":1766127456467,"sessionId":"debug-session","hypothesisId":"C"}
+{"location":"PurchaseNewMain.tsx:1422","message":"입고요청일 input found, calling showPicker","data":{"inputExists":true,"showPickerExists":"function"},"timestamp":1766127456467,"sessionId":"debug-session","hypothesisId":"C"}

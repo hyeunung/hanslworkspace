@@ -1,6 +1,13 @@
 import { createClient } from '@/lib/supabase/client'
 import { logger } from '@/lib/logger'
 
+export interface SupportAttachment {
+  url: string
+  name: string
+  size: number
+  path: string
+}
+
 export interface SupportInquiry {
   id?: number
   created_at?: string
@@ -20,6 +27,7 @@ export interface SupportInquiry {
   processed_at?: string
   requester_id?: string
   purchase_requests?: any
+  attachments?: SupportAttachment[]
 }
 
 export interface CreateSupportInquiryPayload {
@@ -29,10 +37,90 @@ export interface CreateSupportInquiryPayload {
   purchase_request_id?: number
   purchase_info?: string
   purchase_order_number?: string
+  attachments?: SupportAttachment[]
 }
 
 class SupportService {
   private supabase = createClient()
+  private readonly BUCKET_NAME = 'support-attachments'
+
+  // 이미지 첨부파일 업로드
+  async uploadAttachment(file: File): Promise<{ success: boolean; data?: SupportAttachment; error?: string }> {
+    try {
+      const { data: { user }, error: authError } = await this.supabase.auth.getUser()
+      if (authError || !user) return { success: false, error: '로그인이 필요합니다.' }
+
+      // 파일 확장자 추출
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const timestamp = Date.now()
+      const randomStr = Math.random().toString(36).substring(2, 8)
+      const fileName = `support_${timestamp}_${randomStr}.${fileExt}`
+      const filePath = `inquiries/${user.id}/${fileName}`
+
+      // Storage에 업로드
+      const { error: uploadError } = await this.supabase.storage
+        .from(this.BUCKET_NAME)
+        .upload(filePath, file, {
+          contentType: file.type,
+          upsert: false,
+        })
+
+      if (uploadError) {
+        logger.error('첨부파일 업로드 에러', uploadError)
+        throw uploadError
+      }
+
+      // Public URL 생성
+      const { data: { publicUrl } } = this.supabase.storage
+        .from(this.BUCKET_NAME)
+        .getPublicUrl(filePath)
+
+      return {
+        success: true,
+        data: {
+          url: publicUrl,
+          name: file.name,
+          size: file.size,
+          path: filePath
+        }
+      }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : '파일 업로드 실패' }
+    }
+  }
+
+  // 첨부파일 삭제
+  async deleteAttachment(path: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { error } = await this.supabase.storage
+        .from(this.BUCKET_NAME)
+        .remove([path])
+
+      if (error) throw error
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : '파일 삭제 실패' }
+    }
+  }
+
+  // 문의 정렬: 완료되지 않은 문의를 먼저, 그 안에서 최신순
+  private sortInquiriesByStatus(inquiries: SupportInquiry[]): SupportInquiry[] {
+    return inquiries.sort((a, b) => {
+      // 완료 상태: resolved, closed
+      const aCompleted = a.status === 'resolved' || a.status === 'closed'
+      const bCompleted = b.status === 'resolved' || b.status === 'closed'
+      
+      // 완료되지 않은 문의를 먼저
+      if (aCompleted !== bCompleted) {
+        return aCompleted ? 1 : -1
+      }
+      
+      // 같은 그룹 내에서는 최신순 (created_at 내림차순)
+      const aDate = new Date(a.created_at || 0).getTime()
+      const bDate = new Date(b.created_at || 0).getTime()
+      return bDate - aDate
+    })
+  }
 
   // 문의 생성
   async createInquiry(payload: CreateSupportInquiryPayload): Promise<{ success: boolean; error?: string }> {
@@ -59,7 +147,8 @@ class SupportService {
           purchase_request_id: payload.purchase_request_id ?? null,
           purchase_info: payload.purchase_info,
           purchase_order_number: payload.purchase_order_number,
-          status: 'open'
+          status: 'open',
+          attachments: payload.attachments || []
         })
 
       if (error) {
@@ -96,7 +185,10 @@ class SupportService {
         throw error
       }
 
-      return { success: true, data: data || [] }
+      // 완료되지 않은 문의를 먼저, 그 안에서 최신순 정렬
+      const sortedData = this.sortInquiriesByStatus(data || [])
+
+      return { success: true, data: sortedData }
     } catch (e) {
       return { success: false, data: [], error: e instanceof Error ? e.message : '문의 조회 실패' }
     }
@@ -115,7 +207,10 @@ class SupportService {
         throw error
       }
 
-      return { success: true, data: data || [] }
+      // 완료되지 않은 문의를 먼저, 그 안에서 최신순 정렬
+      const sortedData = this.sortInquiriesByStatus(data || [])
+
+      return { success: true, data: sortedData }
     } catch (e) {
       return { success: false, data: [], error: e instanceof Error ? e.message : '문의 조회 실패' }
     }

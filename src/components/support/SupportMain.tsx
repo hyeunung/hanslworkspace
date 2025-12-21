@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { MessageCircle, Send, Calendar, Search, CheckCircle, Clock, AlertCircle, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Eye, X, Edit2, Trash2, Save } from 'lucide-react'
-import { supportService, type SupportInquiry } from '@/services/supportService'
+import { MessageCircle, Send, Calendar, Search, CheckCircle, Clock, AlertCircle, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Eye, X, Edit2, Trash2, Save, ImagePlus, Loader2 } from 'lucide-react'
+import { supportService, type SupportInquiry, type SupportAttachment } from '@/services/supportService'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { removePurchaseFromMemory } from '@/stores/purchaseMemoryStore'
@@ -31,6 +31,11 @@ export default function SupportMain() {
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  
+  // 첨부파일 관련
+  const [attachments, setAttachments] = useState<SupportAttachment[]>([])
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   
   // 발주요청 선택 관련
   const [showPurchaseSelect, setShowPurchaseSelect] = useState(false)
@@ -298,7 +303,8 @@ ${purchaseInfo}`;
       message: finalMessage,
       purchase_request_id: selectedPurchase?.id,
       purchase_info: purchaseInfo,
-      purchase_order_number: selectedPurchase?.purchase_order_number
+      purchase_order_number: selectedPurchase?.purchase_order_number,
+      attachments: attachments
     })
 
     if (result.success) {
@@ -310,6 +316,7 @@ ${purchaseInfo}`;
       setSelectedPurchase(null)
       setPurchaseRequests([])
       setDateRange(undefined)
+      setAttachments([])
       // 목록 새로고침
       loadInquiries()
     } else {
@@ -317,6 +324,61 @@ ${purchaseInfo}`;
     }
     
     setLoading(false)
+  }
+
+  // 이미지 첨부 핸들러
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    // 최대 5개 제한
+    if (attachments.length >= 5) {
+      toast.error('첨부파일은 최대 5개까지 가능합니다.')
+      return
+    }
+
+    const file = files[0]
+    
+    // 파일 크기 제한 (5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('파일 크기는 5MB 이하만 가능합니다.')
+      return
+    }
+
+    // 이미지 타입 확인
+    if (!file.type.startsWith('image/')) {
+      toast.error('이미지 파일만 첨부 가능합니다.')
+      return
+    }
+
+    setUploadingImage(true)
+    const result = await supportService.uploadAttachment(file)
+    
+    if (result.success && result.data) {
+      setAttachments(prev => [...prev, result.data!])
+      toast.success('이미지가 첨부되었습니다.')
+    } else {
+      toast.error(result.error || '이미지 업로드 실패')
+    }
+    
+    setUploadingImage(false)
+    
+    // input 초기화 (같은 파일 다시 선택 가능하도록)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  // 첨부파일 삭제 핸들러
+  const handleRemoveAttachment = async (index: number) => {
+    const attachment = attachments[index]
+    
+    // Storage에서 삭제
+    await supportService.deleteAttachment(attachment.path)
+    
+    // state에서 제거
+    setAttachments(prev => prev.filter((_, i) => i !== index))
+    toast.success('첨부파일이 삭제되었습니다.')
   }
 
   // 문의 상태 업데이트 (관리자용)
@@ -850,10 +912,75 @@ ${purchaseInfo}`;
                   </p>
                 </div>
 
+                {/* 사진 첨부 영역 */}
+                <div>
+                  <label className="block modal-label text-gray-700 mb-2">
+                    사진 첨부 <span className="badge-text text-gray-400">(선택, 최대 5개)</span>
+                  </label>
+                  
+                  {/* 첨부된 이미지 미리보기 */}
+                  {attachments.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {attachments.map((attachment, index) => (
+                        <div key={index} className="relative group">
+                          <img
+                            src={attachment.url}
+                            alt={attachment.name}
+                            className="w-20 h-20 object-cover rounded-lg border border-gray-200"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAttachment(index)}
+                            className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="삭제"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                          <p className="text-[10px] text-gray-500 mt-1 truncate w-20 text-center">
+                            {attachment.name}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* 이미지 추가 버튼 */}
+                  {attachments.length < 5 && (
+                    <>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageSelect}
+                        className="hidden"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingImage}
+                        className="w-full h-9"
+                      >
+                        {uploadingImage ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-gray-600 border-t-transparent rounded-full animate-spin mr-2" />
+                            업로드 중...
+                          </>
+                        ) : (
+                          <>
+                            <ImagePlus className="w-4 h-4 mr-2" />
+                            사진 추가 ({attachments.length}/5)
+                          </>
+                        )}
+                      </Button>
+                    </>
+                  )}
+                </div>
+
                 <Button 
                   type="submit" 
                   className="w-full"
-                  disabled={loading}
+                  disabled={loading || uploadingImage}
                 >
                   {loading ? (
                     <>
@@ -1029,6 +1156,30 @@ ${purchaseInfo}`;
                               <div>
                                 <span className="modal-value text-gray-700">처리 내용:</span>
                                 <p className="text-gray-600 mt-1">{inquiry.resolution_note}</p>
+                              </div>
+                            )}
+                            {/* 첨부 이미지 */}
+                            {inquiry.attachments && inquiry.attachments.length > 0 && (
+                              <div>
+                                <span className="modal-value text-gray-700">첨부 이미지:</span>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  {inquiry.attachments.map((attachment, index) => (
+                                    <a
+                                      key={index}
+                                      href={attachment.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="block"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <img
+                                        src={attachment.url}
+                                        alt={attachment.name}
+                                        className="w-24 h-24 object-cover rounded-lg border border-gray-200 hover:border-blue-400 transition-colors cursor-pointer"
+                                      />
+                                    </a>
+                                  ))}
+                                </div>
                               </div>
                             )}
                           </div>
