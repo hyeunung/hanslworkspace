@@ -946,7 +946,7 @@ ${purchaseInfo}`;
                   
                   {/* 이미지 추가 버튼 */}
                   {attachments.length < 5 && (
-                    <>
+                    <div className="flex items-center gap-2">
                       <input
                         ref={fileInputRef}
                         type="file"
@@ -954,26 +954,28 @@ ${purchaseInfo}`;
                         onChange={handleImageSelect}
                         className="hidden"
                       />
-                      <Button
+                      <button
                         type="button"
-                        variant="outline"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={uploadingImage}
-                        className="w-full h-9"
+                        className="button-action-secondary disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {uploadingImage ? (
                           <>
-                            <div className="w-4 h-4 border-2 border-gray-600 border-t-transparent rounded-full animate-spin mr-2" />
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
                             업로드 중...
                           </>
                         ) : (
                           <>
-                            <ImagePlus className="w-4 h-4 mr-2" />
-                            사진 추가 ({attachments.length}/5)
+                            <ImagePlus className="w-3.5 h-3.5" />
+                            사진 추가
                           </>
                         )}
-                      </Button>
-                    </>
+                      </button>
+                      <span className="badge-text text-gray-400">
+                        {attachments.length}/5
+                      </span>
+                    </div>
                   )}
                 </div>
 
