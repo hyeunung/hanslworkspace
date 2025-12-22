@@ -37,6 +37,8 @@ export default function DashboardMain() {
   const [currentUserRoles, setCurrentUserRoles] = useState<string[]>([])
   const [undownloadedOrders, setUndownloadedOrders] = useState<any[]>([])
   const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set())
+  // 최종 승인 후 잠시 재등장하는 깜빡임 방지용(서버 응답 지연 대비)
+  const [dismissedApprovalIds, setDismissedApprovalIds] = useState<Set<string>>(new Set())
   
   // 문의하기 관련 (app_admin용)
   const [inquiries, setInquiries] = useState<SupportInquiry[]>([])
@@ -80,7 +82,30 @@ export default function DashboardMain() {
       }
       
       const dashboardData = await dashboardService.getDashboardData(employee, forceRefresh)
-      setData(dashboardData)
+
+      // 최종 승인으로 로컬에서 제거된 항목이 서버 지연으로 재등장하지 않도록 필터
+      const filteredPending = dashboardData.pendingApprovals.filter(
+        (item) => !dismissedApprovalIds.has(String(item.id))
+      )
+      const removedCount = dashboardData.pendingApprovals.length - filteredPending.length
+      const adjustedStats = dashboardData.stats
+        ? { ...dashboardData.stats, pending: Math.max(0, dashboardData.stats.pending - removedCount) }
+        : dashboardData.stats
+
+      // 서버 응답에 해당 항목이 사라졌다면 set에서 제거해 메모리 누적 방지
+      if (removedCount > 0) {
+        setDismissedApprovalIds((prev) => {
+          const next = new Set(prev)
+          filteredPending.forEach((item) => next.delete(String(item.id)))
+          return next
+        })
+      }
+
+      setData({
+        ...dashboardData,
+        pendingApprovals: filteredPending,
+        stats: adjustedStats
+      })
       setCurrentUserRoles(userRoles)
       
       // lead buyer 또는 app_admin인 경우 미다운로드 항목 조회
@@ -134,7 +159,7 @@ export default function DashboardMain() {
         setLoading(false)
       }
     }
-  }, [employee, userRoles, data])
+  }, [employee, userRoles, dismissedApprovalIds])
 
   useEffect(() => {
     loadDashboardData()
@@ -273,6 +298,34 @@ export default function DashboardMain() {
       return
     }
 
+    const applyOptimisticUpdate = (stage: 'middle' | 'final') => {
+      setData((prev) => {
+        if (!prev) return prev
+
+        if (stage === 'middle') {
+          return {
+            ...prev,
+            pendingApprovals: prev.pendingApprovals.map((item) =>
+              String(item.id) === requestId ? { ...item, middle_manager_status: 'approved' as const } : item
+            )
+          }
+        }
+
+        // 최종 승인 → 목록에서 제거 + pending 카운트 감소
+        setDismissedApprovalIds((prev) => {
+          const next = new Set(prev)
+          next.add(String(requestId))
+          return next
+        })
+        const nextPending = Math.max(0, (prev.stats?.pending || 0) - 1)
+        return {
+          ...prev,
+          pendingApprovals: prev.pendingApprovals.filter((item) => String(item.id) !== requestId),
+          stats: prev.stats ? { ...prev.stats, pending: nextPending } : prev.stats
+        }
+      })
+    }
+
     // 승인 확인 메시지
     if (!confirm('정말로 승인하시겠습니까?')) {
       return
@@ -280,32 +333,28 @@ export default function DashboardMain() {
 
     setActionLoading(requestId)
     
-    // UI 블로킹 방지를 위해 다음 틱으로 지연
-    await new Promise(resolve => setTimeout(resolve, 0))
-    
-    // Optimistic Update: 즉시 UI에서 제거
+    // 원본 데이터 백업 (롤백용)
     const originalData = data
-    setData(prev => {
-      if (!prev) return prev
-      return {
-        ...prev,
-        pendingApprovals: prev.pendingApprovals.filter(item => item.id !== requestId),
-        stats: {
-          ...prev.stats,
-          pending: Math.max(0, prev.stats.pending - 1)
-        }
-      }
-    })
 
     try {
       const result = await dashboardService.quickApprove(requestId, data.employee)
-      
-      if (result.success) {
+
+      if (result.success && result.stage) {
+        // 1) 대시보드 로컬 상태 즉시 반영
+        applyOptimisticUpdate(result.stage)
+
+        // 2) 메모리 캐시도 동기화 → 다른 화면/리스너 실시간 반영
+        updatePurchaseInMemory(requestId, (purchase) => {
+          if (result.stage === 'middle') {
+            return { ...purchase, middle_manager_status: 'approved' as any }
+          }
+          return { ...purchase, final_manager_status: 'approved' as any }
+        })
+
         toast.success('승인이 완료되었습니다.')
-        // 성공 시 백그라운드에서 데이터 동기화 (UI 깜빡임 없이)
-        setTimeout(() => {
-          loadDashboardData(false)  // false를 전달하여 로딩 화면 표시 안 함
-        }, 1000)
+
+        // 3) 백그라운드 새로고침 (캐시 무효화와 함께 정합성 보강)
+        setTimeout(() => loadDashboardData(false, true), 500)
       } else {
         // 실패 시 원래 데이터로 롤백
         setData(originalData)
@@ -440,6 +489,19 @@ export default function DashboardMain() {
 
   const canSeeApprovalBox = roles.some((r: string) => ['middle_manager', 'final_approver', 'app_admin', 'raw_material_manager', 'consumable_manager'].includes(r))
 
+  // 결제/요청 유형별 색상 매핑 (payment_category 기준)
+  const getTypeColorClass = (paymentCategory: string | null | undefined) => {
+    const normalized = (paymentCategory || '').toLowerCase().replace(/\s+/g, '')
+    const isOnsitePayment = normalized.includes('현장결제')
+    const isOrder = normalized.includes('발주')
+    const isPurchaseRequest = normalized.includes('구매')
+
+    if (isOnsitePayment) return 'bg-gray-500'
+    if (isOrder) return 'bg-green-500'
+    if (isPurchaseRequest) return 'bg-blue-500'
+    return 'bg-gray-300'
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="w-full px-4 lg:px-6">
@@ -508,11 +570,12 @@ export default function DashboardMain() {
                         const firstItem = items[0] || {}
                         const totalAmount = approval.total_amount || items.reduce((sum: number, i: any) => sum + (Number(i.amount_value) || 0), 0)
                         const isAdvance = approval.progress_type === '선진행'
+                        const typeColorClass = getTypeColorClass(approval.payment_category)
                         
                         return (
                           <div 
                             key={`approval-${approval.id}`} 
-                            className={`border rounded-lg p-2 hover:shadow-sm transition-all cursor-pointer mb-2 ${
+                            className={`relative border rounded-lg p-2 hover:shadow-sm transition-all cursor-pointer mb-2 pl-3 ${
                               isAdvance ? 'bg-red-50 border-red-200' : 'hover:bg-orange-50/30'
                             }`}
                             onClick={(e) => {
@@ -521,6 +584,8 @@ export default function DashboardMain() {
                               openPurchaseModal(approval, 'pending') // 승인대기 탭
                             }}
                           >
+                            {/* 좌측 세로 타입 바 */}
+                            <div className={`absolute inset-y-1 left-1 w-1 rounded-full ${typeColorClass}`} />
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex items-center gap-2 flex-1 min-w-0">
                                 <span className="card-title">

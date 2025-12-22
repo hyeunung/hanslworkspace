@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import { logger } from '@/lib/logger'
-import { purchaseMemoryCache, CACHE_DURATION } from '@/stores/purchaseMemoryStore'
+import { purchaseMemoryCache, CACHE_DURATION, updatePurchaseInMemory } from '@/stores/purchaseMemoryStore'
 import type { 
   DashboardData, 
   DashboardStats, 
@@ -33,6 +33,13 @@ export class DashboardService {
     const isSameUser = purchaseMemoryCache.currentUser?.id === String(employee.id)
     
     return isFresh && isSameUser
+  }
+
+  // 대시보드 캐시 무효화 (승인/삭제 등 변경 시 강제 새로고침 유도)
+  private invalidateDashboardCache() {
+    dashboardCache.data = null
+    dashboardCache.lastFetch = 0
+    dashboardCache.employeeId = null
   }
 
   private getPurchaseMemory(): Purchase[] {
@@ -77,7 +84,8 @@ export class DashboardService {
     // ✅ 발주요청 관리와 동일한 방식: 메모리 캐시(최근 2000건 + 품목) 기반으로 대시보드 구성
     // - DataInitializer에서 이미 loadAllPurchaseData를 수행하므로 대시보드 진입 시 추가 DB 쿼리를 줄일 수 있음
     // - 메모리가 없으면 기존 Supabase 쿼리 방식으로 폴백
-    const useMemory = this.hasValidPurchaseMemory(employee)
+    // - forceRefresh가 true면 메모리 캐시도 무시하고 DB에서 직접 조회
+    const useMemory = !forceRefresh && this.hasValidPurchaseMemory(employee)
 
     const results = await Promise.allSettled([
       useMemory ? this.getDashboardStatsFromMemory(employee) : this.getDashboardStats(employee),
@@ -861,8 +869,10 @@ export class DashboardService {
   }
 
   // 원클릭 승인 API
-  async quickApprove(requestId: string, employee: Employee): Promise<{success: boolean, error?: string}> {
-    
+  async quickApprove(
+    requestId: string,
+    employee: Employee
+  ): Promise<{ success: boolean; stage?: 'middle' | 'final'; error?: string }> {
     try {
       const roles = this.parseRoles(employee.purchase_role)
 
@@ -876,14 +886,13 @@ export class DashboardService {
       if (!request) {
         return { success: false, error: '요청을 찾을 수 없습니다.' }
       }
-      
 
       let updateData: any = {}
+      let stage: 'middle' | 'final' | null = null
 
       // pending, 대기, null, 빈 문자열 모두 대기 상태로 간주
-      const isPending = (status: any) => (
+      const isPending = (status: any) =>
         status === 'pending' || status === '대기' || status === '' || status === null || status === undefined
-      )
 
       // app_admin은 현재 필요한 승인 단계를 처리
       if (roles.includes('app_admin')) {
@@ -891,22 +900,26 @@ export class DashboardService {
           updateData = {
             middle_manager_status: 'approved'
           }
+          stage = 'middle'
         } else if (request.middle_manager_status === 'approved' && isPending(request.final_manager_status)) {
           updateData = {
             final_manager_status: 'approved'
           }
+          stage = 'final'
         }
       } else if (roles.includes('middle_manager')) {
         if (isPending(request.middle_manager_status)) {
           updateData = {
             middle_manager_status: 'approved'
           }
+          stage = 'middle'
         }
       } else if (roles.includes('final_approver') || roles.includes('ceo')) {
         if (request.middle_manager_status === 'approved' && isPending(request.final_manager_status)) {
           updateData = {
             final_manager_status: 'approved'
           }
+          stage = 'final'
         }
       } else if (roles.includes('raw_material_manager') || roles.includes('consumable_manager')) {
         // raw_material_manager와 consumable_manager도 최종 승인 권한이 있음
@@ -914,28 +927,35 @@ export class DashboardService {
           updateData = {
             final_manager_status: 'approved'
           }
+          stage = 'final'
         }
       }
 
       // updateData가 비어있으면 승인할 단계가 없음
-      if (Object.keys(updateData).length === 0) {
+      if (!stage || Object.keys(updateData).length === 0) {
         return { success: false, error: '승인할 수 있는 상태가 아닙니다.' }
       }
-      
 
-      const { data: updatedData, error } = await this.supabase
+      const { error } = await this.supabase
         .from('purchase_requests')
         .update(updateData)
         .eq('id', requestId)
-        .select()
-        .single()
 
       if (error) {
         // Error details are handled by the caller
         throw error
       }
 
-      return { success: true }
+      // 메모리 캐시 업데이트 (있을 때만)
+      updatePurchaseInMemory(requestId, (purchase) => ({
+        ...purchase,
+        ...updateData
+      }))
+
+      // 대시보드 캐시 무효화 → 다음 로드 시 강제 새로고침
+      this.invalidateDashboardCache()
+
+      return { success: true, stage }
     } catch (error) {
       return { success: false, error: (error as Error).message }
     }
