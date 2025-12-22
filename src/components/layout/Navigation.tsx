@@ -1,6 +1,7 @@
 
 import { Link } from 'react-router-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import { 
   Home, 
   ShoppingCart, 
@@ -9,9 +10,11 @@ import {
   Users, 
   FileText,
   Package,
-  Receipt
+  Receipt,
+  MessageCircle
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { supportService } from '@/services/supportService'
 
 interface NavigationProps {
   role?: string | string[]  // hanslwebapp과 동일하게 배열도 지원
@@ -20,6 +23,38 @@ interface NavigationProps {
 export default function Navigation({ role }: NavigationProps) {
   const location = useLocation()
   const pathname = location.pathname
+  const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
+  
+  // role 배열 확인
+  const roles = Array.isArray(role) ? role : (role ? [role] : [])
+  const isAdmin = roles.includes('app_admin')
+  
+  // app_admin인 경우 미처리 문의 개수 조회
+  useEffect(() => {
+    if (!isAdmin) return
+    
+    const loadPendingCount = async () => {
+      const result = await supportService.getAllInquiries()
+      if (result.success) {
+        // open 또는 in_progress 상태인 문의 개수
+        const pendingCount = result.data.filter(
+          inquiry => inquiry.status === 'open' || inquiry.status === 'in_progress'
+        ).length
+        setPendingInquiryCount(pendingCount)
+      }
+    }
+    
+    loadPendingCount()
+    
+    // 실시간 구독으로 문의 개수 업데이트
+    const subscription = supportService.subscribeToInquiries(() => {
+      loadPendingCount()
+    })
+    
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [isAdmin])
 
   const menuItems = [
     {
@@ -63,6 +98,13 @@ export default function Navigation({ role }: NavigationProps) {
       href: '/bom-coordinate',
       icon: Package,
       roles: ['all']
+    },
+    {
+      label: '문의하기',
+      href: '/support',
+      icon: MessageCircle,
+      roles: ['all'],
+      badge: isAdmin && pendingInquiryCount > 0 ? pendingInquiryCount : undefined
     }
   ]
 
@@ -84,6 +126,7 @@ export default function Navigation({ role }: NavigationProps) {
         {filteredMenuItems.map((item) => {
           const Icon = item.icon
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
+          const badge = (item as any).badge
           
           return (
             <li key={item.href}>
@@ -96,8 +139,23 @@ export default function Navigation({ role }: NavigationProps) {
                     : 'text-gray-700 hover:bg-gray-100'
                 )}
               >
-                <Icon className="w-5 h-5" />
-                <span className="header-title">{item.label}</span>
+                <div className="relative">
+                  <Icon className="w-5 h-5" />
+                  {badge !== undefined && badge > 0 && (
+                    <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  )}
+                </div>
+                <span className="header-title flex-1">{item.label}</span>
+                {badge !== undefined && badge > 0 && (
+                  <span className={cn(
+                    "badge-stats",
+                    isActive ? "bg-white/20 text-white" : "bg-red-100 text-red-700"
+                  )}>
+                    {badge > 99 ? '99+' : badge}
+                  </span>
+                )}
               </Link>
             </li>
           )

@@ -529,6 +529,10 @@ export default function BomCoordinateIntegrated() {
       };
 
       setProcessedResult(resultWithId);
+      
+      // 100% 완료 표시를 사용자가 볼 수 있도록 약간의 지연 후 화면 전환
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       toast.success('BOM 분석 및 정리가 완료되었습니다.');
       setStep('preview');
 
