@@ -42,6 +42,11 @@ export class DashboardService {
     dashboardCache.employeeId = null
   }
 
+  // 외부에서 대시보드 캐시를 무효화할 수 있도록 공개 메서드 제공
+  public invalidateCache() {
+    this.invalidateDashboardCache()
+  }
+
   private getPurchaseMemory(): Purchase[] {
     return (purchaseMemoryCache.allPurchases || []) as Purchase[]
   }

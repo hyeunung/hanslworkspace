@@ -250,7 +250,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     };
     
     checkAndRefreshCache();
-  }, [currentUser?.id]); // currentUser가 변경될 때마다 체크
+  }, [currentUser?.id, location.key]); // 사용자 또는 화면 이동 시 체크
 
   // 필터 옵션 데이터 로드
   useEffect(() => {

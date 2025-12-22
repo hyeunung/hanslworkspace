@@ -283,8 +283,35 @@ export default function DashboardMain() {
       setPurchaseToDelete(null)
       setIsModalOpen(false)
       setSelectedPurchaseId(null)
-      
-      // 데이터 새로고침
+
+      // 로컬 상태에서 즉시 제거하여 입고 대기 카드에 바로 반영
+      setData((prev) => {
+        if (!prev) return prev
+        const targetId = String(purchaseIdForDelete)
+        const removeById = (list: any[] = []) => list.filter((item: any) => String(item.id) !== targetId)
+        
+        const nextMyStatus = prev.myPurchaseStatus
+          ? {
+              ...prev.myPurchaseStatus,
+              waitingDelivery: removeById(prev.myPurchaseStatus.waitingDelivery),
+              waitingPurchase: removeById(prev.myPurchaseStatus.waitingPurchase),
+              recentCompleted: removeById(prev.myPurchaseStatus.recentCompleted)
+            }
+          : prev.myPurchaseStatus
+
+        return {
+          ...prev,
+          pendingApprovals: removeById(prev.pendingApprovals),
+          myRecentRequests: removeById(prev.myRecentRequests),
+          myPurchaseStatus: nextMyStatus
+        }
+      })
+
+      // 미다운로드 목록 등 다른 카드에서도 즉시 제거
+      setUndownloadedOrders((prev) => prev.filter(item => String(item.id) !== String(purchaseIdForDelete)))
+
+      // 캐시 무효화 후 강제 새로고침
+      dashboardService.invalidateCache()
       loadDashboardData(false, true)
     } catch (error) {
       logger.error('[DashboardMain] 발주 삭제 실패:', error)

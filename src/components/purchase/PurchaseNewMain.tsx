@@ -6,7 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, X, Save, Package, Copy, Check } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useNavigate } from "react-router-dom";
-import { invalidatePurchaseMemoryCache } from '@/stores/purchaseMemoryStore';
+import { markCacheStaleAndNotify, invalidatePurchaseMemoryCache } from '@/stores/purchaseMemoryStore';
+import { loadAllPurchaseData } from '@/services/purchaseDataLoader';
 import { useForm as useFormRH, useFieldArray } from "react-hook-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { FormValues, FormItem } from "@/types/purchase";
@@ -873,8 +874,16 @@ export default function PurchaseNewMain() {
       // 3. 성공 메시지 표시
       toast.success("발주요청서가 성공적으로 생성되었습니다.");
       
-      // 4. 메모리 캐시 무효화하여 새로운 발주요청이 목록에 나타나도록 함
+      // 4. 메모리 캐시 무효화 및 즉시 새로고침 시도 (탭 이동 전 최신화)
       invalidatePurchaseMemoryCache() // 캐시 무효화로 다음 로드 시 새로고침
+      try {
+        await loadAllPurchaseData(String(currentEmployee.id))
+      } catch (refreshError) {
+        console.error('새 발주 생성 후 데이터 새로고침 실패', refreshError)
+      } finally {
+        markCacheStaleAndNotify() // 구독자에게 캐시 변경 알림 + lastFetch 무효화
+      }
+      isSubmittingRef.current = false
       
       // 5. 발주요청 관리 페이지의 승인대기 탭으로 이동
       try {

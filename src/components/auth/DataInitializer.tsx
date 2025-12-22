@@ -2,6 +2,7 @@ import { ReactNode, useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { loadAllPurchaseData } from '@/services/purchaseDataLoader'
 import { purchaseMemoryCache } from '@/stores/purchaseMemoryStore'
+import { purchaseRealtimeService } from '@/services/purchaseRealtimeService'
 import { logger } from '@/lib/logger'
 import InitialLoadingScreen from '@/components/common/InitialLoadingScreen'
 
@@ -106,6 +107,8 @@ export default function DataInitializer({ children }: DataInitializerProps) {
 
     // employee가 있을 때만 초기화 실행
     if (employee?.id) {
+      // Realtime 구독 상태 보장
+      purchaseRealtimeService.ensureSubscribed()
       initializeAppData()
     }
 

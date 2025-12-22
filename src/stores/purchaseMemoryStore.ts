@@ -58,6 +58,12 @@ export const invalidatePurchaseMemoryCache = () => {
   purchaseMemoryCache.lastFetch = 0
 }
 
+// 캐시 무효화 + 리스너 알림을 한 번에 수행 (새로고침 트리거용)
+export const markCacheStaleAndNotify = () => {
+  invalidatePurchaseMemoryCache()
+  notifyCacheListeners()
+}
+
 // 품목 삭제를 위한 메모리 캐시 업데이트 함수 (다른 함수들과 동일한 패턴)
 export const removeItemFromMemory = (purchaseId: number | string, itemId: number | string): boolean => {
   const result = updatePurchaseInMemory(purchaseId, (purchase) => {

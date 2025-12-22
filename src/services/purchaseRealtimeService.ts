@@ -30,6 +30,15 @@ class PurchaseRealtimeService {
   private subscribers: Set<RealtimeCallback> = new Set()
 
   /**
+   * 외부에서 호출해 구독 상태를 보장하는 헬퍼
+   */
+  ensureSubscribed(): void {
+    if (!this.isSubscribed) {
+      this.subscribe()
+    }
+  }
+
+  /**
    * Realtime 구독 시작
    */
   subscribe(): void {
@@ -136,6 +145,8 @@ class PurchaseRealtimeService {
     if (!purchaseMemoryCache.allPurchases) {
       logger.warn('⚠️ [Realtime] 캐시가 초기화되지 않음, 캐시 무효화 후 종료')
       invalidatePurchaseMemoryCache()
+      // 캐시가 비어 있어도 구독자들에게 변화 알림을 보내 대시보드 등이 강제 새로고침하도록 유도
+      this.notifySubscribers()
       return
     }
 
@@ -170,6 +181,8 @@ class PurchaseRealtimeService {
     if (!purchaseMemoryCache.allPurchases) {
       logger.warn('⚠️ [Realtime] 캐시가 초기화되지 않음, 캐시 무효화 후 종료')
       invalidatePurchaseMemoryCache()
+      // 캐시가 비어 있어도 구독자들에게 변화 알림을 보내 대시보드 등이 강제 새로고침하도록 유도
+      this.notifySubscribers()
       return
     }
 

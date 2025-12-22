@@ -16,6 +16,7 @@ import {
 import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { useToast } from '@/hooks/use-toast';
 import { deliveryService } from '@/services/deliveryService';
+import { markCacheStaleAndNotify } from '@/stores/purchaseMemoryStore';
 import { PurchaseRequestWithDetails, PurchaseRequestItem } from '@/types/purchase';
 import { 
   ChevronDown, 
@@ -174,6 +175,7 @@ export function DeliveryManagement({
           description: "품목이 성공적으로 입고 처리되었습니다."
         });
         onUpdate?.();
+        markCacheStaleAndNotify(); // 다른 화면에서도 최신화
       } else {
         throw new Error(result.error);
       }
