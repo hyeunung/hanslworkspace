@@ -899,7 +899,6 @@ export class DashboardService {
       const isPending = (status: any) =>
         status === 'pending' || status === '대기' || status === '' || status === null || status === undefined
 
-      // app_admin은 현재 필요한 승인 단계를 처리
       if (roles.includes('app_admin')) {
         if (isPending(request.middle_manager_status)) {
           updateData = {

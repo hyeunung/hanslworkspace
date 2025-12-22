@@ -319,7 +319,9 @@ export default function DashboardMain() {
     }
   }
 
-  const handleQuickApprove = async (requestId: string) => {
+  const handleQuickApprove = async (requestId: string | number) => {
+    const normalizedId = String(requestId)
+
     if (!data?.employee) {
       toast.error('사용자 정보를 찾을 수 없습니다.')
       return
@@ -333,7 +335,7 @@ export default function DashboardMain() {
           return {
             ...prev,
             pendingApprovals: prev.pendingApprovals.map((item) =>
-              String(item.id) === requestId ? { ...item, middle_manager_status: 'approved' as const } : item
+              String(item.id) === normalizedId ? { ...item, middle_manager_status: 'approved' as const } : item
             )
           }
         }
@@ -341,13 +343,13 @@ export default function DashboardMain() {
         // 최종 승인 → 목록에서 제거 + pending 카운트 감소
         setDismissedApprovalIds((prev) => {
           const next = new Set(prev)
-          next.add(String(requestId))
+          next.add(normalizedId)
           return next
         })
         const nextPending = Math.max(0, (prev.stats?.pending || 0) - 1)
         return {
           ...prev,
-          pendingApprovals: prev.pendingApprovals.filter((item) => String(item.id) !== requestId),
+          pendingApprovals: prev.pendingApprovals.filter((item) => String(item.id) !== normalizedId),
           stats: prev.stats ? { ...prev.stats, pending: nextPending } : prev.stats
         }
       })
@@ -358,20 +360,20 @@ export default function DashboardMain() {
       return
     }
 
-    setActionLoading(requestId)
+    setActionLoading(normalizedId)
     
     // 원본 데이터 백업 (롤백용)
     const originalData = data
 
     try {
-      const result = await dashboardService.quickApprove(requestId, data.employee)
+      const result = await dashboardService.quickApprove(normalizedId, data.employee)
 
       if (result.success && result.stage) {
         // 1) 대시보드 로컬 상태 즉시 반영
         applyOptimisticUpdate(result.stage)
 
         // 2) 메모리 캐시도 동기화 → 다른 화면/리스너 실시간 반영
-        updatePurchaseInMemory(requestId, (purchase) => {
+        updatePurchaseInMemory(normalizedId, (purchase) => {
           if (result.stage === 'middle') {
             return { ...purchase, middle_manager_status: 'approved' as any }
           }
@@ -557,7 +559,7 @@ export default function DashboardMain() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {/* 1. 승인 대기 (승인 권한자만 표시) */}
           {canSeeApprovalBox && (
-            <Card className="w-full col-span-1 row-span-2">
+            <Card className="w-full col-span-1">
               <CardHeader className="h-12 px-4 bg-gray-50 border-b flex items-center">
                 <CardTitle className="section-title flex items-center justify-between w-full">
                   <div className="flex items-center gap-2">

@@ -4636,7 +4636,12 @@ function PurchaseDetailModal({
                           disabled={canEditLimited && !canEditAll}
                         />
                       ) : (
-                        <p className="modal-subtitle">{purchase.project_item || '-'}</p>
+                        <p
+                          className="modal-subtitle break-all whitespace-pre-wrap"
+                          style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+                        >
+                          {purchase.project_item || '-'}
+                        </p>
                       )}
                     </div>
                   </div>

@@ -95,7 +95,12 @@ const MobilePurchaseCard = memo(({ purchase, onClick }: MobilePurchaseCardProps)
         {purchase.project_item && (
           <div className="flex items-center justify-between card-subtitle">
             <span className="text-gray-600">PJ ITEM</span>
-            <span className="card-title truncate max-w-[150px]">{purchase.project_item}</span>
+            <span
+              className="text-[11px] font-medium text-gray-900 max-w-[150px] break-all whitespace-pre-wrap text-right leading-snug"
+              style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
+            >
+              {purchase.project_item}
+            </span>
           </div>
         )}
         {purchase.sales_order_number && (

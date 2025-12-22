@@ -340,9 +340,11 @@ export const filterBySearchTerm = (
     // 헤더 필드에서 검색어 매치 확인
     const headerFields = [
       purchase.purchase_order_number,
+      purchase.sales_order_number,
       purchase.requester_name,
       purchase.vendor_name,
-      purchase.contact_name
+      purchase.contact_name,
+      purchase.project_item
     ]
     
     const headerMatch = headerFields.some(field => 
