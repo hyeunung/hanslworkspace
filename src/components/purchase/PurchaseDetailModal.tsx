@@ -28,7 +28,9 @@ import {
   Truck,
   MessageSquarePlus,
   Loader2,
-  GripVertical
+  GripVertical,
+  Image as ImageIcon,
+  FileCheck
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -42,6 +44,8 @@ import { useConfirmDateAction } from '@/hooks/useConfirmDateAction'
 import { format as formatDateInput } from 'date-fns'
 import { AUTHORIZED_ROLES } from '@/constants/columnSettings'
 import ReactSelect from 'react-select'
+import transactionStatementService from '@/services/transactionStatementService'
+import type { TransactionStatement } from '@/types/transactionStatement'
 
 interface PurchaseDetailModalProps {
   purchaseId: number | null
@@ -112,6 +116,11 @@ function PurchaseDetailModal({
   
   // 저장 로딩 상태
   const [isSaving, setIsSaving] = useState(false)
+
+  // 거래명세서 관련 상태
+  const [linkedStatements, setLinkedStatements] = useState<TransactionStatement[]>([])
+  const [isStatementViewerOpen, setIsStatementViewerOpen] = useState(false)
+  const [selectedStatementImage, setSelectedStatementImage] = useState<string>('')
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
@@ -1014,8 +1023,30 @@ function PurchaseDetailModal({
         loadPurchaseDetail(purchaseId.toString())
       }
       setIsEditing(false) // 모달 열 때마다 편집 모드 초기화
+      
+      // 연결된 거래명세서 로드
+      loadLinkedStatements(purchaseId)
     }
   }, [purchaseId, isOpen])
+
+  // 연결된 거래명세서 로드
+  const loadLinkedStatements = async (purchaseId: number) => {
+    try {
+      const result = await transactionStatementService.getStatementsByPurchaseId(purchaseId)
+      if (result.success && result.data) {
+        setLinkedStatements(result.data)
+      }
+    } catch (e) {
+      // 에러는 조용히 처리 (연결된 거래명세서가 없어도 정상)
+      setLinkedStatements([])
+    }
+  }
+
+  // 거래명세서 이미지 보기
+  const handleViewStatementImage = (imageUrl: string) => {
+    setSelectedStatementImage(imageUrl)
+    setIsStatementViewerOpen(true)
+  }
 
   // 칼럼 너비 계산 (텍스트 길이 기반)
   const calculateOptimalColumnWidths = useCallback(() => {
@@ -4665,6 +4696,58 @@ function PurchaseDetailModal({
                 </div>
               </div>
 
+              {/* 연결된 거래명세서 */}
+              {linkedStatements.length > 0 && (
+                <div className="bg-white rounded-lg p-2 sm:p-3 border border-gray-100 shadow-sm mt-3">
+                  <div className="mb-2">
+                    <h3 className="modal-section-title flex items-center">
+                      <FileCheck className="w-4 h-4 mr-2 text-gray-600" />
+                      연결된 거래명세서
+                      <span className="ml-2 badge-stats bg-green-500 text-white text-[10px]">
+                        {linkedStatements.length}건
+                      </span>
+                    </h3>
+                  </div>
+                  <div className="space-y-2">
+                    {linkedStatements.map((stmt) => (
+                      <div
+                        key={stmt.id}
+                        className="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+                        onClick={() => handleViewStatementImage(stmt.image_url)}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <ImageIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-gray-900 truncate">
+                              {stmt.vendor_name || stmt.file_name || '거래명세서'}
+                            </p>
+                            <p className="text-[10px] text-gray-500">
+                              {stmt.statement_date 
+                                ? formatDate(stmt.statement_date)
+                                : formatDate(stmt.uploaded_at)
+                              }
+                              {stmt.grand_total && (
+                                <span className="ml-2 text-gray-700">
+                                  {stmt.grand_total.toLocaleString()}원
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0 flex-shrink-0"
+                          title="이미지 보기"
+                        >
+                          <ImageIcon className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
             </div>
 
             {/* Right Column - Items List (Fit Width) */}
@@ -5174,6 +5257,7 @@ function PurchaseDetailModal({
 
   // embedded가 false면 Dialog로 감싸서 반환
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent 
         className="overflow-hidden bg-white rounded-lg shadow-sm border-0 w-full sm:w-auto max-w-[calc(100vw-48px)] sm:max-w-[calc(100vw-80px)] lg:max-w-[90vw] xl:max-w-[85vw] h-[95vh] sm:h-auto sm:max-h-[90vh] lg:max-h-[85vh] sm:rounded-lg flex flex-col" 
@@ -5355,6 +5439,32 @@ function PurchaseDetailModal({
       </DialogContent>
       
     </Dialog>
+
+    {/* 거래명세서 이미지 뷰어 */}
+    <Dialog open={isStatementViewerOpen} onOpenChange={setIsStatementViewerOpen}>
+      <DialogContent className="max-w-[90vw] max-h-[90vh] p-0 bg-black/90 border-none">
+        <div className="absolute top-4 right-4 z-50">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setIsStatementViewerOpen(false)}
+            className="text-white hover:bg-white/20"
+          >
+            <X className="w-5 h-5" />
+          </Button>
+        </div>
+        <div className="flex items-center justify-center w-full h-[80vh] overflow-auto p-4">
+          {selectedStatementImage && (
+            <img
+              src={selectedStatementImage}
+              alt="거래명세서"
+              className="max-w-full max-h-full object-contain"
+            />
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
 

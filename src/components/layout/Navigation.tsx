@@ -9,6 +9,7 @@ import {
   Building2, 
   Users, 
   FileText,
+  FileCheck,
   Package,
   Receipt,
   MessageCircle
@@ -73,6 +74,12 @@ export default function Navigation({ role }: NavigationProps) {
       label: '발주요청 목록',
       href: '/purchase/list',
       icon: FileText,
+      roles: ['all']
+    },
+    {
+      label: '거래명세서 확인',
+      href: '/transaction-statement',
+      icon: FileCheck,
       roles: ['all']
     },
     {

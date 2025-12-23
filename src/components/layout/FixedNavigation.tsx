@@ -5,6 +5,7 @@ import {
   Building2, 
   Users, 
   FileText,
+  FileCheck,
   X,
   MessageCircle,
   Receipt,
@@ -45,6 +46,12 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
       label: '발주요청 목록',
       href: '/purchase/list',
       icon: FileText,
+      roles: ['all']
+    },
+    {
+      label: '거래명세서 확인',
+      href: '/transaction-statement',
+      icon: FileCheck,
       roles: ['all']
     },
     {

@@ -12,6 +12,7 @@ const EmployeeMain = lazy(() => import('@/components/employee/EmployeeMain'))
 const SupportMain = lazy(() => import('@/components/support/SupportMain'))
 const ReceiptsMain = lazy(() => import('@/components/receipts/ReceiptsMain'))
 const BomCoordinateMain = lazy(() => import('@/components/bom-coordinate/BomCoordinateIntegrated'))
+const TransactionStatementMain = lazy(() => import('@/components/transaction-statement/TransactionStatementMain'))
 
 /**
  * 애플리케이션 라우팅 컴포넌트
@@ -51,6 +52,7 @@ export default function AppRoutes() {
           <Route path="/receipts" element={<ReceiptsMain />} />
           <Route path="/support" element={<SupportMain />} />
           <Route path="/bom-coordinate" element={<BomCoordinateMain />} />
+          <Route path="/transaction-statement" element={<TransactionStatementMain />} />
           
           {/* 알 수 없는 경로는 대시보드로 리다이렉트 */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -6,6 +6,7 @@ import {
   Building2, 
   Users, 
   FileText,
+  FileCheck,
   Menu,
   ChevronLeft,
   ChevronRight,
@@ -49,6 +50,12 @@ export default function CollapsibleNavigationSPA({ role, isOpen = false, onClose
       label: '발주요청 목록',
       href: '/purchase/list',
       icon: FileText,
+      roles: ['all']
+    },
+    {
+      label: '거래명세서 확인',
+      href: '/transaction-statement',
+      icon: FileCheck,
       roles: ['all']
     },
     {

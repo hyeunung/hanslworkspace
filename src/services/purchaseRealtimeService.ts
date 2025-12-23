@@ -27,13 +27,14 @@ class PurchaseRealtimeService {
   private supabase = createClient()
   private channel: RealtimeChannel | null = null
   private isSubscribed = false
+  private isSubscribing = false  // 구독 진행 중 플래그 (경쟁 조건 방지)
   private subscribers: Set<RealtimeCallback> = new Set()
 
   /**
    * 외부에서 호출해 구독 상태를 보장하는 헬퍼
    */
   ensureSubscribed(): void {
-    if (!this.isSubscribed) {
+    if (!this.isSubscribed && !this.isSubscribing) {
       this.subscribe()
     }
   }
@@ -42,11 +43,22 @@ class PurchaseRealtimeService {
    * Realtime 구독 시작
    */
   subscribe(): void {
-    if (this.isSubscribed) {
-      logger.info('🔄 [Realtime] 이미 구독 중입니다.')
+    // 이미 구독 중이거나 구독 진행 중이면 무시
+    if (this.isSubscribed || this.isSubscribing) {
+      if (this.isSubscribed) {
+        logger.info('🔄 [Realtime] 이미 구독 중입니다.')
+      }
       return
     }
 
+    // 채널이 이미 존재하면 먼저 정리
+    if (this.channel) {
+      this.supabase.removeChannel(this.channel)
+      this.channel = null
+    }
+
+    // 구독 시작 표시 (경쟁 조건 방지)
+    this.isSubscribing = true
     logger.info('🚀 [Realtime] 구독 시작...')
 
     this.channel = this.supabase
@@ -73,16 +85,23 @@ class PurchaseRealtimeService {
           this.handlePurchaseItemChange(payload)
         }
       )
-      .subscribe((status: string) => {
+      .subscribe((status: string, err?: Error) => {
         if (status === 'SUBSCRIBED') {
           this.isSubscribed = true
+          this.isSubscribing = false
           logger.info('✅ [Realtime] 구독 성공!')
         } else if (status === 'CHANNEL_ERROR') {
-          logger.error('❌ [Realtime] 채널 에러 발생')
           this.isSubscribed = false
+          this.isSubscribing = false
+          logger.error('❌ [Realtime] 채널 에러 발생:', err?.message || err || '알 수 없는 에러')
         } else if (status === 'TIMED_OUT') {
-          logger.warn('⚠️ [Realtime] 연결 타임아웃')
           this.isSubscribed = false
+          this.isSubscribing = false
+          logger.warn('⚠️ [Realtime] 연결 타임아웃')
+        } else if (status === 'CLOSED') {
+          this.isSubscribed = false
+          this.isSubscribing = false
+          logger.info('🔴 [Realtime] 채널 닫힘')
         }
       })
   }
@@ -96,6 +115,7 @@ class PurchaseRealtimeService {
       this.supabase.removeChannel(this.channel)
       this.channel = null
       this.isSubscribed = false
+      this.isSubscribing = false
     }
   }
 
