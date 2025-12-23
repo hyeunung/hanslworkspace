@@ -318,9 +318,9 @@ class TransactionStatementService {
               ? this.calculateVendorSimilarity(statementVendorName, sysVendorName)
               : 100; // 거래처 정보 없으면 통과
             
-            // 거래처 유사도 50% 미만이면 스킵
-            if (vendorSimilarity < 50) {
-              console.log(`⚠️ 거래처 불일치로 스킵: "${statementVendorName}" vs "${sysVendorName}" (${vendorSimilarity}%)`);
+            // 거래처 유사도 70% 미만이면 스킵 (거래처 다르면 후보 제외)
+            if (vendorSimilarity < 70) {
+              console.log(`❌ 거래처 불일치로 제외: "${statementVendorName}" vs "${sysVendorName}" (${vendorSimilarity}%)`);
               continue;
             }
 
@@ -403,14 +403,14 @@ class TransactionStatementService {
             // 이미 번호 매칭으로 추가된 경우 스킵
             if (candidateMap.has(key)) continue;
             
-            // 거래처 유사도 체크
+            // 거래처 유사도 체크 - 거래처 다르면 후보에서 제외
             const sysVendorName = purchaseItem.purchase?.vendor?.vendor_name || '';
             const vendorSimilarity = statementVendorName 
               ? this.calculateVendorSimilarity(statementVendorName, sysVendorName)
               : 100; // 거래처 정보 없으면 통과
             
-            // 거래처 유사도 50% 미만이면 스킵
-            if (vendorSimilarity < 50) {
+            // 거래처 유사도 70% 미만이면 스킵 (거래처 다르면 후보 제외)
+            if (vendorSimilarity < 70) {
               continue;
             }
             
@@ -1018,9 +1018,9 @@ class TransactionStatementService {
               ? this.calculateVendorSimilarity(statementVendorName, sysVendorName)
               : 100;
             
-            // 거래처 유사도 50% 미만이면 스킵
-            if (vendorSimilarity < 50) {
-              console.log(`⚠️ 세트 매칭 - 거래처 불일치로 스킵: "${statementVendorName}" vs "${sysVendorName}" (${vendorSimilarity}%)`);
+            // 거래처 유사도 70% 미만이면 스킵 (거래처 다르면 후보 제외)
+            if (vendorSimilarity < 70) {
+              console.log(`❌ 세트 매칭 - 거래처 불일치로 제외: "${statementVendorName}" vs "${sysVendorName}" (${vendorSimilarity}%)`);
               continue;
             }
             
@@ -1089,14 +1089,14 @@ class TransactionStatementService {
           // 이미 번호로 검색한 것은 스킵
           if (purchaseScores.some(p => p.purchase_id === purchase.id)) continue;
 
-          // 거래처 유사도 체크
+          // 거래처 유사도 체크 - 거래처 다르면 후보에서 제외
           const sysVendorName = purchase.vendor?.vendor_name || '';
           const vendorSimilarity = statementVendorName 
             ? this.calculateVendorSimilarity(statementVendorName, sysVendorName)
             : 100;
           
-          // 거래처 유사도 50% 미만이면 스킵
-          if (vendorSimilarity < 50) {
+          // 거래처 유사도 70% 미만이면 스킵 (거래처 다르면 후보 제외)
+          if (vendorSimilarity < 70) {
             continue;
           }
 

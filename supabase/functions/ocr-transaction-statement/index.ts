@@ -1,5 +1,13 @@
+// @ts-ignore - Deno runtime imports
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+// @ts-ignore - Deno runtime imports
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+declare const Deno: {
+  env: {
+    get(key: string): string | undefined;
+  };
+};
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -86,25 +94,47 @@ serve(async (req) => {
     // 5. 발주/수주번호 패턴 정규화 (OCR 텍스트도 함께 전달하여 빈 칸에 적힌 번호도 찾음)
     const normalizedItems = normalizePoNumbers(extractionResult.items, visionText)
 
-    // 6. DB에 결과 저장
+    // 6. 거래처명 검증 - vendors 테이블에 반드시 존재해야 함
+    let validatedVendorName = extractionResult.vendor_name
+    if (extractionResult.vendor_name) {
+      const vendorResult = await validateAndMatchVendor(
+        supabase, 
+        extractionResult.vendor_name
+      )
+      
+      if (vendorResult.matched) {
+        console.log(`✅ 거래처 매칭 성공: "${extractionResult.vendor_name}" → "${vendorResult.vendor_name}" (${vendorResult.similarity}%)`)
+        validatedVendorName = vendorResult.vendor_name
+      } else {
+        console.warn(`⚠️ 거래처 불일치: "${extractionResult.vendor_name}" - DB에 일치하는 거래처 없음`)
+        // 거래처를 찾지 못한 경우 undefined로 설정하고 수동 확인 필요 표시
+        validatedVendorName = undefined
+      }
+    }
+
+    // 8. DB에 결과 저장
     await supabase
       .from('transaction_statements')
       .update({
         status: 'extracted',
         statement_date: extractionResult.statement_date || null,
-        vendor_name: extractionResult.vendor_name || null,
+        vendor_name: validatedVendorName || null, // 검증된 거래처명 사용
         total_amount: extractionResult.total_amount || null,
         tax_amount: extractionResult.tax_amount || null,
         grand_total: extractionResult.grand_total || null,
         extracted_data: {
           ...extractionResult,
           items: normalizedItems,
-          raw_vision_text: visionText
+          raw_vision_text: visionText,
+          // 학습용: 원본 OCR 추출 거래처명과 검증 결과
+          ocr_vendor_name: extractionResult.vendor_name, // OCR이 읽은 원본
+          vendor_validated: !!validatedVendorName, // 검증 성공 여부
+          vendor_mismatch: !!(extractionResult.vendor_name && !validatedVendorName) // 불일치 여부
         }
       })
       .eq('id', requestData.statementId)
 
-    // 7. 추출된 품목들을 transaction_statement_items에 저장
+    // 9. 추출된 품목들을 transaction_statement_items에 저장
     if (normalizedItems.length > 0) {
       const itemsToInsert = normalizedItems.map((item, idx) => ({
         statement_id: requestData.statementId,
@@ -175,6 +205,177 @@ async function downloadImage(url: string): Promise<ArrayBuffer> {
   const response = await fetch(url)
   if (!response.ok) throw new Error(`Failed to download image: ${response.statusText}`)
   return await response.arrayBuffer()
+}
+
+/**
+ * 거래처명 검증 - vendors 테이블에서 유사한 거래처 찾기
+ * 거래명세서를 보낸 거래처는 반드시 DB에 존재해야 함
+ */
+async function validateAndMatchVendor(
+  supabase: any,
+  extractedVendorName: string
+): Promise<{ matched: boolean; vendor_name?: string; vendor_id?: number; similarity: number }> {
+  if (!extractedVendorName) {
+    return { matched: false, similarity: 0 }
+  }
+
+  // 1. vendors 테이블에서 모든 거래처 조회
+  const { data: vendors, error } = await supabase
+    .from('vendors')
+    .select('id, vendor_name')
+    .limit(500)
+
+  if (error || !vendors || vendors.length === 0) {
+    console.warn('Failed to fetch vendors or no vendors found:', error)
+    return { matched: false, similarity: 0 }
+  }
+
+  // 2. 각 거래처와 유사도 계산
+  let bestMatch: { vendor_id: number; vendor_name: string; similarity: number } | null = null
+
+  for (const vendor of vendors) {
+    const similarity = calculateVendorSimilarity(extractedVendorName, vendor.vendor_name)
+    
+    if (!bestMatch || similarity > bestMatch.similarity) {
+      bestMatch = {
+        vendor_id: vendor.id,
+        vendor_name: vendor.vendor_name,
+        similarity
+      }
+    }
+  }
+
+  // 3. 유사도 60% 이상이면 매칭 성공
+  if (bestMatch && bestMatch.similarity >= 60) {
+    return {
+      matched: true,
+      vendor_name: bestMatch.vendor_name,
+      vendor_id: bestMatch.vendor_id,
+      similarity: bestMatch.similarity
+    }
+  }
+
+  return { matched: false, similarity: bestMatch?.similarity || 0 }
+}
+
+/**
+ * 거래처명 유사도 계산 (0-100)
+ * - 회사 접두/접미어 제거 후 비교
+ * - 영어 ↔ 한글 음역 지원
+ */
+function calculateVendorSimilarity(vendor1: string, vendor2: string): number {
+  if (!vendor1 || !vendor2) return 0
+  
+  // 정규화: 회사 접두어/접미어 제거
+  const normalize = (name: string) => {
+    return name
+      .toLowerCase()
+      .replace(/\(주\)|주식회사|㈜|주\)|주|co\.|co,|ltd\.|ltd|inc\.|inc|corp\.|corp|company|컴퍼니/gi, '')
+      .replace(/[^a-z0-9가-힣]/g, '') // 특수문자, 공백 제거
+      .trim()
+  }
+
+  const n1 = normalize(vendor1)
+  const n2 = normalize(vendor2)
+
+  if (!n1 || !n2) return 0
+  if (n1 === n2) return 100
+
+  // 포함 관계
+  if (n1.includes(n2) || n2.includes(n1)) {
+    return 90
+  }
+
+  // 영어 ↔ 한글 음역 매핑
+  const translitMap: Record<string, string[]> = {
+    'yg': ['와이지', 'yg'],
+    '와이지': ['yg', '와이지'],
+    'tech': ['테크', '텍', 'tech'],
+    '테크': ['tech', '텍', '테크'],
+    '텍': ['tech', '테크', '텍'],
+    'high': ['하이', 'high'],
+    '하이': ['high', '하이'],
+    'korea': ['코리아', '한국', 'korea'],
+    '코리아': ['korea', '한국', '코리아'],
+    'electric': ['전기', '일렉트릭', 'electric'],
+    '전기': ['electric', '일렉트릭', '전기'],
+    'steel': ['스틸', '철강', 'steel'],
+    '스틸': ['steel', '철강', '스틸'],
+    'metal': ['메탈', '금속', 'metal'],
+    '메탈': ['metal', '금속', '메탈'],
+    'system': ['시스템', 'system'],
+    '시스템': ['system', '시스템'],
+    'soft': ['소프트', 'soft'],
+    '소프트': ['soft', '소프트'],
+    'net': ['넷', 'net'],
+    '넷': ['net', '넷'],
+    'global': ['글로벌', 'global'],
+    '글로벌': ['global', '글로벌'],
+    'trade': ['트레이드', '무역', 'trade'],
+    '트레이드': ['trade', '무역', '트레이드'],
+    'international': ['인터내셔널', 'international'],
+    '인터내셔널': ['international', '인터내셔널'],
+  }
+
+  // 음역 치환 후 비교
+  let n1Replaced = n1
+  let n2Replaced = n2
+  
+  for (const [key, values] of Object.entries(translitMap)) {
+    if (n1.includes(key)) {
+      for (const val of values) {
+        n1Replaced = n1Replaced.replace(key, val)
+        if (n1Replaced === n2 || n2.includes(n1Replaced) || n1Replaced.includes(n2)) {
+          return 85
+        }
+      }
+      n1Replaced = n1 // 리셋
+    }
+    if (n2.includes(key)) {
+      for (const val of values) {
+        n2Replaced = n2Replaced.replace(key, val)
+        if (n1 === n2Replaced || n1.includes(n2Replaced) || n2Replaced.includes(n1)) {
+          return 85
+        }
+      }
+      n2Replaced = n2 // 리셋
+    }
+  }
+
+  // Levenshtein 거리 기반 유사도
+  const maxLen = Math.max(n1.length, n2.length)
+  const distance = levenshteinDistance(n1, n2)
+  const similarity = ((maxLen - distance) / maxLen) * 100
+
+  return Math.round(similarity)
+}
+
+/**
+ * Levenshtein 거리 계산
+ */
+function levenshteinDistance(s1: string, s2: string): number {
+  const m = s1.length
+  const n = s2.length
+  const dp: number[][] = []
+  
+  for (let i = 0; i <= m; i++) {
+    dp[i] = [i]
+  }
+  for (let j = 0; j <= n; j++) {
+    dp[0][j] = j
+  }
+  
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (s1[i - 1] === s2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1]
+      } else {
+        dp[i][j] = Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]) + 1
+      }
+    }
+  }
+  
+  return dp[m][n]
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {

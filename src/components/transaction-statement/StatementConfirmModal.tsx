@@ -995,7 +995,7 @@ export default function StatementConfirmModal({
         <DialogContent className="max-w-[95vw] md:max-w-[1200px] max-h-[90vh] overflow-hidden flex flex-col business-radius-modal" showCloseButton={false}>
           <DialogHeader className="border-b border-gray-100 pb-3">
             <DialogTitle className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-[13px] font-bold text-gray-900">
+              <div className="flex items-center gap-2 modal-title">
                 <CheckCircle className="w-4 h-4 text-hansl-600" />
                 거래명세서 확인 및 확정
               </div>
@@ -1025,19 +1025,19 @@ export default function StatementConfirmModal({
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-hansl-600" />
-              <span className="ml-3 text-[11px] text-gray-500">로딩 중...</span>
+              <span className="ml-3 modal-subtitle">로딩 중...</span>
             </div>
           ) : statementWithItems ? (
             <div className="flex-1 overflow-hidden flex flex-col py-3">
               {/* 요약 정보 */}
               <div className="flex items-center gap-6 p-3 bg-gray-50 business-radius-card mb-4">
                 <div>
-                  <p className="text-[10px] font-medium text-gray-500">거래처</p>
-                  <p className="text-[11px] font-bold text-gray-900">{statementWithItems.vendor_name || '-'}</p>
+                  <p className="modal-label">거래처</p>
+                  <p className="modal-value">{statementWithItems.vendor_name || '-'}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-medium text-gray-500">거래일</p>
-                  <p className="text-[11px] font-bold text-gray-900">
+                  <p className="modal-label">거래일</p>
+                  <p className="modal-value">
                     {statementWithItems.statement_date 
                       ? new Date(statementWithItems.statement_date).toLocaleDateString('ko-KR')
                       : '-'
@@ -1045,26 +1045,26 @@ export default function StatementConfirmModal({
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-medium text-gray-500">합계금액</p>
-                  <p className="text-[12px] font-bold text-gray-900">
+                  <p className="modal-label">합계금액</p>
+                  <p className="modal-value-large">
                     {formatAmount(statementWithItems.grand_total)}원
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] font-medium text-gray-500">품목 수</p>
-                  <p className="text-[11px] font-bold text-gray-900">{statementWithItems.items.length}건</p>
+                  <p className="modal-label">품목 수</p>
+                  <p className="modal-value">{statementWithItems.items.length}건</p>
                 </div>
               </div>
 
               {/* 3단 비교 테이블 */}
               <div className="flex-1 overflow-auto border border-gray-200 business-radius-card">
-                <table className="text-[11px] table-auto min-w-full">
+                <table className="modal-value table-auto min-w-full">
                   <thead className="bg-gray-100 sticky top-0 z-10">
                     <tr>
                       {/* 좌측: 시스템 발주품목 헤더 */}
                       <th colSpan={isSamePONumber ? 4 : 5} className="border-b border-r-2 border-gray-300 p-2 text-left w-[45%]">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-gray-600 font-medium">📋 시스템 발주품목</span>
+                          <span className="modal-section-title text-gray-700">📋 시스템 발주품목</span>
                           {/* 세트 매칭 신뢰도 표시 */}
                           {isSamePONumber && setMatchResult?.bestMatch && (
                             <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
@@ -1107,7 +1107,7 @@ export default function StatementConfirmModal({
                                         } ${isBestMatch ? 'ring-1 ring-green-400' : ''}`}
                                       >
                                         <div className="flex items-center justify-between">
-                                          <p className="text-[10px] font-medium text-gray-900">
+                                          <p className="modal-label text-gray-900">
                                             {displayNumber}
                                           </p>
                                           {c.setMatchScore !== undefined && (
@@ -1143,12 +1143,12 @@ export default function StatementConfirmModal({
                       
                       {/* 중앙: 매칭 후보 */}
                       <th className="border-b border-r-2 border-gray-300 p-2 text-center bg-blue-50 w-[10%]">
-                        <span className="text-blue-700 font-medium text-[10px]">매칭 후보</span>
+                        <span className="modal-label text-blue-700">매칭 후보</span>
                       </th>
                       
                       {/* 우측: OCR 추출 품목 헤더 */}
                       <th colSpan={isSamePONumber ? 4 : 5} className="border-b border-gray-200 p-2 text-left w-[45%]">
-                        <span className="text-gray-600 font-medium">
+                        <span className="modal-section-title text-gray-700">
                           📄 OCR 추출 품목
                           {isSamePONumber && commonPONumber && (
                             <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-medium rounded">
@@ -1158,7 +1158,7 @@ export default function StatementConfirmModal({
                         </span>
                       </th>
                     </tr>
-                    <tr className="text-[10px] text-gray-500 font-medium">
+                    <tr className="modal-label">
                       {/* 좌측 컬럼 */}
                       {!isSamePONumber && (
                         <th className="border-b border-r border-gray-200 p-2 text-left min-w-[140px]">발주/수주번호</th>
@@ -1257,7 +1257,7 @@ export default function StatementConfirmModal({
                                           className="p-2 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-0"
                                         >
                                           <div className="flex items-center justify-between">
-                                            <p className="text-[10px] font-medium text-gray-900">{candidate.item_name}</p>
+                                            <p className="modal-label text-gray-900">{candidate.item_name}</p>
                                             <span className={`text-[9px] px-1.5 py-0.5 rounded ${
                                               score >= 80 ? 'bg-green-100 text-green-700' :
                                               score >= 50 ? 'bg-yellow-100 text-yellow-700' :
@@ -1276,7 +1276,7 @@ export default function StatementConfirmModal({
                                 )}
                               </div>
                             ) : (
-                              <span className="text-gray-400 text-[10px]">후보 없음</span>
+                              <span className="modal-label text-gray-400">후보 없음</span>
                             )}
                           </td>
                           <td className="border-r border-gray-200 p-2 text-right text-gray-600">
@@ -1404,7 +1404,7 @@ export default function StatementConfirmModal({
             </div>
           ) : (
             <div className="text-center py-12">
-              <p className="text-[11px] text-gray-500">데이터를 불러올 수 없습니다.</p>
+              <p className="modal-subtitle">데이터를 불러올 수 없습니다.</p>
             </div>
           )}
 
