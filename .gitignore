@@ -42,3 +42,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 sample-data/
+
+# sensitive files
+key/
+scripts/test-vision.js
