@@ -256,26 +256,12 @@ function PurchaseDetailModal({
       // 캐시에서 최신 데이터 가져와서 로컬 상태 업데이트
       const updatedPurchase = findPurchaseInMemory(purchaseId)
       if (updatedPurchase) {
-        // 🚀 캐시의 items가 비어있으면 기존 로컬 상태의 items 유지 (입고완료 시 품목 사라짐 방지)
-        const cachedItems = updatedPurchase.items || updatedPurchase.purchase_request_items || []
-        
-        setPurchase((prevPurchase) => {
-          // 기존 로컬 items가 있고 캐시 items가 비어있으면 기존 items 유지
-          const prevItems = prevPurchase?.items || prevPurchase?.purchase_request_items || []
-          const shouldPreserveItems = prevItems.length > 0 && cachedItems.length === 0
-          
-          const mergedItems = shouldPreserveItems ? prevItems : cachedItems
-          
-          return {
-            ...updatedPurchase,
-            id: String(updatedPurchase.id),
-            is_po_generated: false,
-            items: mergedItems,
-            purchase_request_items: mergedItems
-          } as PurchaseRequestWithDetails
-        })
+        setPurchase({
+          ...updatedPurchase,
+          id: String(updatedPurchase.id),
+          is_po_generated: false
+        } as PurchaseRequestWithDetails)
       }
-      // updatedPurchase가 null인 경우 기존 로컬 상태 유지 (setPurchase 호출 안함)
     }
 
     const unsubscribe = addCacheListener(handleCacheUpdate)

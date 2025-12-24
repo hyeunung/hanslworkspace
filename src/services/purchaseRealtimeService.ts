@@ -400,9 +400,30 @@ class PurchaseRealtimeService {
    * 품목 업데이트 처리
    */
   private handleItemUpdate(record: any): void {
-    if (!record || !record.purchase_request_id) return
+    if (!record) return
 
-    updatePurchaseInMemory(record.purchase_request_id, (purchase) => {
+    // purchase_request_id가 있으면 직접 업데이트
+    let targetPurchaseId = record.purchase_request_id
+
+    // 🚀 purchase_request_id가 없으면 item ID로 해당 purchase를 찾음 (RLS 필터링 대응)
+    if (!targetPurchaseId && record.id && purchaseMemoryCache.allPurchases) {
+      for (const purchase of purchaseMemoryCache.allPurchases) {
+        const items = purchase.items || purchase.purchase_request_items || []
+        const foundItem = items.find(item => item.id === record.id)
+        if (foundItem) {
+          targetPurchaseId = purchase.id
+          logger.info('🔍 [Realtime] item ID로 purchase 찾음:', { itemId: record.id, purchaseId: targetPurchaseId })
+          break
+        }
+      }
+    }
+
+    if (!targetPurchaseId) {
+      logger.warn('⚠️ [Realtime] 품목 업데이트 실패 - purchase를 찾을 수 없음:', record.id)
+      return
+    }
+
+    updatePurchaseInMemory(targetPurchaseId, (purchase) => {
       const currentItems = purchase.items || purchase.purchase_request_items || []
       
       const updatedItems = currentItems.map(item =>
@@ -426,9 +447,30 @@ class PurchaseRealtimeService {
    * 품목 삭제 처리
    */
   private handleItemDelete(record: any): void {
-    if (!record || !record.purchase_request_id) return
+    if (!record) return
 
-    const deleted = removeItemFromMemory(record.purchase_request_id, record.id)
+    // purchase_request_id가 있으면 직접 사용
+    let targetPurchaseId = record.purchase_request_id
+
+    // 🚀 purchase_request_id가 없으면 item ID로 해당 purchase를 찾음 (RLS 필터링 대응)
+    if (!targetPurchaseId && record.id && purchaseMemoryCache.allPurchases) {
+      for (const purchase of purchaseMemoryCache.allPurchases) {
+        const items = purchase.items || purchase.purchase_request_items || []
+        const foundItem = items.find(item => item.id === record.id)
+        if (foundItem) {
+          targetPurchaseId = purchase.id
+          logger.info('🔍 [Realtime] item ID로 purchase 찾음 (삭제):', { itemId: record.id, purchaseId: targetPurchaseId })
+          break
+        }
+      }
+    }
+
+    if (!targetPurchaseId) {
+      logger.warn('⚠️ [Realtime] 품목 삭제 실패 - purchase를 찾을 수 없음:', record.id)
+      return
+    }
+
+    const deleted = removeItemFromMemory(targetPurchaseId, record.id)
     
     if (deleted) {
       logger.info('✅ [Realtime] 품목 삭제됨:', record.id)
