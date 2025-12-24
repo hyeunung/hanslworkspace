@@ -5495,4 +5495,3 @@ function PurchaseDetailModal({
 }
 
 export default memo(PurchaseDetailModal)
-export default memo(PurchaseDetailModal)
