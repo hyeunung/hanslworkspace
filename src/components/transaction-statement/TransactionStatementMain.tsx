@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { createClient } from "@/lib/supabase/client";
 import { 
   Search, 
   FileCheck, 
@@ -84,6 +85,47 @@ export default function TransactionStatementMain() {
 
   useEffect(() => {
     loadStatements();
+  }, [loadStatements]);
+
+  // Supabase Realtime 구독 - 상태 변경 시 자동 갱신
+  const supabaseRef = useRef(createClient());
+  
+  useEffect(() => {
+    const supabase = supabaseRef.current;
+    
+    // transaction_statements 테이블의 변경사항 구독
+    const channel = supabase
+      .channel('transaction-statements-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // INSERT, UPDATE, DELETE 모두 구독
+          schema: 'public',
+          table: 'transaction_statements'
+        },
+        (payload) => {
+          console.log('[Realtime] Statement changed:', payload);
+          
+          // 상태가 변경되면 목록 갱신
+          if (payload.eventType === 'UPDATE') {
+            const newStatus = payload.new?.status;
+            const oldStatus = payload.old?.status;
+            
+            // 상태가 processing → extracted 또는 다른 상태로 변경됐을 때
+            if (newStatus !== oldStatus) {
+              console.log(`[Realtime] Status changed: ${oldStatus} → ${newStatus}`);
+              loadStatements();
+            }
+          } else if (payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
+            loadStatements();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [loadStatements]);
 
   // 상태 배지 렌더링
@@ -225,14 +267,20 @@ export default function TransactionStatementMain() {
   const handleUploadSuccess = async (statementId: string, imageUrl: string) => {
     setIsUploadModalOpen(false);
     
-    // 업로드 완료 후 자동으로 OCR 시작
+    // 1. 업로드 직후 바로 목록 갱신 (목록에 즉시 표시)
+    await loadStatements();
+    
+    // 2. 처리중 표시를 위해 extractingIds에 추가
+    setExtractingIds(prev => new Set(prev).add(statementId));
+    
+    // 3. OCR 추출 시작
     try {
-      toast.loading('업로드 완료! OCR 추출을 시작합니다...', { id: 'extraction' });
+      toast.loading('OCR 추출 중... (약 10~30초 소요)', { id: `extraction-${statementId}` });
       
       const result = await transactionStatementService.extractStatementData(statementId, imageUrl);
       
       if (result.success) {
-        toast.success('OCR 추출이 완료되었습니다. 결과를 확인해주세요.', { id: 'extraction' });
+        toast.success('OCR 추출이 완료되었습니다. 결과를 확인해주세요.', { id: `extraction-${statementId}` });
         loadStatements();
         
         // 추출 완료 후 바로 확인 모달 열기
@@ -241,12 +289,19 @@ export default function TransactionStatementMain() {
           setIsConfirmModalOpen(true);
         }
       } else {
-        toast.error(result.error || 'OCR 추출에 실패했습니다.', { id: 'extraction' });
+        toast.error(result.error || 'OCR 추출에 실패했습니다.', { id: `extraction-${statementId}` });
         loadStatements();
       }
     } catch (error) {
-      toast.error('OCR 추출 중 오류가 발생했습니다.', { id: 'extraction' });
+      toast.error('OCR 추출 중 오류가 발생했습니다.', { id: `extraction-${statementId}` });
       loadStatements();
+    } finally {
+      // 추출 완료 - extractingIds에서 제거
+      setExtractingIds(prev => {
+        const next = new Set(prev);
+        next.delete(statementId);
+        return next;
+      });
     }
   };
 
@@ -417,7 +472,9 @@ export default function TransactionStatementMain() {
                         onClick={() => handleViewStatement(statement)}
                       >
                         <td className="px-3 py-2.5 text-center">
-                          {renderStatusBadge(statement.status)}
+                          {extractingIds.has(statement.id) 
+                            ? renderStatusBadge('processing') 
+                            : renderStatusBadge(statement.status)}
                         </td>
                         <td className="px-3 py-2.5 text-[11px] text-center text-gray-600">
                           {formatDate(statement.uploaded_at)}
@@ -439,38 +496,13 @@ export default function TransactionStatementMain() {
                         </td>
                         <td className="px-3 py-2.5 text-center">
                           <div className="flex items-center justify-center gap-1">
-                            {statement.status === 'pending' || extractingIds.has(statement.id) ? (
-                              // 대기중이거나 추출중일 때
-                              <button
-                                onClick={(e) => handleStartExtraction(e, statement)}
-                                disabled={extractingIds.has(statement.id)}
-                                className={`inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-md transition-colors ${
-                                  extractingIds.has(statement.id) 
-                                    ? 'bg-blue-400 text-white cursor-not-allowed' 
-                                    : 'bg-blue-500 text-white hover:bg-blue-600'
-                                }`}
-                              >
-                                {extractingIds.has(statement.id) ? (
-                                  <>
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                    추출중...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Eye className="w-3 h-3" />
-                                    OCR 시작
-                                  </>
-                                )}
-                              </button>
-                            ) : (
-                              <button
-                                onClick={(e) => handleViewImage(e, statement.image_url)}
-                                className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
-                                title="이미지 보기"
-                              >
-                                <ImageIcon className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                            <button
+                              onClick={(e) => handleViewImage(e, statement.image_url)}
+                              className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
+                              title="이미지 보기"
+                            >
+                              <ImageIcon className="w-3.5 h-3.5" />
+                            </button>
                             <button
                               onClick={(e) => handleDelete(e, statement)}
                               className="p-1.5 rounded-md hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors"
@@ -495,7 +527,9 @@ export default function TransactionStatementMain() {
                     onClick={() => handleViewStatement(statement)}
                   >
                     <div className="flex items-start justify-between mb-2">
-                      {renderStatusBadge(statement.status)}
+                      {extractingIds.has(statement.id) 
+                        ? renderStatusBadge('processing') 
+                        : renderStatusBadge(statement.status)}
                       <span className="text-[10px] text-gray-400">
                         {formatDate(statement.uploaded_at)}
                       </span>
@@ -514,37 +548,13 @@ export default function TransactionStatementMain() {
                       </p>
                     )}
                     <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-gray-100">
-                      {statement.status === 'pending' || extractingIds.has(statement.id) ? (
-                        <button
-                          onClick={(e) => handleStartExtraction(e, statement)}
-                          disabled={extractingIds.has(statement.id)}
-                          className={`inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-medium rounded-md transition-colors ${
-                            extractingIds.has(statement.id) 
-                              ? 'bg-blue-400 text-white cursor-not-allowed' 
-                              : 'bg-blue-500 text-white hover:bg-blue-600'
-                          }`}
-                        >
-                          {extractingIds.has(statement.id) ? (
-                            <>
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              추출중...
-                            </>
-                          ) : (
-                            <>
-                              <Eye className="w-3.5 h-3.5" />
-                              OCR 시작
-                            </>
-                          )}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={(e) => handleViewImage(e, statement.image_url)}
-                          className="button-base px-2 py-1 text-[10px] border border-gray-200 text-gray-600 hover:bg-gray-50"
-                        >
-                          <ImageIcon className="w-3 h-3 mr-1" />
-                          보기
-                        </button>
-                      )}
+                      <button
+                        onClick={(e) => handleViewImage(e, statement.image_url)}
+                        className="button-base px-2 py-1 text-[10px] border border-gray-200 text-gray-600 hover:bg-gray-50"
+                      >
+                        <ImageIcon className="w-3 h-3 mr-1" />
+                        보기
+                      </button>
                     </div>
                   </div>
                 ))}

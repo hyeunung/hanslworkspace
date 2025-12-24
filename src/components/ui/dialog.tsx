@@ -61,6 +61,7 @@ function DialogContent({
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
+        aria-describedby={undefined}
         className={cn(
           "fixed top-[50%] left-[50%] z-50",
           "w-full",

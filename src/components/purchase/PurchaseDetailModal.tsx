@@ -256,40 +256,66 @@ function PurchaseDetailModal({
       // 캐시에서 최신 데이터 가져와서 로컬 상태 업데이트
       const updatedPurchase = findPurchaseInMemory(purchaseId)
       if (updatedPurchase) {
-        setPurchase({
-          ...updatedPurchase,
-          id: String(updatedPurchase.id),
-          is_po_generated: false
-        } as PurchaseRequestWithDetails)
+        // 🚀 캐시의 items가 비어있으면 기존 로컬 상태의 items 유지 (입고완료 시 품목 사라짐 방지)
+        const cachedItems = updatedPurchase.items || updatedPurchase.purchase_request_items || []
+        
+        setPurchase((prevPurchase) => {
+          // 기존 로컬 items가 있고 캐시 items가 비어있으면 기존 items 유지
+          const prevItems = prevPurchase?.items || prevPurchase?.purchase_request_items || []
+          const shouldPreserveItems = prevItems.length > 0 && cachedItems.length === 0
+          
+          const mergedItems = shouldPreserveItems ? prevItems : cachedItems
+          
+          return {
+            ...updatedPurchase,
+            id: String(updatedPurchase.id),
+            is_po_generated: false,
+            items: mergedItems,
+            purchase_request_items: mergedItems
+          } as PurchaseRequestWithDetails
+        })
       }
+      // updatedPurchase가 null인 경우 기존 로컬 상태 유지 (setPurchase 호출 안함)
     }
 
     const unsubscribe = addCacheListener(handleCacheUpdate)
     return () => unsubscribe()
   }, [isOpen, purchaseId])
 
+  // 🚀 이전 items 값을 저장하여 캐시 업데이트 시 품목 사라짐 방지
+  const prevItemsRef = useRef<any[]>([])
+
   // 🚀 실시간 items 데이터 (로컬 purchase state를 우선 사용)
   const currentItems = useMemo(() => {
+    let result: any[] = []
+    
     // purchase state를 우선 사용 (로컬 상태가 가장 최신)
     if (purchase?.items && purchase.items.length > 0) {
-      return normalizeItems(purchase.items);
-    }
-    if (purchase?.purchase_request_items && purchase.purchase_request_items.length > 0) {
-      return normalizeItems(purchase.purchase_request_items);
-    }
-    
-    // purchase state가 없으면 메모리 캐시에서 가져오기
-    if (purchaseId && allPurchases) {
+      result = normalizeItems(purchase.items);
+    } else if (purchase?.purchase_request_items && purchase.purchase_request_items.length > 0) {
+      result = normalizeItems(purchase.purchase_request_items);
+    } else if (purchaseId && allPurchases) {
+      // purchase state가 없으면 메모리 캐시에서 가져오기
       const memoryPurchase = allPurchases.find(p => p.id === purchaseId);
       if (memoryPurchase) {
         const memoryItems = (memoryPurchase.items && memoryPurchase.items.length > 0)
           ? memoryPurchase.items
           : (memoryPurchase.purchase_request_items || []);
-        return normalizeItems(memoryItems);
+        result = normalizeItems(memoryItems);
       }
     }
     
-    return [];
+    // 🚀 모든 소스에서 데이터를 못 찾았지만 이전에 유효한 items가 있었으면 이전 값 유지 (입고완료 시 품목 사라짐 방지)
+    if (result.length === 0 && prevItemsRef.current.length > 0) {
+      return prevItemsRef.current;
+    }
+    
+    // 유효한 결과가 있으면 ref 업데이트
+    if (result.length > 0) {
+      prevItemsRef.current = result;
+    }
+    
+    return result;
   }, [purchase, purchaseId, allPurchases, lastFetch, normalizeItems]); // purchase 객체 전체를 의존성으로 사용하여 실시간 업데이트 보장
 
   // 화면 표시용 순서: 편집 중에는 편집 상태 순서를 그대로, 보기 모드에서는 line_number 오름차순
@@ -5468,4 +5494,5 @@ function PurchaseDetailModal({
   )
 }
 
+export default memo(PurchaseDetailModal)
 export default memo(PurchaseDetailModal)

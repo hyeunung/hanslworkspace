@@ -29,6 +29,10 @@ class PurchaseRealtimeService {
   private isSubscribed = false
   private isSubscribing = false  // 구독 진행 중 플래그 (경쟁 조건 방지)
   private subscribers: Set<RealtimeCallback> = new Set()
+  private reconnectAttempts = 0
+  private maxReconnectAttempts = 5
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+  private shouldReconnect = true  // 자동 재연결 활성화 플래그
 
   /**
    * 외부에서 호출해 구독 상태를 보장하는 헬퍼
@@ -40,16 +44,59 @@ class PurchaseRealtimeService {
   }
 
   /**
+   * 재연결 스케줄링 (지수 백오프)
+   */
+  private scheduleReconnect(): void {
+    // 이미 재연결 예약되어 있거나 재연결 비활성화된 경우 무시
+    if (this.reconnectTimeout || !this.shouldReconnect) {
+      return
+    }
+
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      logger.warn('⚠️ [Realtime] 최대 재연결 시도 횟수 초과. 수동 새로고침이 필요합니다.')
+      return
+    }
+
+    // 지수 백오프: 1초, 2초, 4초, 8초, 16초
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000)
+    this.reconnectAttempts++
+
+    logger.info(`🔄 [Realtime] ${delay/1000}초 후 재연결 시도... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
+
+    this.reconnectTimeout = setTimeout(() => {
+      this.reconnectTimeout = null
+      if (this.shouldReconnect && !this.isSubscribed && !this.isSubscribing) {
+        this.subscribe()
+      }
+    }, delay)
+  }
+
+  /**
+   * 재연결 상태 초기화
+   */
+  private resetReconnectState(): void {
+    this.reconnectAttempts = 0
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout)
+      this.reconnectTimeout = null
+    }
+  }
+
+  /**
    * Realtime 구독 시작
    */
   subscribe(): void {
     // 이미 구독 중이거나 구독 진행 중이면 무시
     if (this.isSubscribed || this.isSubscribing) {
       if (this.isSubscribed) {
-        logger.info('🔄 [Realtime] 이미 구독 중입니다.')
+        // 이미 구독 중일 때는 로그 레벨을 debug로 낮춤 (로그 스팸 방지)
+        logger.debug('🔄 [Realtime] 이미 구독 중입니다.')
       }
       return
     }
+
+    // 재연결 활성화
+    this.shouldReconnect = true
 
     // 채널이 이미 존재하면 먼저 정리
     if (this.channel) {
@@ -59,7 +106,12 @@ class PurchaseRealtimeService {
 
     // 구독 시작 표시 (경쟁 조건 방지)
     this.isSubscribing = true
-    logger.info('🚀 [Realtime] 구독 시작...')
+    // 재연결 시에는 로그 레벨을 낮춤
+    if (this.reconnectAttempts > 0) {
+      logger.debug('🚀 [Realtime] 재연결 중...')
+    } else {
+      logger.info('🚀 [Realtime] 구독 시작...')
+    }
 
     this.channel = this.supabase
       .channel('purchase_realtime')
@@ -89,19 +141,31 @@ class PurchaseRealtimeService {
         if (status === 'SUBSCRIBED') {
           this.isSubscribed = true
           this.isSubscribing = false
+          this.resetReconnectState()  // 성공 시 재연결 상태 초기화
           logger.info('✅ [Realtime] 구독 성공!')
         } else if (status === 'CHANNEL_ERROR') {
           this.isSubscribed = false
           this.isSubscribing = false
-          logger.error('❌ [Realtime] 채널 에러 발생:', err?.message || err || '알 수 없는 에러')
+          // 채널 에러는 warn 레벨로 표시 (자동 재연결되므로 error 아님)
+          logger.warn('⚠️ [Realtime] 채널 에러, 재연결 예정...', { attempt: this.reconnectAttempts + 1 })
+          // 자동 재연결 시도
+          this.scheduleReconnect()
         } else if (status === 'TIMED_OUT') {
           this.isSubscribed = false
           this.isSubscribing = false
           logger.warn('⚠️ [Realtime] 연결 타임아웃')
+          // 자동 재연결 시도
+          this.scheduleReconnect()
         } else if (status === 'CLOSED') {
           this.isSubscribed = false
           this.isSubscribing = false
-          logger.info('🔴 [Realtime] 채널 닫힘')
+          // 의도적 종료가 아닌 경우에만 재연결 (로그는 debug로)
+          if (this.shouldReconnect) {
+            logger.debug('🔴 [Realtime] 채널 닫힘, 재연결 예정')
+            this.scheduleReconnect()
+          } else {
+            logger.info('🔴 [Realtime] 채널 닫힘 (의도적 종료)')
+          }
         }
       })
   }
@@ -110,6 +174,10 @@ class PurchaseRealtimeService {
    * Realtime 구독 해제
    */
   unsubscribe(): void {
+    // 자동 재연결 비활성화
+    this.shouldReconnect = false
+    this.resetReconnectState()
+
     if (this.channel) {
       logger.info('🔴 [Realtime] 구독 해제 중...')
       this.supabase.removeChannel(this.channel)

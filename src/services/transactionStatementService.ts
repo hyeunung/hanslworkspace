@@ -64,6 +64,8 @@ class TransactionStatementService {
       const { data: { user } } = await this.supabase.auth.getUser();
 
       // DB에 레코드 생성
+      console.log('[Upload] DB 레코드 생성 시도:', { imageUrl, fileName: file.name, userId: user?.id });
+      
       const { data: statement, error: dbError } = await this.supabase
         .from('transaction_statements')
         .insert({
@@ -76,7 +78,12 @@ class TransactionStatementService {
         .select()
         .single();
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        console.error('[Upload] DB insert 실패:', dbError);
+        throw new Error(`DB 저장 실패: ${dbError.message} (code: ${dbError.code})`);
+      }
+      
+      console.log('[Upload] DB 레코드 생성 성공:', { statementId: statement.id });
 
       return {
         success: true,
@@ -104,6 +111,12 @@ class TransactionStatementService {
     try {
       console.log('[Service] Calling Edge Function with:', { statementId, imageUrl });
       
+      // OCR 시작 전 상태를 processing으로 변경
+      await this.supabase
+        .from('transaction_statements')
+        .update({ status: 'processing' })
+        .eq('id', statementId);
+      
       // Edge Function 호출
       const { data, error } = await this.supabase.functions.invoke('ocr-transaction-statement', {
         body: {
@@ -119,6 +132,12 @@ class TransactionStatementService {
       if (!data.success) {
         throw new Error(data.error || 'OCR 추출 실패');
       }
+
+      // 거래처명 확인 로그
+      console.log('[Service] 거래처 매칭 결과:', { 
+        vendor_name: data.vendor_name, 
+        vendor_match_source: data.vendor_match_source 
+      });
 
       // 추출된 데이터 조회
       const result = await this.getStatementWithItems(statementId);
@@ -292,9 +311,14 @@ class TransactionStatementService {
     const candidateMap = new Map<string, MatchCandidate>(); // 중복 방지용
 
     try {
-      const normalizedNumber = item.extracted_po_number 
-        ? normalizeOrderNumber(item.extracted_po_number) 
-        : '';
+      const rawNumber = item.extracted_po_number || '';
+      const normalizedNumber = rawNumber ? normalizeOrderNumber(rawNumber) : '';
+      
+      // 부분 발주번호 패턴 체크 (F20251212 또는 HS20251212 - 뒷부분 없이 날짜만)
+      const partialPOMatch = rawNumber.toUpperCase().match(/^(F)(\d{8})$/);
+      const partialSOMatch = rawNumber.toUpperCase().match(/^(HS)(\d{8})$/);
+      const isPartialNumber = !!(partialPOMatch || partialSOMatch);
+      const datePrefix = partialPOMatch ? `F${partialPOMatch[2]}` : (partialSOMatch ? `HS${partialSOMatch[2]}` : '');
 
       // 1. PO/SO 번호로 매칭 시도
       if (normalizedNumber) {
@@ -319,7 +343,7 @@ class TransactionStatementService {
               : 100; // 거래처 정보 없으면 통과
             
             // 거래처 유사도 70% 미만이면 스킵 (거래처 다르면 후보 제외)
-            if (vendorSimilarity < 70) {
+            if (vendorSimilarity < 50) {
               console.log(`❌ 거래처 불일치로 제외: "${statementVendorName}" vs "${sysVendorName}" (${vendorSimilarity}%)`);
               continue;
             }
@@ -338,18 +362,27 @@ class TransactionStatementService {
                 matchReasons.push('거래처 유사');
               }
               
-              // 품목명 유사도 추가 점수
-              if (item.extracted_item_name && purchaseItem.item_name) {
-                const nameScore = this.calculateNameSimilarity(item.extracted_item_name, purchaseItem.item_name);
-                score += nameScore * 0.3; // 최대 +30점
-                if (nameScore >= 80) matchReasons.push('품목명 일치');
+              // 품목명 OR 규격 유사도 추가 점수
+              if (item.extracted_item_name) {
+                const itemMatch = this.calculateItemMatchScore(
+                  item.extracted_item_name, 
+                  purchaseItem.item_name, 
+                  purchaseItem.specification
+                );
+                score += itemMatch.score * 0.3; // 최대 +30점
+                if (itemMatch.score >= 80) {
+                  matchReasons.push(itemMatch.matchedField === 'specification' ? '규격 일치' : '품목명 일치');
+                }
               }
               
-              // 수량 일치 추가 점수
+              // 수량 비교: 같으면 보너스, 다르면 약간 낮은 점수
               if (item.extracted_quantity && purchaseItem.quantity) {
                 if (item.extracted_quantity === purchaseItem.quantity) {
-                  score += 20;
-                  matchReasons.push('수량 일치');
+                  score += 15;
+                  matchReasons.push(`수량 일치 (${item.extracted_quantity})`);
+                } else if (item.extracted_quantity <= purchaseItem.quantity) {
+                  score += 5;
+                  matchReasons.push(`수량 (요청:${purchaseItem.quantity}, 입고:${item.extracted_quantity})`);
                 }
               }
               
@@ -371,99 +404,334 @@ class TransactionStatementService {
         }
       }
 
-      // 2. 품목명+수량으로 매칭 시도 (발주번호가 달라도 찾기)
-      if (item.extracted_item_name) {
-        const itemName = item.extracted_item_name;
+      // 1.5. 부분 발주번호로 검색 (F20251212 또는 HS20251212 - 뒤 숫자 없이 날짜만 적힌 경우)
+      if (isPartialNumber && datePrefix && candidateMap.size === 0) {
+        console.log(`📅 부분 발주번호 검색: "${datePrefix}%" (해당 날짜의 모든 발주)`);
         
-        // 품목명 검색 (부분 일치)
-        const searchTerm = itemName.length > 3 ? itemName.substring(0, Math.min(itemName.length, 10)) : itemName;
-        
-        const { data: byName } = await this.supabase
-          .from('purchase_request_items')
+        const { data: byDatePrefix } = await this.supabase
+          .from('purchase_requests')
           .select(`
             id, 
-            item_name, 
-            specification, 
-            quantity, 
-            unit_price_value,
-            purchase:purchase_requests!inner(
-              id, 
-              purchase_order_number, 
-              sales_order_number,
-              vendor:vendors(vendor_name)
-            )
+            purchase_order_number, 
+            sales_order_number,
+            vendor:vendors(vendor_name),
+            items:purchase_request_items(id, item_name, specification, quantity, unit_price_value)
           `)
-          .ilike('item_name', `%${searchTerm}%`)
-          .limit(30);
+          .or(`purchase_order_number.ilike.${datePrefix}%,sales_order_number.ilike.${datePrefix}%`)
+          .limit(20);
 
-        if (byName) {
-          for (const purchaseItem of byName) {
-            const key = `${purchaseItem.purchase?.id}-${purchaseItem.id}`;
-            
-            // 이미 번호 매칭으로 추가된 경우 스킵
-            if (candidateMap.has(key)) continue;
-            
-            // 거래처 유사도 체크 - 거래처 다르면 후보에서 제외
-            const sysVendorName = purchaseItem.purchase?.vendor?.vendor_name || '';
+        if (byDatePrefix) {
+          for (const purchase of byDatePrefix) {
+            const sysVendorName = purchase.vendor?.vendor_name || '';
             const vendorSimilarity = statementVendorName 
               ? this.calculateVendorSimilarity(statementVendorName, sysVendorName)
-              : 100; // 거래처 정보 없으면 통과
+              : 100;
             
-            // 거래처 유사도 70% 미만이면 스킵 (거래처 다르면 후보 제외)
-            if (vendorSimilarity < 70) {
+            // 거래처 유사도 70% 미만이면 스킵
+            if (vendorSimilarity < 50) {
               continue;
             }
-            
-            const matchReasons: string[] = [];
-            let score = 0;
-            
-            // 거래처 일치 보너스
-            if (vendorSimilarity >= 90) {
-              score += 10;
-              matchReasons.push('거래처 일치');
-            } else if (vendorSimilarity >= 70) {
-              score += 5;
-              matchReasons.push('거래처 유사');
-            }
-            
-            // 품목명 유사도 점수
-            const nameScore = this.calculateNameSimilarity(item.extracted_item_name, purchaseItem.item_name);
-            if (nameScore >= 50) {
-              score += nameScore * 0.5; // 최대 50점
-              if (nameScore >= 80) matchReasons.push('품목명 일치');
-              else matchReasons.push('품목명 유사');
-            }
-            
-            // 수량 일치 점수
-            if (item.extracted_quantity && purchaseItem.quantity) {
-              if (item.extracted_quantity === purchaseItem.quantity) {
-                score += 30;
-                matchReasons.push('수량 일치');
+
+            for (const purchaseItem of purchase.items || []) {
+              const key = `${purchase.id}-${purchaseItem.id}`;
+              if (candidateMap.has(key)) continue;
+
+              const matchReasons = [`날짜 일치 (${datePrefix})`];
+              let score = 30; // 날짜 매칭 기본 점수
+              
+              // 거래처 일치 보너스
+              if (vendorSimilarity >= 90) {
+                score += 20;
+                matchReasons.push('거래처 일치');
+              } else if (vendorSimilarity >= 70) {
+                score += 10;
+                matchReasons.push('거래처 유사');
               }
-            }
-            
-            // 발주번호가 다르면 표시
-            const sysPO = purchaseItem.purchase?.purchase_order_number || '';
-            const sysSO = purchaseItem.purchase?.sales_order_number || '';
-            if (normalizedNumber && sysPO !== normalizedNumber && sysSO !== normalizedNumber) {
-              matchReasons.push(`시스템 발주번호: ${sysPO || sysSO}`);
-            }
-            
-            // 점수가 30점 이상이면 후보에 추가
-            if (score >= 30) {
+              
+              // 품목명 OR 규격 유사도 추가 점수
+              if (item.extracted_item_name) {
+                const itemMatch = this.calculateItemMatchScore(
+                  item.extracted_item_name, 
+                  purchaseItem.item_name, 
+                  purchaseItem.specification
+                );
+                score += itemMatch.score * 0.4; // 최대 +40점
+                if (itemMatch.score >= 80) {
+                  matchReasons.push(itemMatch.matchedField === 'specification' ? '규격 일치' : '품목명 일치');
+                } else if (itemMatch.score >= 50) {
+                  matchReasons.push(itemMatch.matchedField === 'specification' ? '규격 유사' : '품목명 유사');
+                }
+              }
+              
+              // 수량 비교: 같으면 보너스, 다르면 약간 낮은 점수
+              if (item.extracted_quantity && purchaseItem.quantity) {
+                if (item.extracted_quantity === purchaseItem.quantity) {
+                  score += 15;
+                  matchReasons.push(`수량 일치 (${item.extracted_quantity})`);
+                } else if (item.extracted_quantity <= purchaseItem.quantity) {
+                  score += 5;
+                  matchReasons.push(`수량 (요청:${purchaseItem.quantity}, 입고:${item.extracted_quantity})`);
+                }
+              }
+              
               candidateMap.set(key, {
-                purchase_id: purchaseItem.purchase?.id,
-                purchase_order_number: sysPO,
-                sales_order_number: sysSO,
+                purchase_id: purchase.id,
+                purchase_order_number: purchase.purchase_order_number || '',
+                sales_order_number: purchase.sales_order_number,
                 item_id: purchaseItem.id,
                 item_name: purchaseItem.item_name,
                 specification: purchaseItem.specification,
                 quantity: purchaseItem.quantity,
                 unit_price: purchaseItem.unit_price_value,
-                vendor_name: purchaseItem.purchase?.vendor?.vendor_name,
+                vendor_name: sysVendorName,
                 score,
                 match_reasons: matchReasons
               });
+            }
+          }
+        }
+      }
+
+      // 2. 품목명+수량으로 매칭 시도 (발주번호가 달라도 찾기) - item_name AND specification 모두 검색
+      if (item.extracted_item_name) {
+        const itemName = item.extracted_item_name.trim();
+        
+        // 검색어 후보군 생성 (긴 것부터 시도)
+        const searchTermCandidates = [
+          itemName,                                              // 전체
+          itemName.substring(0, Math.min(itemName.length, 12)),  // 12글자
+          itemName.substring(0, Math.min(itemName.length, 8)),   // 8글자
+          itemName.split(/[\[\]\s\-_]/)[0]                        // 첫 단어 (특수문자 기준)
+        ].filter(t => t && t.length >= 3);
+        
+        // 중복 제거
+        const uniqueSearchTerms = [...new Set(searchTermCandidates)];
+        console.log(`🔍 품목명 검색어 후보: ${uniqueSearchTerms.join(', ')}`);
+        
+        // 각 검색어로 검색 시도 (하나라도 찾으면 됨)
+        for (const searchTerm of uniqueSearchTerms) {
+          const { data: byNameOrSpec } = await this.supabase
+            .from('purchase_request_items')
+            .select(`
+              id, 
+              item_name, 
+              specification, 
+              quantity, 
+              unit_price_value,
+              purchase:purchase_requests!inner(
+                id, 
+                purchase_order_number, 
+                sales_order_number,
+                vendor:vendors(vendor_name)
+              )
+            `)
+            .or(`item_name.ilike.%${searchTerm}%,specification.ilike.%${searchTerm}%`)
+            .limit(50);
+          
+          if (byNameOrSpec && byNameOrSpec.length > 0) {
+            console.log(`✅ 검색어 "${searchTerm}"로 ${byNameOrSpec.length}개 품목 발견`);
+            
+            for (const purchaseItem of byNameOrSpec) {
+              const key = `${purchaseItem.purchase?.id}-${purchaseItem.id}`;
+              
+              // 이미 번호 매칭으로 추가된 경우 스킵
+              if (candidateMap.has(key)) continue;
+              
+              // 거래처 유사도 체크 - 거래처 다르면 후보에서 제외
+              const sysVendorName = purchaseItem.purchase?.vendor?.vendor_name || '';
+              const vendorSimilarity = statementVendorName 
+                ? this.calculateVendorSimilarity(statementVendorName, sysVendorName)
+                : 100; // 거래처 정보 없으면 통과
+              
+              console.log(`🔍 후보 검토: OCR거래처="${statementVendorName}" vs 시스템거래처="${sysVendorName}" → 유사도=${vendorSimilarity}%`);
+              
+              // 거래처 유사도 50% 미만이면 스킵 (더 관대하게 - 약간의 차이는 허용)
+              if (vendorSimilarity < 50) {
+                console.log(`❌ 거래처 유사도 ${vendorSimilarity}% < 50% 스킵`);
+                continue;
+              }
+              
+              const matchReasons: string[] = [];
+              let score = 0;
+              
+              // 거래처 일치 보너스 (높은 점수)
+              if (vendorSimilarity >= 90) {
+                score += 20;
+                matchReasons.push('거래처 일치');
+              } else if (vendorSimilarity >= 70) {
+                score += 10;
+                matchReasons.push('거래처 유사');
+              }
+              
+              // 품목명 OR 규격 유사도 점수 - 핵심 매칭 기준
+              const itemMatch = this.calculateItemMatchScore(
+                item.extracted_item_name, 
+                purchaseItem.item_name, 
+                purchaseItem.specification
+              );
+              if (itemMatch.score >= 30) { // 30% 이상이면 점수 부여 (더 관대하게)
+                score += itemMatch.score * 0.7; // 최대 70점 (가중치 증가)
+                if (itemMatch.score >= 80) {
+                  matchReasons.push(itemMatch.matchedField === 'specification' ? '규격 일치' : '품목명 일치');
+                } else if (itemMatch.score >= 50) {
+                  matchReasons.push(itemMatch.matchedField === 'specification' ? '규격 유사' : '품목명 유사');
+                } else {
+                  matchReasons.push('품목 부분일치');
+                }
+              }
+              
+              // 수량 비교: 같으면 보너스, 다르면 약간 낮은 점수 (완전 제외는 안함)
+              if (item.extracted_quantity && purchaseItem.quantity) {
+                if (item.extracted_quantity === purchaseItem.quantity) {
+                  score += 15; // 수량 일치 보너스
+                  matchReasons.push(`수량 일치 (${item.extracted_quantity})`);
+                } else if (item.extracted_quantity <= purchaseItem.quantity) {
+                  // 배송 수량이 요청보다 적은 경우 - 흔한 케이스이므로 작은 보너스
+                  score += 5;
+                  matchReasons.push(`수량 (요청:${purchaseItem.quantity}, 입고:${item.extracted_quantity})`);
+                }
+                // 수량이 요청보다 많으면 점수 0 (이상한 케이스)
+              }
+              
+              // 발주번호가 다르면 표시 + OCR 오류 가능성 표시
+              const sysPO = purchaseItem.purchase?.purchase_order_number || '';
+              const sysSO = purchaseItem.purchase?.sales_order_number || '';
+              if (normalizedNumber && sysPO !== normalizedNumber && sysSO !== normalizedNumber) {
+                matchReasons.push(`⚠️ OCR 오류 가능: ${normalizedNumber} → ${sysPO || sysSO}`);
+              }
+              
+              console.log(`📊 점수 계산: score=${score}점, 품목="${purchaseItem.item_name}", 규격="${purchaseItem.specification}", 발주="${purchaseItem.purchase?.purchase_order_number}"`);
+              
+              // 점수가 15점 이상이면 후보에 추가 (더 관대한 임계값 - 품목명만 유사해도 후보로)
+              if (score >= 15) {
+                console.log(`✅ 후보 추가! score=${score}점`);
+                candidateMap.set(key, {
+                  purchase_id: purchaseItem.purchase?.id,
+                  purchase_order_number: sysPO,
+                  sales_order_number: sysSO,
+                  item_id: purchaseItem.id,
+                  item_name: purchaseItem.item_name,
+                  specification: purchaseItem.specification,
+                  quantity: purchaseItem.quantity,
+                  unit_price: purchaseItem.unit_price_value,
+                  vendor_name: purchaseItem.purchase?.vendor?.vendor_name,
+                  score,
+                  match_reasons: matchReasons
+                });
+              }
+            }
+            
+            // 충분한 후보를 찾았으면 더 이상 검색 안함
+            if (candidateMap.size >= 5) break;
+          }
+        }
+      }
+
+      // 3. 품목명 유사도 60% 이상인 고품질 후보가 없으면 거래처의 최근 발주에서 검색 (fallback)
+      // 조건: 후보가 아예 없거나, 있더라도 점수가 낮으면(40점 미만) 추가 검색
+      const hasHighQualityCandidate = Array.from(candidateMap.values()).some(c => c.score >= 40);
+      const needsFallback = candidateMap.size === 0 || !hasHighQualityCandidate;
+      
+      if (needsFallback && statementVendorName) {
+        console.log(`⚠️ 고품질 후보 없음 - 거래처 "${statementVendorName}"의 최근 발주에서 검색 시도 (현재 후보: ${candidateMap.size}개, 최고점: ${Math.max(...Array.from(candidateMap.values()).map(c => c.score), 0)}점)`);
+        
+        // 거래처명으로 vendor_id 찾기
+        const { data: vendors } = await this.supabase
+          .from('vendors')
+          .select('id, vendor_name')
+          .limit(100);
+
+        if (vendors) {
+          // 유사도 높은 거래처 찾기
+          const matchedVendors = vendors.filter((v: { id: number; vendor_name: string }) => 
+            this.calculateVendorSimilarity(statementVendorName, v.vendor_name) >= 70
+          );
+
+          if (matchedVendors.length > 0) {
+            const vendorIds = matchedVendors.map((v: { id: number; vendor_name: string }) => v.id);
+            
+            // 해당 거래처의 최근 3개월 발주 조회
+            const threeMonthsAgo = new Date();
+            threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+            const { data: recentPurchases } = await this.supabase
+              .from('purchase_requests')
+              .select(`
+                id, 
+                purchase_order_number, 
+                sales_order_number,
+                vendor:vendors(vendor_name),
+                items:purchase_request_items(id, item_name, specification, quantity, unit_price_value)
+              `)
+              .in('vendor_id', vendorIds)
+              .gte('created_at', threeMonthsAgo.toISOString())
+              .order('created_at', { ascending: false })
+              .limit(30);
+
+            if (recentPurchases) {
+              for (const purchase of recentPurchases) {
+                const sysVendorName = purchase.vendor?.vendor_name || '';
+                
+                for (const purchaseItem of purchase.items || []) {
+                  const key = `${purchase.id}-${purchaseItem.id}`;
+                  if (candidateMap.has(key)) continue;
+
+                  const matchReasons: string[] = ['거래처 일치'];
+                  let score = 20; // 거래처 일치 기본점
+                  
+                  // 품목명 OR 규격 유사도
+                  if (item.extracted_item_name) {
+                    const itemMatch = this.calculateItemMatchScore(
+                      item.extracted_item_name, 
+                      purchaseItem.item_name, 
+                      purchaseItem.specification
+                    );
+                    if (itemMatch.score >= 30) {
+                      score += itemMatch.score * 0.5;
+                      if (itemMatch.score >= 80) {
+                        matchReasons.push(itemMatch.matchedField === 'specification' ? '규격 일치' : '품목명 일치');
+                      } else if (itemMatch.score >= 50) {
+                        matchReasons.push(itemMatch.matchedField === 'specification' ? '규격 유사' : '품목명 유사');
+                      }
+                    }
+                  }
+                  
+                  // 수량 비교: 같으면 보너스, 다르면 약간 낮은 점수
+                  if (item.extracted_quantity && purchaseItem.quantity) {
+                    if (item.extracted_quantity === purchaseItem.quantity) {
+                      score += 15;
+                      matchReasons.push(`수량 일치 (${item.extracted_quantity})`);
+                    } else if (item.extracted_quantity <= purchaseItem.quantity) {
+                      score += 5;
+                      matchReasons.push(`수량 (요청:${purchaseItem.quantity}, 입고:${item.extracted_quantity})`);
+                    }
+                  }
+                  
+                  // OCR 오류 가능성 표시
+                  const sysPO = purchase.purchase_order_number || '';
+                  const sysSO = purchase.sales_order_number || '';
+                  if (normalizedNumber) {
+                    matchReasons.push(`⚠️ OCR 오류 가능: ${normalizedNumber} → ${sysPO || sysSO}`);
+                  }
+                  
+                  // 점수 15점 이상이면 후보에 추가 (더 관대하게)
+                  if (score >= 15) {
+                    candidateMap.set(key, {
+                      purchase_id: purchase.id,
+                      purchase_order_number: sysPO,
+                      sales_order_number: sysSO,
+                      item_id: purchaseItem.id,
+                      item_name: purchaseItem.item_name,
+                      specification: purchaseItem.specification,
+                      quantity: purchaseItem.quantity,
+                      unit_price: purchaseItem.unit_price_value,
+                      vendor_name: sysVendorName,
+                      score,
+                      match_reasons: matchReasons
+                    });
+                  }
+                }
+              }
             }
           }
         }
@@ -473,7 +741,12 @@ class TransactionStatementService {
       const candidates = Array.from(candidateMap.values());
       candidates.sort((a, b) => b.score - a.score);
 
-      return candidates.slice(0, 10); // 상위 10개 반환
+      console.log(`🎯 findMatchCandidates 완료: OCR품목="${item.extracted_item_name}" → ${candidates.length}개 후보 발견`);
+      if (candidates.length > 0) {
+        console.log(`   최고점 후보: "${candidates[0].item_name}" (${candidates[0].purchase_order_number}) score=${candidates[0].score}`);
+      }
+
+      return candidates.slice(0, 15); // 상위 15개 반환
     } catch (error) {
       console.error('Find match candidates error:', error);
       return [];
@@ -501,6 +774,44 @@ class TransactionStatementService {
     const similarity = ((maxLen - distance) / maxLen) * 100;
     
     return Math.round(similarity);
+  }
+
+  /**
+   * 품목 매칭 점수 계산 (품목명 OR 규격)
+   * OCR 추출값을 시스템의 item_name 또는 specification과 비교
+   * 둘 중 높은 점수 반환
+   */
+  private calculateItemMatchScore(
+    ocrItemName: string,
+    systemItemName: string,
+    systemSpecification?: string
+  ): { score: number; matchedField: 'item_name' | 'specification' | 'none' } {
+    if (!ocrItemName) {
+      return { score: 0, matchedField: 'none' };
+    }
+
+    // 품목명과 비교
+    const itemNameScore = systemItemName 
+      ? this.calculateNameSimilarity(ocrItemName, systemItemName) 
+      : 0;
+    
+    // 규격과 비교
+    const specScore = systemSpecification 
+      ? this.calculateNameSimilarity(ocrItemName, systemSpecification) 
+      : 0;
+
+    // 둘 중 높은 점수 반환
+    if (itemNameScore >= specScore) {
+      return { 
+        score: itemNameScore, 
+        matchedField: itemNameScore > 0 ? 'item_name' : 'none' 
+      };
+    } else {
+      return { 
+        score: specScore, 
+        matchedField: specScore > 0 ? 'specification' : 'none' 
+      };
+    }
   }
 
   /**
@@ -628,7 +939,7 @@ class TransactionStatementService {
   }
 
   /**
-   * 유사도 점수 계산
+   * 유사도 점수 계산 - 품목명/규격 교차 비교 지원
    */
   private calculateSimilarityScore(
     extractedItem: TransactionStatementItem,
@@ -636,36 +947,24 @@ class TransactionStatementService {
   ): number {
     let score = 0;
 
-    // 품목명 유사도 (최대 40점)
-    if (extractedItem.extracted_item_name && purchaseItem.item_name) {
-      const extracted = extractedItem.extracted_item_name.toLowerCase();
-      const purchase = purchaseItem.item_name.toLowerCase();
-      
-      if (extracted === purchase) {
-        score += 40;
-      } else if (extracted.includes(purchase) || purchase.includes(extracted)) {
-        score += 30;
-      } else {
-        // 단어 매칭
-        const extractedWords = extracted.split(/\s+/);
-        const purchaseWords = purchase.split(/\s+/);
-        const matchedWords = extractedWords.filter((w: string) => 
-          purchaseWords.some((pw: string) => pw.includes(w) || w.includes(pw))
-        );
-        score += Math.min(matchedWords.length * 10, 25);
-      }
+    // 품목명 유사도 (최대 40점) - item_name과 specification 모두 비교 후 높은 점수 사용
+    if (extractedItem.extracted_item_name) {
+      const itemMatch = this.calculateItemMatchScore(
+        extractedItem.extracted_item_name,
+        purchaseItem.item_name || '',
+        purchaseItem.specification || ''
+      );
+      score += itemMatch.score * 0.4; // 최대 40점
     }
 
-    // 규격 유사도 (최대 20점)
-    if (extractedItem.extracted_specification && purchaseItem.specification) {
-      const extracted = extractedItem.extracted_specification.toLowerCase();
-      const purchase = purchaseItem.specification.toLowerCase();
-      
-      if (extracted === purchase) {
-        score += 20;
-      } else if (extracted.includes(purchase) || purchase.includes(extracted)) {
-        score += 15;
-      }
+    // OCR 추출 규격도 교차 비교 (최대 20점)
+    if (extractedItem.extracted_specification) {
+      const specMatch = this.calculateItemMatchScore(
+        extractedItem.extracted_specification,
+        purchaseItem.item_name || '',
+        purchaseItem.specification || ''
+      );
+      score += specMatch.score * 0.2; // 최대 20점
     }
 
     // 수량 근접도 (최대 20점)
@@ -696,7 +995,7 @@ class TransactionStatementService {
   }
 
   /**
-   * 매칭 이유 생성
+   * 매칭 이유 생성 - 품목명/규격 교차 비교 지원
    */
   private getMatchReasons(
     extractedItem: TransactionStatementItem,
@@ -705,19 +1004,30 @@ class TransactionStatementService {
   ): string[] {
     const reasons: string[] = [];
 
-    if (extractedItem.extracted_item_name && purchaseItem.item_name) {
-      const extracted = extractedItem.extracted_item_name.toLowerCase();
-      const purchase = purchaseItem.item_name.toLowerCase();
+    // 품목명 교차 비교 (item_name과 specification 모두 확인)
+    if (extractedItem.extracted_item_name) {
+      const itemMatch = this.calculateItemMatchScore(
+        extractedItem.extracted_item_name,
+        purchaseItem.item_name || '',
+        purchaseItem.specification || ''
+      );
       
-      if (extracted === purchase) {
-        reasons.push('품목명 완전 일치');
-      } else if (extracted.includes(purchase) || purchase.includes(extracted)) {
-        reasons.push('품목명 부분 일치');
+      if (itemMatch.score >= 90) {
+        reasons.push(itemMatch.matchedField === 'specification' ? '규격 완전 일치' : '품목명 완전 일치');
+      } else if (itemMatch.score >= 70) {
+        reasons.push(itemMatch.matchedField === 'specification' ? '규격 높은 유사도' : '품목명 높은 유사도');
+      } else if (itemMatch.score >= 50) {
+        reasons.push(itemMatch.matchedField === 'specification' ? '규격 부분 일치' : '품목명 부분 일치');
       }
     }
 
-    if (extractedItem.extracted_quantity === purchaseItem.quantity) {
-      reasons.push('수량 일치');
+    // 수량 비교 표시
+    if (extractedItem.extracted_quantity && purchaseItem.quantity) {
+      if (extractedItem.extracted_quantity === purchaseItem.quantity) {
+        reasons.push(`수량 일치 (${extractedItem.extracted_quantity})`);
+      } else if (extractedItem.extracted_quantity <= purchaseItem.quantity) {
+        reasons.push(`수량 (요청:${purchaseItem.quantity}, 입고:${extractedItem.extracted_quantity})`);
+      }
     }
 
     if (extractedItem.extracted_unit_price === purchaseItem.unit_price_value) {
@@ -1019,7 +1329,7 @@ class TransactionStatementService {
               : 100;
             
             // 거래처 유사도 70% 미만이면 스킵 (거래처 다르면 후보 제외)
-            if (vendorSimilarity < 70) {
+            if (vendorSimilarity < 50) {
               console.log(`❌ 세트 매칭 - 거래처 불일치로 제외: "${statementVendorName}" vs "${sysVendorName}" (${vendorSimilarity}%)`);
               continue;
             }
@@ -1096,7 +1406,7 @@ class TransactionStatementService {
             : 100;
           
           // 거래처 유사도 70% 미만이면 스킵 (거래처 다르면 후보 제외)
-          if (vendorSimilarity < 70) {
+          if (vendorSimilarity < 50) {
             continue;
           }
 
@@ -1191,26 +1501,23 @@ class TransactionStatementService {
         // 이미 매칭된 시스템 품목은 스킵
         if (usedSystemItems.has(sysItem.id)) continue;
 
-        // 품목명 유사도 (최대 60점)
-        const nameSimilarity = this.calculateNameSimilarity(
+        // 품목명 OR 규격 유사도 (핵심 매칭 기준)
+        const itemMatch = this.calculateItemMatchScore(
           ocrItem.extracted_item_name || '',
-          sysItem.item_name || ''
+          sysItem.item_name || '',
+          sysItem.specification || ''
         );
 
-        // 수량 일치 보너스 (최대 40점)
+        // 수량 비교: 같으면 보너스, 다르면 약간 낮은 점수
         let quantityBonus = 0;
         if (ocrItem.extracted_quantity && sysItem.quantity) {
           if (ocrItem.extracted_quantity === sysItem.quantity) {
-            quantityBonus = 40;
-          } else {
-            const diff = Math.abs(ocrItem.extracted_quantity - sysItem.quantity);
-            const ratio = diff / Math.max(ocrItem.extracted_quantity, sysItem.quantity);
-            if (ratio < 0.1) quantityBonus = 30;
-            else if (ratio < 0.2) quantityBonus = 20;
+            quantityBonus = 15; // 수량 일치 보너스
+          } else if (ocrItem.extracted_quantity <= sysItem.quantity) {
+            quantityBonus = 5; // 배송 수량이 요청보다 적은 경우 작은 보너스
           }
         }
-
-        const totalScore = nameSimilarity * 0.6 + quantityBonus;
+        const totalScore = itemMatch.score + quantityBonus;
 
         if (!bestMatch || totalScore > bestMatch.similarity) {
           bestMatch = {

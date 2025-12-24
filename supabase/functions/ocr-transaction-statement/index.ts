@@ -95,7 +95,10 @@ serve(async (req) => {
     const normalizedItems = normalizePoNumbers(extractionResult.items, visionText)
 
     // 6. 거래처명 검증 - vendors 테이블에 반드시 존재해야 함
-    let validatedVendorName = extractionResult.vendor_name
+    let validatedVendorName: string | undefined = undefined
+    let vendorMatchSource: 'gpt_extract' | 'text_scan' | 'not_found' = 'not_found'
+    
+    // 6-1. GPT가 추출한 거래처명으로 먼저 시도
     if (extractionResult.vendor_name) {
       const vendorResult = await validateAndMatchVendor(
         supabase, 
@@ -103,17 +106,31 @@ serve(async (req) => {
       )
       
       if (vendorResult.matched) {
-        console.log(`✅ 거래처 매칭 성공: "${extractionResult.vendor_name}" → "${vendorResult.vendor_name}" (${vendorResult.similarity}%)`)
+        console.log(`✅ 거래처 매칭 성공 (GPT 추출): "${extractionResult.vendor_name}" → "${vendorResult.vendor_name}" (${vendorResult.similarity}%)`)
         validatedVendorName = vendorResult.vendor_name
-      } else {
-        console.warn(`⚠️ 거래처 불일치: "${extractionResult.vendor_name}" - DB에 일치하는 거래처 없음`)
-        // 거래처를 찾지 못한 경우 undefined로 설정하고 수동 확인 필요 표시
-        validatedVendorName = undefined
+        vendorMatchSource = 'gpt_extract'
       }
     }
+    
+    // 6-2. GPT 추출 실패 또는 거래처 못찾음 → 전체 텍스트에서 vendors 테이블 대조
+    if (!validatedVendorName && visionText) {
+      console.log('📝 거래처 못찾음 - 전체 OCR 텍스트에서 vendors 테이블 대조 시작...')
+      const vendorFromText = await findVendorInText(supabase, visionText)
+      
+      if (vendorFromText.matched) {
+        console.log(`✅ 거래처 매칭 성공 (텍스트 스캔): "${vendorFromText.matched_text}" → "${vendorFromText.vendor_name}" (${vendorFromText.similarity}%)`)
+        validatedVendorName = vendorFromText.vendor_name
+        vendorMatchSource = 'text_scan'
+      }
+    }
+    
+    // 6-3. 그래도 못찾으면 경고
+    if (!validatedVendorName) {
+      console.warn(`⚠️ 거래처를 찾을 수 없음 - 수동 확인 필요`)
+    }
 
-    // 8. DB에 결과 저장
-    await supabase
+    // 8. DB에 결과 저장 (에러 체크 추가)
+    const { data: updateData, error: updateError } = await supabase
       .from('transaction_statements')
       .update({
         status: 'extracted',
@@ -127,12 +144,28 @@ serve(async (req) => {
           items: normalizedItems,
           raw_vision_text: visionText,
           // 학습용: 원본 OCR 추출 거래처명과 검증 결과
-          ocr_vendor_name: extractionResult.vendor_name, // OCR이 읽은 원본
+          ocr_vendor_name: extractionResult.vendor_name, // GPT가 추출한 원본
           vendor_validated: !!validatedVendorName, // 검증 성공 여부
-          vendor_mismatch: !!(extractionResult.vendor_name && !validatedVendorName) // 불일치 여부
+          vendor_match_source: vendorMatchSource, // 매칭 방법: gpt_extract, text_scan, not_found
+          vendor_mismatch: !validatedVendorName // 거래처 못찾음 여부
         }
       })
       .eq('id', requestData.statementId)
+      .select()
+      .single()
+
+    if (updateError) {
+      console.error('Failed to update transaction_statements:', updateError)
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `DB 업데이트 실패: ${updateError.message}. 거래명세서 레코드가 존재하지 않을 수 있습니다.` 
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    console.log('✅ 거래명세서 업데이트 완료:', { id: requestData.statementId, vendor_name: validatedVendorName })
 
     // 9. 추출된 품목들을 transaction_statement_items에 저장
     if (normalizedItems.length > 0) {
@@ -163,8 +196,11 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         statementId: requestData.statementId,
+        vendor_name: validatedVendorName || null, // 검증된 거래처명 포함
+        vendor_match_source: vendorMatchSource, // 매칭 방법
         result: {
           ...extractionResult,
+          vendor_name: validatedVendorName || extractionResult.vendor_name, // 검증된 거래처명 우선
           items: normalizedItems
         }
       }),
@@ -251,6 +287,105 @@ async function validateAndMatchVendor(
       matched: true,
       vendor_name: bestMatch.vendor_name,
       vendor_id: bestMatch.vendor_id,
+      similarity: bestMatch.similarity
+    }
+  }
+
+  return { matched: false, similarity: bestMatch?.similarity || 0 }
+}
+
+/**
+ * 전체 OCR 텍스트에서 vendors 테이블의 거래처를 찾기
+ * 거래처명이 텍스트 어디에든 있으면 찾아냄
+ */
+async function findVendorInText(
+  supabase: any,
+  fullText: string
+): Promise<{ matched: boolean; vendor_name?: string; vendor_id?: number; matched_text?: string; similarity: number }> {
+  if (!fullText) {
+    return { matched: false, similarity: 0 }
+  }
+
+  // 1. vendors 테이블에서 모든 거래처 조회
+  const { data: vendors, error } = await supabase
+    .from('vendors')
+    .select('id, vendor_name')
+    .limit(500)
+
+  if (error || !vendors || vendors.length === 0) {
+    console.warn('Failed to fetch vendors for text scan:', error)
+    return { matched: false, similarity: 0 }
+  }
+
+  // 2. 텍스트를 줄 단위로 분리하고 각 부분에서 거래처 찾기
+  const textLines = fullText.split(/[\n\r]+/).filter(line => line.trim().length > 0)
+  
+  let bestMatch: { 
+    vendor_id: number; 
+    vendor_name: string; 
+    matched_text: string;
+    similarity: number 
+  } | null = null
+
+  // 각 거래처에 대해 텍스트에서 검색
+  for (const vendor of vendors) {
+    const vendorName = vendor.vendor_name || ''
+    if (!vendorName) continue
+    
+    // 거래처명 정규화
+    const normalizedVendor = vendorName
+      .toLowerCase()
+      .replace(/\(주\)|주식회사|㈜|주\)|co\.|ltd\.|inc\.|corp\.|company|컴퍼니/gi, '')
+      .replace(/[^a-z0-9가-힣]/g, '')
+      .trim()
+    
+    if (!normalizedVendor || normalizedVendor.length < 2) continue
+
+    // 각 텍스트 라인에서 거래처명 검색
+    for (const line of textLines) {
+      const normalizedLine = line
+        .toLowerCase()
+        .replace(/[^a-z0-9가-힣\s]/g, '')
+        .trim()
+      
+      // 거래처명이 라인에 포함되어 있는지 확인
+      if (normalizedLine.includes(normalizedVendor)) {
+        const similarity = 100 // 정확히 포함
+        if (!bestMatch || similarity > bestMatch.similarity) {
+          bestMatch = {
+            vendor_id: vendor.id,
+            vendor_name: vendor.vendor_name,
+            matched_text: line.trim(),
+            similarity
+          }
+        }
+        break // 이 거래처는 찾았으니 다음 거래처로
+      }
+      
+      // 거래처명이 라인에 부분적으로 포함되어 있는지 확인 (4글자 이상)
+      if (normalizedVendor.length >= 4) {
+        const partialVendor = normalizedVendor.substring(0, Math.min(normalizedVendor.length, 6))
+        if (normalizedLine.includes(partialVendor)) {
+          const similarity = calculateVendorSimilarity(line, vendorName)
+          if (similarity >= 70 && (!bestMatch || similarity > bestMatch.similarity)) {
+            bestMatch = {
+              vendor_id: vendor.id,
+              vendor_name: vendor.vendor_name,
+              matched_text: line.trim(),
+              similarity
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (bestMatch && bestMatch.similarity >= 70) {
+    return {
+      matched: true,
+      vendor_name: bestMatch.vendor_name,
+      vendor_id: bestMatch.vendor_id,
+      matched_text: bestMatch.matched_text,
       similarity: bestMatch.similarity
     }
   }
@@ -499,9 +634,15 @@ async function extractWithGPT4o(
 ): Promise<ExtractionResult> {
   const prompt = `거래명세서 이미지입니다. 다음 정보를 JSON으로 추출해주세요.
 
+⚠️ **거래처(공급자) 식별 방법 - 매우 중요:**
+한국 거래명세서에는 두 회사 정보가 있습니다:
+- "귀중" 또는 "귀사" 옆에 있는 회사 = **받는 사람 (구매자)** → 이건 추출하지 마세요!
+- "공급자", "공급하는 자", "(인)", 또는 도장/직인이 있는 쪽 = **공급자 (판매자)** → 이것이 vendor_name입니다!
+거래명세서를 **보내온 회사**가 공급자입니다. "귀중" 옆에 있는 회사는 받는 회사이므로 vendor_name으로 사용하면 안됩니다.
+
 추출 대상:
 1. statement_date: 거래명세서 날짜 (YYYY-MM-DD 형식, "년/월/일" 또는 "2025년 12월 9일" 등을 변환)
-2. vendor_name: 공급자(판매자) 상호/회사명
+2. vendor_name: **공급자(판매자)** 상호/회사명 - 도장/직인/대표자명이 있는 쪽!
 3. total_amount: 공급가액 합계 (숫자만)
 4. tax_amount: 세액 합계 (숫자만)
 5. grand_total: 총액/합계 (숫자만)
