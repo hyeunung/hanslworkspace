@@ -282,40 +282,28 @@ function PurchaseDetailModal({
     return () => unsubscribe()
   }, [isOpen, purchaseId])
 
-  // 🚀 이전 items 값을 저장하여 캐시 업데이트 시 품목 사라짐 방지
-  const prevItemsRef = useRef<any[]>([])
-
   // 🚀 실시간 items 데이터 (로컬 purchase state를 우선 사용)
   const currentItems = useMemo(() => {
-    let result: any[] = []
-    
     // purchase state를 우선 사용 (로컬 상태가 가장 최신)
     if (purchase?.items && purchase.items.length > 0) {
-      result = normalizeItems(purchase.items);
-    } else if (purchase?.purchase_request_items && purchase.purchase_request_items.length > 0) {
-      result = normalizeItems(purchase.purchase_request_items);
-    } else if (purchaseId && allPurchases) {
-      // purchase state가 없으면 메모리 캐시에서 가져오기
+      return normalizeItems(purchase.items);
+    }
+    if (purchase?.purchase_request_items && purchase.purchase_request_items.length > 0) {
+      return normalizeItems(purchase.purchase_request_items);
+    }
+    
+    // purchase state가 없으면 메모리 캐시에서 가져오기
+    if (purchaseId && allPurchases) {
       const memoryPurchase = allPurchases.find(p => p.id === purchaseId);
       if (memoryPurchase) {
         const memoryItems = (memoryPurchase.items && memoryPurchase.items.length > 0)
           ? memoryPurchase.items
           : (memoryPurchase.purchase_request_items || []);
-        result = normalizeItems(memoryItems);
+        return normalizeItems(memoryItems);
       }
     }
     
-    // 🚀 모든 소스에서 데이터를 못 찾았지만 이전에 유효한 items가 있었으면 이전 값 유지 (입고완료 시 품목 사라짐 방지)
-    if (result.length === 0 && prevItemsRef.current.length > 0) {
-      return prevItemsRef.current;
-    }
-    
-    // 유효한 결과가 있으면 ref 업데이트
-    if (result.length > 0) {
-      prevItemsRef.current = result;
-    }
-    
-    return result;
+    return [];
   }, [purchase, purchaseId, allPurchases, lastFetch, normalizeItems]); // purchase 객체 전체를 의존성으로 사용하여 실시간 업데이트 보장
 
   // 화면 표시용 순서: 편집 중에는 편집 상태 순서를 그대로, 보기 모드에서는 line_number 오름차순

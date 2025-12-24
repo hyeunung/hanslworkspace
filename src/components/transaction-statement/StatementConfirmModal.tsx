@@ -1363,11 +1363,11 @@ export default function StatementConfirmModal({
               <div className="flex-1 overflow-auto border border-gray-200 business-radius-card">
                 <table className="modal-value table-auto min-w-full">
                   <thead className="bg-gray-100 sticky top-0 z-10">
-                    <tr>
+                    <tr className="border-b border-gray-200">
                       {/* 좌측: 시스템 발주품목 헤더 */}
-                      <th colSpan={isSamePONumber ? 4 : 5} className="border-b border-r-2 border-gray-300 p-2 text-left w-[45%]">
+                      <th colSpan={isSamePONumber ? 4 : 5} className="border-r-2 border-gray-300 p-2 text-left w-[45%]">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="modal-section-title text-gray-700">📋 시스템 발주품목</span>
+                          <span className="modal-section-title text-gray-700">시스템 발주품목</span>
                           {/* 세트 매칭 신뢰도 표시 */}
                           {isSamePONumber && setMatchResult?.bestMatch && (
                             <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
@@ -1385,7 +1385,7 @@ export default function StatementConfirmModal({
                             <div className="relative">
                               <button
                                 onClick={() => toggleDropdown('global-po')}
-                                className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-white border border-blue-300 rounded-md hover:bg-blue-50 text-blue-700"
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700"
                               >
                                 {selectedPONumber || '발주번호 선택'}
                                 <ChevronDown className="w-3 h-3" />
@@ -1405,7 +1405,7 @@ export default function StatementConfirmModal({
                                           handleSelectGlobalPO(displayNumber);
                                           toggleDropdown('global-po');
                                         }}
-                                        className={`p-2 cursor-pointer border-b border-gray-100 last:border-0 ${
+                                        className={`p-2 cursor-pointer hover:bg-gray-100 ${
                                           isSelected ? 'bg-blue-50' : 'hover:bg-gray-100'
                                         } ${isBestMatch ? 'ring-1 ring-green-400' : ''}`}
                                       >
@@ -1444,15 +1444,15 @@ export default function StatementConfirmModal({
                         </div>
                       </th>
                       
-                      {/* 중앙: 매칭 후보 */}
-                      <th className="border-b border-r-2 border-gray-300 p-2 text-center bg-blue-50 w-[10%]">
-                        <span className="modal-section-title text-blue-700">🔗 매칭 후보</span>
+                      {/* 중앙: 매칭 상태 */}
+                      <th className="border-r-2 border-gray-300 p-2 text-center bg-blue-50 w-[10%]">
+                        <span className="modal-section-title text-blue-700">매칭</span>
                       </th>
                       
                       {/* 우측: OCR 추출 품목 헤더 */}
-                      <th colSpan={isSamePONumber ? 4 : 5} className="border-b border-gray-200 p-2 text-left w-[45%]">
+                      <th colSpan={isSamePONumber ? 4 : 5} className="p-2 text-left w-[45%]">
                         <span className="modal-section-title text-gray-700">
-                          📄 OCR 추출 품목
+                          OCR 추출 품목
                           {isSamePONumber && commonPONumber && (
                             <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-medium rounded">
                               {commonPONumber}
@@ -1464,23 +1464,23 @@ export default function StatementConfirmModal({
                     <tr className="modal-label">
                       {/* 좌측 컬럼 */}
                       {!isSamePONumber && (
-                        <th className="border-b border-r border-gray-100 p-1 text-left whitespace-nowrap modal-label">발주/수주번호</th>
+                        <th className="p-1 text-left whitespace-nowrap modal-label">발주/수주번호</th>
                       )}
-                      <th className="border-b border-r border-gray-100 p-2 text-left modal-label">품목명</th>
-                      <th className="border-b border-r border-gray-100 p-2 text-right modal-label">수량</th>
-                      <th className="border-b border-r border-gray-100 p-2 text-right modal-label">단가</th>
-                      <th className="border-b border-r-2 border-gray-300 p-2 text-right modal-label">합계</th>
+                      <th className="p-1 text-left modal-label">품목명</th>
+                      <th className="p-1 text-right modal-label">수량</th>
+                      <th className="p-1 text-right modal-label">단가</th>
+                      <th className="border-r-2 border-gray-300 p-1 text-right modal-label">합계</th>
                       
                       {/* 중앙 */}
-                      <th className="border-b border-r-2 border-gray-300 p-2 text-center bg-blue-50"></th>
+                      <th className="border-r-2 border-gray-300 p-1 text-center bg-blue-50"></th>
                       
                       {/* 우측 컬럼 */}
-                      <th className="border-b border-r border-gray-100 p-2 text-left whitespace-nowrap modal-label">품목명</th>
-                      <th className="border-b border-r border-gray-100 p-2 text-right whitespace-nowrap w-16 modal-label">수량</th>
-                      <th className="border-b border-r border-gray-100 p-2 text-right whitespace-nowrap w-20 modal-label">단가</th>
-                      <th className={`border-b p-2 text-right whitespace-nowrap w-24 modal-label ${!isSamePONumber ? 'border-r border-gray-100' : ''}`}>합계</th>
+                      <th className="p-1 text-left whitespace-nowrap modal-label">품목명</th>
+                      <th className="p-1 text-right whitespace-nowrap w-16 modal-label">수량</th>
+                      <th className="p-1 text-right whitespace-nowrap w-20 modal-label">단가</th>
+                      <th className="p-1 text-right whitespace-nowrap w-24 modal-label">합계</th>
                       {!isSamePONumber && (
-                        <th className="border-b p-1 text-left whitespace-nowrap modal-label">발주/수주번호</th>
+                        <th className="p-1 text-left whitespace-nowrap modal-label">발주/수주번호</th>
                       )}
                     </tr>
                   </thead>
@@ -1497,14 +1497,14 @@ export default function StatementConfirmModal({
                       const systemCandidates = getSystemItemsForPO(isSamePONumber ? selectedPONumber : (itemPO || ''));
                       
                       return (
-                        <tr key={ocrItem.id} className="hover:bg-gray-50 border-b border-gray-100">
+                        <tr key={ocrItem.id} className="hover:bg-gray-50">
                           {/* Case 2: 발주번호 컬럼 */}
                           {!isSamePONumber && (
-                            <td className="border-r border-gray-100 p-1 whitespace-nowrap">
+                            <td className="p-1 whitespace-nowrap">
                               <div className="relative">
                                 <button
                                   onClick={() => toggleDropdown(`po-${ocrItem.id}`)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium bg-blue-50 border border-blue-200 business-radius hover:bg-blue-100 text-blue-700 whitespace-nowrap"
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium bg-white border border-gray-300 business-radius hover:bg-gray-50 text-gray-700 whitespace-nowrap"
                                   style={{ fontSize: '11px' }}
                                 >
                                   <span>{itemPO || '선택'}</span>
@@ -1516,7 +1516,7 @@ export default function StatementConfirmModal({
                                       <div
                                         key={idx}
                                         onClick={() => handleSelectItemPO(ocrItem.id, po)}
-                                        className={`px-2 py-1.5 hover:bg-gray-100 cursor-pointer text-[11px] font-medium ${po === itemPO ? 'bg-blue-50 text-blue-700' : 'text-gray-700'}`}
+                                        className={`px-2 py-1.5 hover:bg-gray-100 cursor-pointer text-[11px] font-medium ${po === itemPO ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700'}`}
                                         style={{ fontSize: '11px' }}
                                       >
                                         {po}
@@ -1529,7 +1529,7 @@ export default function StatementConfirmModal({
                           )}
                           
                           {/* 좌측: 시스템 품목 */}
-                          <td className="border-r border-gray-100 p-1">
+                          <td className="p-1">
                             {matchedSystem ? (
                               <div className="flex items-center gap-1 whitespace-nowrap">
                                 <span className="text-[11px] font-medium text-gray-900" style={{ fontSize: '11px' }}>{matchedSystem.item_name}</span>
@@ -1560,7 +1560,7 @@ export default function StatementConfirmModal({
                                         <div
                                           key={cidx}
                                           onClick={() => handleSelectSystemItem(ocrItem.id, candidate)}
-                                          className="px-2 py-1.5 hover:bg-gray-100 cursor-pointer border-b border-gray-100 last:border-0"
+                                          className="px-2 py-1.5 hover:bg-gray-100 cursor-pointer"
                                         >
                                           <div className="flex items-center justify-between">
                                             <p className="text-[11px] font-medium text-gray-900" style={{ fontSize: '11px' }}>{candidate.item_name}</p>
@@ -1585,10 +1585,10 @@ export default function StatementConfirmModal({
                               <span className="text-[11px] text-gray-400" style={{ fontSize: '11px' }}>후보 없음</span>
                             )}
                           </td>
-                          <td className="border-r border-gray-100 p-1 text-right">
+                          <td className="p-1 text-right">
                             <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem?.quantity ?? '-'}</span>
                           </td>
-                          <td className="border-r border-gray-100 p-1 text-right">
+                          <td className="p-1 text-right">
                             <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem ? formatAmount(matchedSystem.unit_price) : '-'}</span>
                           </td>
                           <td className="border-r-2 border-gray-300 p-1 text-right">
@@ -1596,17 +1596,17 @@ export default function StatementConfirmModal({
                           </td>
                           
                           {/* 중앙: 매칭 상태 (클릭하여 상세 보기) */}
-                          <td className="border-r-2 border-gray-300 p-2 text-center bg-blue-50/50">
+                          <td className="border-r-2 border-gray-300 p-1 text-center bg-blue-50/50">
                             {renderMatchStatusBadge(matchStatus, ocrItem)}
                           </td>
                           
                           {/* 우측: OCR 품목 (편집 가능) */}
-                          <td className="border-r border-gray-100 p-1 whitespace-nowrap">
+                          <td className="p-1 whitespace-nowrap">
                             <input
                               type="text"
                               value={getOCRItemValue(ocrItem, 'item_name') as string}
                               onChange={(e) => handleEditOCRItem(ocrItem.id, 'item_name', e.target.value)}
-                              className={`min-w-[180px] w-auto px-1.5 py-0.5 !text-[11px] !font-medium text-gray-900 border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                              className={`min-w-[180px] w-auto px-1 h-5 !text-[10px] !font-medium text-gray-900 border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                 isOCRItemEdited(ocrItem, 'item_name') 
                                   ? 'border-orange-400 bg-orange-50' 
                                   : 'border-gray-200 bg-white'
@@ -1615,12 +1615,12 @@ export default function StatementConfirmModal({
                               title={isOCRItemEdited(ocrItem, 'item_name') ? `원본: ${ocrItem.extracted_item_name}` : undefined}
                             />
                           </td>
-                          <td className="border-r border-gray-100 p-1">
+                          <td className="p-1">
                             <input
                               type="number"
                               value={getOCRItemValue(ocrItem, 'quantity') as number}
                               onChange={(e) => handleEditOCRItem(ocrItem.id, 'quantity', e.target.value ? Number(e.target.value) : 0)}
-                              className={`w-16 px-1.5 py-0.5 !text-[11px] !font-medium text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                              className={`w-14 px-1 h-5 !text-[10px] !font-medium text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                 isOCRItemEdited(ocrItem, 'quantity') 
                                   ? 'border-orange-400 bg-orange-50' 
                                   : 'border-gray-200 bg-white'
@@ -1629,12 +1629,12 @@ export default function StatementConfirmModal({
                               title={isOCRItemEdited(ocrItem, 'quantity') ? `원본: ${ocrItem.extracted_quantity}` : undefined}
                             />
                           </td>
-                          <td className="border-r border-gray-100 p-1">
+                          <td className="p-1">
                             <input
                               type="number"
                               value={getOCRItemValue(ocrItem, 'unit_price') as number}
                               onChange={(e) => handleEditOCRItem(ocrItem.id, 'unit_price', e.target.value ? Number(e.target.value) : 0)}
-                              className={`w-20 px-1.5 py-0.5 !text-[11px] !font-medium text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                              className={`w-16 px-1 h-5 !text-[10px] !font-medium text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                 isOCRItemEdited(ocrItem, 'unit_price') 
                                   ? 'border-orange-400 bg-orange-50' 
                                   : 'border-gray-200 bg-white'
@@ -1643,12 +1643,12 @@ export default function StatementConfirmModal({
                               title={isOCRItemEdited(ocrItem, 'unit_price') ? `원본: ${ocrItem.extracted_unit_price}` : undefined}
                             />
                           </td>
-                          <td className={`p-1 ${!isSamePONumber ? 'border-r border-gray-100' : ''}`}>
+                          <td className="p-1">
                             <input
                               type="number"
                               value={getOCRItemValue(ocrItem, 'amount') as number}
                               onChange={(e) => handleEditOCRItem(ocrItem.id, 'amount', e.target.value ? Number(e.target.value) : 0)}
-                              className={`w-24 px-1.5 py-0.5 !text-[11px] !font-bold text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                              className={`w-24 px-1 py-px !text-[11px] !font-bold text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                 isOCRItemEdited(ocrItem, 'amount') 
                                   ? 'border-orange-400 bg-orange-50' 
                                   : 'border-gray-200 bg-white'
@@ -1665,7 +1665,7 @@ export default function StatementConfirmModal({
                                 type="text"
                                 value={getOCRItemValue(ocrItem, 'po_number') as string}
                                 onChange={(e) => handleEditOCRItem(ocrItem.id, 'po_number', e.target.value)}
-                                className={`w-full px-1.5 py-0.5 !text-[11px] !font-medium text-gray-900 border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                                className={`w-full px-1 py-px !text-[11px] !font-medium text-gray-900 border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                   isOCRItemEdited(ocrItem, 'po_number') 
                                     ? 'border-orange-400 bg-orange-50' 
                                     : 'border-gray-200 bg-white'
@@ -1680,25 +1680,25 @@ export default function StatementConfirmModal({
                     })}
                     
                     {/* 합계 행 */}
-                    <tr className="bg-gray-50 font-medium">
-                      <td colSpan={isSamePONumber ? 3 : 4} className="border-t border-gray-200 p-2 text-right text-gray-600">
+                    <tr className="bg-gray-50 font-medium border-t border-gray-100">
+                      <td colSpan={isSamePONumber ? 3 : 4} className="p-1 text-right text-gray-600">
                         시스템 합계
                       </td>
-                      <td className="border-r-2 border-t border-gray-300 p-2 text-right text-gray-900">
+                      <td className="border-r-2 border-gray-300 p-1 text-right text-gray-900">
                         {formatAmount(
                           Array.from(itemMatches.values())
                             .filter(Boolean)
                             .reduce((sum, item) => sum + (item?.amount || 0), 0)
                         )}
                       </td>
-                      <td className="border-r-2 border-t border-gray-300 p-2 bg-blue-50/50"></td>
-                      <td colSpan={isSamePONumber ? 3 : 4} className="border-t border-gray-200 p-2 text-right text-gray-600">
+                      <td className="border-r-2 border-gray-300 p-1 bg-blue-50/50"></td>
+                      <td colSpan={isSamePONumber ? 3 : 4} className="p-1 text-right text-gray-600">
                         OCR 합계
                         {editedOCRItems.size > 0 && (
                           <span className="ml-1 text-[9px] text-orange-600">(수정됨)</span>
                         )}
                       </td>
-                      <td className="border-t border-gray-200 p-2 text-right text-gray-900">
+                      <td className="p-1 text-right text-gray-900">
                         {formatAmount(
                           statementWithItems.items.reduce((sum, item) => {
                             const edited = editedOCRItems.get(item.id);
@@ -1707,7 +1707,7 @@ export default function StatementConfirmModal({
                           }, 0)
                         )}
                       </td>
-                      {!isSamePONumber && <td className="border-t border-gray-200"></td>}
+                      {!isSamePONumber && <td className="p-1"></td>}
                     </tr>
                   </tbody>
                 </table>
