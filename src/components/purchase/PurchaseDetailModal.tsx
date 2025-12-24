@@ -241,6 +241,7 @@ function PurchaseDetailModal({
 
   // 🚀 Realtime 이벤트 구독 - 모달이 열려있는 동안 다른 화면에서 발생한 변경 실시간 반영
   const realtimeFirstMount = useRef(true)
+  const isUpdatingRef = useRef(false)  // 🚀 업데이트 중 플래그 (경쟁 상태 방지)
   useEffect(() => {
     if (!isOpen || !purchaseId) return
 
@@ -253,14 +254,40 @@ function PurchaseDetailModal({
       if (isEditingRef.current) {
         return
       }
+      // 🚀 업데이트 진행 중이면 무시 (경쟁 상태 방지)
+      if (isUpdatingRef.current) {
+        logger.debug('[PurchaseDetailModal] 업데이트 진행 중 - Realtime 이벤트 무시')
+        return
+      }
       // 캐시에서 최신 데이터 가져와서 로컬 상태 업데이트
       const updatedPurchase = findPurchaseInMemory(purchaseId)
       if (updatedPurchase) {
-        setPurchase({
-          ...updatedPurchase,
-          id: String(updatedPurchase.id),
-          is_po_generated: false
-        } as PurchaseRequestWithDetails)
+        // 🚀 방어 로직: 캐시 데이터에 items가 비어있으면 현재 items 보존
+        const cacheItems = updatedPurchase.items || updatedPurchase.purchase_request_items || []
+        
+        setPurchase(prev => {
+          // 현재 items 가져오기
+          const currentItems = prev?.items || prev?.purchase_request_items || []
+          
+          // 캐시 items가 비어있고 현재 items가 있으면 현재 items 보존
+          const preservedItems = (cacheItems.length === 0 && currentItems.length > 0) 
+            ? currentItems 
+            : cacheItems
+          
+          // 캐시 items가 비어있는데 현재도 비어있으면 업데이트 스킵
+          if (cacheItems.length === 0 && currentItems.length === 0 && prev) {
+            logger.debug('[PurchaseDetailModal] 캐시/현재 items 모두 비어있음 - 업데이트 스킵')
+            return prev
+          }
+          
+          return {
+            ...updatedPurchase,
+            id: String(updatedPurchase.id),
+            is_po_generated: false,
+            items: preservedItems,
+            purchase_request_items: preservedItems
+          } as PurchaseRequestWithDetails
+        })
       }
     }
 
@@ -591,6 +618,19 @@ function PurchaseDetailModal({
       logger.error('모달 데이터 새로고침 실패', error)
     }
   }, [purchaseId])
+
+  // 🚀 업데이트 중 Realtime 이벤트 무시하는 래핑 함수
+  const refreshModalDataWithLock = useCallback(async () => {
+    isUpdatingRef.current = true
+    try {
+      await refreshModalData()
+    } finally {
+      // 약간의 딜레이 후 플래그 해제 (Realtime 이벤트가 완전히 처리될 시간 확보)
+      setTimeout(() => {
+        isUpdatingRef.current = false
+      }, 500)
+    }
+  }, [refreshModalData])
 
   // 🚀 메모리 캐시 변경 실시간 감지 및 모달 데이터 동기화
   useEffect(() => {
@@ -936,6 +976,12 @@ function PurchaseDetailModal({
     }
   }, [currentUserName, onOptimisticUpdate, purchaseIdNumber, purchase])
 
+  // 🚀 업데이트 시작 전 Realtime 이벤트 무시 플래그 설정
+  const handleBeforeUpdate = useCallback(() => {
+    isUpdatingRef.current = true
+    logger.debug('[PurchaseDetailModal] 업데이트 시작 - Realtime 이벤트 무시 활성화')
+  }, [])
+
   const statementReceivedAction = useConfirmDateAction({
     config: {
       field: 'statement_received',
@@ -953,7 +999,8 @@ function PurchaseDetailModal({
     currentUserName,
     canPerformAction: canReceiptCheck,
     purchaseId: purchase?.id,
-    onUpdate: refreshModalData,
+    onBeforeUpdate: handleBeforeUpdate,
+    onUpdate: refreshModalDataWithLock,
     onOptimisticUpdate: handleStatementReceivedOptimisticUpdate
   })
 
@@ -974,7 +1021,8 @@ function PurchaseDetailModal({
     currentUserName,
     canPerformAction: canProcessReceipt,
     purchaseId: purchase?.id,
-    onUpdate: refreshModalData,
+    onBeforeUpdate: handleBeforeUpdate,
+    onUpdate: refreshModalDataWithLock,
     onOptimisticUpdate: handleActualReceiptOptimisticUpdate
   })
   
@@ -1909,7 +1957,7 @@ function PurchaseDetailModal({
       setDeletedItemIds([])
       
       // 5. 전체완료 함수 패턴: refreshModalData 먼저, 그 다음 onRefresh
-      await refreshModalData()
+      await refreshModalDataWithLock()
       logger.info('🔍 refreshModalData 완료 후 purchase:', { purchaseId: purchase?.id })
       console.log('🔍 refreshModalData 완료 후 - 전체 purchase 상태:', purchase)
       const refreshResult = onRefresh?.(true, { silent: true })
@@ -2155,7 +2203,7 @@ function PurchaseDetailModal({
       toast.success(isCompleted ? '구매완료 처리되었습니다.' : '구매완료가 취소되었습니다.')
 
       // 상세 모달 및 상위 리스트 모두 최신 상태로 동기화
-      await refreshModalData()
+      await refreshModalDataWithLock()
       const refreshResult = onRefresh?.(true, { silent: true })
       if (refreshResult instanceof Promise) {
         await refreshResult
@@ -2167,8 +2215,12 @@ function PurchaseDetailModal({
 
   // 개별 품목 입고완료 처리 (날짜 선택 + 실제입고수량) - 분할 입고 지원
   const handleItemReceiptToggle = async (itemId: number | string, selectedDate: Date, receivedQuantity?: number) => {
+    // 🚀 업데이트 시작 - Realtime 이벤트 무시 활성화
+    isUpdatingRef.current = true
+    
     if (!canReceiveItems) {
       toast.error('입고 처리 권한이 없습니다.')
+      isUpdatingRef.current = false
       return
     }
 
@@ -2301,7 +2353,7 @@ function PurchaseDetailModal({
       const targetItem = purchase?.items?.find(item => String(item.id) === itemIdStr)
       toast.success(`"${targetItem?.item_name}" 품목이 입고완료 처리되었습니다.`)
 
-      await refreshModalData()
+      await refreshModalDataWithLock()
       const refreshResult = onRefresh?.(true, { silent: true })
       if (refreshResult instanceof Promise) {
         await refreshResult
@@ -2313,8 +2365,12 @@ function PurchaseDetailModal({
 
   // 입고완료 취소 처리
   const handleReceiptCancel = async (itemId: number | string) => {
+    // 🚀 업데이트 시작 - Realtime 이벤트 무시 활성화
+    isUpdatingRef.current = true
+    
     if (!canProcessReceipt) {
       toast.error('입고 처리 권한이 없습니다.')
+      isUpdatingRef.current = false
       return
     }
 
@@ -2388,7 +2444,7 @@ function PurchaseDetailModal({
 
       toast.success('입고완료가 취소되었습니다.')
 
-      await refreshModalData()
+      await refreshModalDataWithLock()
       const refreshResult = onRefresh?.(true, { silent: true })
       if (refreshResult instanceof Promise) {
         await refreshResult
@@ -2465,7 +2521,7 @@ function PurchaseDetailModal({
       toast.success(`${type === 'middle' ? '중간' : '최종'} 승인이 완료되었습니다.`)
 
       // 상세 모달 및 리스트 모두 새로고침
-      await refreshModalData()
+      await refreshModalDataWithLock()
       const refreshResult = onRefresh?.(true, { silent: true })
       if (refreshResult instanceof Promise) {
         await refreshResult
@@ -2551,7 +2607,7 @@ function PurchaseDetailModal({
       toast.success(`${pendingItems.length}개 품목이 구매완료 처리되었습니다.`);
 
       // 🚀 새로고침 (개별 품목과 동일)
-      await refreshModalData();
+      await refreshModalDataWithLock();
       const refreshResult = onRefresh?.(true, { silent: true });
       if (refreshResult instanceof Promise) {
         await refreshResult;
@@ -2666,7 +2722,7 @@ function PurchaseDetailModal({
 
       toast.success(`"${targetItem.item_name}" 품목의 지출 정보가 저장되었습니다.`)
 
-      await refreshModalData()
+      await refreshModalDataWithLock()
       const refreshResult = onRefresh?.(true, { silent: true })
       if (refreshResult instanceof Promise) {
         await refreshResult
@@ -2864,7 +2920,7 @@ function PurchaseDetailModal({
       toast.success(`${pendingItems.length}개 품목의 거래명세서 확인이 완료되었습니다.`);
 
       // 🚀 새로고침 (개별 품목과 동일)
-      await refreshModalData();
+      await refreshModalDataWithLock();
       const refreshResult = onRefresh?.(true, { silent: true });
       if (refreshResult instanceof Promise) {
         await refreshResult;
@@ -3025,7 +3081,7 @@ function PurchaseDetailModal({
       toast.success(`${pendingItems.length}개 품목이 입고완료 처리되었습니다.`);
 
       // 🚀 새로고침 (개별 품목과 동일)
-      await refreshModalData();
+      await refreshModalDataWithLock();
       const refreshResult = onRefresh?.(true, { silent: true });
       if (refreshResult instanceof Promise) {
         await refreshResult;
@@ -4184,7 +4240,7 @@ function PurchaseDetailModal({
                             
                             toast.success(newStatus ? 'UTK 확인이 완료되었습니다.' : 'UTK 확인이 취소되었습니다.')
                             
-                            await refreshModalData()
+                            await refreshModalDataWithLock()
                             const refreshResult = onRefresh?.(true, { silent: true })
                             if (refreshResult instanceof Promise) {
                               await refreshResult

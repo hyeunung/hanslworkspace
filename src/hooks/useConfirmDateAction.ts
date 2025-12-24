@@ -24,6 +24,7 @@ export interface UseConfirmDateActionProps {
   canPerformAction: boolean
   purchaseId?: number | string  // 메모리 캐시 업데이트를 위한 purchase ID
   onUpdate?: () => void
+  onBeforeUpdate?: () => void  // 🚀 업데이트 시작 전 호출 (Realtime 이벤트 무시 플래그 설정용)
   onOptimisticUpdate?: (params: {
     itemId: number
     selectedDate?: Date
@@ -47,6 +48,7 @@ export function useConfirmDateAction({
   canPerformAction,
   purchaseId,
   onUpdate,
+  onBeforeUpdate,
   onOptimisticUpdate
 }: UseConfirmDateActionProps) {
   const supabase = createClient()
@@ -96,6 +98,9 @@ ${config.confirmMessage.confirm}`
         return
       }
     }
+
+    // 🚀 업데이트 시작 전 콜백 호출 (Realtime 이벤트 무시 플래그 설정)
+    onBeforeUpdate?.()
 
     try {
       let updateData: any
@@ -212,7 +217,7 @@ ${config.confirmMessage.confirm}`
       logger.error('❌ 전체 처리 실패', error)
       toast.error(`${config.field === 'statement_received' ? '거래명세서' : '입고'} 확인 처리 중 오류가 발생했습니다.`)
     }
-  }, [config, currentUserName, canPerformAction, purchaseId, onUpdate, onOptimisticUpdate, supabase])
+  }, [config, currentUserName, canPerformAction, purchaseId, onUpdate, onBeforeUpdate, onOptimisticUpdate, supabase])
 
   const handleCancel = useCallback(async (
     itemId: number | string,
@@ -254,6 +259,9 @@ ${config.confirmMessage.cancel}`
         return
       }
     }
+
+    // 🚀 업데이트 시작 전 콜백 호출 (Realtime 이벤트 무시 플래그 설정)
+    onBeforeUpdate?.()
 
     try {
       logger.debug(`🔄 ${config.field} 확인 취소 시작`, { 
@@ -336,7 +344,7 @@ ${config.confirmMessage.cancel}`
       logger.error(`❌ ${config.field} 확인 취소 실패`, error)
       toast.error(`${config.field === 'statement_received' ? '거래명세서' : '입고'} 확인 취소 중 오류가 발생했습니다.`)
     }
-  }, [config, canPerformAction, purchaseId, onUpdate, onOptimisticUpdate, supabase])
+  }, [config, canPerformAction, purchaseId, onUpdate, onBeforeUpdate, onOptimisticUpdate, supabase])
 
   const isCompleted = useCallback((item: any) => {
     if (config.field === 'statement_received') {

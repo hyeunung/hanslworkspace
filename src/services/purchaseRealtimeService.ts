@@ -255,6 +255,7 @@ class PurchaseRealtimeService {
 
   /**
    * purchase_request_items 테이블 변경 처리
+   * 🚀 개선: 업데이트 성공 시에만 리스너 알림 (경쟁 상태 방지)
    */
   private handlePurchaseItemChange(payload: RealtimePostgresChangesPayload<any>): void {
     const { eventType } = payload
@@ -274,19 +275,26 @@ class PurchaseRealtimeService {
       return
     }
 
+    let updateSuccess = false
+
     switch (eventType) {
       case 'INSERT':
-        this.handleItemInsert(newRecord)
+        updateSuccess = this.handleItemInsert(newRecord)
         break
       case 'UPDATE':
-        this.handleItemUpdate(newRecord)
+        updateSuccess = this.handleItemUpdate(newRecord)
         break
       case 'DELETE':
-        this.handleItemDelete(oldRecord)
+        updateSuccess = this.handleItemDelete(oldRecord)
         break
     }
 
-    this.notifySubscribers()
+    // 🚀 업데이트 성공한 경우에만 리스너 알림 (불완전한 데이터로 UI 갱신 방지)
+    if (updateSuccess) {
+      this.notifySubscribers()
+    } else {
+      logger.debug('⚠️ [Realtime] 품목 업데이트 실패 - 리스너 알림 생략')
+    }
   }
 
   /**
@@ -369,11 +377,15 @@ class PurchaseRealtimeService {
 
   /**
    * 새 품목 추가 처리
+   * @returns 업데이트 성공 여부
    */
-  private handleItemInsert(record: any): void {
-    if (!record || !record.purchase_request_id) return
+  private handleItemInsert(record: any): boolean {
+    if (!record || !record.purchase_request_id) {
+      logger.warn('⚠️ [Realtime] 품목 추가 실패 - 필수 정보 없음')
+      return false
+    }
 
-    updatePurchaseInMemory(record.purchase_request_id, (purchase) => {
+    const success = updatePurchaseInMemory(record.purchase_request_id, (purchase) => {
       const currentItems = purchase.items || purchase.purchase_request_items || []
       
       // 이미 존재하는지 확인
@@ -385,22 +397,35 @@ class PurchaseRealtimeService {
       const updatedItems = [...currentItems, record]
       const newTotalAmount = updatedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
 
+      // 🔧 헤더-품목 동기화: 모든 품목 상태를 확인하여 헤더 상태 재계산
+      const allItemsReceived = updatedItems.length > 0 && updatedItems.every(item => item.is_received === true)
+      const allItemsPaymentCompleted = updatedItems.length > 0 && updatedItems.every(item => item.is_payment_completed === true)
+
       return {
         ...purchase,
         items: updatedItems,
         purchase_request_items: updatedItems,
-        total_amount: newTotalAmount
+        total_amount: newTotalAmount,
+        is_received: allItemsReceived,
+        is_payment_completed: allItemsPaymentCompleted
       }
     })
 
-    logger.info('✅ [Realtime] 품목 추가됨:', record.id)
+    if (success) {
+      logger.info('✅ [Realtime] 품목 추가됨:', record.id)
+    }
+    return success
   }
 
   /**
    * 품목 업데이트 처리
+   * @returns 업데이트 성공 여부
    */
-  private handleItemUpdate(record: any): void {
-    if (!record) return
+  private handleItemUpdate(record: any): boolean {
+    if (!record) {
+      logger.warn('⚠️ [Realtime] 품목 업데이트 실패 - record 없음')
+      return false
+    }
 
     // purchase_request_id가 있으면 직접 업데이트
     let targetPurchaseId = record.purchase_request_id
@@ -420,11 +445,17 @@ class PurchaseRealtimeService {
 
     if (!targetPurchaseId) {
       logger.warn('⚠️ [Realtime] 품목 업데이트 실패 - purchase를 찾을 수 없음:', record.id)
-      return
+      return false
     }
 
-    updatePurchaseInMemory(targetPurchaseId, (purchase) => {
+    const success = updatePurchaseInMemory(targetPurchaseId, (purchase) => {
       const currentItems = purchase.items || purchase.purchase_request_items || []
+      
+      // 🚀 items가 비어있으면 업데이트 하지 않음 (데이터 보호)
+      if (currentItems.length === 0) {
+        logger.warn('⚠️ [Realtime] 품목 업데이트 스킵 - 기존 items가 비어있음')
+        return purchase
+      }
       
       const updatedItems = currentItems.map(item =>
         item.id === record.id ? { ...item, ...record } : item
@@ -432,22 +463,36 @@ class PurchaseRealtimeService {
 
       const newTotalAmount = updatedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
 
+      // 🔧 헤더-품목 동기화: 모든 품목 상태를 확인하여 헤더 상태 재계산
+      const allItemsReceived = updatedItems.length > 0 && updatedItems.every(item => item.is_received === true)
+      const allItemsPaymentCompleted = updatedItems.length > 0 && updatedItems.every(item => item.is_payment_completed === true)
+
       return {
         ...purchase,
         items: updatedItems,
         purchase_request_items: updatedItems,
-        total_amount: newTotalAmount
+        total_amount: newTotalAmount,
+        // 헤더 상태도 품목 기반으로 업데이트
+        is_received: allItemsReceived,
+        is_payment_completed: allItemsPaymentCompleted
       }
     })
 
-    logger.info('✅ [Realtime] 품목 업데이트됨:', record.id)
+    if (success) {
+      logger.info('✅ [Realtime] 품목 업데이트됨:', record.id)
+    }
+    return success
   }
 
   /**
    * 품목 삭제 처리
+   * @returns 삭제 성공 여부
    */
-  private handleItemDelete(record: any): void {
-    if (!record) return
+  private handleItemDelete(record: any): boolean {
+    if (!record) {
+      logger.warn('⚠️ [Realtime] 품목 삭제 실패 - record 없음')
+      return false
+    }
 
     // purchase_request_id가 있으면 직접 사용
     let targetPurchaseId = record.purchase_request_id
@@ -467,7 +512,7 @@ class PurchaseRealtimeService {
 
     if (!targetPurchaseId) {
       logger.warn('⚠️ [Realtime] 품목 삭제 실패 - purchase를 찾을 수 없음:', record.id)
-      return
+      return false
     }
 
     const deleted = removeItemFromMemory(targetPurchaseId, record.id)
@@ -475,6 +520,7 @@ class PurchaseRealtimeService {
     if (deleted) {
       logger.info('✅ [Realtime] 품목 삭제됨:', record.id)
     }
+    return deleted
   }
 
   /**

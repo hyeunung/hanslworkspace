@@ -11,6 +11,11 @@ function isChunkLoadError(error?: Error) {
   );
 }
 
+function isContextError(error?: Error) {
+  const msg = error?.message ?? '';
+  return /must be used within|Context|Provider/i.test(msg);
+}
+
 function reloadOnceForChunkError() {
   try {
     const key = 'hansl:chunk-reload-ts';
@@ -57,6 +62,12 @@ class ErrorBoundary extends Component<Props, State> {
       logger.warn('Detected chunk load error; attempting single reload', { message: error.message });
       reloadOnceForChunkError();
     }
+    
+    // HMR 중 Context 에러 발생 시 자동으로 1회 새로고침
+    if (isContextError(error)) {
+      logger.warn('Detected context error (possibly HMR issue); attempting single reload', { message: error.message });
+      reloadOnceForChunkError();
+    }
   }
 
   handleReset = () => {
@@ -70,6 +81,7 @@ class ErrorBoundary extends Component<Props, State> {
       }
 
       const chunkError = isChunkLoadError(this.state.error);
+      const contextError = isContextError(this.state.error);
 
       return (
         <div className="min-h-[400px] flex items-center justify-center p-6">
@@ -79,6 +91,8 @@ class ErrorBoundary extends Component<Props, State> {
             <p className="text-gray-600 mb-4">
               {chunkError
                 ? '앱 업데이트로 인해 필요한 파일을 불러오지 못했습니다. 페이지를 새로고침하면 해결됩니다.'
+                : contextError
+                ? '앱 상태가 일시적으로 손실되었습니다. 페이지를 새로고침하면 해결됩니다.'
                 : '예기치 않은 오류가 발생했습니다. 페이지를 새로고침하거나 다시 시도해주세요.'}
             </p>
             {process.env.NODE_ENV === 'development' && this.state.error && (
@@ -91,7 +105,7 @@ class ErrorBoundary extends Component<Props, State> {
               </details>
             )}
             <div className="flex gap-2 justify-center">
-              {chunkError ? (
+              {chunkError || contextError ? (
                 <>
                   <Button onClick={() => window.location.reload()}>페이지 새로고침</Button>
                   <Button variant="outline" onClick={this.handleReset}>다시 시도</Button>

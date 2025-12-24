@@ -47,6 +47,23 @@ export class DashboardService {
     this.invalidateDashboardCache()
   }
 
+  // 🚀 캐시 유효성 확인 (로딩 스킵 판단용)
+  // 대시보드 캐시 OR 메모리 캐시가 유효하면 true 반환
+  public hasValidCache(employeeId: string): boolean {
+    const now = Date.now()
+    
+    // 대시보드 전용 캐시 확인 (30초)
+    const dashboardCacheValid = 
+      dashboardCache.data !== null && 
+      dashboardCache.employeeId === employeeId &&
+      (now - dashboardCache.lastFetch) < dashboardCache.CACHE_DURATION
+    
+    // 메모리 캐시 확인 (30분) - 메모리가 있으면 대시보드도 빠르게 계산 가능
+    const memoryCacheValid = this.hasValidPurchaseMemory({ id: employeeId } as Employee)
+    
+    return dashboardCacheValid || memoryCacheValid
+  }
+
   private getPurchaseMemory(): Purchase[] {
     return (purchaseMemoryCache.allPurchases || []) as Purchase[]
   }

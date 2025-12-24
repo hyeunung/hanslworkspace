@@ -31,8 +31,17 @@ import { supportService, type SupportInquiry } from '@/services/supportService'
 import { format } from 'date-fns'
 
 export default function DashboardMain() {
+  const navigate = useNavigate()
+  const { employee, currentUserRoles: userRoles } = useAuth()
+  
+  // 🚀 메모리 캐시 기반 즉시 렌더링: 캐시가 유효하면 로딩 없이 바로 표시
+  const hasValidCache = Boolean(
+    employee?.id && 
+    dashboardService.hasValidCache(employee.id)
+  )
+  
   const [data, setData] = useState<DashboardData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!hasValidCache) // 캐시가 있으면 로딩 스킵
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [currentUserRoles, setCurrentUserRoles] = useState<string[]>([])
   const [undownloadedOrders, setUndownloadedOrders] = useState<any[]>([])
@@ -63,9 +72,6 @@ export default function DashboardMain() {
     purchase: '',
     delivery: ''
   })
-  
-  const navigate = useNavigate()
-  const { employee, currentUserRoles: userRoles } = useAuth()
 
   const loadDashboardData = useCallback(async (showLoading = true, forceRefresh = false) => {
     if (!employee) {
@@ -188,6 +194,7 @@ export default function DashboardMain() {
       // 1) 가장 정확한 값: purchase_request_id (신규 문의부터 저장됨)
       if (inquiry.purchase_request_id) {
         setSelectedPurchaseId(inquiry.purchase_request_id)
+        setModalActiveTab('done')  // 문의에서 열린 발주는 'done' 탭으로 설정 (품목 삭제 등 전체 기능 사용 가능)
         setIsModalOpen(true)
         return
       }
@@ -213,6 +220,7 @@ export default function DashboardMain() {
       }
 
       setSelectedPurchaseId(data.id)
+      setModalActiveTab('done')  // 문의에서 열린 발주는 'done' 탭으로 설정 (품목 삭제 등 전체 기능 사용 가능)
       setIsModalOpen(true)
     } catch (error) {
       logger.error('[DashboardMain] 발주 상세 조회 실패:', error)

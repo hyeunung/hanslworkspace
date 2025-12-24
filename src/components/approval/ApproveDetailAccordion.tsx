@@ -156,18 +156,33 @@ const ApproveDetailAccordion: React.FC<ApproveDetailAccordionProps> = ({
   const handlePurchaseApprove = async () => {
     if (!id) return;
     
-    const { error } = await supabase
-      .from('purchase_requests')
-      .update({ is_payment_completed: true })
-      .eq('id', Number(id));
+    const currentTime = new Date().toISOString();
     
-    if (!error) {
+    // 🔧 헤더와 품목 모두 업데이트 (동기화 보장)
+    const [headerResult, itemsResult] = await Promise.all([
+      supabase
+        .from('purchase_requests')
+        .update({ 
+          is_payment_completed: true,
+          payment_completed_at: currentTime
+        })
+        .eq('id', Number(id)),
+      supabase
+        .from('purchase_request_items')
+        .update({ 
+          is_payment_completed: true,
+          payment_completed_at: currentTime
+        })
+        .eq('purchase_request_id', Number(id))
+    ]);
+    
+    if (!headerResult.error && !itemsResult.error) {
       setLocalIsPaymentCompleted(true);
       onPaymentCompletedChange?.(true);
       await onApproveListRefresh?.();
       toast.success("구매가 완료되었습니다.");
     } else {
-      toast.error('구매완료 처리 중 오류: ' + error.message);
+      toast.error('구매완료 처리 중 오류: ' + (headerResult.error?.message || itemsResult.error?.message));
     }
   };
 
@@ -175,18 +190,31 @@ const ApproveDetailAccordion: React.FC<ApproveDetailAccordionProps> = ({
   const handlePurchaseReject = async () => {
     if (!id) return;
     
-    const { error } = await supabase
-      .from('purchase_requests')
-      .update({ is_payment_completed: false })
-      .eq('id', Number(id));
+    // 🔧 헤더와 품목 모두 업데이트 (동기화 보장)
+    const [headerResult, itemsResult] = await Promise.all([
+      supabase
+        .from('purchase_requests')
+        .update({ 
+          is_payment_completed: false,
+          payment_completed_at: null
+        })
+        .eq('id', Number(id)),
+      supabase
+        .from('purchase_request_items')
+        .update({ 
+          is_payment_completed: false,
+          payment_completed_at: null
+        })
+        .eq('purchase_request_id', Number(id))
+    ]);
     
-    if (!error) {
+    if (!headerResult.error && !itemsResult.error) {
       setLocalIsPaymentCompleted(false);
       onPaymentCompletedChange?.(false);
       await onApproveListRefresh?.();
       toast.success("구매가 반려되었습니다.");
     } else {
-      toast.error('반려 처리 중 오류: ' + error.message);
+      toast.error('반려 처리 중 오류: ' + (headerResult.error?.message || itemsResult.error?.message));
     }
   };
 

@@ -108,27 +108,44 @@ export default function PurchaseStatusModal({
     logger.debug('✅ 구매완료 처리 시작', { itemId: itemId })
     
     try {
+      const currentTime = new Date().toISOString()
+      
       const { error } = await supabase
         .from('purchase_request_items')
         .update({ 
           is_payment_completed: true,
-          payment_completed_at: new Date().toISOString()
+          payment_completed_at: currentTime
         })
         .eq('id', itemId)
 
       if (error) throw error
       
       // 로컬 상태 업데이트
+      const updatedItems = localItem?.purchase_request_items?.map((item: any) =>
+        item.id === itemId 
+          ? { ...item, is_payment_completed: true, payment_completed_at: currentTime }
+          : item
+      ) || []
+      
+      // 🔧 모든 품목이 구매완료되었는지 확인하여 헤더도 업데이트
+      const allItemsCompleted = updatedItems.every((item: any) => item.is_payment_completed === true)
+      if (allItemsCompleted && localItem?.id) {
+        await supabase
+          .from('purchase_requests')
+          .update({ 
+            is_payment_completed: true,
+            payment_completed_at: currentTime
+          })
+          .eq('id', localItem.id)
+      }
+      
       setLocalItem((prev: any) => ({
         ...prev,
-        purchase_request_items: prev.purchase_request_items?.map((item: any) =>
-          item.id === itemId 
-            ? { ...item, is_payment_completed: true, payment_completed_at: new Date().toISOString() }
-            : item
-        )
+        purchase_request_items: updatedItems,
+        is_payment_completed: allItemsCompleted
       }))
       
-      logger.debug('✅ 구매완료 처리 성공', { itemId: itemId })
+      logger.debug('✅ 구매완료 처리 성공', { itemId: itemId, allItemsCompleted })
       toast.success('품목 구매완료 처리되었습니다.')
       onRefresh?.()
     } catch (error) {
@@ -140,28 +157,48 @@ export default function PurchaseStatusModal({
   // 날짜 선택 후 입고완료 처리 함수
   const handleDateSelect = async (selectedDate: Date, itemId: string) => {
     try {
+      const currentTime = new Date().toISOString()
+      const selectedDateIso = selectedDate.toISOString()
+      
       const { error } = await supabase
         .from('purchase_request_items')
         .update({ 
           is_received: true,
-          received_at: new Date().toISOString(),
-          actual_received_date: selectedDate.toISOString()
+          received_at: currentTime,
+          actual_received_date: selectedDateIso,
+          delivery_status: 'received'
         })
         .eq('id', itemId)
 
       if (error) throw error
       
       // 로컬 상태 업데이트
+      const updatedItems = localItem?.purchase_request_items?.map((item: any) =>
+        item.id === itemId ? { 
+          ...item, 
+          is_received: true, 
+          received_at: currentTime,
+          actual_received_date: selectedDateIso,
+          delivery_status: 'received'
+        } : item
+      ) || []
+      
+      // 🔧 모든 품목이 입고완료되었는지 확인하여 헤더도 업데이트
+      const allItemsReceived = updatedItems.every((item: any) => item.is_received === true)
+      if (allItemsReceived && localItem?.id) {
+        await supabase
+          .from('purchase_requests')
+          .update({ 
+            is_received: true,
+            received_at: currentTime
+          })
+          .eq('id', localItem.id)
+      }
+      
       setLocalItem((prev: any) => ({
         ...prev,
-        purchase_request_items: prev.purchase_request_items?.map((item: any) =>
-          item.id === itemId ? { 
-            ...item, 
-            is_received: true, 
-            received_at: new Date().toISOString(),
-            actual_received_date: selectedDate.toISOString()
-          } : item
-        ) || []
+        purchase_request_items: updatedItems,
+        is_received: allItemsReceived
       }))
       
       toast.success('입고완료 처리되었습니다.')

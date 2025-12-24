@@ -313,15 +313,29 @@ class PurchaseService {
   // 입고 처리
   async markAsReceived(id: number): Promise<{ success: boolean; error?: string }> {
     try {
-      const { error } = await this.supabase
-        .from('purchase_requests')
-        .update({ 
-          is_received: true,
-          received_at: new Date().toISOString()
-        })
-        .eq('id', id);
+      const currentTime = new Date().toISOString();
+      
+      // 🔧 헤더와 품목 모두 업데이트 (동기화 보장)
+      const [headerResult, itemsResult] = await Promise.all([
+        this.supabase
+          .from('purchase_requests')
+          .update({ 
+            is_received: true,
+            received_at: currentTime
+          })
+          .eq('id', id),
+        this.supabase
+          .from('purchase_request_items')
+          .update({ 
+            is_received: true,
+            received_at: currentTime,
+            delivery_status: 'received'
+          })
+          .eq('purchase_request_id', id)
+      ]);
 
-      if (error) throw error;
+      if (headerResult.error) throw headerResult.error;
+      if (itemsResult.error) throw itemsResult.error;
 
       return { success: true };
     } catch (error) {

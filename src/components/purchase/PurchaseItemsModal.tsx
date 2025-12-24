@@ -639,15 +639,35 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                                   throw new Error('품목 ID가 없습니다.');
                                 }
 
+                                const currentTime = new Date().toISOString();
+
                                 const { error, data } = await supabase
                                   .from('purchase_request_items')
-                                  .update({ is_payment_completed: true })
+                                  .update({ 
+                                    is_payment_completed: true,
+                                    payment_completed_at: currentTime
+                                  })
                                   .eq('id', item.id)
                                   .select();
                                 
                                 if (error) {
                                   logger.error('구매완료 업데이트 실패', error);
                                   throw error;
+                                }
+
+                                // 🔧 모든 품목이 구매완료되었는지 확인하여 헤더도 업데이트
+                                const updatedItems = items.map((i: any) => 
+                                  i.id === item.id ? { ...i, is_payment_completed: true } : i
+                                );
+                                const allItemsCompleted = updatedItems.every((i: any) => i.is_payment_completed === true);
+                                if (allItemsCompleted && purchase?.id) {
+                                  await supabase
+                                    .from('purchase_requests')
+                                    .update({ 
+                                      is_payment_completed: true,
+                                      payment_completed_at: currentTime
+                                    })
+                                    .eq('id', purchase.id);
                                 }
 
                                 toast.success('구매완료 처리되었습니다.');

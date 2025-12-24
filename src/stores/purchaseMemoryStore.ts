@@ -174,8 +174,14 @@ export const updatePurchaseInMemory = (purchaseId: number | string, updater: (pu
   const currentPurchase = purchaseMemoryCache.allPurchases[index]
   const updatedPurchase = updater({ ...currentPurchase })
   
-  // 메모리 캐시 업데이트
-  purchaseMemoryCache.allPurchases[index] = updatedPurchase
+  // 🚀 배열 참조를 새로 생성하여 React가 변경을 확실히 감지하도록 함
+  // 기존: purchaseMemoryCache.allPurchases[index] = updatedPurchase (배열 참조 유지)
+  // 개선: 새 배열 생성으로 불변성 보장
+  purchaseMemoryCache.allPurchases = [
+    ...purchaseMemoryCache.allPurchases.slice(0, index),
+    updatedPurchase,
+    ...purchaseMemoryCache.allPurchases.slice(index + 1)
+  ]
   
   // 🚀 React 감지를 위한 lastFetch 업데이트 (UI 즉시 반영)
   purchaseMemoryCache.lastFetch = Date.now()
