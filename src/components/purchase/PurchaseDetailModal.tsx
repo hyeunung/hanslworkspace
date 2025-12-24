@@ -1536,6 +1536,12 @@ function PurchaseDetailModal({
   }
 
 
+  // 🚀 안전한 숫자 변환 함수 (NaN 방지)
+  const safeNumber = (value: any, defaultValue: number = 0): number => {
+    const num = Number(value);
+    return Number.isNaN(num) ? defaultValue : num;
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ko-KR').format(amount)
   }
@@ -1559,6 +1565,7 @@ function PurchaseDetailModal({
     
     try {
       const supabase = createClient()
+      console.log('🔍 [handleSave] 저장 시작 - Step 1: supabase 클라이언트 생성 완료')
       
       // 발주 기본 정보 업데이트
       const totalAmount = editedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
@@ -1607,8 +1614,10 @@ function PurchaseDetailModal({
 
       if (updateError) {
         logger.error('Purchase update error:', updateError)
+        console.error('🚨 [handleSave] Step 2 실패 - purchase_requests 업데이트 에러:', updateError)
         throw updateError
       }
+      console.log('✅ [handleSave] Step 2 완료 - purchase_requests 업데이트 성공')
 
       // 업체 담당자 정보 업데이트 및 contact_id 저장
       let finalContactId = null
@@ -1711,14 +1720,19 @@ function PurchaseDetailModal({
       }
 
       // 삭제된 항목들 처리
+      console.log('🔍 [handleSave] Step 3 - 삭제된 항목 처리 시작:', { deletedItemIds })
       if (deletedItemIds.length > 0) {
         const { error: deleteError } = await supabase
           .from('purchase_request_items')
           .delete()
           .in('id', deletedItemIds)
 
-        if (deleteError) throw deleteError
+        if (deleteError) {
+          console.error('🚨 [handleSave] Step 3 실패 - 품목 삭제 에러:', deleteError)
+          throw deleteError
+        }
       }
+      console.log('✅ [handleSave] Step 3 완료 - 삭제된 항목 처리 성공')
 
       // 모든 품목이 삭제된 경우 발주기본정보도 삭제
       if (editedItems.length === 0) {
@@ -1768,15 +1782,31 @@ function PurchaseDetailModal({
       }
 
       // 각 아이템 업데이트 또는 생성
+      console.log('🔍 [handleSave] Step 4 - 아이템 업데이트/생성 시작:', { itemCount: editedItems.length })
       
       for (const item of editedItems) {
+        // 🔍 저장할 아이템 데이터 디버깅 로그
+        logger.info('🔍 [handleSave] 저장할 아이템:', { 
+          id: item.id,
+          item_name: item.item_name,
+          quantity: item.quantity,
+          unit_price_value: item.unit_price_value,
+          amount_value: item.amount_value,
+          typeOfQuantity: typeof item.quantity,
+          typeOfUnitPrice: typeof item.unit_price_value
+        });
         
         // 필수 필드 검증
         if (!item.item_name || !item.item_name.trim()) {
           throw new Error('품목명은 필수입니다.');
         }
+        // 🔧 수량이 없거나 0이하면 1로 자동 설정 (에러 대신 자동 수정)
         if (!item.quantity || item.quantity <= 0) {
-          throw new Error('수량은 0보다 커야 합니다.');
+          logger.warn('🔧 [handleSave] 수량이 0이하여서 1로 자동 설정:', { 
+            item_name: item.item_name, 
+            original_quantity: item.quantity 
+          });
+          item.quantity = 1;
         }
         if (item.unit_price_value !== null && item.unit_price_value !== undefined && item.unit_price_value < 0) {
           throw new Error('단가는 0 이상이어야 합니다.');
@@ -1785,39 +1815,51 @@ function PurchaseDetailModal({
           throw new Error('합계는 0 이상이어야 합니다.');
         }
         
-        if (item.id) {
+        // item.id가 있고 숫자로 변환 가능한 경우에만 기존 항목 업데이트
+        const numericItemId = item.id ? Number(item.id) : null;
+        const isExistingItem = numericItemId && !Number.isNaN(numericItemId) && numericItemId > 0;
+        
+        if (isExistingItem) {
           // 기존 항목 업데이트
+          console.log('🔍 [handleSave] 기존 항목 업데이트 시도:', { 
+            itemId: numericItemId, 
+            originalId: item.id, 
+            idType: typeof item.id 
+          });
+          
           const { error } = await supabase
             .from('purchase_request_items')
             .update({
               item_name: item.item_name.trim(),
               specification: item.specification || null,
-              quantity: Number(item.quantity),
-              received_quantity: item.received_quantity !== null && item.received_quantity !== undefined ? Number(item.received_quantity) : null,
-              unit_price_value: Number(item.unit_price_value),
+              quantity: safeNumber(item.quantity, 1),
+              received_quantity: item.received_quantity != null ? safeNumber(item.received_quantity) : null,
+              unit_price_value: safeNumber(item.unit_price_value),
               unit_price_currency: purchase.currency || 'KRW',
-              amount_value: Number(item.amount_value),
+              amount_value: safeNumber(item.amount_value),
               amount_currency: purchase.currency || 'KRW',
               remark: item.remark || null,
               updated_at: new Date().toISOString()
             })
-            .eq('id', item.id)
+            .eq('id', numericItemId)
 
           if (error) {
             logger.error('기존 항목 업데이트 오류', error);
+            console.error('🚨 [handleSave] Step 4 실패 - 기존 항목 업데이트 에러:', { itemId: numericItemId, item_name: item.item_name, error });
             throw error;
           }
+          console.log('✅ [handleSave] 아이템 업데이트 성공:', { itemId: numericItemId, item_name: item.item_name });
         } else {
           // 새 항목 생성
           const insertData = {
             purchase_request_id: purchase.id,
             item_name: item.item_name.trim(),
             specification: item.specification || null,
-            quantity: Number(item.quantity),
-            received_quantity: item.received_quantity !== null && item.received_quantity !== undefined ? Number(item.received_quantity) : null,
-            unit_price_value: Number(item.unit_price_value),
+            quantity: safeNumber(item.quantity, 1),
+            received_quantity: item.received_quantity != null ? safeNumber(item.received_quantity) : null,
+            unit_price_value: safeNumber(item.unit_price_value),
             unit_price_currency: purchase.currency || 'KRW',
-            amount_value: Number(item.amount_value),
+            amount_value: safeNumber(item.amount_value),
             amount_currency: purchase.currency || 'KRW',
             remark: item.remark || null,
             line_number: item.line_number || editedItems.indexOf(item) + 1,
@@ -1833,6 +1875,7 @@ function PurchaseDetailModal({
 
           if (error) {
             logger.error('새 항목 생성 오류', error);
+            console.error('🚨 [handleSave] Step 4 실패 - 새 항목 생성 에러:', { item_name: item.item_name, error });
             throw error;
           }
           
@@ -1846,6 +1889,7 @@ function PurchaseDetailModal({
           }
         }
       }
+      console.log('✅ [handleSave] Step 4 완료 - 모든 아이템 업데이트/생성 성공')
 
       // 🚀 전체완료 함수와 정확히 동일한 패턴 적용 (메모리 캐시 포함)
       const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
@@ -1950,7 +1994,9 @@ function PurchaseDetailModal({
       }
       
       // 4. 즉시 UI 업데이트 실행 (전체완료 함수 패턴)
+      console.log('🔍 [handleSave] Step 5 - UI 업데이트 시작')
       applyOptimisticUpdate()
+      console.log('✅ [handleSave] Step 5 완료 - 저장 성공!')
 
       toast.success('발주 내역이 성공적으로 저장되었습니다.')
       handleEditToggle(false)
@@ -1966,8 +2012,9 @@ function PurchaseDetailModal({
       }
     } catch (error) {
       logger.error('저장 중 전체 오류', error);
+      console.error('🚨 [handleSave] 저장 실패:', error); // 디버깅용
       const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다'
-      toast.error(`저장 실패: ${errorMessage}`)
+      toast.error(`저장 실패: ${errorMessage}`, { duration: 5000 }) // 5초 유지
     } finally {
       // 🚀 저장 로딩 상태 종료
       setIsSaving(false)
