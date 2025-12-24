@@ -1385,7 +1385,7 @@ export default function StatementConfirmModal({
                             <div className="relative">
                               <button
                                 onClick={() => toggleDropdown('global-po')}
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700"
+                                className="inline-flex items-center gap-1 px-1.5 h-5 text-[10px] font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700"
                               >
                                 {selectedPONumber || '발주번호 선택'}
                                 <ChevronDown className="w-3 h-3" />
@@ -1444,9 +1444,8 @@ export default function StatementConfirmModal({
                         </div>
                       </th>
                       
-                      {/* 중앙: 매칭 상태 */}
-                      <th className="border-r-2 border-gray-300 p-2 text-center bg-blue-50 w-[10%]">
-                        <span className="modal-section-title text-blue-700">매칭</span>
+                      {/* 중앙: 매칭 상태 (빈 셀) */}
+                      <th className="border-r-2 border-gray-300 p-2 text-center bg-blue-50/30 w-[10%]">
                       </th>
                       
                       {/* 우측: OCR 추출 품목 헤더 */}
@@ -1472,7 +1471,9 @@ export default function StatementConfirmModal({
                       <th className="border-r-2 border-gray-300 p-1 text-right modal-label">합계</th>
                       
                       {/* 중앙 */}
-                      <th className="border-r-2 border-gray-300 p-1 text-center bg-blue-50"></th>
+                      <th className="border-r-2 border-gray-300 p-1 text-center bg-blue-50/30">
+                        <span className="text-gray-400 text-sm">⇄</span>
+                      </th>
                       
                       {/* 우측 컬럼 */}
                       <th className="p-1 text-left whitespace-nowrap modal-label">품목명</th>
@@ -1504,7 +1505,7 @@ export default function StatementConfirmModal({
                               <div className="relative">
                                 <button
                                   onClick={() => toggleDropdown(`po-${ocrItem.id}`)}
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] font-medium bg-white border border-gray-300 business-radius hover:bg-gray-50 text-gray-700 whitespace-nowrap"
+                                  className="inline-flex items-center gap-1 px-1.5 h-5 text-[10px] font-medium bg-white border border-gray-300 business-radius hover:bg-gray-50 text-gray-700 whitespace-nowrap"
                                   style={{ fontSize: '11px' }}
                                 >
                                   <span>{itemPO || '선택'}</span>
@@ -1596,7 +1597,7 @@ export default function StatementConfirmModal({
                           </td>
                           
                           {/* 중앙: 매칭 상태 (클릭하여 상세 보기) */}
-                          <td className="border-r-2 border-gray-300 p-1 text-center bg-blue-50/50">
+                          <td className="border-r-2 border-gray-300 p-1 text-center bg-blue-50/30">
                             {renderMatchStatusBadge(matchStatus, ocrItem)}
                           </td>
                           
@@ -1648,7 +1649,7 @@ export default function StatementConfirmModal({
                               type="number"
                               value={getOCRItemValue(ocrItem, 'amount') as number}
                               onChange={(e) => handleEditOCRItem(ocrItem.id, 'amount', e.target.value ? Number(e.target.value) : 0)}
-                              className={`w-24 px-1 py-px !text-[11px] !font-bold text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                              className={`w-20 px-1 h-5 !text-[10px] !font-bold text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                 isOCRItemEdited(ocrItem, 'amount') 
                                   ? 'border-orange-400 bg-orange-50' 
                                   : 'border-gray-200 bg-white'
@@ -1665,7 +1666,7 @@ export default function StatementConfirmModal({
                                 type="text"
                                 value={getOCRItemValue(ocrItem, 'po_number') as string}
                                 onChange={(e) => handleEditOCRItem(ocrItem.id, 'po_number', e.target.value)}
-                                className={`w-full px-1 py-px !text-[11px] !font-medium text-gray-900 border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                                className={`w-full px-1 h-5 !text-[10px] !font-medium text-gray-900 border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                   isOCRItemEdited(ocrItem, 'po_number') 
                                     ? 'border-orange-400 bg-orange-50' 
                                     : 'border-gray-200 bg-white'
