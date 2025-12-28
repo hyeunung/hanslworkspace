@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Purchase } from '@/types/purchase';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { addCacheListener, updatePurchaseInMemory, notifyCacheListeners } from '@/stores/purchaseMemoryStore';
+import { addCacheListener, updatePurchaseInMemory, notifyCacheListeners, findPurchaseInMemory } from '@/stores/purchaseMemoryStore';
 
 // 상세 모달 lazy load
 const PurchaseDetailModal = lazy(() => import('./PurchaseDetailModal'));
@@ -52,6 +52,12 @@ export default function DeliveryDateWarningModal({
   // 상세 모달 상태
   const [detailModalPurchaseId, setDetailModalPurchaseId] = useState<number | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  
+  // detailModalPurchaseId를 ref로도 저장 (onRefresh 콜백에서 사용)
+  const detailModalPurchaseIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    detailModalPurchaseIdRef.current = detailModalPurchaseId;
+  }, [detailModalPurchaseId]);
   
   // onClose를 ref로 감싸서 useEffect 의존성 문제 해결
   const onCloseRef = useRef(onClose);
@@ -106,7 +112,8 @@ export default function DeliveryDateWarningModal({
   }, [purchases, currentUserName]);
 
   // 모달이 열릴 때 경고 항목 고정 (이후 메모리 캐시 업데이트로 재계산되지 않음)
-  const warningItems = fixedWarningItems;
+  // 단, 입고완료 처리로 항목이 제거되면 실시간으로 업데이트
+  const [warningItems, setWarningItems] = useState<WarningItem[]>([]);
 
   // 모달 열릴 때 상태 초기화 및 경고 항목 고정 (한 번만)
   useEffect(() => {
@@ -117,6 +124,7 @@ export default function DeliveryDateWarningModal({
       // 모달 열릴 때 경고 항목 고정 (이후 재계산 방지)
       const items = calculateWarningItems();
       setFixedWarningItems(items);
+      setWarningItems(items);
       hasFixedItemsRef.current = true;
     }
     
@@ -125,6 +133,71 @@ export default function DeliveryDateWarningModal({
       hasFixedItemsRef.current = false;
     }
   }, [isOpen, calculateWarningItems]);
+  
+  // 입고완료 처리 후 경고 항목 실시간 업데이트
+  useEffect(() => {
+    if (!isOpen || fixedWarningItems.length === 0) return;
+    
+    // 입고완료된 항목 제거 (메모리 캐시 우선 확인, 없으면 purchases prop 확인)
+    const remainingItems = fixedWarningItems.filter(fixedItem => {
+      // 1. 메모리 캐시에서 먼저 확인 (가장 최신 데이터)
+      const memoryPurchase = findPurchaseInMemory(fixedItem.purchase.id);
+      if (memoryPurchase) {
+        if (memoryPurchase.is_received || memoryPurchase.delivery_status === 'completed') {
+          return false;
+        }
+        return true;
+      }
+      
+      // 2. 메모리 캐시에 없으면 purchases prop에서 확인
+      const currentPurchase = purchases.find(p => p.id === fixedItem.purchase.id);
+      if (!currentPurchase) {
+        // 데이터가 없으면 원본 데이터로 체크
+        return !(fixedItem.purchase.is_received || fixedItem.purchase.delivery_status === 'completed');
+      }
+      
+      // 입고완료되었으면 제외
+      if (currentPurchase.is_received || currentPurchase.delivery_status === 'completed') {
+        return false;
+      }
+      
+      return true;
+    });
+    
+    // 경고 항목 업데이트
+    if (remainingItems.length !== warningItems.length) {
+      setWarningItems(remainingItems);
+    }
+    
+    // 모든 항목이 입고완료되었으면 모달 자동 닫기
+    if (remainingItems.length === 0 && fixedWarningItems.length > 0 && !hasClosedRef.current) {
+      hasClosedRef.current = true;
+      setTimeout(() => {
+        onCloseRef.current();
+      }, 300);
+    }
+  }, [purchases, isOpen, fixedWarningItems, warningItems.length]);
+  
+  // warningItems가 변경될 때 모든 항목 완료 확인
+  useEffect(() => {
+    if (!isOpen) return;
+    
+    // 모든 항목이 완료되었는지 확인 (입고완료 또는 수정요청 완료)
+    const allCompleted = warningItems.length === 0 || 
+      warningItems.every(item => 
+        completedIds.has(item.purchase.id) ||
+        item.purchase.is_received ||
+        item.purchase.delivery_status === 'completed'
+      );
+    
+    if (allCompleted && warningItems.length > 0 && !hasClosedRef.current) {
+      logger.info('🔍 [입고지연알림] 모든 항목 완료, 모달 자동 닫기');
+      hasClosedRef.current = true;
+      setTimeout(() => {
+        onCloseRef.current();
+      }, 300);
+    }
+  }, [warningItems, completedIds, isOpen]);
 
   // 모든 항목 완료 여부
   const allCompleted = useMemo(() => {
@@ -272,11 +345,49 @@ export default function DeliveryDateWarningModal({
     setIsDetailModalOpen(true);
   }, []);
 
-  // 상세 모달 닫기
+  // 상세 모달 닫기 - 입고완료 처리 확인 및 경고 항목 업데이트
   const handleDetailModalClose = useCallback(() => {
+    const purchaseIdToCheck = detailModalPurchaseId;
+    
     setIsDetailModalOpen(false);
     setDetailModalPurchaseId(null);
-  }, []);
+    
+    if (purchaseIdToCheck) {
+      // 1. 메모리 캐시에서 즉시 확인 (지연 없음)
+      const memoryPurchase = findPurchaseInMemory(purchaseIdToCheck);
+      
+      if (memoryPurchase) {
+        const isReceived = memoryPurchase.is_received || memoryPurchase.delivery_status === 'completed';
+        
+        if (isReceived) {
+          // 즉시 경고 항목에서 제거
+          setWarningItems(prev => {
+            const filtered = prev.filter(item => item.purchase.id !== purchaseIdToCheck);
+            return filtered;
+          });
+          
+          setFixedWarningItems(prev => prev.filter(item => item.purchase.id !== purchaseIdToCheck));
+          setCompletedIds(prev => new Set(prev).add(purchaseIdToCheck));
+        }
+      } else {
+        // 메모리 캐시에 없으면 purchases prop에서 확인 (fallback)
+        const currentPurchase = purchases.find(p => p.id === purchaseIdToCheck);
+        
+        if (currentPurchase) {
+          const isReceived = currentPurchase.is_received || currentPurchase.delivery_status === 'completed';
+          
+          if (isReceived) {
+            setWarningItems(prev => prev.filter(item => item.purchase.id !== purchaseIdToCheck));
+            setFixedWarningItems(prev => prev.filter(item => item.purchase.id !== purchaseIdToCheck));
+            setCompletedIds(prev => new Set(prev).add(purchaseIdToCheck));
+          }
+        }
+      }
+      
+      // 2. 백그라운드에서 onRefresh 호출 (prop 업데이트용)
+      onRefresh?.(false, { silent: true });
+    }
+  }, [detailModalPurchaseId, purchases, onRefresh]);
 
   if (warningItems.length === 0) return null;
 
@@ -449,7 +560,35 @@ export default function DeliveryDateWarningModal({
             isOpen={isDetailModalOpen}
             onClose={handleDetailModalClose}
             activeTab="receipt"
-            onRefresh={onRefresh}
+            onRefresh={async (silent, options) => {
+              // 상세 모달에서 입고완료 처리 시 부모에게 새로고침 요청
+              if (onRefresh) {
+                const result = onRefresh(silent, options);
+                if (result instanceof Promise) {
+                  await result;
+                }
+              }
+              
+              // 입고완료 처리 후 메모리 캐시에서 즉시 확인하여 경고 항목 제거
+              const currentPurchaseId = detailModalPurchaseIdRef.current;
+              if (currentPurchaseId) {
+                // 약간의 지연 후 메모리 캐시 확인 (입고완료 처리 완료 대기)
+                setTimeout(() => {
+                  const memoryPurchase = findPurchaseInMemory(currentPurchaseId);
+                  
+                  if (memoryPurchase) {
+                    const isReceived = memoryPurchase.is_received || memoryPurchase.delivery_status === 'completed';
+                    
+                    if (isReceived) {
+                      // 즉시 경고 항목에서 제거
+                      setWarningItems(prev => prev.filter(item => item.purchase.id !== currentPurchaseId));
+                      setFixedWarningItems(prev => prev.filter(item => item.purchase.id !== currentPurchaseId));
+                      setCompletedIds(prev => new Set(prev).add(currentPurchaseId));
+                    }
+                  }
+                }, 100); // 100ms 지연으로 입고완료 처리 완료 대기
+              }
+            }}
           />
         </Suspense>
       )}
@@ -464,12 +603,41 @@ export function useDeliveryWarningCount(purchases: Purchase[], currentUserName?:
     today.setHours(0, 0, 0, 0);
 
     let count = 0;
+    const debugItems: any[] = [];
 
     purchases.forEach(purchase => {
-      if (purchase.is_received || purchase.delivery_status === 'completed') return;
-      if (purchase.middle_manager_status !== 'approved' || purchase.final_manager_status !== 'approved') return;
-      if (currentUserName && purchase.requester_name !== currentUserName) return;
-      if (purchase.delivery_revision_requested === true) return;
+      // F20251226_003 항목 디버깅
+      const isTarget = purchase.purchase_order_number === 'F20251226_003';
+      
+      if (purchase.is_received || purchase.delivery_status === 'completed') {
+        if (isTarget) debugItems.push({ step: '입고완료로 제외', purchase: purchase.purchase_order_number });
+        return;
+      }
+      if (purchase.middle_manager_status !== 'approved' || purchase.final_manager_status !== 'approved') {
+        if (isTarget) debugItems.push({ 
+          step: '승인 미완료로 제외', 
+          purchase: purchase.purchase_order_number,
+          middle: purchase.middle_manager_status,
+          final: purchase.final_manager_status
+        });
+        return;
+      }
+      if (currentUserName && purchase.requester_name !== currentUserName) {
+        if (isTarget) debugItems.push({ 
+          step: '본인 발주 아님으로 제외', 
+          purchase: purchase.purchase_order_number,
+          requester_name: purchase.requester_name,
+          currentUserName
+        });
+        return;
+      }
+      if (purchase.delivery_revision_requested === true) {
+        if (isTarget) debugItems.push({ 
+          step: '수정요청 완료로 제외', 
+          purchase: purchase.purchase_order_number 
+        });
+        return;
+      }
 
       const deliveryDate = purchase.delivery_request_date ? new Date(purchase.delivery_request_date) : null;
       const revisedDate = purchase.revised_delivery_request_date ? new Date(purchase.revised_delivery_request_date) : null;
@@ -479,13 +647,41 @@ export function useDeliveryWarningCount(purchases: Purchase[], currentUserName?:
 
       if (revisedDate && revisedDate < today) {
         count++;
+        if (isTarget) debugItems.push({ 
+          step: '변경요청일 지연으로 포함', 
+          purchase: purchase.purchase_order_number,
+          revisedDate: revisedDate.toISOString(),
+          today: today.toISOString()
+        });
         return;
       }
 
       if (deliveryDate && deliveryDate < today && !revisedDate) {
         count++;
+        if (isTarget) debugItems.push({ 
+          step: '입고요청일 지연으로 포함', 
+          purchase: purchase.purchase_order_number,
+          deliveryDate: deliveryDate.toISOString(),
+          today: today.toISOString()
+        });
+        return;
+      }
+      
+      if (isTarget) {
+        debugItems.push({ 
+          step: '날짜 조건 불만족', 
+          purchase: purchase.purchase_order_number,
+          deliveryDate: deliveryDate?.toISOString() || null,
+          revisedDate: revisedDate?.toISOString() || null,
+          today: today.toISOString()
+        });
       }
     });
+
+    // 디버깅 로그 출력
+    if (debugItems.length > 0) {
+      console.log('🔍 [useDeliveryWarningCount] F20251226_003 디버깅:', debugItems);
+    }
 
     return count;
   }, [purchases, currentUserName]);

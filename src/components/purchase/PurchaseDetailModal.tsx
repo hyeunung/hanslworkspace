@@ -3484,27 +3484,104 @@ function PurchaseDetailModal({
               ) : (
                 <>
                   {activeTab === 'purchase' && (
-                  <div className="flex justify-center">
-                    {canPurchase ? (
-                      <button
-                        onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
-                        className={`${
-                          item.is_payment_completed
-                            ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
-                            : 'button-toggle-inactive'
-                        }`}
-                      >
-                        {item.is_payment_completed ? '구매완료' : '구매대기'}
-                      </button>
-                    ) : (
-                      <span className={`${
-                        item.is_payment_completed 
-                          ? 'button-toggle-active bg-orange-500 text-white' 
-                          : 'button-waiting-inactive'
-                      }`}>
-                        {item.is_payment_completed ? '구매완료' : '구매대기'}
-                      </span>
-                    )}
+                  <div className="flex flex-col items-center gap-1">
+                    {/* 구매완료 버튼 */}
+                    <div className="flex justify-center">
+                      {canPurchase ? (
+                        <button
+                          onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
+                          className={`${
+                            item.is_payment_completed
+                              ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
+                              : 'button-toggle-inactive'
+                          }`}
+                        >
+                          {item.is_payment_completed ? '구매완료' : '구매대기'}
+                        </button>
+                      ) : (
+                        <span className={`${
+                          item.is_payment_completed 
+                            ? 'button-toggle-active bg-orange-500 text-white' 
+                            : 'button-waiting-inactive'
+                        }`}>
+                          {item.is_payment_completed ? '구매완료' : '구매대기'}
+                        </span>
+                      )}
+                    </div>
+                    {/* 입고완료 버튼 - 입고현황탭과 동일한 취소 기능 제공 */}
+                    <div className="flex justify-center">
+                      {canReceiveItems ? (
+                        actualReceivedAction.isCompleted(item) ? (
+                          // 입고완료 상태 - 취소 가능
+                          <button
+                            onClick={() => {
+                              actualReceivedAction.handleCancel(item.id, {
+                                item_name: item.item_name,
+                                specification: item.specification,
+                                quantity: item.quantity,
+                                unit_price_value: item.unit_price_value,
+                                amount_value: item.amount_value,
+                                remark: item.remark
+                              })
+                            }}
+                            className="text-xs px-2 py-1 rounded button-action-primary"
+                          >
+                            {actualReceivedAction.config.completedText}
+                          </button>
+                        ) : actualReceivedAction.isPartiallyReceived(item) ? (
+                          // 부분입고 상태 - 추가 입고 가능
+                          <DateQuantityPickerPopover
+                            onConfirm={(date, quantity) => {
+                              handleItemReceiptToggle(item.id, date, quantity)
+                            }}
+                            placeholder="추가 입고수량을 입력하세요"
+                            align="center"
+                            side="bottom"
+                            maxQuantity={actualReceivedAction.getRemainingQuantity(item)}
+                            quantityInfoText={`미입고: ${actualReceivedAction.getRemainingQuantity(item)}개`}
+                          >
+                            <button className="text-xs px-2 py-1 rounded bg-blue-300 hover:bg-blue-400 text-white">
+                              부분입고
+                            </button>
+                          </DateQuantityPickerPopover>
+                        ) : (
+                          // 입고대기 상태
+                          <DatePickerPopover
+                            onDateSelect={(date) => {
+                              actualReceivedAction.handleConfirm(item.id, date, {
+                                item_name: item.item_name,
+                                specification: item.specification,
+                                quantity: item.quantity,
+                                unit_price_value: item.unit_price_value,
+                                amount_value: item.amount_value,
+                                remark: item.remark
+                              })
+                            }}
+                            placeholder="실제 입고된 날짜를 선택하세요"
+                            align="center"
+                            side="bottom"
+                          >
+                            <button className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600">
+                              {actualReceivedAction.config.waitingText}
+                            </button>
+                          </DatePickerPopover>
+                        )
+                      ) : (
+                        <span className={`text-xs px-2 py-1 rounded ${
+                          actualReceivedAction.isCompleted(item)
+                            ? 'button-action-primary' 
+                            : actualReceivedAction.isPartiallyReceived(item)
+                            ? 'button-base bg-blue-300 text-white'
+                            : 'button-waiting-inactive'
+                        }`}>
+                          {actualReceivedAction.isCompleted(item) 
+                            ? actualReceivedAction.config.completedText 
+                            : actualReceivedAction.isPartiallyReceived(item)
+                            ? '부분입고'
+                            : actualReceivedAction.config.waitingText}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
                 
@@ -3581,19 +3658,77 @@ function PurchaseDetailModal({
                 
                 {activeTab === 'done' && (
                   <div className="flex justify-center">
-                    <span className={`button-base ${
-                      actualReceivedAction.isCompleted(item)
-                        ? 'bg-blue-500 hover:bg-blue-600 text-white' 
-                        : actualReceivedAction.isPartiallyReceived(item)
-                        ? 'bg-blue-300 text-white'
-                        : 'border border-gray-300 text-gray-600 bg-white hover:bg-gray-50'
-                    }`}>
-                      {actualReceivedAction.isCompleted(item) 
-                        ? '입고완료' 
-                        : actualReceivedAction.isPartiallyReceived(item)
-                        ? '부분입고'
-                        : '입고대기'}
-                    </span>
+                    {canReceiveItems ? (
+                      actualReceivedAction.isCompleted(item) ? (
+                        // 입고완료 상태 - 취소 가능
+                        <button
+                          onClick={() => {
+                            actualReceivedAction.handleCancel(item.id, {
+                              item_name: item.item_name,
+                              specification: item.specification,
+                              quantity: item.quantity,
+                              unit_price_value: item.unit_price_value,
+                              amount_value: item.amount_value,
+                              remark: item.remark
+                            })
+                          }}
+                          className="button-base bg-blue-500 hover:bg-blue-600 text-white"
+                        >
+                          {actualReceivedAction.config.completedText}
+                        </button>
+                      ) : actualReceivedAction.isPartiallyReceived(item) ? (
+                        // 부분입고 상태 - 추가 입고 가능
+                        <DateQuantityPickerPopover
+                          onConfirm={(date, quantity) => {
+                            handleItemReceiptToggle(item.id, date, quantity)
+                          }}
+                          placeholder="추가 입고수량을 입력하세요"
+                          align="center"
+                          side="bottom"
+                          maxQuantity={actualReceivedAction.getRemainingQuantity(item)}
+                          quantityInfoText={`미입고: ${actualReceivedAction.getRemainingQuantity(item)}개`}
+                        >
+                          <button className="button-base bg-blue-300 hover:bg-blue-400 text-white">
+                            부분입고
+                          </button>
+                        </DateQuantityPickerPopover>
+                      ) : (
+                        // 입고대기 상태
+                        <DatePickerPopover
+                          onDateSelect={(date) => {
+                            actualReceivedAction.handleConfirm(item.id, date, {
+                              item_name: item.item_name,
+                              specification: item.specification,
+                              quantity: item.quantity,
+                              unit_price_value: item.unit_price_value,
+                              amount_value: item.amount_value,
+                              remark: item.remark
+                            })
+                          }}
+                          placeholder="실제 입고된 날짜를 선택하세요"
+                          align="center"
+                          side="bottom"
+                        >
+                          <button className="button-base border border-gray-300 text-gray-600 bg-white hover:bg-gray-50">
+                            {actualReceivedAction.config.waitingText}
+                          </button>
+                        </DatePickerPopover>
+                      )
+                    ) : (
+                      <span className={`button-base ${
+                        actualReceivedAction.isCompleted(item)
+                          ? 'bg-blue-500 hover:bg-blue-600 text-white' 
+                          : actualReceivedAction.isPartiallyReceived(item)
+                          ? 'bg-blue-300 text-white'
+                          : 'border border-gray-300 text-gray-600 bg-white hover:bg-gray-50'
+                      }`}>
+                        {actualReceivedAction.isCompleted(item) 
+                          ? '입고완료' 
+                          : actualReceivedAction.isPartiallyReceived(item)
+                          ? '부분입고'
+                          : '입고대기'}
+                      </span>
+                    )}
                   </div>
                 )}
                 

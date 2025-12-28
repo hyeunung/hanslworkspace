@@ -13,6 +13,8 @@ const SupportMain = lazy(() => import('@/components/support/SupportMain'))
 const ReceiptsMain = lazy(() => import('@/components/receipts/ReceiptsMain'))
 const BomCoordinateMain = lazy(() => import('@/components/bom-coordinate/BomCoordinateIntegrated'))
 const TransactionStatementMain = lazy(() => import('@/components/transaction-statement/TransactionStatementMain'))
+const AuthConfirm = lazy(() => import('@/components/auth/AuthConfirm'))
+const ResetPassword = lazy(() => import('@/components/auth/ResetPassword'))
 
 /**
  * 애플리케이션 라우팅 컴포넌트
@@ -53,6 +55,10 @@ export default function AppRoutes() {
           <Route path="/support" element={<SupportMain />} />
           <Route path="/bom-coordinate" element={<BomCoordinateMain />} />
           <Route path="/transaction-statement" element={<TransactionStatementMain />} />
+          
+          {/* 인증 관련 라우트 */}
+          <Route path="/auth/confirm" element={<AuthConfirm />} />
+          <Route path="/auth/reset-password" element={<ResetPassword />} />
           
           {/* 알 수 없는 경로는 대시보드로 리다이렉트 */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

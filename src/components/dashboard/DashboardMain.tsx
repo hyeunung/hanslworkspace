@@ -22,6 +22,7 @@ import { downloadPurchaseOrderExcel } from '@/utils/excelDownload'
 
 // 모든 카드에서 사용하는 모달 (activeTab에 따라 다른 내용 표시)
 import PurchaseDetailModal from '@/components/purchase/PurchaseDetailModal'
+import DeliveryDateWarningModal, { useDeliveryWarningCount } from '@/components/purchase/DeliveryDateWarningModal'
 
 import { toast } from 'sonner'
 import type { DashboardData, Purchase } from '@/types/purchase'
@@ -32,7 +33,7 @@ import { format } from 'date-fns'
 
 export default function DashboardMain() {
   const navigate = useNavigate()
-  const { employee, currentUserRoles: userRoles } = useAuth()
+  const { employee, currentUserRoles: userRoles, currentUserName } = useAuth()
   
   // 🚀 메모리 캐시 기반 즉시 렌더링: 캐시가 유효하면 로딩 없이 바로 표시
   const hasValidCache = Boolean(
@@ -64,6 +65,10 @@ export default function DashboardMain() {
   // 삭제 확인 다이얼로그 상태
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [purchaseToDelete, setPurchaseToDelete] = useState<any>(null)
+  
+  // 입고일정지연알림 모달 상태
+  const [isWarningModalOpen, setIsWarningModalOpen] = useState(false)
+  const hasShownWarningRef = useRef(false)
   
   // 검색 상태
   const [searchTerms, setSearchTerms] = useState({
@@ -436,6 +441,33 @@ export default function DashboardMain() {
   const filteredPending = useMemo(() => filterItems(data?.pendingApprovals || [], searchTerms.pending), [data?.pendingApprovals, searchTerms.pending, filterItems])
   const filteredPurchase = useMemo(() => filterItems(data?.myPurchaseStatus?.waitingPurchase || [], searchTerms.purchase), [data?.myPurchaseStatus?.waitingPurchase, searchTerms.purchase, filterItems])
   const filteredDelivery = useMemo(() => filterItems(data?.myPurchaseStatus?.waitingDelivery || [], searchTerms.delivery), [data?.myPurchaseStatus?.waitingDelivery, searchTerms.delivery, filterItems])
+  
+  // 입고일정지연알림: waitingDelivery 데이터를 Purchase 타입으로 변환하여 경고 항목 계산
+  const deliveryPurchases = useMemo(() => {
+    if (!data?.myPurchaseStatus?.waitingDelivery) return []
+    return data.myPurchaseStatus.waitingDelivery.map(item => ({
+      ...item,
+      id: typeof item.id === 'string' ? parseInt(item.id) || 0 : item.id,
+      purchase_request_items: item.purchase_request_items || []
+    })) as unknown as Purchase[]
+  }, [data?.myPurchaseStatus?.waitingDelivery])
+  
+  const deliveryWarningCount = useDeliveryWarningCount(deliveryPurchases, currentUserName)
+  
+  // 로딩 완료 후 경고 모달 자동 표시 (마운트당 1회)
+  useEffect(() => {
+    if (hasShownWarningRef.current) return
+    
+    if (!loading && deliveryWarningCount > 0 && deliveryPurchases.length > 0) {
+      const timer = setTimeout(() => {
+        if (!hasShownWarningRef.current) {
+          hasShownWarningRef.current = true
+          setIsWarningModalOpen(true)
+        }
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [loading, deliveryWarningCount, deliveryPurchases.length])
 
   const handleDownloadExcel = async (purchase: any) => {
     try {
@@ -1069,6 +1101,19 @@ export default function DashboardMain() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      
+      {/* 입고 일정 지연 경고 모달 */}
+      <DeliveryDateWarningModal
+        isOpen={isWarningModalOpen}
+        onClose={() => {
+          setIsWarningModalOpen(false)
+          // 모달 닫고 데이터 새로고침
+          loadDashboardData(false, true)
+        }}
+        purchases={deliveryPurchases}
+        currentUserName={currentUserName}
+        onRefresh={() => loadDashboardData(false, true)}
+      />
     </div>
   )
 }
