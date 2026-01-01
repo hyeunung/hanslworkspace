@@ -16,7 +16,10 @@ import {
   Loader2,
   RefreshCw,
   Image as ImageIcon,
-  SlidersHorizontal
+  SlidersHorizontal,
+  ChevronRight,
+  ExternalLink,
+  X
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -34,6 +37,7 @@ import type {
 import StatementUploadModal from "./StatementUploadModal";
 import StatementConfirmModal from "./StatementConfirmModal";
 import StatementImageViewer from "./StatementImageViewer";
+import PurchaseDetailModal from "@/components/purchase/PurchaseDetailModal";
 
 /**
  * 거래명세서 확인 메인 페이지 컴포넌트
@@ -58,6 +62,17 @@ export default function TransactionStatementMain() {
   
   // OCR 추출 진행 중인 ID들
   const [extractingIds, setExtractingIds] = useState<Set<string>>(new Set());
+  
+  // 발주 상세 모달 상태
+  const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+  const [selectedPurchaseId, setSelectedPurchaseId] = useState<number | null>(null);
+  
+  // 발주 목록 드롭다운 상태
+  const [purchaseDropdown, setPurchaseDropdown] = useState<{
+    isOpen: boolean;
+    statement: TransactionStatement | null;
+    position: { top: number; left: number };
+  }>({ isOpen: false, statement: null, position: { top: 0, left: 0 } });
 
   // 데이터 로드
   const loadStatements = useCallback(async () => {
@@ -174,15 +189,47 @@ export default function TransactionStatementMain() {
   };
 
   // 상세 모달 열기
-  const handleViewStatement = (statement: TransactionStatement) => {
+  const handleViewStatement = (statement: TransactionStatement, event?: React.MouseEvent) => {
     setSelectedStatement(statement);
     
     if (statement.status === 'extracted') {
+      // 확인필요 상태 - 확인 모달 열기
       setIsConfirmModalOpen(true);
+    } else if (statement.status === 'confirmed' && statement.matched_purchases && statement.matched_purchases.length > 0) {
+      // 확정됨 + 발주 매칭됨
+      if (statement.matched_purchases.length === 1) {
+        // 발주가 1개면 바로 상세 모달 열기
+        setSelectedPurchaseId(statement.matched_purchases[0].purchase_id);
+        setIsPurchaseModalOpen(true);
+      } else {
+        // 발주가 여러 개면 드롭다운 표시
+        const rect = (event?.currentTarget as HTMLElement)?.getBoundingClientRect();
+        setPurchaseDropdown({
+          isOpen: true,
+          statement,
+          position: {
+            top: rect ? rect.bottom + window.scrollY : 0,
+            left: rect ? rect.left + window.scrollX : 0
+          }
+        });
+      }
     } else if (statement.status === 'confirmed' || statement.status === 'pending') {
+      // 그 외 - 이미지 뷰어 열기
       setViewerImageUrl(statement.image_url);
       setIsImageViewerOpen(true);
     }
+  };
+  
+  // 발주 선택하여 상세 모달 열기
+  const handleSelectPurchase = (purchaseId: number) => {
+    setPurchaseDropdown({ isOpen: false, statement: null, position: { top: 0, left: 0 } });
+    setSelectedPurchaseId(purchaseId);
+    setIsPurchaseModalOpen(true);
+  };
+  
+  // 드롭다운 외부 클릭 시 닫기
+  const handleClosePurchaseDropdown = () => {
+    setPurchaseDropdown({ isOpen: false, statement: null, position: { top: 0, left: 0 } });
   };
 
   // 이미지 뷰어 열기
@@ -469,7 +516,7 @@ export default function TransactionStatementMain() {
                       <tr
                         key={statement.id}
                         className="hover:bg-gray-50 transition-colors cursor-pointer"
-                        onClick={() => handleViewStatement(statement)}
+                        onClick={(e) => handleViewStatement(statement, e)}
                       >
                         <td className="px-3 py-2.5 text-center">
                           {extractingIds.has(statement.id) 
@@ -524,7 +571,7 @@ export default function TransactionStatementMain() {
                   <div
                     key={statement.id}
                     className="p-3 hover:bg-gray-50 transition-colors cursor-pointer"
-                    onClick={() => handleViewStatement(statement)}
+                    onClick={(e) => handleViewStatement(statement, e)}
                   >
                     <div className="flex items-start justify-between mb-2">
                       {extractingIds.has(statement.id) 
@@ -590,6 +637,74 @@ export default function TransactionStatementMain() {
           setViewerImageUrl("");
         }}
       />
+
+      {/* 발주 목록 드롭다운 */}
+      {purchaseDropdown.isOpen && purchaseDropdown.statement && (
+        <>
+          {/* 오버레이 */}
+          <div 
+            className="fixed inset-0 z-40" 
+            onClick={handleClosePurchaseDropdown}
+          />
+          {/* 드롭다운 */}
+          <div 
+            className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[280px] max-w-[360px]"
+            style={{
+              top: purchaseDropdown.position.top + 4,
+              left: purchaseDropdown.position.left
+            }}
+          >
+            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50 rounded-t-lg">
+              <span className="text-[11px] font-semibold text-gray-700">
+                연결된 발주 ({purchaseDropdown.statement.matched_purchases?.length || 0}건)
+              </span>
+              <button
+                onClick={handleClosePurchaseDropdown}
+                className="p-0.5 hover:bg-gray-200 rounded"
+              >
+                <X className="w-3.5 h-3.5 text-gray-500" />
+              </button>
+            </div>
+            <div className="max-h-[300px] overflow-auto">
+              {purchaseDropdown.statement.matched_purchases?.map((purchase, idx) => (
+                <div
+                  key={purchase.purchase_id}
+                  onClick={() => handleSelectPurchase(purchase.purchase_id)}
+                  className="flex items-center justify-between px-3 py-2.5 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
+                >
+                  <div className="flex-1">
+                    <p className="text-[12px] font-medium text-gray-900">
+                      {purchase.purchase_order_number || purchase.sales_order_number || `발주 #${purchase.purchase_id}`}
+                    </p>
+                    {purchase.sales_order_number && purchase.purchase_order_number && (
+                      <p className="text-[10px] text-gray-500">
+                        수주: {purchase.sales_order_number}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 text-blue-600">
+                    <span className="text-[10px]">상세보기</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 발주 상세 모달 */}
+      {selectedPurchaseId && (
+        <PurchaseDetailModal
+          purchaseId={selectedPurchaseId}
+          isOpen={isPurchaseModalOpen}
+          onClose={() => {
+            setIsPurchaseModalOpen(false);
+            setSelectedPurchaseId(null);
+          }}
+          activeTab="all"
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +15,8 @@ import {
   Loader2,
   ChevronDown,
   Check,
-  Wand2
+  Wand2,
+  ExternalLink
 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -29,6 +31,7 @@ import type {
 } from "@/types/transactionStatement";
 import { normalizeOrderNumber } from "@/types/transactionStatement";
 import StatementImageViewer from "./StatementImageViewer";
+import PurchaseDetailModal from "@/components/purchase/PurchaseDetailModal";
 
 interface StatementConfirmModalProps {
   isOpen: boolean;
@@ -124,6 +127,26 @@ function calculateItemSimilarity(ocrName: string, systemItemName: string, system
   return Math.max(itemNameScore, specScore);
 }
 
+// 수량 일치 여부 확인 (정확히 일치하면 true)
+function isQuantityMatched(ocrQuantity: number | undefined | null, systemQuantity: number | undefined | null): boolean {
+  if (ocrQuantity === undefined || ocrQuantity === null) return false;
+  if (systemQuantity === undefined || systemQuantity === null) return false;
+  return ocrQuantity === systemQuantity;
+}
+
+// 수량 일치율 계산 (부분 입고 고려 - 10% 이내 오차 허용)
+function getQuantityMatchLevel(ocrQuantity: number | undefined | null, systemQuantity: number | undefined | null): 'exact' | 'partial' | 'mismatch' {
+  if (ocrQuantity === undefined || ocrQuantity === null) return 'mismatch';
+  if (systemQuantity === undefined || systemQuantity === null) return 'mismatch';
+  
+  if (ocrQuantity === systemQuantity) return 'exact';
+  
+  // 부분 입고: OCR 수량이 시스템 수량보다 작거나 같으면 partial
+  if (ocrQuantity <= systemQuantity) return 'partial';
+  
+  return 'mismatch';
+}
+
 /**
  * 거래명세서 확인/수정/확정 모달 - 3단 비교 레이아웃
  */
@@ -151,6 +174,13 @@ export default function StatementConfirmModal({
   // 드롭다운 열림 상태
   const [openDropdowns, setOpenDropdowns] = useState<Set<string>>(new Set());
   
+  // 드롭다운 위치 (fixed position용)
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  
+  // 발주 상세 모달 상태
+  const [isPurchaseDetailModalOpen, setIsPurchaseDetailModalOpen] = useState(false);
+  const [selectedPurchaseIdForDetail, setSelectedPurchaseIdForDetail] = useState<number | null>(null);
+  
   // OCR 품목 편집 상태 (학습용)
   // key: itemId, value: 수정된 값들
   interface EditedOCRItem {
@@ -173,6 +203,9 @@ export default function StatementConfirmModal({
     status: 'high' | 'med' | 'low' | 'unmatched';
     reasons: string[];
   } | null>(null);
+  
+  // 통합 매칭 상세 팝업 (발주번호 전체 매칭 내역)
+  const [isIntegratedMatchDetailOpen, setIsIntegratedMatchDetailOpen] = useState(false);
   
   // 세트 매칭 결과 (Case 1용)
   const [setMatchResult, setSetMatchResult] = useState<{
@@ -556,6 +589,9 @@ export default function StatementConfirmModal({
       vendorName?: string;
       setMatchScore?: number; // 세트 매칭 점수
       matchedItemCount?: number;
+      purchaseId?: number; // 발주 상세 모달용
+      quantityMatchedCount?: number; // 수량 일치 품목 수
+      quantityMismatchedCount?: number; // 수량 불일치 품목 수
     }>();
     
     // 1. 세트 매칭 결과가 있으면 먼저 추가 (점수 포함)
@@ -573,7 +609,8 @@ export default function StatementConfirmModal({
             items: [],
             vendorName: candidate.vendor_name,
             setMatchScore: candidate.matchScore,
-            matchedItemCount: candidate.matchedItemCount
+            matchedItemCount: candidate.matchedItemCount,
+            purchaseId: candidate.purchase_id
           });
         }
       });
@@ -592,7 +629,8 @@ export default function StatementConfirmModal({
             salesOrderNumber: candidate.sales_order_number,
             itemCount: 0,
             items: [],
-            vendorName: candidate.vendor_name
+            vendorName: candidate.vendor_name,
+            purchaseId: candidate.purchase_id
           });
         }
         
@@ -606,14 +644,73 @@ export default function StatementConfirmModal({
       });
     });
     
-    // 3. 세트 매칭 점수순으로 정렬 (점수 있는 것 우선)
+    // 2.5. 세트 매칭 점수가 없는 후보들에 대해 개별 품목 유사도 평균 계산 + 수량 일치 여부
+    candidateMap.forEach((candidate, key) => {
+      // 각 OCR 품목과 해당 발주의 품목 간 최대 유사도 계산 + 수량 일치 확인
+      let totalScore = 0;
+      let matchedCount = 0;
+      let quantityMatchedCount = 0;
+      let quantityMismatchedCount = 0;
+      
+      statementWithItems.items.forEach(ocrItem => {
+        // 해당 발주의 품목들 중 가장 유사한 것 찾기
+        let bestScore = 0;
+        let bestMatchItem: MatchCandidate | null = null;
+        
+        candidate.items.forEach(sysItem => {
+          const score = calculateItemSimilarity(
+            ocrItem.extracted_item_name || '', 
+            sysItem.item_name, 
+            sysItem.specification
+          );
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatchItem = sysItem;
+          }
+        });
+        
+        if (bestScore >= 30) {
+          matchedCount++;
+          
+          // 수량 일치 여부 확인
+          if (bestMatchItem) {
+            const ocrQty = ocrItem.extracted_quantity;
+            const sysQty = bestMatchItem.quantity;
+            if (isQuantityMatched(ocrQty, sysQty)) {
+              quantityMatchedCount++;
+            } else {
+              quantityMismatchedCount++;
+            }
+          }
+        }
+        totalScore += bestScore;
+      });
+      
+      // 평균 점수 계산 (수량 일치 보너스 포함)
+      const baseScore = statementWithItems.items.length > 0 
+        ? Math.round(totalScore / statementWithItems.items.length)
+        : 0;
+      
+      // 수량 일치 보너스: 모든 매칭 품목의 수량이 일치하면 +10점
+      const quantityBonus = (matchedCount > 0 && quantityMatchedCount === matchedCount) ? 10 : 0;
+      
+      if (candidate.setMatchScore === undefined) {
+        candidate.setMatchScore = Math.min(100, baseScore + quantityBonus);
+        candidate.matchedItemCount = matchedCount;
+      }
+      
+      candidate.quantityMatchedCount = quantityMatchedCount;
+      candidate.quantityMismatchedCount = quantityMismatchedCount;
+    });
+    
+    // 3. 세트 매칭 점수순으로 정렬
     const result = Array.from(candidateMap.values());
     result.sort((a, b) => {
-      if (a.setMatchScore && b.setMatchScore) {
-        return b.setMatchScore - a.setMatchScore;
+      const scoreA = a.setMatchScore ?? 0;
+      const scoreB = b.setMatchScore ?? 0;
+      if (scoreA !== scoreB) {
+        return scoreB - scoreA;
       }
-      if (a.setMatchScore) return -1;
-      if (b.setMatchScore) return 1;
       return b.itemCount - a.itemCount;
     });
     
@@ -858,11 +955,84 @@ export default function StatementConfirmModal({
   };
 
   // 발주번호 선택 시 (Case 1: 전체 적용)
-  const handleSelectGlobalPO = (poNumber: string) => {
+  const handleSelectGlobalPO = async (poNumber: string) => {
     setSelectedPONumber(poNumber);
     
     // 해당 발주번호의 시스템 품목들 가져오기
-    const systemItems = getSystemItemsForPO(poNumber);
+    // 1. allPONumberCandidates에서 해당 발주의 items와 purchaseId 찾기
+    const poCandidate = allPONumberCandidates.find(
+      c => c.poNumber === poNumber || c.salesOrderNumber === poNumber
+    );
+    
+    // 2. items 배열을 SystemPurchaseItem 형태로 변환
+    let systemItems: SystemPurchaseItem[] = [];
+    if (poCandidate && poCandidate.items.length > 0) {
+      systemItems = poCandidate.items.map(item => ({
+        purchase_id: item.purchase_id,
+        item_id: item.item_id,
+        purchase_order_number: item.purchase_order_number || '',
+        sales_order_number: item.sales_order_number,
+        item_name: item.item_name,
+        specification: item.specification,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        amount: (item as any).amount,
+        vendor_name: item.vendor_name
+      }));
+      
+      // 중복 제거
+      systemItems = systemItems.filter((item, index, self) => 
+        index === self.findIndex(t => t.item_id === item.item_id)
+      );
+    }
+    
+    // 3. 없으면 기존 방식으로 fallback
+    if (systemItems.length === 0) {
+      systemItems = getSystemItemsForPO(poNumber);
+    }
+    
+    // 4. 여전히 없으면 DB에서 직접 조회
+    if (systemItems.length === 0 && poCandidate?.purchaseId) {
+      try {
+        const { data: purchaseItems } = await supabase
+          .from('purchase_request_items')
+          .select(`
+            id,
+            item_name,
+            specification,
+            quantity,
+            unit_price_value,
+            amount_value,
+            purchase_request:purchase_requests!inner(
+              id,
+              purchase_order_number,
+              sales_order_number,
+              vendor:vendors(vendor_name)
+            )
+          `)
+          .eq('purchase_request_id', poCandidate.purchaseId);
+        
+        if (purchaseItems && purchaseItems.length > 0) {
+          systemItems = purchaseItems.map((item: any) => ({
+            purchase_id: item.purchase_request.id,
+            item_id: item.id,
+            purchase_order_number: item.purchase_request.purchase_order_number || '',
+            sales_order_number: item.purchase_request.sales_order_number,
+            item_name: item.item_name || '',
+            specification: item.specification,
+            quantity: item.quantity,
+            unit_price: item.unit_price_value,
+            amount: item.amount_value,
+            vendor_name: item.purchase_request.vendor?.vendor_name
+          }));
+          console.log('[handleSelectGlobalPO] DB에서 품목 조회 성공:', systemItems.length);
+        }
+      } catch (error) {
+        console.error('[handleSelectGlobalPO] DB 조회 실패:', error);
+      }
+    }
+    
+    console.log('[handleSelectGlobalPO] poNumber:', poNumber, 'systemItems:', systemItems.length);
     
     // 자동 매칭 수행
     if (statementWithItems) {
@@ -1277,7 +1447,15 @@ export default function StatementConfirmModal({
     }
   };
 
-  const toggleDropdown = (key: string) => {
+  const toggleDropdown = (key: string, event?: React.MouseEvent) => {
+    if (event && key === 'global-po') {
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 4,
+        left: rect.left
+      });
+    }
+    
     setOpenDropdowns(prev => {
       const newSet = new Set(prev);
       if (newSet.has(key)) {
@@ -1295,7 +1473,16 @@ export default function StatementConfirmModal({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-[95vw] md:max-w-[1200px] max-h-[90vh] overflow-hidden flex flex-col business-radius-modal" showCloseButton={false}>
+        <DialogContent 
+          className="max-w-[95vw] md:max-w-[1200px] max-h-[90vh] overflow-hidden flex flex-col business-radius-modal" 
+          showCloseButton={false}
+          onInteractOutside={(e) => {
+            // 드롭다운이 열려있을 때는 외부 클릭으로 모달 닫기 방지
+            if (openDropdowns.size > 0) {
+              e.preventDefault();
+            }
+          }}
+        >
           <DialogHeader className="border-b border-gray-100 pb-3">
             <DialogTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2 modal-title">
@@ -1382,63 +1569,36 @@ export default function StatementConfirmModal({
                             </span>
                           )}
                           {isSamePONumber && allPONumberCandidates.length > 0 && (
-                            <div className="relative">
+                            <div className="relative flex items-center gap-1">
                               <button
-                                onClick={() => toggleDropdown('global-po')}
+                                onClick={(e) => toggleDropdown('global-po', e)}
                                 className="inline-flex items-center gap-1 px-1.5 h-5 text-[10px] font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700"
                               >
                                 {selectedPONumber || '발주번호 선택'}
                                 <ChevronDown className="w-3 h-3" />
                               </button>
-                              {openDropdowns.has('global-po') && (
-                                <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-md shadow-lg min-w-[240px] max-h-[250px] overflow-auto">
-                                  {allPONumberCandidates.map((c, idx) => {
-                                    const displayNumber = c.poNumber || c.salesOrderNumber || '';
-                                    const isSelected = selectedPONumber === displayNumber;
-                                    const isBestMatch = setMatchResult?.bestMatch?.purchase_order_number === c.poNumber ||
-                                                       setMatchResult?.bestMatch?.sales_order_number === c.salesOrderNumber;
-                                    
-                                    return (
-                                      <div
-                                        key={idx}
-                                        onClick={() => {
-                                          handleSelectGlobalPO(displayNumber);
-                                          toggleDropdown('global-po');
-                                        }}
-                                        className={`p-2 cursor-pointer hover:bg-gray-100 ${
-                                          isSelected ? 'bg-blue-50' : 'hover:bg-gray-100'
-                                        } ${isBestMatch ? 'ring-1 ring-green-400' : ''}`}
-                                      >
-                                        <div className="flex items-center justify-between">
-                                          <p className="modal-label text-gray-900">
-                                            {displayNumber}
-                                          </p>
-                                          {c.setMatchScore !== undefined && (
-                                            <span className={`text-[9px] px-1.5 py-0.5 rounded ${
-                                              c.setMatchScore >= 80 ? 'bg-green-100 text-green-700' :
-                                              c.setMatchScore >= 50 ? 'bg-yellow-100 text-yellow-700' :
-                                              'bg-gray-100 text-gray-600'
-                                            }`}>
-                                              {c.setMatchScore}%
-                                            </span>
-                                          )}
-                                        </div>
-                                        <p className="text-[9px] text-gray-500">
-                                          {c.matchedItemCount !== undefined 
-                                            ? `${c.matchedItemCount}/${statementWithItems?.items.length || 0}개 매칭`
-                                            : `${c.itemCount}개 품목`
-                                          } · {c.vendorName || '거래처 미상'}
-                                        </p>
-                                        {isBestMatch && (
-                                          <p className="text-[8px] text-green-600 font-medium mt-0.5">
-                                            ✅ 세트 매칭 추천
-                                          </p>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
+                              {/* 발주 상세보기 버튼 */}
+                              {selectedPONumber && (() => {
+                                const selectedCandidate = allPONumberCandidates.find(
+                                  c => c.poNumber === selectedPONumber || c.salesOrderNumber === selectedPONumber
+                                );
+                                const purchaseId = selectedCandidate?.purchaseId || selectedCandidate?.items[0]?.purchase_id;
+                                if (!purchaseId) return null;
+                                return (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedPurchaseIdForDetail(purchaseId);
+                                      setIsPurchaseDetailModalOpen(true);
+                                    }}
+                                    className="inline-flex items-center gap-0.5 px-1 h-5 text-[9px] font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                                    title="발주 상세 보기"
+                                  >
+                                    <ExternalLink className="w-3 h-3" />
+                                  </button>
+                                );
+                              })()}
+                              {/* 드롭다운은 fixed position으로 모달 바깥에 렌더링 */}
                             </div>
                           )}
                         </div>
@@ -1486,7 +1646,7 @@ export default function StatementConfirmModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {statementWithItems.items.map((ocrItem) => {
+                    {statementWithItems.items.map((ocrItem, rowIndex) => {
                       const matchedSystem = itemMatches.get(ocrItem.id);
                       const matchStatus = getMatchStatus(ocrItem);
                       // OCR 추출 번호를 시스템 형식으로 정규화 (예: _01 → _001, -1 → -01)
@@ -1496,6 +1656,15 @@ export default function StatementConfirmModal({
                       const itemPO = itemPONumbers.get(ocrItem.id) || normalizedExtractedPO;
                       const poCandidates = getPOCandidatesForItem(ocrItem.id);
                       const systemCandidates = getSystemItemsForPO(isSamePONumber ? selectedPONumber : (itemPO || ''));
+                      
+                      // 통합 매칭 퍼센트 계산 (첫 행에서만 사용)
+                      const selectedCandidate = allPONumberCandidates.find(
+                        c => c.poNumber === selectedPONumber || c.salesOrderNumber === selectedPONumber
+                      );
+                      const totalMatchScore = selectedCandidate?.setMatchScore ?? 0;
+                      const matchedItemCount = selectedCandidate?.matchedItemCount ?? 0;
+                      const totalItemCount = statementWithItems.items.length;
+                      const isFirstRow = rowIndex === 0;
                       
                       return (
                         <tr key={ocrItem.id} className="hover:bg-gray-50">
@@ -1596,10 +1765,32 @@ export default function StatementConfirmModal({
                             <span className="text-[11px] font-bold text-gray-900" style={{ fontSize: '11px', fontWeight: 700 }}>{matchedSystem ? formatAmount(matchedSystem.amount) : '-'}</span>
                           </td>
                           
-                          {/* 중앙: 매칭 상태 (클릭하여 상세 보기) */}
-                          <td className="border-r-2 border-gray-300 p-1 text-center bg-blue-50/30">
-                            {renderMatchStatusBadge(matchStatus, ocrItem)}
-                          </td>
+                          {/* 중앙: 통합 매칭 퍼센트 (첫 행에만 rowSpan으로 세로 중앙 표시) */}
+                          {isFirstRow && (
+                            <td 
+                              className="border-r-2 border-gray-300 p-2 text-center bg-blue-50/30 cursor-pointer hover:bg-blue-100/50 transition-colors"
+                              rowSpan={totalItemCount}
+                              style={{ verticalAlign: 'middle' }}
+                              onClick={() => setIsIntegratedMatchDetailOpen(true)}
+                              title="클릭하여 상세 내역 보기"
+                            >
+                              <div className="flex flex-col items-center justify-center gap-1">
+                                <span className={`text-lg font-bold ${
+                                  totalMatchScore >= 80 ? 'text-green-600' :
+                                  totalMatchScore >= 50 ? 'text-yellow-600' :
+                                  'text-gray-500'
+                                }`}>
+                                  {totalMatchScore}%
+                                </span>
+                                <span className="text-[10px] text-gray-500">
+                                  {matchedItemCount}/{totalItemCount}개 매칭
+                                </span>
+                                <span className="text-[9px] text-blue-500 underline">
+                                  상세보기
+                                </span>
+                              </div>
+                            </td>
+                          )}
                           
                           {/* 우측: OCR 품목 (편집 가능) */}
                           <td className="p-1 whitespace-nowrap">
@@ -1823,12 +2014,241 @@ export default function StatementConfirmModal({
         </Dialog>
       )}
 
+      {/* 통합 매칭 상세 팝업 (발주번호 전체 매칭 내역) */}
+      <Dialog open={isIntegratedMatchDetailOpen} onOpenChange={setIsIntegratedMatchDetailOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-[14px] font-semibold text-gray-800">
+              매칭 상세 내역
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-2">
+            {/* 통합 매칭률 표시 */}
+            {(() => {
+              const selectedCandidate = allPONumberCandidates.find(
+                c => c.poNumber === selectedPONumber || c.salesOrderNumber === selectedPONumber
+              );
+              const totalMatchScore = selectedCandidate?.setMatchScore ?? 0;
+              const matchedCount = selectedCandidate?.matchedItemCount ?? 0;
+              const totalCount = statementWithItems?.items.length ?? 0;
+              
+              return (
+                <>
+                  <div className="flex items-center justify-center gap-3 p-4 bg-gray-50 rounded-lg">
+                    <span className={`text-3xl font-bold ${
+                      totalMatchScore >= 80 ? 'text-green-600' :
+                      totalMatchScore >= 50 ? 'text-yellow-600' :
+                      'text-gray-500'
+                    }`}>
+                      {totalMatchScore}%
+                    </span>
+                    <div className="text-left">
+                      <p className="text-[12px] font-medium text-gray-700">
+                        발주번호: {selectedPONumber || '미선택'}
+                      </p>
+                      <p className="text-[11px] text-gray-500">
+                        {matchedCount}/{totalCount}개 품목 매칭됨
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 품목별 매칭 상세 */}
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-semibold text-gray-600">품목별 매칭 상세:</p>
+                    <div className="max-h-[250px] overflow-y-auto space-y-2">
+                      {statementWithItems?.items.map((ocrItem) => {
+                        const matchedSystem = itemMatches.get(ocrItem.id);
+                        const similarity = matchedSystem 
+                          ? calculateItemSimilarity(
+                              ocrItem.extracted_item_name || '', 
+                              matchedSystem.item_name, 
+                              matchedSystem.specification
+                            )
+                          : 0;
+                        const isMatched = similarity >= 30;
+                        
+                        // 수량 일치 여부
+                        const ocrQty = ocrItem.extracted_quantity;
+                        const sysQty = matchedSystem?.quantity;
+                        const qtyMatched = isQuantityMatched(ocrQty, sysQty);
+                        const qtyLevel = getQuantityMatchLevel(ocrQty, sysQty);
+                        
+                        return (
+                          <div 
+                            key={ocrItem.id} 
+                            className={`p-2 rounded-lg border ${
+                              isMatched && qtyMatched ? 'bg-green-50 border-green-200' : 
+                              isMatched ? 'bg-yellow-50 border-yellow-200' :
+                              'bg-gray-50 border-gray-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[11px] font-medium text-gray-800 truncate">
+                                  {ocrItem.extracted_item_name || '-'}
+                                </p>
+                                <p className="text-[10px] text-gray-500">
+                                  → {matchedSystem?.item_name || '미매칭'}
+                                </p>
+                              </div>
+                              <span className={`text-[10px] px-2 py-0.5 rounded font-medium ml-2 ${
+                                similarity >= 80 ? 'bg-green-100 text-green-700' :
+                                similarity >= 50 ? 'bg-yellow-100 text-yellow-700' :
+                                similarity >= 30 ? 'bg-orange-100 text-orange-700' :
+                                'bg-gray-200 text-gray-600'
+                              }`}>
+                                {isMatched ? `${Math.round(similarity)}%` : '미매칭'}
+                              </span>
+                            </div>
+                            {/* 수량 비교 */}
+                            {isMatched && (
+                              <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-gray-100">
+                                <span className="text-[10px] text-gray-500">수량:</span>
+                                <span className="text-[10px] font-medium text-gray-700">
+                                  OCR {ocrQty ?? '-'}개
+                                </span>
+                                <span className="text-[10px] text-gray-400">vs</span>
+                                <span className="text-[10px] font-medium text-gray-700">
+                                  시스템 {sysQty ?? '-'}개
+                                </span>
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded ${
+                                  qtyMatched ? 'bg-green-100 text-green-700' :
+                                  qtyLevel === 'partial' ? 'bg-yellow-100 text-yellow-700' :
+                                  'bg-red-100 text-red-700'
+                                }`}>
+                                  {qtyMatched ? '✅ 일치' : 
+                                   qtyLevel === 'partial' ? '⚠️ 부분입고' : 
+                                   '❌ 불일치'}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setIsIntegratedMatchDetailOpen(false)}
+              className="text-[11px]"
+            >
+              닫기
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* 이미지 뷰어 */}
       <StatementImageViewer
         isOpen={isImageViewerOpen}
         imageUrl={statement.image_url}
         onClose={() => setIsImageViewerOpen(false)}
       />
+
+      {/* 발주번호 선택 드롭다운 (Portal로 document.body에 렌더링하여 Dialog 이벤트 차단 우회) */}
+      {openDropdowns.has('global-po') && createPortal(
+        <>
+          {/* 오버레이 */}
+          <div 
+            className="fixed inset-0 z-[100]" 
+            style={{ pointerEvents: 'auto' }}
+            onClick={() => toggleDropdown('global-po')}
+          />
+          {/* 드롭다운 */}
+          <div 
+            className="fixed z-[101] bg-white border border-gray-200 rounded-lg shadow-xl min-w-[280px] max-h-[350px] overflow-y-auto"
+            style={{
+              top: dropdownPosition.top,
+              left: dropdownPosition.left,
+              pointerEvents: 'auto'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 bg-gray-50 px-3 py-2 border-b border-gray-100 rounded-t-lg">
+              <span className="text-[10px] font-semibold text-gray-600">발주번호 선택</span>
+            </div>
+            {allPONumberCandidates.map((c, idx) => {
+              const displayNumber = c.poNumber || c.salesOrderNumber || '';
+              const isSelected = selectedPONumber === displayNumber;
+              const isBestMatch = setMatchResult?.bestMatch?.purchase_order_number === c.poNumber ||
+                                 setMatchResult?.bestMatch?.sales_order_number === c.salesOrderNumber;
+              
+              return (
+                <div
+                  key={idx}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSelectGlobalPO(displayNumber);
+                    toggleDropdown('global-po');
+                  }}
+                  className={`p-2.5 cursor-pointer border-b border-gray-50 last:border-0 transition-colors ${
+                    isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                  } ${isBestMatch ? 'ring-1 ring-inset ring-green-400' : ''}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-[12px] font-medium text-gray-900">
+                      {displayNumber}
+                    </p>
+                    {c.setMatchScore !== undefined && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                        c.setMatchScore >= 80 ? 'bg-green-100 text-green-700' :
+                        c.setMatchScore >= 50 ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-600'
+                      }`}>
+                        {c.setMatchScore}%
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-0.5">
+                    {c.matchedItemCount !== undefined 
+                      ? `${c.matchedItemCount}/${statementWithItems?.items.length || 0}개 매칭`
+                      : `${c.itemCount}개 품목`
+                    } · {c.vendorName || '거래처 미상'}
+                  </p>
+                  {/* 수량 일치 정보 */}
+                  {c.quantityMatchedCount !== undefined && c.matchedItemCount !== undefined && c.matchedItemCount > 0 && (
+                    <p className={`text-[9px] mt-0.5 ${
+                      c.quantityMismatchedCount === 0 ? 'text-green-600' : 'text-orange-600'
+                    }`}>
+                      {c.quantityMismatchedCount === 0 
+                        ? `✅ 수량 모두 일치`
+                        : `⚠️ 수량 ${c.quantityMismatchedCount}개 불일치`
+                      }
+                    </p>
+                  )}
+                  {isBestMatch && (
+                    <p className="text-[9px] text-green-600 font-medium mt-0.5">
+                      ✅ 세트 매칭 추천
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>,
+        document.body
+      )}
+
+      {/* 발주 상세 모달 */}
+      {selectedPurchaseIdForDetail && (
+        <PurchaseDetailModal
+          purchaseId={selectedPurchaseIdForDetail}
+          isOpen={isPurchaseDetailModalOpen}
+          onClose={() => {
+            setIsPurchaseDetailModalOpen(false);
+            setSelectedPurchaseIdForDetail(null);
+          }}
+          activeTab="all"
+        />
+      )}
     </>
   );
 }

@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { markItemAsReceived, markItemAsReceiptCanceled, markItemAsStatementReceived, markItemAsStatementCanceled } from '@/stores/purchaseMemoryStore'
+import { dateToISOString } from '@/utils/helpers'
 
 export interface ConfirmDateActionConfig {
   field: 'statement_received' | 'actual_received'
@@ -108,7 +109,7 @@ ${config.confirmMessage.confirm}`
       if (config.field === 'statement_received') {
         updateData = {
           is_statement_received: true,
-          statement_received_date: selectedDate.toISOString(),
+          statement_received_date: dateToISOString(selectedDate),
           statement_received_by_name: currentUserName
         }
       } else if (config.field === 'actual_received') {
@@ -132,7 +133,7 @@ ${config.confirmMessage.confirm}`
         const newHistoryItem = {
           seq: nextSeq,
           qty: newReceivedQuantity,
-          date: selectedDate.toISOString(),
+          date: dateToISOString(selectedDate),
           by: currentUserName || '알수없음'
         }
         
@@ -142,7 +143,7 @@ ${config.confirmMessage.confirm}`
         const isFullyReceived = totalReceivedQuantity >= requestedQuantity
         
         updateData = {
-          actual_received_date: selectedDate.toISOString(),
+          actual_received_date: dateToISOString(selectedDate),
           is_received: isFullyReceived,
           received_quantity: totalReceivedQuantity,
           delivery_status: totalReceivedQuantity === 0 ? 'pending' : (isFullyReceived ? 'received' : 'partial'),
@@ -179,7 +180,7 @@ ${config.confirmMessage.confirm}`
       // 🚀 메모리 캐시 실시간 업데이트
       if (purchaseId) {
         if (config.field === 'actual_received') {
-          const memoryUpdated = markItemAsReceived(purchaseId, numericId, selectedDate.toISOString(), receivedQuantity)
+          const memoryUpdated = markItemAsReceived(purchaseId, numericId, dateToISOString(selectedDate), receivedQuantity)
           if (!memoryUpdated) {
             logger.warn('[useConfirmDateAction] 메모리 캐시 입고완료 업데이트 실패', { 
               purchaseId, 
@@ -187,7 +188,7 @@ ${config.confirmMessage.confirm}`
             })
           }
         } else if (config.field === 'statement_received') {
-          const memoryUpdated = markItemAsStatementReceived(purchaseId, numericId, selectedDate.toISOString(), currentUserName || undefined)
+          const memoryUpdated = markItemAsStatementReceived(purchaseId, numericId, dateToISOString(selectedDate), currentUserName || undefined)
           if (!memoryUpdated) {
             logger.warn('[useConfirmDateAction] 메모리 캐시 거래명세서 확인 업데이트 실패', { 
               purchaseId, 

@@ -163,9 +163,13 @@ class TransactionStatementService {
     offset?: number;
   }): Promise<{ success: boolean; data?: TransactionStatement[]; count?: number; error?: string }> {
     try {
+      // items에서 매칭된 purchase_id들도 함께 조회
       let query = this.supabase
         .from('transaction_statements')
-        .select('*', { count: 'exact' })
+        .select(`
+          *,
+          items:transaction_statement_items(matched_purchase_id)
+        `, { count: 'exact' })
         .order('uploaded_at', { ascending: false });
 
       if (filters?.status && filters.status !== 'all') {
@@ -196,7 +200,59 @@ class TransactionStatementService {
 
       if (error) throw error;
 
-      return { success: true, data: data || [], count: count || 0 };
+      // 고유한 purchase_id들 추출
+      const allPurchaseIds = new Set<number>();
+      (data || []).forEach((statement: any) => {
+        statement.items?.forEach((item: any) => {
+          if (item.matched_purchase_id) {
+            allPurchaseIds.add(item.matched_purchase_id);
+          }
+        });
+      });
+
+      // 발주 정보 조회 (발주번호, 수주번호)
+      let purchaseInfoMap = new Map<number, { purchase_order_number: string; sales_order_number?: string }>();
+      if (allPurchaseIds.size > 0) {
+        const { data: purchases } = await this.supabase
+          .from('purchase_requests')
+          .select('id, purchase_order_number, sales_order_number')
+          .in('id', Array.from(allPurchaseIds));
+        
+        purchases?.forEach((p: any) => {
+          purchaseInfoMap.set(p.id, {
+            purchase_order_number: p.purchase_order_number,
+            sales_order_number: p.sales_order_number
+          });
+        });
+      }
+
+      // 각 거래명세서에 매칭된 발주 목록 추가
+      const statementsWithPurchases = (data || []).map((statement: any) => {
+        const purchaseIds = new Set<number>();
+        statement.items?.forEach((item: any) => {
+          if (item.matched_purchase_id) {
+            purchaseIds.add(item.matched_purchase_id);
+          }
+        });
+
+        const matchedPurchases = Array.from(purchaseIds).map(purchaseId => {
+          const info = purchaseInfoMap.get(purchaseId);
+          return {
+            purchase_id: purchaseId,
+            purchase_order_number: info?.purchase_order_number || '',
+            sales_order_number: info?.sales_order_number
+          };
+        });
+
+        const { items, ...rest } = statement;
+        return {
+          ...rest,
+          matched_purchase_id: matchedPurchases[0]?.purchase_id || null, // 호환성 유지
+          matched_purchases: matchedPurchases
+        };
+      });
+
+      return { success: true, data: statementsWithPurchases, count: count || 0 };
     } catch (error) {
       console.error('Get statements error:', error);
       return {

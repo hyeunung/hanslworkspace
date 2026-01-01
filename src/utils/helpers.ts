@@ -325,3 +325,17 @@ export function formatRelativeTime(dateStr?: string | null): string {
     return '-';
   }
 }
+
+/**
+ * 로컬 날짜를 UTC 자정으로 변환하여 ISO 문자열로 반환
+ * 타임존 문제를 방지하기 위해 사용자가 선택한 날짜의 연/월/일만 사용
+ * @param date - 변환할 Date 객체
+ * @returns UTC 자정으로 변환된 ISO 문자열 (예: "2024-12-24T00:00:00.000Z")
+ */
+export function dateToISOString(date: Date): string {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const day = date.getDate();
+  const utcDate = new Date(Date.UTC(year, month, day));
+  return utcDate.toISOString();
+}

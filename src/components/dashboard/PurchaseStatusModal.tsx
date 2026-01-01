@@ -22,6 +22,7 @@ import { useNavigate } from 'react-router-dom'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
+import { dateToISOString } from '@/utils/helpers'
 
 interface PurchaseStatusModalProps {
   isOpen: boolean
@@ -158,7 +159,7 @@ export default function PurchaseStatusModal({
   const handleDateSelect = async (selectedDate: Date, itemId: string) => {
     try {
       const currentTime = new Date().toISOString()
-      const selectedDateIso = selectedDate.toISOString()
+      const selectedDateIso = dateToISOString(selectedDate)
       
       const { error } = await supabase
         .from('purchase_request_items')

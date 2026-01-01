@@ -5,7 +5,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails, Purchase, Vendor } from '@/types/purchase'
 import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPaymentCompleted, markItemAsReceived, markPurchaseAsReceived, markItemAsPaymentCanceled, markItemAsStatementReceived, markItemAsStatementCanceled, usePurchaseMemory, updatePurchaseInMemory, removeItemFromMemory, markItemAsExpenditureSet, markBulkExpenditureSet, removePurchaseFromMemory, addCacheListener } from '@/stores/purchaseMemoryStore'
-import { formatDate } from '@/utils/helpers'
+import { formatDate, dateToISOString } from '@/utils/helpers'
 import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { DateAmountPickerPopover } from '@/components/ui/date-amount-picker-popover'
 import { DateQuantityPickerPopover } from '@/components/ui/date-quantity-picker-popover'
@@ -716,7 +716,7 @@ function PurchaseDetailModal({
   }) => {
     const itemIdStr = String(itemId)
     const nowIso = new Date().toISOString()
-    const selectedDateIso = selectedDate ? selectedDate.toISOString() : undefined
+    const selectedDateIso = selectedDate ? dateToISOString(selectedDate) : undefined
 
     const updateItems = (items?: any[]) => {
       if (!items) return items
@@ -831,7 +831,7 @@ function PurchaseDetailModal({
     }
   }) => {
     const itemIdStr = String(itemId)
-    const selectedDateIso = selectedDate ? selectedDate.toISOString() : undefined
+    const selectedDateIso = selectedDate ? dateToISOString(selectedDate) : undefined
 
     let nextAllCompleted = false
     let nextStatementAt: string | null = null
@@ -2296,7 +2296,7 @@ function PurchaseDetailModal({
     const newHistoryItem = {
       seq: nextSeq,
       qty: newReceivedQty,
-      date: selectedDate.toISOString(),
+      date: dateToISOString(selectedDate),
       by: currentUserName || '알수없음'
     }
     const updatedHistory = [...existingHistory, newHistoryItem]
@@ -2312,7 +2312,7 @@ function PurchaseDetailModal({
                   ...item,
                   is_received: isFullyReceived,
                   delivery_status: deliveryStatus,
-                  actual_received_date: selectedDate.toISOString(),
+                  actual_received_date: dateToISOString(selectedDate),
                   received_quantity: totalReceivedQty,
                   receipt_history: updatedHistory
                 }
@@ -2339,7 +2339,7 @@ function PurchaseDetailModal({
           is_received: isFullyReceived,
           delivery_status: deliveryStatus,
           received_at: new Date().toISOString(),
-          actual_received_date: selectedDate.toISOString(),
+          actual_received_date: dateToISOString(selectedDate),
           received_quantity: totalReceivedQty,
           receipt_history: updatedHistory
         })
@@ -2349,7 +2349,7 @@ function PurchaseDetailModal({
 
       // 🚀 메모리 캐시 즉시 업데이트 (분할 입고 지원)
       if (purchase) {
-        const memoryUpdated = markItemAsReceived(purchase.id, numericId, selectedDate.toISOString(), totalReceivedQty);
+        const memoryUpdated = markItemAsReceived(purchase.id, numericId, dateToISOString(selectedDate), totalReceivedQty);
         if (!memoryUpdated) {
           logger.warn('[PurchaseDetailModal] 메모리 캐시 개별 품목 입고완료 업데이트 실패', { 
             purchaseId: purchase.id, 
@@ -2368,7 +2368,7 @@ function PurchaseDetailModal({
                 is_received: isFullyReceived, 
                 delivery_status: deliveryStatus,
                 received_at: new Date().toISOString(),
-                actual_received_date: selectedDate.toISOString(),
+                actual_received_date: dateToISOString(selectedDate),
                 received_quantity: totalReceivedQty,
                 receipt_history: updatedHistory
               }
@@ -2381,7 +2381,7 @@ function PurchaseDetailModal({
                 is_received: isFullyReceived, 
                 delivery_status: deliveryStatus,
                 received_at: new Date().toISOString(),
-                actual_received_date: selectedDate.toISOString(),
+                actual_received_date: dateToISOString(selectedDate),
                 received_quantity: totalReceivedQty,
                 receipt_history: updatedHistory
               }
@@ -2692,7 +2692,7 @@ function PurchaseDetailModal({
             String(item.id) === itemIdStr
               ? {
                   ...item,
-                  expenditure_date: date.toISOString(),
+                  expenditure_date: dateToISOString(date),
                   expenditure_amount: amount
                 }
               : item
@@ -2713,7 +2713,7 @@ function PurchaseDetailModal({
           String(item.id) === itemIdStr
             ? {
                 ...item,
-                expenditure_date: date.toISOString(),
+                expenditure_date: dateToISOString(date),
                 expenditure_amount: amount
               }
             : item
@@ -2732,7 +2732,7 @@ function PurchaseDetailModal({
       const { error } = await supabase
         .from('purchase_request_items')
         .update({
-          expenditure_date: date.toISOString(),
+          expenditure_date: dateToISOString(date),
           expenditure_amount: amount
         })
         .eq('id', numericId)
@@ -2758,7 +2758,7 @@ function PurchaseDetailModal({
 
       // 🚀 메모리 캐시 즉시 업데이트 (실시간 UI 반영) - DB 업데이트 후에 호출
       if (purchase?.id) {
-        const memoryUpdated = markItemAsExpenditureSet(purchase.id, numericId, date.toISOString(), amount)
+        const memoryUpdated = markItemAsExpenditureSet(purchase.id, numericId, dateToISOString(date), amount)
         if (!memoryUpdated) {
           logger.warn('[PurchaseDetailModal] 메모리 캐시 지출 정보 업데이트 실패', { 
             purchaseId: purchase.id, 
@@ -2800,7 +2800,7 @@ function PurchaseDetailModal({
         onOptimisticUpdate?.(purchaseIdNumber, prev => {
           const updatedItems = (prev.items || []).map(item => ({
             ...item,
-            expenditure_date: date.toISOString(),
+            expenditure_date: dateToISOString(date),
             expenditure_amount: null
           }))
           return { 
@@ -2828,7 +2828,7 @@ function PurchaseDetailModal({
         const allItems = prev.items || prev.purchase_request_items || []
         const updatedItems = allItems.map(item => ({
             ...item,
-            expenditure_date: date.toISOString(),
+            expenditure_date: dateToISOString(date),
             expenditure_amount: null
         }))
         
@@ -2845,7 +2845,7 @@ function PurchaseDetailModal({
       const { error: itemsError } = await supabase
         .from('purchase_request_items')
         .update({
-          expenditure_date: date.toISOString(),
+          expenditure_date: dateToISOString(date),
           expenditure_amount: null
         })
         .in('id', allItems.map(item => item.id))
@@ -2867,7 +2867,7 @@ function PurchaseDetailModal({
       }
 
       // 🚀 메모리 캐시 즉시 업데이트 (실시간 UI 반영)
-      markBulkExpenditureSet(purchase.id, date.toISOString(), amount)
+      markBulkExpenditureSet(purchase.id, dateToISOString(date), amount)
 
       toast.success('일괄 지출 정보가 입력되었습니다.')
     } catch (error) {
@@ -2896,7 +2896,7 @@ function PurchaseDetailModal({
       return
     }
 
-    const selectedDateIso = selectedDate.toISOString()
+    const selectedDateIso = dateToISOString(selectedDate)
     const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
 
     const applyOptimisticUpdate = () => {
@@ -3010,7 +3010,7 @@ function PurchaseDetailModal({
                 return {
                   ...item,
                   is_received: true,
-                  actual_received_date: item.actual_received_date || selectedDate.toISOString(),
+                  actual_received_date: item.actual_received_date || dateToISOString(selectedDate),
                   received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.quantity
                 }
               }
@@ -3023,7 +3023,7 @@ function PurchaseDetailModal({
                 return {
                   ...item,
                   is_received: true,
-                  actual_received_date: item.actual_received_date || selectedDate.toISOString(),
+                  actual_received_date: item.actual_received_date || dateToISOString(selectedDate),
                   received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.quantity
                 }
               }
@@ -3063,7 +3063,7 @@ function PurchaseDetailModal({
               ...item,
               is_received: true,
               received_at: new Date().toISOString(),
-              actual_received_date: selectedDate.toISOString(),
+              actual_received_date: dateToISOString(selectedDate),
               received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.quantity
             }
           }
@@ -3077,7 +3077,7 @@ function PurchaseDetailModal({
               ...item,
               is_received: true,
               received_at: new Date().toISOString(),
-              actual_received_date: selectedDate.toISOString(),
+              actual_received_date: dateToISOString(selectedDate),
               received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.quantity
             }
           }
@@ -3101,7 +3101,7 @@ function PurchaseDetailModal({
         // 각 품목별로 DB 업데이트 (개별 품목과 동일한 방식)
         // receivedQuantity가 없으면 요청수량(quantity)을 그대로 사용
         const updateData = {
-          actual_received_date: selectedDate.toISOString(),
+          actual_received_date: dateToISOString(selectedDate),
           is_received: true,
           received_quantity: receivedQuantity !== undefined ? receivedQuantity : item.quantity // 전체 입고시 요청수량과 동일하게 설정
         };
@@ -3116,7 +3116,7 @@ function PurchaseDetailModal({
         // 🚀 개별 품목 메모리 캐시 업데이트 (개별 처리와 동일)
         // receivedQuantity가 없으면 요청수량(quantity)을 그대로 사용
         const itemReceivedQuantity = receivedQuantity !== undefined ? receivedQuantity : item.quantity
-        const memoryUpdated = markItemAsReceived(purchase.id, item.id, selectedDate.toISOString(), itemReceivedQuantity);
+        const memoryUpdated = markItemAsReceived(purchase.id, item.id, dateToISOString(selectedDate), itemReceivedQuantity);
         if (!memoryUpdated) {
           logger.warn('[PurchaseDetailModal] 메모리 캐시 개별 품목 입고완료 업데이트 실패', { 
             purchaseId: purchase.id, 

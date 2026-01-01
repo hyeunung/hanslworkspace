@@ -11,6 +11,7 @@ import { Purchase } from '@/types/purchase';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { addCacheListener, updatePurchaseInMemory, notifyCacheListeners, findPurchaseInMemory } from '@/stores/purchaseMemoryStore';
+import { dateToISOString } from '@/utils/helpers';
 
 // 상세 모달 lazy load
 const PurchaseDetailModal = lazy(() => import('./PurchaseDetailModal'));
@@ -650,7 +651,7 @@ export function useDeliveryWarningCount(purchases: Purchase[], currentUserName?:
         if (isTarget) debugItems.push({ 
           step: '변경요청일 지연으로 포함', 
           purchase: purchase.purchase_order_number,
-          revisedDate: revisedDate.toISOString(),
+          revisedDate: dateToISOString(revisedDate),
           today: today.toISOString()
         });
         return;
@@ -661,7 +662,7 @@ export function useDeliveryWarningCount(purchases: Purchase[], currentUserName?:
         if (isTarget) debugItems.push({ 
           step: '입고요청일 지연으로 포함', 
           purchase: purchase.purchase_order_number,
-          deliveryDate: deliveryDate.toISOString(),
+          deliveryDate: dateToISOString(deliveryDate),
           today: today.toISOString()
         });
         return;
@@ -671,8 +672,8 @@ export function useDeliveryWarningCount(purchases: Purchase[], currentUserName?:
         debugItems.push({ 
           step: '날짜 조건 불만족', 
           purchase: purchase.purchase_order_number,
-          deliveryDate: deliveryDate?.toISOString() || null,
-          revisedDate: revisedDate?.toISOString() || null,
+          deliveryDate: deliveryDate ? dateToISOString(deliveryDate) : null,
+          revisedDate: revisedDate ? dateToISOString(revisedDate) : null,
           today: today.toISOString()
         });
       }
@@ -681,6 +682,26 @@ export function useDeliveryWarningCount(purchases: Purchase[], currentUserName?:
     // 디버깅 로그 출력
     if (debugItems.length > 0) {
       console.log('🔍 [useDeliveryWarningCount] F20251226_003 디버깅:', debugItems);
+    }
+    
+    // F20251226_003 항목이 purchases에 있는지 확인
+    const targetPurchase = purchases.find(p => p.purchase_order_number === 'F20251226_003');
+    if (targetPurchase) {
+      console.log('🔍 [useDeliveryWarningCount] F20251226_003 항목 상세 정보:', {
+        purchase_order_number: targetPurchase.purchase_order_number,
+        requester_name: targetPurchase.requester_name,
+        currentUserName,
+        nameMatch: targetPurchase.requester_name === currentUserName,
+        is_received: targetPurchase.is_received,
+        delivery_status: targetPurchase.delivery_status,
+        middle_manager_status: targetPurchase.middle_manager_status,
+        final_manager_status: targetPurchase.final_manager_status,
+        delivery_revision_requested: targetPurchase.delivery_revision_requested,
+        delivery_request_date: targetPurchase.delivery_request_date,
+        revised_delivery_request_date: targetPurchase.revised_delivery_request_date,
+        today: today.toISOString(),
+        finalCount: count
+      });
     }
 
     return count;

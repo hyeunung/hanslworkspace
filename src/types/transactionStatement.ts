@@ -37,6 +37,14 @@ export interface TransactionStatement {
   extraction_error?: string;
   created_at: string;
   updated_at: string;
+  // 목록 조회 시 첫 번째 매칭된 발주 ID (호환성 유지)
+  matched_purchase_id?: number | null;
+  // 목록 조회 시 모든 매칭된 발주 목록 (상세 모달 연결용)
+  matched_purchases?: Array<{
+    purchase_id: number;
+    purchase_order_number: string;
+    sales_order_number?: string;
+  }>;
 }
 
 // 거래명세서 품목 타입

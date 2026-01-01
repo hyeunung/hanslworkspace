@@ -18,6 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { deliveryService } from '@/services/deliveryService';
 import { markCacheStaleAndNotify } from '@/stores/purchaseMemoryStore';
 import { PurchaseRequestWithDetails, PurchaseRequestItem } from '@/types/purchase';
+import { dateToISOString } from '@/utils/helpers';
 import { 
   ChevronDown, 
   ChevronUp, 
@@ -270,7 +271,7 @@ export function DeliveryManagement({
         currentUser.id,
         currentUser.name,
         "전체 품목 일괄 입고 처리",
-        selectedDate.toISOString()
+        dateToISOString(selectedDate)
       );
 
       if (result.success) {
