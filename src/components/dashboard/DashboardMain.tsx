@@ -139,25 +139,6 @@ export default function DashboardMain() {
           toast.error('미다운로드 발주서를 불러오는데 실패했습니다.')
         }
       }
-      
-      // app_admin인 경우 문의 목록 조회
-      if (userRoles.includes('app_admin')) {
-        try {
-          setLoadingInquiries(true)
-          const inquiryResult = await supportService.getAllInquiries()
-          if (inquiryResult.success) {
-            // 미처리 문의만 필터링 (open, in_progress)
-            const pendingInquiries = inquiryResult.data.filter(
-              inq => inq.status === 'open' || inq.status === 'in_progress'
-            )
-            setInquiries(pendingInquiries)
-          }
-        } catch (inquiryError) {
-          logger.error('[DashboardMain] 문의 목록 조회 실패:', inquiryError)
-        } finally {
-          setLoadingInquiries(false)
-        }
-      }
     } catch (error) {
       logger.error('[DashboardMain] Failed to load dashboard data:', error)
       toast.error('대시보드 데이터를 불러오는데 실패했습니다.')
@@ -192,6 +173,92 @@ export default function DashboardMain() {
     const unsubscribe = addCacheListener(handleCacheUpdate)
     return () => unsubscribe()
   }, [loadDashboardData])
+
+  // 문의 목록 초기 로드 (app_admin만)
+  useEffect(() => {
+    if (!currentUserRoles.includes('app_admin')) return
+
+    const loadInquiries = async () => {
+      try {
+        setLoadingInquiries(true)
+        const inquiryResult = await supportService.getAllInquiries()
+        if (inquiryResult.success) {
+          // 미처리 문의만 필터링 (open, in_progress)
+          const pendingInquiries = inquiryResult.data.filter(
+            inq => inq.status === 'open' || inq.status === 'in_progress'
+          )
+          setInquiries(pendingInquiries)
+        }
+      } catch (inquiryError) {
+        logger.error('[DashboardMain] 문의 목록 조회 실패:', inquiryError)
+      } finally {
+        setLoadingInquiries(false)
+      }
+    }
+
+    loadInquiries()
+  }, [currentUserRoles])
+
+  // 문의 목록 실시간 구독 (app_admin만)
+  useEffect(() => {
+    if (!currentUserRoles.includes('app_admin')) return
+
+    const subscription = supportService.subscribeToInquiries((payload) => {
+      const eventType = payload?.eventType as 'INSERT' | 'UPDATE' | 'DELETE' | undefined
+      const newRow = payload?.new as SupportInquiry | undefined
+      const oldRow = payload?.old as SupportInquiry | undefined
+
+      // DELETE 이벤트: 목록에서 제거
+      if (eventType === 'DELETE') {
+        const deletedId = oldRow?.id
+        if (!deletedId) return
+        setInquiries(prev => {
+          const next = prev.filter(i => i.id !== deletedId)
+          return next
+        })
+        if (expandedInquiryId === deletedId) {
+          setExpandedInquiryId(null)
+        }
+        return
+      }
+
+      // INSERT/UPDATE 이벤트: 미처리 문의만 유지하며 업데이트
+      const row = newRow
+      if (!row?.id) return
+
+      setInquiries(prev => {
+        // 미처리 문의가 아니면 제거
+        const isPending = row.status === 'open' || row.status === 'in_progress'
+        const idx = prev.findIndex(i => i.id === row.id)
+
+        if (!isPending) {
+          // 처리 완료된 문의는 목록에서 제거
+          if (idx === -1) return prev
+          return prev.filter(i => i.id !== row.id)
+        }
+
+        // 미처리 문의는 upsert
+        const next = [...prev]
+        if (idx >= 0) {
+          next[idx] = row
+        } else {
+          next.unshift(row)
+        }
+
+        // 최신순 정렬 (created_at 내림차순)
+        next.sort((a, b) => {
+          const at = a.created_at ? new Date(a.created_at).getTime() : 0
+          const bt = b.created_at ? new Date(b.created_at).getTime() : 0
+          return bt - at
+        })
+        return next
+      })
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [currentUserRoles, expandedInquiryId])
 
   // 발주 상세 모달 열기 (문의에서 발주번호 클릭 시)
   const openPurchaseDetailFromInquiry = async (inquiry: SupportInquiry) => {
