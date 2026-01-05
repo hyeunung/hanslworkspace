@@ -1135,20 +1135,20 @@ export async function processBOMAndCoordinates(
       
       if (idxA !== idxB) return idxA - idxB;
       
-      // 같은 대분류면 type 순
+      // 같은 대분류면 세부 type 순
       if (a.type !== b.type) {
         return (a.type || '').localeCompare(b.type || '');
       }
       
-      // 같은 종류 내에서 미삽 항목은 맨 아래로
-      const aMisap = checkIsMisap(a.partName || '', a.remark || '');
-      const bMisap = checkIsMisap(b.partName || '', b.remark || '');
+      // 같은 type 내에서 미삽 항목은 맨 아래로
+      const aMisap = checkIsMisap(a.partName, a.remark);
+      const bMisap = checkIsMisap(b.partName, b.remark);
       if (aMisap !== bMisap) {
         return aMisap ? 1 : -1; // 미삽이면 뒤로
       }
       
-      // 같은 type, 같은 미삽 상태면 refDes 순
-      return (a.refDes || '').localeCompare(b.refDes || '');
+      // 같은 type, 같은 미삽 상태면 품명순
+      return (a.partName || '').localeCompare(b.partName || '');
     });
   };
   
