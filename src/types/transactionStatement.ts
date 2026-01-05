@@ -212,8 +212,8 @@ export interface SaveCorrectionRequest {
 // 발주번호/수주번호 패턴
 // 발주번호: F + YYYYMMDD + _ + 3자리 숫자 (예: F20251008_001, F20251008_002)
 export const PO_NUMBER_PATTERN = /^F\d{8}_\d{3}$/;
-// 수주번호: HS + YYYYMMDD + - + 2자리 숫자 (예: HS20251201-01, HS20251201-11)
-export const SO_NUMBER_PATTERN = /^HS\d{8}-\d{2}$/;
+// 수주번호: HS + YYMMDD + - + 2자리 숫자 (예: HS251201-01, HS251201-11)
+export const SO_NUMBER_PATTERN = /^HS\d{6}-\d{2}$/;
 
 // OCR에서 읽은 번호를 시스템 형식으로 정규화
 export function normalizeOrderNumber(input: string): string {
@@ -228,8 +228,8 @@ export function normalizeOrderNumber(input: string): string {
     return `${prefix}_${num.padStart(3, '0')}`;
   }
   
-  // 수주번호 정규화: HS20251201-1 → HS20251201-01
-  const soMatch = normalized.match(/^(HS\d{8})-(\d{1,2})$/);
+  // 수주번호 정규화: HS251201-1 → HS251201-01
+  const soMatch = normalized.match(/^(HS\d{6})-(\d{1,2})$/);
   if (soMatch) {
     const [, prefix, num] = soMatch;
     return `${prefix}-${num.padStart(2, '0')}`;

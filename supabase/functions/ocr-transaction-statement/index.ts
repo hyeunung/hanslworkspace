@@ -662,7 +662,7 @@ async function extractWithGPT4o(
 
 ⚠️ 발주번호/수주번호 찾는 방법 (중요):
 - 발주번호 패턴: F + 날짜(YYYYMMDD) + _ + 숫자 (예: F20251010_001, F20251010_1) - 시스템은 항상 3자리(_001)
-- 수주번호 패턴: HS + 날짜(YYYYMMDD) + - + 숫자 (예: HS20251201-01, HS20251201-1) - 시스템은 항상 2자리(-01)
+- 수주번호 패턴: HS + 날짜(YYMMDD, 6자리) + - + 숫자 (예: HS251201-01, HS251201-1) - 시스템은 항상 2자리(-01)
 - 비고란뿐 아니라 빈 칸, 여백, 품목명 옆, 금액 옆 등 **문서 어디에든** 손글씨/필기체로 적혀있을 수 있음
 - 각 품목 행의 같은 줄에 있는 손글씨 번호를 해당 품목의 po_number로 매칭
 - 여러 품목에 같은 번호가 적혀있으면 모두 해당 번호를 기록
@@ -726,8 +726,8 @@ JSON 형식으로만 응답하세요.`
 function normalizePoNumbers(items: ExtractedItem[], rawVisionText?: string): ExtractedItem[] {
   // 발주번호 패턴: F + YYYYMMDD + _ + 1~3자리 숫자 (OCR에서 읽힌 형태)
   const poPatternLoose = /F\d{8}_\d{1,3}/gi
-  // 수주번호 패턴: HS + YYYYMMDD + - + 1~2자리 숫자 (OCR에서 읽힌 형태)
-  const soPatternLoose = /HS\d{8}-\d{1,2}/gi
+  // 수주번호 패턴: HS + YYMMDD + - + 1~2자리 숫자 (OCR에서 읽힌 형태)
+  const soPatternLoose = /HS\d{6}-\d{1,2}/gi
 
   // 발주번호를 시스템 형식으로 정규화 (F20251008_1 → F20251008_001)
   function normalizePO(num: string): string {
@@ -738,9 +738,9 @@ function normalizePoNumbers(items: ExtractedItem[], rawVisionText?: string): Ext
     return num.toUpperCase()
   }
 
-  // 수주번호를 시스템 형식으로 정규화 (HS20251201-1 → HS20251201-01)
+  // 수주번호를 시스템 형식으로 정규화 (HS251201-1 → HS251201-01)
   function normalizeSO(num: string): string {
-    const match = num.toUpperCase().match(/^(HS\d{8})-(\d{1,2})$/)
+    const match = num.toUpperCase().match(/^(HS\d{6})-(\d{1,2})$/)
     if (match) {
       return `${match[1]}-${match[2].padStart(2, '0')}`
     }

@@ -370,9 +370,9 @@ class TransactionStatementService {
       const rawNumber = item.extracted_po_number || '';
       const normalizedNumber = rawNumber ? normalizeOrderNumber(rawNumber) : '';
       
-      // 부분 발주번호 패턴 체크 (F20251212 또는 HS20251212 - 뒷부분 없이 날짜만)
+      // 부분 발주번호 패턴 체크 (F20251212 또는 HS251212 - 뒷부분 없이 날짜만)
       const partialPOMatch = rawNumber.toUpperCase().match(/^(F)(\d{8})$/);
-      const partialSOMatch = rawNumber.toUpperCase().match(/^(HS)(\d{8})$/);
+      const partialSOMatch = rawNumber.toUpperCase().match(/^(HS)(\d{6})$/);
       const isPartialNumber = !!(partialPOMatch || partialSOMatch);
       const datePrefix = partialPOMatch ? `F${partialPOMatch[2]}` : (partialSOMatch ? `HS${partialSOMatch[2]}` : '');
 
@@ -460,7 +460,7 @@ class TransactionStatementService {
         }
       }
 
-      // 1.5. 부분 발주번호로 검색 (F20251212 또는 HS20251212 - 뒤 숫자 없이 날짜만 적힌 경우)
+      // 1.5. 부분 발주번호로 검색 (F20251212 또는 HS251212 - 뒤 숫자 없이 날짜만 적힌 경우)
       if (isPartialNumber && datePrefix && candidateMap.size === 0) {
         console.log(`📅 부분 발주번호 검색: "${datePrefix}%" (해당 날짜의 모든 발주)`);
         
