@@ -1211,3 +1211,106 @@ export function resetLearningDataCache() {
   learningDataCache = null;
 }
 
+// ============================================================
+// 정렬 유틸리티 함수 (외부에서 사용 가능)
+// ============================================================
+
+const TYPE_GROUP_ORDER_EXPORT = ['IC', 'DIODE', 'C/C', '저항', 'BEAD', 'S/W', 'CONNECTOR'];
+
+// 미삽 체크 함수
+function checkIsMisapExport(partName: string | undefined, remark: string | undefined): boolean {
+  const remarkUpper = (remark || '').toUpperCase();
+  const nameUpper = (partName || '').toUpperCase();
+  return remarkUpper.includes('미삽') ||
+    nameUpper.includes('_OPEN') || nameUpper.includes('OPEN_') ||
+    nameUpper.includes('_POGO') || nameUpper.includes('POGO_') ||
+    nameUpper.includes('_PAD') || nameUpper.includes('PAD_') ||
+    nameUpper.includes('_NC') || nameUpper.includes('NC_');
+}
+
+// BOM 아이템 정렬 함수
+export function sortBOMItems(bomItems: BOMItem[]): BOMItem[] {
+  const guessTypeGroup = (item: BOMItem) => {
+    const type = (item.itemType || '').toUpperCase();
+    if (type.includes('IC')) return 'IC';
+    if (type.includes('DIODE')) return 'DIODE';
+    if (type.includes('C/C') || type.includes('C_C')) return 'C/C';
+    if (type.includes('저항')) return '저항';
+    if (type.includes('BEAD')) return 'BEAD';
+    if (type.includes('S/W') || type.includes('SW')) return 'S/W';
+    if (type.includes('CONNECTOR') || type.includes('CONN')) return 'CONNECTOR';
+    return 'ETC';
+  };
+
+  return [...bomItems].sort((a, b) => {
+    const groupA = guessTypeGroup(a);
+    const groupB = guessTypeGroup(b);
+    
+    const orderA = TYPE_GROUP_ORDER_EXPORT.indexOf(groupA);
+    const orderB = TYPE_GROUP_ORDER_EXPORT.indexOf(groupB);
+    
+    const idxA = orderA === -1 ? 999 : orderA;
+    const idxB = orderB === -1 ? 999 : orderB;
+    
+    if (idxA !== idxB) return idxA - idxB;
+    
+    // 같은 대분류면 세부 종류순
+    if (a.itemType !== b.itemType) {
+      return (a.itemType || '').localeCompare(b.itemType || '');
+    }
+    
+    // 같은 종류 내에서 미삽 항목은 맨 아래로
+    const aMisap = checkIsMisapExport(a.itemName, a.remark);
+    const bMisap = checkIsMisapExport(b.itemName, b.remark);
+    if (aMisap !== bMisap) {
+      return aMisap ? 1 : -1;
+    }
+    
+    // 같은 종류, 같은 미삽 상태면 품명순
+    return (a.itemName || '').localeCompare(b.itemName || '');
+  });
+}
+
+// 좌표 아이템 정렬 함수
+export function sortCoordinateItems(coordinates: CoordinateItem[]): CoordinateItem[] {
+  const getGroup = (type: string) => {
+    const t = (type || '').toUpperCase();
+    if (t.includes('IC')) return 'IC';
+    if (t.includes('DIODE')) return 'DIODE';
+    if (t.includes('C/C') || t.includes('C_C')) return 'C/C';
+    if (t.includes('저항')) return '저항';
+    if (t.includes('BEAD')) return 'BEAD';
+    if (t.includes('S/W') || t.includes('SW')) return 'S/W';
+    if (t.includes('CONNECTOR') || t.includes('CONN')) return 'CONNECTOR';
+    return 'ETC';
+  };
+
+  return [...coordinates].sort((a, b) => {
+    const groupA = getGroup(a.type || '');
+    const groupB = getGroup(b.type || '');
+    
+    const orderA = TYPE_GROUP_ORDER_EXPORT.indexOf(groupA);
+    const orderB = TYPE_GROUP_ORDER_EXPORT.indexOf(groupB);
+    
+    const idxA = orderA === -1 ? 999 : orderA;
+    const idxB = orderB === -1 ? 999 : orderB;
+    
+    if (idxA !== idxB) return idxA - idxB;
+    
+    // 같은 대분류면 세부 type 순
+    if (a.type !== b.type) {
+      return (a.type || '').localeCompare(b.type || '');
+    }
+    
+    // 같은 type 내에서 미삽 항목은 맨 아래로
+    const aMisap = checkIsMisapExport(a.partName, a.remark);
+    const bMisap = checkIsMisapExport(b.partName, b.remark);
+    if (aMisap !== bMisap) {
+      return aMisap ? 1 : -1;
+    }
+    
+    // 같은 type, 같은 미삽 상태면 품명순
+    return (a.partName || '').localeCompare(b.partName || '');
+  });
+}
+

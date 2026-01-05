@@ -7,7 +7,7 @@ import {
   downloadExcelBlob,
   type ExcelMetadata 
 } from '@/utils/excel-generator';
-import { type BOMItem, type CoordinateItem } from '@/utils/v7-generator';
+import { type BOMItem, type CoordinateItem, sortBOMItems, sortCoordinateItems } from '@/utils/v7-generator';
 import { toast } from 'sonner';
 
 interface GeneratedPreviewPanelProps {
@@ -175,10 +175,15 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
       const topCoords = coordinates.filter(c => c.layer === 'TOP');
       const bottomCoords = coordinates.filter(c => c.layer === 'BOTTOM');
 
+      // 정렬 적용 (종류별 > 품명순 > 미삽은 맨 아래)
+      const sortedItems = sortBOMItems(items);
+      const sortedTopCoords = sortCoordinateItems(topCoords);
+      const sortedBottomCoords = sortCoordinateItems(bottomCoords);
+
       const blob = await generateBOMExcelFromTemplate(
-        items,
-        topCoords,
-        bottomCoords,
+        sortedItems,
+        sortedTopCoords,
+        sortedBottomCoords,
         excelMetadata
       );
       

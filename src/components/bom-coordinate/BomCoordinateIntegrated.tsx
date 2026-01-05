@@ -22,7 +22,9 @@ import {
   processBOMAndCoordinates, 
   type BOMItem, 
   type CoordinateItem,
-  type ProcessedResult 
+  type ProcessedResult,
+  sortBOMItems,
+  sortCoordinateItems
 } from '@/utils/v7-generator';
 import { 
   generateBOMExcelFromTemplate, 
@@ -916,10 +918,15 @@ export default function BomCoordinateIntegrated() {
         c.side?.toUpperCase().includes('BOT') || c.layer?.toUpperCase().includes('BOT')
       );
 
+      // 정렬 적용 (종류별 > 품명순 > 미삽은 맨 아래)
+      const sortedBomItems = sortBOMItems(convertedBOMItems);
+      const sortedTopCoords = sortCoordinateItems(topCoords);
+      const sortedBottomCoords = sortCoordinateItems(bottomCoords);
+
       const blob = await generateBOMExcelFromTemplate(
-        convertedBOMItems,
-        topCoords,
-        bottomCoords,
+        sortedBomItems,
+        sortedTopCoords,
+        sortedBottomCoords,
         excelMetadata
       );
       

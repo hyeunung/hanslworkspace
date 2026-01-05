@@ -12,7 +12,7 @@ import {
   downloadExcelBlob,
   type ExcelMetadata 
 } from '@/utils/excel-generator';
-import { type BOMItem, type CoordinateItem } from '@/utils/v7-generator';
+import { type BOMItem, type CoordinateItem, sortBOMItems, sortCoordinateItems } from '@/utils/v7-generator';
 
 interface BomDetailModalProps {
   boardId: string | null;
@@ -151,10 +151,15 @@ export default function BomDetailModal({ boardId, isOpen, onClose }: BomDetailMo
         productionQuantity: boardData.production_quantity,
       };
 
+      // 정렬 적용 (종류별 > 품명순 > 미삽은 맨 아래)
+      const sortedBomItems = sortBOMItems(boardData.bomItems);
+      const sortedTopCoords = sortCoordinateItems(boardData.topCoordinates);
+      const sortedBottomCoords = sortCoordinateItems(boardData.bottomCoordinates);
+
       const blob = await generateBOMExcelFromTemplate(
-        boardData.bomItems,
-        boardData.topCoordinates,
-        boardData.bottomCoordinates,
+        sortedBomItems,
+        sortedTopCoords,
+        sortedBottomCoords,
         excelMetadata
       );
 
