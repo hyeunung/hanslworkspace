@@ -349,6 +349,30 @@ const canEdit = canEditAll || canEditLimited
 - Supabase: Edge functions for serverless backend logic
 - Both apps share the same Supabase instance for data consistency
 
+## 연차/휴가(Leave) & 연차 엑셀(직원관리) 구현 지침 (IMPORTANT)
+
+### 공유 백엔드(hansl) 스키마/로직 기준 (팩트)
+- **`leave` 테이블**은 `days`(0.5 포함), `start_period`, `end_period` 컬럼을 통해 **연차/반차 단위가 백엔드에서 결정**됩니다.
+  - 근거(공유 백엔드 프로젝트): `/Users/scott/workspace/hansl/supabase/migrations/000_initial_schema.sql`, `017_update_leave_table_structure.sql`
+- **지급연차(법정연차) 산식**은 백엔드 트리거 함수에 명시되어 있으며(입사일/연도 기준), 프론트에서 임의로 추정하지 않습니다.
+  - 근거(공유 백엔드 프로젝트): `/Users/scott/workspace/hansl/supabase/migrations/20251215_auto_calculate_leave_on_join_date_update.sql`
+
+### hanslworkspace에서 “연차사용현황 엑셀” 구현 시 원칙
+- **사용연차(사용일수/월별 상세) 계산**
+  - `leave.days`가 있으면 이를 최우선으로 사용(반차=0.5).
+  - `days`가 없을 때만 `start_period/end_period` → 키워드(type/reason) 순으로 fallback.
+- **지급연차(선택 연도 기준)**
+  - 선택 연도(예: 2025)에 대한 지급연차는 **공유 백엔드(hansl)와 동일한 법정연차 산식**(입사일 기준)으로 산출해야 합니다.
+  - 현재년도 스냅샷(`employees.annual_leave_granted_current_year`)을 그대로 재사용하면 연도 불일치가 발생할 수 있어, “연도 선택 보고서”에서는 사용을 지양합니다.
+- **월별 셀 표기 포맷**
+  - 엑셀 컬럼: `사번`, `이름`, `지급연차`, `사용일수`, `1월`~`12월`
+  - 월별 셀 문자열 예: `3(1),19(0.5),20(1)` (일자 + 단위)
+
+### 관련 코드 위치(이 레포)
+- UI/다운로드: `src/components/employee/AnnualLeaveUsageDownload.tsx`
+- leave 단위/필터 유틸: `src/utils/leave/calcAnnualLeaveWorkdays.ts`
+- 엑셀 생성: `src/utils/exceljs/generateAnnualLeaveUsageExcel.ts`
+
 ## Design System & Typography Guidelines
 
 ### Dashboard Card Typography System

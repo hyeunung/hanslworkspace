@@ -8,10 +8,27 @@ export interface AnnualLeaveUsageSummaryExcelRow {
   months: Record<number, string> // 1~12
 }
 
+export interface AnnualLeaveUsageDebugLeaveRow {
+  id?: number | string
+  user_email?: string
+  start_date?: string
+  end_date?: string
+  type?: string | null
+  status?: string | null
+  reason?: string | null
+  unit?: 1 | 0.5
+  excludeReason?: string
+}
+
 export async function generateAnnualLeaveUsageExcel(params: {
   summaries: AnnualLeaveUsageSummaryExcelRow[]
+  debug?: {
+    year: number
+    includedLeaves: AnnualLeaveUsageDebugLeaveRow[]
+    excludedLeaves: AnnualLeaveUsageDebugLeaveRow[]
+  }
 }): Promise<Blob> {
-  const { summaries } = params
+  const { summaries, debug } = params
 
   const workbook = new ExcelJS.Workbook()
 
@@ -68,6 +85,39 @@ export async function generateAnnualLeaveUsageExcel(params: {
       m12: row.months[12] ?? ''
     })
   })
+
+  // 검증 시트(포함/제외 원본) - 누락 여부 확인용
+  if (debug) {
+    const wsIncluded = workbook.addWorksheet(`검증_포함_${debug.year}`)
+    wsIncluded.columns = [
+      { header: 'leave_id', key: 'id', width: 10 },
+      { header: 'user_email', key: 'user_email', width: 26 },
+      { header: 'start_date', key: 'start_date', width: 12 },
+      { header: 'end_date', key: 'end_date', width: 12 },
+      { header: 'unit', key: 'unit', width: 6 },
+      { header: 'type', key: 'type', width: 18 },
+      { header: 'status', key: 'status', width: 12 },
+      { header: 'reason', key: 'reason', width: 30 }
+    ]
+    wsIncluded.getRow(1).font = { name: '맑은 고딕', bold: true }
+    wsIncluded.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' }
+    debug.includedLeaves.forEach((r) => wsIncluded.addRow(r))
+
+    const wsExcluded = workbook.addWorksheet(`검증_제외_${debug.year}`)
+    wsExcluded.columns = [
+      { header: 'leave_id', key: 'id', width: 10 },
+      { header: 'user_email', key: 'user_email', width: 26 },
+      { header: 'start_date', key: 'start_date', width: 12 },
+      { header: 'end_date', key: 'end_date', width: 12 },
+      { header: 'excludeReason', key: 'excludeReason', width: 16 },
+      { header: 'type', key: 'type', width: 18 },
+      { header: 'status', key: 'status', width: 12 },
+      { header: 'reason', key: 'reason', width: 30 }
+    ]
+    wsExcluded.getRow(1).font = { name: '맑은 고딕', bold: true }
+    wsExcluded.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' }
+    debug.excludedLeaves.forEach((r) => wsExcluded.addRow(r))
+  }
 
   const buffer = await workbook.xlsx.writeBuffer()
   return new Blob([buffer], {
