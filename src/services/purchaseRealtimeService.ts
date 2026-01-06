@@ -457,9 +457,18 @@ class PurchaseRealtimeService {
         return purchase
       }
       
-      const updatedItems = currentItems.map(item =>
-        item.id === record.id ? { ...item, ...record } : item
-      )
+      const updatedItems = currentItems.map(item => {
+        if (item.id !== record.id) return item
+        const merged = { ...item, ...record }
+        // ✅ Realtime payload가 null/undefined로 들어오는 경우 기존 값 보존 (0으로 롤백 방지)
+        if (record.amount_value === null || record.amount_value === undefined) {
+          merged.amount_value = item.amount_value
+        }
+        if (record.unit_price_value === null || record.unit_price_value === undefined) {
+          merged.unit_price_value = item.unit_price_value
+        }
+        return merged
+      })
 
       const newTotalAmount = updatedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
 

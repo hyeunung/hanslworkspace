@@ -19,6 +19,7 @@ interface EmployeeFiltersProps {
   onExport: () => void
   onCreateNew: () => void
   onAttendanceDownload: () => void
+  onAnnualLeaveUsageDownload: () => void
 }
 
 const PURCHASE_ROLES: { value: PurchaseRole; label: string }[] = [
@@ -35,7 +36,8 @@ export default function EmployeeFilters({
   onFiltersChange, 
   onExport,
   onCreateNew,
-  onAttendanceDownload
+  onAttendanceDownload,
+  onAnnualLeaveUsageDownload
 }: EmployeeFiltersProps) {
   const [localSearch, setLocalSearch] = useState(filters.search || '')
   const [departments, setDepartments] = useState<string[]>([])
@@ -117,6 +119,15 @@ export default function EmployeeFilters({
           <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Employee Management</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={onAnnualLeaveUsageDownload}
+            className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+          >
+            <Calendar className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">연차사용현황</span>
+            <span className="sm:hidden">연차</span>
+          </Button>
           <Button
             variant="outline"
             onClick={onAttendanceDownload}

@@ -256,6 +256,15 @@ function PurchaseDetailModal({
   useEffect(() => {
     isEditingRef.current = isEditing
   }, [isEditing])
+  
+  // ✅ isSaving 상태도 ref로 추적 (저장 중 refresh가 편집값 덮어쓰는 것 방지)
+  const isSavingRef = useRef(isSaving)
+  useEffect(() => {
+    isSavingRef.current = isSaving
+  }, [isSaving])
+  
+  // ✅ 저장 직후(Realtime/캐시 이벤트 지연 도착) 덮어쓰기 방지용
+  const lastSaveAtRef = useRef<number>(0)
 
   // 🚀 Realtime 이벤트 구독 - 모달이 열려있는 동안 다른 화면에서 발생한 변경 실시간 반영
   const realtimeFirstMount = useRef(true)
@@ -270,6 +279,14 @@ function PurchaseDetailModal({
       }
       // ✅ 편집 모드일 때는 캐시 동기화 방지 (입력 포커스 유지)
       if (isEditingRef.current) {
+        return
+      }
+      // ✅ 저장 중 또는 저장 직후에는 캐시로 덮어쓰지 않음 (값이 0으로 롤백되는 현상 방지)
+      if (isSavingRef.current) {
+        return
+      }
+      if (lastSaveAtRef.current && Date.now() - lastSaveAtRef.current < 30000) {
+        logger.debug('[PurchaseDetailModal] 저장 직후(30s) - Realtime 캐시 이벤트 무시')
         return
       }
       // 🚀 업데이트 진행 중이면 무시 (경쟁 상태 방지)
@@ -545,6 +562,14 @@ function PurchaseDetailModal({
   // 모달 내부 데이터만 새로고침하는 함수 (모달 닫지 않음)
   const refreshModalData = useCallback(async () => {
     if (!purchaseId) return
+    // ✅ 편집/저장 중에는 DB 새로고침으로 edited state를 덮어쓰지 않음
+    if (isEditingRef.current || isSavingRef.current) {
+      logger.debug('[refreshModalData] 편집/저장 중 - DB 새로고침 스킵', {
+        isEditing: isEditingRef.current,
+        isSaving: isSavingRef.current
+      })
+      return
+    }
     
     try {
       // 항상 DB에서 최신 데이터를 가져와서 vendor_contacts 정보를 정확히 반영
@@ -611,7 +636,7 @@ function PurchaseDetailModal({
           unit_price_value: item.unit_price_value,
           quantity: item.quantity
         }))
-        logger.info('🔍 [refreshModalData] DB에서 가져온 품목 데이터:', itemsData)
+        logger.info('🔍 [refreshModalData] DB에서 가져온 품목 데이터:', { itemsData })
         
         // 합계금액이 0인 경우 경고 로그 출력 (단가가 null이 아닌 경우)
         itemsData.forEach(item => {
@@ -670,7 +695,7 @@ function PurchaseDetailModal({
       // 약간의 딜레이 후 플래그 해제 (Realtime 이벤트가 완전히 처리될 시간 확보)
       setTimeout(() => {
         isUpdatingRef.current = false
-      }, 500)
+      }, 3000)
     }
   }, [refreshModalData])
 
@@ -1580,8 +1605,19 @@ function PurchaseDetailModal({
 
   // 🚀 안전한 숫자 변환 함수 (NaN 방지)
   const safeNumber = (value: any, defaultValue: number = 0): number => {
-    const num = Number(value);
-    return Number.isNaN(num) ? defaultValue : num;
+    if (value === null || value === undefined) return defaultValue
+
+    // 문자열(콤마 포함)도 안전하게 처리
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      if (trimmed === '') return defaultValue
+      const normalized = trimmed.replace(/,/g, '')
+      const num = Number(normalized)
+      return Number.isNaN(num) ? defaultValue : num
+    }
+
+    const num = Number(value)
+    return Number.isNaN(num) ? defaultValue : num
   };
 
   const formatCurrency = (amount: number) => {
@@ -1589,12 +1625,12 @@ function PurchaseDetailModal({
   }
 
   // 타임아웃 유틸리티 함수
-  const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+  const withTimeout = <T,>(promise: PromiseLike<T>, timeoutMs: number): Promise<T> => {
     return Promise.race([
-      promise,
-      new Promise<T>((_, reject) => 
+      Promise.resolve(promise),
+      new Promise<T>((_, reject) =>
         setTimeout(() => reject(new Error(`작업이 ${timeoutMs}ms 내에 완료되지 않았습니다.`)), timeoutMs)
-      )
+      ),
     ])
   }
 
@@ -1605,11 +1641,15 @@ function PurchaseDetailModal({
     }
     
     // 🚀 저장 로딩 상태 시작
+    lastSaveAtRef.current = Date.now()
+    // state 업데이트 전 ref도 즉시 갱신 (useEffect 타이밍 지연 방지)
+    isSavingRef.current = true
     setIsSaving(true)
     logger.debug('[handleSave] 저장 시작')
     
     try {
       const supabase = createClient()
+      const STEP_TIMEOUT_MS = 20000
       logger.debug('[handleSave] Step 1: 발주 기본 정보 업데이트 시작')
       
       // 발주 기본 정보 업데이트
@@ -1623,24 +1663,28 @@ function PurchaseDetailModal({
         contactId = editedPurchase.vendor_contacts[0].id || null
       }
       
-      const { error: updateError } = await supabase
-        .from('purchase_requests')
-        .update({
-          purchase_order_number: editedPurchase.purchase_order_number || null,
-          requester_name: editedPurchase.requester_name || null,
-          vendor_id: editedPurchase.vendor_id || null,
-          vendor_name: editedPurchase.vendor_name || null,
-          contact_id: contactId, // contact_id 업데이트
-          delivery_request_date: editedPurchase.delivery_request_date || null,
-          revised_delivery_request_date: editedPurchase.revised_delivery_request_date || null,
-          payment_category: editedPurchase.payment_category || null,
-          project_vendor: editedPurchase.project_vendor || null,
-          project_item: editedPurchase.project_item || null,
-          sales_order_number: editedPurchase.sales_order_number || null,
-          total_amount: Number(totalAmount),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', purchase.id)
+      const updateResult = await withTimeout(
+        supabase
+          .from('purchase_requests')
+          .update({
+            purchase_order_number: editedPurchase.purchase_order_number || null,
+            requester_name: editedPurchase.requester_name || null,
+            vendor_id: editedPurchase.vendor_id || null,
+            vendor_name: editedPurchase.vendor_name || null,
+            contact_id: contactId, // contact_id 업데이트
+            delivery_request_date: editedPurchase.delivery_request_date || null,
+            revised_delivery_request_date: editedPurchase.revised_delivery_request_date || null,
+            payment_category: editedPurchase.payment_category || null,
+            project_vendor: editedPurchase.project_vendor || null,
+            project_item: editedPurchase.project_item || null,
+            sales_order_number: editedPurchase.sales_order_number || null,
+            total_amount: Number(totalAmount),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', purchase.id),
+        STEP_TIMEOUT_MS
+      ) as any
+      const updateError = updateResult?.error
 
       if (updateError) {
         logger.error('Purchase update error:', updateError)
@@ -1731,17 +1775,21 @@ function PurchaseDetailModal({
         }
       } catch (contactError) {
         // 담당자 정보 업데이트 실패해도 저장은 계속 진행
-        logger.warn('⚠️ [handleSave] 담당자 정보 업데이트 실패 (무시하고 계속):', contactError)
+        logger.warn('⚠️ [handleSave] 담당자 정보 업데이트 실패 (무시하고 계속)', { error: contactError })
       }
       logger.debug('[handleSave] Step 2 완료')
 
       // 삭제된 항목들 처리
       logger.debug('[handleSave] Step 3: 삭제된 항목 처리 시작')
       if (deletedItemIds.length > 0) {
-        const { error: deleteError } = await supabase
-          .from('purchase_request_items')
-          .delete()
-          .in('id', deletedItemIds)
+        const deleteResult = await withTimeout(
+          supabase
+            .from('purchase_request_items')
+            .delete()
+            .in('id', deletedItemIds),
+          STEP_TIMEOUT_MS
+        ) as any
+        const deleteError = deleteResult?.error
 
         if (deleteError) {
           logger.error('품목 삭제 에러:', deleteError)
@@ -1797,11 +1845,40 @@ function PurchaseDetailModal({
         return // 여기서 함수 종료
       }
 
-      // 각 아이템 업데이트 또는 생성 (병렬 처리로 개선)
+      // 각 아이템 업데이트 또는 생성
       logger.debug(`[handleSave] Step 4: 아이템 저장 시작, 총 ${editedItems.length}개`)
       
-      // 모든 아이템을 병렬로 처리하기 위한 Promise 배열
-      const itemPromises = editedItems.map(async (item, index) => {
+      // ✅ 변경된 품목만 저장 (불필요한 UPDATE를 줄여 속도 개선)
+      const originalItems = (purchase?.items && purchase.items.length > 0)
+        ? purchase.items
+        : (purchase?.purchase_request_items || [])
+      const originalById = new Map<number, any>()
+      originalItems.forEach((it: any) => {
+        const idNum = it?.id != null ? Number(it.id) : NaN
+        if (!Number.isNaN(idNum)) originalById.set(idNum, it)
+      })
+
+      const hasMeaningfulChange = (orig: any, next: any): boolean => {
+        // 문자열/숫자/널 정규화 후 비교
+        const s = (v: any) => (v == null ? '' : String(v).trim())
+        const n = (v: any) => safeNumber(v, 0)
+
+        return (
+          s(orig?.item_name) !== s(next?.item_name) ||
+          s(orig?.specification) !== s(next?.specification) ||
+          n(orig?.quantity) !== n(next?.quantity) ||
+          n(orig?.received_quantity) !== n(next?.received_quantity) ||
+          n(orig?.unit_price_value) !== n(next?.unit_price_value) ||
+          n(orig?.amount_value) !== n(next?.amount_value) ||
+          s(orig?.remark) !== s(next?.remark) ||
+          n(orig?.line_number) !== n(next?.line_number)
+        )
+      }
+
+      // ✅ DB statement timeout/락 경합을 줄이기 위해 순차 처리
+      for (let index = 0; index < editedItems.length; index++) {
+        const item = editedItems[index]
+        const itemTimeoutMs = 60000
         // 필수 필드 검증
         if (!item.item_name || !item.item_name.trim()) {
           throw new Error('품목명은 필수입니다.');
@@ -1810,10 +1887,12 @@ function PurchaseDetailModal({
         if (!item.quantity || item.quantity <= 0) {
           item.quantity = 1;
         }
-        if (item.unit_price_value !== null && item.unit_price_value !== undefined && item.unit_price_value < 0) {
+        const normalizedUnitPriceValue = safeNumber(item.unit_price_value, 0)
+        const normalizedAmountValue = safeNumber(item.amount_value, 0)
+        if (normalizedUnitPriceValue < 0) {
           throw new Error('단가는 0 이상이어야 합니다.');
         }
-        if (item.amount_value !== null && item.amount_value !== undefined && item.amount_value < 0) {
+        if (normalizedAmountValue < 0) {
           throw new Error('합계는 0 이상이어야 합니다.');
         }
         
@@ -1822,38 +1901,36 @@ function PurchaseDetailModal({
         const isExistingItem = numericItemId && !Number.isNaN(numericItemId) && numericItemId > 0;
         
         // 단가와 합계금액 처리
-        const unitPriceValue = (item.unit_price_value != null && item.unit_price_value !== undefined && item.unit_price_value !== '') 
-          ? safeNumber(item.unit_price_value) 
-          : null
-        
-        let amountValue: number | null = null
-        if (item.amount_value != null && item.amount_value !== undefined) {
-          if (item.amount_value !== '') {
-            const numValue = Number(item.amount_value)
-            if (!Number.isNaN(numValue)) {
-              amountValue = numValue
-            }
-          }
-        }
-        const finalAmountValue = amountValue !== null ? amountValue : 0
+        // 요구사항: 단가 자동계산 불필요, 비어있으면 그대로 0 유지 (DB에는 NULL 금지)
+        const unitPriceValue = safeNumber(item.unit_price_value, 0)
+        const finalAmountValue = safeNumber(item.amount_value, 0)
         
         if (isExistingItem) {
+          const orig = originalById.get(Number(numericItemId))
+          if (orig && !hasMeaningfulChange(orig, item)) {
+            logger.debug(`[handleSave] 아이템 ${index + 1} 변경 없음 - 업데이트 스킵`)
+            continue
+          }
           // 기존 항목 업데이트
-          const { error } = await supabase
-            .from('purchase_request_items')
-            .update({
-              item_name: item.item_name.trim(),
-              specification: item.specification || null,
-              quantity: safeNumber(item.quantity, 1),
-              received_quantity: item.received_quantity != null ? safeNumber(item.received_quantity) : null,
-              unit_price_value: unitPriceValue,
-              unit_price_currency: purchase.currency || 'KRW',
-              amount_value: finalAmountValue,
-              amount_currency: purchase.currency || 'KRW',
-              remark: item.remark || null,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', numericItemId)
+          const updateItemResult = await withTimeout(
+            supabase
+              .from('purchase_request_items')
+              .update({
+                item_name: item.item_name.trim(),
+                specification: item.specification || null,
+                quantity: safeNumber(item.quantity, 1),
+                received_quantity: item.received_quantity != null ? safeNumber(item.received_quantity) : null,
+                unit_price_value: unitPriceValue,
+                unit_price_currency: purchase.currency || 'KRW',
+                amount_value: finalAmountValue,
+                amount_currency: purchase.currency || 'KRW',
+                remark: item.remark || null,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', numericItemId),
+            itemTimeoutMs
+          ) as any
+          const error = updateItemResult?.error
 
           if (error) {
             logger.error('기존 항목 업데이트 오류', error);
@@ -1877,30 +1954,22 @@ function PurchaseDetailModal({
             created_at: new Date().toISOString()
           };
           
-          const { data: insertedItem, error } = await supabase
-            .from('purchase_request_items')
-            .insert(insertData)
-            .select()
-            .single()
+          // ✅ insert 결과(select/single)는 생략 (속도/타임아웃 개선)
+          const insertItemResult = await withTimeout(
+            supabase
+              .from('purchase_request_items')
+              .insert(insertData),
+            itemTimeoutMs
+          ) as any
+          const error = insertItemResult?.error
 
           if (error) {
             logger.error('새 항목 생성 오류', error);
             throw error;
           }
-          
-          // 반환된 새 ID로 editedItems 업데이트
-          if (insertedItem) {
-            const idx = editedItems.indexOf(item)
-            if (idx !== -1) {
-              editedItems[idx] = { ...editedItems[idx], ...insertedItem }
-            }
-          }
           logger.debug(`[handleSave] 아이템 ${index + 1} 삽입 완료`)
         }
-      })
-      
-      // 모든 아이템 저장을 병렬로 실행
-      await Promise.all(itemPromises)
+      }
       logger.debug('[handleSave] Step 4 완료: 모든 아이템 저장됨')
 
       // 🚀 전체완료 함수와 정확히 동일한 패턴 적용 (메모리 캐시 포함)
@@ -1920,12 +1989,12 @@ function PurchaseDetailModal({
                 })
               }
             } catch (itemError) {
-              logger.warn('⚠️ [handleSave] 개별 품목 삭제 메모리 캐시 업데이트 중 에러 (무시):', itemError)
+              logger.warn('⚠️ [handleSave] 개별 품목 삭제 메모리 캐시 업데이트 중 에러 (무시)', { error: itemError })
             }
           })
         }
       } catch (memoryError) {
-        logger.warn('⚠️ [handleSave] 메모리 캐시 삭제 처리 중 에러 (무시하고 계속):', memoryError)
+        logger.warn('⚠️ [handleSave] 메모리 캐시 삭제 처리 중 에러 (무시하고 계속)', { error: memoryError })
       }
       
       // 2. 발주 기본 정보 메모리 캐시 업데이트 (수정된 필드들만)
@@ -1957,7 +2026,7 @@ function PurchaseDetailModal({
           })
         }
       } catch (memoryError) {
-        logger.warn('⚠️ [handleSave] 메모리 캐시 업데이트 중 에러 (무시하고 계속):', memoryError)
+        logger.warn('⚠️ [handleSave] 메모리 캐시 업데이트 중 에러 (무시하고 계속)', { error: memoryError })
       }
       
       // 3. applyOptimisticUpdate 함수 정의 및 실행 (전체완료 함수 패턴)
@@ -1997,7 +2066,7 @@ function PurchaseDetailModal({
         applyOptimisticUpdate()
         logger.debug('[handleSave] Step 5 완료 - 저장 성공!')
       } catch (optimisticError) {
-        logger.warn('⚠️ [handleSave] OptimisticUpdate 중 에러 (무시하고 계속):', optimisticError)
+        logger.warn('⚠️ [handleSave] OptimisticUpdate 중 에러 (무시하고 계속)', { error: optimisticError })
       }
 
       logger.debug('[handleSave] Step 5 완료: UI 업데이트됨')
@@ -2012,13 +2081,16 @@ function PurchaseDetailModal({
       
       // 새로고침은 백그라운드에서 비동기로 실행 (await 제거)
       refreshModalDataWithLock().catch(err => {
-        logger.warn('⚠️ [handleSave] 백그라운드 새로고침 실패 (무시):', err)
+        // refresh가 실패하더라도 저장 자체는 성공했을 수 있으므로, 여기서는 “조용히”가 아니라 원인을 노출
+        logger.warn('⚠️ [handleSave] 백그라운드 새로고침 실패', { error: err })
+        const msg = err instanceof Error ? err.message : String(err)
+        toast.error(`저장 후 새로고침 실패: ${msg}`, { duration: 5000 })
       })
       
       const refreshResult = onRefresh?.(true, { silent: true })
       if (refreshResult instanceof Promise) {
         refreshResult.catch(err => {
-          logger.warn('⚠️ [handleSave] 백그라운드 onRefresh 실패 (무시):', err)
+          logger.warn('⚠️ [handleSave] 백그라운드 onRefresh 실패 (무시)', { error: err })
         })
       }
     } catch (error) {
@@ -2027,6 +2099,7 @@ function PurchaseDetailModal({
       toast.error(`저장 실패: ${errorMessage}`, { duration: 5000 })
     } finally {
       logger.debug('[handleSave] finally 블록 실행 - 로딩 해제')
+      isSavingRef.current = false
       setIsSaving(false)
     }
   }
@@ -2035,6 +2108,15 @@ function PurchaseDetailModal({
     const newItems = [...editedItems]
     
     if (field === 'quantity' || field === 'unit_price_value') {
+      // ✅ 합계금액을 사용자가 직접 수정한 품목은 자동계산이 절대 덮어쓰지 않음
+      if ((newItems[index] as any)?.is_amount_manual) {
+        newItems[index] = {
+          ...newItems[index],
+          [field]: value
+        }
+        setEditedItems(newItems)
+        return
+      }
       // 수량이나 단가를 수정한 경우 금액 및 세액 자동 계산
       const quantity = field === 'quantity' ? value : newItems[index].quantity
       const unitPrice = field === 'unit_price_value' ? value : newItems[index].unit_price_value
@@ -2080,6 +2162,8 @@ function PurchaseDetailModal({
       
       newItems[index] = {
         ...newItems[index],
+        // ✅ 합계를 직접 입력했음을 표시 (이후 수량/단가 변경에도 자동계산 비활성)
+        is_amount_manual: true,
         amount_value: amount,
         tax_amount_value: taxAmount
       }
@@ -3393,7 +3477,7 @@ function PurchaseDetailModal({
             {isEditing ? (
               <Input
                 type="number"
-                value={item.unit_price_value}
+                value={item.unit_price_value ?? 0}
                 onChange={(e) => handleItemChange(index, 'unit_price_value', Number(e.target.value))}
                 className="border-gray-200 rounded-lg text-right w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
                 placeholder="단가"
@@ -4641,7 +4725,7 @@ function PurchaseDetailModal({
                                         updated_vendor_contacts: updated?.vendor_contacts,
                                         updated_full: updated
                                       })
-                                      logger.debug('업체 변경 - editedPurchase 전체:', updated)
+                                      logger.debug('업체 변경 - editedPurchase 전체:', { updated })
                                       return updated
                                     })
                                   })
@@ -4764,7 +4848,7 @@ function PurchaseDetailModal({
                                 final_unique_count: finalUniqueContacts.length,
                                 options
                               })
-                              logger.debug('담당자 드롭다운 옵션:', options)
+                              logger.debug('담당자 드롭다운 옵션:', { options })
                               return options
                             })()}
                             value={(() => {

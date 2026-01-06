@@ -6,6 +6,7 @@ import EmployeeFilters from '@/components/employee/EmployeeFilters'
 import EmployeeTable from '@/components/employee/EmployeeTable'
 import EmployeeModal from '@/components/employee/EmployeeModal'
 import AttendanceDownload from '@/components/employee/AttendanceDownload'
+import AnnualLeaveUsageDownload from '@/components/employee/AnnualLeaveUsageDownload'
 import { toast } from 'sonner'
 // XLSX는 사용할 때만 동적으로 import (성능 최적화)
 
@@ -24,6 +25,8 @@ export default function EmployeeMain() {
   
   // 출근현황표 모달 상태
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false)
+  // 연차사용현황 모달 상태
+  const [isAnnualLeaveUsageModalOpen, setIsAnnualLeaveUsageModalOpen] = useState(false)
 
   // 직원 목록 로드
   const loadEmployees = async () => {
@@ -130,6 +133,7 @@ export default function EmployeeMain() {
         onExport={handleExport}
         onCreateNew={handleCreateNew}
         onAttendanceDownload={() => setIsAttendanceModalOpen(true)}
+        onAnnualLeaveUsageDownload={() => setIsAnnualLeaveUsageModalOpen(true)}
       />
 
       {/* 테이블 섹션 */}
@@ -165,6 +169,12 @@ export default function EmployeeMain() {
         employees={employees}
         isOpen={isAttendanceModalOpen}
         onClose={() => setIsAttendanceModalOpen(false)}
+      />
+
+      {/* 연차사용현황 다운로드 모달 */}
+      <AnnualLeaveUsageDownload
+        isOpen={isAnnualLeaveUsageModalOpen}
+        onClose={() => setIsAnnualLeaveUsageModalOpen(false)}
       />
       </div>
     </>
