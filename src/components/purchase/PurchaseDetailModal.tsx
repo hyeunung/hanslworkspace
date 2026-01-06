@@ -1589,7 +1589,7 @@ function PurchaseDetailModal({
   }
 
   // 타임아웃 유틸리티 함수
-  const withTimeout = <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+  const withTimeout = <T,>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
     return Promise.race([
       promise,
       new Promise<T>((_, reject) => 
