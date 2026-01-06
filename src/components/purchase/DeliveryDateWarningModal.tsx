@@ -12,6 +12,7 @@ import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { addCacheListener, updatePurchaseInMemory, notifyCacheListeners, findPurchaseInMemory } from '@/stores/purchaseMemoryStore';
 import { dateToISOString } from '@/utils/helpers';
+import { logger } from '@/lib/logger';
 
 // 상세 모달 lazy load
 const PurchaseDetailModal = lazy(() => import('./PurchaseDetailModal'));
@@ -20,7 +21,7 @@ interface DeliveryDateWarningModalProps {
   isOpen: boolean;
   onClose: () => void;
   purchases: Purchase[];
-  onRefresh?: () => void;
+  onRefresh?: (forceRefresh?: boolean, options?: { silent?: boolean }) => void | Promise<void>;
   currentUserName?: string | null;
 }
 

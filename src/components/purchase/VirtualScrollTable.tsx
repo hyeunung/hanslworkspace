@@ -147,8 +147,8 @@ const VirtualScrollTable = memo<VirtualScrollTableProps>(({
         <div 
           className="sticky-header-container"
           style={{ 
-            position: 'sticky', 
-            top: 0, 
+          position: 'sticky', 
+          top: 0, 
             zIndex: 30,
             backgroundColor: '#f9fafb',
             borderBottom: '1px solid #e5e7eb',

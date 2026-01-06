@@ -127,11 +127,20 @@ function PurchaseDetailModal({
   )
 
   const makeStableKey = useCallback((item: any, idx: number) => {
-    return item?.stableKey
-      ?? (item?.id != null ? `sk-item-${item.id}`
-      : item?.tempId ? `sk-tmp-${item.tempId}`
-      : item?.line_number != null ? `sk-line-${item.line_number}-${idx}`
-      : `sk-idx-${idx}`)
+    // stableKey가 이미 있으면 그대로 사용
+    if (item?.stableKey) return item.stableKey
+    
+    // id가 있으면 id 기반으로 고유 key 생성
+    if (item?.id != null) return `sk-item-${item.id}`
+    
+    // tempId가 있으면 tempId 기반으로 고유 key 생성
+    if (item?.tempId) return `sk-tmp-${item.tempId}`
+    
+    // line_number와 idx를 조합하여 고유 key 생성 (같은 line_number라도 idx가 다르면 다른 key)
+    if (item?.line_number != null) return `sk-line-${item.line_number}-${idx}`
+    
+    // 마지막으로 idx만 사용 (가장 낮은 우선순위)
+    return `sk-idx-${idx}`
   }, [])
 
   const normalizeItems = useCallback((items: any[] = []) => {
@@ -148,10 +157,19 @@ function PurchaseDetailModal({
   }, [makeStableKey])
 
   const getSortableId = useCallback((item: any, index: number) => {
+    // stableKey가 이미 있으면 그대로 사용
     if (item?.stableKey) return item.stableKey
+    
+    // id가 있으면 id 기반으로 고유 key 생성
     if (item?.id != null) return `item-${item.id}`
+    
+    // tempId가 있으면 tempId 기반으로 고유 key 생성
     if (item?.tempId) return `tmp-${item.tempId}`
-    if (item?.line_number != null) return `line-${item.line_number}`
+    
+    // line_number와 index를 조합하여 고유 key 생성 (같은 line_number라도 index가 다르면 다른 key)
+    if (item?.line_number != null) return `line-${item.line_number}-${index}`
+    
+    // 마지막으로 index만 사용
     return `temp-${index}`
   }, [])
 
@@ -585,6 +603,30 @@ function PurchaseDetailModal({
           return lineA - lineB;
         }));
 
+        // 🔍 DB에서 가져온 품목 데이터의 합계금액 확인
+        const itemsData = sortedItems.map(item => ({
+          id: item.id,
+          item_name: item.item_name,
+          amount_value: item.amount_value,
+          unit_price_value: item.unit_price_value,
+          quantity: item.quantity
+        }))
+        logger.info('🔍 [refreshModalData] DB에서 가져온 품목 데이터:', itemsData)
+        
+        // 합계금액이 0인 경우 경고 로그 출력 (단가가 null이 아닌 경우)
+        itemsData.forEach(item => {
+          if (item.amount_value === 0 && item.unit_price_value != null && item.unit_price_value !== 0) {
+            logger.warn('⚠️ [refreshModalData] 합계금액이 0인데 단가가 있는 품목:', {
+              itemId: item.id,
+              item_name: item.item_name,
+              amount_value: item.amount_value,
+              unit_price_value: item.unit_price_value,
+              quantity: item.quantity,
+              calculated_amount: (item.quantity || 0) * (item.unit_price_value || 0)
+            })
+          }
+        })
+
         const purchaseData = {
           ...data,
           items: sortedItems,
@@ -607,7 +649,7 @@ function PurchaseDetailModal({
           vendor_id: data.vendor_id,
           has_vendor_contacts: vendorContacts && vendorContacts.length > 0
         })
-        console.log('🔍 refreshModalData - DB에서 가져온 데이터:', {
+        logger.debug('refreshModalData - DB에서 가져온 데이터:', {
           vendor_id: data.vendor_id,
           vendor_contacts: vendorContacts,
           purchaseData_full: purchaseData,
@@ -635,8 +677,8 @@ function PurchaseDetailModal({
   // 🚀 메모리 캐시 변경 실시간 감지 및 모달 데이터 동기화
   useEffect(() => {
     if (!purchaseId || !allPurchases || !purchase) return;
-    // ✅ 편집 모드일 때는 데이터 덮어쓰기 방지 (입력 포커스 유지)
-    if (isEditing) return;
+    // ✅ 편집 모드 또는 저장 중일 때는 데이터 덮어쓰기 방지
+    if (isEditing || isSaving) return;
 
     const memoryPurchase = allPurchases.find(p => p.id === purchaseId);
     if (memoryPurchase) {
@@ -657,13 +699,13 @@ function PurchaseDetailModal({
       setEditedPurchase(updatedPurchase);
       setEditedItems(normalizedItems.length > 0 ? normalizedItems : []);
     }
-  }, [allPurchases, lastFetch, isEditing]); // isEditing 의존성 추가
+  }, [allPurchases, lastFetch, isEditing, isSaving]); // isEditing, isSaving 의존성 추가
 
   // 🚀 모달이 열릴 때마다 메모리에서 최신 데이터 강제 동기화
   useEffect(() => {
     if (!isOpen || !purchaseId || !allPurchases) return;
-    // ✅ 편집 모드일 때는 데이터 덮어쓰기 방지 (입력 포커스 유지)
-    if (isEditing) return;
+    // ✅ 편집 모드 또는 저장 중일 때는 데이터 덮어쓰기 방지
+    if (isEditing || isSaving) return;
 
     const memoryPurchase = allPurchases.find(p => p.id === purchaseId);
     if (memoryPurchase) {
@@ -691,7 +733,7 @@ function PurchaseDetailModal({
       setEditedPurchase(updatedPurchase);
       setEditedItems(normalizedItems.length > 0 ? normalizedItems : []);
     }
-  }, [isOpen, purchaseId, allPurchases, isEditing]); // isEditing 의존성 추가
+  }, [isOpen, purchaseId, allPurchases, isEditing, isSaving]); // isEditing, isSaving 의존성 추가
   
   // 컴포넌트가 마운트될 때 외부 새로고침을 방지하는 플래그
   const [isInitialLoad, setIsInitialLoad] = useState(true)
@@ -1546,6 +1588,16 @@ function PurchaseDetailModal({
     return new Intl.NumberFormat('ko-KR').format(amount)
   }
 
+  // 타임아웃 유틸리티 함수
+  const withTimeout = <T>(promise: Promise<T>, timeoutMs: number): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => 
+        setTimeout(() => reject(new Error(`작업이 ${timeoutMs}ms 내에 완료되지 않았습니다.`)), timeoutMs)
+      )
+    ])
+  }
+
   const handleSave = async () => {
     if (!purchase || !editedPurchase) {
       toast.error('저장할 데이터가 없습니다.')
@@ -1554,36 +1606,14 @@ function PurchaseDetailModal({
     
     // 🚀 저장 로딩 상태 시작
     setIsSaving(true)
-    
-    logger.info('handleSave 시작:', { 
-      purchaseId: purchase.id,
-      vendor_id: editedPurchase.vendor_id,
-      vendor_name: editedPurchase.vendor_name,
-      vendor: editedPurchase.vendor,
-      editedPurchase: editedPurchase
-    })
+    logger.debug('[handleSave] 저장 시작')
     
     try {
       const supabase = createClient()
-      console.log('🔍 [handleSave] 저장 시작 - Step 1: supabase 클라이언트 생성 완료')
+      logger.debug('[handleSave] Step 1: 발주 기본 정보 업데이트 시작')
       
       // 발주 기본 정보 업데이트
       const totalAmount = editedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
-      
-      logger.info('Update payload:', {
-        purchase_order_number: editedPurchase.purchase_order_number || null,
-        requester_name: editedPurchase.requester_name || null,
-        vendor_id: editedPurchase.vendor_id || null,
-        vendor_name: editedPurchase.vendor_name || null,
-        delivery_request_date: editedPurchase.delivery_request_date || null,
-        revised_delivery_request_date: editedPurchase.revised_delivery_request_date || null,
-        payment_category: editedPurchase.payment_category || null,
-        project_vendor: editedPurchase.project_vendor || null,
-        project_item: editedPurchase.project_item || null,
-        sales_order_number: editedPurchase.sales_order_number || null,
-        total_amount: Number(totalAmount),
-        updated_at: new Date().toISOString()
-      })
       
       // contact_id 결정: 우선순위 1. editedPurchase.contact_id 2. vendor_contacts[0].id 3. null
       let contactId = null
@@ -1614,113 +1644,99 @@ function PurchaseDetailModal({
 
       if (updateError) {
         logger.error('Purchase update error:', updateError)
-        console.error('🚨 [handleSave] Step 2 실패 - purchase_requests 업데이트 에러:', updateError)
         throw updateError
       }
-      console.log('✅ [handleSave] Step 2 완료 - purchase_requests 업데이트 성공')
+      logger.debug('[handleSave] Step 1 완료')
 
       // 업체 담당자 정보 업데이트 및 contact_id 저장
+      logger.debug('[handleSave] Step 2: 담당자 정보 업데이트 시작')
       let finalContactId = null
-      logger.info('담당자 저장 시작:', { 
-        vendor_id: editedPurchase.vendor_id,
-        vendor_contacts: editedPurchase.vendor_contacts,
-        isArray: Array.isArray(editedPurchase.vendor_contacts)
-      })
       
-      if (editedPurchase.vendor_id && Array.isArray(editedPurchase.vendor_contacts) && editedPurchase.vendor_contacts.length > 0) {
-        const contact = editedPurchase.vendor_contacts[0]
-        logger.info('담당자 정보:', { contact })
-        
-        // 기존 담당자가 있으면 업데이트, 없으면 생성
-        if (contact.id) {
-          finalContactId = contact.id
-          const { error: contactUpdateError } = await supabase
-            .from('vendor_contacts')
-            .update({
-              contact_name: contact.contact_name || '',
-              contact_email: contact.contact_email || '',
-              contact_phone: contact.contact_phone || '',
-              position: contact.position || ''
-            })
-            .eq('id', contact.id)
+      try {
+        if (editedPurchase.vendor_id && Array.isArray(editedPurchase.vendor_contacts) && editedPurchase.vendor_contacts.length > 0) {
+          const contact = editedPurchase.vendor_contacts[0]
           
-          if (contactUpdateError) {
-            logger.error('담당자 업데이트 오류:', contactUpdateError)
-          } else {
-            // 즉시 UI 상태 업데이트
-            setPurchase(prev => {
-              const updated = prev ? {
-                ...prev,
-                vendor_contacts: [contact],
-                contact_id: contact.id,
-                contact_name: contact.contact_name  // contact_name도 추가
-              } : null
-              logger.info('🔍 담당자 업데이트 후 setPurchase:', { 
-                prev_vendor_contacts: prev?.vendor_contacts,
-                new_vendor_contacts: [contact],
-                updated_purchase: updated
-              })
-              console.log('🔍 담당자 업데이트 후 setPurchase 호출')
-              return updated
-            })
-          }
-        } else if (contact.contact_name) {
-          // 새 담당자 생성
-          const { data: newContact, error: contactInsertError } = await supabase
-            .from('vendor_contacts')
-            .insert({
-              vendor_id: editedPurchase.vendor_id,
-              contact_name: contact.contact_name,
-              contact_email: contact.contact_email || '',
-              contact_phone: contact.contact_phone || '',
-              position: contact.position || ''
-            })
-            .select()
-            .single()
-          
-          if (contactInsertError) {
-            logger.error('담당자 생성 오류:', contactInsertError)
-          } else if (newContact) {
-            finalContactId = newContact.id
-            // 새로 생성된 담당자를 editedPurchase에 반영
-            editedPurchase.vendor_contacts = [newContact]
-            logger.info('담당자 생성 완료:', newContact)
-            
-            // 즉시 UI 상태 업데이트
-            setPurchase(prev => {
-              const updated = prev ? {
-                ...prev,
-                vendor_contacts: [newContact],
-                contact_id: newContact.id,
-                contact_name: newContact.contact_name  // contact_name도 추가
-              } : null
-              logger.info('🔍 새 담당자 생성 후 setPurchase:', { 
-                prev_vendor_contacts: prev?.vendor_contacts,
-                new_vendor_contacts: [newContact],
-                newContact_full: newContact,
-                updated_purchase: updated
-              })
-              console.log('🔍 새 담당자 생성 후 setPurchase 호출:', newContact)
-              return updated
-            })
-            
-            // purchase_requests 테이블의 contact_id도 업데이트
-            const { error: purchaseUpdateError } = await supabase
-              .from('purchase_requests')
+          // 기존 담당자가 있으면 업데이트, 없으면 생성
+          if (contact.id) {
+            finalContactId = contact.id
+            const { error: contactUpdateError } = await supabase
+              .from('vendor_contacts')
               .update({
-                contact_id: newContact.id
+                contact_name: contact.contact_name || '',
+                contact_email: contact.contact_email || '',
+                contact_phone: contact.contact_phone || '',
+                position: contact.position || ''
               })
-              .eq('id', purchase.id)
+              .eq('id', contact.id)
             
-            if (purchaseUpdateError) {
-              logger.error('purchase_requests contact_id 업데이트 오류:', purchaseUpdateError)
+            if (contactUpdateError) {
+              logger.error('담당자 업데이트 오류:', contactUpdateError)
+            } else {
+              // 즉시 UI 상태 업데이트
+              setPurchase(prev => {
+                const updated = prev ? {
+                  ...prev,
+                  vendor_contacts: [contact],
+                  contact_id: contact.id,
+                  contact_name: contact.contact_name
+                } : null
+                return updated
+              })
+            }
+          } else if (contact.contact_name) {
+            // 새 담당자 생성
+            const { data: newContact, error: contactInsertError } = await supabase
+              .from('vendor_contacts')
+              .insert({
+                vendor_id: editedPurchase.vendor_id,
+                contact_name: contact.contact_name,
+                contact_email: contact.contact_email || '',
+                contact_phone: contact.contact_phone || '',
+                position: contact.position || ''
+              })
+              .select()
+              .single()
+            
+            if (contactInsertError) {
+              logger.error('담당자 생성 오류:', contactInsertError)
+            } else if (newContact) {
+              finalContactId = newContact.id
+              // 새로 생성된 담당자를 editedPurchase에 반영
+              editedPurchase.vendor_contacts = [newContact]
+              
+              // 즉시 UI 상태 업데이트
+              setPurchase(prev => {
+                const updated = prev ? {
+                  ...prev,
+                  vendor_contacts: [newContact],
+                  contact_id: newContact.id,
+                  contact_name: newContact.contact_name
+                } : null
+                return updated
+              })
+              
+              // purchase_requests 테이블의 contact_id도 업데이트
+              const { error: purchaseUpdateError } = await supabase
+                .from('purchase_requests')
+                .update({
+                  contact_id: newContact.id
+                })
+                .eq('id', purchase.id)
+              
+              if (purchaseUpdateError) {
+                logger.error('purchase_requests contact_id 업데이트 오류:', purchaseUpdateError)
+              }
             }
           }
         }
+      } catch (contactError) {
+        // 담당자 정보 업데이트 실패해도 저장은 계속 진행
+        logger.warn('⚠️ [handleSave] 담당자 정보 업데이트 실패 (무시하고 계속):', contactError)
       }
+      logger.debug('[handleSave] Step 2 완료')
 
       // 삭제된 항목들 처리
-      console.log('🔍 [handleSave] Step 3 - 삭제된 항목 처리 시작:', { deletedItemIds })
+      logger.debug('[handleSave] Step 3: 삭제된 항목 처리 시작')
       if (deletedItemIds.length > 0) {
         const { error: deleteError } = await supabase
           .from('purchase_request_items')
@@ -1728,11 +1744,11 @@ function PurchaseDetailModal({
           .in('id', deletedItemIds)
 
         if (deleteError) {
-          console.error('🚨 [handleSave] Step 3 실패 - 품목 삭제 에러:', deleteError)
+          logger.error('품목 삭제 에러:', deleteError)
           throw deleteError
         }
       }
-      console.log('✅ [handleSave] Step 3 완료 - 삭제된 항목 처리 성공')
+      logger.debug('[handleSave] Step 3 완료')
 
       // 모든 품목이 삭제된 경우 발주기본정보도 삭제
       if (editedItems.length === 0) {
@@ -1781,31 +1797,17 @@ function PurchaseDetailModal({
         return // 여기서 함수 종료
       }
 
-      // 각 아이템 업데이트 또는 생성
-      console.log('🔍 [handleSave] Step 4 - 아이템 업데이트/생성 시작:', { itemCount: editedItems.length })
+      // 각 아이템 업데이트 또는 생성 (병렬 처리로 개선)
+      logger.debug(`[handleSave] Step 4: 아이템 저장 시작, 총 ${editedItems.length}개`)
       
-      for (const item of editedItems) {
-        // 🔍 저장할 아이템 데이터 디버깅 로그
-        logger.info('🔍 [handleSave] 저장할 아이템:', { 
-          id: item.id,
-          item_name: item.item_name,
-          quantity: item.quantity,
-          unit_price_value: item.unit_price_value,
-          amount_value: item.amount_value,
-          typeOfQuantity: typeof item.quantity,
-          typeOfUnitPrice: typeof item.unit_price_value
-        });
-        
+      // 모든 아이템을 병렬로 처리하기 위한 Promise 배열
+      const itemPromises = editedItems.map(async (item, index) => {
         // 필수 필드 검증
         if (!item.item_name || !item.item_name.trim()) {
           throw new Error('품목명은 필수입니다.');
         }
-        // 🔧 수량이 없거나 0이하면 1로 자동 설정 (에러 대신 자동 수정)
+        // 수량이 없거나 0이하면 1로 자동 설정
         if (!item.quantity || item.quantity <= 0) {
-          logger.warn('🔧 [handleSave] 수량이 0이하여서 1로 자동 설정:', { 
-            item_name: item.item_name, 
-            original_quantity: item.quantity 
-          });
           item.quantity = 1;
         }
         if (item.unit_price_value !== null && item.unit_price_value !== undefined && item.unit_price_value < 0) {
@@ -1819,14 +1821,24 @@ function PurchaseDetailModal({
         const numericItemId = item.id ? Number(item.id) : null;
         const isExistingItem = numericItemId && !Number.isNaN(numericItemId) && numericItemId > 0;
         
+        // 단가와 합계금액 처리
+        const unitPriceValue = (item.unit_price_value != null && item.unit_price_value !== undefined && item.unit_price_value !== '') 
+          ? safeNumber(item.unit_price_value) 
+          : null
+        
+        let amountValue: number | null = null
+        if (item.amount_value != null && item.amount_value !== undefined) {
+          if (item.amount_value !== '') {
+            const numValue = Number(item.amount_value)
+            if (!Number.isNaN(numValue)) {
+              amountValue = numValue
+            }
+          }
+        }
+        const finalAmountValue = amountValue !== null ? amountValue : 0
+        
         if (isExistingItem) {
           // 기존 항목 업데이트
-          console.log('🔍 [handleSave] 기존 항목 업데이트 시도:', { 
-            itemId: numericItemId, 
-            originalId: item.id, 
-            idType: typeof item.id 
-          });
-          
           const { error } = await supabase
             .from('purchase_request_items')
             .update({
@@ -1834,9 +1846,9 @@ function PurchaseDetailModal({
               specification: item.specification || null,
               quantity: safeNumber(item.quantity, 1),
               received_quantity: item.received_quantity != null ? safeNumber(item.received_quantity) : null,
-              unit_price_value: safeNumber(item.unit_price_value),
+              unit_price_value: unitPriceValue,
               unit_price_currency: purchase.currency || 'KRW',
-              amount_value: safeNumber(item.amount_value),
+              amount_value: finalAmountValue,
               amount_currency: purchase.currency || 'KRW',
               remark: item.remark || null,
               updated_at: new Date().toISOString()
@@ -1845,10 +1857,9 @@ function PurchaseDetailModal({
 
           if (error) {
             logger.error('기존 항목 업데이트 오류', error);
-            console.error('🚨 [handleSave] Step 4 실패 - 기존 항목 업데이트 에러:', { itemId: numericItemId, item_name: item.item_name, error });
             throw error;
           }
-          console.log('✅ [handleSave] 아이템 업데이트 성공:', { itemId: numericItemId, item_name: item.item_name });
+          logger.debug(`[handleSave] 아이템 ${index + 1} 업데이트 완료`)
         } else {
           // 새 항목 생성
           const insertData = {
@@ -1857,16 +1868,15 @@ function PurchaseDetailModal({
             specification: item.specification || null,
             quantity: safeNumber(item.quantity, 1),
             received_quantity: item.received_quantity != null ? safeNumber(item.received_quantity) : null,
-            unit_price_value: safeNumber(item.unit_price_value),
+            unit_price_value: unitPriceValue,
             unit_price_currency: purchase.currency || 'KRW',
-            amount_value: safeNumber(item.amount_value),
+            amount_value: finalAmountValue,
             amount_currency: purchase.currency || 'KRW',
             remark: item.remark || null,
             line_number: item.line_number || editedItems.indexOf(item) + 1,
             created_at: new Date().toISOString()
           };
           
-          // 🚀 INSERT 후 새 ID 받기 (.select() 추가)
           const { data: insertedItem, error } = await supabase
             .from('purchase_request_items')
             .insert(insertData)
@@ -1875,99 +1885,54 @@ function PurchaseDetailModal({
 
           if (error) {
             logger.error('새 항목 생성 오류', error);
-            console.error('🚨 [handleSave] Step 4 실패 - 새 항목 생성 에러:', { item_name: item.item_name, error });
             throw error;
           }
           
-          // 🚀 반환된 새 ID로 editedItems 업데이트
+          // 반환된 새 ID로 editedItems 업데이트
           if (insertedItem) {
-            const itemIndex = editedItems.indexOf(item)
-            if (itemIndex !== -1) {
-              editedItems[itemIndex] = { ...editedItems[itemIndex], ...insertedItem }
-              logger.info('✅ 새 항목 ID 할당됨:', { id: insertedItem.id, itemIndex })
+            const idx = editedItems.indexOf(item)
+            if (idx !== -1) {
+              editedItems[idx] = { ...editedItems[idx], ...insertedItem }
             }
           }
+          logger.debug(`[handleSave] 아이템 ${index + 1} 삽입 완료`)
         }
-      }
-      console.log('✅ [handleSave] Step 4 완료 - 모든 아이템 업데이트/생성 성공')
+      })
+      
+      // 모든 아이템 저장을 병렬로 실행
+      await Promise.all(itemPromises)
+      logger.debug('[handleSave] Step 4 완료: 모든 아이템 저장됨')
 
       // 🚀 전체완료 함수와 정확히 동일한 패턴 적용 (메모리 캐시 포함)
       const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
       const sourceData = editedPurchase || purchase
       
-      // 1. 🚀 삭제된 품목들에 대해 개별 메모리 캐시 처리 (구매완료와 동일한 방식)
-      if (!Number.isNaN(purchaseIdNumber) && deletedItemIds.length > 0) {
-        logger.info('🚀 [메모리 캐시] 개별 품목 삭제 처리 시작', {
-          purchaseId: purchaseIdNumber,
-          deletedItemIds: deletedItemIds,
-          deletedCount: deletedItemIds.length
-        })
-        
-        // 각 삭제된 품목에 대해 개별 메모리 캐시 업데이트 (구매완료와 정확히 동일한 패턴)
-        deletedItemIds.forEach(itemId => {
-          const memoryUpdated = removeItemFromMemory(purchaseIdNumber, itemId)
-          if (!memoryUpdated) {
-            logger.warn('[handleSave] 개별 품목 삭제 메모리 캐시 업데이트 실패', { 
-              purchaseId: purchaseIdNumber, 
-              itemId: itemId 
-            })
-          } else {
-            logger.info('✅ [handleSave] 개별 품목 삭제 메모리 캐시 업데이트 성공', { 
-              purchaseId: purchaseIdNumber, 
-              itemId: itemId 
-            })
-          }
-        })
+      // 1. 🚀 삭제된 품목들에 대해 개별 메모리 캐시 처리
+      try {
+        if (!Number.isNaN(purchaseIdNumber) && deletedItemIds.length > 0) {
+          deletedItemIds.forEach(itemId => {
+            try {
+              const memoryUpdated = removeItemFromMemory(purchaseIdNumber, itemId)
+              if (!memoryUpdated) {
+                logger.warn('[handleSave] 개별 품목 삭제 메모리 캐시 업데이트 실패', { 
+                  purchaseId: purchaseIdNumber, 
+                  itemId: itemId 
+                })
+              }
+            } catch (itemError) {
+              logger.warn('⚠️ [handleSave] 개별 품목 삭제 메모리 캐시 업데이트 중 에러 (무시):', itemError)
+            }
+          })
+        }
+      } catch (memoryError) {
+        logger.warn('⚠️ [handleSave] 메모리 캐시 삭제 처리 중 에러 (무시하고 계속):', memoryError)
       }
       
       // 2. 발주 기본 정보 메모리 캐시 업데이트 (수정된 필드들만)
-      if (!Number.isNaN(purchaseIdNumber)) {
-        const memoryUpdated = updatePurchaseInMemory(purchaseIdNumber, (prev) => {
-          const totalAmount = editedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
-          
-          logger.info('🚀 [메모리 캐시] 발주 기본 정보 업데이트', {
-            purchaseId: purchaseIdNumber,
-            newTotalAmount: totalAmount,
-            itemsCount: editedItems.length
-          })
-          
-          return {
-            ...prev,
-            // 발주 기본 정보 업데이트
-            purchase_order_number: sourceData?.purchase_order_number || prev.purchase_order_number,
-            requester_name: sourceData?.requester_name || prev.requester_name,
-            vendor_id: sourceData?.vendor_id || prev.vendor_id,
-            vendor_name: sourceData?.vendor_name || prev.vendor_name,
-            vendor: sourceData?.vendor || (prev as any).vendor,
-            vendor_contacts: sourceData?.vendor_contacts || (prev as any).vendor_contacts,
-            delivery_request_date: sourceData?.delivery_request_date || prev.delivery_request_date,
-            revised_delivery_request_date: sourceData?.revised_delivery_request_date || prev.revised_delivery_request_date,
-            payment_category: sourceData?.payment_category || prev.payment_category,
-            project_vendor: sourceData?.project_vendor || prev.project_vendor,
-            project_item: sourceData?.project_item || prev.project_item,
-            total_amount: totalAmount,
-            // 🚀 품목 데이터도 메모리 캐시에 업데이트 (단가 등 실시간 반영)
-            items: editedItems,
-            purchase_request_items: editedItems,
-            updated_at: new Date().toISOString()
-          } as Purchase
-        })
-        
-        logger.info('🚀 [메모리 캐시] 기본 정보 업데이트 결과:', { memoryUpdated })
-      }
-      
-      // 3. applyOptimisticUpdate 함수 정의 (전체완료 함수 패턴)
-      const applyOptimisticUpdate = () => {
-        if (!Number.isNaN(purchaseIdNumber) && onOptimisticUpdate) {
-          onOptimisticUpdate(purchaseIdNumber, prev => {
-            const finalItems = editedItems // 삭제된 항목이 이미 제외됨
-            const totalAmount = finalItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
-            
-            logger.info('🚀 [onOptimisticUpdate] 즉시 UI 업데이트', {
-              originalItemsCount: prev.items?.length || prev.purchase_request_items?.length || 0,
-              finalItemsCount: finalItems.length,
-              deletedItemsCount: deletedItemIds.length
-            })
+      try {
+        if (!Number.isNaN(purchaseIdNumber)) {
+          const memoryUpdated = updatePurchaseInMemory(purchaseIdNumber, (prev) => {
+            const totalAmount = editedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
             
             return {
               ...prev,
@@ -1984,39 +1949,84 @@ function PurchaseDetailModal({
               project_vendor: sourceData?.project_vendor || prev.project_vendor,
               project_item: sourceData?.project_item || prev.project_item,
               total_amount: totalAmount,
-              // 품목 데이터 업데이트 - 삭제된 항목 제외
-              items: finalItems,
-              purchase_request_items: finalItems,
+              // 🚀 품목 데이터도 메모리 캐시에 업데이트 (단가 등 실시간 반영)
+              items: editedItems,
+              purchase_request_items: editedItems,
               updated_at: new Date().toISOString()
             } as Purchase
           })
         }
+      } catch (memoryError) {
+        logger.warn('⚠️ [handleSave] 메모리 캐시 업데이트 중 에러 (무시하고 계속):', memoryError)
       }
       
-      // 4. 즉시 UI 업데이트 실행 (전체완료 함수 패턴)
-      console.log('🔍 [handleSave] Step 5 - UI 업데이트 시작')
-      applyOptimisticUpdate()
-      console.log('✅ [handleSave] Step 5 완료 - 저장 성공!')
+      // 3. applyOptimisticUpdate 함수 정의 및 실행 (전체완료 함수 패턴)
+      try {
+        const applyOptimisticUpdate = () => {
+          if (!Number.isNaN(purchaseIdNumber) && onOptimisticUpdate) {
+            onOptimisticUpdate(purchaseIdNumber, prev => {
+              const finalItems = editedItems // 삭제된 항목이 이미 제외됨
+              const totalAmount = finalItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
+              
+              return {
+                ...prev,
+                // 발주 기본 정보 업데이트
+                purchase_order_number: sourceData?.purchase_order_number || prev.purchase_order_number,
+                requester_name: sourceData?.requester_name || prev.requester_name,
+                vendor_id: sourceData?.vendor_id || prev.vendor_id,
+                vendor_name: sourceData?.vendor_name || prev.vendor_name,
+                vendor: sourceData?.vendor || (prev as any).vendor,
+                vendor_contacts: sourceData?.vendor_contacts || (prev as any).vendor_contacts,
+                delivery_request_date: sourceData?.delivery_request_date || prev.delivery_request_date,
+                revised_delivery_request_date: sourceData?.revised_delivery_request_date || prev.revised_delivery_request_date,
+                payment_category: sourceData?.payment_category || prev.payment_category,
+                project_vendor: sourceData?.project_vendor || prev.project_vendor,
+                project_item: sourceData?.project_item || prev.project_item,
+                total_amount: totalAmount,
+                // 품목 데이터 업데이트 - 삭제된 항목 제외
+                items: finalItems,
+                purchase_request_items: finalItems,
+                updated_at: new Date().toISOString()
+              } as Purchase
+            })
+          }
+        }
+        
+        // 4. 즉시 UI 업데이트 실행 (전체완료 함수 패턴)
+        logger.debug('[handleSave] Step 5 - UI 업데이트 시작')
+        applyOptimisticUpdate()
+        logger.debug('[handleSave] Step 5 완료 - 저장 성공!')
+      } catch (optimisticError) {
+        logger.warn('⚠️ [handleSave] OptimisticUpdate 중 에러 (무시하고 계속):', optimisticError)
+      }
 
+      logger.debug('[handleSave] Step 5 완료: UI 업데이트됨')
       toast.success('발주 내역이 성공적으로 저장되었습니다.')
       handleEditToggle(false)
       setDeletedItemIds([])
       
-      // 5. 전체완료 함수 패턴: refreshModalData 먼저, 그 다음 onRefresh
-      await refreshModalDataWithLock()
-      logger.info('🔍 refreshModalData 완료 후 purchase:', { purchaseId: purchase?.id })
-      console.log('🔍 refreshModalData 완료 후 - 전체 purchase 상태:', purchase)
+      logger.debug('[handleSave] 저장 완료! 로딩 해제')
+      
+      // 로딩 상태 즉시 해제 (OptimisticUpdate로 이미 UI 업데이트 완료)
+      setIsSaving(false)
+      
+      // 새로고침은 백그라운드에서 비동기로 실행 (await 제거)
+      refreshModalDataWithLock().catch(err => {
+        logger.warn('⚠️ [handleSave] 백그라운드 새로고침 실패 (무시):', err)
+      })
+      
       const refreshResult = onRefresh?.(true, { silent: true })
       if (refreshResult instanceof Promise) {
-        await refreshResult
+        refreshResult.catch(err => {
+          logger.warn('⚠️ [handleSave] 백그라운드 onRefresh 실패 (무시):', err)
+        })
       }
     } catch (error) {
-      logger.error('저장 중 전체 오류', error);
-      console.error('🚨 [handleSave] 저장 실패:', error); // 디버깅용
+      logger.error('[handleSave] 저장 실패:', error)
       const errorMessage = error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다'
-      toast.error(`저장 실패: ${errorMessage}`, { duration: 5000 }) // 5초 유지
+      toast.error(`저장 실패: ${errorMessage}`, { duration: 5000 })
     } finally {
-      // 🚀 저장 로딩 상태 종료
+      logger.debug('[handleSave] finally 블록 실행 - 로딩 해제')
       setIsSaving(false)
     }
   }
@@ -2028,20 +2038,42 @@ function PurchaseDetailModal({
       // 수량이나 단가를 수정한 경우 금액 및 세액 자동 계산
       const quantity = field === 'quantity' ? value : newItems[index].quantity
       const unitPrice = field === 'unit_price_value' ? value : newItems[index].unit_price_value
-      const amount = (quantity || 0) * (unitPrice || 0)
       
-      // 발주 카테고리인 경우 세액(10%) 자동 계산
-      const taxAmount = purchase?.payment_category === '발주' ? Math.round(amount * 0.1) : 0
+      // 단가가 null이거나 0이면 합계금액을 자동 계산하지 않음 (합계금액을 직접 입력한 경우 유지)
+      const hasValidUnitPrice = unitPrice != null && unitPrice !== undefined && unitPrice !== '' && unitPrice !== 0
+      const hasValidQuantity = quantity != null && quantity !== undefined && quantity !== 0
       
-      newItems[index] = {
-        ...newItems[index],
-        [field]: value,
-        amount_value: amount,
-        tax_amount_value: taxAmount
+      if (hasValidUnitPrice && hasValidQuantity) {
+        // 단가와 수량이 모두 유효한 경우에만 합계금액 자동 계산
+        const amount = (quantity || 0) * (unitPrice || 0)
+        
+        // 발주 카테고리인 경우 세액(10%) 자동 계산
+        const taxAmount = purchase?.payment_category === '발주' ? Math.round(amount * 0.1) : 0
+        
+        newItems[index] = {
+          ...newItems[index],
+          [field]: value,
+          amount_value: amount,
+          tax_amount_value: taxAmount
+        }
+      } else {
+        // 단가나 수량이 유효하지 않으면 합계금액은 유지하고 단가/수량만 업데이트
+        newItems[index] = {
+          ...newItems[index],
+          [field]: value
+          // amount_value는 기존 값 유지
+        }
       }
     } else if (field === 'amount_value') {
       // 합계금액을 직접 수정한 경우
-      const amount = Number(value) || 0
+      // 빈 문자열과 0을 구분하여 처리
+      let amount = 0
+      if (value !== '' && value != null && value !== undefined) {
+        const numValue = Number(value)
+        if (!Number.isNaN(numValue)) {
+          amount = numValue  // 0도 유효한 값
+        }
+      }
       
       // 발주 카테고리인 경우 세액(10%) 자동 계산
       const taxAmount = purchase?.payment_category === '발주' ? Math.round(amount * 0.1) : 0
@@ -4581,8 +4613,7 @@ function PurchaseDetailModal({
                                   .eq('vendor_id', selectedVendor.id)
                                   .then(({ data: contactsData, error }: { data: any, error: any }) => {
                                     if (error) {
-                                      logger.error('🔍 담당자 목록 로드 오류:', error)
-                                      console.error('담당자 목록 로드 오류:', error)
+                                      logger.error('담당자 목록 로드 오류:', error)
                                     }
                                     
                                     logger.info('🔍 업체 변경 - 담당자 목록 로드:', { 
@@ -4591,7 +4622,7 @@ function PurchaseDetailModal({
                                       contactsData,
                                       contactsCount: contactsData?.length || 0
                                     })
-                                    console.log('🔍 업체 변경 - 담당자 목록:', contactsData)
+                                    logger.debug('업체 변경 - 담당자 목록:', contactsData)
                                     
                                     setEditedPurchase(prev => {
                                       const updated = prev ? { 
@@ -4610,7 +4641,7 @@ function PurchaseDetailModal({
                                         updated_vendor_contacts: updated?.vendor_contacts,
                                         updated_full: updated
                                       })
-                                      console.log('🔍 업체 변경 - editedPurchase 전체:', updated)
+                                      logger.debug('업체 변경 - editedPurchase 전체:', updated)
                                       return updated
                                     })
                                   })
@@ -4733,7 +4764,7 @@ function PurchaseDetailModal({
                                 final_unique_count: finalUniqueContacts.length,
                                 options
                               })
-                              console.log('🔍 담당자 드롭다운 옵션:', options)
+                              logger.debug('담당자 드롭다운 옵션:', options)
                               return options
                             })()}
                             value={(() => {
@@ -4865,7 +4896,7 @@ function PurchaseDetailModal({
                             contactName,
                             purchase_full: purchase
                           })
-                          console.log('🔍 vendor_contacts display 렌더링:', { 
+                          logger.debug('vendor_contacts display 렌더링:', { 
                             purchase_id: purchase?.id,
                             vendor_id: purchase?.vendor_id,
                             contact_id: purchase?.contact_id,

@@ -1,4 +1,4 @@
--- cad_drawings 삭제 권한 부여 (기존에 없을 경우만 생성)
+b9,j hliju8kp;jmk'/k,/,-- cad_drawings 삭제 권한 부여 (기존에 없을 경우만 생성)
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -15,6 +15,7 @@ BEGIN
   END IF;
 END
 $$;
+
 
 
 

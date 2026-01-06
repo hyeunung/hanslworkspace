@@ -819,10 +819,6 @@ const FastPurchaseTable = ({
   onReceiptComplete,
   columnVisibility
 }: FastPurchaseTableProps) => {
-  // 디버깅용 로그
-  useEffect(() => {
-    logger.info('[FastPurchaseTable] columnVisibility 변경됨', { columnVisibility });
-  }, [columnVisibility]);
   const [selectedPurchaseId, setSelectedPurchaseId] = useState<number | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);

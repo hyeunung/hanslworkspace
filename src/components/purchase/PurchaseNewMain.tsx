@@ -942,11 +942,45 @@ export default function PurchaseNewMain() {
         return;
       }
 
+      // 삭제된 담당자 처리: 기존 contacts에 있었지만 contactsForEdit에 없는 항목들 삭제
+      const editContactIds = contactsForEdit
+        .filter(c => !c.isNew && c.id)
+        .map(c => c.id);
+      const deletedContacts = contacts.filter(c => c.id && !editContactIds.includes(c.id));
+      
+      const failedDeletes: string[] = [];
+      for (const deleted of deletedContacts) {
+        if (deleted.id) {
+          const { error: deleteError } = await supabase
+            .from('vendor_contacts')
+            .delete()
+            .eq('id', deleted.id);
+          
+          if (deleteError) {
+            // 외래 키 제약조건 오류 (이 담당자가 발주에 연결되어 있음)
+            failedDeletes.push(deleted.contact_name || `ID:${deleted.id}`);
+          }
+        }
+      }
+      
+      if (failedDeletes.length > 0) {
+        toast.error(`다음 담당자는 발주에 연결되어 삭제할 수 없습니다: ${failedDeletes.join(', ')}`);
+      }
+
+      // 이름만 있고 이메일이 비어있는 담당자가 있는지 체크
+      const incompleteContacts = contactsForEdit.filter(c => 
+        c.contact_name && c.contact_name.trim() && (!c.contact_email || !c.contact_email.trim())
+      );
+      if (incompleteContacts.length > 0) {
+        toast.error('담당자의 이메일을 입력해주세요.');
+        return;
+      }
+
       for (const contact of contactsForEdit) {
         if (contact.contact_name && contact.contact_email) {
           if (!contact.isNew && contact.id) {
             // 기존 담당자 업데이트
-            await supabase
+            const { error: updateError } = await supabase
               .from('vendor_contacts')
               .update({
                 contact_name: contact.contact_name,
@@ -955,9 +989,13 @@ export default function PurchaseNewMain() {
                 position: contact.position || ''
               })
               .eq('id', contact.id);
+            
+            if (updateError) {
+              console.error('담당자 업데이트 오류:', updateError);
+            }
           } else if (contact.isNew) {
             // 새로운 담당자 추가
-            await supabase
+            const { error: insertError } = await supabase
               .from('vendor_contacts')
               .insert({
                 vendor_id: selectedVendor,
@@ -966,6 +1004,11 @@ export default function PurchaseNewMain() {
                 contact_phone: contact.contact_phone || '',
                 position: contact.position || ''
               });
+            
+            if (insertError) {
+              console.error('담당자 추가 오류:', insertError);
+              toast.error(`담당자 추가 실패: ${insertError.message}`);
+            }
           }
         }
       }

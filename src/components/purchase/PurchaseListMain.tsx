@@ -88,16 +88,16 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     return Object.values(columnVisibility).some(visible => !visible);
   }, [columnVisibility]);
   
-  // 디버깅용 로그
-  useEffect(() => {
-    logger.info('[PurchaseListMain] columnVisibility 상태', { columnVisibility });
-  }, [columnVisibility]);
   
-  const currentUserRoles = Array.isArray(currentUser?.purchase_role) 
-    ? currentUser.purchase_role.map((r: string) => r.trim())
-    : typeof currentUser?.purchase_role === 'string' 
-    ? currentUser.purchase_role.split(',').map((r: string) => r.trim())
-    : [];
+  const currentUserRoles = useMemo(() => {
+    if (Array.isArray(currentUser?.purchase_role)) {
+      return currentUser.purchase_role.map((r: string) => r.trim())
+    }
+    if (typeof currentUser?.purchase_role === 'string') {
+      return currentUser.purchase_role.split(',').map((r: string) => r.trim())
+    }
+    return []
+  }, [currentUser?.purchase_role])
   
   const currentUserName = currentUser?.name || null;
   
@@ -152,14 +152,6 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       receipt: (hasHrRole || hasPurchaseManagerRole) ? 'all' : (roleCase === 3 ? 'all' : currentUserName),
       done: 'all' // 전체 항목 탭은 항상 모든 항목 표시
     };
-    
-    logger.info('[defaultEmployeeByTab 계산 결과]', {
-      currentUserName,
-      roleCase,
-      currentUserRoles,
-      hasManagerRole,
-      result
-    });
     
     return result;
   }, [currentUserName, roleCase, currentUserRoles]);

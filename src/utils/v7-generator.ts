@@ -411,9 +411,69 @@ async function parseBOMFile(file: File): Promise<ParsedBOMItem[]> {
     }
   }
   
+  // 2차: 헤더를 못 찾았거나 REF 칼럼을 명확히 못 찾은 경우, 데이터 패턴으로 판별
+  let refColumnFoundByKeyword = headerRow !== -1;
+  
   if (headerRow === -1) {
-    console.warn('헤더를 찾을 수 없습니다. 기본값 사용.');
-    headerRow = 0;
+    console.warn('헤더를 찾을 수 없습니다. 데이터 패턴으로 REF 칼럼 탐색...');
+    headerRow = 0; // 첫 행부터 데이터로 간주
+    refColumnFoundByKeyword = false;
+  }
+  
+  // REF 패턴: 알파벳 1~3자 + 숫자 (예: R1, C2, U3, IC1, JP1 등)
+  // 또는 쉼표/공백으로 구분된 여러 REF (예: R1, R2, R3)
+  // 또는 범위 표현 (예: R1~R10, C1-C5)
+  const isRefPattern = (value: string): boolean => {
+    if (!value || typeof value !== 'string') return false;
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+    
+    // 단일 REF 패턴: A1, R12, IC3, JP1 등
+    const singleRefPattern = /^[A-Z]{1,3}\d+$/i;
+    // 여러 REF 패턴: R1, R2, R3 또는 R1 R2 R3
+    const multiRefPattern = /^[A-Z]{1,3}\d+([,.\s]+[A-Z]{1,3}\d+)*$/i;
+    // 범위 REF 패턴: R1~R10, C1-C5
+    const rangeRefPattern = /^[A-Z]{1,3}\d+[-~][A-Z]*\d+$/i;
+    
+    return singleRefPattern.test(trimmed) || multiRefPattern.test(trimmed) || rangeRefPattern.test(trimmed);
+  };
+  
+  // REF 칼럼을 키워드로 못 찾았으면 데이터 패턴으로 탐색
+  if (!refColumnFoundByKeyword || colMap.ref === 1) { // 기본값이면 패턴 분석 시도
+    const sampleRows = rows.slice(headerRow + 1, Math.min(headerRow + 20, rows.length));
+    const colScores: number[] = [];
+    
+    // 각 칼럼별로 REF 패턴 매칭 점수 계산
+    const maxCols = Math.max(...sampleRows.map(r => (r ? r.length : 0)));
+    for (let col = 0; col < maxCols; col++) {
+      let matchCount = 0;
+      let totalCount = 0;
+      
+      for (const row of sampleRows) {
+        if (!row || col >= row.length) continue;
+        const cellValue = String(row[col] || '').trim();
+        if (!cellValue) continue;
+        
+        totalCount++;
+        if (isRefPattern(cellValue)) {
+          matchCount++;
+        }
+      }
+      
+      // 매칭 비율 계산 (최소 3개 이상 데이터가 있어야 유효)
+      const score = totalCount >= 3 ? matchCount / totalCount : 0;
+      colScores.push(score);
+    }
+    
+    // 가장 높은 점수의 칼럼을 REF로 설정 (60% 이상 매칭 시)
+    const maxScore = Math.max(...colScores);
+    if (maxScore >= 0.6) {
+      const bestRefCol = colScores.indexOf(maxScore);
+      console.log(`📊 데이터 패턴 분석: 칼럼 ${bestRefCol}을(를) REF로 판별 (매칭률: ${(maxScore * 100).toFixed(1)}%)`);
+      colMap.ref = bestRefCol;
+    } else {
+      console.warn('📊 데이터 패턴으로도 REF 칼럼을 찾지 못함. 기본값(1) 사용.');
+    }
   }
   
   let currentItem: ParsedBOMItem | null = null;

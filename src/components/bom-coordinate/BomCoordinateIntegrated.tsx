@@ -73,7 +73,9 @@ export default function BomCoordinateIntegrated() {
     created_at: string;
     artwork_manager?: string;
     production_manager?: string;
+    status?: 'pending' | 'completed';
   }>>([]);
+  const [editingBoardId, setEditingBoardId] = useState<string | null>(null); // pending 상태 편집 중인 보드 ID
   const [loadingBoards, setLoadingBoards] = useState(false);
   const [uploadedFilePaths, setUploadedFilePaths] = useState<{ bomPath: string; coordPath: string } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -91,6 +93,11 @@ export default function BomCoordinateIntegrated() {
     const bomItems = processedResult?.processedData?.bomItems ?? [];
     const coords = processedResult?.processedData?.coordinates ?? [];
 
+    console.log('[REF 비교] BOM 항목 수:', bomItems.length, '좌표 항목 수:', coords.length);
+    if (coords.length > 0) {
+      console.log('[REF 비교] 좌표 샘플:', coords[0]);
+    }
+
     const bomRefs = new Set<string>();
     bomItems.forEach((item: BOMItem) => {
       const refs = (item.refList || '').split(',').map(r => r.trim().toUpperCase()).filter(Boolean);
@@ -99,9 +106,12 @@ export default function BomCoordinateIntegrated() {
 
     const coordRefs = new Set<string>();
     coords.forEach((coord: CoordinateItem) => {
-      const ref = coord?.refDes;
+      // refDes 또는 ref 필드 모두 확인
+      const ref = coord?.refDes || (coord as any)?.ref;
       if (ref) coordRefs.add(ref.trim().toUpperCase());
     });
+
+    console.log('[REF 비교] BOM REF 수:', bomRefs.size, '좌표 REF 수:', coordRefs.size);
 
     let missingInCoord = 0;
     bomRefs.forEach(ref => {
@@ -199,10 +209,24 @@ export default function BomCoordinateIntegrated() {
         return;
       }
       
-      // 데이터 복원
+      // 데이터 복원 (좌표 데이터의 refDes가 비어있으면 ref 필드 사용)
+      let restoredResult = tempData.processedResult;
+      if (restoredResult?.processedData?.coordinates) {
+        restoredResult = {
+          ...restoredResult,
+          processedData: {
+            ...restoredResult.processedData,
+            coordinates: restoredResult.processedData.coordinates.map((coord: any) => ({
+              ...coord,
+              refDes: coord.refDes || coord.ref || ''
+            }))
+          }
+        };
+      }
+      
       setStep(tempData.step);
       setMetadata(tempData.metadata);
-      setProcessedResult(tempData.processedResult);
+      setProcessedResult(restoredResult);
       setViewMode('create');
       console.log('✅ 임시 데이터 복원됨');
     } catch (error) {
@@ -298,7 +322,7 @@ export default function BomCoordinateIntegrated() {
         setLoadingBoards(true);
         const { data: boards, error } = await supabase
           .from('cad_drawings')
-          .select('id, board_name, created_at, artwork_manager, production_manager')
+          .select('id, board_name, created_at, artwork_manager, production_manager, status')
           .order('created_at', { ascending: false });
         
         if (error) throw error;
@@ -572,6 +596,12 @@ export default function BomCoordinateIntegrated() {
       const artworkManagerName = employees.find(emp => emp.id === metadata.artworkManager)?.name || currentUser?.name || '';
       const productionManagerName = employees.find(emp => emp.id === metadata.productionManager)?.name || metadata.productionManager;
       
+      // 상태값 결정 (editingBoardId가 있으면 최종 저장, 없으면 검토 요청)
+      const isReviewMode = !!editingBoardId;
+      const saveStatus = isReviewMode ? 'completed' : 'pending';
+      // 최종 저장 시에만 현재 사용자를 생산담당자로 설정
+      const finalProductionManager = isReviewMode ? currentUser?.name : null;
+
       // cadDrawingId가 임시 ID인 경우 (새로 생성)
       if (cadDrawingId.startsWith('cad_')) {
         // 보드명에서 기존 날짜/정리본 패턴 제거 후 새 날짜 추가
@@ -593,8 +623,9 @@ export default function BomCoordinateIntegrated() {
           .insert({ 
             board_name: saveBoardName,
             artwork_manager: artworkManagerName,
-            production_manager: productionManagerName,
-            production_quantity: metadata.productionQuantity
+            production_manager: finalProductionManager,
+            production_quantity: metadata.productionQuantity,
+            status: saveStatus
           })
           .select('id')
           .single();
@@ -603,14 +634,27 @@ export default function BomCoordinateIntegrated() {
         cadDrawingId = newBoard.id;
       }
       
-      // 담당자 정보 업데이트 (기존 보드인 경우에만)
-      if (!processedResult.cadDrawingId.startsWith('cad_')) {
+      // 기존 보드 업데이트 (editingBoardId가 있는 경우 = pending에서 불러와서 최종 저장)
+      if (editingBoardId) {
+        cadDrawingId = editingBoardId;
         await supabase
           .from('cad_drawings')
           .update({ 
             artwork_manager: artworkManagerName,
-            production_manager: productionManagerName,
-            production_quantity: metadata.productionQuantity
+            production_manager: finalProductionManager,
+            production_quantity: metadata.productionQuantity,
+            status: saveStatus
+          })
+          .eq('id', cadDrawingId);
+      } else if (!processedResult.cadDrawingId.startsWith('cad_')) {
+        // 담당자 정보 업데이트 (기존 보드인 경우에만)
+        await supabase
+          .from('cad_drawings')
+          .update({ 
+            artwork_manager: artworkManagerName,
+            production_manager: finalProductionManager,
+            production_quantity: metadata.productionQuantity,
+            status: saveStatus
           })
           .eq('id', cadDrawingId);
       }
@@ -764,11 +808,17 @@ export default function BomCoordinateIntegrated() {
         }
       }));
 
-      toast.success('수정사항이 저장되었습니다.');
+      // 상태에 따른 토스트 메시지
+      if (editingBoardId) {
+        toast.success('최종 저장이 완료되었습니다.');
+      } else {
+        toast.success('검토 요청이 완료되었습니다. 생산 담당자의 확인을 기다려주세요.');
+      }
       
       // 저장 완료 시 임시 데이터 삭제 및 로컬 상태 초기화
       clearTempData();
       handleReset();
+      setEditingBoardId(null); // 편집 중인 보드 ID 초기화
       
       // 목록 뷰로 전환하여 새로 저장된 항목 확인 가능
       setTimeout(() => {
@@ -952,6 +1002,114 @@ export default function BomCoordinateIntegrated() {
   };
 
 
+  // 검토대기(pending) 보드 데이터 로드 → 미리보기 화면 표시
+  const handleLoadPendingBoard = async (boardId: string) => {
+    try {
+      setLoading(true);
+      setLoadingText('데이터를 불러오는 중...');
+
+      // 1. 보드 정보 가져오기
+      const { data: boardInfo, error: boardError } = await supabase
+        .from('cad_drawings')
+        .select('id, board_name, artwork_manager, production_manager, production_quantity, status')
+        .eq('id', boardId)
+        .single();
+      
+      if (boardError) throw boardError;
+
+      // 2. BOM 아이템 가져오기
+      const { data: bomItems, error: bomError } = await supabase
+        .from('bom_items')
+        .select('*')
+        .eq('cad_drawing_id', boardId)
+        .order('line_number');
+      
+      if (bomError) throw bomError;
+
+      // 3. 좌표 데이터 가져오기
+      const { data: coordinates, error: coordError } = await supabase
+        .from('part_placements')
+        .select('*')
+        .eq('cad_drawing_id', boardId);
+      
+      if (coordError) throw coordError;
+
+      // 4. BOMItem 형식으로 변환
+      const convertedBOMItems: BOMItem[] = (bomItems || []).map((item: any) => {
+        const itemName = item.item_name || '';
+        const isDataMissing = itemName === '데이터 없음' || itemName.includes('수동 확인');
+        return {
+          lineNumber: item.line_number,
+          itemType: item.item_type || '',
+          itemName: itemName,
+          specification: item.specification || '',
+          setCount: item.set_count,
+          totalQuantity: item.total_quantity || 0,
+          stockQuantity: item.stock_quantity || 0,
+          checkStatus: item.check_status || '□양호',
+          refList: Array.isArray(item.ref_list) ? item.ref_list.join(',') : (item.ref_list || ''),
+          alternativeItem: item.alternative_item || '',
+          remark: item.remark || '',
+          isManualRequired: isDataMissing,
+          isNewPart: isDataMissing
+        };
+      });
+
+      // 5. CoordinateItem 형식으로 변환 (DB 컬럼명: ref, 저장 시 ref: coord.refDes로 저장함)
+      const convertedCoords: CoordinateItem[] = (coordinates || []).map((coord: any) => ({
+        type: coord.part_type || '',
+        partName: coord.part_name || '',
+        refDes: coord.ref || '',  // DB 컬럼명은 'ref'
+        ref: coord.ref || '',     // 임시 저장용 (복원 시 fallback으로 사용)
+        layer: coord.side || '',
+        locationX: coord.x_coordinate || 0,
+        locationY: coord.y_coordinate || 0,
+        rotation: coord.angle || 0,
+        remark: coord.remark || ''
+      })) as any;
+
+      // 6. 상태 설정
+      setMetadata({
+        boardName: boardInfo.board_name,
+        artworkManager: boardInfo.artwork_manager || '',
+        productionManager: boardInfo.production_manager || '',
+        productionQuantity: boardInfo.production_quantity || 0
+      });
+
+      console.log('Loaded coordinates:', convertedCoords.length, 'items');
+      console.log('Sample coord:', convertedCoords[0]);
+      
+      // 임시 데이터 삭제 (DB에서 새로 로드한 데이터를 사용하도록)
+      await clearTempData();
+      setSkipTempDataLoad(true); // 임시 데이터 로드 방지
+      
+      setProcessedResult({
+        cadDrawingId: boardId, // 편집 시 저장에 필요
+        processedData: {
+          bomItems: convertedBOMItems,
+          coordinates: convertedCoords
+        }
+      });
+
+      setEditingBoardId(boardId); // 편집 중인 보드 ID 저장
+      
+      // 플래그 해제
+      setTimeout(() => {
+        setSkipTempDataLoad(false);
+      }, 500);
+      setViewMode('create');
+      setStep('preview');
+
+      toast.success('데이터를 불러왔습니다. 검토 후 최종 저장해주세요.');
+    } catch (error: any) {
+      console.error('Error loading pending board:', error);
+      toast.error(`데이터 로드 실패: ${error.message}`);
+    } finally {
+      setLoading(false);
+      setLoadingText('');
+    }
+  };
+
   // 저장된 BOM 삭제 (app_admin만 가능)
   const handleDeleteSavedBOM = async (boardId: string, boardName: string) => {
     if (!isAdmin) {
@@ -1065,6 +1223,7 @@ export default function BomCoordinateIntegrated() {
                   setSkipTempDataLoad(true);
                   // 상태 완전 초기화
                   handleReset();
+                  setEditingBoardId(null); // 편집 중인 보드 ID 초기화
                   setViewMode('create');
                   setStep('input');
                   // 약간의 지연 후 플래그 해제 (다음 새로고침 시에는 복원 가능하도록)
@@ -1093,7 +1252,7 @@ export default function BomCoordinateIntegrated() {
                 }`}
               >
                 <Eye className="w-4 h-4 mr-2" />
-                저장된 목록
+                보드별 BOM/좌표 정리
               </Button>
             </div>
           </div>
@@ -1126,8 +1285,8 @@ export default function BomCoordinateIntegrated() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center mb-4">
                     <div>
-                      <h3 className="page-title">저장된 BOM 목록</h3>
-                      <p className="page-subtitle">저장된 BOM을 확인하고 다운로드할 수 있습니다.</p>
+                      <h3 className="page-title">보드별 BOM/좌표 정리</h3>
+                      <p className="page-subtitle">검토대기 항목을 클릭하여 검토 및 최종 저장하세요.</p>
                     </div>
                   </div>
                   <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
@@ -1147,6 +1306,9 @@ export default function BomCoordinateIntegrated() {
                             <TableHead className="w-[100px] text-center !py-1 !h-auto">
                               <span className="card-description">생산 담당</span>
                             </TableHead>
+                            <TableHead className="w-[80px] text-center !py-1 !h-auto">
+                              <span className="card-description">상태</span>
+                            </TableHead>
                             <TableHead className="w-[100px] text-center !py-1 !h-auto">
                               <span className="card-description">생성일</span>
                             </TableHead>
@@ -1161,8 +1323,14 @@ export default function BomCoordinateIntegrated() {
                               key={board.id} 
                               className="hover:bg-gray-50 cursor-pointer"
                               onClick={() => {
-                                setDetailModalBoardId(board.id);
-                                setIsDetailModalOpen(true);
+                                if (board.status === 'pending') {
+                                  // 검토대기 상태 → 미리보기 화면 표시
+                                  handleLoadPendingBoard(board.id);
+                                } else {
+                                  // 완료 상태 → 상세 모달 표시
+                                  setDetailModalBoardId(board.id);
+                                  setIsDetailModalOpen(true);
+                                }
                               }}
                             >
                               <TableCell className="text-center py-1">
@@ -1176,6 +1344,13 @@ export default function BomCoordinateIntegrated() {
                               </TableCell>
                               <TableCell className="text-center py-1">
                                 <span className="text-[10px] text-gray-600">{board.production_manager || '-'}</span>
+                              </TableCell>
+                              <TableCell className="text-center py-1">
+                                {board.status === 'pending' ? (
+                                  <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 text-[9px] px-1.5 py-0.5">검토대기</Badge>
+                                ) : (
+                                  <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-[9px] px-1.5 py-0.5">완료</Badge>
+                                )}
                               </TableCell>
                               <TableCell className="text-center py-1">
                                 <span className="text-[10px] text-gray-500">
@@ -1488,7 +1663,6 @@ export default function BomCoordinateIntegrated() {
                           !fileInfo.bomFile || 
                           !fileInfo.coordFile || 
                           !metadata.boardName || 
-                          !metadata.productionManager ||
                           metadata.productionQuantity <= 0 ||
                           uploading
                         }
@@ -1568,17 +1742,30 @@ export default function BomCoordinateIntegrated() {
                   <Button 
                     onClick={() => previewPanelRef.current?.handleSave()}
                     disabled={isSaving}
-                    className="button-base bg-hansl-500 hover:bg-hansl-600 text-white"
+                    className={`button-base text-white ${
+                      editingBoardId 
+                        ? 'bg-green-600 hover:bg-green-700' 
+                        : 'bg-hansl-500 hover:bg-hansl-600'
+                    }`}
                   >
                     {isSaving ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        저장 중...
+                        {editingBoardId ? '저장 중...' : '요청 중...'}
                       </>
                     ) : (
                       <>
-                        <Save className="w-4 h-4 mr-2" />
-                        저장
+                        {editingBoardId ? (
+                          <>
+                            <Check className="w-4 h-4 mr-2" />
+                            최종 저장
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4 mr-2" />
+                            검토 요청
+                          </>
+                        )}
                       </>
                     )}
                   </Button>

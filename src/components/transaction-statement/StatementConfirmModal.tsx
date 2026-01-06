@@ -581,10 +581,10 @@ export default function StatementConfirmModal({
     const normalizedFirst = firstExtracted ? normalizeOrderNumber(firstExtracted).toUpperCase() : '';
     const useSONumber = normalizedFirst.startsWith('HS');
     
-    const candidateMap = new Map<string, { 
-      poNumber: string; 
+    type CandidateMapValue = {
+      poNumber: string;
       salesOrderNumber?: string;
-      itemCount: number; 
+      itemCount: number;
       items: MatchCandidate[];
       vendorName?: string;
       setMatchScore?: number; // 세트 매칭 점수
@@ -592,7 +592,9 @@ export default function StatementConfirmModal({
       purchaseId?: number; // 발주 상세 모달용
       quantityMatchedCount?: number; // 수량 일치 품목 수
       quantityMismatchedCount?: number; // 수량 불일치 품목 수
-    }>();
+    };
+    
+    const candidateMap = new Map<string, CandidateMapValue>();
     
     // 1. 세트 매칭 결과가 있으면 먼저 추가 (점수 포함)
     if (setMatchResult?.candidates) {
@@ -606,7 +608,7 @@ export default function StatementConfirmModal({
             poNumber: candidate.purchase_order_number || '',
             salesOrderNumber: candidate.sales_order_number,
             itemCount: candidate.matchedItemCount,
-            items: [],
+            items: [] as MatchCandidate[],
             vendorName: candidate.vendor_name,
             setMatchScore: candidate.matchScore,
             matchedItemCount: candidate.matchedItemCount,
@@ -628,7 +630,7 @@ export default function StatementConfirmModal({
             poNumber: candidate.purchase_order_number || '',
             salesOrderNumber: candidate.sales_order_number,
             itemCount: 0,
-            items: [],
+            items: [] as MatchCandidate[],
             vendorName: candidate.vendor_name,
             purchaseId: candidate.purchase_id
           });
@@ -645,42 +647,44 @@ export default function StatementConfirmModal({
     });
     
     // 2.5. 세트 매칭 점수가 없는 후보들에 대해 개별 품목 유사도 평균 계산 + 수량 일치 여부
-    candidateMap.forEach((candidate, key) => {
+    candidateMap.forEach((candidate: CandidateMapValue, key) => {
       // 각 OCR 품목과 해당 발주의 품목 간 최대 유사도 계산 + 수량 일치 확인
       let totalScore = 0;
       let matchedCount = 0;
       let quantityMatchedCount = 0;
       let quantityMismatchedCount = 0;
       
+      const candidateItems = candidate.items as MatchCandidate[];
+      
       statementWithItems.items.forEach(ocrItem => {
         // 해당 발주의 품목들 중 가장 유사한 것 찾기
         let bestScore = 0;
         let bestMatchItem: MatchCandidate | null = null;
         
-        candidate.items.forEach(sysItem => {
+        for (const sysItem of candidateItems) {
+          const item: MatchCandidate = sysItem;
           const score = calculateItemSimilarity(
             ocrItem.extracted_item_name || '', 
-            sysItem.item_name, 
-            sysItem.specification
+            item.item_name, 
+            item.specification
           );
           if (score > bestScore) {
             bestScore = score;
-            bestMatchItem = sysItem;
+            bestMatchItem = item;
           }
-        });
+        }
         
-        if (bestScore >= 30) {
+        if (bestScore >= 30 && bestMatchItem !== null) {
           matchedCount++;
           
           // 수량 일치 여부 확인
-          if (bestMatchItem) {
-            const ocrQty = ocrItem.extracted_quantity;
-            const sysQty = bestMatchItem.quantity;
-            if (isQuantityMatched(ocrQty, sysQty)) {
-              quantityMatchedCount++;
-            } else {
-              quantityMismatchedCount++;
-            }
+          const ocrQty = ocrItem.extracted_quantity;
+          const matchItem: MatchCandidate = bestMatchItem as MatchCandidate;
+          const sysQty: number = matchItem.quantity;
+          if (isQuantityMatched(ocrQty, sysQty)) {
+            quantityMatchedCount++;
+          } else {
+            quantityMismatchedCount++;
           }
         }
         totalScore += bestScore;
