@@ -558,7 +558,6 @@ function PurchaseDetailModal({
   // 입고 처리 권한: app_admin 또는 본인이 요청한 건
   const canProcessReceipt = effectiveRoles.includes('app_admin') || isRequester
   
-
   // 모달 내부 데이터만 새로고침하는 함수 (모달 닫지 않음)
   const refreshModalData = useCallback(async () => {
     if (!purchaseId) return
@@ -698,6 +697,61 @@ function PurchaseDetailModal({
       }, 3000)
     }
   }, [refreshModalData])
+
+  // UTK 확인 토글 핸들러 (상세모달 공통: 전체항목/입고현황에서 사용)
+  const handleToggleUtkCheck = useCallback(async () => {
+    if (!purchase) return
+    if (!canReceiptCheck || !canViewFinancialInfo) return
+
+    const isCurrentlyChecked = purchase.is_utk_checked || false
+    const newStatus = !isCurrentlyChecked
+
+    const confirmMessage = newStatus
+      ? `발주번호: ${purchase.purchase_order_number}\n\nUTK 확인 처리하시겠습니까?`
+      : `발주번호: ${purchase.purchase_order_number}\n\nUTK 확인을 취소하시겠습니까?`
+
+    if (!window.confirm(confirmMessage)) return
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('purchase_requests')
+        .update({ is_utk_checked: newStatus })
+        .eq('id', purchase.id)
+
+      if (error) {
+        logger.error('UTK 확인 DB 업데이트 실패', { error, purchaseId: purchase.id })
+        toast.error('UTK 확인 처리 중 오류가 발생했습니다.')
+        return
+      }
+
+      // 로컬 상태 즉시 업데이트 (객체 참조 변경으로 React 재렌더링 보장)
+      setPurchase(prev => prev ? {
+        ...prev,
+        is_utk_checked: newStatus,
+        updated_at: new Date().toISOString() // 강제로 객체 참조 변경
+      } : null)
+
+      // 메모리 캐시 업데이트
+      if (purchase.id) {
+        updatePurchaseInMemory(purchase.id, (prev) => ({
+          ...prev,
+          is_utk_checked: newStatus
+        }))
+      }
+
+      toast.success(newStatus ? 'UTK 확인이 완료되었습니다.' : 'UTK 확인이 취소되었습니다.')
+
+      await refreshModalDataWithLock()
+      const refreshResult = onRefresh?.(true, { silent: true })
+      if (refreshResult instanceof Promise) {
+        await refreshResult
+      }
+    } catch (error) {
+      logger.error('UTK 확인 처리 중 오류', error)
+      toast.error('UTK 확인 처리 중 오류가 발생했습니다.')
+    }
+  }, [purchase, canReceiptCheck, canViewFinancialInfo, onRefresh, refreshModalDataWithLock])
 
   // 🚀 메모리 캐시 변경 실시간 감지 및 모달 데이터 동기화
   useEffect(() => {
@@ -4491,59 +4545,9 @@ function PurchaseDetailModal({
                       <FileText className="w-4 h-4 mr-2 text-gray-600" />
                       {purchase?.purchase_order_number || 'PO번호 없음'}
                     </h3>
-                    {canReceiptCheck && canViewFinancialInfo && activeTab === 'done' && (
+                    {canReceiptCheck && canViewFinancialInfo && (activeTab === 'done' || activeTab === 'receipt') && (
                       <button
-                        onClick={async () => {
-                          if (!purchase) return
-                          const isCurrentlyChecked = purchase.is_utk_checked || false
-                          const newStatus = !isCurrentlyChecked
-                          
-                          const confirmMessage = newStatus
-                            ? `발주번호: ${purchase.purchase_order_number}\n\nUTK 확인 처리하시겠습니까?`
-                            : `발주번호: ${purchase.purchase_order_number}\n\nUTK 확인을 취소하시겠습니까?`
-                          
-                          if (!window.confirm(confirmMessage)) return
-                          
-                          try {
-                            const supabase = createClient()
-                            const { error } = await supabase
-                              .from('purchase_requests')
-                              .update({ is_utk_checked: newStatus })
-                              .eq('id', purchase.id)
-                            
-                            if (error) {
-                              logger.error('UTK 확인 DB 업데이트 실패', { error, purchaseId: purchase.id })
-                              toast.error('UTK 확인 처리 중 오류가 발생했습니다.')
-                              return
-                            }
-                            
-                            // 로컬 상태 즉시 업데이트 (객체 참조 변경으로 React 재렌더링 보장)
-                            setPurchase(prev => prev ? { 
-                              ...prev, 
-                              is_utk_checked: newStatus,
-                              updated_at: new Date().toISOString() // 강제로 객체 참조 변경
-                            } : null)
-                            
-                            // 메모리 캐시 업데이트
-                            if (purchase.id) {
-                              updatePurchaseInMemory(purchase.id, (prev) => ({
-                                ...prev,
-                                is_utk_checked: newStatus
-                              }))
-                            }
-                            
-                            toast.success(newStatus ? 'UTK 확인이 완료되었습니다.' : 'UTK 확인이 취소되었습니다.')
-                            
-                            await refreshModalDataWithLock()
-                            const refreshResult = onRefresh?.(true, { silent: true })
-                            if (refreshResult instanceof Promise) {
-                              await refreshResult
-                            }
-                          } catch (error) {
-                            logger.error('UTK 확인 처리 중 오류', error)
-                            toast.error('UTK 확인 처리 중 오류가 발생했습니다.')
-                          }
-                        }}
+                        onClick={handleToggleUtkCheck}
                         className={`button-base text-xs px-2 py-1 flex items-center ${
                           purchase?.is_utk_checked
                             ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'

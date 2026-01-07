@@ -339,7 +339,7 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
     
     newItems[index] = item;
     setItems(newItems);
-    
+
     // 종류/품명 변경 시 좌표 데이터도 동기화
     if (field === 'itemType' || field === 'itemName') {
       onBomChange?.(newItems);

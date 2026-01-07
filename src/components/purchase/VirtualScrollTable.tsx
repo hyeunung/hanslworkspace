@@ -10,6 +10,7 @@ interface VirtualScrollTableProps {
   onPaymentComplete?: (purchaseId: number) => Promise<void>;
   onReceiptComplete?: (purchaseId: number) => Promise<void>;
   onExcelDownload?: (purchase: Purchase) => Promise<void>;
+  onToggleUtkCheck?: (purchase: Purchase) => Promise<void>;
   columnVisibility?: ColumnVisibility;
   vendorColumnWidth?: number;
   tableHeader: React.ReactNode;
@@ -30,6 +31,7 @@ const VirtualScrollTable = memo<VirtualScrollTableProps>(({
   onPaymentComplete,
   onReceiptComplete,
   onExcelDownload,
+  onToggleUtkCheck,
   columnVisibility,
   vendorColumnWidth,
   tableHeader,
@@ -184,6 +186,7 @@ const VirtualScrollTable = memo<VirtualScrollTableProps>(({
                     onPaymentComplete={onPaymentComplete}
                     onReceiptComplete={onReceiptComplete}
                     onExcelDownload={onExcelDownload}
+                    onToggleUtkCheck={onToggleUtkCheck}
                     vendorColumnWidth={vendorColumnWidth}
                     columnVisibility={columnVisibility}
                     currentUserRoles={currentUserRoles}

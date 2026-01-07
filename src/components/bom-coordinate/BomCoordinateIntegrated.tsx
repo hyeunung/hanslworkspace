@@ -151,6 +151,18 @@ export default function BomCoordinateIntegrated() {
   
   // 관리자 권한 확인
   const isAdmin = currentUserRoles.includes('app_admin');
+
+  const normalizeName = (name?: string | null) => (name || '').trim();
+
+  // 삭제 권한: 관리자 또는 최종점검(완료) 처리자
+  const canDeleteBoard = useCallback((board: { status?: 'pending' | 'completed'; production_manager?: string }) => {
+    if (isAdmin) return true;
+    if (board.status !== 'completed') return false;
+    const inspectorName = normalizeName(board.production_manager);
+    const myName = normalizeName(currentUser?.name);
+    if (!inspectorName || !myName) return false;
+    return inspectorName === myName;
+  }, [isAdmin, currentUser?.name]);
   
   // localStorage 키 생성 (사용자별 분리)
   const getTempStorageKey = (userId: string) => `bom_temp_data_${userId}`;
@@ -328,6 +340,27 @@ export default function BomCoordinateIntegrated() {
         if (error) throw error;
         
         setSavedBoards(boards || []);
+        // 콘솔 증거(원격 로그가 막혀도 확인 가능)
+        try {
+          const statusCounts = (boards || []).reduce((acc: Record<string, number>, b: any) => {
+            const s = String(b?.status ?? 'undefined');
+            acc[s] = (acc[s] || 0) + 1;
+            return acc;
+          }, {});
+          console.log('📋 loadSavedBoards', {
+            count: (boards || []).length,
+            statusCounts,
+            top3: (boards || []).slice(0, 3).map((b: any) => ({ id: b.id, status: b.status }))
+          });
+        } catch {}
+        // #region agent log
+        const statusCounts = (boards || []).reduce((acc: Record<string, number>, b: any) => {
+          const s = String(b?.status || 'undefined');
+          acc[s] = (acc[s] || 0) + 1;
+          return acc;
+        }, {});
+        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H5',location:'BomCoordinateIntegrated.tsx:loadSavedBoards:ok',message:'loaded saved boards',data:{count:(boards||[]).length,statusCounts,top3:(boards||[]).slice(0,3).map((b:any)=>({id:b.id,status:b.status,created_at:b.created_at}))},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
       } catch (error) {
         console.error('Error loading saved boards:', error);
         toast.error('저장된 BOM 목록을 불러오는데 실패했습니다.');
@@ -417,10 +450,11 @@ export default function BomCoordinateIntegrated() {
       return;
     }
 
-    if (!metadata.productionManager || metadata.productionManager === 'none') {
-      toast.error('생산 담당자를 선택해주세요.');
-      return;
-    }
+    // 생산 담당자는 최종 저장 시 자동 배정되므로 validation 제거
+    // if (!metadata.productionManager || metadata.productionManager === 'none') {
+    //   toast.error('생산 담당자를 선택해주세요.');
+    //   return;
+    // }
 
     if (metadata.productionQuantity <= 0) {
       toast.error('생산 수량을 입력해주세요 (1 이상).');
@@ -585,6 +619,13 @@ export default function BomCoordinateIntegrated() {
   const handleSaveBOM = async (items: BOMItem[]) => {
     if (!processedResult?.cadDrawingId) return;
 
+    // processedResult.isEditMode를 사용 (stale closure 문제 방지)
+    const isEditMode = processedResult.isEditMode === true;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H1',location:'BomCoordinateIntegrated.tsx:handleSaveBOM:entry',message:'handleSaveBOM entry',data:{isEditMode,editingBoardId,cadDrawingId:processedResult?.cadDrawingId,viewMode,step,hasUploadedFilePaths:!!uploadedFilePaths,hasFiles:!!fileInfo?.bomFile&&!!fileInfo?.coordFile},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion agent log
+    console.log('🔍 handleSaveBOM 호출됨', { isEditMode, editingBoardId, cadDrawingId: processedResult.cadDrawingId });
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('로그인이 필요합니다.');
@@ -596,14 +637,62 @@ export default function BomCoordinateIntegrated() {
       const artworkManagerName = employees.find(emp => emp.id === metadata.artworkManager)?.name || currentUser?.name || '';
       const productionManagerName = employees.find(emp => emp.id === metadata.productionManager)?.name || metadata.productionManager;
       
-      // 상태값 결정 (editingBoardId가 있으면 최종 저장, 없으면 검토 요청)
-      const isReviewMode = !!editingBoardId;
-      const saveStatus = isReviewMode ? 'completed' : 'pending';
+      // 상태값 결정 (isEditMode면 최종 저장, 아니면 검토 요청)
+      const saveStatus = isEditMode ? 'completed' : 'pending';
       // 최종 저장 시에만 현재 사용자를 생산담당자로 설정
-      const finalProductionManager = isReviewMode ? currentUser?.name : null;
+      const finalProductionManager = isEditMode ? currentUser?.name : null;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'BomCoordinateIntegrated.tsx:handleSaveBOM:mode',message:'save mode computed',data:{saveStatus,isEditMode,finalProductionManagerIsNull:finalProductionManager==null,cadDrawingId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion agent log
 
-      // cadDrawingId가 임시 ID인 경우 (새로 생성)
-      if (cadDrawingId.startsWith('cad_')) {
+      // 기존 보드 업데이트 (isEditMode = pending에서 불러와서 최종 저장)
+      if (isEditMode) {
+        // cadDrawingId는 이미 processedResult.cadDrawingId에서 가져옴 (boardId)
+        console.log('📝 최종 저장 모드: 기존 보드 업데이트', { cadDrawingId, saveStatus, finalProductionManager });
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'BomCoordinateIntegrated.tsx:handleSaveBOM:update:before',message:'about to update cad_drawings status',data:{cadDrawingId,saveStatus},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
+        const { data: updatedRows, error: updateError } = await supabase
+          .from('cad_drawings')
+          .update({ 
+            artwork_manager: artworkManagerName,
+            production_manager: finalProductionManager,
+            production_quantity: metadata.productionQuantity,
+            status: saveStatus
+          })
+          .eq('id', cadDrawingId)
+          .select('id, status, production_manager');
+        
+        if (updateError) {
+          console.error('❌ 상태 업데이트 실패:', updateError);
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'BomCoordinateIntegrated.tsx:handleSaveBOM:update:error',message:'update cad_drawings failed',data:{cadDrawingId,code:updateError?.code,details:updateError?.details,hint:updateError?.hint,message:updateError?.message},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion agent log
+          throw updateError;
+        }
+        // RLS로 UPDATE가 막히면 error 없이 0행 업데이트가 나올 수 있음 (이 경우가 현재 현상과 일치)
+        if (!updatedRows || updatedRows.length === 0) {
+          console.error('❌ cad_drawings UPDATE가 0행 적용됨 (RLS 정책으로 차단 가능성 큼)', { cadDrawingId, saveStatus });
+          toast.error('상태 업데이트가 차단되었습니다(RLS). 관리자에게 cad_drawings UPDATE 정책 추가가 필요합니다.');
+          throw new Error('cad_drawings update blocked (0 rows updated)');
+        }
+        console.log('✅ 상태 업데이트 성공 (반환 row):', updatedRows[0]);
+        // DB에서 즉시 다시 읽어서 status가 실제로 바뀌었는지 확인 (증거 확보)
+        const { data: afterUpdateRow, error: afterUpdateReadError } = await supabase
+          .from('cad_drawings')
+          .select('id, status, production_manager, updated_at, created_at')
+          .eq('id', cadDrawingId)
+          .single();
+        console.log('🔎 after update readback (cad_drawings)', {
+          status: afterUpdateRow?.status,
+          production_manager: afterUpdateRow?.production_manager,
+          afterUpdateReadError
+        });
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'BomCoordinateIntegrated.tsx:handleSaveBOM:update:ok',message:'update cad_drawings ok',data:{cadDrawingId,saveStatus},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
+      } else if (cadDrawingId.startsWith('cad_')) {
+        // cadDrawingId가 임시 ID인 경우 (새로 생성) - 검토 요청
         // 보드명에서 기존 날짜/정리본 패턴 제거 후 새 날짜 추가
         const today = new Date();
         const dateStr = today.getFullYear().toString().slice(2) + 
@@ -617,6 +706,7 @@ export default function BomCoordinateIntegrated() {
           .replace(/_\d{6}$/, '');
         const saveBoardName = `${cleanBoardName}_${dateStr}_정리본`;
 
+        console.log('📝 검토 요청 모드: 새 보드 생성', { saveBoardName, saveStatus });
         // 항상 새로 생성 (날짜로 구분되므로)
         const { data: newBoard, error: boardError } = await supabase
           .from('cad_drawings')
@@ -632,23 +722,15 @@ export default function BomCoordinateIntegrated() {
 
         if (boardError) throw boardError;
         cadDrawingId = newBoard.id;
-      }
-      
-      // 기존 보드 업데이트 (editingBoardId가 있는 경우 = pending에서 불러와서 최종 저장)
-      if (editingBoardId) {
-        cadDrawingId = editingBoardId;
-        await supabase
+        const { data: afterInsertRow, error: afterInsertReadError } = await supabase
           .from('cad_drawings')
-          .update({ 
-            artwork_manager: artworkManagerName,
-            production_manager: finalProductionManager,
-            production_quantity: metadata.productionQuantity,
-            status: saveStatus
-          })
-          .eq('id', cadDrawingId);
+          .select('id, status, production_manager, created_at')
+          .eq('id', cadDrawingId)
+          .single();
+        console.log('🔎 after insert readback (cad_drawings)', { afterInsertRow, afterInsertReadError });
       } else if (!processedResult.cadDrawingId.startsWith('cad_')) {
         // 담당자 정보 업데이트 (기존 보드인 경우에만)
-        await supabase
+        const { error: updateExistingError } = await supabase
           .from('cad_drawings')
           .update({ 
             artwork_manager: artworkManagerName,
@@ -657,6 +739,10 @@ export default function BomCoordinateIntegrated() {
             status: saveStatus
           })
           .eq('id', cadDrawingId);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H4',location:'BomCoordinateIntegrated.tsx:handleSaveBOM:updateExisting',message:'update existing non-cad_ path',data:{cadDrawingId,saveStatus,hasError:!!updateExistingError,code:updateExistingError?.code,message:updateExistingError?.message},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion agent log
+        if (updateExistingError) throw updateExistingError;
       }
 
       // 2. 원본 파일 정보 저장 (bom_raw_files)
@@ -808,22 +894,53 @@ export default function BomCoordinateIntegrated() {
         }
       }));
 
-      // 상태에 따른 토스트 메시지
-      if (editingBoardId) {
+      // 저장 완료 시 임시 데이터 삭제 및 로컬 상태 초기화
+      clearTempData();
+      setEditingBoardId(null); // 편집 중인 보드 ID 초기화
+      // UI 즉시 반영: savedBoards에 해당 id가 있으면 status를 갱신 (목록이 stale이어도 화면이 바로 바뀌도록)
+      setSavedBoards(prev => prev.map(b => (
+        b.id === cadDrawingId
+          ? { ...b, status: saveStatus as any, production_manager: (finalProductionManager ?? b.production_manager) as any }
+          : b
+      )));
+      
+      // 목록 뷰로 즉시 전환 (handleReset 전에 viewMode 변경)
+      setViewMode('list');
+      // 목록 로딩/표시가 pending으로만 보이는 케이스를 잡기 위해, 방금 저장한 row + 목록을 즉시 한 번 더 읽어 증거 확보
+      try {
+        const { data: savedRow, error: savedRowErr } = await supabase
+          .from('cad_drawings')
+          .select('id, status, production_manager, created_at, updated_at')
+          .eq('id', cadDrawingId)
+          .single();
+        console.log('🔎 post-save readback (cad_drawings)', { savedRow, savedRowErr });
+        const { data: listRows, error: listErr } = await supabase
+          .from('cad_drawings')
+          .select('id, status, created_at')
+          .order('created_at', { ascending: false })
+          .limit(10);
+        console.log('🔎 post-save list top10', { listErr, top10: (listRows || []).map(r => ({ id: r.id, status: r.status, created_at: r.created_at })) });
+      } catch (e) {
+        console.log('🔎 post-save debug read failed', e);
+      }
+      
+      // 상태 초기화 (다음 새로만들기를 위해)
+      setStep('input');
+      setFileInfo({ bomFile: null, coordFile: null });
+      setMetadata({
+        boardName: '',
+        artworkManager: '',
+        productionManager: '',
+        productionQuantity: 0
+      });
+      setProcessedResult(null);
+      
+      // 상태에 따른 토스트 메시지 (isEditMode 사용)
+      if (isEditMode) {
         toast.success('최종 저장이 완료되었습니다.');
       } else {
         toast.success('검토 요청이 완료되었습니다. 생산 담당자의 확인을 기다려주세요.');
       }
-      
-      // 저장 완료 시 임시 데이터 삭제 및 로컬 상태 초기화
-      clearTempData();
-      handleReset();
-      setEditingBoardId(null); // 편집 중인 보드 ID 초기화
-      
-      // 목록 뷰로 전환하여 새로 저장된 항목 확인 가능
-      setTimeout(() => {
-        setViewMode('list');
-      }, 1000);
 
     } catch (error: any) {
       console.error('Save error:', error);
@@ -1016,6 +1133,9 @@ export default function BomCoordinateIntegrated() {
         .single();
       
       if (boardError) throw boardError;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'BomCoordinateIntegrated.tsx:handleLoadPendingBoard:board',message:'loaded boardInfo for pending click',data:{boardId,boardStatus:boardInfo?.status,hasProductionManager:!!boardInfo?.production_manager,productionQuantity:boardInfo?.production_quantity},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion agent log
 
       // 2. BOM 아이템 가져오기
       const { data: bomItems, error: bomError } = await supabase
@@ -1085,13 +1205,17 @@ export default function BomCoordinateIntegrated() {
       
       setProcessedResult({
         cadDrawingId: boardId, // 편집 시 저장에 필요
+        isEditMode: true,      // 편집 모드 플래그 (pending → completed)
         processedData: {
           bomItems: convertedBOMItems,
           coordinates: convertedCoords
         }
       });
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'BomCoordinateIntegrated.tsx:handleLoadPendingBoard:setProcessedResult',message:'setProcessedResult for edit mode',data:{boardId,isEditMode:true,bomCount:convertedBOMItems.length,coordCount:convertedCoords.length},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion agent log
 
-      setEditingBoardId(boardId); // 편집 중인 보드 ID 저장
+      setEditingBoardId(boardId); // 편집 중인 보드 ID 저장 (백업용)
       
       // 플래그 해제
       setTimeout(() => {
@@ -1110,9 +1234,10 @@ export default function BomCoordinateIntegrated() {
     }
   };
 
-  // 저장된 BOM 삭제 (app_admin만 가능)
+  // 저장된 BOM 삭제 (app_admin 또는 최종점검 처리자만 가능)
   const handleDeleteSavedBOM = async (boardId: string, boardName: string) => {
-    if (!isAdmin) {
+    const targetBoard = savedBoards.find(b => b.id === boardId);
+    if (!targetBoard || !canDeleteBoard(targetBoard)) {
       toast.error('삭제 권한이 없습니다.');
       return;
     }
@@ -1372,7 +1497,7 @@ export default function BomCoordinateIntegrated() {
                                     <Download className="w-3 h-3 mr-1" />
                                     Excel
                                   </Button>
-                                  {isAdmin && (
+                                  {canDeleteBoard(board) && (
                                     <Button
                                       onClick={() => handleDeleteSavedBOM(board.id, board.board_name)}
                                       variant="outline"
@@ -1394,7 +1519,7 @@ export default function BomCoordinateIntegrated() {
                         </TableBody>
                         <tfoot className="bg-gray-50 border-t">
                           <tr>
-                            <td colSpan={isAdmin ? 7 : 6} className="py-2 px-4">
+                            <td colSpan={7} className="py-2 px-4">
                               <span className="card-description">총 {savedBoards.length}개 항목</span>
                             </td>
                           </tr>
@@ -1542,7 +1667,7 @@ export default function BomCoordinateIntegrated() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                     {/* Artwork 담당자 */}
                     <div className="space-y-1">
-                      <Label className="text-[10px] text-gray-500">Artwork 담당자</Label>
+                      <Label className="text-[10px] text-gray-500">Artwork 담당자 <span className="text-red-500">*</span></Label>
                       <Popover open={openArtworkManager} onOpenChange={setOpenArtworkManager}>
                         <PopoverTrigger asChild>
                           <Button
@@ -1589,20 +1714,21 @@ export default function BomCoordinateIntegrated() {
                       </Popover>
                     </div>
 
-                    {/* 생산 담당자 */}
+                    {/* 생산 담당자 (최종 저장 시 자동 배정) */}
                     <div className="space-y-1">
-                      <Label className="text-[10px] text-gray-500">생산 담당자 <span className="text-red-500">*</span></Label>
+                      <Label className="text-[10px] text-gray-400">생산 담당자</Label>
                       <Popover open={openProductionManager} onOpenChange={setOpenProductionManager}>
                         <PopoverTrigger asChild>
                           <Button
                             variant="outline"
                             role="combobox"
                             aria-expanded={openProductionManager}
-                            className="w-full justify-between text-xs h-8 min-h-[32px] px-2 bg-white border-[#d2d2d7] shadow-sm hover:bg-gray-50"
+                            disabled={true}
+                            className="w-full justify-between text-xs h-8 min-h-[32px] px-2 bg-gray-100 border-[#d2d2d7] shadow-sm cursor-not-allowed text-gray-400"
                           >
                             {metadata.productionManager
                               ? employees.find((emp) => emp.id === metadata.productionManager)?.name
-                              : "담당자 선택"}
+                              : "최종 저장 시 자동 배정"}
                             <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
                           </Button>
                         </PopoverTrigger>
@@ -1743,7 +1869,7 @@ export default function BomCoordinateIntegrated() {
                     onClick={() => previewPanelRef.current?.handleSave()}
                     disabled={isSaving}
                     className={`button-base text-white ${
-                      editingBoardId 
+                      processedResult?.isEditMode 
                         ? 'bg-green-600 hover:bg-green-700' 
                         : 'bg-hansl-500 hover:bg-hansl-600'
                     }`}
@@ -1751,11 +1877,11 @@ export default function BomCoordinateIntegrated() {
                     {isSaving ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        {editingBoardId ? '저장 중...' : '요청 중...'}
+                        {processedResult?.isEditMode ? '저장 중...' : '요청 중...'}
                       </>
                     ) : (
                       <>
-                        {editingBoardId ? (
+                        {processedResult?.isEditMode ? (
                           <>
                             <Check className="w-4 h-4 mr-2" />
                             최종 저장

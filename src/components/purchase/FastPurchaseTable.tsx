@@ -8,7 +8,7 @@ import { generatePurchaseOrderExcelJS, PurchaseOrderData } from "@/utils/exceljs
 import { formatDateShort } from "@/utils/helpers";
 import { logger } from "@/lib/logger";
 import { usePurchaseMemory } from "@/hooks/usePurchaseMemory";
-import { removePurchaseFromMemory } from '@/stores/purchaseMemoryStore';
+import { removePurchaseFromMemory, updatePurchaseInMemory } from '@/stores/purchaseMemoryStore';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +21,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Purchase, PurchaseRequestWithDetails } from "@/types/purchase";
 import { DoneTabColumnId, ColumnVisibility } from "@/types/columnSettings";
-import { RESTRICTED_COLUMNS, AUTHORIZED_ROLES } from "@/constants/columnSettings";
+import { RESTRICTED_COLUMNS, AUTHORIZED_ROLES, UTK_AUTHORIZED_ROLES } from "@/constants/columnSettings";
+import { CheckCircle } from "lucide-react";
 
 interface FastPurchaseTableProps {
   purchases: Purchase[];
@@ -377,7 +378,7 @@ const ProgressTypeBadge = memo(({ type }: { type?: string }) => {
 ProgressTypeBadge.displayName = 'ProgressTypeBadge';
 
 // 테이블 행 컴포넌트 메모화
-const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentComplete, onReceiptComplete, onExcelDownload, columnVisibility, vendorColumnWidth, currentUserRoles }: { 
+const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentComplete, onReceiptComplete, onExcelDownload, onToggleUtkCheck, columnVisibility, vendorColumnWidth, currentUserRoles }: { 
   purchase: Purchase; 
   onClick: (purchase: Purchase) => void;
   activeTab?: string;
@@ -385,6 +386,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
   onPaymentComplete?: (purchaseId: number) => Promise<void>;
   onReceiptComplete?: (purchaseId: number) => Promise<void>;
   onExcelDownload?: (purchase: Purchase) => Promise<void>;
+  onToggleUtkCheck?: (purchase: Purchase) => Promise<void>;
   columnVisibility?: ColumnVisibility;
   vendorColumnWidth?: number;
   currentUserRoles?: string[];
@@ -399,12 +401,20 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
     // 전체항목 탭인 경우 권한 체크
     if (activeTab === 'done' && RESTRICTED_COLUMNS.includes(columnId)) {
       // 권한 있는 역할이 있는지 확인
-      const hasPermission = currentUserRoles?.some(role => AUTHORIZED_ROLES.includes(role));
+      const hasPermission = columnId === 'utk_status'
+        ? currentUserRoles?.some(role => UTK_AUTHORIZED_ROLES.includes(role))
+        : currentUserRoles?.some(role => AUTHORIZED_ROLES.includes(role));
       if (!hasPermission) return false;
     }
     
     return columnVisibility[columnId] !== false;
   };
+
+  // UTK 확인 권한 (상세모달과 동일)
+  const canViewFinancialInfo = currentUserRoles?.some(role => AUTHORIZED_ROLES.includes(role)) ?? false;
+  const canReceiptCheck = (currentUserRoles?.includes('app_admin') ||
+    currentUserRoles?.includes('lead buyer') ||
+    currentUserRoles?.includes('accounting')) ?? false;
   
   return (
     <tr 
@@ -513,9 +523,27 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       {/* UTK 확인 칼럼 */}
       {activeTab === 'done' && isVisible('utk_status') && (
         <td className={`pl-2 pr-3 py-1.5 card-title whitespace-nowrap text-center overflow-visible text-clip ${COMMON_COLUMN_CLASSES.utk}`}>
-          <span className={(purchase as any).is_utk_checked ? 'badge-utk-complete' : 'badge-utk-pending'}>
-            {(purchase as any).is_utk_checked ? '완료' : '대기'}
-          </span>
+          {canReceiptCheck && canViewFinancialInfo ? (
+            <button
+              onClick={async (e: React.MouseEvent) => {
+                e.stopPropagation();
+                await onToggleUtkCheck?.(purchase);
+              }}
+              className={`button-base text-[10px] px-2 py-1 flex items-center justify-center mx-auto ${
+                (purchase as any).is_utk_checked
+                  ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
+                  : 'button-toggle-inactive'
+              }`}
+              title={(purchase as any).is_utk_checked ? 'UTK 확인 취소' : 'UTK 확인'}
+            >
+              <CheckCircle className="w-3 h-3 mr-1" />
+              UTK {(purchase as any).is_utk_checked ? '완료' : '확인'}
+            </button>
+          ) : (
+            <span className={(purchase as any).is_utk_checked ? 'badge-utk-complete' : 'badge-utk-pending'}>
+              {(purchase as any).is_utk_checked ? '완료' : '대기'}
+            </span>
+          )}
         </td>
       )}
       {/* 업체 칼럼 */}
@@ -883,6 +911,48 @@ const FastPurchaseTable = ({
     setIsModalOpen(false);
     setSelectedPurchaseId(null);
   }, []);
+
+  // UTK 확인 토글 (전체항목 테이블에서 사용)
+  const handleToggleUtkCheck = useCallback(async (purchase: Purchase) => {
+    if (!purchase?.id) return
+    const isCurrentlyChecked = (purchase as any).is_utk_checked || false
+    const newStatus = !isCurrentlyChecked
+
+    const confirmMessage = newStatus
+      ? `발주번호: ${purchase.purchase_order_number}\n\nUTK 확인 처리하시겠습니까?`
+      : `발주번호: ${purchase.purchase_order_number}\n\nUTK 확인을 취소하시겠습니까?`
+
+    if (!window.confirm(confirmMessage)) return
+
+    try {
+      const { error } = await supabase
+        .from('purchase_requests')
+        .update({ is_utk_checked: newStatus })
+        .eq('id', purchase.id)
+
+      if (error) {
+        logger.error('UTK 확인 DB 업데이트 실패', { error, purchaseId: purchase.id })
+        toast.error('UTK 확인 처리 중 오류가 발생했습니다.')
+        return
+      }
+
+      // 메모리 캐시 업데이트 (리스트 즉시 반영)
+      updatePurchaseInMemory(purchase.id, (prev) => ({
+        ...prev,
+        is_utk_checked: newStatus
+      }))
+
+      toast.success(newStatus ? 'UTK 확인이 완료되었습니다.' : 'UTK 확인이 취소되었습니다.')
+
+      const refreshResult = onRefresh?.(true, { silent: true })
+      if (refreshResult instanceof Promise) {
+        await refreshResult
+      }
+    } catch (err) {
+      logger.error('UTK 확인 처리 중 오류', err)
+      toast.error('UTK 확인 처리 중 오류가 발생했습니다.')
+    }
+  }, [supabase, onRefresh]);
 
   // 엑셀 다운로드 핸들러
   const handleExcelDownload = useCallback(async (purchase: Purchase) => {
@@ -1633,6 +1703,7 @@ const FastPurchaseTable = ({
             onPaymentComplete={onPaymentComplete}
             onReceiptComplete={onReceiptComplete}
             onExcelDownload={handleExcelDownload}
+            onToggleUtkCheck={handleToggleUtkCheck}
             columnVisibility={columnVisibility}
             vendorColumnWidth={vendorColumnWidth}
             tableHeader={tableHeader}
@@ -1656,6 +1727,7 @@ const FastPurchaseTable = ({
                     onPaymentComplete={onPaymentComplete}
                     onReceiptComplete={onReceiptComplete}
                     onExcelDownload={handleExcelDownload}
+                    onToggleUtkCheck={handleToggleUtkCheck}
                     vendorColumnWidth={vendorColumnWidth}
                     columnVisibility={columnVisibility}
                     currentUserRoles={currentUserRoles}

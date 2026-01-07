@@ -2,6 +2,11 @@ import React, { memo, useMemo, useCallback, forwardRef, useImperativeHandle, use
 import { List } from 'react-window';
 import { Purchase } from '@/types/purchase';
 import { formatDateShort } from '@/utils/helpers';
+import { createClient } from '@/lib/supabase/client';
+import { toast } from 'sonner';
+import { updatePurchaseInMemory } from '@/stores/purchaseMemoryStore';
+import { AUTHORIZED_ROLES, RESTRICTED_COLUMNS, UTK_AUTHORIZED_ROLES } from '@/constants/columnSettings';
+import { CheckCircle } from 'lucide-react';
 
 // 금액 포매팅 함수
 const formatAmount = (amount: number, currency: string = 'KRW') => {
@@ -83,20 +88,33 @@ const TableRow = memo<{
   currentUserRoles: string[];
   onPaymentComplete?: (id: number) => Promise<void>;
   onReceiptComplete?: (id: number) => Promise<void>;
+  onToggleUtkCheck?: (purchase: Purchase) => Promise<void>;
   columnVisibility?: any;
-}>(({ index, style, purchases, activeTab, currentUserRoles, onPaymentComplete, onReceiptComplete, columnVisibility }) => {
+}>(({ index, style, purchases, activeTab, currentUserRoles, onPaymentComplete, onReceiptComplete, onToggleUtkCheck, columnVisibility }) => {
   const purchase = purchases[index];
 
   // 칼럼 표시 여부 체크 함수 - FastPurchaseTable과 동일
   const isColumnVisible = useCallback((columnId: DoneTabColumnId) => {
     if (!columnVisibility) return true; // columnVisibility가 없으면 모든 칼럼 표시
+
+    // 전체항목 탭인 경우 권한 체크 (FastPurchaseTable과 동일)
+    if (activeTab === 'done' && RESTRICTED_COLUMNS.includes(columnId)) {
+      const hasPermission = columnId === 'utk_status'
+        ? currentUserRoles?.some(role => UTK_AUTHORIZED_ROLES.includes(role))
+        : currentUserRoles?.some(role => AUTHORIZED_ROLES.includes(role));
+      if (!hasPermission) return false;
+    }
+
     return columnVisibility[columnId] !== false;
-  }, [columnVisibility]);
+  }, [columnVisibility, activeTab, currentUserRoles]);
 
   // 권한 체크
   const isLeadBuyer = currentUserRoles?.includes('raw_material_manager') || 
                      currentUserRoles?.includes('consumable_manager') || 
                      currentUserRoles?.includes('purchase_manager');
+
+  // UTK 확인 권한 (PurchaseDetailModal과 동일)
+  const canUtkCheck = currentUserRoles?.some(role => UTK_AUTHORIZED_ROLES.includes(role)) ?? false;
 
   // 상태 배지 생성 - FastPurchaseTable과 동일
   const getStatusBadge = useCallback((purchase: Purchase) => {
@@ -208,9 +226,23 @@ const TableRow = memo<{
       {/* UTK 확인 - 전체항목 탭만 */}
       {activeTab === 'done' && (
         <td className={`pl-2 pr-3 py-1.5 card-title whitespace-nowrap text-center overflow-visible text-clip ${COMMON_COLUMN_CLASSES.utk} ${!isColumnVisible('utk_status') ? 'column-hidden' : ''}`}>
-          <span className={(purchase as any).is_utk_checked ? 'badge-utk-complete' : 'badge-utk-pending'}>
-            {(purchase as any).is_utk_checked ? '완료' : '대기'}
-          </span>
+          {canUtkCheck ? (
+            <button
+              onClick={async (e: React.MouseEvent) => {
+                e.stopPropagation();
+                await onToggleUtkCheck?.(purchase);
+              }}
+              className={`button-base text-[10px] px-2 py-1 flex items-center justify-center mx-auto ${
+                (purchase as any).is_utk_checked
+                  ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
+                  : 'button-toggle-inactive'
+              }`}
+              title={(purchase as any).is_utk_checked ? 'UTK 확인 취소' : 'UTK 확인'}
+            >
+              <CheckCircle className="w-3 h-3 mr-1" />
+              UTK {(purchase as any).is_utk_checked ? '완료' : '확인'}
+            </button>
+          ) : null}
         </td>
       )}
 
@@ -403,12 +435,21 @@ const TableRow = memo<{
 TableRow.displayName = 'VirtualizedTableRow';
 
 // 헤더 컴포넌트 - FastPurchaseTable 스타일 적용
-const TableHeader = memo<{ activeTab: string; columnVisibility?: any }>(({ activeTab, columnVisibility }) => {
+const TableHeader = memo<{ activeTab: string; columnVisibility?: any; currentUserRoles: string[] }>(({ activeTab, columnVisibility, currentUserRoles }) => {
   // 칼럼 표시 여부 체크 함수
   const isColumnVisible = useCallback((columnId: DoneTabColumnId) => {
     if (!columnVisibility) return true;
+
+    // 전체항목 탭인 경우 권한 체크 (FastPurchaseTable과 동일)
+    if (activeTab === 'done' && RESTRICTED_COLUMNS.includes(columnId)) {
+      const hasPermission = columnId === 'utk_status'
+        ? currentUserRoles?.some(role => UTK_AUTHORIZED_ROLES.includes(role))
+        : currentUserRoles?.some(role => AUTHORIZED_ROLES.includes(role));
+      if (!hasPermission) return false;
+    }
+
     return columnVisibility[columnId] !== false;
-  }, [columnVisibility]);
+  }, [columnVisibility, activeTab, currentUserRoles]);
 
   return (
     <tr className="bg-gray-50">
@@ -421,7 +462,7 @@ const TableHeader = memo<{ activeTab: string; columnVisibility?: any }>(({ activ
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.requesterName} ${!isColumnVisible('requester_name') ? 'column-hidden' : ''}`}>요청자</th>
         <th className={`py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.requestDate} ${!isColumnVisible('request_date') ? 'column-hidden' : ''}`}>청구일</th>
         {/* 전체항목 탭에서만 UTK 확인 칼럼 헤더 표시 */}
-        {activeTab === 'done' && (
+        {activeTab === 'done' && isColumnVisible('utk_status') && (
           <th className={`pl-2 pr-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center ${COMMON_COLUMN_CLASSES.utk} ${!isColumnVisible('utk_status') ? 'column-hidden' : ''}`}>UTK</th>
         )}
         <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.vendorName} ${!isColumnVisible('vendor_name') ? 'column-hidden' : ''}`}>업체</th>
@@ -488,6 +529,43 @@ const VirtualizedPurchaseTable = forwardRef<VirtualizedTableHandle, VirtualizedP
 }, ref) => {
   
   const listRef = useRef<any>(null);
+  const supabase = useMemo(() => createClient(), []);
+
+  const handleToggleUtkCheck = useCallback(async (purchase: Purchase) => {
+    if (!purchase?.id) return
+    const isCurrentlyChecked = (purchase as any).is_utk_checked || false
+    const newStatus = !isCurrentlyChecked
+
+    const confirmMessage = newStatus
+      ? `발주번호: ${purchase.purchase_order_number}\n\nUTK 확인 처리하시겠습니까?`
+      : `발주번호: ${purchase.purchase_order_number}\n\nUTK 확인을 취소하시겠습니까?`
+
+    if (!window.confirm(confirmMessage)) return
+
+    try {
+      const { error } = await supabase
+        .from('purchase_requests')
+        .update({ is_utk_checked: newStatus })
+        .eq('id', purchase.id)
+
+      if (error) {
+        logger.error('UTK 확인 DB 업데이트 실패', { error, purchaseId: purchase.id })
+        toast.error('UTK 확인 처리 중 오류가 발생했습니다.')
+        return
+      }
+
+      updatePurchaseInMemory(purchase.id, (prev) => ({
+        ...prev,
+        is_utk_checked: newStatus
+      }))
+
+      toast.success(newStatus ? 'UTK 확인이 완료되었습니다.' : 'UTK 확인이 취소되었습니다.')
+      onRefresh?.()
+    } catch (err) {
+      logger.error('UTK 확인 처리 중 오류', err)
+      toast.error('UTK 확인 처리 중 오류가 발생했습니다.')
+    }
+  }, [supabase, onRefresh]);
   
   // 칼럼 설정 훅 (전체항목 탭에서만 사용)
   const { columnVisibility, applyColumnSettings, resetToDefault } = useColumnSettings();
@@ -512,8 +590,9 @@ const VirtualizedPurchaseTable = forwardRef<VirtualizedTableHandle, VirtualizedP
     currentUserRoles,
     onPaymentComplete,
     onReceiptComplete,
+    onToggleUtkCheck: handleToggleUtkCheck,
     columnVisibility: activeTab === 'done' ? columnVisibility : undefined,
-  }), [purchases, activeTab, currentUserRoles, onPaymentComplete, onReceiptComplete, columnVisibility]);
+  }), [purchases, activeTab, currentUserRoles, onPaymentComplete, onReceiptComplete, columnVisibility, handleToggleUtkCheck]);
 
   // 스크롤 이벤트 핸들러
   const handleScroll = useCallback((props: any) => {
@@ -540,7 +619,7 @@ const VirtualizedPurchaseTable = forwardRef<VirtualizedTableHandle, VirtualizedP
         <table className={activeTab === 'done' ? 'table-fit-left' : 'w-full'}>
           {/* 고정 헤더 */}
           <thead className="sticky top-0 z-30 bg-gray-50" style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)' }}>
-            <TableHeader activeTab={activeTab} columnVisibility={activeTab === 'done' ? columnVisibility : undefined} />
+            <TableHeader activeTab={activeTab} columnVisibility={activeTab === 'done' ? columnVisibility : undefined} currentUserRoles={currentUserRoles} />
           </thead>
           
           {/* 가상 스크롤 바디 */}

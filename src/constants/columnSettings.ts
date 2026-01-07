@@ -185,6 +185,13 @@ export const AUTHORIZED_ROLES = [
   'accounting',
 ];
 
+// UTK 확인(노출/처리) 권한 - PurchaseDetailModal과 동일
+export const UTK_AUTHORIZED_ROLES = [
+  'app_admin',
+  'lead buyer',
+  'accounting',
+];
+
 // 칼럼 그룹 (설정 UI에서 그룹핑용)
 export const COLUMN_GROUPS = [
   {
