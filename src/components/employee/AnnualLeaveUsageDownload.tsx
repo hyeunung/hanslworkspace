@@ -16,49 +16,12 @@ interface AnnualLeaveUsageDownloadProps {
 
 export default function AnnualLeaveUsageDownload({ isOpen, onClose }: AnnualLeaveUsageDownloadProps) {
   const [year, setYear] = useState<string>(String(new Date().getFullYear()))
-  const [mode, setMode] = useState<'year' | 'range'>('year')
-  const [startDate, setStartDate] = useState<string>('')
-  const [endDate, setEndDate] = useState<string>('')
   const [isDownloading, setIsDownloading] = useState(false)
 
   const supabase = createClient()
 
   const setThisYear = () => setYear(String(new Date().getFullYear()))
   const setLastYear = () => setYear(String(new Date().getFullYear() - 1))
-
-  const setRangeThisYear = () => {
-    const now = new Date()
-    const y = now.getFullYear()
-    setStartDate(`${y}-01-01`)
-    setEndDate(`${y}-12-31`)
-  }
-
-  const setRangeLastYear = () => {
-    const now = new Date()
-    const y = now.getFullYear() - 1
-    setStartDate(`${y}-01-01`)
-    setEndDate(`${y}-12-31`)
-  }
-
-  const setRangeThisMonth = () => {
-    const now = new Date()
-    const y = now.getFullYear()
-    const m = now.getMonth()
-    const start = new Date(y, m, 1)
-    const end = new Date(y, m + 1, 0)
-    setStartDate(start.toISOString().slice(0, 10))
-    setEndDate(end.toISOString().slice(0, 10))
-  }
-
-  const setRangeLastMonth = () => {
-    const now = new Date()
-    const y = now.getFullYear()
-    const m = now.getMonth() - 1
-    const start = new Date(y, m, 1)
-    const end = new Date(y, m + 1, 0)
-    setStartDate(start.toISOString().slice(0, 10))
-    setEndDate(end.toISOString().slice(0, 10))
-  }
 
   // hansl 백엔드(연차 트리거/년도업데이트)와 동일한 법정연차 산식
   const calcGrantedAnnualLeaveForYear = (joinDateStr: string | undefined, targetYear: number): number => {
@@ -80,37 +43,13 @@ export default function AnnualLeaveUsageDownload({ isOpen, onClose }: AnnualLeav
   }
 
   const handleDownload = async () => {
-    let yearNum: number
-    let effectiveStart: string
-    let effectiveEnd: string
-
-    if (mode === 'year') {
-      yearNum = Number(year)
-      if (!year || Number.isNaN(yearNum) || yearNum < 2000 || yearNum > 2100) {
-        toast.error('연도를 올바르게 입력해주세요. (예: 2025)')
-        return
-      }
-      effectiveStart = `${yearNum}-01-01`
-      effectiveEnd = `${yearNum}-12-31`
-    } else {
-      if (!startDate || !endDate) {
-        toast.error('조회 기간을 설정해주세요.')
-        return
-      }
-      if (new Date(startDate) > new Date(endDate)) {
-        toast.error('시작일이 종료일보다 늦을 수 없습니다.')
-        return
-      }
-      const y1 = new Date(startDate).getFullYear()
-      const y2 = new Date(endDate).getFullYear()
-      if (y1 !== y2) {
-        toast.error('기간 선택은 같은 연도 안에서만 가능합니다.')
-        return
-      }
-      yearNum = y1
-      effectiveStart = startDate
-      effectiveEnd = endDate
+    const yearNum = Number(year)
+    if (!year || Number.isNaN(yearNum) || yearNum < 2000 || yearNum > 2100) {
+      toast.error('연도를 올바르게 입력해주세요. (예: 2025)')
+      return
     }
+    const effectiveStart = `${yearNum}-01-01`
+    const effectiveEnd = `${yearNum}-12-31`
 
     setIsDownloading(true)
     try {
@@ -253,9 +192,7 @@ export default function AnnualLeaveUsageDownload({ isOpen, onClose }: AnnualLeav
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = mode === 'year'
-        ? `연차_사용현황_${yearNum}.xlsx`
-        : `연차_사용현황_${effectiveStart}_${effectiveEnd}.xlsx`
+      a.download = `연차_사용현황_${yearNum}.xlsx`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -276,9 +213,6 @@ export default function AnnualLeaveUsageDownload({ isOpen, onClose }: AnnualLeav
 
   const handleClose = () => {
     setYear(String(new Date().getFullYear()))
-    setMode('year')
-    setStartDate('')
-    setEndDate('')
     setIsDownloading(false)
     onClose()
   }
@@ -300,131 +234,42 @@ export default function AnnualLeaveUsageDownload({ isOpen, onClose }: AnnualLeav
         </DialogHeader>
 
         <div className="space-y-6 py-2">
-          {/* 모드 선택 */}
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant={mode === 'year' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setMode('year')}
-              className="h-8 px-4 text-sm"
-            >
-              연도 선택
-            </Button>
-            <Button
-              type="button"
-              variant={mode === 'range' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setMode('range')}
-              className="h-8 px-4 text-sm"
-            >
-              기간 선택
-            </Button>
+          {/* 연도 선택 */}
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">연도</label>
+              <Input
+                type="number"
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                min={2000}
+                max={2100}
+                placeholder="예: 2025"
+                className="h-9 text-sm border-gray-200 focus:border-hansl-400 focus:ring-1 focus:ring-hansl-100"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={setThisYear}
+                className="h-8 px-4 text-sm border-gray-200 hover:bg-hansl-50 hover:border-hansl-300 hover:text-hansl-700 transition-colors"
+              >
+                올해
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={setLastYear}
+                className="h-8 px-4 text-sm border-gray-200 hover:bg-hansl-50 hover:border-hansl-300 hover:text-hansl-700 transition-colors"
+              >
+                작년
+              </Button>
+            </div>
           </div>
-
-          {mode === 'year' ? (
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">연도</label>
-                <Input
-                  type="number"
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                  min={2000}
-                  max={2100}
-                  placeholder="예: 2025"
-                  className="h-9 text-sm border-gray-200 focus:border-hansl-400 focus:ring-1 focus:ring-hansl-100"
-                />
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={setThisYear}
-                  className="h-8 px-4 text-sm border-gray-200 hover:bg-hansl-50 hover:border-hansl-300 hover:text-hansl-700 transition-colors"
-                >
-                  올해
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={setLastYear}
-                  className="h-8 px-4 text-sm border-gray-200 hover:bg-hansl-50 hover:border-hansl-300 hover:text-hansl-700 transition-colors"
-                >
-                  작년
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">시작일</label>
-                  <Input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="h-9 text-sm border-gray-200 focus:border-hansl-400 focus:ring-1 focus:ring-hansl-100"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">종료일</label>
-                  <Input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="h-9 text-sm border-gray-200 focus:border-hansl-400 focus:ring-1 focus:ring-hansl-100"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={setRangeThisYear}
-                  className="h-8 px-4 text-sm border-gray-200 hover:bg-hansl-50 hover:border-hansl-300 hover:text-hansl-700 transition-colors"
-                >
-                  올해
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={setRangeLastYear}
-                  className="h-8 px-4 text-sm border-gray-200 hover:bg-hansl-50 hover:border-hansl-300 hover:text-hansl-700 transition-colors"
-                >
-                  작년
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={setRangeThisMonth}
-                  className="h-8 px-4 text-sm border-gray-200 hover:bg-hansl-50 hover:border-hansl-300 hover:text-hansl-700 transition-colors"
-                >
-                  이번 달
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={setRangeLastMonth}
-                  className="h-8 px-4 text-sm border-gray-200 hover:bg-hansl-50 hover:border-hansl-300 hover:text-hansl-700 transition-colors"
-                >
-                  지난 달
-                </Button>
-              </div>
-
-              <p className="text-xs text-gray-500">
-                기간 선택은 엑셀 포맷(1~12월) 때문에 같은 연도 안에서만 가능합니다.
-              </p>
-            </div>
-          )}
 
           <div className="pt-2">
             <Button

@@ -1624,6 +1624,34 @@ function PurchaseDetailModal({
     return new Intl.NumberFormat('ko-KR').format(amount)
   }
 
+  type CurrencyCode = 'KRW' | 'USD'
+
+  const normalizeCurrency = (currency: any): CurrencyCode => {
+    return currency === 'USD' ? 'USD' : 'KRW'
+  }
+
+  const getCurrencySymbol = (currency: any) => {
+    const c = normalizeCurrency(currency)
+    return c === 'USD' ? '$' : '₩'
+  }
+
+  const getPurchaseDisplayCurrency = (): CurrencyCode => {
+    return normalizeCurrency(isEditing ? editedPurchase?.currency : purchase?.currency)
+  }
+
+  const getItemDisplayCurrency = (item: any): CurrencyCode => {
+    return normalizeCurrency(
+      item?.unit_price_currency ??
+        item?.amount_currency ??
+        item?.tax_amount_currency ??
+        getPurchaseDisplayCurrency()
+    )
+  }
+
+  const formatMoney = (amount: number, currency: any) => {
+    return `${getCurrencySymbol(currency)}${formatCurrency(amount)}`
+  }
+
   // 타임아웃 유틸리티 함수
   const withTimeout = <T,>(promise: PromiseLike<T>, timeoutMs: number): Promise<T> => {
     return Promise.race([
@@ -1848,34 +1876,7 @@ function PurchaseDetailModal({
       // 각 아이템 업데이트 또는 생성
       logger.debug(`[handleSave] Step 4: 아이템 저장 시작, 총 ${editedItems.length}개`)
       
-      // ✅ 변경된 품목만 저장 (불필요한 UPDATE를 줄여 속도 개선)
-      const originalItems = (purchase?.items && purchase.items.length > 0)
-        ? purchase.items
-        : (purchase?.purchase_request_items || [])
-      const originalById = new Map<number, any>()
-      originalItems.forEach((it: any) => {
-        const idNum = it?.id != null ? Number(it.id) : NaN
-        if (!Number.isNaN(idNum)) originalById.set(idNum, it)
-      })
-
-      const hasMeaningfulChange = (orig: any, next: any): boolean => {
-        // 문자열/숫자/널 정규화 후 비교
-        const s = (v: any) => (v == null ? '' : String(v).trim())
-        const n = (v: any) => safeNumber(v, 0)
-
-        return (
-          s(orig?.item_name) !== s(next?.item_name) ||
-          s(orig?.specification) !== s(next?.specification) ||
-          n(orig?.quantity) !== n(next?.quantity) ||
-          n(orig?.received_quantity) !== n(next?.received_quantity) ||
-          n(orig?.unit_price_value) !== n(next?.unit_price_value) ||
-          n(orig?.amount_value) !== n(next?.amount_value) ||
-          s(orig?.remark) !== s(next?.remark) ||
-          n(orig?.line_number) !== n(next?.line_number)
-        )
-      }
-
-      // ✅ DB statement timeout/락 경합을 줄이기 위해 순차 처리
+      // ✅ DB statement timeout/락 경합을 줄이기 위해 순차 처리 (Promise.all 제거)
       for (let index = 0; index < editedItems.length; index++) {
         const item = editedItems[index]
         const itemTimeoutMs = 60000
@@ -1906,11 +1907,6 @@ function PurchaseDetailModal({
         const finalAmountValue = safeNumber(item.amount_value, 0)
         
         if (isExistingItem) {
-          const orig = originalById.get(Number(numericItemId))
-          if (orig && !hasMeaningfulChange(orig, item)) {
-            logger.debug(`[handleSave] 아이템 ${index + 1} 변경 없음 - 업데이트 스킵`)
-            continue
-          }
           // 기존 항목 업데이트
           const updateItemResult = await withTimeout(
             supabase
@@ -3487,7 +3483,7 @@ function PurchaseDetailModal({
               <span className="modal-subtitle">
                 {activeTab === 'done' && !canViewFinancialInfo 
                   ? '-' 
-                  : `₩${formatCurrency(item.unit_price_value)}`}
+                  : formatMoney(item.unit_price_value ?? 0, getItemDisplayCurrency(item))}
               </span>
             )}
           </div>
@@ -3506,7 +3502,7 @@ function PurchaseDetailModal({
               <span className="modal-value">
                 {activeTab === 'done' && !canViewFinancialInfo 
                   ? '-' 
-                  : `₩${formatCurrency(item.amount_value || 0)}`}
+                  : formatMoney(item.amount_value || 0, getItemDisplayCurrency(item))}
               </span>
             )}
           </div>
@@ -3517,7 +3513,7 @@ function PurchaseDetailModal({
               <span className={isEditing ? "modal-subtitle" : "modal-value"}>
                 {activeTab === 'done' && !canViewFinancialInfo 
                   ? '-' 
-                  : `₩${formatCurrency(item.tax_amount_value || 0)}`}
+                  : formatMoney(item.tax_amount_value || 0, getItemDisplayCurrency(item))}
               </span>
             </div>
           )}
@@ -4061,12 +4057,12 @@ function PurchaseDetailModal({
                   placeholder="합계"
                 />
               ) : (
-                <div className="modal-value font-semibold">₩{formatCurrency(item.amount_value || 0)}</div>
+                <div className="modal-value font-semibold">{formatMoney(item.amount_value || 0, getItemDisplayCurrency(item))}</div>
               )}
               <div className="text-[10px] text-gray-500 mt-0.5">
                 {activeTab === 'done' && !canViewFinancialInfo 
                   ? '-' 
-                  : `₩${formatCurrency(item.unit_price_value || 0)}`} / 단가
+                  : `${formatMoney(item.unit_price_value || 0, getItemDisplayCurrency(item))}`} / 단가
               </div>
             </div>
           </div>
@@ -5466,13 +5462,13 @@ function PurchaseDetailModal({
                         <span className="text-[12px] font-bold text-blue-600">
                           {activeTab === 'done' && !canViewFinancialInfo 
                             ? '-' 
-                            : `₩${formatCurrency(
+                            : formatMoney(
                                 (isEditing ? editedItems : currentItems)?.reduce((sum, item) => {
                                   const amount = item.amount_value || 0
                                   const tax = item.tax_amount_value || 0
                                   return sum + amount + tax
                                 }, 0) || 0
-                              )}`}
+                              , getPurchaseDisplayCurrency())}
                         </span>
                       </div>
                       {/* 링크 칼럼 - 빈칸 */}
@@ -5501,9 +5497,10 @@ function PurchaseDetailModal({
                       <span className="text-[13px] font-bold text-gray-900">
                         {activeTab === 'done' && !canViewFinancialInfo 
                           ? '-' 
-                          : `₩${formatCurrency(
-                              (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
-                            )}`}
+                          : formatMoney(
+                              (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0,
+                              getPurchaseDisplayCurrency()
+                            )}
                       </span>
                     </div>
                     {/* 세액 (발주인 경우) */}
@@ -5514,9 +5511,10 @@ function PurchaseDetailModal({
                           <span className="text-[13px] font-bold text-gray-900">
                             {activeTab === 'done' && !canViewFinancialInfo 
                               ? '-' 
-                              : `₩${formatCurrency(
-                                  (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.tax_amount_value || 0), 0) || 0
-                                )}`}
+                              : formatMoney(
+                                  (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.tax_amount_value || 0), 0) || 0,
+                                  getPurchaseDisplayCurrency()
+                                )}
                           </span>
                         </div>
                         <div className="flex justify-between items-center border-t pt-1">
@@ -5524,13 +5522,14 @@ function PurchaseDetailModal({
                           <span className="text-[13px] font-bold text-blue-600">
                             {activeTab === 'done' && !canViewFinancialInfo 
                               ? '-' 
-                              : `₩${formatCurrency(
+                              : formatMoney(
                                   (isEditing ? editedItems : currentItems)?.reduce((sum, item) => {
                                     const amount = item.amount_value || 0
                                     const tax = item.tax_amount_value || 0
                                     return sum + amount + tax
-                                  }, 0) || 0
-                                )}`}
+                                  }, 0) || 0,
+                                  getPurchaseDisplayCurrency()
+                                )}
                           </span>
                         </div>
                       </>
