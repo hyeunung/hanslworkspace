@@ -155,14 +155,29 @@ export default function BomCoordinateIntegrated() {
   const normalizeName = (name?: string | null) => (name || '').trim();
 
   // 삭제 권한: 관리자 또는 최종점검(완료) 처리자
+  // 주의: production_manager가 과거 데이터에서 "이름"이 아니라 "직원ID"로 저장된 케이스가 있을 수 있어 둘 다 허용
   const canDeleteBoard = useCallback((board: { status?: 'pending' | 'completed'; production_manager?: string }) => {
     if (isAdmin) return true;
     if (board.status !== 'completed') return false;
-    const inspectorName = normalizeName(board.production_manager);
+
+    const inspectorRaw = normalizeName(board.production_manager);
     const myName = normalizeName(currentUser?.name);
-    if (!inspectorName || !myName) return false;
-    return inspectorName === myName;
-  }, [isAdmin, currentUser?.name]);
+    const myId = normalizeName((currentUser as any)?.id);
+
+    if (!inspectorRaw) return false;
+
+    // 1) DB에 이름이 저장된 경우
+    if (myName && inspectorRaw === myName) return true;
+    // 2) DB에 사용자/직원 ID가 저장된 경우
+    if (myId && inspectorRaw === myId) return true;
+    // 3) inspector가 직원ID인데 내 이름과 매칭되어야 하는 경우 (employees로 역매핑)
+    if (myName && employees?.length) {
+      const inspectorNameById = employees.find(emp => normalizeName(emp.id) === inspectorRaw)?.name;
+      if (normalizeName(inspectorNameById) && normalizeName(inspectorNameById) === myName) return true;
+    }
+
+    return false;
+  }, [isAdmin, currentUser, employees]);
   
   // localStorage 키 생성 (사용자별 분리)
   const getTempStorageKey = (userId: string) => `bom_temp_data_${userId}`;
@@ -340,27 +355,6 @@ export default function BomCoordinateIntegrated() {
         if (error) throw error;
         
         setSavedBoards(boards || []);
-        // 콘솔 증거(원격 로그가 막혀도 확인 가능)
-        try {
-          const statusCounts = (boards || []).reduce((acc: Record<string, number>, b: any) => {
-            const s = String(b?.status ?? 'undefined');
-            acc[s] = (acc[s] || 0) + 1;
-            return acc;
-          }, {});
-          console.log('📋 loadSavedBoards', {
-            count: (boards || []).length,
-            statusCounts,
-            top3: (boards || []).slice(0, 3).map((b: any) => ({ id: b.id, status: b.status }))
-          });
-        } catch {}
-        // #region agent log
-        const statusCounts = (boards || []).reduce((acc: Record<string, number>, b: any) => {
-          const s = String(b?.status || 'undefined');
-          acc[s] = (acc[s] || 0) + 1;
-          return acc;
-        }, {});
-        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H5',location:'BomCoordinateIntegrated.tsx:loadSavedBoards:ok',message:'loaded saved boards',data:{count:(boards||[]).length,statusCounts,top3:(boards||[]).slice(0,3).map((b:any)=>({id:b.id,status:b.status,created_at:b.created_at}))},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
       } catch (error) {
         console.error('Error loading saved boards:', error);
         toast.error('저장된 BOM 목록을 불러오는데 실패했습니다.');
@@ -621,10 +615,6 @@ export default function BomCoordinateIntegrated() {
 
     // processedResult.isEditMode를 사용 (stale closure 문제 방지)
     const isEditMode = processedResult.isEditMode === true;
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H1',location:'BomCoordinateIntegrated.tsx:handleSaveBOM:entry',message:'handleSaveBOM entry',data:{isEditMode,editingBoardId,cadDrawingId:processedResult?.cadDrawingId,viewMode,step,hasUploadedFilePaths:!!uploadedFilePaths,hasFiles:!!fileInfo?.bomFile&&!!fileInfo?.coordFile},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion agent log
-    console.log('🔍 handleSaveBOM 호출됨', { isEditMode, editingBoardId, cadDrawingId: processedResult.cadDrawingId });
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -641,17 +631,10 @@ export default function BomCoordinateIntegrated() {
       const saveStatus = isEditMode ? 'completed' : 'pending';
       // 최종 저장 시에만 현재 사용자를 생산담당자로 설정
       const finalProductionManager = isEditMode ? currentUser?.name : null;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'BomCoordinateIntegrated.tsx:handleSaveBOM:mode',message:'save mode computed',data:{saveStatus,isEditMode,finalProductionManagerIsNull:finalProductionManager==null,cadDrawingId},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion agent log
 
       // 기존 보드 업데이트 (isEditMode = pending에서 불러와서 최종 저장)
       if (isEditMode) {
         // cadDrawingId는 이미 processedResult.cadDrawingId에서 가져옴 (boardId)
-        console.log('📝 최종 저장 모드: 기존 보드 업데이트', { cadDrawingId, saveStatus, finalProductionManager });
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'BomCoordinateIntegrated.tsx:handleSaveBOM:update:before',message:'about to update cad_drawings status',data:{cadDrawingId,saveStatus},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
         const { data: updatedRows, error: updateError } = await supabase
           .from('cad_drawings')
           .update({ 
@@ -665,9 +648,6 @@ export default function BomCoordinateIntegrated() {
         
         if (updateError) {
           console.error('❌ 상태 업데이트 실패:', updateError);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'BomCoordinateIntegrated.tsx:handleSaveBOM:update:error',message:'update cad_drawings failed',data:{cadDrawingId,code:updateError?.code,details:updateError?.details,hint:updateError?.hint,message:updateError?.message},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion agent log
           throw updateError;
         }
         // RLS로 UPDATE가 막히면 error 없이 0행 업데이트가 나올 수 있음 (이 경우가 현재 현상과 일치)
@@ -676,21 +656,6 @@ export default function BomCoordinateIntegrated() {
           toast.error('상태 업데이트가 차단되었습니다(RLS). 관리자에게 cad_drawings UPDATE 정책 추가가 필요합니다.');
           throw new Error('cad_drawings update blocked (0 rows updated)');
         }
-        console.log('✅ 상태 업데이트 성공 (반환 row):', updatedRows[0]);
-        // DB에서 즉시 다시 읽어서 status가 실제로 바뀌었는지 확인 (증거 확보)
-        const { data: afterUpdateRow, error: afterUpdateReadError } = await supabase
-          .from('cad_drawings')
-          .select('id, status, production_manager, updated_at, created_at')
-          .eq('id', cadDrawingId)
-          .single();
-        console.log('🔎 after update readback (cad_drawings)', {
-          status: afterUpdateRow?.status,
-          production_manager: afterUpdateRow?.production_manager,
-          afterUpdateReadError
-        });
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H3',location:'BomCoordinateIntegrated.tsx:handleSaveBOM:update:ok',message:'update cad_drawings ok',data:{cadDrawingId,saveStatus},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
       } else if (cadDrawingId.startsWith('cad_')) {
         // cadDrawingId가 임시 ID인 경우 (새로 생성) - 검토 요청
         // 보드명에서 기존 날짜/정리본 패턴 제거 후 새 날짜 추가
@@ -739,9 +704,6 @@ export default function BomCoordinateIntegrated() {
             status: saveStatus
           })
           .eq('id', cadDrawingId);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H4',location:'BomCoordinateIntegrated.tsx:handleSaveBOM:updateExisting',message:'update existing non-cad_ path',data:{cadDrawingId,saveStatus,hasError:!!updateExistingError,code:updateExistingError?.code,message:updateExistingError?.message},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion agent log
         if (updateExistingError) throw updateExistingError;
       }
 
@@ -906,23 +868,6 @@ export default function BomCoordinateIntegrated() {
       
       // 목록 뷰로 즉시 전환 (handleReset 전에 viewMode 변경)
       setViewMode('list');
-      // 목록 로딩/표시가 pending으로만 보이는 케이스를 잡기 위해, 방금 저장한 row + 목록을 즉시 한 번 더 읽어 증거 확보
-      try {
-        const { data: savedRow, error: savedRowErr } = await supabase
-          .from('cad_drawings')
-          .select('id, status, production_manager, created_at, updated_at')
-          .eq('id', cadDrawingId)
-          .single();
-        console.log('🔎 post-save readback (cad_drawings)', { savedRow, savedRowErr });
-        const { data: listRows, error: listErr } = await supabase
-          .from('cad_drawings')
-          .select('id, status, created_at')
-          .order('created_at', { ascending: false })
-          .limit(10);
-        console.log('🔎 post-save list top10', { listErr, top10: (listRows || []).map(r => ({ id: r.id, status: r.status, created_at: r.created_at })) });
-      } catch (e) {
-        console.log('🔎 post-save debug read failed', e);
-      }
       
       // 상태 초기화 (다음 새로만들기를 위해)
       setStep('input');
@@ -1133,9 +1078,6 @@ export default function BomCoordinateIntegrated() {
         .single();
       
       if (boardError) throw boardError;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'BomCoordinateIntegrated.tsx:handleLoadPendingBoard:board',message:'loaded boardInfo for pending click',data:{boardId,boardStatus:boardInfo?.status,hasProductionManager:!!boardInfo?.production_manager,productionQuantity:boardInfo?.production_quantity},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion agent log
 
       // 2. BOM 아이템 가져오기
       const { data: bomItems, error: bomError } = await supabase
@@ -1211,9 +1153,6 @@ export default function BomCoordinateIntegrated() {
           coordinates: convertedCoords
         }
       });
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'run1',hypothesisId:'H2',location:'BomCoordinateIntegrated.tsx:handleLoadPendingBoard:setProcessedResult',message:'setProcessedResult for edit mode',data:{boardId,isEditMode:true,bomCount:convertedBOMItems.length,coordCount:convertedCoords.length},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion agent log
 
       setEditingBoardId(boardId); // 편집 중인 보드 ID 저장 (백업용)
       
