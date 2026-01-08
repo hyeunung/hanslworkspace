@@ -265,7 +265,7 @@ export default function DeliveryDateWarningModal({
       }
 
       // 1. 문의하기에 저장
-      const { error: inquiryError } = await supabase
+      const { data: createdInquiry, error: inquiryError } = await supabase
         .from('support_inquires')
         .insert({
           user_id: user.id,
@@ -283,9 +283,26 @@ export default function DeliveryDateWarningModal({
             delivery_request_date: purchase.delivery_request_date,
             revised_delivery_request_date: purchase.revised_delivery_request_date
           })
-        });
+        })
+        .select('id')
+        .single();
 
       if (inquiryError) throw inquiryError;
+
+      // ✅ 대화 로그 첫 메시지 기록 (새 문의 알림/채팅 히스토리용)
+      const inquiryId = createdInquiry?.id
+      if (inquiryId) {
+        const { error: msgError } = await supabase
+          .from('support_inquiry_messages')
+          .insert({
+            inquiry_id: inquiryId,
+            sender_role: 'user',
+            sender_email: user.email,
+            message: modifyMessage,
+            attachments: []
+          })
+        if (msgError) throw msgError
+      }
 
       // 2. 수정요청완료 플래그 업데이트
       const { error: updateError } = await supabase

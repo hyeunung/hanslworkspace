@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MessageCircle, Send, Calendar, Search, CheckCircle, Clock, AlertCircle, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Eye, X, Edit2, Trash2, Save, ImagePlus, Loader2 } from 'lucide-react'
-import { supportService, type SupportInquiry, type SupportAttachment } from '@/services/supportService'
+import { supportService, type SupportInquiry, type SupportAttachment, type SupportInquiryMessage } from '@/services/supportService'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { removePurchaseFromMemory } from '@/stores/purchaseMemoryStore'
@@ -70,6 +70,12 @@ export default function SupportMain() {
   const [purchaseToDelete, setPurchaseToDelete] = useState<any>(null)
   const [purchaseMissingOpen, setPurchaseMissingOpen] = useState(false)
   const [purchaseMissingMessage, setPurchaseMissingMessage] = useState('발주내역이 삭제 되었거나 없습니다.')
+
+  // 채팅(대화) 드롭다운(확장 영역 내)
+  const [chatMessages, setChatMessages] = useState<SupportInquiryMessage[]>([])
+  const [chatLoading, setChatLoading] = useState(false)
+  const [chatText, setChatText] = useState('')
+  const [chatSending, setChatSending] = useState(false)
 
   // 초기 데이터 로드
   useEffect(() => {
@@ -309,6 +315,7 @@ ${purchaseInfo}`;
 
     if (result.success) {
       toast.success('문의가 접수되었습니다.')
+      const createdId = result.inquiryId
       // 폼 초기화
       setInquiryType('')
       setSubject('')
@@ -319,6 +326,11 @@ ${purchaseInfo}`;
       setAttachments([])
       // 목록 새로고침
       loadInquiries()
+
+      // ✅ 생성된 문의를 펼쳐서(드롭다운) 바로 대화창이 보이게
+      if (createdId) {
+        setExpandedInquiry(createdId)
+      }
     } else {
       toast.error(result.error || '문의 접수에 실패했습니다.')
     }
@@ -383,16 +395,9 @@ ${purchaseInfo}`;
 
   // 문의 상태 업데이트 (관리자용)
   const handleStatusUpdate = async (inquiryId: number, newStatus: 'in_progress' | 'resolved' | 'closed', resolutionNote?: string) => {
-    // resolved 상태로 변경 시 답변 내용 확인
     if (newStatus === 'resolved') {
-      const note = resolutionNote || prompt('처리 완료 답변을 입력해주세요:')
-      if (!note || note.trim() === '') {
-        toast.error('답변 내용을 입력해야 완료 처리할 수 있습니다.')
-        return
-      }
-      
-      const result = await supportService.updateInquiryStatus(inquiryId, newStatus, note.trim())
-      
+      // ✅ 입력 없이 완료 처리 + 사용자에게 "완료되었습니다" 알림 + 로그 기록(DB 함수)
+      const result = await supportService.resolveInquiry(inquiryId)
       if (result.success) {
         toast.success('문의가 완료 처리되었습니다.')
         loadInquiries()
@@ -408,6 +413,90 @@ ${purchaseInfo}`;
       } else {
         toast.error(result.error || '상태 업데이트 실패')
       }
+    }
+  }
+
+  const expandedInquiryObj = inquiries.find((i) => i.id === expandedInquiry) || null
+
+  // 확장된 문의에 대해 메시지 로드 + 실시간 구독 + (사용자) 알림 읽음 처리
+  useEffect(() => {
+    if (!expandedInquiryObj?.id) return
+
+    let cancelled = false
+
+    const load = async () => {
+      setChatLoading(true)
+      const result = await supportService.getInquiryMessages(expandedInquiryObj.id!)
+      if (!cancelled) {
+        if (result.success) setChatMessages(result.data)
+        else toast.error(result.error || '대화 내용을 불러오지 못했습니다.')
+        setChatLoading(false)
+      }
+    }
+
+    // 사용자: 해당 문의 알림(안읽음) 처리
+    const markAsRead = async () => {
+      if (isAdmin) return
+      if (!currentUserEmail) return
+      const supabase = createClient()
+      await supabase
+        .from('notifications')
+        .update({ is_read: true, read_at: new Date().toISOString() })
+        .eq('user_email', currentUserEmail)
+        .eq('is_read', false)
+        .in('type', ['inquiry_message', 'inquiry_resolved'])
+        .eq('data->>inquiryId', String(expandedInquiryObj.id))
+    }
+
+    load()
+    markAsRead()
+
+    const subscription = supportService.subscribeToInquiryMessages(expandedInquiryObj.id!, () => {
+      load()
+    })
+
+    return () => {
+      cancelled = true
+      subscription.unsubscribe()
+    }
+  }, [expandedInquiryObj?.id, isAdmin, currentUserEmail])
+
+  const handleSendChat = async () => {
+    if (!expandedInquiryObj?.id) return
+    if (!chatText.trim()) {
+      toast.error('메시지를 입력해주세요.')
+      return
+    }
+    if (expandedInquiryObj.status === 'resolved' || expandedInquiryObj.status === 'closed') {
+      toast.error('완료된 문의에는 메시지를 보낼 수 없습니다.')
+      return
+    }
+
+    setChatSending(true)
+    const result = await supportService.sendInquiryMessage({
+      inquiryId: expandedInquiryObj.id!,
+      message: chatText.trim(),
+      senderRole: isAdmin ? 'admin' : 'user'
+    })
+
+    if (result.success) {
+      setChatText('')
+    } else {
+      toast.error(result.error || '메시지 전송 실패')
+    }
+    setChatSending(false)
+  }
+
+  const handleResolveFromChat = async () => {
+    if (!expandedInquiryObj?.id) return
+    const result = await supportService.resolveInquiry(expandedInquiryObj.id!)
+    if (result.success) {
+      toast.success('문의가 완료 처리되었습니다.')
+      setChatText('')
+      setExpandedInquiry(null)
+      loadInquiries()
+    } else {
+      toast.error(result.error || '완료 처리 실패')
     }
   }
 
@@ -1037,7 +1126,7 @@ ${purchaseInfo}`;
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <span className="badge-stats border border-gray-300 bg-white text-gray-600 badge-text whitespace-nowrap">
+                            <span className="badge-stats border border-gray-300 bg-white text-gray-600 whitespace-nowrap">
                               {getInquiryTypeLabel(inquiry.inquiry_type)}
                             </span>
                             {getStatusBadge(inquiry.status)}
@@ -1068,29 +1157,28 @@ ${purchaseInfo}`;
                           </div>
                           <div className="flex items-center gap-1">
                             {isAdmin && inquiry.status === 'open' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
+                              <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   handleStatusUpdate(inquiry.id!, 'in_progress')
                                 }}
-                                className="h-6 badge-text px-2"
+                                className="badge-stats border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400"
                               >
                                 처리중
-                              </Button>
+                              </button>
                             )}
                             {isAdmin && (inquiry.status === 'open' || inquiry.status === 'in_progress') && (
-                              <Button
-                                size="sm"
+                              <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   handleStatusUpdate(inquiry.id!, 'resolved')
                                 }}
-                                className="h-6 badge-text px-2 bg-green-600 hover:bg-green-700"
+                                className="badge-stats bg-green-500 text-white hover:bg-green-600"
                               >
                                 완료
-                              </Button>
+                              </button>
                             )}
                             {/* 삭제 버튼 - 관리자는 모든 문의 삭제 가능, 일반 사용자는 본인의 open 상태만 */}
                             {(isAdmin || (inquiry.status === 'open' && !inquiry.resolution_note && inquiry.user_email === currentUserEmail)) && (
@@ -1154,12 +1242,6 @@ ${purchaseInfo}`;
                                 </span>
                               </div>
                             )}
-                            {inquiry.resolution_note && (
-                              <div>
-                                <span className="modal-value text-gray-700">처리 내용:</span>
-                                <p className="text-gray-600 mt-1">{inquiry.resolution_note}</p>
-                              </div>
-                            )}
                             {/* 첨부 이미지 */}
                             {inquiry.attachments && inquiry.attachments.length > 0 && (
                               <div>
@@ -1184,6 +1266,108 @@ ${purchaseInfo}`;
                                 </div>
                               </div>
                             )}
+
+                            {/* 대화(드롭다운) */}
+                            <div className="mt-3 border-t pt-3">
+                              <div className="flex items-center justify-between">
+                                <div className="modal-value text-gray-800">대화</div>
+                                {isAdmin && inquiry.status !== 'resolved' && inquiry.status !== 'closed' && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleResolveFromChat()
+                                    }}
+                                    className="button-action-success"
+                                  >
+                                    완료
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="mt-2 border rounded-lg bg-white">
+                                <div className="max-h-[260px] overflow-y-auto p-3 space-y-2">
+                                  {chatLoading ? (
+                                    <div className="flex items-center justify-center py-8">
+                                      <div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+                                    </div>
+                                  ) : chatMessages.length === 0 ? (
+                                    <div className="text-center text-gray-500 py-8">
+                                      대화 내용이 없습니다.
+                                    </div>
+                                  ) : (
+                                    chatMessages.map((m) => {
+                                      const isSystem = m.sender_role === 'system'
+                                      const isMine = !isSystem && m.sender_email === currentUserEmail
+                                      return (
+                                        <div key={m.id} className={isSystem ? 'text-center' : `flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                                          <div className={isSystem ? 'inline-block text-xs text-gray-500 px-3 py-1 rounded-full bg-gray-50 border' : `max-w-[80%] rounded-lg px-3 py-2 ${isMine ? 'bg-blue-600 text-white' : 'bg-gray-50 border text-gray-800'}`}>
+                                            {!isSystem && (
+                                              <div className={`text-[11px] mb-1 ${isMine ? 'text-white/80' : 'text-gray-500'}`}>
+                                                {m.sender_role === 'admin' ? '관리자' : '문의자'}
+                                                {m.created_at && ` · ${format(new Date(m.created_at), 'MM/dd HH:mm')}`}
+                                              </div>
+                                            )}
+                                            <div className="whitespace-pre-wrap text-sm">{m.message}</div>
+                                            {m.attachments && m.attachments.length > 0 && (
+                                              <div className="flex flex-wrap gap-2 mt-2">
+                                                {m.attachments.map((a, idx) => (
+                                                  <a
+                                                    key={idx}
+                                                    href={a.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="block"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                  >
+                                                    <img
+                                                      src={a.url}
+                                                      alt={a.name}
+                                                      className="w-20 h-20 object-cover rounded border"
+                                                    />
+                                                  </a>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )
+                                    })
+                                  )}
+                                </div>
+
+                                <div className="border-t p-2">
+                                  {(inquiry.status === 'resolved' || inquiry.status === 'closed') ? (
+                                    <div className="text-sm text-gray-500 text-center py-1">
+                                      완료된 문의입니다. 추가 대화가 필요하면 새 문의를 등록해주세요.
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-end gap-2">
+                                      <Textarea
+                                        value={chatText}
+                                        onChange={(e) => setChatText(e.target.value)}
+                                        placeholder="메시지를 입력하세요"
+                                        rows={2}
+                                        maxLength={1000}
+                                        disabled={chatSending}
+                                        onClick={(e) => e.stopPropagation()}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleSendChat()
+                                        }}
+                                        disabled={chatSending || !chatText.trim()}
+                                        className="button-action-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                                      >
+                                        {chatSending ? '전송중' : '전송'}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       )}

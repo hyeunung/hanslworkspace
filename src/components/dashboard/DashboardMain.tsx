@@ -883,13 +883,8 @@ export default function DashboardMain() {
                                 <button
                                   className="button-action-primary"
                                   onClick={async () => {
-                                    const note = prompt('처리 완료 답변을 입력해주세요:')
-                                    if (!note || note.trim() === '') {
-                                      toast.error('답변 내용을 입력해야 완료 처리할 수 있습니다.')
-                                      return
-                                    }
-                                    
-                                    const result = await supportService.updateInquiryStatus(inquiry.id!, 'resolved', note.trim())
+                                    // ✅ 입력 없이 완료 처리 + 사용자에게 "완료되었습니다" 알림 + 로그 기록
+                                    const result = await supportService.resolveInquiry(inquiry.id!)
                                     if (result.success) {
                                       toast.success('문의가 완료 처리되었습니다.')
                                       // 목록에서 제거

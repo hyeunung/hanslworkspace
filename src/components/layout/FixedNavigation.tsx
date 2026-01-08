@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { 
   Home, 
   ShoppingCart, 
@@ -12,6 +13,8 @@ import {
   Package
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
+import { supportService } from '@/services/supportService'
 import {
   Tooltip,
   TooltipContent,
@@ -28,6 +31,81 @@ interface NavigationProps {
 export default function FixedNavigation({ role, isOpen = false, onClose }: NavigationProps) {
   const location = useLocation()
   const pathname = location.pathname
+
+  const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
+  const [unreadInquiryCount, setUnreadInquiryCount] = useState(0)
+
+  const roles = Array.isArray(role) ? role : (role ? [role] : [])
+  const isAdmin = roles.includes('app_admin')
+
+  // 관리자: 미처리(open+in_progress) 건수
+  useEffect(() => {
+    if (!isAdmin) return
+
+    const loadPendingCount = async () => {
+      const result = await supportService.getAllInquiries()
+      if (result.success) {
+        const pendingCount = result.data.filter(
+          inquiry => inquiry.status === 'open' || inquiry.status === 'in_progress'
+        ).length
+        setPendingInquiryCount(pendingCount)
+      }
+    }
+
+    loadPendingCount()
+    const subscription = supportService.subscribeToInquiries(() => loadPendingCount())
+    return () => subscription.unsubscribe()
+  }, [isAdmin])
+
+  // 사용자: 안읽은 문의 알림(메시지/완료) 개수
+  useEffect(() => {
+    if (isAdmin) return
+
+    const supabase = createClient()
+    let subscription: any
+    let cancelled = false
+
+    const loadUnreadCount = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      const email = user?.email
+      if (!email) return
+
+      const { count } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_email', email)
+        .eq('is_read', false)
+        .in('type', ['inquiry_message', 'inquiry_resolved'])
+
+      if (!cancelled && typeof count === 'number') {
+        setUnreadInquiryCount(count)
+      }
+
+      if (!subscription) {
+        subscription = supabase
+          .channel('notifications_inquiry_badge_fixednav')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'notifications',
+              filter: `user_email=eq.${email}`
+            },
+            () => loadUnreadCount()
+          )
+          .subscribe()
+      }
+    }
+
+    loadUnreadCount()
+    return () => {
+      cancelled = true
+      if (subscription) subscription.unsubscribe()
+    }
+  }, [isAdmin])
+
+  const supportBadge = isAdmin ? pendingInquiryCount : unreadInquiryCount
 
   const menuItems = [
     {
@@ -151,7 +229,14 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
                         : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
                     )}
                   >
-                    <MessageCircle className="w-4 h-4" />
+                    <div className="relative">
+                      <MessageCircle className="w-4 h-4" />
+                      {supportBadge > 0 && (
+                        <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                          {supportBadge > 99 ? '99+' : supportBadge}
+                        </span>
+                      )}
+                    </div>
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent side="right" className="ml-2 bg-white border border-gray-200 text-gray-900 shadow-md">
@@ -213,7 +298,14 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
               )}
             >
-              <MessageCircle className="w-4 h-4" />
+              <div className="relative">
+                <MessageCircle className="w-4 h-4" />
+                {supportBadge > 0 && (
+                  <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                    {supportBadge > 99 ? '99+' : supportBadge}
+                  </span>
+                )}
+              </div>
               <span className="text-sm font-medium">문의하기</span>
             </Link>
           </div>

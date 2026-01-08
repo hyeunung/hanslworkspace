@@ -215,7 +215,7 @@ function PurchaseDetailModal({
         return
       }
 
-      const { error } = await supabase
+      const { data: createdInquiry, error } = await supabase
         .from('support_inquires')
         .insert({
           user_id: user.id,
@@ -234,8 +234,25 @@ function PurchaseDetailModal({
             item_count: purchase?.purchase_request_items?.length || 0
           })
         })
+        .select('id')
+        .single()
 
       if (error) throw error
+
+      // ✅ 대화 로그 첫 메시지 기록 (새 문의 알림/채팅 히스토리용)
+      const inquiryId = createdInquiry?.id
+      if (inquiryId) {
+        const { error: msgError } = await supabase
+          .from('support_inquiry_messages')
+          .insert({
+            inquiry_id: inquiryId,
+            sender_role: 'user',
+            sender_email: user.email,
+            message: modifyMessage,
+            attachments: []
+          })
+        if (msgError) throw msgError
+      }
 
       toast.success('수정 요청이 전송되었습니다.')
       setIsModifyRequestOpen(false)
@@ -265,6 +282,8 @@ function PurchaseDetailModal({
   
   // ✅ 저장 직후(Realtime/캐시 이벤트 지연 도착) 덮어쓰기 방지용
   const lastSaveAtRef = useRef<number>(0)
+  // ✅ 항목 추가 중복 클릭/이벤트(간헐적으로 1회 클릭에 여러 번 호출) 방지용
+  const lastAddItemAtRef = useRef<number>(0)
 
   // 🚀 Realtime 이벤트 구독 - 모달이 열려있는 동안 다른 화면에서 발생한 변경 실시간 반영
   const realtimeFirstMount = useRef(true)
@@ -2228,36 +2247,56 @@ function PurchaseDetailModal({
     setEditedItems(newItems)
   }
 
-  const handleAddItem = () => {
-    // 현재 최대 라인넘버 찾기
-    const maxLineNumber = editedItems.reduce((max, item) => {
-      const lineNum = item.line_number || 0;
-      return lineNum > max ? lineNum : max;
-    }, 0);
+  const handleAddItem = (e?: React.MouseEvent) => {
+    // 혹시 상위에 form이 있더라도 submit 등 부작용 방지
+    e?.preventDefault?.()
+    e?.stopPropagation?.()
 
-    const newItem = {
-      item_name: '',
-      specification: '',
-      quantity: 1,
-      unit_price_value: 0,
-      amount_value: 0,
-      remark: '',
-      line_number: maxLineNumber + 1,
-      tempId: `tmp-new-${Date.now()}-${Math.random()}`
+    if (!isEditing) return
+
+    // ✅ 간헐적으로 동일 클릭이 여러 번 전달되는 케이스 방지 (더블클릭/터치-클릭 중복 등)
+    const now = Date.now()
+    if (now - lastAddItemAtRef.current < 350) {
+      logger.warn('[PurchaseDetailModal] handleAddItem 중복 호출 차단', {
+        deltaMs: now - lastAddItemAtRef.current,
+      })
+      return
     }
-    
-    // 새 아이템 추가 후 라인넘버 순서대로 정렬
-    const newItems = [...editedItems, newItem].sort((a, b) => {
-      const lineA = a.line_number || 999999;
-      const lineB = b.line_number || 999999;
-      return lineA - lineB;
-    }).map((item, idx) => ({
-      ...item,
-      line_number: idx + 1,
-      stableKey: item.stableKey ?? makeStableKey(item, idx)
-    }));
-    
-    setEditedItems(newItems)
+    lastAddItemAtRef.current = now
+
+    setEditedItems(prev => {
+      const base = prev || []
+
+      // 현재 최대 라인넘버 찾기
+      const maxLineNumber = base.reduce((max, item) => {
+        const lineNum = item.line_number || 0
+        return lineNum > max ? lineNum : max
+      }, 0)
+
+      const newItem = {
+        item_name: '',
+        specification: '',
+        quantity: 1,
+        unit_price_value: 0,
+        amount_value: 0,
+        remark: '',
+        line_number: maxLineNumber + 1,
+        tempId: `tmp-new-${now}-${Math.random()}`
+      }
+
+      // 새 아이템 추가 후 라인넘버 순서대로 정렬
+      return [...base, newItem]
+        .sort((a, b) => {
+          const lineA = a.line_number || 999999
+          const lineB = b.line_number || 999999
+          return lineA - lineB
+        })
+        .map((item, idx) => ({
+          ...item,
+          line_number: idx + 1,
+          stableKey: item.stableKey ?? makeStableKey(item, idx)
+        }))
+    })
   }
 
   const handleRemoveItem = (index: number) => {
@@ -5561,6 +5600,7 @@ function PurchaseDetailModal({
                 {isEditing && (
                   <div className="p-2 sm:p-3 border-t border-gray-100">
                     <Button
+                      type="button"
                       size="sm"
                       variant="outline"
                       onClick={handleAddItem}

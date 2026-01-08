@@ -30,6 +30,16 @@ export interface SupportInquiry {
   attachments?: SupportAttachment[]
 }
 
+export interface SupportInquiryMessage {
+  id: number
+  inquiry_id: number
+  sender_role: 'user' | 'admin' | 'system'
+  sender_email: string
+  message: string
+  attachments: SupportAttachment[]
+  created_at: string
+}
+
 export interface CreateSupportInquiryPayload {
   inquiry_type: 'bug' | 'modify' | 'delete' | 'other' | 'annual_leave' | 'attendance'
   subject: string
@@ -123,7 +133,7 @@ class SupportService {
   }
 
   // 문의 생성
-  async createInquiry(payload: CreateSupportInquiryPayload): Promise<{ success: boolean; error?: string }> {
+  async createInquiry(payload: CreateSupportInquiryPayload): Promise<{ success: boolean; inquiryId?: number; error?: string }> {
     try {
       const { data: { user }, error: authError } = await this.supabase.auth.getUser()
       if (authError || !user) return { success: false, error: '로그인이 필요합니다.' }
@@ -134,7 +144,7 @@ class SupportService {
         .eq('email', user.email)
         .maybeSingle()
 
-      const { error } = await this.supabase
+      const { data: created, error } = await this.supabase
         .from('support_inquires')
         .insert({
           user_id: user.id,
@@ -150,6 +160,8 @@ class SupportService {
           status: 'open',
           attachments: payload.attachments || []
         })
+        .select('id')
+        .single()
 
       if (error) {
         logger.error('문의 등록 에러', error, {
@@ -159,9 +171,104 @@ class SupportService {
         })
         return { success: false, error: error.message }
       }
-      return { success: true }
+
+      const inquiryId = created?.id as number | undefined
+      if (!inquiryId) {
+        return { success: false, error: '문의 ID를 확인할 수 없습니다.' }
+      }
+
+      // 첫 메시지(사용자) 기록: 여기서부터 대화 로그가 시작됨
+      const senderEmail = employee?.email || user.email || ''
+      const { error: msgError } = await this.supabase
+        .from('support_inquiry_messages')
+        .insert({
+          inquiry_id: inquiryId,
+          sender_role: 'user',
+          sender_email: senderEmail,
+          message: payload.message,
+          attachments: payload.attachments || []
+        })
+
+      if (msgError) {
+        // 문의 자체는 생성됐지만 메시지 기록 실패(알림/대화가 안 될 수 있음)
+        logger.error('문의 첫 메시지 기록 실패', msgError)
+        return { success: false, error: '문의는 생성됐지만 첫 메시지 저장에 실패했습니다.' }
+      }
+
+      return { success: true, inquiryId }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : '문의 접수 실패' }
+    }
+  }
+
+  async getInquiryMessages(inquiryId: number): Promise<{ success: boolean; data: SupportInquiryMessage[]; error?: string }> {
+    try {
+      const { data, error } = await this.supabase
+        .from('support_inquiry_messages')
+        .select('*')
+        .eq('inquiry_id', inquiryId)
+        .order('created_at', { ascending: true })
+
+      if (error) throw error
+      return { success: true, data: (data || []) as SupportInquiryMessage[] }
+    } catch (e) {
+      return { success: false, data: [], error: e instanceof Error ? e.message : '메시지 조회 실패' }
+    }
+  }
+
+  async sendInquiryMessage(params: {
+    inquiryId: number
+    message: string
+    attachments?: SupportAttachment[]
+    senderRole: 'user' | 'admin'
+  }): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { data: { user }, error: authError } = await this.supabase.auth.getUser()
+      if (authError || !user) return { success: false, error: '로그인이 필요합니다.' }
+
+      const senderEmail = user.email || ''
+      if (!senderEmail) return { success: false, error: '사용자 이메일을 확인할 수 없습니다.' }
+
+      const { error } = await this.supabase
+        .from('support_inquiry_messages')
+        .insert({
+          inquiry_id: params.inquiryId,
+          sender_role: params.senderRole,
+          sender_email: senderEmail,
+          message: params.message,
+          attachments: params.attachments || []
+        })
+
+      if (error) throw error
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : '메시지 전송 실패' }
+    }
+  }
+
+  subscribeToInquiryMessages(inquiryId: number, callback: (payload: any) => void) {
+    return this.supabase
+      .channel(`support_inquiry_messages_${inquiryId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'support_inquiry_messages',
+          filter: `inquiry_id=eq.${inquiryId}`
+        },
+        callback
+      )
+      .subscribe()
+  }
+
+  async resolveInquiry(inquiryId: number): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { error } = await this.supabase.rpc('resolve_inquiry', { p_inquiry_id: inquiryId })
+      if (error) throw error
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : '완료 처리 실패' }
     }
   }
 

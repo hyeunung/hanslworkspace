@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supportService } from '@/services/supportService'
+import { createClient } from '@/lib/supabase/client'
 
 interface NavigationProps {
   role?: string | string[]  // hanslwebapp과 동일하게 배열도 지원
@@ -25,6 +26,7 @@ export default function Navigation({ role }: NavigationProps) {
   const location = useLocation()
   const pathname = location.pathname
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
+  const [unreadInquiryCount, setUnreadInquiryCount] = useState(0)
   
   // role 배열 확인
   const roles = Array.isArray(role) ? role : (role ? [role] : [])
@@ -54,6 +56,58 @@ export default function Navigation({ role }: NavigationProps) {
     
     return () => {
       subscription.unsubscribe()
+    }
+  }, [isAdmin])
+
+  // 일반 사용자: 내 안읽은 문의 알림 개수 조회 (notifications 기반)
+  useEffect(() => {
+    if (isAdmin) return
+
+    const supabase = createClient()
+    let subscription: any
+    let cancelled = false
+
+    const loadUnreadCount = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      const email = user?.email
+      if (!email) return
+
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_email', email)
+        .eq('is_read', false)
+        .in('type', ['inquiry_message', 'inquiry_resolved'])
+
+      if (!cancelled) {
+        if (!error && typeof count === 'number') setUnreadInquiryCount(count)
+      }
+
+      // 실시간 구독은 이메일을 알아야 하므로 여기서 한번만 설정
+      if (!subscription) {
+        subscription = supabase
+          .channel('notifications_inquiry_badge')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'notifications',
+              filter: `user_email=eq.${email}`
+            },
+            () => {
+              loadUnreadCount()
+            }
+          )
+          .subscribe()
+      }
+    }
+
+    loadUnreadCount()
+
+    return () => {
+      cancelled = true
+      if (subscription) subscription.unsubscribe()
     }
   }, [isAdmin])
 
@@ -111,7 +165,9 @@ export default function Navigation({ role }: NavigationProps) {
       href: '/support',
       icon: MessageCircle,
       roles: ['all'],
-      badge: isAdmin && pendingInquiryCount > 0 ? pendingInquiryCount : undefined
+      badge: (isAdmin ? pendingInquiryCount : unreadInquiryCount) > 0
+        ? (isAdmin ? pendingInquiryCount : unreadInquiryCount)
+        : undefined
     }
   ]
 
