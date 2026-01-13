@@ -8,11 +8,15 @@ import EmployeeModal from '@/components/employee/EmployeeModal'
 import AttendanceDownload from '@/components/employee/AttendanceDownload'
 import AnnualLeaveUsageDownload from '@/components/employee/AnnualLeaveUsageDownload'
 import { toast } from 'sonner'
+import { useAuth } from '@/contexts/AuthContext'
 // XLSX는 사용할 때만 동적으로 import (성능 최적화)
 
 type ModalMode = 'create' | 'edit' | 'view'
 
 export default function EmployeeMain() {
+  const { currentUserRoles } = useAuth()
+  const canManageEmployees = currentUserRoles.includes('app_admin') || currentUserRoles.includes('hr')
+
   const [employees, setEmployees] = useState<Employee[]>([])
   const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
@@ -59,18 +63,30 @@ export default function EmployeeMain() {
 
   // 모달 핸들러
   const handleCreateNew = () => {
+    if (!canManageEmployees) {
+      toast.error('직원 등록 권한이 없습니다.')
+      return
+    }
     setSelectedEmployee(null)
     setModalMode('create')
     setIsModalOpen(true)
   }
 
   const handleEdit = (employee: Employee) => {
+    if (!canManageEmployees) {
+      toast.error('직원 수정 권한이 없습니다.')
+      return
+    }
     setSelectedEmployee(employee)
     setModalMode('edit')
     setIsModalOpen(true)
   }
 
   const handleView = (employee: Employee) => {
+    if (!canManageEmployees) {
+      toast.error('직원 상세 조회 권한이 없습니다.')
+      return
+    }
     setSelectedEmployee(employee)
     setModalMode('view')
     setIsModalOpen(true)
@@ -87,6 +103,10 @@ export default function EmployeeMain() {
 
   // Excel 내보내기 (동적 import로 성능 최적화)
   const handleExport = async () => {
+    if (!canManageEmployees) {
+      toast.error('Excel 내보내기 권한이 없습니다.')
+      return
+    }
     try {
       const result = await employeeService.getEmployeesForExport()
       
@@ -132,8 +152,21 @@ export default function EmployeeMain() {
         onFiltersChange={setFilters}
         onExport={handleExport}
         onCreateNew={handleCreateNew}
-        onAttendanceDownload={() => setIsAttendanceModalOpen(true)}
-        onAnnualLeaveUsageDownload={() => setIsAnnualLeaveUsageModalOpen(true)}
+        onAttendanceDownload={() => {
+          if (!canManageEmployees) {
+            toast.error('출근현황표 다운로드 권한이 없습니다.')
+            return
+          }
+          setIsAttendanceModalOpen(true)
+        }}
+        onAnnualLeaveUsageDownload={() => {
+          if (!canManageEmployees) {
+            toast.error('연차사용현황 다운로드 권한이 없습니다.')
+            return
+          }
+          setIsAnnualLeaveUsageModalOpen(true)
+        }}
+        canManageEmployees={canManageEmployees}
       />
 
       {/* 테이블 섹션 */}
@@ -152,6 +185,7 @@ export default function EmployeeMain() {
           onEdit={handleEdit}
           onView={handleView}
           onRefresh={loadEmployees}
+          currentUserRoles={currentUserRoles}
         />
       </div>
 

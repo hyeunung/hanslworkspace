@@ -22,7 +22,6 @@ import {
 import { Purchase, PurchaseRequestWithDetails } from "@/types/purchase";
 import { DoneTabColumnId, ColumnVisibility } from "@/types/columnSettings";
 import { RESTRICTED_COLUMNS, AUTHORIZED_ROLES, UTK_AUTHORIZED_ROLES } from "@/constants/columnSettings";
-import { CheckCircle } from "lucide-react";
 
 interface FastPurchaseTableProps {
   purchases: Purchase[];
@@ -410,11 +409,8 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
     return columnVisibility[columnId] !== false;
   };
 
-  // UTK 확인 권한 (상세모달과 동일)
-  const canViewFinancialInfo = currentUserRoles?.some(role => AUTHORIZED_ROLES.includes(role)) ?? false;
-  const canReceiptCheck = (currentUserRoles?.includes('app_admin') ||
-    currentUserRoles?.includes('lead buyer') ||
-    currentUserRoles?.includes('accounting')) ?? false;
+  // UTK 확인(처리) 권한 (상세모달과 동일)
+  const canUtkCheck = currentUserRoles?.some(role => UTK_AUTHORIZED_ROLES.includes(role)) ?? false;
   
   return (
     <tr 
@@ -523,21 +519,17 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
       {/* UTK 확인 칼럼 */}
       {activeTab === 'done' && isVisible('utk_status') && (
         <td className={`pl-2 pr-3 py-1.5 card-title whitespace-nowrap text-center overflow-visible text-clip ${COMMON_COLUMN_CLASSES.utk}`}>
-          {canReceiptCheck && canViewFinancialInfo ? (
+          {canUtkCheck ? (
             <button
+              type="button"
               onClick={async (e: React.MouseEvent) => {
                 e.stopPropagation();
                 await onToggleUtkCheck?.(purchase);
               }}
-              className={`button-base text-[10px] px-2 py-1 flex items-center justify-center mx-auto ${
-                (purchase as any).is_utk_checked
-                  ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
-                  : 'button-toggle-inactive'
-              }`}
+              className={`${(purchase as any).is_utk_checked ? 'badge-utk-complete' : 'badge-utk-pending'} mx-auto cursor-pointer`}
               title={(purchase as any).is_utk_checked ? 'UTK 확인 취소' : 'UTK 확인'}
             >
-              <CheckCircle className="w-3 h-3 mr-1" />
-              UTK {(purchase as any).is_utk_checked ? '완료' : '확인'}
+              {(purchase as any).is_utk_checked ? '완료' : '대기'}
             </button>
           ) : (
             <span className={(purchase as any).is_utk_checked ? 'badge-utk-complete' : 'badge-utk-pending'}>

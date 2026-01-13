@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import { updatePurchaseInMemory } from '@/stores/purchaseMemoryStore';
 import { AUTHORIZED_ROLES, RESTRICTED_COLUMNS, UTK_AUTHORIZED_ROLES } from '@/constants/columnSettings';
-import { CheckCircle } from 'lucide-react';
 
 // 금액 포매팅 함수
 const formatAmount = (amount: number, currency: string = 'KRW') => {
@@ -142,19 +141,6 @@ const TableRow = memo<{
     return `${getCurrencySymbol(currency)}${amount.toLocaleString()}`;
   }, [getCurrencySymbol]);
 
-  // UTK 상태 표시 (전체항목 탭용)
-  const getUtkStatus = () => {
-    if (activeTab !== 'done') return null;
-    const isChecked = (purchase as any).is_utk_checked;
-    return (
-      <td className={`pl-2 pr-3 py-1.5 card-title whitespace-nowrap text-center overflow-visible text-clip ${COMMON_COLUMN_CLASSES.utk}`}>
-        <span className={isChecked ? 'badge-utk-complete' : 'badge-utk-pending'}>
-          {isChecked ? '완료' : '대기'}
-        </span>
-      </td>
-    );
-  };
-
   // 거래명세서 진행률 (전체항목 탭용)
   const getStatementProgress = () => {
     if (activeTab !== 'done') return null;
@@ -228,21 +214,21 @@ const TableRow = memo<{
         <td className={`pl-2 pr-3 py-1.5 card-title whitespace-nowrap text-center overflow-visible text-clip ${COMMON_COLUMN_CLASSES.utk} ${!isColumnVisible('utk_status') ? 'column-hidden' : ''}`}>
           {canUtkCheck ? (
             <button
+              type="button"
               onClick={async (e: React.MouseEvent) => {
                 e.stopPropagation();
                 await onToggleUtkCheck?.(purchase);
               }}
-              className={`button-base text-[10px] px-2 py-1 flex items-center justify-center mx-auto ${
-                (purchase as any).is_utk_checked
-                  ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
-                  : 'button-toggle-inactive'
-              }`}
+              className={`${(purchase as any).is_utk_checked ? 'badge-utk-complete' : 'badge-utk-pending'} mx-auto cursor-pointer`}
               title={(purchase as any).is_utk_checked ? 'UTK 확인 취소' : 'UTK 확인'}
             >
-              <CheckCircle className="w-3 h-3 mr-1" />
-              UTK {(purchase as any).is_utk_checked ? '완료' : '확인'}
+              {(purchase as any).is_utk_checked ? '완료' : '대기'}
             </button>
-          ) : null}
+          ) : (
+            <span className={(purchase as any).is_utk_checked ? 'badge-utk-complete' : 'badge-utk-pending'}>
+              {(purchase as any).is_utk_checked ? '완료' : '대기'}
+            </span>
+          )}
         </td>
       )}
 

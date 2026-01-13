@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -74,21 +74,26 @@ export default function SupportMain() {
   // 채팅(대화) 드롭다운(확장 영역 내)
   const [chatMessages, setChatMessages] = useState<SupportInquiryMessage[]>([])
   const [chatLoading, setChatLoading] = useState(false)
+  const [chatRefreshing, setChatRefreshing] = useState(false)
   const [chatText, setChatText] = useState('')
   const [chatSending, setChatSending] = useState(false)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
+  const chatScrollRestoreRef = useRef<{ atBottom: boolean; prevTop: number } | null>(null)
+  const chatFirstLoadInquiryIdRef = useRef<number | null>(null)
+  const chatForceBottomOnOpenRef = useRef(false)
+  const chatMessagesCacheRef = useRef<Map<number, SupportInquiryMessage[]>>(new Map())
 
-  // 초기 데이터 로드
+  // 초기 권한/목록 로드는 마운트 1회만 (드롭다운 토글로 재실행되면 깜빡임 발생)
   useEffect(() => {
-    const init = async () => {
-      await checkUserRole()
-    }
-    init()
-    
+    checkUserRole()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 실시간 구독은 권한/사용자 정보가 준비된 후에만 세팅 (expandedInquiry 변화로는 재구독하지 않음)
+  useEffect(() => {
+    if (isAdmin === null) return
     // 실시간 구독 설정
     const subscription = supportService.subscribeToInquiries((payload) => {
-      // isAdmin 확인 전에는 처리하지 않음
-      if (isAdmin === null) return
-
       const eventType = payload?.eventType as 'INSERT' | 'UPDATE' | 'DELETE' | undefined
       const newRow = payload?.new as SupportInquiry | undefined
       const oldRow = payload?.old as SupportInquiry | undefined
@@ -150,7 +155,7 @@ export default function SupportMain() {
     return () => {
       subscription.unsubscribe()
     }
-  }, [isAdmin, currentUserId, expandedInquiry])
+  }, [isAdmin, currentUserId])
 
   // 사용자 권한 확인
   const checkUserRole = async () => {
@@ -421,16 +426,53 @@ ${purchaseInfo}`;
   // 확장된 문의에 대해 메시지 로드 + 실시간 구독 + (사용자) 알림 읽음 처리
   useEffect(() => {
     if (!expandedInquiryObj?.id) return
+    const inquiryId = expandedInquiryObj.id!
 
     let cancelled = false
+    // 드롭다운 첫 오픈 시에는 무조건 맨 아래로
+    chatForceBottomOnOpenRef.current = true
+    const cached = chatMessagesCacheRef.current.get(inquiryId)
+    if (cached && cached.length > 0) {
+      // 캐시가 있으면 즉시 표시(깜빡임/빈 화면 없음)
+      setChatMessages(cached)
+      setChatLoading(false)
+      setChatRefreshing(true)
+    } else {
+      // 캐시가 없으면 초기 로딩 스피너
+      setChatMessages([])
+      setChatLoading(true)
+      setChatRefreshing(false)
+    }
 
     const load = async () => {
-      setChatLoading(true)
-      const result = await supportService.getInquiryMessages(expandedInquiryObj.id!)
+      // 캐시가 있을 때는 UI를 유지한 채로 백그라운드 갱신만 표시
+      const hasCached = (chatMessagesCacheRef.current.get(inquiryId)?.length ?? 0) > 0
+      if (hasCached) setChatRefreshing(true)
+      else setChatLoading(true)
+
+      const result = await supportService.getInquiryMessages(inquiryId)
       if (!cancelled) {
-        if (result.success) setChatMessages(result.data)
-        else toast.error(result.error || '대화 내용을 불러오지 못했습니다.')
-        setChatLoading(false)
+        if (result.success) {
+          const el = chatScrollRef.current
+          const prevTop = el?.scrollTop ?? 0
+          const isFirstLoad = chatFirstLoadInquiryIdRef.current !== inquiryId
+          chatFirstLoadInquiryIdRef.current = inquiryId
+
+          const atBottom = isFirstLoad
+            ? true
+            : (el ? (el.scrollHeight - el.scrollTop - el.clientHeight) < 80 : true)
+
+          chatScrollRestoreRef.current = { atBottom, prevTop }
+
+          setChatMessages(result.data)
+          chatMessagesCacheRef.current.set(inquiryId, result.data)
+          setChatLoading(false)
+          setChatRefreshing(false)
+        } else {
+          toast.error(result.error || '대화 내용을 불러오지 못했습니다.')
+          setChatLoading(false)
+          setChatRefreshing(false)
+        }
       }
     }
 
@@ -445,13 +487,13 @@ ${purchaseInfo}`;
         .eq('user_email', currentUserEmail)
         .eq('is_read', false)
         .in('type', ['inquiry_message', 'inquiry_resolved'])
-        .eq('data->>inquiryId', String(expandedInquiryObj.id))
+        .eq('data->>inquiryId', String(inquiryId))
     }
 
     load()
     markAsRead()
 
-    const subscription = supportService.subscribeToInquiryMessages(expandedInquiryObj.id!, () => {
+    const subscription = supportService.subscribeToInquiryMessages(inquiryId, () => {
       load()
     })
 
@@ -460,6 +502,28 @@ ${purchaseInfo}`;
       subscription.unsubscribe()
     }
   }, [expandedInquiryObj?.id, isAdmin, currentUserEmail])
+
+  // chatMessages가 DOM에 반영된 직후(useLayoutEffect)에 스크롤을 보정
+  // NOTE: expandedInquiryObj 선언 이후에 위치해야 TDZ(초기화 전 참조) 에러가 나지 않음
+  useLayoutEffect(() => {
+    if (!expandedInquiryObj?.id) return
+    const el = chatScrollRef.current
+    if (!el) return
+
+    if (chatForceBottomOnOpenRef.current) {
+      el.scrollTop = el.scrollHeight
+      // 실제 콘텐츠가 렌더된 상태(또는 로딩 종료)에서만 강제 플래그를 내림
+      // 너무 일찍 false가 되면, 이후 메시지 DOM이 붙을 때 다시 맨 위로 남는 문제가 생김
+      if (chatMessages.length > 0 || !chatLoading) {
+        chatForceBottomOnOpenRef.current = false
+      }
+    } else {
+      const restore = chatScrollRestoreRef.current
+      if (!restore) return
+      if (restore.atBottom) el.scrollTop = el.scrollHeight
+      else el.scrollTop = restore.prevTop
+    }
+  }, [expandedInquiryObj?.id, chatMessages, chatLoading])
 
   const handleSendChat = async () => {
     if (!expandedInquiryObj?.id) return
@@ -1116,7 +1180,7 @@ ${purchaseInfo}`;
               ) : (
                 <div className="space-y-1 max-h-[600px] overflow-y-auto">
                   {inquiries.map((inquiry) => (
-                    <div key={inquiry.id} className="border rounded overflow-hidden">
+                    <div key={inquiry.id!} className="border rounded overflow-hidden">
                       {/* 문의 요약 (한 줄) */}
                       <div 
                         className="px-3 py-2 hover:bg-gray-50 transition-colors cursor-pointer"
@@ -1285,9 +1349,17 @@ ${purchaseInfo}`;
                                 )}
                               </div>
 
-                              <div className="mt-2 border rounded-lg bg-white">
-                                <div className="max-h-[260px] overflow-y-auto p-3 space-y-2">
-                                  {chatLoading ? (
+                              <div className="mt-2 border rounded-lg bg-white relative">
+                                {chatRefreshing && (
+                                  <div
+                                    className="absolute top-2 right-2 text-[11px] text-gray-400 bg-white/80 backdrop-blur px-2 py-1 rounded border pointer-events-none"
+                                    aria-hidden="true"
+                                  >
+                                    업데이트 중…
+                                  </div>
+                                )}
+                                <div ref={chatScrollRef} className="max-h-[260px] overflow-y-auto p-3 space-y-2">
+                                  {chatLoading && chatMessages.length === 0 ? (
                                     <div className="flex items-center justify-center py-8">
                                       <div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
                                     </div>

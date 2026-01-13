@@ -83,17 +83,20 @@ TabsTrigger.displayName = "TabsTrigger"
 
 const TabsContent = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & { value: string }
->(({ className, value, ...props }, ref) => {
+  React.HTMLAttributes<HTMLDivElement> & { value: string; forceMount?: boolean }
+>(({ className, value, forceMount = false, ...props }, ref) => {
   const context = React.useContext(TabsContext)
   if (!context) throw new Error("TabsContent must be used within a Tabs component")
 
-  if (context.value !== value) return null
+  const isActive = context.value === value
+  if (!isActive && !forceMount) return null
 
   return (
     <div
       ref={ref}
       role="tabpanel"
+      aria-hidden={!isActive}
+      hidden={!isActive}
       className={cn(
         "mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         className

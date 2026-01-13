@@ -306,7 +306,7 @@ export default function BomCoordinateIntegrated() {
           setMetadata(prev => {
             if (!prev.boardName && !prev.productionManager && prev.productionQuantity === 0 && !skipTempDataLoad) {
               return {
-                ...prev,
+            ...prev,
                 artworkManager: userData?.id || ''
               };
             }
@@ -645,7 +645,7 @@ export default function BomCoordinateIntegrated() {
           })
           .eq('id', cadDrawingId)
           .select('id, status, production_manager');
-        
+
         if (updateError) {
           console.error('❌ 상태 업데이트 실패:', updateError);
           throw updateError;
@@ -673,8 +673,8 @@ export default function BomCoordinateIntegrated() {
 
         console.log('📝 검토 요청 모드: 새 보드 생성', { saveBoardName, saveStatus });
         // 항상 새로 생성 (날짜로 구분되므로)
-        const { data: newBoard, error: boardError } = await supabase
-          .from('cad_drawings')
+          const { data: newBoard, error: boardError } = await supabase
+            .from('cad_drawings')
           .insert({ 
             board_name: saveBoardName,
             artwork_manager: artworkManagerName,
@@ -682,11 +682,11 @@ export default function BomCoordinateIntegrated() {
             production_quantity: metadata.productionQuantity,
             status: saveStatus
           })
-          .select('id')
-          .single();
+            .select('id')
+            .single();
 
-        if (boardError) throw boardError;
-        cadDrawingId = newBoard.id;
+          if (boardError) throw boardError;
+          cadDrawingId = newBoard.id;
         const { data: afterInsertRow, error: afterInsertReadError } = await supabase
           .from('cad_drawings')
           .select('id, status, production_manager, created_at')
@@ -768,12 +768,12 @@ export default function BomCoordinateIntegrated() {
 
       if (deleteError) throw deleteError;
 
-      const { error: insertError } = await supabase
-        .from('bom_items')
-        .insert(
-          items.map((item: BOMItem) => ({
-            cad_drawing_id: cadDrawingId,
-            line_number: item.lineNumber,
+        const { error: insertError } = await supabase
+          .from('bom_items')
+          .insert(
+            items.map((item: BOMItem) => ({
+              cad_drawing_id: cadDrawingId,
+              line_number: item.lineNumber,
             item_type: item.itemType,
             item_name: item.itemName,
             specification: item.originalFootprint || '',
@@ -867,7 +867,7 @@ export default function BomCoordinateIntegrated() {
       )));
       
       // 목록 뷰로 즉시 전환 (handleReset 전에 viewMode 변경)
-      setViewMode('list');
+        setViewMode('list');
       
       // 상태 초기화 (다음 새로만들기를 위해)
       setStep('input');
@@ -956,6 +956,20 @@ export default function BomCoordinateIntegrated() {
       }
     }));
   };
+
+  // 좌표 미리보기에서 직접 수정한 값들을 processedResult에 반영 (Full Edit)
+  const handleCoordinatesChange = useCallback((nextCoordinates: CoordinateItem[]) => {
+    setProcessedResult((prev: any) => {
+      if (!prev?.processedData) return prev;
+      return {
+        ...prev,
+        processedData: {
+          ...prev.processedData,
+          coordinates: nextCoordinates
+        }
+      };
+    });
+  }, []);
 
   // 저장된 BOM 다운로드
   const handleDownloadSavedBOM = async (boardId: string, boardName: string) => {
@@ -1101,16 +1115,16 @@ export default function BomCoordinateIntegrated() {
         const itemName = item.item_name || '';
         const isDataMissing = itemName === '데이터 없음' || itemName.includes('수동 확인');
         return {
-          lineNumber: item.line_number,
-          itemType: item.item_type || '',
+        lineNumber: item.line_number,
+        itemType: item.item_type || '',
           itemName: itemName,
-          specification: item.specification || '',
-          setCount: item.set_count,
-          totalQuantity: item.total_quantity || 0,
-          stockQuantity: item.stock_quantity || 0,
-          checkStatus: item.check_status || '□양호',
-          refList: Array.isArray(item.ref_list) ? item.ref_list.join(',') : (item.ref_list || ''),
-          alternativeItem: item.alternative_item || '',
+        specification: item.specification || '',
+        setCount: item.set_count,
+        totalQuantity: item.total_quantity || 0,
+        stockQuantity: item.stock_quantity || 0,
+        checkStatus: item.check_status || '□양호',
+        refList: Array.isArray(item.ref_list) ? item.ref_list.join(',') : (item.ref_list || ''),
+        alternativeItem: item.alternative_item || '',
           remark: item.remark || '',
           isManualRequired: isDataMissing,
           isNewPart: isDataMissing
@@ -1144,7 +1158,7 @@ export default function BomCoordinateIntegrated() {
       // 임시 데이터 삭제 (DB에서 새로 로드한 데이터를 사용하도록)
       await clearTempData();
       setSkipTempDataLoad(true); // 임시 데이터 로드 방지
-      
+
       setProcessedResult({
         cadDrawingId: boardId, // 편집 시 저장에 필요
         isEditMode: true,      // 편집 모드 플래그 (pending → completed)
@@ -1155,14 +1169,14 @@ export default function BomCoordinateIntegrated() {
       });
 
       setEditingBoardId(boardId); // 편집 중인 보드 ID 저장 (백업용)
-      
+
       // 플래그 해제
       setTimeout(() => {
         setSkipTempDataLoad(false);
       }, 500);
       setViewMode('create');
       setStep('preview');
-
+      
       toast.success('데이터를 불러왔습니다. 검토 후 최종 저장해주세요.');
     } catch (error: any) {
       console.error('Error loading pending board:', error);
@@ -1351,7 +1365,7 @@ export default function BomCoordinateIntegrated() {
                     <div>
                       <h3 className="page-title">보드별 BOM/좌표 정리</h3>
                       <p className="page-subtitle">검토대기 항목을 클릭하여 검토 및 최종 저장하세요.</p>
-                    </div>
+                  </div>
                   </div>
                   <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
                     <div className="overflow-x-auto">
@@ -1418,43 +1432,43 @@ export default function BomCoordinateIntegrated() {
                               </TableCell>
                               <TableCell className="text-center py-1">
                                 <span className="text-[10px] text-gray-500">
-                                  {new Date(board.created_at).toLocaleDateString('ko-KR', {
-                                    year: 'numeric',
-                                    month: '2-digit',
-                                    day: '2-digit'
-                                  })}
+                                {new Date(board.created_at).toLocaleDateString('ko-KR', {
+                                  year: 'numeric',
+                                  month: '2-digit',
+                                  day: '2-digit'
+                                })}
                                 </span>
                               </TableCell>
                               <TableCell className="text-center py-1" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex gap-1 justify-center">
-                                  <Button
+                            <Button
                                     onClick={() => handleDownloadSavedBOM(board.id, board.board_name)}
-                                    variant="outline"
-                                    size="sm"
+                              variant="outline"
+                              size="sm"
                                     className="h-6 px-2 text-[10px] text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
-                                  >
+                            >
                                     <Download className="w-3 h-3 mr-1" />
                                     Excel
-                                  </Button>
+                            </Button>
                                   {canDeleteBoard(board) && (
-                                    <Button
+                            <Button
                                       onClick={() => handleDeleteSavedBOM(board.id, board.board_name)}
-                                      variant="outline"
-                                      size="sm"
+                              variant="outline"
+                              size="sm"
                                       disabled={deletingBoardId === board.id}
                                       className="h-6 px-2 text-[10px] text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                                    >
+                            >
                                       {deletingBoardId === board.id ? (
                                         <Loader2 className="w-3 h-3 animate-spin" />
                                       ) : (
                                         <Trash2 className="w-3 h-3" />
                                       )}
-                                    </Button>
+                            </Button>
                                   )}
-                                </div>
+                          </div>
                               </TableCell>
                             </TableRow>
-                          ))}
+                    ))}
                         </TableBody>
                         <tfoot className="bg-gray-50 border-t">
                           <tr>
@@ -1778,12 +1792,12 @@ export default function BomCoordinateIntegrated() {
             <CardContent className="p-4 sm:p-6 w-full max-w-full overflow-hidden">
               {/* 제목 / 부제 + 버튼 */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3 mb-4">
-                <div>
+                  <div>
                   <h3 className="page-title">데이터 미리보기 <span className="text-xs font-medium text-gray-500 ml-3">{(metadata.boardName || '').trim().replace(/_\d{6}_정리본$/, '').replace(/_정리본$/, '').replace(/_\d{6}$/, '')}</span></h3>
                   <p className="page-subtitle">데이터 클릭 수정 후 저장 바랍니다.</p>
-                </div>
+                  </div>
                 <div className="flex gap-2">
-                  <Button 
+                <Button 
                     onClick={() => previewPanelRef.current?.handleMerge()}
                     disabled={!hasMergeableItems && !isMerged}
                     className={`button-base border ${
@@ -1837,11 +1851,11 @@ export default function BomCoordinateIntegrated() {
                   <Button 
                     onClick={() => previewPanelRef.current?.handleDownload()}
                     className="button-base bg-green-500 hover:bg-green-600 text-white"
-                  >
+                >
                     <Download className="w-4 h-4 mr-2" />
                     Excel
-                  </Button>
-                </div>
+                </Button>
+              </div>
               </div>
 
               {/* 탭 */}
@@ -1885,6 +1899,11 @@ export default function BomCoordinateIntegrated() {
                     <span className="badge-stats data-[state=active]:bg-orange-50 data-[state=active]:text-orange-700 bg-gray-100 text-gray-600">
                       {processedResult.processedData?.coordinates?.filter((c: CoordinateItem) => c.layer === 'BOTTOM').length || 0}
                     </span>
+                    {(processedResult.processedData?.bomItems?.filter((item: { isManualRequired?: boolean }) => item.isManualRequired).length ?? 0) > 0 && (
+                      <span className="badge-stats bg-yellow-100 text-yellow-700 border border-yellow-300">
+                        ⚠️ 수동 작성: {processedResult.processedData?.bomItems?.filter((item: { isManualRequired?: boolean }) => item.isManualRequired).length}
+                      </span>
+                    )}
                     {missingInBom > 0 && (
                       <span className="badge-stats bg-red-100 text-red-700 border border-red-200">
                         BOM에 없음: {missingInBom}개
@@ -1893,26 +1912,27 @@ export default function BomCoordinateIntegrated() {
                   </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="bom" className="mt-0 w-full max-w-full overflow-hidden">
-                  <GeneratedPreviewPanel 
+                <TabsContent value="bom" forceMount className="mt-0 w-full max-w-full overflow-hidden">
+              <GeneratedPreviewPanel 
                     ref={previewPanelRef}
-                    bomItems={processedResult.processedData?.bomItems || []}
-                    coordinates={processedResult.processedData?.coordinates || []}
-                    boardName={metadata.boardName || 'Board'}
-                    productionQuantity={metadata.productionQuantity}
+                bomItems={processedResult.processedData?.bomItems || []}
+                coordinates={processedResult.processedData?.coordinates || []}
+                boardName={metadata.boardName || 'Board'}
+                productionQuantity={metadata.productionQuantity}
                     artworkManager={employees.find(emp => emp.id === metadata.artworkManager)?.name || currentUser?.name || ''}
                     productionManager={employees.find(emp => emp.id === metadata.productionManager)?.name || ''}
-                    onSave={handleSaveBOM}
+                onSave={handleSaveBOM}
                     onMergeStateChange={setIsMerged}
                     onBomChange={handleBomChange}
-                  />
+              />
                 </TabsContent>
 
-                <TabsContent value="coord" className="mt-0 w-full max-w-full overflow-hidden">
-                  <CoordinatePreviewPanel 
-                    coordinates={processedResult.processedData?.coordinates || []}
+                <TabsContent value="coord" forceMount className="mt-0 w-full max-w-full overflow-hidden">
+              <CoordinatePreviewPanel 
+                coordinates={processedResult.processedData?.coordinates || []}
                     bomItems={processedResult.processedData?.bomItems || []}
-                  />
+                    onCoordinatesChange={handleCoordinatesChange}
+              />
                 </TabsContent>
               </Tabs>
             </CardContent>

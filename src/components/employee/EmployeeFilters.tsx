@@ -20,6 +20,7 @@ interface EmployeeFiltersProps {
   onCreateNew: () => void
   onAttendanceDownload: () => void
   onAnnualLeaveUsageDownload: () => void
+  canManageEmployees?: boolean
 }
 
 const PURCHASE_ROLES: { value: PurchaseRole; label: string }[] = [
@@ -38,6 +39,8 @@ export default function EmployeeFilters({
   onCreateNew,
   onAttendanceDownload,
   onAnnualLeaveUsageDownload
+  ,
+  canManageEmployees = false
 }: EmployeeFiltersProps) {
   const [localSearch, setLocalSearch] = useState(filters.search || '')
   const [departments, setDepartments] = useState<string[]>([])
@@ -118,6 +121,7 @@ export default function EmployeeFilters({
           <h2 className="page-title">직원 관리</h2>
           <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Employee Management</p>
         </div>
+        {canManageEmployees && (
         <div className="flex gap-2">
           <Button
             variant="outline"
@@ -154,6 +158,7 @@ export default function EmployeeFilters({
             직원 등록
           </Button>
         </div>
+        )}
       </div>
 
       {/* 필터 섹션 */}
