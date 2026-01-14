@@ -198,6 +198,7 @@ export default function SupportMain() {
     if (result.success) {
       setInquiries(result.data)
     } else {
+      toast.error(result.error || '문의 목록 로드 실패')
     }
     
     setLoadingInquiries(false)
@@ -221,6 +222,7 @@ export default function SupportMain() {
     if (result.success) {
       setInquiries(result.data)
     } else {
+      toast.error(result.error || '문의 목록 로드 실패')
     }
     
     setLoadingInquiries(false)

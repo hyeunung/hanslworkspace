@@ -160,8 +160,8 @@ export async function loadLearningData(): Promise<LearningDataType> {
     const misapKeywords = await misapKeywordsRes.json();
 
     // 고정 매핑 적용 (기존 정적 JSON 데이터 + 고정 매핑)
-    let mergedPartNameMapping = { ...partNameMapping, ...FIXED_MAPPINGS };
-    let mergedTypeMapping = { ...typeMapping };
+    const mergedPartNameMapping = { ...partNameMapping, ...FIXED_MAPPINGS };
+    const mergedTypeMapping = { ...typeMapping };
 
     // 2. DB에서 사용자가 수동으로 입력한 학습 데이터 로드 및 병합
     try {
@@ -263,7 +263,7 @@ const Utils = {
     if (!partName) return '';
     return partName
       .toLowerCase()
-      .replace(/[\/\-_\s]/g, '')
+      .replace(/[/\s_-]/g, '')
       .replace(/"/g, '')
       .trim();
   },
@@ -387,7 +387,7 @@ async function parseBOMFile(file: File): Promise<ParsedBOMItem[]> {
   
   // 헤더 찾기
   let headerRow = -1;
-  let colMap = { item: 0, ref: 1, qty: 2, part: 3, footprint: -1 };
+  const colMap = { item: 0, ref: 1, qty: 2, part: 3, footprint: -1 };
   const refKeywords = ['reference', 'references', 'ref', 'designator'];
   const partKeywords = ['part', 'part number'];
   const footprintKeywords = ['pcb footprint', 'footprint', 'partnumber'];
@@ -536,7 +536,7 @@ async function parseCoordinateFile(file: File): Promise<ParsedCoordItem[]> {
     const lines = text.split('\n');
     
     let headerFound = false;
-    let colMap = { ref: 0, x: 1, y: 2, rotation: 3, layer: 4 };
+    const colMap = { ref: 0, x: 1, y: 2, rotation: 3, layer: 4 };
     
     for (const line of lines) {
       const trimmed = line.trim();
@@ -616,7 +616,7 @@ async function parseCoordinateFile(file: File): Promise<ParsedCoordItem[]> {
     const rows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
     
     let headerRow = -1;
-    let colMap = { ref: 0, x: 3, y: 4, rotation: 5, layer: 2 };
+    const colMap = { ref: 0, x: 3, y: 4, rotation: 5, layer: 2 };
     
     for (let r = 0; r < Math.min(10, rows.length); r++) {
       const row = rows[r];
@@ -816,7 +816,7 @@ export async function processBOMAndCoordinates(
     }
     
     // 종류 매핑
-    let itemType = mapType(mappedPartName, learningData);
+    const itemType = mapType(mappedPartName, learningData);
     if (!itemType && !isManualRequired && !isNewPart) {
       // 종류도 못 찾으면 새 부품으로 처리
       isNewPart = true;
@@ -1201,8 +1201,8 @@ export async function processBOMAndCoordinates(
       }
       
       // 같은 type 내에서 미삽 항목은 맨 아래로
-      const aMisap = checkIsMisap(a.partName, a.remark);
-      const bMisap = checkIsMisap(b.partName, b.remark);
+      const aMisap = checkIsMisap(a.partName ?? '', a.remark ?? '');
+      const bMisap = checkIsMisap(b.partName ?? '', b.remark ?? '');
       if (aMisap !== bMisap) {
         return aMisap ? 1 : -1; // 미삽이면 뒤로
       }

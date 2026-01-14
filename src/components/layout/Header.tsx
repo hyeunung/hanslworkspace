@@ -1,9 +1,10 @@
 
 
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { createClient } from '@/lib/supabase/client'
-import { User, Menu, X } from 'lucide-react'
-import { useState } from 'react'
+import { User, Menu, MessageCircle } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { supportService } from '@/services/supportService'
 
 interface HeaderProps {
   user: any
@@ -26,6 +27,89 @@ const getRoleDisplayName = (role: string) => {
 export default function Header({ user, onMenuClick }: HeaderProps) {
   const navigate = useNavigate()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
+  const [unreadInquiryCount, setUnreadInquiryCount] = useState(0)
+
+  const roles = Array.isArray(user?.purchase_role)
+    ? user.purchase_role
+    : (user?.purchase_role ? [user.purchase_role] : [])
+  const isAdmin = roles.includes('app_admin')
+
+  // app_admin: 상단 로고 옆에 미처리 문의(open+in_progress) 뱃지 표시
+  useEffect(() => {
+    if (!isAdmin) return
+
+    const loadPendingCount = async () => {
+      try {
+        // count-only 쿼리로 가볍게 계산
+        const supabase = createClient()
+        const { count } = await supabase
+          .from('support_inquires')
+          .select('id', { count: 'exact', head: true })
+          .in('status', ['open', 'in_progress'])
+
+        if (typeof count === 'number') setPendingInquiryCount(count)
+      } catch {
+        // 상단 배지는 실패해도 UX에 치명적이지 않으므로 무시
+      }
+    }
+
+    loadPendingCount()
+    const subscription = supportService.subscribeToInquiries(() => loadPendingCount())
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [isAdmin])
+
+  // 일반 사용자: 상단 로고 옆에 안읽은 문의 알림(inquiry_message/inquiry_resolved) 뱃지 표시
+  useEffect(() => {
+    if (isAdmin) return
+
+    const supabase = createClient()
+    let subscription: any
+    let cancelled = false
+
+    const loadUnreadCount = async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      const email = authUser?.email
+      if (!email) return
+
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_email', email)
+        .eq('is_read', false)
+        .in('type', ['inquiry_message', 'inquiry_resolved'])
+
+      if (!cancelled) {
+        if (!error && typeof count === 'number') setUnreadInquiryCount(count)
+      }
+
+      // 실시간 구독(이메일 확인 후 1회만)
+      if (!subscription) {
+        subscription = supabase
+          .channel('header_inquiry_notifications_badge')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'notifications',
+              filter: `user_email=eq.${email}`
+            },
+            () => loadUnreadCount()
+          )
+          .subscribe()
+      }
+    }
+
+    loadUnreadCount()
+
+    return () => {
+      cancelled = true
+      if (subscription) subscription.unsubscribe()
+    }
+  }, [isAdmin])
   
   const handleLogout = async () => {
     const supabase = createClient()
@@ -60,6 +144,22 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
               Purchase System
             </span>
           </div>
+
+          {/* 로고 오른쪽 문의 뱃지: admin=미처리건수 / user=안읽은 알림수 */}
+          {((isAdmin ? pendingInquiryCount : unreadInquiryCount) > 0) && (
+            <button
+              type="button"
+              onClick={() => navigate('/support')}
+              className="relative ml-3 inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-gray-50 transition-colors"
+              title="미처리 문의 보기"
+              aria-label={`문의 알림 ${(isAdmin ? pendingInquiryCount : unreadInquiryCount)}건`}
+            >
+              <MessageCircle className="w-4 h-4 text-gray-600" />
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                {((isAdmin ? pendingInquiryCount : unreadInquiryCount) > 99) ? '99+' : (isAdmin ? pendingInquiryCount : unreadInquiryCount)}
+              </span>
+            </button>
+          )}
         </div>
         
         {/* 사용자 정보 */}

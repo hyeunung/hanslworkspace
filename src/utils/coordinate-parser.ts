@@ -52,7 +52,7 @@ async function parseTxtCoordinate(file: File | ArrayBuffer): Promise<CoordinateR
   let angleIndex = -1;
   let sideIndex = -1;
   let partIndex = -1;
-  let layer = 'TOP'; // 기본값
+  const layer = 'TOP'; // 기본값
 
   // 헤더 찾기 및 포맷 감지
   for (let i = 0; i < Math.min(20, lines.length); i++) {

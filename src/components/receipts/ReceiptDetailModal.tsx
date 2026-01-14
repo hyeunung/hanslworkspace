@@ -215,6 +215,7 @@ export default function ReceiptDetailModal({ receipt, isOpen, onClose, onDelete 
 
       // affectedRows가 0이어도 성공으로 처리 (이미 인쇄완료 상태인 경우)
       if (affectedRows === 0) {
+        // 이미 인쇄완료 상태일 수 있으므로 성공으로 간주하고 진행
       }
 
 

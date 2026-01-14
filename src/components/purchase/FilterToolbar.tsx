@@ -470,85 +470,87 @@ export default function FilterToolbar({
         )
 
       case 'searchable_select':
-        let options: string[] = []
-        let placeholder = "선택"
-        if (fieldConfig.key === 'requester_name') {
-          options = availableEmployees
-          placeholder = "요청자"
-        } else if (fieldConfig.key === 'vendor_name') {
-          options = availableVendors
-          placeholder = "업체"
-        } else if (fieldConfig.key === 'contact_name') {
-          options = availableContacts
-          placeholder = "담당자"
-        }
+        {
+          let options: string[] = []
+          let placeholder = "선택"
+          if (fieldConfig.key === 'requester_name') {
+            options = availableEmployees
+            placeholder = "요청자"
+          } else if (fieldConfig.key === 'vendor_name') {
+            options = availableVendors
+            placeholder = "업체"
+          } else if (fieldConfig.key === 'contact_name') {
+            options = availableContacts
+            placeholder = "담당자"
+          }
 
-        // 검색으로 옵션 필터링
-        const filteredOptions = options.filter(option => 
-          option.toLowerCase().includes(searchValue.toLowerCase())
-        )
+          // 검색으로 옵션 필터링
+          const filteredOptions = options.filter(option =>
+            option.toLowerCase().includes(searchValue.toLowerCase())
+          )
 
-        return (
-          <Popover onOpenChange={(open) => {
-            if (!open) {
-              setSearchValue('')
-            }
-          }}>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                role="combobox"
-                className="w-full button-base business-radius-button border border-gray-300 bg-white text-gray-700 justify-between [&>svg]:hidden"
-              >
-                <span className="truncate text-left" style={{fontSize: '12px', fontWeight: '500'}}>
-                  {String(newFilter.value || placeholder)}
-                </span>
-                <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[200px] p-1 border-0 shadow-lg" align="start">
-              <div className="space-y-1">
-                {/* 검색 입력 필드 */}
-                <Input
-                  placeholder={`${placeholder} 검색...`}
-                  className="h-auto border-0 focus:ring-0 focus:outline-none card-description placeholder:card-description"
-                  style={{padding: '2px 10px'}}
-                  value={searchValue}
-                  onChange={(e) => setSearchValue(e.target.value)}
-                  autoFocus
-                />
-                
-                {/* 옵션 목록 - Command 대신 단순 div 사용 */}
-                <div className="max-h-[200px] overflow-y-auto">
-                  {filteredOptions.length === 0 ? (
-                    <div className="p-2 text-sm text-gray-500">
-                      {searchValue ? '검색 결과가 없습니다' : `${placeholder}를 찾을 수 없습니다`}
-                    </div>
-                  ) : (
-                    filteredOptions.map(option => (
-                      <Button
-                        key={option}
-                        variant="ghost"
-                        onClick={() => {
-                          setNewFilter(prev => ({ ...prev, value: option }))
-                          setSearchValue('')
-                        }}
-                        className="w-full justify-start p-2 h-auto hover:bg-gray-100 text-left"
-                      >
-                        <Check
-                          className={`mr-2 h-3 w-3 ${
-                            newFilter.value === option ? "opacity-100" : "opacity-0"
-                          }`}
-                        />
-                        <span className="card-description">{option}</span>
-                      </Button>
-                    ))
-                  )}
+          return (
+            <Popover onOpenChange={(open) => {
+              if (!open) {
+                setSearchValue('')
+              }
+            }}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  className="w-full button-base business-radius-button border border-gray-300 bg-white text-gray-700 justify-between [&>svg]:hidden"
+                >
+                  <span className="truncate text-left" style={{fontSize: '12px', fontWeight: '500'}}>
+                    {String(newFilter.value || placeholder)}
+                  </span>
+                  <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[200px] p-1 border-0 shadow-lg" align="start">
+                <div className="space-y-1">
+                  {/* 검색 입력 필드 */}
+                  <Input
+                    placeholder={`${placeholder} 검색...`}
+                    className="h-auto border-0 focus:ring-0 focus:outline-none card-description placeholder:card-description"
+                    style={{padding: '2px 10px'}}
+                    value={searchValue}
+                    onChange={(e) => setSearchValue(e.target.value)}
+                    autoFocus
+                  />
+
+                  {/* 옵션 목록 - Command 대신 단순 div 사용 */}
+                  <div className="max-h-[200px] overflow-y-auto">
+                    {filteredOptions.length === 0 ? (
+                      <div className="p-2 text-sm text-gray-500">
+                        {searchValue ? '검색 결과가 없습니다' : `${placeholder}를 찾을 수 없습니다`}
+                      </div>
+                    ) : (
+                      filteredOptions.map(option => (
+                        <Button
+                          key={option}
+                          variant="ghost"
+                          onClick={() => {
+                            setNewFilter(prev => ({ ...prev, value: option }))
+                            setSearchValue('')
+                          }}
+                          className="w-full justify-start p-2 h-auto hover:bg-gray-100 text-left"
+                        >
+                          <Check
+                            className={`mr-2 h-3 w-3 ${
+                              newFilter.value === option ? "opacity-100" : "opacity-0"
+                            }`}
+                          />
+                          <span className="card-description">{option}</span>
+                        </Button>
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
-            </PopoverContent>
-          </Popover>
-        )
+              </PopoverContent>
+            </Popover>
+          )
+        }
 
       case 'select':
         return (
@@ -567,21 +569,23 @@ export default function FilterToolbar({
         )
 
       case 'select_with_empty':
-        const scheduleOptions = ['공란', ...availablePaymentSchedules]
-        return (
-          <Select value={String(newFilter.value || '')} onValueChange={(value) => setNewFilter(prev => ({ ...prev, value }))}>
-            <SelectTrigger className="button-base business-radius-button border border-gray-300 bg-white text-gray-700 [&>svg]:hidden text-center">
-              <SelectValue placeholder="지출예정일" />
-            </SelectTrigger>
-            <SelectContent>
-              {scheduleOptions.map(option => (
-                <SelectItem key={option} value={option}>
-                  <span className="card-description">{option}</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )
+        {
+          const scheduleOptions = ['공란', ...availablePaymentSchedules]
+          return (
+            <Select value={String(newFilter.value || '')} onValueChange={(value) => setNewFilter(prev => ({ ...prev, value }))}>
+              <SelectTrigger className="button-base business-radius-button border border-gray-300 bg-white text-gray-700 [&>svg]:hidden text-center">
+                <SelectValue placeholder="지출예정일" />
+              </SelectTrigger>
+              <SelectContent>
+                {scheduleOptions.map(option => (
+                  <SelectItem key={option} value={option}>
+                    <span className="card-description">{option}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )
+        }
 
       case 'date_range':
         return (

@@ -1232,7 +1232,7 @@ const FastPurchaseTable = ({
           logger.info('🗑️ [handleConfirmDelete] support_inquires 레코드 업데이트 필요 (문의 기록 보존)', {
             purchaseId: purchaseIdForDelete,
             inquiriesCount: relatedInquiries.length,
-            inquiryIds: relatedInquiries.map(i => i.id),
+            inquiryIds: relatedInquiries.map((i: any) => i.id),
             note: '문의 기록은 삭제하지 않고 purchase_request_id만 null로 업데이트합니다.'
           });
           
@@ -1259,7 +1259,7 @@ const FastPurchaseTable = ({
             logger.info('✅ [handleConfirmDelete] support_inquires 업데이트 완료 (문의 기록 보존)', {
               purchaseId: purchaseIdForDelete,
               updatedCount: updatedInquiries?.length || relatedInquiries.length,
-              updatedInquiryIds: updatedInquiries?.map(i => i.id) || relatedInquiries.map(i => i.id),
+              updatedInquiryIds: updatedInquiries?.map((i: any) => i.id) || relatedInquiries.map((i: any) => i.id),
               note: '문의 기록은 그대로 보존되었고, purchase_request_id만 null로 변경되었습니다.'
             });
             

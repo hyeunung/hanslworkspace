@@ -316,7 +316,7 @@ export default function StatementConfirmModal({
               c.purchase_order_number === poNumber || c.sales_order_number === poNumber
             ) || [];
             
-            matchingCandidates.forEach(c => {
+            for (const c of matchingCandidates) {
               const score = calculateItemSimilarity(item.extracted_item_name || '', c.item_name, c.specification);
               if (score > bestScore) {
                 bestScore = score;
@@ -333,11 +333,11 @@ export default function StatementConfirmModal({
                   vendor_name: c.vendor_name
                 };
               }
-            });
+            }
             
             // 2. 발주번호로 못 찾으면 모든 후보에서 최고 유사도로 검색 (fallback)
             if (!bestMatch && item.match_candidates && item.match_candidates.length > 0) {
-              item.match_candidates.forEach(c => {
+              for (const c of item.match_candidates) {
                 const score = calculateItemSimilarity(item.extracted_item_name || '', c.item_name, c.specification);
                 if (score > bestScore && score >= 30) { // 최소 30점 이상
                   bestScore = score;
@@ -354,7 +354,7 @@ export default function StatementConfirmModal({
                     vendor_name: c.vendor_name
                   };
                 }
-              });
+              }
               
               // fallback으로 찾았으면 발주번호도 시스템 것으로 업데이트 (OCR 오류 수정)
               if (bestMatch) {
@@ -496,7 +496,7 @@ export default function StatementConfirmModal({
           ) || []
         : [];
       
-      matchingCandidates.forEach(c => {
+      for (const c of matchingCandidates) {
         const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', c.item_name, c.specification);
         if (score > bestScore) {
           bestScore = score;
@@ -513,11 +513,11 @@ export default function StatementConfirmModal({
             vendor_name: c.vendor_name
           };
         }
-      });
+      }
       
       // 못 찾으면 전체 후보에서 검색 (fallback)
       if (!bestMatch && ocrItem.match_candidates) {
-        ocrItem.match_candidates.forEach(c => {
+        for (const c of ocrItem.match_candidates) {
           const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', c.item_name, c.specification);
           if (score > bestScore && score >= 30) {
             bestScore = score;
@@ -534,7 +534,7 @@ export default function StatementConfirmModal({
               vendor_name: c.vendor_name
             };
           }
-        });
+        }
       }
       
       newMatches.set(ocrItem.id, bestMatch);

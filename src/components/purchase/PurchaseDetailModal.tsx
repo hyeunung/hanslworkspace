@@ -491,6 +491,7 @@ function PurchaseDetailModal({
           }
         }
       } catch (error) {
+        logger.error('사용자 권한 로드 실패:', error)
       }
     }
     
@@ -1463,7 +1464,7 @@ function PurchaseDetailModal({
     
     // 기본값 (데이터 로드 전)
     // [라인넘버, 품목명, 규격, 수량, 단가, 합계]
-    let baseColumns = ['32px', 'minmax(80px, 1fr)', '200px', '70px', '90px', '100px']
+    const baseColumns = ['32px', 'minmax(80px, 1fr)', '200px', '70px', '90px', '100px']
     
     // 발주인 경우 세액 칼럼 추가
     if (purchase?.payment_category === '발주') {
@@ -1994,6 +1995,7 @@ function PurchaseDetailModal({
                 amount_value: finalAmountValue,
                 amount_currency: purchase.currency || 'KRW',
                 remark: item.remark || null,
+                link: item.link && String(item.link).trim() ? String(item.link).trim() : null,
                 updated_at: new Date().toISOString()
               })
               .eq('id', numericItemId),
@@ -2019,6 +2021,7 @@ function PurchaseDetailModal({
             amount_value: finalAmountValue,
             amount_currency: purchase.currency || 'KRW',
             remark: item.remark || null,
+            link: item.link && String(item.link).trim() ? String(item.link).trim() : null,
             line_number: item.line_number || editedItems.indexOf(item) + 1,
             created_at: new Date().toISOString()
           };
@@ -3613,18 +3616,27 @@ function PurchaseDetailModal({
           
           {/* 링크 */}
           <div className="text-center min-w-0 flex items-center justify-center">
-            {item.link ? (
-              <a
-                href={item.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:text-blue-800 underline text-[11px]"
-                onClick={(e) => e.stopPropagation()}
-              >
-                링크
-              </a>
+            {isEditing ? (
+              <Input
+                value={item.link || ''}
+                onChange={(e) => handleItemChange(index, 'link', e.target.value)}
+                className="border-gray-200 rounded-lg text-center w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
+                placeholder="링크(URL)"
+              />
             ) : (
-              <span className="text-gray-400 text-[11px]">-</span>
+              item.link ? (
+                <a
+                  href={item.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 underline text-[11px]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  링크
+                </a>
+              ) : (
+                <span className="text-gray-400 text-[11px]">-</span>
+              )
             )}
           </div>
           
@@ -3710,80 +3722,6 @@ function PurchaseDetailModal({
                             : 'button-waiting-inactive'
                         }`}>
                           {item.is_payment_completed ? '구매완료' : '구매대기'}
-                        </span>
-                      )}
-                    </div>
-                    {/* 입고완료 버튼 - 입고현황탭과 동일한 취소 기능 제공 */}
-                    <div className="flex justify-center">
-                      {canReceiveItems ? (
-                        actualReceivedAction.isCompleted(item) ? (
-                          // 입고완료 상태 - 취소 가능
-                          <button
-                            onClick={() => {
-                              actualReceivedAction.handleCancel(item.id, {
-                                item_name: item.item_name,
-                                specification: item.specification,
-                                quantity: item.quantity,
-                                unit_price_value: item.unit_price_value,
-                                amount_value: item.amount_value,
-                                remark: item.remark
-                              })
-                            }}
-                            className="text-xs px-2 py-1 rounded button-action-primary"
-                          >
-                            {actualReceivedAction.config.completedText}
-                          </button>
-                        ) : actualReceivedAction.isPartiallyReceived(item) ? (
-                          // 부분입고 상태 - 추가 입고 가능
-                          <DateQuantityPickerPopover
-                            onConfirm={(date, quantity) => {
-                              handleItemReceiptToggle(item.id, date, quantity)
-                            }}
-                            placeholder="추가 입고수량을 입력하세요"
-                            align="center"
-                            side="bottom"
-                            maxQuantity={actualReceivedAction.getRemainingQuantity(item)}
-                            quantityInfoText={`미입고: ${actualReceivedAction.getRemainingQuantity(item)}개`}
-                          >
-                            <button className="text-xs px-2 py-1 rounded bg-blue-300 hover:bg-blue-400 text-white">
-                              부분입고
-                            </button>
-                          </DateQuantityPickerPopover>
-                        ) : (
-                          // 입고대기 상태
-                          <DatePickerPopover
-                            onDateSelect={(date) => {
-                              actualReceivedAction.handleConfirm(item.id, date, {
-                                item_name: item.item_name,
-                                specification: item.specification,
-                                quantity: item.quantity,
-                                unit_price_value: item.unit_price_value,
-                                amount_value: item.amount_value,
-                                remark: item.remark
-                              })
-                            }}
-                            placeholder="실제 입고된 날짜를 선택하세요"
-                            align="center"
-                            side="bottom"
-                          >
-                            <button className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600">
-                              {actualReceivedAction.config.waitingText}
-                            </button>
-                          </DatePickerPopover>
-                        )
-                      ) : (
-                        <span className={`text-xs px-2 py-1 rounded ${
-                          actualReceivedAction.isCompleted(item)
-                            ? 'button-action-primary' 
-                            : actualReceivedAction.isPartiallyReceived(item)
-                            ? 'button-base bg-blue-300 text-white'
-                            : 'button-waiting-inactive'
-                        }`}>
-                          {actualReceivedAction.isCompleted(item) 
-                            ? actualReceivedAction.config.completedText 
-                            : actualReceivedAction.isPartiallyReceived(item)
-                            ? '부분입고'
-                            : actualReceivedAction.config.waitingText}
                         </span>
                       )}
                     </div>
@@ -4210,18 +4148,27 @@ function PurchaseDetailModal({
             <div>
               <span className="text-gray-500 text-xs">링크</span>
               <div className="mt-1">
-                {item.link ? (
-                  <a
-                    href={item.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 underline text-[11px] break-all"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {item.link}
-                  </a>
+                {isEditing ? (
+                  <Input
+                    value={item.link || ''}
+                    onChange={(e) => handleItemChange(index, 'link', e.target.value)}
+                    className="border-gray-200 rounded-lg text-center w-full h-5 px-1.5 py-0.5 text-[10px] focus:border-blue-400"
+                    placeholder="링크(URL)"
+                  />
                 ) : (
-                  <span className="text-gray-400 text-[11px]">-</span>
+                  item.link ? (
+                    <a
+                      href={item.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 underline text-[11px] break-all"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {item.link}
+                    </a>
+                  ) : (
+                    <span className="text-gray-400 text-[11px]">-</span>
+                  )
                 )}
               </div>
             </div>

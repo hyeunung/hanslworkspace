@@ -230,7 +230,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
                     )}
                   >
                     <div className="relative">
-                      <MessageCircle className="w-4 h-4" />
+                    <MessageCircle className="w-4 h-4" />
                       {supportBadge > 0 && (
                         <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
                           {supportBadge > 99 ? '99+' : supportBadge}
@@ -299,7 +299,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
               )}
             >
               <div className="relative">
-                <MessageCircle className="w-4 h-4" />
+              <MessageCircle className="w-4 h-4" />
                 {supportBadge > 0 && (
                   <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
                     {supportBadge > 99 ? '99+' : supportBadge}

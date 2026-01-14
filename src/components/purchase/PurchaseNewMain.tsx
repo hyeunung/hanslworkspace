@@ -665,6 +665,8 @@ export default function PurchaseNewMain() {
       .order('purchase_order_number', { ascending: false });
     
     if (queryError) {
+      console.error('발주요청번호 조회 실패', queryError)
+      throw queryError
     }
     
     // 다음 순번 계산 (숫자인 시퀀스만 찾기)
@@ -831,6 +833,7 @@ export default function PurchaseNewMain() {
           const errorText = await notifyResponse.text();
         }
       } catch (notifyError) {
+        console.error('중간관리자 알림 발송 실패', notifyError)
       }
       
       // 1. 폼 초기화

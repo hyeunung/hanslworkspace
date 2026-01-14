@@ -118,7 +118,7 @@ export default function TransactionStatementMain() {
           schema: 'public',
           table: 'transaction_statements'
         },
-        (payload) => {
+        (payload: any) => {
           console.log('[Realtime] Statement changed:', payload);
           
           // 상태가 변경되면 목록 갱신

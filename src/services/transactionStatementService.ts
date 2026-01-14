@@ -211,7 +211,7 @@ class TransactionStatementService {
       });
 
       // 발주 정보 조회 (발주번호, 수주번호)
-      let purchaseInfoMap = new Map<number, { purchase_order_number: string; sales_order_number?: string }>();
+      const purchaseInfoMap = new Map<number, { purchase_order_number: string; sales_order_number?: string }>();
       if (allPurchaseIds.size > 0) {
         const { data: purchases } = await this.supabase
           .from('purchase_requests')
@@ -557,7 +557,7 @@ class TransactionStatementService {
           itemName,                                              // 전체
           itemName.substring(0, Math.min(itemName.length, 12)),  // 12글자
           itemName.substring(0, Math.min(itemName.length, 8)),   // 8글자
-          itemName.split(/[\[\]\s\-_]/)[0]                        // 첫 단어 (특수문자 기준)
+          itemName.split(/\[|]|\s|_|-/)[0]                        // 첫 단어 (특수문자 기준)
         ].filter(t => t && t.length >= 3);
         
         // 중복 제거

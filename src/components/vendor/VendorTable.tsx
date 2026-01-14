@@ -270,19 +270,6 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                             <Edit className="mr-2 h-4 w-4" />
                             수정
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleToggleStatus(vendor)}>
-                            {vendor.is_active ? (
-                              <>
-                                <ToggleLeft className="mr-2 h-4 w-4" />
-                                비활성화
-                              </>
-                            ) : (
-                              <>
-                                <ToggleRight className="mr-2 h-4 w-4" />
-                                활성화
-                              </>
-                            )}
-                          </DropdownMenuItem>
                           <DropdownMenuItem 
                             onClick={() => handleDelete(vendor)}
                             className="text-red-600"

@@ -75,6 +75,16 @@ export function useReceiptPermissions() {
         canViewUploaderInfo: isAppAdmin, // 오직 app_admin만
       });
     } catch (error) {
+      console.error('영수증 권한 확인 실패', error)
+      setUserRole(null)
+      setPermissions({
+        canView: false,
+        canUpload: false,
+        canDownload: false,
+        canPrint: false,
+        canDelete: false,
+        canViewUploaderInfo: false,
+      })
     } finally {
       setLoading(false);
     }
