@@ -1091,15 +1091,24 @@ export default function BomCoordinateIntegrated() {
         remark: item.remark || ''
       }));
 
-      // CoordinateItem 형식으로 변환
+      // CoordinateItem 형식으로 변환 (엑셀 생성기에서 기대하는 필드명에 맞춤)
+      const normalizeLayer = (layer?: string | null) => {
+        const v = (layer || '').trim().toUpperCase();
+        if (!v) return '';
+        if (v === 'TOP' || v === 'T' || v === 'TOPSIDE' || v === 'FRONT' || v === 'F') return 'TOP';
+        if (v === 'BOTTOM' || v === 'BOT' || v === 'B' || v === 'BOTTOMSIDE' || v === 'BACK') return 'BOTTOM';
+        return v;
+      };
+
       const convertedCoords: CoordinateItem[] = (coordinates || []).map((coord: any) => ({
-        ref: coord.ref,
-        partName: coord.part_name,
-        partType: coord.part_type || 'SMD',
-        side: coord.side,
-        x: coord.x_coordinate.toString(),
-        y: coord.y_coordinate.toString(),
-        angle: coord.angle?.toString() || '0'
+        type: coord.part_type || '',
+        partName: coord.part_name || '',
+        refDes: coord.ref || '',
+        layer: normalizeLayer(coord.side) || coord.side || '',
+        locationX: Number(coord.x_coordinate ?? 0) || 0,
+        locationY: Number(coord.y_coordinate ?? 0) || 0,
+        rotation: Number(coord.angle ?? 0) || 0,
+        remark: coord.remark || '',
       }));
 
       // Excel 생성 및 다운로드 - DB에서 가져온 담당자 정보 사용
@@ -1113,12 +1122,8 @@ export default function BomCoordinateIntegrated() {
       };
 
       // TOP/BOTTOM 분리
-      const topCoords = convertedCoords.filter((c: any) => 
-        c.side?.toUpperCase().includes('TOP') || c.layer?.toUpperCase().includes('TOP')
-      );
-      const bottomCoords = convertedCoords.filter((c: any) => 
-        c.side?.toUpperCase().includes('BOT') || c.layer?.toUpperCase().includes('BOT')
-      );
+      const topCoords = convertedCoords.filter((c) => (c.layer || '').toUpperCase().includes('TOP'));
+      const bottomCoords = convertedCoords.filter((c) => (c.layer || '').toUpperCase().includes('BOT'));
 
       // 정렬 적용 (종류별 > 품명순 > 미삽은 맨 아래)
       const sortedBomItems = sortBOMItems(convertedBOMItems);

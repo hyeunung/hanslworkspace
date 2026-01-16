@@ -101,9 +101,19 @@ function fillBOMSheet(
     .replace(/_정리본$/, '')            // _정리본 제거
     .replace(/_\d{6}$/, '');            // _YYMMDD 형식 제거 (예: _250722)
   
+  // Excel 워크시트 이름은 금지 문자가 있음: * ? : \ / [ ]
+  // 그리고 31자 제한, 양끝 apostrophe 불가 등의 제약이 있어 시트명만 안전하게 치환
+  const sanitizeWorksheetName = (name: string) => {
+    const replaced = (name || '')
+      .replace(/[\*\?:\\\/\[\]]/g, '_')
+      .replace(/^'+|'+$/g, '')
+      .trim();
+    return (replaced || 'BOM').substring(0, 31);
+  };
+
   // 시트 이름 변경 (보드명, 31자 제한)
   if (cleanBoardName) {
-    bomSheet.name = cleanBoardName.substring(0, 31);
+    bomSheet.name = sanitizeWorksheetName(cleanBoardName);
   }
 
   // === 상단 정보 ===
