@@ -3571,6 +3571,7 @@ function PurchaseDetailModal({
                 type="number"
                 value={item.unit_price_value ?? 0}
                 onChange={(e) => handleItemChange(index, 'unit_price_value', Number(e.target.value))}
+                onWheel={(e) => e.currentTarget.blur()}
                 className="border-gray-200 rounded-lg text-right w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
                 placeholder="단가"
                 max="100000000000"
@@ -3591,6 +3592,7 @@ function PurchaseDetailModal({
                 type="number"
                 value={item.amount_value || 0}
                 onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
+                onWheel={(e) => e.currentTarget.blur()}
                 className="border-gray-200 rounded-lg w-full !h-6 !px-1.5 !py-0.5 !text-[10px] font-normal text-gray-600 focus:border-blue-400 text-right"
                 placeholder="합계"
               />
@@ -4084,6 +4086,7 @@ function PurchaseDetailModal({
                   type="number"
                   value={item.amount_value || 0}
                   onChange={(e) => handleItemChange(index, 'amount_value', Number(e.target.value))}
+                  onWheel={(e) => e.currentTarget.blur()}
                   className="border-gray-200 rounded-lg w-24 !h-6 !px-1.5 !py-0.5 !text-[10px] font-normal text-gray-600 focus:border-blue-400 text-right"
                   placeholder="합계"
                 />

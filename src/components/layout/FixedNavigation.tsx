@@ -53,7 +53,9 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
     }
 
     loadPendingCount()
-    const subscription = supportService.subscribeToInquiries(() => loadPendingCount())
+    const subscription = supportService.subscribeToInquiries((payload) => {
+      loadPendingCount()
+    })
     return () => subscription.unsubscribe()
   }, [isAdmin])
 

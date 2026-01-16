@@ -971,6 +971,82 @@ export default function BomCoordinateIntegrated() {
     });
   }, []);
 
+  // 미리보기에서 행 삭제 (refDes 기준으로 BOM/좌표 동기 삭제)
+  const handleDeleteRefs = useCallback(
+    (refs: string[]) => {
+      const normalizedToDelete = new Set(
+        (refs || [])
+          .map(r => (r || '').trim().toUpperCase())
+          .filter(Boolean)
+      );
+      if (normalizedToDelete.size === 0) return;
+
+      setProcessedResult((prev: any) => {
+        if (!prev?.processedData) return prev;
+
+        const prevBom: BOMItem[] = prev.processedData?.bomItems ?? [];
+        const prevCoords: CoordinateItem[] = prev.processedData?.coordinates ?? [];
+        const prevTop: CoordinateItem[] = prev.processedData?.topCoordinates ?? [];
+        const prevBottom: CoordinateItem[] = prev.processedData?.bottomCoordinates ?? [];
+
+        const normalizeRef = (v?: string | null) => (v || '').trim().toUpperCase();
+        const parseRefs = (refList?: string) =>
+          (refList || '')
+            .split(',')
+            .map(r => r.trim())
+            .filter(Boolean);
+
+        // 1) 좌표에서 refDes 매칭되는 행 제거
+        const nextCoords = prevCoords.filter(c => !normalizedToDelete.has(normalizeRef(c.refDes)));
+        const nextTop = prevTop.filter(c => !normalizedToDelete.has(normalizeRef(c.refDes)));
+        const nextBottom = prevBottom.filter(c => !normalizedToDelete.has(normalizeRef(c.refDes)));
+
+        // 2) BOM에서 refList 내 ref 제거 (없으면 해당 ref만 제거하고, ref가 0개면 행 삭제)
+        const nextBom: BOMItem[] = [];
+        for (const item of prevBom) {
+          const refsInRow = parseRefs(item.refList);
+          if (refsInRow.length === 0) {
+            nextBom.push(item);
+            continue;
+          }
+
+          const remaining = refsInRow.filter(r => !normalizedToDelete.has(normalizeRef(r)));
+          if (remaining.length === 0) {
+            // 해당 BOM 행 전체 삭제
+            continue;
+          }
+
+          // ref가 일부만 남는 케이스도 지원 (ref 유일하지만 merge로 한 행에 여러 ref가 있을 수 있어 안전 처리)
+          const nextSetCount = remaining.length;
+          const nextTotalQty = metadata.productionQuantity > 0 ? nextSetCount * metadata.productionQuantity : item.totalQuantity;
+          nextBom.push({
+            ...item,
+            refList: remaining.join(', '),
+            setCount: nextSetCount,
+            totalQuantity: nextTotalQty,
+          });
+        }
+
+        // lineNumber 재정렬
+        const renumberedBom = nextBom.map((it, idx) => ({ ...it, lineNumber: idx + 1 }));
+
+        return {
+          ...prev,
+          processedData: {
+            ...prev.processedData,
+            bomItems: renumberedBom,
+            coordinates: nextCoords,
+            ...(prev.processedData?.topCoordinates ? { topCoordinates: nextTop } : {}),
+            ...(prev.processedData?.bottomCoordinates ? { bottomCoordinates: nextBottom } : {}),
+          },
+        };
+      });
+    },
+    [metadata.productionQuantity]
+  );
+
+  const handleDeleteRef = useCallback((refDes: string) => handleDeleteRefs([refDes]), [handleDeleteRefs]);
+
   // 저장된 BOM 다운로드
   const handleDownloadSavedBOM = async (boardId: string, boardName: string) => {
     try {
@@ -1924,6 +2000,7 @@ export default function BomCoordinateIntegrated() {
                 onSave={handleSaveBOM}
                     onMergeStateChange={setIsMerged}
                     onBomChange={handleBomChange}
+                    onDeleteRefs={handleDeleteRefs}
               />
                 </TabsContent>
 
@@ -1932,6 +2009,7 @@ export default function BomCoordinateIntegrated() {
                 coordinates={processedResult.processedData?.coordinates || []}
                     bomItems={processedResult.processedData?.bomItems || []}
                     onCoordinatesChange={handleCoordinatesChange}
+                    onDeleteRef={handleDeleteRef}
               />
                 </TabsContent>
               </Tabs>

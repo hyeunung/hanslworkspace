@@ -1,17 +1,21 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { type CoordinateItem, type BOMItem } from '@/utils/v7-generator';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Trash2 } from 'lucide-react';
 
 interface CoordinatePreviewPanelProps {
   coordinates: CoordinateItem[];
   bomItems?: BOMItem[];
   onCoordinatesChange?: (nextCoordinates: CoordinateItem[]) => void;
+  onDeleteRef?: (refDes: string) => void;
 }
 
 export default function CoordinatePreviewPanel({
   coordinates,
   bomItems = [],
   onCoordinatesChange,
+  onDeleteRef,
 }: CoordinatePreviewPanelProps) {
   const [localCoordinates, setLocalCoordinates] = useState<CoordinateItem[]>(coordinates);
 
@@ -44,6 +48,16 @@ export default function CoordinatePreviewPanel({
       });
     },
     [onCoordinatesChange]
+  );
+
+  const handleDeleteCoord = useCallback(
+    (coordIndex: number, refDes: string) => {
+      // 낙관적 UI 업데이트 (부모에서 다시 동기화됨)
+      setLocalCoordinates(prev => prev.filter((_, i) => i !== coordIndex));
+      // BOM/좌표 동기 삭제는 부모에서 수행
+      onDeleteRef?.(refDes);
+    },
+    [onDeleteRef]
   );
 
   // BOM의 REF Set 생성 (빠른 조회를 위해)
@@ -93,7 +107,13 @@ export default function CoordinatePreviewPanel({
           <h4 className="text-xs font-semibold text-gray-700">TOP</h4>
           <span className="badge-stats bg-gray-100 text-gray-600">{topRows.length}</span>
         </div>
-        <CoordinateTable rows={topRows} bomRefSet={bomRefSet} manualRefSet={manualRefSet} onUpdate={handleUpdateCoord} />
+        <CoordinateTable
+          rows={topRows}
+          bomRefSet={bomRefSet}
+          manualRefSet={manualRefSet}
+          onUpdate={handleUpdateCoord}
+          onDelete={handleDeleteCoord}
+        />
       </div>
 
       {/* 우측: BOTTOM */}
@@ -102,7 +122,13 @@ export default function CoordinatePreviewPanel({
           <h4 className="text-xs font-semibold text-gray-700">BOTTOM</h4>
           <span className="badge-stats bg-gray-100 text-gray-600">{bottomRows.length}</span>
         </div>
-        <CoordinateTable rows={bottomRows} bomRefSet={bomRefSet} manualRefSet={manualRefSet} onUpdate={handleUpdateCoord} />
+        <CoordinateTable
+          rows={bottomRows}
+          bomRefSet={bomRefSet}
+          manualRefSet={manualRefSet}
+          onUpdate={handleUpdateCoord}
+          onDelete={handleDeleteCoord}
+        />
       </div>
     </div>
   );
@@ -113,11 +139,13 @@ function CoordinateTable({
   bomRefSet,
   manualRefSet,
   onUpdate,
+  onDelete,
 }: {
   rows: Array<{ coord: CoordinateItem; index: number }>;
   bomRefSet: Set<string>;
   manualRefSet: Set<string>;
   onUpdate: (coordIndex: number, patch: Partial<CoordinateItem>) => void;
+  onDelete?: (coordIndex: number, refDes: string) => void;
 }) {
   const totalCount = rows.length;
   const normalizeLayer = (layer?: string | null) => {
@@ -162,12 +190,15 @@ function CoordinateTable({
               <TableHead className="!h-auto !py-0.5 !px-2" style={{ minWidth: '80px' }}>
                 <span className="card-description">비고</span>
               </TableHead>
+              <TableHead className="w-[46px] text-center !h-auto !py-0.5 !px-1">
+                <span className="card-description">삭제</span>
+              </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.length === 0 ? (
             <TableRow>
-                <TableCell colSpan={9} className="text-center py-6 card-description">
+                <TableCell colSpan={10} className="text-center py-6 card-description">
                 데이터가 없습니다.
               </TableCell>
             </TableRow>
@@ -328,6 +359,26 @@ function CoordinateTable({
                       placeholder={isMissingInBom && !isMissingBom ? 'BOM에 없음' : ''}
                     />
                   </TableCell>
+
+                  {/* 삭제 */}
+                  <TableCell className="text-center py-1 px-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      disabled={!item.refDes}
+                      onClick={() => {
+                        if (!item.refDes) return;
+                        const ok = window.confirm(`해당 좌표 행을 삭제하시겠습니까?\n\nRefDes: ${item.refDes}`);
+                        if (!ok) return;
+                        onDelete?.(coordIndex, item.refDes);
+                      }}
+                      title="행 삭제"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                    </Button>
+                  </TableCell>
               </TableRow>
               )})
           )}
@@ -335,7 +386,7 @@ function CoordinateTable({
           {/* 푸터 */}
           <tfoot className="bg-gray-50 border-t">
             <tr>
-              <td colSpan={9} className="py-2 px-2">
+              <td colSpan={10} className="py-2 px-2">
                 <div className="flex justify-between items-center">
                   <span className="card-description">총 {totalCount}개 항목</span>
                   <div className="flex gap-4 card-description">

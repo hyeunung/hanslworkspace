@@ -55,9 +55,65 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
     }
 
     loadPendingCount()
-    const subscription = supportService.subscribeToInquiries(() => loadPendingCount())
+
+    const isPending = (status?: string | null) => status === 'open' || status === 'in_progress'
+    const subscription = supportService.subscribeToInquiries((payload) => {
+      // ✅ 즉시 반영(딜레이 체감 제거): realtime payload로 카운트 증감
+      const eventType = payload?.eventType as 'INSERT' | 'UPDATE' | 'DELETE' | undefined
+      const newRow = payload?.new as { status?: string | null } | undefined
+      const oldRow = payload?.old as { status?: string | null } | undefined
+
+      if (eventType === 'INSERT') {
+        if (isPending(newRow?.status)) {
+          setPendingInquiryCount((prev) => {
+            const next = prev + 1
+            return next
+          })
+        }
+        return
+      }
+      if (eventType === 'DELETE') {
+        if (isPending(oldRow?.status)) {
+          setPendingInquiryCount((prev) => {
+            const next = Math.max(0, prev - 1)
+            return next
+          })
+        }
+        return
+      }
+      if (eventType === 'UPDATE') {
+        // Supabase realtime payload에 old.status가 안 오는 케이스가 있어(Replica identity 설정/정책 등),
+        // 이 경우엔 카운트를 계산할 수 없으니 즉시 감소(보이는 UX) + 즉시 재조회(정확성 보정)로 처리한다.
+        if (!oldRow?.status) {
+          const isNowPending = isPending(newRow?.status)
+          if (!isNowPending) {
+            setPendingInquiryCount((prev) => {
+              const next = Math.max(0, prev - 1)
+              return next
+            })
+          }
+          loadPendingCount()
+          return
+        }
+
+        const wasPending = isPending(oldRow?.status)
+        const isNowPending = isPending(newRow?.status)
+        if (wasPending === isNowPending) return
+        setPendingInquiryCount((prev) => {
+          const next = prev + (isNowPending ? 1 : -1)
+          return Math.max(0, next)
+        })
+      }
+    })
+
+    // 탭 전환/포커스 복귀 시 보정(이벤트 누락 대비)
+    const onVisibilityChange = () => {
+      if (!document.hidden) loadPendingCount()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
       subscription.unsubscribe()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [isAdmin])
 
@@ -85,6 +141,11 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
         if (!error && typeof count === 'number') setUnreadInquiryCount(count)
       }
 
+      const isUnreadInquiryNotif = (row?: any) => {
+        if (!row) return false
+        return row.is_read === false && (row.type === 'inquiry_message' || row.type === 'inquiry_resolved')
+      }
+
       // 실시간 구독(이메일 확인 후 1회만)
       if (!subscription) {
         subscription = supabase
@@ -97,7 +158,31 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
               table: 'notifications',
               filter: `user_email=eq.${email}`
             },
-            () => loadUnreadCount()
+            (payload: any) => {
+              // ✅ 즉시 반영: unread 카운트 증감 후 보정은 loadUnreadCount로 처리
+              const eventType = payload?.eventType as 'INSERT' | 'UPDATE' | 'DELETE' | undefined
+              const newRow = payload?.new
+              const oldRow = payload?.old
+
+              if (eventType === 'INSERT') {
+                if (isUnreadInquiryNotif(newRow)) setUnreadInquiryCount((prev) => prev + 1)
+                return
+              }
+              if (eventType === 'DELETE') {
+                if (isUnreadInquiryNotif(oldRow)) setUnreadInquiryCount((prev) => Math.max(0, prev - 1))
+                return
+              }
+              if (eventType === 'UPDATE') {
+                const wasUnread = isUnreadInquiryNotif(oldRow)
+                const isNowUnread = isUnreadInquiryNotif(newRow)
+                if (wasUnread === isNowUnread) return
+                setUnreadInquiryCount((prev) => {
+                  const next = prev + (isNowUnread ? 1 : -1)
+                  return Math.max(0, next)
+                })
+                return
+              }
+            }
           )
           .subscribe()
       }

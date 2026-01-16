@@ -53,6 +53,8 @@ export interface CreateSupportInquiryPayload {
 class SupportService {
   private supabase = createClient()
   private readonly BUCKET_NAME = 'support-attachments'
+  private inquiriesChannel: any | null = null
+  private inquirySubscribers = new Set<(payload: any) => void>()
 
   // 이미지 첨부파일 업로드
   async uploadAttachment(file: File): Promise<{ success: boolean; data?: SupportAttachment; error?: string }> {
@@ -266,6 +268,14 @@ class SupportService {
     try {
       const { error } = await this.supabase.rpc('resolve_inquiry', { p_inquiry_id: inquiryId })
       if (error) throw error
+
+      // 상태 확인(비밀 없음): resolved로 실제 반영됐는지
+      const { data: row, error: statusErr } = await this.supabase
+        .from('support_inquires')
+        .select('id,status,processed_at,updated_at')
+        .eq('id', inquiryId)
+        .maybeSingle()
+
       return { success: true }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : '완료 처리 실패' }
@@ -412,18 +422,43 @@ class SupportService {
 
   // 실시간 구독 설정
   subscribeToInquiries(callback: (payload: any) => void) {
-    return this.supabase
-      .channel('support_inquires_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'support_inquires'
-        },
-        callback
-      )
-      .subscribe()
+    // 싱글톤 채널: 여러 컴포넌트가 동시에 구독해도 채널은 1개만 유지
+    this.inquirySubscribers.add(callback)
+
+    if (!this.inquiriesChannel) {
+      this.inquiriesChannel = this.supabase
+        .channel('support_inquires_realtime_singleton')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'support_inquires'
+          },
+          (payload: any) => {
+            for (const sub of this.inquirySubscribers) {
+              try {
+                sub(payload)
+              } catch {
+                // ignore subscriber errors
+              }
+            }
+          }
+        )
+        .subscribe((status: string, err?: Error) => {
+          // status/err intentionally ignored
+        })
+    }
+
+    return {
+      unsubscribe: () => {
+        this.inquirySubscribers.delete(callback)
+        if (this.inquirySubscribers.size === 0 && this.inquiriesChannel) {
+          this.inquiriesChannel.unsubscribe()
+          this.inquiriesChannel = null
+        }
+      }
+    }
   }
 
   // 발주요청 품목 수정

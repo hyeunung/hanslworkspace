@@ -1,7 +1,8 @@
 import { useState, useEffect, forwardRef, useImperativeHandle, useRef, useLayoutEffect, useMemo } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, Plus } from 'lucide-react';
+import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { 
   generateBOMExcelFromTemplate, 
   downloadExcelBlob,
@@ -20,6 +21,7 @@ interface GeneratedPreviewPanelProps {
   onSave: (items: BOMItem[]) => void;
   onMergeStateChange?: (isMerged: boolean) => void;
   onBomChange?: (items: BOMItem[]) => void;  // BOM 수정 시 콜백 (좌표 동기화용)
+  onDeleteRefs?: (refs: string[]) => void;   // BOM 행 삭제 시 (해당 ref들을 좌표에서도 동기 삭제)
 }
 
 export interface GeneratedPreviewPanelRef {
@@ -39,7 +41,8 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
   productionManager = '',
   onSave,
   onMergeStateChange,
-  onBomChange
+  onBomChange,
+  onDeleteRefs
 }, ref) => {
   const [items, setItems] = useState<BOMItem[]>(initialItems);
   const [beforeMergeItems, setBeforeMergeItems] = useState<BOMItem[] | null>(null); // 합치기 전 상태 저장
@@ -48,6 +51,9 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
   // initialItems가 변경되면 items 업데이트
   useEffect(() => {
     setItems(initialItems);
+    // 외부에서 BOM이 갱신(예: 삭제 동기화)되면 합치기 상태는 무효가 될 수 있어 초기화
+    setBeforeMergeItems(null);
+    onMergeStateChange?.(false);
   }, [initialItems]);
 
   // textarea 높이 자동 조정
@@ -346,6 +352,22 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
     }
   };
 
+  const parseRefs = (refList?: string) =>
+    (refList || '')
+      .split(',')
+      .map(r => r.trim())
+      .filter(Boolean);
+
+  const handleDeleteRow = (item: BOMItem) => {
+    const refs = parseRefs(item.refList);
+    if (!refs.length) return;
+    const ok = window.confirm(
+      `해당 행을 삭제하시겠습니까?\n\n품명: ${item.itemName || '-'}\nREF: ${refs.join(', ')}`
+    );
+    if (!ok) return;
+    onDeleteRefs?.(refs);
+  };
+
   // 행 배경색 결정
   const getRowClassName = (item: BOMItem) => {
     if (item.isManualRequired) return 'bg-yellow-50 hover:bg-yellow-100';
@@ -392,6 +414,9 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
                 </TableHead>
                 <TableHead className="!h-auto !py-0.5 !px-2">
                   <span className="card-description">비고</span>
+                </TableHead>
+                <TableHead className="w-[46px] text-center !h-auto !py-0.5 !px-1">
+                  <span className="card-description">삭제</span>
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -513,6 +538,20 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
                       onChange={(e) => handleCellChange(index, 'remark', e.target.value)}
                     />
                   </TableCell>
+
+                  {/* 삭제 */}
+                  <TableCell className="text-center py-1 px-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => handleDeleteRow(item)}
+                      title="행 삭제"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -554,6 +593,8 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
                     </span>
                   </div>
                 </td>
+                {/* 삭제 */}
+                <td></td>
               </tr>
             </tfoot>
           </Table>
