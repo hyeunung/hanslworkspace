@@ -208,11 +208,20 @@ export default function StatementConfirmModal({
   // 통합 매칭 상세 팝업 (발주번호 전체 매칭 내역)
   const [isIntegratedMatchDetailOpen, setIsIntegratedMatchDetailOpen] = useState(false);
   
-  // 발주번호 수동 검색 모달 상태
-  const [isManualSearchOpen, setIsManualSearchOpen] = useState(false);
-  const [manualSearchInput, setManualSearchInput] = useState('');
-  const [manualSearchLoading, setManualSearchLoading] = useState(false);
-  const [manualSearchError, setManualSearchError] = useState<string | null>(null);
+  // 거래처 인라인 검색 상태
+  const [vendorInputValue, setVendorInputValue] = useState('');
+  const [vendorSearchResults, setVendorSearchResults] = useState<Array<{ id: number; name: string; english_name?: string }>>([]);
+  const [vendorSearchLoading, setVendorSearchLoading] = useState(false);
+  const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
+  const [overrideVendorName, setOverrideVendorName] = useState<string | null>(null);
+  type VendorSearchRow = { id: number; vendor_name: string; english_name?: string | null };
+  
+  // 발주번호 인라인 검색 상태
+  const [poSearchInputOpen, setPOSearchInputOpen] = useState(false);
+  const [poSearchInput, setPOSearchInput] = useState('');
+  const [poSearchResults, setPOSearchResults] = useState<Array<{ id: number; poNumber: string; soNumber?: string; vendorName?: string }>>([]);
+  const [poSearchLoading, setPOSearchLoading] = useState(false);
+  const [poDropdownOpen, setPODropdownOpen] = useState(false);
   
   // 세트 매칭 결과 (Case 1용)
   const [setMatchResult, setSetMatchResult] = useState<{
@@ -263,6 +272,19 @@ export default function StatementConfirmModal({
     
     const poNumber = statementWithItems.items.find(item => item.extracted_po_number)?.extracted_po_number;
     return poNumber ? normalizeOrderNumber(poNumber) : null;
+  }, [statementWithItems]);
+
+  // 거래처명 초기값 설정
+  useEffect(() => {
+    if (statementWithItems && !vendorInputValue) {
+      const initialVendor = 
+        statementWithItems.vendor_name ||
+        (statementWithItems as any).extracted_data?.ocr_vendor_name ||
+        '';
+      if (initialVendor) {
+        setVendorInputValue(initialVendor);
+      }
+    }
   }, [statementWithItems]);
 
   // 데이터 로드
@@ -1089,27 +1111,98 @@ export default function StatementConfirmModal({
     }
   };
 
-  // 발주/수주번호 수동 검색
-  const handleManualPOSearch = async () => {
-    if (!manualSearchInput.trim()) {
-      setManualSearchError('발주번호 또는 수주번호를 입력하세요');
+  // 거래처 인라인 검색 (debounce 처리용)
+  const handleVendorSearch = async (searchValue: string) => {
+    if (!searchValue.trim()) {
+      setVendorSearchResults([]);
+      setVendorDropdownOpen(false);
       return;
     }
     
-    setManualSearchLoading(true);
-    setManualSearchError(null);
+    setVendorSearchLoading(true);
+    setVendorDropdownOpen(true);
     
     try {
-      const normalized = normalizeOrderNumber(manualSearchInput.trim());
+      const { data: vendors, error } = await supabase
+        .from('vendors')
+        .select('id, vendor_name')
+        .ilike('vendor_name', `%${searchValue}%`)
+        .limit(10);
       
-      // DB에서 발주 검색
-      const { data: purchase, error } = await supabase
+      if (error) throw error;
+      
+      setVendorSearchResults((vendors || []).map((vendor: VendorSearchRow) => ({
+        id: vendor.id,
+        name: vendor.vendor_name
+      })));
+    } catch (err) {
+      console.error('거래처 검색 오류:', err);
+      setVendorSearchResults([]);
+    } finally {
+      setVendorSearchLoading(false);
+    }
+  };
+  
+  // 발주번호 인라인 검색
+  const handlePOSearch = async (searchValue: string) => {
+    if (!searchValue.trim()) {
+      setPOSearchResults([]);
+      setPODropdownOpen(false);
+      return;
+    }
+    
+    setPOSearchLoading(true);
+    setPODropdownOpen(true);
+    
+    try {
+      const normalized = normalizeOrderNumber(searchValue.trim());
+      
+      const { data: purchases, error } = await supabase
         .from('purchase_requests')
         .select(`
           id,
           purchase_order_number,
           sales_order_number,
-          vendor:vendors(vendor_name),
+          vendor:vendors(vendor_name)
+        `)
+        .or(`purchase_order_number.ilike.%${normalized}%,sales_order_number.ilike.%${normalized}%`)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      
+      if (error) throw error;
+      
+      setPOSearchResults((purchases || []).map((p: any) => ({
+        id: p.id,
+        poNumber: p.purchase_order_number || '',
+        soNumber: p.sales_order_number,
+        vendorName: p.vendor?.vendor_name
+      })));
+    } catch (err) {
+      console.error('발주번호 검색 오류:', err);
+      setPOSearchResults([]);
+    } finally {
+      setPOSearchLoading(false);
+    }
+  };
+
+  // 거래처 선택 시 - 발주 후보 재검색 및 매칭 재실행
+  const handleSelectVendor = async (vendorName: string) => {
+    setOverrideVendorName(vendorName);
+    setVendorInputValue(vendorName);
+    setVendorDropdownOpen(false);
+    setVendorSearchResults([]);
+    
+    toast.success(`거래처가 "${vendorName}"(으)로 변경되었습니다. 발주 후보를 다시 검색합니다.`);
+    
+    // 새 거래처로 발주 후보 재검색
+    try {
+      const { data: purchases, error } = await supabase
+        .from('purchase_requests')
+        .select(`
+          id,
+          purchase_order_number,
+          sales_order_number,
+          vendor:vendors!inner(vendor_name),
           items:purchase_request_items(
             id,
             item_name,
@@ -1119,38 +1212,67 @@ export default function StatementConfirmModal({
             amount_value
           )
         `)
-        .or(`purchase_order_number.eq.${normalized},sales_order_number.eq.${normalized}`)
-        .single();
+        .eq('vendor.vendor_name', vendorName)
+        .order('created_at', { ascending: false })
+        .limit(50);
       
-      if (error || !purchase) {
-        setManualSearchError(`"${manualSearchInput}" 발주를 찾을 수 없습니다`);
-        setManualSearchLoading(false);
+      if (error) throw error;
+      
+      if (!purchases || purchases.length === 0) {
+        toast.error(`"${vendorName}" 거래처의 발주 내역이 없습니다.`);
         return;
       }
       
-      // 검색 결과를 선택하고 모달 닫기
-      const poNumber = purchase.purchase_order_number || purchase.sales_order_number || '';
+      // 새 발주 후보로 재매칭
+      const newCandidates = new Map<string, MatchCandidate[]>();
+      const firstPO = purchases[0]?.purchase_order_number || purchases[0]?.sales_order_number || '';
       
-      // 발주 품목들을 시스템 품목으로 변환
-      const systemItems: SystemPurchaseItem[] = (purchase.items || []).map((item: any) => ({
-        purchase_id: purchase.id,
-        item_id: item.id,
-        purchase_order_number: purchase.purchase_order_number || '',
-        sales_order_number: purchase.sales_order_number,
-        item_name: item.item_name || '',
-        specification: item.specification,
-        quantity: item.quantity,
-        unit_price: item.unit_price_value,
-        amount: item.amount_value,
-        vendor_name: purchase.vendor?.vendor_name
-      }));
-      
-      // 선택된 발주번호 설정
-      setSelectedPONumber(poNumber);
-      
-      // 자동 매칭 수행
+      // 품목별 후보 업데이트
       if (statementWithItems) {
+        statementWithItems.items.forEach(ocrItem => {
+          const candidates: MatchCandidate[] = [];
+          
+          purchases.forEach((purchase: any) => {
+            (purchase.items || []).forEach((item: any) => {
+              const similarity = calculateItemSimilarity(ocrItem.extracted_item_name || '', item.item_name, item.specification);
+              if (similarity >= 30) {
+                candidates.push({
+                  purchase_id: purchase.id,
+                  item_id: item.id,
+                  purchase_order_number: purchase.purchase_order_number || '',
+                  sales_order_number: purchase.sales_order_number,
+                  item_name: item.item_name || '',
+                  specification: item.specification,
+                  quantity: item.quantity,
+                  unit_price: item.unit_price_value,
+                  score: similarity,
+                  match_reasons: ['거래처 매칭'],
+                  vendor_name: vendorName
+                });
+              }
+            });
+          });
+          
+          candidates.sort((a, b) => b.score - a.score);
+          newCandidates.set(ocrItem.id, candidates.slice(0, 5));
+        });
+        
+        // 첫 번째 발주로 자동 매칭
+        setSelectedPONumber(firstPO);
+        
         const newMatches = new Map<string, SystemPurchaseItem | null>();
+        const systemItems: SystemPurchaseItem[] = (purchases[0]?.items || []).map((item: any) => ({
+          purchase_id: purchases[0].id,
+          item_id: item.id,
+          purchase_order_number: purchases[0].purchase_order_number || '',
+          sales_order_number: purchases[0].sales_order_number,
+          item_name: item.item_name || '',
+          specification: item.specification,
+          quantity: item.quantity,
+          unit_price: item.unit_price_value,
+          amount: item.amount_value,
+          vendor_name: vendorName
+        }));
         
         statementWithItems.items.forEach(ocrItem => {
           let bestMatch: SystemPurchaseItem | null = null;
@@ -1167,19 +1289,43 @@ export default function StatementConfirmModal({
           newMatches.set(ocrItem.id, bestMatch);
         });
         
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleSelectVendor:matching',message:'Matching completed',data:{firstPO,systemItemsCount:systemItems.length,matchesCount:newMatches.size},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3,H4'})}).catch(()=>{});
+        // #endregion
         setItemMatches(newMatches);
+        
+        // 세트 매칭 결과 업데이트 (allPONumberCandidates 갱신용)
+        setSetMatchResult({
+          bestMatch: {
+            purchase_id: purchases[0].id,
+            purchase_order_number: purchases[0].purchase_order_number || '',
+            sales_order_number: purchases[0].sales_order_number,
+            vendor_name: vendorName,
+            matchScore: 100,
+            matchedItemCount: newMatches.size,
+            totalItemCount: statementWithItems.items.length,
+            confidence: 'high',
+            itemMatches: []
+          },
+          candidates: purchases.map((p: any) => ({
+            purchase_id: p.id,
+            purchase_order_number: p.purchase_order_number || '',
+            sales_order_number: p.sales_order_number,
+            vendor_name: vendorName,
+            matchScore: p.id === purchases[0].id ? 100 : 50,
+            matchedItemCount: (p.items || []).length
+          }))
+        });
+        
+        toast.success(`${purchases.length}개 발주 후보를 찾았습니다. 자동 매칭 완료.`);
       }
       
-      // 성공 시 모달 닫기
-      setIsManualSearchOpen(false);
-      setManualSearchInput('');
-      toast.success(`${poNumber} 발주가 적용되었습니다`);
-      
     } catch (err) {
-      console.error('수동 검색 오류:', err);
-      setManualSearchError('검색 중 오류가 발생했습니다');
-    } finally {
-      setManualSearchLoading(false);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleSelectVendor:error',message:'Error occurred',data:{error:String(err)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
+      // #endregion
+      console.error('거래처 발주 검색 오류:', err);
+      toast.error('발주 후보 검색 중 오류가 발생했습니다.');
     }
   };
 
@@ -1646,23 +1792,55 @@ export default function StatementConfirmModal({
             <div className="flex-1 overflow-hidden flex flex-col py-3 px-4">
               {/* 요약 정보 */}
               <div className="flex items-center gap-6 p-3 bg-gray-50 business-radius-card mb-4">
-                <div>
+                <div className="relative">
                   <p className="modal-label">거래처</p>
-                  <p className="modal-value">
-                    {(() => {
-                      // 1순위: DB에 저장된 검증된 거래처명
-                      if (statementWithItems.vendor_name) return statementWithItems.vendor_name;
-                      // 2순위: 매칭된 발주의 거래처명 (발주번호로 역추적)
-                      const matchedVendor = allPONumberCandidates.find(c => 
-                        c.poNumber === selectedPONumber || c.salesOrderNumber === selectedPONumber
-                      )?.vendorName;
-                      if (matchedVendor) return <>{matchedVendor}<span className="ml-1 text-[9px] text-blue-500">(발주 연동)</span></>;
-                      // 3순위: OCR 추출값 (미검증)
-                      const ocrVendor = (statementWithItems as any).extracted_data?.ocr_vendor_name;
-                      if (ocrVendor) return <>{ocrVendor}<span className="ml-1 text-[9px] text-orange-500">(미검증)</span></>;
-                      return '-';
-                    })()}
-                  </p>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={vendorInputValue}
+                      onChange={(e) => {
+                        setVendorInputValue(e.target.value);
+                        handleVendorSearch(e.target.value);
+                      }}
+                      onFocus={() => {
+                        if (vendorSearchResults.length > 0) setVendorDropdownOpen(true);
+                      }}
+                      onBlur={() => {
+                        // delay to allow click on dropdown
+                        setTimeout(() => setVendorDropdownOpen(false), 200);
+                      }}
+                      placeholder="거래처 검색..."
+                      className={`w-[120px] h-5 px-1.5 bg-white border business-radius focus:outline-none focus:ring-1 focus:ring-hansl-400 ${
+                        overrideVendorName ? 'border-green-400 text-green-700' : 'border-gray-300 text-gray-900'
+                      }`}
+                      style={{ fontSize: '11px', fontWeight: 700 }}
+                    />
+                    {vendorSearchLoading && (
+                      <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 animate-spin text-gray-400" />
+                    )}
+                    {/* 인라인 드롭다운 */}
+                    {vendorDropdownOpen && vendorSearchResults.length > 0 && (
+                      <div className="absolute top-full left-0 mt-1 w-[200px] bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[180px] overflow-y-auto">
+                        {vendorSearchResults.map((vendor) => (
+                          <button
+                            key={vendor.id}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              // #region agent log
+                              fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:vendorDropdown:click',message:'Vendor dropdown item clicked',data:{vendorName:vendor.name},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
+                              // #endregion
+                              setVendorInputValue(vendor.name);
+                              setVendorDropdownOpen(false);
+                              handleSelectVendor(vendor.name);
+                            }}
+                            className="w-full px-2 py-1.5 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                          >
+                            <div className="text-[10px] font-medium text-gray-900">{vendor.name}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <p className="modal-label">거래일</p>
@@ -1721,17 +1899,77 @@ export default function StatementConfirmModal({
                                   ⚠️
                                 </span>
                               )}
-                              {/* 수동 검색 버튼 */}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setIsManualSearchOpen(true);
-                                }}
-                                className="inline-flex items-center gap-0.5 px-1 h-5 text-[9px] font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded"
-                                title="발주/수주번호 직접 검색"
-                              >
-                                <Search className="w-3 h-3" />
-                              </button>
+                              {/* 수동 검색 - 인라인 input */}
+                              <div className="relative flex items-center">
+                                {poSearchInputOpen ? (
+                                  <>
+                                    <input
+                                      type="text"
+                                      value={poSearchInput}
+                                      onChange={(e) => {
+                                        setPOSearchInput(e.target.value);
+                                        handlePOSearch(e.target.value);
+                                      }}
+                                      onBlur={() => {
+                                        setTimeout(() => {
+                                          setPOSearchInputOpen(false);
+                                          setPODropdownOpen(false);
+                                        }, 200);
+                                      }}
+                                      placeholder="F... 또는 HS..."
+                                      className="w-[90px] h-5 px-1.5 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-hansl-400"
+                                      style={{ fontSize: '10px', fontWeight: 500 }}
+                                      autoFocus
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                    {poSearchLoading && (
+                                      <Loader2 className="absolute right-1 w-3 h-3 animate-spin text-gray-400" />
+                                    )}
+                                    {/* 인라인 드롭다운 */}
+                                    {poDropdownOpen && poSearchResults.length > 0 && (
+                                      <div className="absolute top-full left-0 mt-1 w-[200px] bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[180px] overflow-y-auto">
+                                        {poSearchResults.map((po) => (
+                                          <button
+                                            key={po.id}
+                                            onMouseDown={(e) => e.preventDefault()}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              const poNumber = po.poNumber || po.soNumber || '';
+                                              setSelectedPONumber(poNumber);
+                                              setPOSearchInput('');
+                                              setPOSearchInputOpen(false);
+                                              setPODropdownOpen(false);
+                                              toast.success(`${poNumber} 발주가 선택되었습니다`);
+                                              // 자동 매칭 실행
+                                              handleAutoMatch();
+                                            }}
+                                            className="w-full px-2 py-1.5 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                                          >
+                                            <div className="text-[10px] font-medium text-gray-900">
+                                              {po.poNumber}
+                                              {po.soNumber && <span className="text-gray-400 ml-1">({po.soNumber})</span>}
+                                            </div>
+                                            {po.vendorName && (
+                                              <div className="text-[9px] text-gray-500">{po.vendorName}</div>
+                                            )}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPOSearchInputOpen(true);
+                                    }}
+                                    className="inline-flex items-center gap-0.5 px-1 h-5 text-[9px] font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded"
+                                    title="발주/수주번호 직접 검색"
+                                  >
+                                    <Search className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
                               {/* 발주 상세보기 버튼 */}
                               {selectedPONumber && (() => {
                                 const selectedCandidate = allPONumberCandidates.find(
@@ -1820,7 +2058,7 @@ export default function StatementConfirmModal({
                           {isSamePONumber && !commonPONumber && (
                             <input
                               type="text"
-                              placeholder="발주번호 입력"
+                              placeholder="발주/수주번호 입력"
                               onChange={(e) => {
                                 const newValue = e.target.value;
                                 if (statementWithItems) {
@@ -2360,69 +2598,6 @@ export default function StatementConfirmModal({
               className="text-[11px]"
             >
               닫기
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* 발주/수주번호 수동 검색 모달 */}
-      <Dialog open={isManualSearchOpen} onOpenChange={setIsManualSearchOpen}>
-        <DialogContent className="max-w-[320px] business-radius-modal p-0">
-          <DialogHeader className="px-4 pt-3 pb-2 border-b border-gray-100">
-            <DialogTitle className="modal-title flex items-center gap-1.5">
-              <Search className="w-3.5 h-3.5 text-hansl-600" />
-              발주/수주번호 검색
-            </DialogTitle>
-          </DialogHeader>
-          <div className="px-4 py-3">
-            <p className="modal-label mb-2">
-              발주번호(F...) 또는 수주번호(HS...)를 입력하세요
-            </p>
-            <input
-              type="text"
-              value={manualSearchInput}
-              onChange={(e) => setManualSearchInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleManualPOSearch();
-              }}
-              placeholder="예: F20250723_008 또는 HS250723-08"
-              className="w-full h-7 px-2 text-[11px] font-medium text-gray-800 bg-white border border-gray-200 business-radius focus:outline-none focus:ring-1 focus:ring-hansl-400"
-              autoFocus
-            />
-            {manualSearchError && (
-              <p className="mt-1.5 text-[10px] text-red-500">{manualSearchError}</p>
-            )}
-          </div>
-          <DialogFooter className="px-4 py-2.5 border-t border-gray-100 gap-2">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => {
-                setIsManualSearchOpen(false);
-                setManualSearchInput('');
-                setManualSearchError(null);
-              }}
-              className="button-base h-7 text-[10px]"
-            >
-              취소
-            </Button>
-            <Button 
-              size="sm" 
-              onClick={handleManualPOSearch}
-              disabled={manualSearchLoading}
-              className="button-base h-7 text-[10px] bg-hansl-600 hover:bg-hansl-700 text-white"
-            >
-              {manualSearchLoading ? (
-                <>
-                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                  검색 중...
-                </>
-              ) : (
-                <>
-                  <Search className="w-3 h-3 mr-1" />
-                  검색
-                </>
-              )}
             </Button>
           </DialogFooter>
         </DialogContent>
