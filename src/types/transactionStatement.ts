@@ -221,8 +221,8 @@ export function normalizeOrderNumber(input: string): string {
   
   const normalized = input.toUpperCase().replace(/\s+/g, '');
   
-  // 발주번호 정규화: F20251008_1 또는 F20251008_01 → F20251008_001
-  const poMatch = normalized.match(/^(F\d{8})_(\d{1,3})$/);
+  // 발주번호 정규화: F20251008_1 또는 F20251008-01 → F20251008_001
+  const poMatch = normalized.match(/^(F\d{8})[_-](\d{1,3})$/);
   if (poMatch) {
     const [, prefix, num] = poMatch;
     return `${prefix}_${num.padStart(3, '0')}`;

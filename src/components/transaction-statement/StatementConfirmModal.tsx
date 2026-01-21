@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   Dialog,
@@ -215,6 +215,9 @@ export default function StatementConfirmModal({
   const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
   const [overrideVendorName, setOverrideVendorName] = useState<string | null>(null);
   type VendorSearchRow = { id: number; vendor_name: string; english_name?: string | null };
+  const [poItemsMap, setPoItemsMap] = useState<Map<string, SystemPurchaseItem[]>>(new Map());
+  const autoVendorSelectionRef = useRef(false);
+  const systemCandidateLogKeyRef = useRef<string | null>(null);
   
   // 발주번호 인라인 검색 상태
   const [poSearchInputOpen, setPOSearchInputOpen] = useState(false);
@@ -222,6 +225,10 @@ export default function StatementConfirmModal({
   const [poSearchResults, setPOSearchResults] = useState<Array<{ id: number; poNumber: string; soNumber?: string; vendorName?: string }>>([]);
   const [poSearchLoading, setPOSearchLoading] = useState(false);
   const [poDropdownOpen, setPODropdownOpen] = useState(false);
+  
+  // OCR 발주/수주번호 페어 캐시 (실시간 입력용)
+  const [poPairOverrides, setPoPairOverrides] = useState<Map<string, string | null>>(new Map());
+  const pendingPairLookupsRef = useRef<Set<string>>(new Set());
   
   // 세트 매칭 결과 (Case 1용)
   const [setMatchResult, setSetMatchResult] = useState<{
@@ -250,6 +257,11 @@ export default function StatementConfirmModal({
       matchedItemCount: number;
     }>;
   } | null>(null);
+  // #region agent log
+  useEffect(() => {
+    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:useEffect:setMatchResult',message:'Set match result changed',data:{hasSetMatchResult:!!setMatchResult,bestMatchScore:setMatchResult?.bestMatch?.matchScore ?? null,candidateCount:setMatchResult?.candidates?.length ?? 0},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H13'})}).catch(()=>{});
+  }, [setMatchResult]);
+  // #endregion
   
   const supabase = createClient();
 
@@ -276,16 +288,25 @@ export default function StatementConfirmModal({
 
   // 거래처명 초기값 설정
   useEffect(() => {
-    if (statementWithItems && !vendorInputValue) {
-      const initialVendor = 
-        statementWithItems.vendor_name ||
-        (statementWithItems as any).extracted_data?.ocr_vendor_name ||
-        '';
-      if (initialVendor) {
-        setVendorInputValue(initialVendor);
-      }
+    if (!statementWithItems) return;
+    const initialVendor = 
+      statementWithItems.vendor_name ||
+      (statementWithItems as any).extracted_data?.ocr_vendor_name ||
+      '';
+    if (initialVendor && !vendorInputValue) {
+      setVendorInputValue(initialVendor);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:useEffect:vendorInit',message:'Set initial vendor input',data:{source:statementWithItems.vendor_name ? 'statement_vendor_name' : ((statementWithItems as any).extracted_data?.ocr_vendor_name ? 'ocr_vendor_name' : 'none'),initialVendorLength:initialVendor.length,hasStatement:!!statementWithItems},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
     }
-  }, [statementWithItems]);
+    if (initialVendor && !autoVendorSelectionRef.current) {
+      autoVendorSelectionRef.current = true;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:useEffect:autoSelectVendor',message:'Auto select vendor',data:{initialVendorLength:initialVendor.length},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      handleSelectVendor(initialVendor, { silent: true });
+    }
+  }, [statementWithItems, vendorInputValue]);
 
   // 데이터 로드
   const loadData = useCallback(async () => {
@@ -675,6 +696,39 @@ export default function StatementConfirmModal({
       });
     });
     
+    // 2.6. PO 아이템 맵 기반 후보 추가 (매칭 후보가 비어있어도 표시)
+    if (poItemsMap.size > 0) {
+      poItemsMap.forEach((items, key) => {
+        const normalizedKey = normalizeOrderNumber(key);
+        const isSO = normalizedKey.startsWith('HS');
+        if (useSONumber && !isSO) return;
+        if (!useSONumber && isSO) return;
+        
+        if (!candidateMap.has(normalizedKey)) {
+          candidateMap.set(normalizedKey, {
+            poNumber: isSO ? '' : normalizedKey,
+            salesOrderNumber: isSO ? normalizedKey : undefined,
+            itemCount: items.length,
+            items: items.map((item): MatchCandidate => ({
+              purchase_id: item.purchase_id,
+              purchase_order_number: item.purchase_order_number || '',
+              sales_order_number: item.sales_order_number,
+              item_id: item.item_id,
+              item_name: item.item_name,
+              specification: item.specification,
+              quantity: item.quantity ?? 0,
+              unit_price: item.unit_price,
+              vendor_name: item.vendor_name,
+              score: 0,
+              match_reasons: ['po_items_map']
+            })),
+            vendorName: items[0]?.vendor_name,
+            purchaseId: items[0]?.purchase_id
+          });
+        }
+      });
+    }
+    
     // 2.5. 세트 매칭 점수가 없는 후보들에 대해 개별 품목 유사도 평균 계산 + 수량 일치 여부
     candidateMap.forEach((candidate: CandidateMapValue, key) => {
       // 각 OCR 품목과 해당 발주의 품목 간 최대 유사도 계산 + 수량 일치 확인
@@ -682,6 +736,14 @@ export default function StatementConfirmModal({
       let matchedCount = 0;
       let quantityMatchedCount = 0;
       let quantityMismatchedCount = 0;
+      const normalizedKey = normalizeOrderNumber(key).toUpperCase();
+      const extractedOrderNumbers = statementWithItems.items
+        .map(item => {
+          const value = getOCRItemValue(item, 'po_number') as string;
+          return value ? normalizeOrderNumber(value).toUpperCase() : null;
+        })
+        .filter(Boolean) as string[];
+      const hasOrderNumberMatch = extractedOrderNumbers.some(num => num === normalizedKey);
       
       const candidateItems = candidate.items as MatchCandidate[];
       
@@ -689,11 +751,12 @@ export default function StatementConfirmModal({
         // 해당 발주의 품목들 중 가장 유사한 것 찾기
         let bestScore = 0;
         let bestMatchItem: MatchCandidate | null = null;
+        const ocrItemName = getOCRItemValue(ocrItem, 'item_name') as string;
         
         for (const sysItem of candidateItems) {
           const item: MatchCandidate = sysItem;
           const score = calculateItemSimilarity(
-            ocrItem.extracted_item_name || '', 
+            ocrItemName || '', 
             item.item_name, 
             item.specification
           );
@@ -707,10 +770,13 @@ export default function StatementConfirmModal({
           matchedCount++;
           
           // 수량 일치 여부 확인
-          const ocrQty = ocrItem.extracted_quantity;
+          const ocrQtyRaw = getOCRItemValue(ocrItem, 'quantity');
+          const ocrQty = typeof ocrQtyRaw === 'number'
+            ? ocrQtyRaw
+            : (ocrQtyRaw !== '' ? Number(ocrQtyRaw) : undefined);
           const matchItem: MatchCandidate = bestMatchItem as MatchCandidate;
           const sysQty: number = matchItem.quantity;
-          if (isQuantityMatched(ocrQty, sysQty)) {
+          if (ocrQty !== undefined && !Number.isNaN(ocrQty) && isQuantityMatched(ocrQty, sysQty)) {
             quantityMatchedCount++;
           } else {
             quantityMismatchedCount++;
@@ -727,8 +793,10 @@ export default function StatementConfirmModal({
       // 수량 일치 보너스: 모든 매칭 품목의 수량이 일치하면 +10점
       const quantityBonus = (matchedCount > 0 && quantityMatchedCount === matchedCount) ? 10 : 0;
       
+      const orderNumberBonus = hasOrderNumberMatch ? 40 : 0;
+      
       if (candidate.setMatchScore === undefined) {
-        candidate.setMatchScore = Math.min(100, baseScore + quantityBonus);
+        candidate.setMatchScore = Math.min(100, baseScore + quantityBonus + orderNumberBonus);
         candidate.matchedItemCount = matchedCount;
       }
       
@@ -747,8 +815,46 @@ export default function StatementConfirmModal({
       return b.itemCount - a.itemCount;
     });
     
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:allPONumberCandidates',message:'PO candidates summary',data:{candidateCount:result.length,useSONumber},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H6'})}).catch(()=>{});
+    // #endregion
     return result;
-  }, [statementWithItems, setMatchResult]);
+  }, [statementWithItems, setMatchResult, poItemsMap, editedOCRItems]);
+
+  const getPairedOrderNumber = useCallback((value?: string | null): string | undefined => {
+    if (!value) return undefined;
+    const normalizedValue = normalizeOrderNumber(value);
+    const candidate = allPONumberCandidates.find(
+      c =>
+        c.poNumber === normalizedValue ||
+        c.salesOrderNumber === normalizedValue ||
+        c.poNumber === value ||
+        c.salesOrderNumber === value
+    );
+    if (candidate) {
+      if (normalizedValue.startsWith('F')) return candidate.salesOrderNumber;
+      if (normalizedValue.startsWith('HS')) return candidate.poNumber;
+      return candidate.salesOrderNumber || candidate.poNumber;
+    }
+    const items = poItemsMap.get(normalizedValue) || poItemsMap.get(value) || [];
+    if (items.length > 0) {
+      const item = items[0];
+      if (normalizedValue.startsWith('F')) return item.sales_order_number;
+      if (normalizedValue.startsWith('HS')) return item.purchase_order_number || item.purchase_order_number;
+      return item.sales_order_number || item.purchase_order_number;
+    }
+    return undefined;
+  }, [allPONumberCandidates, poItemsMap]);
+
+  const getPairedOrderNumberWithOverrides = (value?: string | null): string | undefined => {
+    if (!value) return undefined;
+    const normalized = normalizeOrderNumber(value);
+    const override = poPairOverrides.get(normalized);
+    if (override !== undefined) {
+      return override || undefined;
+    }
+    return getPairedOrderNumber(value);
+  };
 
   // selectedPONumber가 후보 목록에 없으면 첫 번째 후보로 자동 변경
   useEffect(() => {
@@ -773,6 +879,16 @@ export default function StatementConfirmModal({
   // 특정 발주번호에 해당하는 시스템 품목들
   const getSystemItemsForPO = useCallback((poNumber: string): SystemPurchaseItem[] => {
     if (!statementWithItems || !poNumber) return [];
+    const mappedItems = poItemsMap.get(poNumber) || [];
+    if (mappedItems.length > 0) {
+      const deduped = mappedItems.filter((item, index, self) => 
+        index === self.findIndex(t => t.item_id === item.item_id)
+      );
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:getSystemItemsForPO:map',message:'System items from PO map',data:{poNumberLength:poNumber.length,mapItemsCount:mappedItems.length,dedupedItems:deduped.length},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H5'})}).catch(()=>{});
+      // #endregion
+      return deduped;
+    }
     
     const items: SystemPurchaseItem[] = [];
     
@@ -797,10 +913,14 @@ export default function StatementConfirmModal({
     });
     
     // 중복 제거
-    return items.filter((item, index, self) => 
+    const deduped = items.filter((item, index, self) => 
       index === self.findIndex(t => t.item_id === item.item_id)
     );
-  }, [statementWithItems]);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:getSystemItemsForPO',message:'System items for PO',data:{poNumberLength:poNumber.length,rawItems:items.length,dedupedItems:deduped.length,matchCandidatesTotal:statementWithItems.items.reduce((sum, i) => sum + (i.match_candidates?.length || 0), 0)},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
+    return deduped;
+  }, [statementWithItems, poItemsMap]);
 
   // 특정 OCR 품목에 대한 발주번호 후보 목록 (시스템 데이터베이스에서 가져온 것만)
   // - OCR에서 F로 시작하는 번호 추출 → 발주번호(purchase_order_number)만 표시
@@ -847,21 +967,30 @@ export default function StatementConfirmModal({
   };
 
   // OCR 품목의 현재 값 가져오기 (수정된 값 우선)
-  const getOCRItemValue = (ocrItem: TransactionStatementItemWithMatch, field: 'item_name' | 'quantity' | 'unit_price' | 'amount' | 'po_number') => {
+  function getOCRItemValue(
+    ocrItem: TransactionStatementItemWithMatch,
+    field: 'item_name' | 'quantity' | 'unit_price' | 'amount' | 'po_number'
+  ) {
     const edited = editedOCRItems.get(ocrItem.id);
     if (edited && edited[field] !== undefined) {
       return edited[field];
     }
-    
+
     switch (field) {
-      case 'item_name': return ocrItem.extracted_item_name || '';
-      case 'quantity': return ocrItem.extracted_quantity ?? '';
-      case 'unit_price': return ocrItem.extracted_unit_price ?? '';
-      case 'amount': return ocrItem.extracted_amount ?? '';
-      case 'po_number': return ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : '';
-      default: return '';
+      case 'item_name':
+        return ocrItem.extracted_item_name || '';
+      case 'quantity':
+        return ocrItem.extracted_quantity ?? '';
+      case 'unit_price':
+        return ocrItem.extracted_unit_price ?? '';
+      case 'amount':
+        return ocrItem.extracted_amount ?? '';
+      case 'po_number':
+        return ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : '';
+      default:
+        return '';
     }
-  };
+  }
 
   // 수정 여부 확인 (원본과 다른지)
   const isOCRItemEdited = (ocrItem: TransactionStatementItemWithMatch, field: 'item_name' | 'quantity' | 'unit_price' | 'amount' | 'po_number'): boolean => {
@@ -1113,7 +1242,13 @@ export default function StatementConfirmModal({
 
   // 거래처 인라인 검색 (debounce 처리용)
   const handleVendorSearch = async (searchValue: string) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleVendorSearch:entry',message:'Vendor search entry',data:{searchValueLength:searchValue.length,trimmedLength:searchValue.trim().length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
     if (!searchValue.trim()) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleVendorSearch:empty',message:'Vendor search early return (empty)',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
+      // #endregion
       setVendorSearchResults([]);
       setVendorDropdownOpen(false);
       return;
@@ -1129,6 +1264,9 @@ export default function StatementConfirmModal({
         .ilike('vendor_name', `%${searchValue}%`)
         .limit(10);
       
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleVendorSearch:result',message:'Vendor search result',data:{errorMessage:error?.message || null,resultsCount:vendors?.length || 0},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
+      // #endregion
       if (error) throw error;
       
       setVendorSearchResults((vendors || []).map((vendor: VendorSearchRow) => ({
@@ -1185,14 +1323,60 @@ export default function StatementConfirmModal({
     }
   };
 
+  // OCR 발주/수주번호 입력 시 실시간 페어 조회
+  const lookupPairedOrderNumber = useCallback(async (rawValue: string) => {
+    const trimmed = rawValue.trim();
+    if (!trimmed) return;
+    const normalized = normalizeOrderNumber(trimmed);
+    if (!normalized) return;
+    if (poPairOverrides.has(normalized)) return;
+    if (pendingPairLookupsRef.current.has(normalized)) return;
+    pendingPairLookupsRef.current.add(normalized);
+    try {
+      const { data, error } = await supabase
+        .from('purchase_requests')
+        .select('purchase_order_number,sales_order_number')
+        .or(`purchase_order_number.eq.${normalized},sales_order_number.eq.${normalized}`)
+        .limit(1);
+      if (error) throw error;
+      const match = data?.[0];
+      const pairedNumber = match
+        ? (normalized.startsWith('F')
+            ? match.sales_order_number
+            : normalized.startsWith('HS')
+              ? match.purchase_order_number
+              : (match.sales_order_number || match.purchase_order_number))
+        : null;
+      setPoPairOverrides(prev => {
+        const next = new Map(prev);
+        next.set(normalized, pairedNumber ?? null);
+        return next;
+      });
+    } catch (err) {
+      setPoPairOverrides(prev => {
+        const next = new Map(prev);
+        next.set(normalized, null);
+        return next;
+      });
+    } finally {
+      pendingPairLookupsRef.current.delete(normalized);
+    }
+  }, [poPairOverrides, supabase]);
+
   // 거래처 선택 시 - 발주 후보 재검색 및 매칭 재실행
-  const handleSelectVendor = async (vendorName: string) => {
+  const handleSelectVendor = async (vendorName: string, options?: { silent?: boolean }) => {
+    const shouldNotify = !options?.silent;
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleSelectVendor:entry',message:'Select vendor entry',data:{vendorNameLength:vendorName.length,hasStatement:!!statementWithItems,statementItemsCount:statementWithItems?.items?.length || 0},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
     setOverrideVendorName(vendorName);
     setVendorInputValue(vendorName);
     setVendorDropdownOpen(false);
     setVendorSearchResults([]);
     
-    toast.success(`거래처가 "${vendorName}"(으)로 변경되었습니다. 발주 후보를 다시 검색합니다.`);
+    if (shouldNotify) {
+      toast.success(`거래처가 "${vendorName}"(으)로 변경되었습니다. 발주 후보를 다시 검색합니다.`);
+    }
     
     // 새 거래처로 발주 후보 재검색
     try {
@@ -1216,12 +1400,46 @@ export default function StatementConfirmModal({
         .order('created_at', { ascending: false })
         .limit(50);
       
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleSelectVendor:query',message:'Vendor purchase query result',data:{errorMessage:error?.message || null,purchasesCount:purchases?.length || 0,firstPurchaseHasItems:(purchases?.[0]?.items?.length || 0) > 0},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
       if (error) throw error;
       
       if (!purchases || purchases.length === 0) {
-        toast.error(`"${vendorName}" 거래처의 발주 내역이 없습니다.`);
+        if (shouldNotify) {
+          toast.error(`"${vendorName}" 거래처의 발주 내역이 없습니다.`);
+        }
         return;
       }
+      
+      const itemsMap = new Map<string, SystemPurchaseItem[]>();
+      let totalMapItems = 0;
+      purchases.forEach((purchase: any) => {
+        const mappedItems: SystemPurchaseItem[] = (purchase.items || []).map((item: any) => ({
+          purchase_id: purchase.id,
+          item_id: item.id,
+          purchase_order_number: purchase.purchase_order_number || '',
+          sales_order_number: purchase.sales_order_number,
+          item_name: item.item_name || '',
+          specification: item.specification,
+          quantity: item.quantity,
+          unit_price: item.unit_price_value,
+          amount: item.amount_value,
+          vendor_name: vendorName
+        }));
+        if (mappedItems.length === 0) return;
+        totalMapItems += mappedItems.length;
+        if (purchase.purchase_order_number) {
+          itemsMap.set(purchase.purchase_order_number, mappedItems);
+        }
+        if (purchase.sales_order_number) {
+          itemsMap.set(purchase.sales_order_number, mappedItems);
+        }
+      });
+      setPoItemsMap(itemsMap);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleSelectVendor:poItemsMap',message:'Built PO items map',data:{poKeyCount:itemsMap.size,totalMapItems},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H5'})}).catch(()=>{});
+      // #endregion
       
       // 새 발주 후보로 재매칭
       const newCandidates = new Map<string, MatchCandidate[]>();
@@ -1229,12 +1447,18 @@ export default function StatementConfirmModal({
       
       // 품목별 후보 업데이트
       if (statementWithItems) {
-        statementWithItems.items.forEach(ocrItem => {
+        statementWithItems.items.forEach((ocrItem, index) => {
           const candidates: MatchCandidate[] = [];
+          let maxSimilarity = 0;
+          let comparedCount = 0;
           
           purchases.forEach((purchase: any) => {
             (purchase.items || []).forEach((item: any) => {
               const similarity = calculateItemSimilarity(ocrItem.extracted_item_name || '', item.item_name, item.specification);
+              comparedCount += 1;
+              if (similarity > maxSimilarity) {
+                maxSimilarity = similarity;
+              }
               if (similarity >= 30) {
                 candidates.push({
                   purchase_id: purchase.id,
@@ -1253,10 +1477,19 @@ export default function StatementConfirmModal({
             });
           });
           
+          if (index === 0) {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleSelectVendor:similarity',message:'Similarity scan summary',data:{ocrItemId:ocrItem.id,ocrItemNameLength:(ocrItem.extracted_item_name || '').length,comparedCount,maxSimilarity,candidateCount:candidates.length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H4'})}).catch(()=>{});
+            // #endregion
+          }
+          
           candidates.sort((a, b) => b.score - a.score);
           newCandidates.set(ocrItem.id, candidates.slice(0, 5));
         });
         
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleSelectVendor:candidates',message:'Built new candidates',data:{firstPO: firstPO || null,ocrItemCount:statementWithItems.items.length,totalCandidates:Array.from(newCandidates.values()).reduce((sum, list) => sum + list.length, 0),firstItemCandidates:newCandidates.get(statementWithItems.items[0]?.id || '')?.length || 0},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
         // 첫 번째 발주로 자동 매칭
         setSelectedPONumber(firstPO);
         
@@ -1289,9 +1522,6 @@ export default function StatementConfirmModal({
           newMatches.set(ocrItem.id, bestMatch);
         });
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleSelectVendor:matching',message:'Matching completed',data:{firstPO,systemItemsCount:systemItems.length,matchesCount:newMatches.size},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3,H4'})}).catch(()=>{});
-        // #endregion
         setItemMatches(newMatches);
         
         // 세트 매칭 결과 업데이트 (allPONumberCandidates 갱신용)
@@ -1317,13 +1547,12 @@ export default function StatementConfirmModal({
           }))
         });
         
-        toast.success(`${purchases.length}개 발주 후보를 찾았습니다. 자동 매칭 완료.`);
+        if (shouldNotify) {
+          toast.success(`${purchases.length}개 발주 후보를 찾았습니다. 자동 매칭 완료.`);
+        }
       }
       
     } catch (err) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleSelectVendor:error',message:'Error occurred',data:{error:String(err)},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
       console.error('거래처 발주 검색 오류:', err);
       toast.error('발주 후보 검색 중 오류가 발생했습니다.');
     }
@@ -1403,6 +1632,9 @@ export default function StatementConfirmModal({
 
   // 시스템 품목 직접 선택
   const handleSelectSystemItem = (ocrItemId: string, systemItem: SystemPurchaseItem | null) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleSelectSystemItem',message:'Select system item',data:{ocrItemId,hasSystemItem:!!systemItem,poNumberLength:systemItem?.purchase_order_number?.length || systemItem?.sales_order_number?.length || 0},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H7'})}).catch(()=>{});
+    // #endregion
     setItemMatches(prev => {
       const newMap = new Map(prev);
       newMap.set(ocrItemId, systemItem);
@@ -1826,9 +2058,6 @@ export default function StatementConfirmModal({
                             key={vendor.id}
                             onMouseDown={(e) => e.preventDefault()}
                             onClick={() => {
-                              // #region agent log
-                              fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:vendorDropdown:click',message:'Vendor dropdown item clicked',data:{vendorName:vendor.name},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H5'})}).catch(()=>{});
-                              // #endregion
                               setVendorInputValue(vendor.name);
                               setVendorDropdownOpen(false);
                               handleSelectVendor(vendor.name);
@@ -1888,6 +2117,13 @@ export default function StatementConfirmModal({
                                   if (allPONumberCandidates.length > 0 && !candidate) {
                                     const firstCandidate = allPONumberCandidates[0];
                                     return <>{firstCandidate.poNumber || firstCandidate.salesOrderNumber} <span className="text-orange-500">(추천)</span></>;
+                                  }
+                                  const pairedNumber = getPairedOrderNumber(selectedPONumber);
+                                  // #region agent log
+                                  fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:render:globalPOPair',message:'Global PO paired display',data:{selectedPONumber,pairedNumber:pairedNumber || null,candidateCount:allPONumberCandidates.length},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H9'})}).catch(()=>{});
+                                  // #endregion
+                                  if (pairedNumber) {
+                                    return <>{selectedPONumber} <span className="text-gray-400">({pairedNumber})</span></>;
                                   }
                                   return selectedPONumber;
                                 })()}
@@ -2022,6 +2258,7 @@ export default function StatementConfirmModal({
                                 onChange={(e) => {
                                   // OCR 추출된 발주번호 수정 시 전체 품목에 적용
                                   const newValue = e.target.value;
+                                  lookupPairedOrderNumber(newValue);
                                   if (statementWithItems) {
                                     statementWithItems.items.forEach(item => {
                                       handleEditOCRItem(item.id, 'po_number', newValue);
@@ -2036,41 +2273,49 @@ export default function StatementConfirmModal({
                                 // 현재 입력된 값 가져오기
                                 const firstItem = statementWithItems?.items[0];
                                 const currentValue = firstItem ? (getOCRItemValue(firstItem, 'po_number') as string) : commonPONumber;
-                                const normalizedValue = currentValue?.toUpperCase() || '';
-                                
-                                // 후보에서 매칭되는 것 찾기
-                                const candidate = allPONumberCandidates.find(c => 
-                                  c.poNumber === currentValue || c.salesOrderNumber === currentValue
-                                );
-                                
-                                if (candidate?.poNumber && candidate?.salesOrderNumber) {
-                                  // 발주번호(F)면 수주번호 표시, 수주번호(HS)면 발주번호 표시
-                                  if (normalizedValue.startsWith('F')) {
-                                    return <span className="text-gray-400 text-[10px] font-normal" style={{ fontSize: '11px' }}>({candidate.salesOrderNumber})</span>;
-                                  } else if (normalizedValue.startsWith('HS')) {
-                                    return <span className="text-gray-400 text-[10px] font-normal" style={{ fontSize: '11px' }}>({candidate.poNumber})</span>;
-                                  }
+                                const pairedNumber = getPairedOrderNumberWithOverrides(currentValue);
+                                if (pairedNumber) {
+                                  return <span className="text-gray-400 text-[10px] font-normal" style={{ fontSize: '11px' }}>{pairedNumber}</span>;
                                 }
                                 return null;
                               })()}
                             </div>
                           )}
                           {isSamePONumber && !commonPONumber && (
-                            <input
-                              type="text"
-                              placeholder="발주/수주번호 입력"
-                              onChange={(e) => {
-                                const newValue = e.target.value;
-                                if (statementWithItems) {
-                                  statementWithItems.items.forEach(item => {
-                                    handleEditOCRItem(item.id, 'po_number', newValue);
-                                  });
-                                }
-                              }}
-                              className="px-1.5 h-5 bg-white border border-gray-300 text-gray-700 text-[10px] font-medium business-radius focus:outline-none focus:ring-1 focus:ring-gray-400"
-                              style={{ fontSize: '11px', fontWeight: 500 }}
-                              title="발주번호 직접 입력"
-                            />
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                placeholder="발주/수주번호 입력"
+                                onChange={(e) => {
+                                  const newValue = e.target.value;
+                                  lookupPairedOrderNumber(newValue);
+                                  if (statementWithItems) {
+                                    statementWithItems.items.forEach(item => {
+                                      handleEditOCRItem(item.id, 'po_number', newValue);
+                                    });
+                                  }
+                                }}
+                                className="px-1.5 h-5 bg-white border border-gray-300 text-gray-700 text-[10px] font-medium business-radius focus:outline-none focus:ring-1 focus:ring-gray-400"
+                                style={{ fontSize: '11px', fontWeight: 500 }}
+                                title="발주번호 직접 입력"
+                              />
+                              {(() => {
+                                const firstItem = statementWithItems?.items[0];
+                                const currentValue = firstItem
+                                  ? (getOCRItemValue(firstItem, 'po_number') as string)
+                                  : '';
+                                const pairedNumber = getPairedOrderNumberWithOverrides(currentValue);
+                                // #region agent log
+                                fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:ocrPOPair:empty',message:'OCR PO paired compute (empty)',data:{currentValue,pairedNumber:pairedNumber || null,candidateCount:allPONumberCandidates.length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
+                                // #endregion
+                                if (!pairedNumber) return null;
+                                return (
+                                  <span className="text-gray-400 text-[10px] font-normal" style={{ fontSize: '11px' }}>
+                                    {pairedNumber}
+                                  </span>
+                                );
+                              })()}
+                            </div>
                           )}
                         </div>
                       </th>
@@ -2110,15 +2355,47 @@ export default function StatementConfirmModal({
                         : undefined;
                       const itemPO = itemPONumbers.get(ocrItem.id) || normalizedExtractedPO;
                       const poCandidates = getPOCandidatesForItem(ocrItem.id);
-                      const systemCandidates = getSystemItemsForPO(isSamePONumber ? selectedPONumber : (itemPO || ''));
+                      const activePONumber = isSamePONumber ? selectedPONumber : (itemPO || '');
+                      const systemCandidates = getSystemItemsForPO(activePONumber);
+                      const showSystemList = isSamePONumber && rowIndex === 0 && !matchedSystem && systemCandidates.length > 0;
+                      if (rowIndex === 0) {
+                        const logKey = `${ocrItem.id}|${isSamePONumber ? 'same' : 'multi'}|${activePONumber}|${systemCandidates.length}`;
+                        if (systemCandidateLogKeyRef.current !== logKey) {
+                          systemCandidateLogKeyRef.current = logKey;
+                          // #region agent log
+                          fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:render:systemCandidates',message:'System candidates summary',data:{isSamePONumber,selectedPONumberLength:selectedPONumber.length,itemPOLength:itemPO?.length || 0,activePONumberLength:activePONumber.length,systemCandidatesCount:systemCandidates.length,poItemsMapSize:poItemsMap.size},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H6'})}).catch(()=>{});
+                          // #endregion
+                          const firstCandidate = systemCandidates[0];
+                          if (firstCandidate) {
+                            // #region agent log
+                            fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:render:firstCandidate',message:'First system candidate values',data:{itemNameLength:firstCandidate.item_name?.length || 0,quantity:firstCandidate.quantity ?? null,unitPrice:firstCandidate.unit_price ?? null,amount:firstCandidate.amount ?? null},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H8'})}).catch(()=>{});
+                            // #endregion
+                          }
+                        }
+                      }
                       
-                      // 통합 매칭 퍼센트 계산 (첫 행에서만 사용)
-                      const selectedCandidate = allPONumberCandidates.find(
-                        c => c.poNumber === selectedPONumber || c.salesOrderNumber === selectedPONumber
-                      );
-                      const totalMatchScore = selectedCandidate?.setMatchScore ?? 0;
-                      const matchedItemCount = selectedCandidate?.matchedItemCount ?? 0;
+                      // 발주/수주 번호 일치 여부 계산 (첫 행에서만 사용)
+                      const normalizedSelectedPONumber = selectedPONumber
+                        ? normalizeOrderNumber(selectedPONumber)
+                        : '';
+                      const pairedOrderNumber = selectedPONumber
+                        ? getPairedOrderNumber(selectedPONumber)
+                        : undefined;
+                      const normalizedPairedOrderNumber = pairedOrderNumber
+                        ? normalizeOrderNumber(pairedOrderNumber)
+                        : '';
                       const totalItemCount = statementWithItems.items.length;
+                      const extractedOrderNumbers = statementWithItems.items
+                        .map(item => getOCRItemValue(item, 'po_number') as string)
+                        .filter(Boolean)
+                        .map(value => normalizeOrderNumber(value));
+                      const hasOrderNumberMatch =
+                        !!normalizedSelectedPONumber &&
+                        extractedOrderNumbers.some(
+                          value =>
+                            value === normalizedSelectedPONumber ||
+                            (normalizedPairedOrderNumber && value === normalizedPairedOrderNumber)
+                        );
                       const isFirstRow = rowIndex === 0;
                       
                       return (
@@ -2145,6 +2422,13 @@ export default function StatementConfirmModal({
                                         style={{ fontSize: '11px' }}
                                       >
                                         {po}
+                                        {(() => {
+                                          const paired = getPairedOrderNumber(po);
+                                          // #region agent log
+                                          fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:render:itemPOPair',message:'Item PO paired display',data:{po,pairedNumber:paired || null},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H11'})}).catch(()=>{});
+                                          // #endregion
+                                          return paired ? <span className="text-gray-400 ml-1">({paired})</span> : null;
+                                        })()}
                                       </div>
                                     ))}
                                   </div>
@@ -2165,6 +2449,14 @@ export default function StatementConfirmModal({
                                 >
                                   <XCircle className="w-3 h-3" />
                                 </button>
+                              </div>
+                            ) : showSystemList ? (
+                              <div className="space-y-1">
+                                {systemCandidates.map((candidate, cidx) => (
+                                  <div key={cidx} className="text-[11px] font-medium text-gray-900" style={{ fontSize: '11px' }}>
+                                    {candidate.item_name}
+                                  </div>
+                                ))}
                               </div>
                             ) : systemCandidates.length > 0 ? (
                               <div className="relative">
@@ -2211,16 +2503,46 @@ export default function StatementConfirmModal({
                             )}
                           </td>
                           <td className="p-1 text-right">
-                            <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem?.quantity ?? '-'}</span>
+                            {showSystemList ? (
+                              <div className="space-y-1">
+                                {systemCandidates.map((candidate, cidx) => (
+                                  <div key={cidx} className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>
+                                    {candidate.quantity ?? '-'}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem?.quantity ?? '-'}</span>
+                            )}
                           </td>
                           <td className="p-1 text-right">
-                            <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem ? formatAmount(matchedSystem.unit_price) : '-'}</span>
+                            {showSystemList ? (
+                              <div className="space-y-1">
+                                {systemCandidates.map((candidate, cidx) => (
+                                  <div key={cidx} className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>
+                                    {formatAmount(candidate.unit_price)}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem ? formatAmount(matchedSystem.unit_price) : '-'}</span>
+                            )}
                           </td>
                           <td className="border-r-2 border-gray-300 p-1 text-right">
-                            <span className="text-[11px] font-bold text-gray-900" style={{ fontSize: '11px', fontWeight: 700 }}>{matchedSystem ? formatAmount(matchedSystem.amount) : '-'}</span>
+                            {showSystemList ? (
+                              <div className="space-y-1">
+                                {systemCandidates.map((candidate, cidx) => (
+                                  <div key={cidx} className="text-[11px] font-bold text-gray-900" style={{ fontSize: '11px', fontWeight: 700 }}>
+                                    {formatAmount(candidate.amount)}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-[11px] font-bold text-gray-900" style={{ fontSize: '11px', fontWeight: 700 }}>{matchedSystem ? formatAmount(matchedSystem.amount) : '-'}</span>
+                            )}
                           </td>
                           
-                          {/* 중앙: 통합 매칭 퍼센트 (첫 행에만 rowSpan으로 세로 중앙 표시) */}
+                          {/* 중앙: 발주/수주 번호 일치 상태 (첫 행에만 rowSpan으로 세로 중앙 표시) */}
                           {isFirstRow && (
                             <td 
                               className="border-r-2 border-gray-300 px-2 py-1 text-center bg-blue-50/30 cursor-pointer hover:bg-blue-100/50 transition-colors"
@@ -2230,19 +2552,12 @@ export default function StatementConfirmModal({
                               title="클릭하여 상세 내역 보기"
                             >
                               <div className="flex flex-col items-center justify-center">
-                                <div className="flex items-center gap-1">
-                                  <span className={`text-sm font-bold ${
-                                    totalMatchScore >= 80 ? 'text-green-600' :
-                                    totalMatchScore >= 50 ? 'text-yellow-600' :
-                                    'text-gray-500'
-                                  }`}>
-                                    {totalMatchScore}%
-                                  </span>
-                                  <span className="text-[9px] text-gray-500">
-                                    ({matchedItemCount}/{totalItemCount})
-                                  </span>
-                                </div>
-                                <span className="text-[8px] text-blue-500 underline">
+                                <span className={`text-[11px] font-bold ${
+                                  hasOrderNumberMatch ? 'text-green-600' : 'text-gray-500'
+                                }`}>
+                                  {hasOrderNumberMatch ? '발주/수주 번호 일치' : '발주/수주 번호 불일치'}
+                                </span>
+                                <span className="text-[8px] text-blue-500 underline mt-0.5">
                                   상세보기
                                 </span>
                               </div>
@@ -2310,18 +2625,34 @@ export default function StatementConfirmModal({
                           {/* Case 2: OCR 발주번호 표시 (편집 가능) */}
                           {!isSamePONumber && (
                             <td className="p-1 whitespace-nowrap">
-                              <input
-                                type="text"
-                                value={getOCRItemValue(ocrItem, 'po_number') as string}
-                                onChange={(e) => handleEditOCRItem(ocrItem.id, 'po_number', e.target.value)}
-                                className={`px-1.5 h-5 text-[10px] font-medium bg-white border business-radius focus:outline-none focus:ring-1 focus:ring-gray-400 text-gray-700 ${
-                                  isOCRItemEdited(ocrItem, 'po_number') 
-                                    ? 'border-orange-400 bg-orange-50' 
-                                    : 'border-gray-300'
-                                }`}
-                                style={{ fontSize: '11px', fontWeight: 500 }}
-                                title={isOCRItemEdited(ocrItem, 'po_number') ? `원본: ${ocrItem.extracted_po_number}` : undefined}
-                              />
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="text"
+                                  value={getOCRItemValue(ocrItem, 'po_number') as string}
+                                  onChange={(e) => {
+                                    const newValue = e.target.value;
+                                    lookupPairedOrderNumber(newValue);
+                                    handleEditOCRItem(ocrItem.id, 'po_number', newValue);
+                                  }}
+                                  className={`px-1.5 h-5 text-[10px] font-medium bg-white border business-radius focus:outline-none focus:ring-1 focus:ring-gray-400 text-gray-700 ${
+                                    isOCRItemEdited(ocrItem, 'po_number') 
+                                      ? 'border-orange-400 bg-orange-50' 
+                                      : 'border-gray-300'
+                                  }`}
+                                  style={{ fontSize: '11px', fontWeight: 500 }}
+                                  title={isOCRItemEdited(ocrItem, 'po_number') ? `원본: ${ocrItem.extracted_po_number}` : undefined}
+                                />
+                                {(() => {
+                                  const currentValue = getOCRItemValue(ocrItem, 'po_number') as string;
+                                  const pairedNumber = getPairedOrderNumberWithOverrides(currentValue);
+                                  if (!pairedNumber) return null;
+                                  return (
+                                    <span className="text-gray-400 text-[10px] font-normal" style={{ fontSize: '11px' }}>
+                                      {pairedNumber}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
                             </td>
                           )}
                         </tr>
@@ -2489,6 +2820,47 @@ export default function StatementConfirmModal({
               const totalMatchScore = selectedCandidate?.setMatchScore ?? 0;
               const matchedCount = selectedCandidate?.matchedItemCount ?? 0;
               const totalCount = statementWithItems?.items.length ?? 0;
+              const normalizedSelectedPONumber = selectedPONumber
+                ? normalizeOrderNumber(selectedPONumber)
+                : '';
+              const pairedOrderNumber = selectedPONumber
+                ? getPairedOrderNumber(selectedPONumber)
+                : undefined;
+              const normalizedPairedOrderNumber = pairedOrderNumber
+                ? normalizeOrderNumber(pairedOrderNumber)
+                : '';
+              const extractedOrderNumbers = (statementWithItems?.items ?? [])
+                .map(item => getOCRItemValue(item, 'po_number') as string)
+                .filter(Boolean)
+                .map(value => normalizeOrderNumber(value));
+              const isOrderNumberMatched =
+                !!normalizedSelectedPONumber &&
+                extractedOrderNumbers.some(
+                  value =>
+                    value === normalizedSelectedPONumber ||
+                    (normalizedPairedOrderNumber && value === normalizedPairedOrderNumber)
+                );
+              const matchedNameCount = (statementWithItems?.items ?? []).filter(ocrItem => {
+                const matchedSystem = itemMatches.get(ocrItem.id);
+                if (!matchedSystem) return false;
+                const similarity = calculateItemSimilarity(
+                  (getOCRItemValue(ocrItem, 'item_name') as string) || '',
+                  matchedSystem.item_name,
+                  matchedSystem.specification
+                );
+                return similarity >= 30;
+              }).length;
+              const quantityMatchedCount = (statementWithItems?.items ?? []).filter(ocrItem => {
+                const matchedSystem = itemMatches.get(ocrItem.id);
+                if (!matchedSystem) return false;
+                const ocrQty = getOCRItemValue(ocrItem, 'quantity') as number | string;
+                const normalizedQty = typeof ocrQty === 'number'
+                  ? ocrQty
+                  : (ocrQty !== '' ? Number(ocrQty) : undefined);
+                return isQuantityMatched(normalizedQty, matchedSystem.quantity);
+              }).length;
+              const isItemNameAllMatched = totalCount > 0 && matchedNameCount === totalCount;
+              const isQuantityAllMatched = totalCount > 0 && quantityMatchedCount === totalCount;
               
               return (
                 <>
@@ -2510,6 +2882,28 @@ export default function StatementConfirmModal({
                     </div>
                   </div>
 
+                  {/* 매칭 체크 요약 */}
+                  <div className="grid grid-cols-1 gap-2 rounded-lg border border-gray-200 p-3">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-gray-600">발주/수주번호 매칭</span>
+                      <span className={`font-medium ${isOrderNumberMatched ? 'text-green-600' : 'text-red-600'}`}>
+                        {isOrderNumberMatched ? '✅ 일치' : '❌ 불일치'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-gray-600">품목명 매칭</span>
+                      <span className={`font-medium ${isItemNameAllMatched ? 'text-green-600' : 'text-red-600'}`}>
+                        {isItemNameAllMatched ? `✅ 모두 일치 (${matchedNameCount}/${totalCount})` : `❌ 불일치 (${matchedNameCount}/${totalCount})`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-gray-600">수량 매칭</span>
+                      <span className={`font-medium ${isQuantityAllMatched ? 'text-green-600' : 'text-red-600'}`}>
+                        {isQuantityAllMatched ? `✅ 모두 일치 (${quantityMatchedCount}/${totalCount})` : `❌ 불일치 (${quantityMatchedCount}/${totalCount})`}
+                      </span>
+                    </div>
+                  </div>
+
                   {/* 품목별 매칭 상세 */}
                   <div className="space-y-2">
                     <p className="text-[11px] font-semibold text-gray-600">품목별 매칭 상세:</p>
@@ -2518,7 +2912,7 @@ export default function StatementConfirmModal({
                         const matchedSystem = itemMatches.get(ocrItem.id);
                         const similarity = matchedSystem 
                           ? calculateItemSimilarity(
-                              ocrItem.extracted_item_name || '', 
+                              (getOCRItemValue(ocrItem, 'item_name') as string) || '', 
                               matchedSystem.item_name, 
                               matchedSystem.specification
                             )
@@ -2526,7 +2920,10 @@ export default function StatementConfirmModal({
                         const isMatched = similarity >= 30;
                         
                         // 수량 일치 여부
-                        const ocrQty = ocrItem.extracted_quantity;
+                        const ocrQtyRaw = getOCRItemValue(ocrItem, 'quantity') as number | string;
+                        const ocrQty = typeof ocrQtyRaw === 'number'
+                          ? ocrQtyRaw
+                          : (ocrQtyRaw !== '' ? Number(ocrQtyRaw) : undefined);
                         const sysQty = matchedSystem?.quantity;
                         const qtyMatched = isQuantityMatched(ocrQty, sysQty);
                         const qtyLevel = getQuantityMatchLevel(ocrQty, sysQty);
@@ -2632,7 +3029,21 @@ export default function StatementConfirmModal({
             <div className="sticky top-0 bg-gray-50 px-3 py-2 border-b border-gray-100 rounded-t-lg">
               <span className="text-[10px] font-semibold text-gray-600">발주번호 선택</span>
             </div>
-            {allPONumberCandidates.map((c, idx) => {
+            {(() => {
+              const orderedCandidates = [...allPONumberCandidates];
+              const recommendedPO = setMatchResult?.bestMatch?.purchase_order_number;
+              const recommendedSO = setMatchResult?.bestMatch?.sales_order_number;
+              if (recommendedPO || recommendedSO) {
+                const recommendedIndex = orderedCandidates.findIndex(
+                  c => (recommendedPO && c.poNumber === recommendedPO) || (recommendedSO && c.salesOrderNumber === recommendedSO)
+                );
+                if (recommendedIndex > 0) {
+                  const [recommended] = orderedCandidates.splice(recommendedIndex, 1);
+                  orderedCandidates.unshift(recommended);
+                }
+              }
+              return orderedCandidates;
+            })().map((c, idx) => {
               const displayNumber = c.poNumber || c.salesOrderNumber || '';
               const isSelected = selectedPONumber === displayNumber;
               const isBestMatch = setMatchResult?.bestMatch?.purchase_order_number === c.poNumber ||
