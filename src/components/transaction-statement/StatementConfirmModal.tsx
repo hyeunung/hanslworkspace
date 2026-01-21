@@ -16,7 +16,8 @@ import {
   ChevronDown,
   Check,
   Wand2,
-  ExternalLink
+  ExternalLink,
+  Search
 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -206,6 +207,12 @@ export default function StatementConfirmModal({
   
   // 통합 매칭 상세 팝업 (발주번호 전체 매칭 내역)
   const [isIntegratedMatchDetailOpen, setIsIntegratedMatchDetailOpen] = useState(false);
+  
+  // 발주번호 수동 검색 모달 상태
+  const [isManualSearchOpen, setIsManualSearchOpen] = useState(false);
+  const [manualSearchInput, setManualSearchInput] = useState('');
+  const [manualSearchLoading, setManualSearchLoading] = useState(false);
+  const [manualSearchError, setManualSearchError] = useState<string | null>(null);
   
   // 세트 매칭 결과 (Case 1용)
   const [setMatchResult, setSetMatchResult] = useState<{
@@ -721,6 +728,26 @@ export default function StatementConfirmModal({
     return result;
   }, [statementWithItems, setMatchResult]);
 
+  // selectedPONumber가 후보 목록에 없으면 첫 번째 후보로 자동 변경
+  useEffect(() => {
+    if (!allPONumberCandidates.length || !isSamePONumber) return;
+    
+    // 현재 선택된 발주번호가 후보 목록에 있는지 확인
+    const isInCandidates = allPONumberCandidates.some(
+      c => c.poNumber === selectedPONumber || c.salesOrderNumber === selectedPONumber
+    );
+    
+    // 후보 목록에 없으면 첫 번째 후보로 자동 변경
+    if (!isInCandidates && allPONumberCandidates[0]) {
+      const firstCandidate = allPONumberCandidates[0];
+      const newPO = firstCandidate.poNumber || firstCandidate.salesOrderNumber || '';
+      if (newPO) {
+        console.log(`[자동 수정] OCR 발주번호 "${selectedPONumber}"가 DB에 없음 → 추천 발주 "${newPO}"로 변경`);
+        setSelectedPONumber(newPO);
+      }
+    }
+  }, [allPONumberCandidates, selectedPONumber, isSamePONumber]);
+
   // 특정 발주번호에 해당하는 시스템 품목들
   const getSystemItemsForPO = useCallback((poNumber: string): SystemPurchaseItem[] => {
     if (!statementWithItems || !poNumber) return [];
@@ -1059,6 +1086,100 @@ export default function StatementConfirmModal({
       });
       
       setItemMatches(newMatches);
+    }
+  };
+
+  // 발주/수주번호 수동 검색
+  const handleManualPOSearch = async () => {
+    if (!manualSearchInput.trim()) {
+      setManualSearchError('발주번호 또는 수주번호를 입력하세요');
+      return;
+    }
+    
+    setManualSearchLoading(true);
+    setManualSearchError(null);
+    
+    try {
+      const normalized = normalizeOrderNumber(manualSearchInput.trim());
+      
+      // DB에서 발주 검색
+      const { data: purchase, error } = await supabase
+        .from('purchase_requests')
+        .select(`
+          id,
+          purchase_order_number,
+          sales_order_number,
+          vendor:vendors(vendor_name),
+          items:purchase_request_items(
+            id,
+            item_name,
+            specification,
+            quantity,
+            unit_price_value,
+            amount_value
+          )
+        `)
+        .or(`purchase_order_number.eq.${normalized},sales_order_number.eq.${normalized}`)
+        .single();
+      
+      if (error || !purchase) {
+        setManualSearchError(`"${manualSearchInput}" 발주를 찾을 수 없습니다`);
+        setManualSearchLoading(false);
+        return;
+      }
+      
+      // 검색 결과를 선택하고 모달 닫기
+      const poNumber = purchase.purchase_order_number || purchase.sales_order_number || '';
+      
+      // 발주 품목들을 시스템 품목으로 변환
+      const systemItems: SystemPurchaseItem[] = (purchase.items || []).map((item: any) => ({
+        purchase_id: purchase.id,
+        item_id: item.id,
+        purchase_order_number: purchase.purchase_order_number || '',
+        sales_order_number: purchase.sales_order_number,
+        item_name: item.item_name || '',
+        specification: item.specification,
+        quantity: item.quantity,
+        unit_price: item.unit_price_value,
+        amount: item.amount_value,
+        vendor_name: purchase.vendor?.vendor_name
+      }));
+      
+      // 선택된 발주번호 설정
+      setSelectedPONumber(poNumber);
+      
+      // 자동 매칭 수행
+      if (statementWithItems) {
+        const newMatches = new Map<string, SystemPurchaseItem | null>();
+        
+        statementWithItems.items.forEach(ocrItem => {
+          let bestMatch: SystemPurchaseItem | null = null;
+          let bestScore = 0;
+          
+          systemItems.forEach(sysItem => {
+            const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', sysItem.item_name, sysItem.specification);
+            if (score > bestScore && score >= 30) {
+              bestScore = score;
+              bestMatch = sysItem;
+            }
+          });
+          
+          newMatches.set(ocrItem.id, bestMatch);
+        });
+        
+        setItemMatches(newMatches);
+      }
+      
+      // 성공 시 모달 닫기
+      setIsManualSearchOpen(false);
+      setManualSearchInput('');
+      toast.success(`${poNumber} 발주가 적용되었습니다`);
+      
+    } catch (err) {
+      console.error('수동 검색 오류:', err);
+      setManualSearchError('검색 중 오류가 발생했습니다');
+    } finally {
+      setManualSearchLoading(false);
     }
   };
 
@@ -1487,7 +1608,7 @@ export default function StatementConfirmModal({
             }
           }}
         >
-          <DialogHeader className="border-b border-gray-100 pb-3">
+          <DialogHeader className="border-b border-gray-100 pb-3 px-4">
             <DialogTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2 modal-title">
                 <CheckCircle className="w-4 h-4 text-hansl-600" />
@@ -1522,12 +1643,26 @@ export default function StatementConfirmModal({
               <span className="ml-3 modal-subtitle">로딩 중...</span>
             </div>
           ) : statementWithItems ? (
-            <div className="flex-1 overflow-hidden flex flex-col py-3">
+            <div className="flex-1 overflow-hidden flex flex-col py-3 px-4">
               {/* 요약 정보 */}
               <div className="flex items-center gap-6 p-3 bg-gray-50 business-radius-card mb-4">
                 <div>
                   <p className="modal-label">거래처</p>
-                  <p className="modal-value">{statementWithItems.vendor_name || '-'}</p>
+                  <p className="modal-value">
+                    {(() => {
+                      // 1순위: DB에 저장된 검증된 거래처명
+                      if (statementWithItems.vendor_name) return statementWithItems.vendor_name;
+                      // 2순위: 매칭된 발주의 거래처명 (발주번호로 역추적)
+                      const matchedVendor = allPONumberCandidates.find(c => 
+                        c.poNumber === selectedPONumber || c.salesOrderNumber === selectedPONumber
+                      )?.vendorName;
+                      if (matchedVendor) return <>{matchedVendor}<span className="ml-1 text-[9px] text-blue-500">(발주 연동)</span></>;
+                      // 3순위: OCR 추출값 (미검증)
+                      const ocrVendor = (statementWithItems as any).extracted_data?.ocr_vendor_name;
+                      if (ocrVendor) return <>{ocrVendor}<span className="ml-1 text-[9px] text-orange-500">(미검증)</span></>;
+                      return '-';
+                    })()}
+                  </p>
                 </div>
                 <div>
                   <p className="modal-label">거래일</p>
@@ -1559,27 +1694,43 @@ export default function StatementConfirmModal({
                       <th colSpan={isSamePONumber ? 4 : 5} className="border-r-2 border-gray-300 p-2 text-left w-[45%]">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="modal-section-title text-gray-700">시스템 발주품목</span>
-                          {/* 세트 매칭 신뢰도 표시 */}
-                          {isSamePONumber && setMatchResult?.bestMatch && (
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${
-                              setMatchResult.bestMatch.confidence === 'high' 
-                                ? 'bg-green-100 text-green-700' 
-                                : setMatchResult.bestMatch.confidence === 'medium'
-                                ? 'bg-yellow-100 text-yellow-700'
-                                : 'bg-red-100 text-red-700'
-                            }`}>
-                              세트 매칭 {setMatchResult.bestMatch.matchScore}%
-                              ({setMatchResult.bestMatch.matchedItemCount}/{setMatchResult.bestMatch.totalItemCount})
-                            </span>
-                          )}
                           {isSamePONumber && allPONumberCandidates.length > 0 && (
                             <div className="relative flex items-center gap-1">
                               <button
                                 onClick={(e) => toggleDropdown('global-po', e)}
                                 className="inline-flex items-center gap-1 px-1.5 h-5 text-[10px] font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700"
                               >
-                                {selectedPONumber || '발주번호 선택'}
+                                {(() => {
+                                  if (!selectedPONumber) return '발주번호 선택';
+                                  const candidate = allPONumberCandidates.find(c => c.poNumber === selectedPONumber || c.salesOrderNumber === selectedPONumber);
+                                  if (candidate?.poNumber && candidate?.salesOrderNumber) {
+                                    return <>{candidate.poNumber} <span className="text-gray-400">({candidate.salesOrderNumber})</span></>;
+                                  }
+                                  // 선택된 발주번호가 allPONumberCandidates에 없으면 첫 번째 후보 표시
+                                  if (allPONumberCandidates.length > 0 && !candidate) {
+                                    const firstCandidate = allPONumberCandidates[0];
+                                    return <>{firstCandidate.poNumber || firstCandidate.salesOrderNumber} <span className="text-orange-500">(추천)</span></>;
+                                  }
+                                  return selectedPONumber;
+                                })()}
                                 <ChevronDown className="w-3 h-3" />
+                              </button>
+                              {/* OCR 추출 발주번호와 다르면 경고 */}
+                              {commonPONumber && selectedPONumber && commonPONumber !== selectedPONumber && (
+                                <span className="text-[9px] text-orange-500" title="OCR 추출 발주번호와 다른 발주가 매칭됨">
+                                  ⚠️
+                                </span>
+                              )}
+                              {/* 수동 검색 버튼 */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setIsManualSearchOpen(true);
+                                }}
+                                className="inline-flex items-center gap-0.5 px-1 h-5 text-[9px] font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded"
+                                title="발주/수주번호 직접 검색"
+                              >
+                                <Search className="w-3 h-3" />
                               </button>
                               {/* 발주 상세보기 버튼 */}
                               {selectedPONumber && (() => {
@@ -1614,14 +1765,76 @@ export default function StatementConfirmModal({
                       
                       {/* 우측: OCR 추출 품목 헤더 */}
                       <th colSpan={isSamePONumber ? 4 : 5} className="p-2 text-left w-[45%]">
-                        <span className="modal-section-title text-gray-700">
-                          OCR 추출 품목
+                        <div className="flex items-center gap-2">
+                          <span className="modal-section-title text-gray-700">
+                            OCR 추출 품목
+                          </span>
                           {isSamePONumber && commonPONumber && (
-                            <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-medium rounded">
-                              {commonPONumber}
-                            </span>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                value={(() => {
+                                  // 편집된 값이 있으면 사용, 없으면 원본 사용
+                                  const firstItem = statementWithItems?.items[0];
+                                  if (firstItem) {
+                                    return getOCRItemValue(firstItem, 'po_number') as string;
+                                  }
+                                  return commonPONumber;
+                                })()}
+                                onChange={(e) => {
+                                  // OCR 추출된 발주번호 수정 시 전체 품목에 적용
+                                  const newValue = e.target.value;
+                                  if (statementWithItems) {
+                                    statementWithItems.items.forEach(item => {
+                                      handleEditOCRItem(item.id, 'po_number', newValue);
+                                    });
+                                  }
+                                }}
+                                className="px-1.5 h-5 bg-white border border-gray-300 text-gray-700 text-[10px] font-medium business-radius focus:outline-none focus:ring-1 focus:ring-gray-400"
+                                style={{ fontSize: '11px', fontWeight: 500 }}
+                                title="OCR 추출 발주번호 (수정 가능)"
+                              />
+                              {(() => {
+                                // 현재 입력된 값 가져오기
+                                const firstItem = statementWithItems?.items[0];
+                                const currentValue = firstItem ? (getOCRItemValue(firstItem, 'po_number') as string) : commonPONumber;
+                                const normalizedValue = currentValue?.toUpperCase() || '';
+                                
+                                // 후보에서 매칭되는 것 찾기
+                                const candidate = allPONumberCandidates.find(c => 
+                                  c.poNumber === currentValue || c.salesOrderNumber === currentValue
+                                );
+                                
+                                if (candidate?.poNumber && candidate?.salesOrderNumber) {
+                                  // 발주번호(F)면 수주번호 표시, 수주번호(HS)면 발주번호 표시
+                                  if (normalizedValue.startsWith('F')) {
+                                    return <span className="text-gray-400 text-[10px] font-normal" style={{ fontSize: '11px' }}>({candidate.salesOrderNumber})</span>;
+                                  } else if (normalizedValue.startsWith('HS')) {
+                                    return <span className="text-gray-400 text-[10px] font-normal" style={{ fontSize: '11px' }}>({candidate.poNumber})</span>;
+                                  }
+                                }
+                                return null;
+                              })()}
+                            </div>
                           )}
-                        </span>
+                          {isSamePONumber && !commonPONumber && (
+                            <input
+                              type="text"
+                              placeholder="발주번호 입력"
+                              onChange={(e) => {
+                                const newValue = e.target.value;
+                                if (statementWithItems) {
+                                  statementWithItems.items.forEach(item => {
+                                    handleEditOCRItem(item.id, 'po_number', newValue);
+                                  });
+                                }
+                              }}
+                              className="px-1.5 h-5 bg-white border border-gray-300 text-gray-700 text-[10px] font-medium business-radius focus:outline-none focus:ring-1 focus:ring-gray-400"
+                              style={{ fontSize: '11px', fontWeight: 500 }}
+                              title="발주번호 직접 입력"
+                            />
+                          )}
+                        </div>
                       </th>
                     </tr>
                     <tr className="modal-label">
@@ -1772,24 +1985,26 @@ export default function StatementConfirmModal({
                           {/* 중앙: 통합 매칭 퍼센트 (첫 행에만 rowSpan으로 세로 중앙 표시) */}
                           {isFirstRow && (
                             <td 
-                              className="border-r-2 border-gray-300 p-2 text-center bg-blue-50/30 cursor-pointer hover:bg-blue-100/50 transition-colors"
+                              className="border-r-2 border-gray-300 px-2 py-1 text-center bg-blue-50/30 cursor-pointer hover:bg-blue-100/50 transition-colors"
                               rowSpan={totalItemCount}
                               style={{ verticalAlign: 'middle' }}
                               onClick={() => setIsIntegratedMatchDetailOpen(true)}
                               title="클릭하여 상세 내역 보기"
                             >
-                              <div className="flex flex-col items-center justify-center gap-1">
-                                <span className={`text-lg font-bold ${
-                                  totalMatchScore >= 80 ? 'text-green-600' :
-                                  totalMatchScore >= 50 ? 'text-yellow-600' :
-                                  'text-gray-500'
-                                }`}>
-                                  {totalMatchScore}%
-                                </span>
-                                <span className="text-[10px] text-gray-500">
-                                  {matchedItemCount}/{totalItemCount}개 매칭
-                                </span>
-                                <span className="text-[9px] text-blue-500 underline">
+                              <div className="flex flex-col items-center justify-center">
+                                <div className="flex items-center gap-1">
+                                  <span className={`text-sm font-bold ${
+                                    totalMatchScore >= 80 ? 'text-green-600' :
+                                    totalMatchScore >= 50 ? 'text-yellow-600' :
+                                    'text-gray-500'
+                                  }`}>
+                                    {totalMatchScore}%
+                                  </span>
+                                  <span className="text-[9px] text-gray-500">
+                                    ({matchedItemCount}/{totalItemCount})
+                                  </span>
+                                </div>
+                                <span className="text-[8px] text-blue-500 underline">
                                   상세보기
                                 </span>
                               </div>
@@ -1811,7 +2026,7 @@ export default function StatementConfirmModal({
                               title={isOCRItemEdited(ocrItem, 'item_name') ? `원본: ${ocrItem.extracted_item_name}` : undefined}
                             />
                           </td>
-                          <td className="p-1">
+                          <td className="p-1 text-right w-16">
                             <input
                               type="number"
                               value={getOCRItemValue(ocrItem, 'quantity') as number}
@@ -1825,7 +2040,7 @@ export default function StatementConfirmModal({
                               title={isOCRItemEdited(ocrItem, 'quantity') ? `원본: ${ocrItem.extracted_quantity}` : undefined}
                             />
                           </td>
-                          <td className="p-1">
+                          <td className="p-1 text-right w-20">
                             <input
                               type="number"
                               value={getOCRItemValue(ocrItem, 'unit_price') as number}
@@ -1839,7 +2054,7 @@ export default function StatementConfirmModal({
                               title={isOCRItemEdited(ocrItem, 'unit_price') ? `원본: ${ocrItem.extracted_unit_price}` : undefined}
                             />
                           </td>
-                          <td className="p-1">
+                          <td className="p-1 text-right w-24">
                             <input
                               type="number"
                               value={getOCRItemValue(ocrItem, 'amount') as number}
@@ -1861,10 +2076,10 @@ export default function StatementConfirmModal({
                                 type="text"
                                 value={getOCRItemValue(ocrItem, 'po_number') as string}
                                 onChange={(e) => handleEditOCRItem(ocrItem.id, 'po_number', e.target.value)}
-                                className={`w-full px-1 h-5 !text-[10px] !font-medium text-gray-900 border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                                className={`px-1.5 h-5 text-[10px] font-medium bg-white border business-radius focus:outline-none focus:ring-1 focus:ring-gray-400 text-gray-700 ${
                                   isOCRItemEdited(ocrItem, 'po_number') 
                                     ? 'border-orange-400 bg-orange-50' 
-                                    : 'border-gray-200 bg-white'
+                                    : 'border-gray-300'
                                 }`}
                                 style={{ fontSize: '11px', fontWeight: 500 }}
                                 title={isOCRItemEdited(ocrItem, 'po_number') ? `원본: ${ocrItem.extracted_po_number}` : undefined}
@@ -1915,7 +2130,7 @@ export default function StatementConfirmModal({
             </div>
           )}
 
-          <DialogFooter className="border-t border-gray-100 pt-3 gap-2">
+          <DialogFooter className="border-t border-gray-100 pt-3 px-4 gap-2">
             <Button
               variant="outline"
               onClick={handleReject}
@@ -2150,6 +2365,69 @@ export default function StatementConfirmModal({
         </DialogContent>
       </Dialog>
 
+      {/* 발주/수주번호 수동 검색 모달 */}
+      <Dialog open={isManualSearchOpen} onOpenChange={setIsManualSearchOpen}>
+        <DialogContent className="max-w-[320px] business-radius-modal p-0">
+          <DialogHeader className="px-4 pt-3 pb-2 border-b border-gray-100">
+            <DialogTitle className="modal-title flex items-center gap-1.5">
+              <Search className="w-3.5 h-3.5 text-hansl-600" />
+              발주/수주번호 검색
+            </DialogTitle>
+          </DialogHeader>
+          <div className="px-4 py-3">
+            <p className="modal-label mb-2">
+              발주번호(F...) 또는 수주번호(HS...)를 입력하세요
+            </p>
+            <input
+              type="text"
+              value={manualSearchInput}
+              onChange={(e) => setManualSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleManualPOSearch();
+              }}
+              placeholder="예: F20250723_008 또는 HS250723-08"
+              className="w-full h-7 px-2 text-[11px] font-medium text-gray-800 bg-white border border-gray-200 business-radius focus:outline-none focus:ring-1 focus:ring-hansl-400"
+              autoFocus
+            />
+            {manualSearchError && (
+              <p className="mt-1.5 text-[10px] text-red-500">{manualSearchError}</p>
+            )}
+          </div>
+          <DialogFooter className="px-4 py-2.5 border-t border-gray-100 gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => {
+                setIsManualSearchOpen(false);
+                setManualSearchInput('');
+                setManualSearchError(null);
+              }}
+              className="button-base h-7 text-[10px]"
+            >
+              취소
+            </Button>
+            <Button 
+              size="sm" 
+              onClick={handleManualPOSearch}
+              disabled={manualSearchLoading}
+              className="button-base h-7 text-[10px] bg-hansl-600 hover:bg-hansl-700 text-white"
+            >
+              {manualSearchLoading ? (
+                <>
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  검색 중...
+                </>
+              ) : (
+                <>
+                  <Search className="w-3 h-3 mr-1" />
+                  검색
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* 이미지 뷰어 */}
       <StatementImageViewer
         isOpen={isImageViewerOpen}
@@ -2199,7 +2477,10 @@ export default function StatementConfirmModal({
                 >
                   <div className="flex items-center justify-between">
                     <p className="text-[12px] font-medium text-gray-900">
-                      {displayNumber}
+                      {c.poNumber || c.salesOrderNumber}
+                      {c.poNumber && c.salesOrderNumber && (
+                        <span className="text-gray-500 font-normal"> ({c.salesOrderNumber})</span>
+                      )}
                     </p>
                     {c.setMatchScore !== undefined && (
                       <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${

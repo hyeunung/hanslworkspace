@@ -139,12 +139,19 @@ class VendorService {
   // 업체 삭제
   async deleteVendor(id: number): Promise<{ success: boolean; error?: string }> {
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'vendorService.ts:141',message:'deleteVendor start',data:{vendorId:id},timestamp:Date.now(),sessionId:'debug-session',runId:'pre',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       // 발주 요청과 연결된 업체인지 확인
       const { data: purchaseRequests } = await this.supabase
         .from('purchase_requests')
         .select('id')
         .eq('vendor_id', id)
         .limit(1);
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'vendorService.ts:151',message:'purchaseRequests checked',data:{vendorId:id,hasPurchaseRequests:(purchaseRequests?.length || 0) > 0,count:purchaseRequests?.length || 0},timestamp:Date.now(),sessionId:'debug-session',runId:'pre',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
 
       if (purchaseRequests && purchaseRequests.length > 0) {
         // 발주 요청과 연결된 업체는 삭제 불가
@@ -153,17 +160,27 @@ class VendorService {
           error: '발주 요청과 연결된 업체는 삭제할 수 없습니다.' 
         };
       } else {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'vendorService.ts:160',message:'deleting vendor',data:{vendorId:id},timestamp:Date.now(),sessionId:'debug-session',runId:'pre',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         // 연결된 데이터가 없으면 완전 삭제
         const { error } = await this.supabase
           .from('vendors')
           .delete()
           .eq('id', id);
 
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'vendorService.ts:169',message:'delete result',data:{vendorId:id,hasError:!!error,errorMessage:error?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'pre',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+
         if (error) throw error;
 
         return { success: true };
       }
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'vendorService.ts:178',message:'deleteVendor error',data:{vendorId:id,errorMessage:error instanceof Error ? error.message : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'pre',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       logger.error('업체 삭제 실패', error);
       return { 
         success: false, 

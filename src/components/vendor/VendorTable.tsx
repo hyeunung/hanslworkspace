@@ -45,13 +45,22 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
   // is_active 컄럼이 없어서 토글 기능 제거
 
   const handleDelete = async (vendor: Vendor) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VendorTable.tsx:49',message:'handleDelete clicked',data:{vendorId:vendor.id},timestamp:Date.now(),sessionId:'debug-session',runId:'pre',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     if (!confirm(`정말로 '${vendor.vendor_name}' 업체를 삭제하시겠습니까?`)) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VendorTable.tsx:52',message:'delete confirm canceled',data:{vendorId:vendor.id},timestamp:Date.now(),sessionId:'debug-session',runId:'pre',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       return
     }
 
     setLoadingId(vendor.id)
     try {
       const result = await vendorService.deleteVendor(vendor.id)
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VendorTable.tsx:61',message:'deleteVendor result',data:{vendorId:vendor.id,success:result.success,error:result.error},timestamp:Date.now(),sessionId:'debug-session',runId:'pre',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       
       if (result.success) {
         toast.success('업체가 삭제되었습니다.')
@@ -60,6 +69,9 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
         toast.error(result.error || '삭제에 실패했습니다.')
       }
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VendorTable.tsx:72',message:'handleDelete error',data:{vendorId:vendor.id,errorMessage:error instanceof Error ? error.message : 'unknown'},timestamp:Date.now(),sessionId:'debug-session',runId:'pre',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       toast.error('삭제 중 오류가 발생했습니다.')
     } finally {
       setLoadingId(null)

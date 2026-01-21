@@ -127,6 +127,7 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
                       <Input 
                         {...field} 
                         placeholder="업체명을 입력하세요"
+                        className="business-radius-input button-base border border-gray-300 bg-white text-gray-700"
                         disabled={isReadOnly}
                       />
                     </FormControl>
@@ -145,6 +146,7 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
                       <Input 
                         {...field} 
                         placeholder="02-1234-5678"
+                        className="business-radius-input button-base border border-gray-300 bg-white text-gray-700"
                         disabled={isReadOnly}
                       />
                     </FormControl>
@@ -163,6 +165,7 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
                       <Input 
                         {...field} 
                         placeholder="02-1234-5679"
+                        className="business-radius-input button-base border border-gray-300 bg-white text-gray-700"
                         disabled={isReadOnly}
                       />
                     </FormControl>
@@ -181,6 +184,7 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
                       <Input 
                         {...field} 
                         placeholder="월말결제, 현금결제 등"
+                        className="business-radius-input button-base border border-gray-300 bg-white text-gray-700"
                         disabled={isReadOnly}
                       />
                     </FormControl>
@@ -200,7 +204,7 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
                     <Textarea 
                       {...field} 
                       placeholder="주소를 입력하세요"
-                      className="min-h-[80px]"
+                      className="business-radius-input border border-gray-300 bg-white text-gray-700 card-description min-h-[64px]"
                       disabled={isReadOnly}
                     />
                   </FormControl>
@@ -219,7 +223,7 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
                     <Textarea 
                       {...field} 
                       placeholder="메모 사항을 입력하세요"
-                      className="min-h-[60px]"
+                      className="business-radius-input border border-gray-300 bg-white text-gray-700 card-description min-h-[48px]"
                       disabled={isReadOnly}
                     />
                   </FormControl>
@@ -248,11 +252,20 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
             )}
 
             <DialogFooter className="gap-2">
-              <Button type="button" variant="outline" onClick={onClose}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                className="button-base business-radius-button border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+              >
                 {mode === 'view' ? '닫기' : '취소'}
               </Button>
               {!isReadOnly && (
-                <Button type="submit" disabled={isSubmitting}>
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="button-base business-radius-button bg-blue-500 text-white hover:bg-blue-600"
+                >
                   {isSubmitting 
                     ? (mode === 'create' ? '등록 중...' : '수정 중...')
                     : (mode === 'create' ? '등록' : '수정')

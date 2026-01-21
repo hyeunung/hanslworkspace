@@ -36,6 +36,7 @@ interface ExtractedItem {
 interface ExtractionResult {
   statement_date?: string;
   vendor_name?: string;
+  vendor_name_english?: string; // 한글 회사명의 영문 표기 추정
   total_amount?: number;
   tax_amount?: number;
   grand_total?: number;
@@ -98,7 +99,7 @@ serve(async (req) => {
     let validatedVendorName: string | undefined = undefined
     let vendorMatchSource: 'gpt_extract' | 'text_scan' | 'not_found' = 'not_found'
     
-    // 6-1. GPT가 추출한 거래처명으로 먼저 시도
+    // 6-1. GPT가 추출한 거래처명으로 먼저 시도 (한글명)
     if (extractionResult.vendor_name) {
       const vendorResult = await validateAndMatchVendor(
         supabase, 
@@ -106,8 +107,22 @@ serve(async (req) => {
       )
       
       if (vendorResult.matched) {
-        console.log(`✅ 거래처 매칭 성공 (GPT 추출): "${extractionResult.vendor_name}" → "${vendorResult.vendor_name}" (${vendorResult.similarity}%)`)
+        console.log(`✅ 거래처 매칭 성공 (GPT 추출 한글): "${extractionResult.vendor_name}" → "${vendorResult.vendor_name}" (${vendorResult.similarity}%)`)
         validatedVendorName = vendorResult.vendor_name
+        vendorMatchSource = 'gpt_extract'
+      }
+    }
+    
+    // 6-1-2. 한글명 매칭 실패 시 영문명으로 재시도
+    if (!validatedVendorName && extractionResult.vendor_name_english) {
+      const vendorResultEng = await validateAndMatchVendor(
+        supabase, 
+        extractionResult.vendor_name_english
+      )
+      
+      if (vendorResultEng.matched) {
+        console.log(`✅ 거래처 매칭 성공 (GPT 추출 영문): "${extractionResult.vendor_name_english}" → "${vendorResultEng.vendor_name}" (${vendorResultEng.similarity}%)`)
+        validatedVendorName = vendorResultEng.vendor_name
         vendorMatchSource = 'gpt_extract'
       }
     }
@@ -421,7 +436,7 @@ function calculateVendorSimilarity(vendor1: string, vendor2: string): number {
     return 90
   }
 
-  // 영어 ↔ 한글 음역 매핑
+  // 영어 ↔ 한글 음역 매핑 (기본적인 것만, AI가 영문명 추정하므로 최소화)
   const translitMap: Record<string, string[]> = {
     'yg': ['와이지', 'yg'],
     '와이지': ['yg', '와이지'],
@@ -642,11 +657,17 @@ async function extractWithGPT4o(
 
 추출 대상:
 1. statement_date: 거래명세서 날짜 (YYYY-MM-DD 형식, "년/월/일" 또는 "2025년 12월 9일" 등을 변환)
-2. vendor_name: **공급자(판매자)** 상호/회사명 - 도장/직인/대표자명이 있는 쪽!
-3. total_amount: 공급가액 합계 (숫자만)
-4. tax_amount: 세액 합계 (숫자만)
-5. grand_total: 총액/합계 (숫자만)
-6. items: 품목 배열
+2. vendor_name: **공급자(판매자)** 상호/회사명 - 도장/직인/대표자명이 있는 쪽! 정확히 읽어주세요.
+3. vendor_name_english: 한글 회사명의 영문 표기 추정 (예: "엔에스테크" → "NS TECH", "삼성전자" → "Samsung Electronics")
+4. total_amount: 공급가액 합계 (숫자만)
+5. tax_amount: 세액 합계 (숫자만)
+6. grand_total: 총액/합계 (숫자만)
+7. items: 품목 배열
+
+⚠️ **한글 회사명 정확히 읽기 - 매우 중요:**
+- 비슷하게 생긴 글자 주의: 엔/플, 에/애, 스/즈, 테크/텍 등
+- 글자 하나하나 정확히 확인하고 읽어주세요
+- 확실하지 않으면 이미지를 다시 자세히 봐주세요
 
 각 품목(item)에서 추출:
 - line_number: 순번
@@ -672,7 +693,13 @@ async function extractWithGPT4o(
 금액이 비어있거나 "-" 또는 "W" 만 있으면 0으로 처리하세요.
 확신도(confidence)는 글씨가 불명확하거나 추측이 필요한 경우 "low", 보통이면 "med", 명확하면 "high"로 표시하세요.
 
-${visionText ? `참고로 OCR로 읽은 텍스트:\n${visionText.substring(0, 3000)}` : ''}
+${visionText ? `
+⚠️ **OCR 텍스트 우선 참조 - 거래처명 추출 시 매우 중요:**
+아래는 Google Vision OCR이 읽은 텍스트입니다. 이미지와 다르게 보이면 **OCR 텍스트를 신뢰**하세요.
+특히 거래처명(vendor_name)은 OCR 텍스트에서 먼저 찾아주세요.
+---
+${visionText.substring(0, 3000)}
+---` : ''}
 
 JSON 형식으로만 응답하세요.`
 
