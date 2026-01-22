@@ -119,8 +119,6 @@ function PurchaseDetailModal({
 
   // 거래명세서 관련 상태
   const [linkedStatements, setLinkedStatements] = useState<TransactionStatement[]>([])
-  const [isStatementViewerOpen, setIsStatementViewerOpen] = useState(false)
-  const [selectedStatementImage, setSelectedStatementImage] = useState<string>('')
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
@@ -1231,10 +1229,17 @@ function PurchaseDetailModal({
     }
   }
 
-  // 거래명세서 이미지 보기
+  // 거래명세서 이미지 보기 (새 창에서 열기)
   const handleViewStatementImage = (imageUrl: string) => {
-    setSelectedStatementImage(imageUrl)
-    setIsStatementViewerOpen(true)
+    const width = 1000
+    const height = 800
+    const left = (window.screen.width - width) / 2
+    const top = (window.screen.height - height) / 2
+    window.open(
+      imageUrl, 
+      '_blank', 
+      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
+    )
   }
 
   // 칼럼 너비 계산 (텍스트 길이 기반)
@@ -5784,31 +5789,6 @@ function PurchaseDetailModal({
         </div>
       </DialogContent>
       
-    </Dialog>
-
-    {/* 거래명세서 이미지 뷰어 */}
-    <Dialog open={isStatementViewerOpen} onOpenChange={setIsStatementViewerOpen}>
-      <DialogContent className="max-w-[90vw] max-h-[90vh] p-0 bg-black/90 border-none">
-        <div className="absolute top-4 right-4 z-50">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setIsStatementViewerOpen(false)}
-            className="text-white hover:bg-white/20"
-          >
-            <X className="w-5 h-5" />
-          </Button>
-        </div>
-        <div className="flex items-center justify-center w-full h-[80vh] overflow-auto p-4">
-          {selectedStatementImage && (
-            <img
-              src={selectedStatementImage}
-              alt="거래명세서"
-              className="max-w-full max-h-full object-contain"
-            />
-          )}
-        </div>
-      </DialogContent>
     </Dialog>
     </>
   )

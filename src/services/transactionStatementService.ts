@@ -64,7 +64,7 @@ class TransactionStatementService {
       const { data: { user } } = await this.supabase.auth.getUser();
 
       // DB에 레코드 생성
-      console.log('[Upload] DB 레코드 생성 시도:', { imageUrl, fileName: file.name, userId: user?.id });
+      console.log('[Upload] DB 레코드 생성 시도:', { imageUrl, fileName: file.name, userId: user?.id, uploaderName });
       
       const { data: statement, error: dbError } = await this.supabase
         .from('transaction_statements')
@@ -77,6 +77,7 @@ class TransactionStatementService {
         })
         .select()
         .single();
+      
 
       if (dbError) {
         console.error('[Upload] DB insert 실패:', dbError);
@@ -1160,13 +1161,23 @@ class TransactionStatementService {
         if (itemError) throw itemError;
 
         // 2. 발주 품목에 단가/금액 반영
-        if (item.matched_item_id && item.confirmed_unit_price !== undefined) {
+        // 단가 또는 금액 중 하나라도 유효한 값이 있으면 업데이트
+        const hasValidUnitPrice = item.confirmed_unit_price !== undefined && item.confirmed_unit_price !== null;
+        const hasValidAmount = item.confirmed_amount !== undefined && item.confirmed_amount !== null;
+        
+        if (item.matched_item_id && (hasValidUnitPrice || hasValidAmount)) {
+          // 업데이트할 데이터 구성 (유효한 값만 포함)
+          const updateData: { unit_price_value?: number; amount_value?: number } = {};
+          if (hasValidUnitPrice) {
+            updateData.unit_price_value = item.confirmed_unit_price!;
+          }
+          if (hasValidAmount) {
+            updateData.amount_value = item.confirmed_amount!;
+          }
+          
           const { error: purchaseError } = await this.supabase
             .from('purchase_request_items')
-            .update({
-              unit_price_value: item.confirmed_unit_price,
-              amount_value: item.confirmed_amount
-            })
+            .update(updateData)
             .eq('id', item.matched_item_id);
 
           if (purchaseError) {

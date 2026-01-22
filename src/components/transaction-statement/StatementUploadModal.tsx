@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -54,11 +54,11 @@ export default function StatementUploadModal({
   };
 
   // 모달 열릴 때 사용자 이름 로드
-  useState(() => {
+  useEffect(() => {
     if (isOpen) {
       loadUserName();
     }
-  });
+  }, [isOpen]);
 
   // 파일 선택 처리
   const handleFileSelect = (selectedFile: File) => {
@@ -121,6 +121,7 @@ export default function StatementUploadModal({
       toast.error('파일을 선택해주세요.');
       return;
     }
+
 
     try {
       setUploading(true);
