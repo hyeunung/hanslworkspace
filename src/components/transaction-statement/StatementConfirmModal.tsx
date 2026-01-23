@@ -8,14 +8,13 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { 
-  CheckCircle, 
-  XCircle, 
-  Image as ImageIcon, 
+import {
+  CheckCircle,
+  XCircle,
+  Image as ImageIcon,
   Loader2,
   ChevronDown,
   Check,
-  Wand2,
   ExternalLink,
   Search
 } from "lucide-react";
@@ -87,7 +86,7 @@ function levenshteinDistance(str1: string, str2: string): number {
   return matrix[s1.length][s2.length];
 }
 
-// 단일 문자열 유사도 계산 (내부 헬퍼)
+// 단일 문자열 유사도 계산 (내부 헬퍼) - 더 엄격한 버전
 function calculateStringSimilarity(ocrName: string, targetName: string): number {
   const ocr = ocrName?.toLowerCase().replace(/\s+/g, '') || '';
   const target = targetName?.toLowerCase().replace(/\s+/g, '') || '';
@@ -97,35 +96,69 @@ function calculateStringSimilarity(ocrName: string, targetName: string): number 
   // 완전 일치
   if (ocr === target) return 100;
   
-  // 부분 포함
-  if (ocr.includes(target) || target.includes(ocr)) return 80;
+  // 부분 포함 - 길이 비율 체크 (최소 50% 이상 겹쳐야 높은 점수)
+  const minLen = Math.min(ocr.length, target.length);
+  const maxLen = Math.max(ocr.length, target.length);
+  const lengthRatio = minLen / maxLen;
+  
+  if (ocr.includes(target) || target.includes(ocr)) {
+    // 길이 비율이 낮으면 점수 감소 (예: "A"가 "ABCDEFG"에 포함되면 낮은 점수)
+    if (lengthRatio >= 0.7) return 90; // 70% 이상 겹침
+    if (lengthRatio >= 0.5) return 70; // 50% 이상 겹침
+    if (lengthRatio >= 0.3) return 50; // 30% 이상 겹침
+    return 30; // 그 외 (너무 짧은 문자열이 포함된 경우)
+  }
   
   // Levenshtein 거리 기반
   const distance = levenshteinDistance(ocr, target);
-  const maxLen = Math.max(ocr.length, target.length);
   const similarity = ((maxLen - distance) / maxLen) * 100;
   
-  // 단어 일부 일치 체크
-  const ocrWords = ocrName?.split(/\s+/) || [];
-  const targetWords = targetName?.split(/\s+/) || [];
+  // 단어 일부 일치 체크 - 보너스 축소 (30 → 15)
+  const ocrWords = ocrName?.split(/\s+/).filter(w => w.length >= 2) || [];
+  const targetWords = targetName?.split(/\s+/).filter(w => w.length >= 2) || [];
+  
+  if (ocrWords.length === 0 || targetWords.length === 0) {
+    return similarity;
+  }
+  
   const commonWords = ocrWords.filter(w => 
-    targetWords.some(tw => tw.toLowerCase().includes(w.toLowerCase()) || w.toLowerCase().includes(tw.toLowerCase()))
+    targetWords.some(tw => {
+      const wLower = w.toLowerCase();
+      const twLower = tw.toLowerCase();
+      // 최소 3글자 이상 일치해야 단어 일치로 인정
+      return wLower === twLower || 
+        (wLower.length >= 3 && twLower.includes(wLower)) || 
+        (twLower.length >= 3 && wLower.includes(twLower));
+    })
   );
-  const wordMatchBonus = (commonWords.length / Math.max(ocrWords.length, targetWords.length)) * 30;
+  const wordMatchBonus = (commonWords.length / Math.max(ocrWords.length, targetWords.length)) * 15;
   
   return Math.min(100, similarity + wordMatchBonus);
 }
 
-// 품목명 유사도 점수 계산 - item_name과 specification 교차 비교
+// 품목명 유사도 점수 계산 - 품목명 우선, 규격은 보조
 function calculateItemSimilarity(ocrName: string, systemItemName: string, systemSpec?: string): number {
-  // item_name과 비교
+  // 1. item_name과 비교 (기본)
   const itemNameScore = calculateStringSimilarity(ocrName, systemItemName);
   
-  // specification과도 비교 (있으면)
+  // 2. specification과도 비교 (있으면)
   const specScore = systemSpec ? calculateStringSimilarity(ocrName, systemSpec) : 0;
   
-  // 둘 중 높은 점수 반환
-  return Math.max(itemNameScore, specScore);
+  // 3. 품목명이 어느 정도 일치하면 (30% 이상) 그 점수 사용
+  if (itemNameScore >= 30) {
+    return itemNameScore;
+  }
+  
+  // 4. 품목명이 전혀 안 맞는데 (30% 미만) 규격만 일치하는 경우
+  //    → 규격 일치는 보조 정보이므로 점수에 큰 패널티 부여
+  if (specScore >= 60 && itemNameScore < 30) {
+    // 규격이 일치해도 품목명이 전혀 다르면 최대 35%만 인정
+    // (사용자가 "품목명이 다른데 왜 일치?"라고 혼란스러워함)
+    return Math.min(35, specScore * 0.4);
+  }
+  
+  // 5. 둘 다 낮으면 낮은 점수 반환
+  return Math.max(itemNameScore, specScore * 0.3);
 }
 
 // 수량 일치 여부 확인 (정확히 일치하면 true)
@@ -225,7 +258,8 @@ export default function StatementConfirmModal({
   const [poSearchResults, setPOSearchResults] = useState<Array<{ id: number; poNumber: string; soNumber?: string; vendorName?: string }>>([]);
   const [poSearchLoading, setPOSearchLoading] = useState(false);
   const [poDropdownOpen, setPODropdownOpen] = useState(false);
-  
+  const [manuallySelectedPO, setManuallySelectedPO] = useState(false); // 수동 선택 여부
+
   // OCR 발주/수주번호 페어 캐시 (실시간 입력용)
   const [poPairOverrides, setPoPairOverrides] = useState<Map<string, string | null>>(new Map());
   const pendingPairLookupsRef = useRef<Set<string>>(new Set());
@@ -378,7 +412,7 @@ export default function StatementConfirmModal({
             if (!bestMatch && item.match_candidates && item.match_candidates.length > 0) {
               for (const c of item.match_candidates) {
                 const score = calculateItemSimilarity(item.extracted_item_name || '', c.item_name, c.specification);
-                if (score > bestScore && score >= 30) { // 최소 30점 이상
+                if (score > bestScore && score >= 40) { // 최소 40점 이상 (더 엄격)
                   bestScore = score;
                   bestMatch = {
                     purchase_id: c.purchase_id,
@@ -494,6 +528,7 @@ export default function StatementConfirmModal({
 
   useEffect(() => {
     if (isOpen && statement) {
+      setManuallySelectedPO(false); // 모달 열릴 때 수동 선택 플래그 리셋
       loadData();
     }
   }, [isOpen, statement, loadData]);
@@ -558,7 +593,7 @@ export default function StatementConfirmModal({
       if (!bestMatch && ocrItem.match_candidates) {
         for (const c of ocrItem.match_candidates) {
           const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', c.item_name, c.specification);
-          if (score > bestScore && score >= 30) {
+          if (score > bestScore && score >= 40) { // 최소 40점 이상
             bestScore = score;
             bestMatch = {
               purchase_id: c.purchase_id,
@@ -756,7 +791,7 @@ export default function StatementConfirmModal({
           }
         }
         
-        if (bestScore >= 30 && bestMatchItem !== null) {
+        if (bestScore >= 40 && bestMatchItem !== null) {
           matchedCount++;
           
           // 수량 일치 여부 확인
@@ -867,14 +902,18 @@ export default function StatementConfirmModal({
   };
 
   // 발주번호 일치하는 후보를 최우선 선택, 없으면 첫 번째 후보로 자동 변경
+  // (단, 사용자가 수동으로 선택한 경우는 건너뜀)
   useEffect(() => {
     if (!allPONumberCandidates.length || !isSamePONumber) return;
-    
+
+    // 사용자가 수동으로 발주번호를 선택한 경우 자동 교정 건너뜀
+    if (manuallySelectedPO) return;
+
     // 발주번호 일치하는 후보 찾기 (hasOrderNumberMatch가 true인 것)
     const matchingCandidate = allPONumberCandidates.find(
       c => (c as any).hasOrderNumberMatch === true
     );
-    
+
     if (matchingCandidate) {
       const matchingPO = matchingCandidate.poNumber || matchingCandidate.salesOrderNumber || '';
       // 현재 선택된 것과 다르면 변경
@@ -884,12 +923,12 @@ export default function StatementConfirmModal({
         return;
       }
     }
-    
+
     // 발주번호 일치 후보가 없으면, 현재 선택이 후보 목록에 있는지 확인
     const isInCandidates = allPONumberCandidates.some(
       c => c.poNumber === selectedPONumber || c.salesOrderNumber === selectedPONumber
     );
-    
+
     // 후보 목록에 없으면 첫 번째 후보로 자동 변경
     if (!isInCandidates && allPONumberCandidates[0]) {
       const firstCandidate = allPONumberCandidates[0];
@@ -899,7 +938,7 @@ export default function StatementConfirmModal({
         setSelectedPONumber(newPO);
       }
     }
-  }, [allPONumberCandidates, selectedPONumber, isSamePONumber]);
+  }, [allPONumberCandidates, selectedPONumber, isSamePONumber, manuallySelectedPO]);
 
   // 특정 발주번호에 해당하는 시스템 품목들
   const getSystemItemsForPO = useCallback((poNumber: string): SystemPurchaseItem[] => {
@@ -1145,28 +1184,39 @@ export default function StatementConfirmModal({
     
     const similarity = calculateItemSimilarity(ocrItem.extracted_item_name || '', effectiveMatch.item_name || '', effectiveMatch.specification);
     
-    if (similarity >= 80) return 'high';
-    if (similarity >= 50) return 'med';
-    if (similarity >= 30) return 'low';
+    // 더 엄격한 임계값 적용
+    if (similarity >= 85) return 'high';   // 높음: 85% 이상 (기존 80%)
+    if (similarity >= 60) return 'med';    // 보통: 60% 이상 (기존 50%)
+    if (similarity >= 40) return 'low';    // 낮음: 40% 이상 (기존 30%)
     
-    // 시스템 품목이 있으면 유사도가 낮아도 최소 '낮음' 표시 (완전 미매칭 아님)
-    if (hasSystemItems || matched) return 'low';
-    
+    // 40% 미만이면 매칭 안됨으로 표시 (기존: 시스템 품목 있으면 무조건 'low')
     return 'unmatched';
   };
 
   // 발주번호 선택 시 (Case 1: 전체 적용)
-  const handleSelectGlobalPO = async (poNumber: string) => {
+  const handleSelectGlobalPO = async (poNumber: string, vendorNameFromSearch?: string, soNumberFromSearch?: string) => {
     setSelectedPONumber(poNumber);
-    
+
+    // 검색에서 수주번호가 전달된 경우 페어 캐시에 저장
+    if (soNumberFromSearch) {
+      const normalizedPO = normalizeOrderNumber(poNumber);
+      setPoPairOverrides(prev => {
+        const next = new Map(prev);
+        next.set(normalizedPO, soNumberFromSearch);
+        return next;
+      });
+    }
+
     // 해당 발주번호의 시스템 품목들 가져오기
     // 1. allPONumberCandidates에서 해당 발주의 items와 purchaseId 찾기
     const poCandidate = allPONumberCandidates.find(
       c => c.poNumber === poNumber || c.salesOrderNumber === poNumber
     );
-    
+
     // 2. items 배열을 SystemPurchaseItem 형태로 변환
     let systemItems: SystemPurchaseItem[] = [];
+    let vendorName = vendorNameFromSearch || '';
+
     if (poCandidate && poCandidate.items.length > 0) {
       systemItems = poCandidate.items.map(item => ({
         purchase_id: item.purchase_id,
@@ -1180,81 +1230,136 @@ export default function StatementConfirmModal({
         amount: (item as any).amount,
         vendor_name: item.vendor_name
       }));
-      
+
       // 중복 제거
-      systemItems = systemItems.filter((item, index, self) => 
+      systemItems = systemItems.filter((item, index, self) =>
         index === self.findIndex(t => t.item_id === item.item_id)
       );
+
+      // 거래처명 추출
+      if (!vendorName && systemItems[0]?.vendor_name) {
+        vendorName = systemItems[0].vendor_name;
+      }
     }
-    
+
     // 3. 없으면 기존 방식으로 fallback
     if (systemItems.length === 0) {
       systemItems = getSystemItemsForPO(poNumber);
+      if (!vendorName && systemItems[0]?.vendor_name) {
+        vendorName = systemItems[0].vendor_name;
+      }
     }
-    
-    // 4. 여전히 없으면 DB에서 직접 조회
-    if (systemItems.length === 0 && poCandidate?.purchaseId) {
+
+    // 4. 여전히 없으면 DB에서 직접 조회 (검색에서 선택한 경우 포함)
+    if (systemItems.length === 0) {
       try {
-        const { data: purchaseItems } = await supabase
-          .from('purchase_request_items')
+        // 발주번호로 purchase_request 먼저 찾기
+        const { data: purchaseRequest } = await supabase
+          .from('purchase_requests')
           .select(`
             id,
-            item_name,
-            specification,
-            quantity,
-            unit_price_value,
-            amount_value,
-            purchase_request:purchase_requests!inner(
-              id,
-              purchase_order_number,
-              sales_order_number,
-              vendor:vendors(vendor_name)
-            )
+            purchase_order_number,
+            sales_order_number,
+            vendor:vendors(vendor_name)
           `)
-          .eq('purchase_request_id', poCandidate.purchaseId);
-        
-        if (purchaseItems && purchaseItems.length > 0) {
-          systemItems = purchaseItems.map((item: any) => ({
-            purchase_id: item.purchase_request.id,
-            item_id: item.id,
-            purchase_order_number: item.purchase_request.purchase_order_number || '',
-            sales_order_number: item.purchase_request.sales_order_number,
-            item_name: item.item_name || '',
-            specification: item.specification,
-            quantity: item.quantity,
-            unit_price: item.unit_price_value,
-            amount: item.amount_value,
-            vendor_name: item.purchase_request.vendor?.vendor_name
-          }));
-          console.log('[handleSelectGlobalPO] DB에서 품목 조회 성공:', systemItems.length);
+          .or(`purchase_order_number.eq.${poNumber},sales_order_number.eq.${poNumber}`)
+          .limit(1)
+          .single();
+
+        if (purchaseRequest) {
+          // 거래처명 설정
+          if (!vendorName && (purchaseRequest.vendor as any)?.vendor_name) {
+            vendorName = (purchaseRequest.vendor as any).vendor_name;
+          }
+
+          // 수주번호/발주번호 페어 저장
+          const normalizedPO = normalizeOrderNumber(poNumber);
+          const pairedNumber = poNumber.startsWith('F')
+            ? purchaseRequest.sales_order_number
+            : purchaseRequest.purchase_order_number;
+          if (pairedNumber) {
+            setPoPairOverrides(prev => {
+              const next = new Map(prev);
+              next.set(normalizedPO, pairedNumber);
+              return next;
+            });
+          }
+
+          // 품목 조회
+          const { data: purchaseItems } = await supabase
+            .from('purchase_request_items')
+            .select(`
+              id,
+              item_name,
+              specification,
+              quantity,
+              unit_price_value,
+              amount_value
+            `)
+            .eq('purchase_request_id', purchaseRequest.id);
+
+          if (purchaseItems && purchaseItems.length > 0) {
+            systemItems = purchaseItems.map((item: any) => ({
+              purchase_id: purchaseRequest.id,
+              item_id: item.id,
+              purchase_order_number: purchaseRequest.purchase_order_number || '',
+              sales_order_number: purchaseRequest.sales_order_number,
+              item_name: item.item_name || '',
+              specification: item.specification,
+              quantity: item.quantity,
+              unit_price: item.unit_price_value,
+              amount: item.amount_value,
+              vendor_name: vendorName
+            }));
+            console.log('[handleSelectGlobalPO] DB에서 품목 조회 성공:', systemItems.length);
+          }
         }
       } catch (error) {
         console.error('[handleSelectGlobalPO] DB 조회 실패:', error);
       }
     }
-    
-    console.log('[handleSelectGlobalPO] poNumber:', poNumber, 'systemItems:', systemItems.length);
-    
+
+    console.log('[handleSelectGlobalPO] poNumber:', poNumber, 'systemItems:', systemItems.length, 'vendor:', vendorName);
+
+    // poItemsMap에 품목 추가 (UI에서 후보 표시용)
+    if (systemItems.length > 0) {
+      setPoItemsMap(prev => {
+        const next = new Map(prev);
+        next.set(poNumber, systemItems);
+        // 수주번호로도 저장 (양방향 조회 가능하도록)
+        const salesOrderNumber = systemItems[0]?.sales_order_number;
+        if (salesOrderNumber && salesOrderNumber !== poNumber) {
+          next.set(salesOrderNumber, systemItems);
+        }
+        return next;
+      });
+    }
+
+    // 거래처명 업데이트
+    if (vendorName) {
+      setVendorInputValue(vendorName);
+    }
+
     // 자동 매칭 수행
     if (statementWithItems) {
       const newMatches = new Map<string, SystemPurchaseItem | null>();
-      
+
       statementWithItems.items.forEach(ocrItem => {
         // 가장 유사한 시스템 품목 찾기 (item_name과 specification 교차 비교)
         let bestMatch: SystemPurchaseItem | null = null;
         let bestScore = 0;
-        
+
         systemItems.forEach(sysItem => {
           const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', sysItem.item_name, sysItem.specification);
-          if (score > bestScore && score >= 30) {
+          if (score > bestScore && score >= 40) { // 최소 40점 이상
             bestScore = score;
             bestMatch = sysItem;
           }
         });
-        
+
         newMatches.set(ocrItem.id, bestMatch);
       });
-      
+
       setItemMatches(newMatches);
     }
   };
@@ -1548,7 +1653,7 @@ export default function StatementConfirmModal({
               if (similarity > maxSimilarity) {
                 maxSimilarity = similarity;
               }
-              if (similarity >= 30) {
+              if (similarity >= 40) { // 최소 40점 이상
                 candidates.push({
                   purchase_id: purchase.id,
                   item_id: item.id,
@@ -1728,89 +1833,6 @@ export default function StatementConfirmModal({
     });
   };
 
-  // 자동 매칭 (전체)
-  const handleAutoMatch = () => {
-    if (!statementWithItems) return;
-    
-    const newMatches = new Map<string, SystemPurchaseItem | null>();
-    let matchedCount = 0;
-    
-    statementWithItems.items.forEach(ocrItem => {
-      // 해당 품목의 발주번호로 필터링
-      const poNumber = isSamePONumber ? selectedPONumber : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
-      
-      let bestMatch: SystemPurchaseItem | null = null;
-      let bestScore = -1;
-      
-      // 1. match_candidates에서 검색
-      const matchingCandidates = poNumber 
-        ? ocrItem.match_candidates?.filter(c => 
-            c.purchase_order_number === poNumber || c.sales_order_number === poNumber
-          ) || []
-        : ocrItem.match_candidates || [];
-      
-      matchingCandidates.forEach(c => {
-        const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', c.item_name, c.specification);
-        if (score > bestScore) {
-          bestScore = score;
-          bestMatch = {
-            purchase_id: c.purchase_id,
-            item_id: c.item_id,
-            purchase_order_number: c.purchase_order_number || '',
-            sales_order_number: c.sales_order_number,
-            item_name: c.item_name,
-            specification: c.specification,
-            quantity: c.quantity,
-            unit_price: c.unit_price,
-            amount: (c as any).amount,
-            vendor_name: c.vendor_name
-          };
-        }
-      });
-      
-      // 2. match_candidates에서 못 찾으면 getSystemItemsForPO로 fallback
-      if (!bestMatch && poNumber) {
-        const systemItems = getSystemItemsForPO(poNumber);
-        systemItems.forEach(sysItem => {
-          const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', sysItem.item_name, sysItem.specification);
-          if (score > bestScore) {
-            bestScore = score;
-            bestMatch = sysItem;
-          }
-        });
-      }
-      
-      // 3. 그래도 못 찾으면 모든 후보에서 최고 유사도로 검색
-      if (!bestMatch) {
-        ocrItem.match_candidates?.forEach(candidate => {
-          const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', candidate.item_name, candidate.specification);
-          if (score > bestScore && score >= 30) { // 최소 30점 이상
-            bestScore = score;
-            bestMatch = {
-              purchase_id: candidate.purchase_id,
-              item_id: candidate.item_id,
-              purchase_order_number: candidate.purchase_order_number || '',
-              sales_order_number: candidate.sales_order_number,
-              item_name: candidate.item_name,
-              specification: candidate.specification,
-              quantity: candidate.quantity,
-              unit_price: candidate.unit_price,
-              amount: (candidate as any).amount,
-              vendor_name: candidate.vendor_name
-            };
-          }
-        });
-      }
-      
-      if (bestMatch) matchedCount++;
-      newMatches.set(ocrItem.id, bestMatch);
-    });
-    
-    setItemMatches(newMatches);
-    console.log(`🎯 자동 매칭 결과: ${matchedCount}/${statementWithItems.items.length}건 매칭됨`);
-    toast.success(`자동 매칭 완료: ${matchedCount}/${statementWithItems.items.length}건`);
-  };
-
   // 확정
   const handleConfirm = async () => {
     if (!statementWithItems) return;
@@ -1935,23 +1957,24 @@ export default function StatementConfirmModal({
     
     const similarity = calculateItemSimilarity(ocrItem.extracted_item_name || '', effectiveMatch.item_name || '', effectiveMatch.specification);
     
+    // 더 엄격한 임계값 적용 (getMatchStatus와 동일)
     let status: 'high' | 'med' | 'low' | 'unmatched' = 'unmatched';
-    if (similarity >= 80) status = 'high';
-    else if (similarity >= 50) status = 'med';
-    else if (similarity >= 30) status = 'low';
-    else if (hasSystemItems || matched) status = 'low';
+    if (similarity >= 85) status = 'high';       // 높음: 85% 이상
+    else if (similarity >= 60) status = 'med';   // 보통: 60% 이상
+    else if (similarity >= 40) status = 'low';   // 낮음: 40% 이상
+    // 40% 미만이면 unmatched 유지
     
     const reasons: string[] = [];
     
-    // 유사도 설명
-    if (similarity >= 80) {
+    // 유사도 설명 (임계값에 맞게 조정)
+    if (similarity >= 85) {
       reasons.push(`✅ 품목명/규격 유사도 ${similarity.toFixed(0)}% (높음)`);
-    } else if (similarity >= 50) {
+    } else if (similarity >= 60) {
       reasons.push(`⚠️ 품목명/규격 유사도 ${similarity.toFixed(0)}% (보통)`);
-    } else if (similarity >= 30) {
+    } else if (similarity >= 40) {
       reasons.push(`⚠️ 품목명/규격 유사도 ${similarity.toFixed(0)}% (낮음)`);
     } else {
-      reasons.push(`❌ 품목명/규격 유사도 ${similarity.toFixed(0)}% (매우 낮음)`);
+      reasons.push(`❌ 품목명/규격 유사도 ${similarity.toFixed(0)}% (매우 낮음 - 불일치)`);
     }
     
     // 품목명 vs 규격 상세 비교 (유사도와 일관되게)
@@ -1963,7 +1986,7 @@ export default function StatementConfirmModal({
     const specMatch = sysSpec && (ocrName === sysSpec || ocrName.includes(sysSpec) || sysSpec.includes(ocrName));
     const nameMatch = ocrName === sysName || ocrName.includes(sysName) || sysName.includes(ocrName);
     
-    if (similarity >= 80) {
+    if (similarity >= 85) {
       // 유사도 높으면 무엇이 일치했는지 설명
       if (nameMatch && specMatch) {
         reasons.push('✅ 품목명과 규격 모두 일치');
@@ -1974,7 +1997,7 @@ export default function StatementConfirmModal({
       } else {
         reasons.push('✅ 문자열 유사도로 매칭됨');
       }
-    } else if (similarity >= 50) {
+    } else if (similarity >= 60) {
       if (specMatch) {
         reasons.push('⚠️ 규격 부분 일치');
       } else if (nameMatch) {
@@ -1983,8 +2006,8 @@ export default function StatementConfirmModal({
         reasons.push('⚠️ 부분적으로 유사');
       }
     } else {
-      // 유사도 낮은 경우만 불일치 표시
-      reasons.push('❌ 품목명/규격 불일치 - 한글/영어 차이 또는 다른 품목일 수 있음');
+      // 유사도 낮은 경우 불일치 표시
+      reasons.push('❌ 품목명/규격 불일치 - 다른 품목일 가능성 높음');
     }
     
     // 발주번호 설명
@@ -2073,26 +2096,15 @@ export default function StatementConfirmModal({
                 <CheckCircle className="w-4 h-4 text-hansl-600" />
                 거래명세서 확인 및 확정
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAutoMatch}
-                  className="button-base h-7 text-[10px] border-blue-300 text-blue-600 hover:bg-blue-50"
-                >
-                  <Wand2 className="w-3.5 h-3.5 mr-1" />
-                  자동 매칭
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsImageViewerOpen(true)}
-                  className="button-base h-7 text-[10px]"
-                >
-                  <ImageIcon className="w-3.5 h-3.5 mr-1" />
-                  원본 보기
-                </Button>
-              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsImageViewerOpen(true)}
+                className="button-base h-7 text-[10px]"
+              >
+                <ImageIcon className="w-3.5 h-3.5 mr-1" />
+                원본 보기
+              </Button>
             </DialogTitle>
           </DialogHeader>
 
@@ -2194,11 +2206,7 @@ export default function StatementConfirmModal({
                                   if (candidate?.poNumber && candidate?.salesOrderNumber) {
                                     return <>{candidate.poNumber} <span className="text-gray-400">({candidate.salesOrderNumber})</span></>;
                                   }
-                                  // 선택된 발주번호가 allPONumberCandidates에 없으면 첫 번째 후보 표시
-                                  if (allPONumberCandidates.length > 0 && !candidate) {
-                                    const firstCandidate = allPONumberCandidates[0];
-                                    return <>{firstCandidate.poNumber || firstCandidate.salesOrderNumber} <span className="text-orange-500">(추천)</span></>;
-                                  }
+                                  // 선택된 발주번호를 그대로 표시 (수동 검색으로 선택한 경우 포함)
                                   const pairedNumber = getPairedOrderNumber(selectedPONumber);
                                   if (pairedNumber) {
                                     return <>{selectedPONumber} <span className="text-gray-400">({pairedNumber})</span></>;
@@ -2248,14 +2256,24 @@ export default function StatementConfirmModal({
                                             onMouseDown={(e) => e.preventDefault()}
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              const poNumber = po.poNumber || po.soNumber || '';
-                                              setSelectedPONumber(poNumber);
+                                              // 검색어에 맞는 번호 선택: HS로 검색했으면 soNumber, F로 검색했으면 poNumber
+                                              const searchUpper = poSearchInput.trim().toUpperCase();
+                                              let selectedNumber: string;
+                                              if (searchUpper.startsWith('HS') && po.soNumber) {
+                                                selectedNumber = po.soNumber;
+                                              } else if (searchUpper.startsWith('F') && po.poNumber) {
+                                                selectedNumber = po.poNumber;
+                                              } else {
+                                                selectedNumber = po.poNumber || po.soNumber || '';
+                                              }
                                               setPOSearchInput('');
                                               setPOSearchInputOpen(false);
                                               setPODropdownOpen(false);
-                                              toast.success(`${poNumber} 발주가 선택되었습니다`);
-                                              // 자동 매칭 실행
-                                              handleAutoMatch();
+                                              // 수동 선택 플래그 설정 (자동 교정 방지)
+                                              setManuallySelectedPO(true);
+                                              // 발주번호 선택 및 품목 매칭 업데이트 (거래처명, 수주번호 포함)
+                                              handleSelectGlobalPO(selectedNumber, po.vendorName, po.soNumber);
+                                              toast.success(`${selectedNumber} 발주가 선택되었습니다`);
                                             }}
                                             className="w-full px-2 py-1.5 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
                                           >
@@ -2898,7 +2916,7 @@ export default function StatementConfirmModal({
                   matchedSystem.item_name,
                   matchedSystem.specification
                 );
-                return similarity >= 30;
+                return similarity >= 40; // 최소 40점 이상
               }).length;
               const quantityMatchedCount = (statementWithItems?.items ?? []).filter(ocrItem => {
                 const matchedSystem = itemMatches.get(ocrItem.id);
@@ -2967,7 +2985,7 @@ export default function StatementConfirmModal({
                               matchedSystem.specification
                             )
                           : 0;
-                        const isMatched = similarity >= 30;
+                        const isMatched = similarity >= 40; // 최소 40점 이상
                         
                         // 수량 일치 여부
                         const ocrQtyRaw = getOCRItemValue(ocrItem, 'quantity') as number | string;
@@ -2997,10 +3015,10 @@ export default function StatementConfirmModal({
                                 </p>
                               </div>
                               <span className={`text-[10px] px-2 py-0.5 rounded font-medium ml-2 ${
-                                similarity >= 80 ? 'bg-green-100 text-green-700' :
-                                similarity >= 50 ? 'bg-yellow-100 text-yellow-700' :
-                                similarity >= 30 ? 'bg-orange-100 text-orange-700' :
-                                'bg-gray-200 text-gray-600'
+                                similarity >= 85 ? 'bg-green-100 text-green-700' :
+                                similarity >= 60 ? 'bg-yellow-100 text-yellow-700' :
+                                similarity >= 40 ? 'bg-orange-100 text-orange-700' :
+                                'bg-red-100 text-red-600'
                               }`}>
                                 {isMatched ? `${Math.round(similarity)}%` : '미매칭'}
                               </span>

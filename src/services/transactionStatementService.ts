@@ -626,9 +626,9 @@ class TransactionStatementService {
                 purchaseItem.item_name, 
                 purchaseItem.specification
               );
-              if (itemMatch.score >= 30) { // 30% 이상이면 점수 부여 (더 관대하게)
+              if (itemMatch.score >= 40) { // 40% 이상이면 점수 부여 (더 엄격하게)
                 score += itemMatch.score * 0.7; // 최대 70점 (가중치 증가)
-                if (itemMatch.score >= 80) {
+                if (itemMatch.score >= 85) {
                   matchReasons.push(itemMatch.matchedField === 'specification' ? '규격 일치' : '품목명 일치');
                 } else if (itemMatch.score >= 50) {
                   matchReasons.push(itemMatch.matchedField === 'specification' ? '규격 유사' : '품목명 유사');
@@ -743,9 +743,9 @@ class TransactionStatementService {
                       purchaseItem.item_name, 
                       purchaseItem.specification
                     );
-                    if (itemMatch.score >= 30) {
+                    if (itemMatch.score >= 40) { // 40% 이상
                       score += itemMatch.score * 0.5;
-                      if (itemMatch.score >= 80) {
+                      if (itemMatch.score >= 85) {
                         matchReasons.push(itemMatch.matchedField === 'specification' ? '규격 일치' : '품목명 일치');
                       } else if (itemMatch.score >= 50) {
                         matchReasons.push(itemMatch.matchedField === 'specification' ? '규격 유사' : '품목명 유사');
@@ -1479,8 +1479,8 @@ class TransactionStatementService {
 
           const setScore = this.calculateSetMatchScore(extractedItems, purchase.items || []);
           
-          // 30점 이상만 후보에 추가
-          if (setScore.score >= 30) {
+          // 40점 이상만 후보에 추가 (더 엄격하게)
+          if (setScore.score >= 40) {
             purchaseScores.push({
               purchase_id: purchase.id,
               purchase_order_number: purchase.purchase_order_number || '',

@@ -508,6 +508,7 @@ export default function TransactionStatementMain() {
                       <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">파일명</th>
                       <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">합계금액</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">등록자</th>
+                      <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">확정자</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">액션</th>
                     </tr>
                   </thead>
@@ -540,6 +541,9 @@ export default function TransactionStatementMain() {
                         </td>
                         <td className="px-3 py-2.5 text-[11px] text-center text-gray-600">
                           {statement.uploaded_by_name || '-'}
+                        </td>
+                        <td className="px-3 py-2.5 text-[11px] text-center text-gray-600">
+                          {statement.confirmed_by_name || '-'}
                         </td>
                         <td className="px-3 py-2.5 text-center">
                           <div className="flex items-center justify-center gap-1">
