@@ -93,11 +93,12 @@ serve(async (req) => {
     )
 
     // 5. 발주/수주번호 패턴 정규화 (OCR 텍스트도 함께 전달하여 빈 칸에 적힌 번호도 찾음)
-    const normalizedItems = normalizePoNumbers(extractionResult.items, visionText)
+    let normalizedItems = normalizePoNumbers(extractionResult.items, visionText)
 
     // 6. 거래처명 검증 - vendors 테이블에 반드시 존재해야 함
     let validatedVendorName: string | undefined = undefined
-    let vendorMatchSource: 'gpt_extract' | 'text_scan' | 'not_found' = 'not_found'
+    let validatedVendorId: number | undefined = undefined
+    let vendorMatchSource: 'gpt_extract' | 'text_scan' | 'po_infer' | 'not_found' = 'not_found'
     
     // 6-1. GPT가 추출한 거래처명으로 먼저 시도 (한글명)
     if (extractionResult.vendor_name) {
@@ -109,6 +110,7 @@ serve(async (req) => {
       if (vendorResult.matched) {
         console.log(`✅ 거래처 매칭 성공 (GPT 추출 한글): "${extractionResult.vendor_name}" → "${vendorResult.vendor_name}" (${vendorResult.similarity}%)`)
         validatedVendorName = vendorResult.vendor_name
+        validatedVendorId = vendorResult.vendor_id
         vendorMatchSource = 'gpt_extract'
       }
     }
@@ -123,6 +125,7 @@ serve(async (req) => {
       if (vendorResultEng.matched) {
         console.log(`✅ 거래처 매칭 성공 (GPT 추출 영문): "${extractionResult.vendor_name_english}" → "${vendorResultEng.vendor_name}" (${vendorResultEng.similarity}%)`)
         validatedVendorName = vendorResultEng.vendor_name
+        validatedVendorId = vendorResultEng.vendor_id
         vendorMatchSource = 'gpt_extract'
       }
     }
@@ -135,6 +138,7 @@ serve(async (req) => {
       if (vendorFromText.matched) {
         console.log(`✅ 거래처 매칭 성공 (텍스트 스캔): "${vendorFromText.matched_text}" → "${vendorFromText.vendor_name}" (${vendorFromText.similarity}%)`)
         validatedVendorName = vendorFromText.vendor_name
+        validatedVendorId = vendorFromText.vendor_id
         vendorMatchSource = 'text_scan'
       }
     }
@@ -142,6 +146,18 @@ serve(async (req) => {
     // 6-3. 그래도 못찾으면 경고
     if (!validatedVendorName) {
       console.warn(`⚠️ 거래처를 찾을 수 없음 - 수동 확인 필요`)
+    }
+
+    // 7. 발주/수주번호 오인식 보정 (거래처/품목/수량 기준)
+    const correctionResult = await correctOrderNumbersByDb(
+      supabase,
+      normalizedItems,
+      validatedVendorId
+    )
+    normalizedItems = correctionResult.items
+    if (!validatedVendorName && correctionResult.inferredVendorName) {
+      validatedVendorName = correctionResult.inferredVendorName
+      vendorMatchSource = 'po_infer'
     }
 
     // 8. DB에 결과 저장 (에러 체크 추가)
@@ -215,7 +231,7 @@ serve(async (req) => {
         vendor_match_source: vendorMatchSource, // 매칭 방법
         result: {
           ...extractionResult,
-          vendor_name: validatedVendorName || extractionResult.vendor_name, // 검증된 거래처명 우선
+          vendor_name: validatedVendorName || null, // DB에 없으면 vendor_name 비움
           items: normalizedItems
         }
       }),
@@ -842,5 +858,186 @@ function normalizePoNumbers(items: ExtractedItem[], rawVisionText?: string): Ext
       po_number: poNumber || item.po_number
     }
   })
+}
+
+type OrderCorrectionResult = {
+  items: ExtractedItem[];
+  inferredVendorName?: string;
+};
+
+async function correctOrderNumbersByDb(
+  supabase: any,
+  items: ExtractedItem[],
+  vendorId?: number
+): Promise<OrderCorrectionResult> {
+  if (!items.length) return { items };
+
+  const numberCounts = new Map<string, number>();
+  items.forEach(item => {
+    if (item.po_number) {
+      numberCounts.set(item.po_number, (numberCounts.get(item.po_number) || 0) + 1);
+    }
+  });
+
+  const mostCommon = Array.from(numberCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (!mostCommon) return { items };
+
+  const isPO = /^F\d{8}_\d{3}$/.test(mostCommon);
+  const isSO = /^HS\d{6}-\d{2}$/.test(mostCommon);
+  if (!isPO && !isSO) return { items };
+
+  const { data: exactMatch } = await supabase
+    .from('purchase_requests')
+    .select('id')
+    .or(`purchase_order_number.eq.${mostCommon},sales_order_number.eq.${mostCommon}`)
+    .limit(1);
+
+  if (exactMatch && exactMatch.length > 0) {
+    return { items };
+  }
+
+  const prefix = isPO ? mostCommon.slice(0, 9) : mostCommon.slice(0, 8);
+  let query = supabase
+    .from('purchase_requests')
+    .select(`
+      id,
+      purchase_order_number,
+      sales_order_number,
+      vendor:vendors(vendor_name),
+      items:purchase_request_items(
+        id,
+        item_name,
+        specification,
+        quantity
+      )
+    `)
+    .limit(30);
+
+  query = isPO
+    ? query.ilike('purchase_order_number', `${prefix}%`)
+    : query.ilike('sales_order_number', `${prefix}%`);
+
+  if (vendorId) {
+    query = query.eq('vendor_id', vendorId);
+  }
+
+  const { data: candidates } = await query;
+  if (!candidates || candidates.length === 0) return { items };
+
+  const cleanedItems = items.map(item => ({
+    name: normalizeItemText(item.item_name || ''),
+    quantity: item.quantity || 0
+  }));
+
+  let bestCandidate: any = null;
+  let bestScore = 0;
+
+  for (const candidate of candidates) {
+    const systemItems = (candidate.items || []).map((it: any) => ({
+      name: normalizeItemText(it.item_name || ''),
+      spec: normalizeItemText(it.specification || ''),
+      quantity: it.quantity || 0
+    }));
+
+    const { score, matchedCount } = calculateOrderSimilarity(cleanedItems, systemItems);
+    if (matchedCount === 0) continue;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestCandidate = candidate;
+    }
+  }
+
+  if (!bestCandidate || bestScore < 65) {
+    return { items };
+  }
+
+  const correctedNumber = isPO
+    ? (bestCandidate.purchase_order_number || '')
+    : (bestCandidate.sales_order_number || '');
+
+  if (!correctedNumber) {
+    return { items };
+  }
+
+  const correctedItems = items.map(item => ({
+    ...item,
+    po_number: correctedNumber
+  }));
+
+  const inferredVendorName = (bestCandidate.vendor as { vendor_name?: string } | null)?.vendor_name;
+
+  return { items: correctedItems, inferredVendorName };
+}
+
+function normalizeItemText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[^a-z0-9가-힣]/g, '')
+    .trim();
+}
+
+function calculateOrderSimilarity(
+  ocrItems: Array<{ name: string; quantity: number }>,
+  systemItems: Array<{ name: string; spec: string; quantity: number }>
+): { score: number; matchedCount: number } {
+  if (!ocrItems.length || !systemItems.length) {
+    return { score: 0, matchedCount: 0 };
+  }
+
+  const usedSystem = new Set<number>();
+  let totalScore = 0;
+  let matchedCount = 0;
+
+  for (const ocrItem of ocrItems) {
+    let best = 0;
+    let bestIndex = -1;
+
+    for (let i = 0; i < systemItems.length; i += 1) {
+      if (usedSystem.has(i)) continue;
+      const sys = systemItems[i];
+      const nameScore = calculateNameSimilarity(ocrItem.name, sys.name);
+      const specScore = sys.spec ? calculateNameSimilarity(ocrItem.name, sys.spec) : 0;
+      const baseScore = Math.max(nameScore, specScore);
+
+      let quantityBonus = 0;
+      if (ocrItem.quantity && sys.quantity) {
+        if (ocrItem.quantity === sys.quantity) {
+          quantityBonus = 20;
+        } else if (ocrItem.quantity <= sys.quantity) {
+          quantityBonus = 10;
+        }
+      }
+
+      const total = baseScore + quantityBonus;
+      if (total > best) {
+        best = total;
+        bestIndex = i;
+      }
+    }
+
+    if (best >= 60 && bestIndex >= 0) {
+      usedSystem.add(bestIndex);
+      totalScore += best;
+      matchedCount += 1;
+    }
+  }
+
+  const matchRatio = matchedCount / ocrItems.length;
+  const avgScore = matchedCount > 0 ? totalScore / matchedCount : 0;
+  const score = Math.round((matchRatio * 50) + (avgScore * 0.5));
+
+  return { score, matchedCount };
+}
+
+function calculateNameSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 100;
+  if (a.includes(b) || b.includes(a)) {
+    const ratio = Math.min(a.length, b.length) / Math.max(a.length, b.length);
+    return Math.round(80 + ratio * 20);
+  }
+  return 0;
 }
 

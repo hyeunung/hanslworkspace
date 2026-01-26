@@ -259,6 +259,7 @@ export default function StatementConfirmModal({
   const [poSearchLoading, setPOSearchLoading] = useState(false);
   const [poDropdownOpen, setPODropdownOpen] = useState(false);
   const [manuallySelectedPO, setManuallySelectedPO] = useState(false); // 수동 선택 여부
+  const [statementDateInput, setStatementDateInput] = useState('');
 
   // OCR 발주/수주번호 페어 캐시 (실시간 입력용)
   const [poPairOverrides, setPoPairOverrides] = useState<Map<string, string | null>>(new Map());
@@ -318,10 +319,7 @@ export default function StatementConfirmModal({
   // 거래처명 초기값 설정
   useEffect(() => {
     if (!statementWithItems) return;
-    const initialVendor = 
-      statementWithItems.vendor_name ||
-      (statementWithItems as any).extracted_data?.ocr_vendor_name ||
-      '';
+    const initialVendor = statementWithItems.vendor_name || '';
     if (initialVendor && !vendorInputValue) {
       setVendorInputValue(initialVendor);
     }
@@ -330,6 +328,24 @@ export default function StatementConfirmModal({
       handleSelectVendor(initialVendor, { silent: true });
     }
   }, [statementWithItems, vendorInputValue]);
+
+  const normalizeStatementDate = (value?: string | null) => {
+    if (!value) return '';
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString().slice(0, 10);
+    }
+    return trimmed.slice(0, 10);
+  };
+
+  // 거래일 초기값 설정
+  useEffect(() => {
+    if (!statementWithItems) return;
+    setStatementDateInput(normalizeStatementDate(statementWithItems.statement_date));
+  }, [statementWithItems]);
 
   // 데이터 로드
   const loadData = useCallback(async () => {
@@ -1504,6 +1520,10 @@ export default function StatementConfirmModal({
       if (newPO && newPO !== selectedPONumber) {
         setSelectedPONumber(newPO);
       }
+      if (matchingCandidate.vendorName) {
+        setVendorInputValue(matchingCandidate.vendorName);
+        setOverrideVendorName(matchingCandidate.vendorName);
+      }
     } else {
       // 후보 목록에 없으면 DB에서 직접 조회하여 품목 로드
       setSelectedPONumber(normalizedValue);
@@ -1515,7 +1535,7 @@ export default function StatementConfirmModal({
             id,
             purchase_order_number,
             sales_order_number,
-            vendor_name,
+            vendor:vendors(vendor_name),
             purchase_request_items (
               id,
               item_name,
@@ -1531,6 +1551,7 @@ export default function StatementConfirmModal({
         if (purchaseData && purchaseData.length > 0) {
           const purchase = purchaseData[0];
           const items = purchase.purchase_request_items || [];
+          const vendorName = (purchase.vendor as { vendor_name?: string } | null)?.vendor_name || '';
           
           // poItemsMap에 추가
           const newItems = items.map((item: any) => ({
@@ -1543,7 +1564,7 @@ export default function StatementConfirmModal({
             quantity: item.quantity ?? 0,
             unit_price: item.unit_price_value,
             amount: item.amount_value,
-            vendor_name: purchase.vendor_name
+            vendor_name: vendorName
           }));
           
           setPoItemsMap(prev => {
@@ -1558,6 +1579,11 @@ export default function StatementConfirmModal({
             }
             return next;
           });
+
+          if (vendorName) {
+            setVendorInputValue(vendorName);
+            setOverrideVendorName(vendorName);
+          }
           
         }
       } catch (err) {
@@ -1842,6 +1868,20 @@ export default function StatementConfirmModal({
 
       // 1. OCR 수정사항 학습 데이터로 저장
       await saveOCRCorrections();
+
+      // 1.5 거래일 수정 반영
+      const normalizedOriginalDate = normalizeStatementDate(statementWithItems.statement_date);
+      const normalizedInputDate = normalizeStatementDate(statementDateInput);
+      if (normalizedInputDate !== normalizedOriginalDate) {
+        const { error: dateError } = await supabase
+          .from('transaction_statements')
+          .update({ statement_date: normalizedInputDate || null })
+          .eq('id', statement.id);
+
+        if (dateError) {
+          throw new Error(dateError.message);
+        }
+      }
 
       // 2. 확정 데이터 생성 (수정된 값 우선 사용)
       const confirmItems: ConfirmItemRequest[] = statementWithItems.items.map(item => {
@@ -2166,12 +2206,13 @@ export default function StatementConfirmModal({
                 </div>
                 <div>
                   <p className="modal-label">거래일</p>
-                  <p className="modal-value">
-                    {statementWithItems.statement_date 
-                      ? new Date(statementWithItems.statement_date).toLocaleDateString('ko-KR')
-                      : '-'
-                    }
-                  </p>
+                  <input
+                    type="date"
+                    value={statementDateInput}
+                    onChange={(e) => setStatementDateInput(e.target.value)}
+                    className="w-[120px] h-5 px-1.5 bg-white border border-gray-300 business-radius-input focus:outline-none focus:ring-1 focus:ring-hansl-400 text-gray-900"
+                    style={{ fontSize: '11px', fontWeight: 600 }}
+                  />
                 </div>
                 <div>
                   <p className="modal-label">합계금액</p>
