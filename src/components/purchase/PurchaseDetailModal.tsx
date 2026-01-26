@@ -3652,7 +3652,7 @@ function PurchaseDetailModal({
             {isEditing ? (
               <Input
                 value={item.remark || ''}
-                disabled={canEditLimited && !canEditAll}
+                disabled={!canEditAll && !canEditLimited}
                 onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
                 onFocus={() => setFocusedInput(`remark_${index}`)}
                 onBlur={() => setFocusedInput(null)}
