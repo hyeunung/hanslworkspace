@@ -8,6 +8,49 @@ export interface SupportAttachment {
   path: string
 }
 
+export type SupportInquiryType =
+  | 'bug'
+  | 'modify'
+  | 'delete'
+  | 'other'
+  | 'annual_leave'
+  | 'attendance'
+  | 'delivery_date_change'
+  | 'quantity_change'
+  | 'price_change'
+
+export type SupportInquiryPayload =
+  | {
+      requested_date: string
+      current_date?: string | null
+    }
+  | {
+      items: {
+        item_id: string
+        line_number?: number | null
+        item_name: string
+        specification?: string | null
+        current_quantity?: number | null
+        new_quantity: number
+      }[]
+    }
+  | {
+      items: {
+        item_id: string
+        line_number?: number | null
+        item_name: string
+        specification?: string | null
+        change_type?: 'unit_price' | 'amount'
+        current_unit_price?: number | null
+        new_unit_price?: number | null
+        current_amount?: number | null
+        new_amount?: number | null
+      }[]
+    }
+  | {
+      reason?: string
+    }
+
 export interface SupportInquiry {
   id?: number
   created_at?: string
@@ -15,7 +58,7 @@ export interface SupportInquiry {
   user_id?: string
   user_email?: string
   user_name?: string
-  inquiry_type: 'bug' | 'modify' | 'delete' | 'other' | 'annual_leave' | 'attendance'
+  inquiry_type: SupportInquiryType
   subject: string
   message: string
   status?: 'open' | 'in_progress' | 'resolved' | 'closed'
@@ -28,6 +71,7 @@ export interface SupportInquiry {
   requester_id?: string
   purchase_requests?: any
   attachments?: SupportAttachment[]
+  inquiry_payload?: SupportInquiryPayload | null
 }
 
 export interface SupportInquiryMessage {
@@ -41,13 +85,14 @@ export interface SupportInquiryMessage {
 }
 
 export interface CreateSupportInquiryPayload {
-  inquiry_type: 'bug' | 'modify' | 'delete' | 'other' | 'annual_leave' | 'attendance'
+  inquiry_type: SupportInquiryType
   subject: string
   message: string
   purchase_request_id?: number
   purchase_info?: string
   purchase_order_number?: string
   attachments?: SupportAttachment[]
+  inquiry_payload?: SupportInquiryPayload | null
 }
 
 class SupportService {
@@ -159,6 +204,7 @@ class SupportService {
           purchase_request_id: payload.purchase_request_id ?? null,
           purchase_info: payload.purchase_info,
           purchase_order_number: payload.purchase_order_number,
+          inquiry_payload: payload.inquiry_payload ?? null,
           status: 'open',
           attachments: payload.attachments || []
         })
@@ -177,24 +223,6 @@ class SupportService {
       const inquiryId = created?.id as number | undefined
       if (!inquiryId) {
         return { success: false, error: '문의 ID를 확인할 수 없습니다.' }
-      }
-
-      // 첫 메시지(사용자) 기록: 여기서부터 대화 로그가 시작됨
-      const senderEmail = employee?.email || user.email || ''
-      const { error: msgError } = await this.supabase
-        .from('support_inquiry_messages')
-        .insert({
-          inquiry_id: inquiryId,
-          sender_role: 'user',
-          sender_email: senderEmail,
-          message: payload.message,
-          attachments: payload.attachments || []
-        })
-
-      if (msgError) {
-        // 문의 자체는 생성됐지만 메시지 기록 실패(알림/대화가 안 될 수 있음)
-        logger.error('문의 첫 메시지 기록 실패', msgError)
-        return { success: false, error: '문의는 생성됐지만 첫 메시지 저장에 실패했습니다.' }
       }
 
       return { success: true, inquiryId }
@@ -397,7 +425,7 @@ class SupportService {
 
       let query = this.supabase
         .from('purchase_requests')
-        .select('id,purchase_order_number,vendor_name,request_date,created_at,requester_name,middle_manager_status,final_manager_status,purchase_request_items(item_name,specification,quantity)')
+        .select('id,purchase_order_number,vendor_name,request_date,created_at,requester_name,middle_manager_status,final_manager_status,delivery_request_date,revised_delivery_request_date,purchase_request_items(id,line_number,item_name,specification,quantity,unit_price_value,amount_value)')
         .eq('requester_name', employee.name)
         // 승인대기 항목은 request_date가 비어있는 경우가 있어 created_at 기준으로 정렬/필터링
         .order('created_at', { ascending: false })

@@ -133,39 +133,36 @@ export default function EmployeeFilters({
           <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Employee Management</p>
         </div>
         {canManageEmployees && (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
-            variant="outline"
             onClick={onAnnualLeaveUsageDownload}
-            className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+            className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 flex items-center gap-1"
           >
-            <Calendar className="w-3 h-3 sm:w-4 sm:h-4" />
+            <Calendar className="w-4 h-4" />
             <span className="hidden sm:inline">연차사용현황</span>
             <span className="sm:hidden">연차</span>
           </Button>
           <Button
-            variant="outline"
             onClick={onAttendanceDownload}
-            className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+            className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 flex items-center gap-1"
           >
-            <Calendar className="w-3 h-3 sm:w-4 sm:h-4" />
+            <Calendar className="w-4 h-4" />
             <span className="hidden sm:inline">출근현황표</span>
             <span className="sm:hidden">출근</span>
           </Button>
           <Button
-            variant="outline"
             onClick={onExport}
-            className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+            className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 flex items-center gap-1"
           >
-            <Download className="w-3 h-3 sm:w-4 sm:h-4" />
+            <Download className="w-4 h-4" />
             <span className="hidden sm:inline">Excel 내보내기</span>
             <span className="sm:hidden">Excel</span>
           </Button>
           <Button 
             onClick={onCreateNew}
-            className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm"
+            className="button-base bg-blue-500 hover:bg-blue-600 text-white flex items-center gap-1"
           >
-            <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
+            <Plus className="w-4 h-4" />
             직원 등록
           </Button>
         </div>
@@ -173,137 +170,115 @@ export default function EmployeeFilters({
       </div>
 
       {/* 필터 섹션 */}
-      <div className="bg-white p-3 sm:p-4 rounded-lg border space-y-4">
-        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-end sm:flex-wrap">
-          {/* 검색 */}
-          <div className="flex-1 sm:min-w-[250px]">
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-              검색
-            </label>
-            <div className="relative">
-              <Search className="absolute left-2 sm:left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3 sm:w-4 sm:h-4" />
-              <Input
-                type="text"
-                placeholder="이름, 이메일, 전화번호로 검색"
-                value={localSearch}
-                onChange={(e) => setLocalSearch(e.target.value)}
-                className="pl-8 sm:pl-10 text-sm h-9"
-              />
-            </div>
-          </div>
-
-          {/* 부서 필터 */}
-          <div className="w-full sm:w-auto sm:min-w-[120px]">
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-              부서
-            </label>
-            <Select
-              value={filters.department || 'all'}
-              onValueChange={handleDepartmentChange}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">전체 부서</SelectItem>
-                {departments.map((dept) => (
-                  <SelectItem key={dept} value={dept}>
-                    {dept}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* 직급 필터 */}
-          <div className="w-full sm:w-auto sm:min-w-[120px]">
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-              직급
-            </label>
-            <Select
-              value={filters.position || 'all'}
-              onValueChange={handlePositionChange}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">전체 직급</SelectItem>
-                {positions.map((pos) => (
-                  <SelectItem key={pos} value={pos}>
-                    {pos}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* 권한 필터 */}
-          <div className="w-full sm:w-auto sm:min-w-[140px]">
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-              권한
-            </label>
-            <Select
-              value={filters.purchase_role || 'all'}
-              onValueChange={handleRoleChange}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">전체 권한</SelectItem>
-                <SelectItem value="none">권한 없음</SelectItem>
-                {PURCHASE_ROLES.map((role) => (
-                  <SelectItem key={role.value} value={role.value}>
-                    {role.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* 상태 필터 */}
-          <div className="w-full sm:w-auto sm:min-w-[100px]">
-            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-              상태
-            </label>
-            <Select
-              value={
-                filters.is_active === undefined 
-                  ? 'all' 
-                  : filters.is_active 
-                    ? 'active' 
-                    : 'inactive'
-              }
-              onValueChange={handleStatusChange}
-            >
-              <SelectTrigger className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">전체</SelectItem>
-                <SelectItem value="active">활성</SelectItem>
-                <SelectItem value="inactive">비활성</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* 초기화 버튼 */}
-          {hasFilters && (
-            <div className="flex gap-2 w-full sm:w-auto">
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={clearFilters}
-                className="flex items-center gap-1 h-9 text-sm"
-              >
-                <X className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span className="hidden sm:inline">초기화</span>
-                <span className="sm:hidden">초기</span>
-              </Button>
-            </div>
-          )}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* 검색 */}
+        <div className="relative min-w-[180px] flex-1 max-w-[260px]">
+          <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-gray-400" />
+          <Input
+            type="text"
+            placeholder="이름, 이메일, 전화번호 검색"
+            value={localSearch}
+            onChange={(e) => setLocalSearch(e.target.value)}
+            className="!h-auto !py-px !pr-1.5 !pl-5 !text-[11px] !min-h-[20px] business-radius-input border border-gray-300 bg-white text-gray-700"
+          />
         </div>
+
+        {/* 부서 필터 */}
+        <div className="min-w-[120px]">
+          <Select
+            value={filters.department || 'all'}
+            onValueChange={handleDepartmentChange}
+          >
+            <SelectTrigger className="!h-auto !min-h-[20px] !py-px !px-2 !text-[11px] business-radius-input border border-gray-300 bg-white text-gray-700">
+              <SelectValue placeholder="부서" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">전체 부서</SelectItem>
+              {departments.map((dept) => (
+                <SelectItem key={dept} value={dept}>
+                  {dept}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* 직급 필터 */}
+        <div className="min-w-[120px]">
+          <Select
+            value={filters.position || 'all'}
+            onValueChange={handlePositionChange}
+          >
+            <SelectTrigger className="!h-auto !min-h-[20px] !py-px !px-2 !text-[11px] business-radius-input border border-gray-300 bg-white text-gray-700">
+              <SelectValue placeholder="직급" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">전체 직급</SelectItem>
+              {positions.map((pos) => (
+                <SelectItem key={pos} value={pos}>
+                  {pos}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* 권한 필터 */}
+        <div className="min-w-[140px]">
+          <Select
+            value={filters.purchase_role || 'all'}
+            onValueChange={handleRoleChange}
+          >
+            <SelectTrigger className="!h-auto !min-h-[20px] !py-px !px-2 !text-[11px] business-radius-input border border-gray-300 bg-white text-gray-700">
+              <SelectValue placeholder="권한" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">전체 권한</SelectItem>
+              <SelectItem value="none">권한 없음</SelectItem>
+              {PURCHASE_ROLES.map((role) => (
+                <SelectItem key={role.value} value={role.value}>
+                  {role.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* 상태 필터 */}
+        <div className="min-w-[100px]">
+          <Select
+            value={
+              filters.is_active === undefined 
+                ? 'all' 
+                : filters.is_active 
+                  ? 'active' 
+                  : 'inactive'
+            }
+            onValueChange={handleStatusChange}
+          >
+            <SelectTrigger className="!h-auto !min-h-[20px] !py-px !px-2 !text-[11px] business-radius-input border border-gray-300 bg-white text-gray-700">
+              <SelectValue placeholder="상태" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">전체</SelectItem>
+              <SelectItem value="active">활성</SelectItem>
+              <SelectItem value="inactive">비활성</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* 초기화 버튼 */}
+        {hasFilters && (
+          <Button 
+            type="button" 
+            onClick={clearFilters}
+            className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 flex items-center gap-1"
+          >
+            <X className="w-4 h-4" />
+            <span className="hidden sm:inline">초기화</span>
+            <span className="sm:hidden">초기</span>
+          </Button>
+        )}
       </div>
     </div>
   )

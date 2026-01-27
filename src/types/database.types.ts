@@ -692,6 +692,7 @@ export type Database = {
           handled_by: string | null
           id: number
           inquiry_type: string
+          inquiry_payload: Json | null
           message: string
           processed_at: string | null
           purchase_info: string | null
@@ -711,6 +712,7 @@ export type Database = {
           handled_by?: string | null
           id?: number
           inquiry_type: string
+          inquiry_payload?: Json | null
           message: string
           processed_at?: string | null
           purchase_info?: string | null
@@ -730,6 +732,7 @@ export type Database = {
           handled_by?: string | null
           id?: number
           inquiry_type?: string
+          inquiry_payload?: Json | null
           message?: string
           processed_at?: string | null
           purchase_info?: string | null

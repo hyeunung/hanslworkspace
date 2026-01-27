@@ -16,6 +16,7 @@ interface DateRangePickerProps extends React.HTMLAttributes<HTMLDivElement> {
   onDateChange?: (date: DateRange | undefined) => void
   placeholder?: string
   disabled?: boolean
+  triggerClassName?: string
 }
 
 export function DateRangePicker({
@@ -24,6 +25,7 @@ export function DateRangePicker({
   onDateChange,
   placeholder = "기간을 선택하세요",
   disabled = false,
+  triggerClassName,
   ...props
 }: DateRangePickerProps) {
   const [open, setOpen] = React.useState(false)
@@ -66,11 +68,11 @@ export function DateRangePicker({
         <PopoverTrigger asChild>
           <Button
             id="date"
-            variant="outline"
             className={cn(
-              "w-full justify-start text-left font-normal h-9 text-sm border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-colors",
+              "button-base w-full justify-start text-left font-normal border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 transition-colors",
               !date && "text-gray-500",
-              date && "text-gray-900"
+              date && "text-gray-900",
+              triggerClassName
             )}
             disabled={disabled}
           >
@@ -88,11 +90,11 @@ export function DateRangePicker({
             )}
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0 shadow-lg border border-gray-200" align="start">
-          <div className="bg-white rounded-lg overflow-hidden">
+        <PopoverContent className="w-auto p-0 shadow-lg border border-gray-200 business-radius-card" align="start">
+          <div className="bg-white business-radius-card overflow-hidden">
             <div className="bg-gray-50 border-b border-gray-100 px-4 py-3">
-              <h4 className="text-sm font-medium text-gray-900">기간 선택</h4>
-              <p className="text-xs text-gray-500 mt-1">시작일과 종료일을 선택하세요</p>
+              <h4 className="text-[11px] font-semibold text-gray-900">기간 선택</h4>
+              <p className="text-[10px] text-gray-500 mt-1">시작일과 종료일을 선택하세요</p>
             </div>
             <div className="p-4">
               <Calendar
@@ -110,22 +112,22 @@ export function DateRangePicker({
                 numberOfMonths={2}
                 disabled={disabled}
                 locale={ko}
-                className="rounded-md"
+                className="business-radius-card"
                 classNames={{
                   months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
                   month: "space-y-4",
-                  caption: "flex justify-center pt-1 relative items-center text-sm font-medium",
-                  caption_label: "text-sm font-medium text-gray-900",
+                  caption: "flex justify-center pt-1 relative items-center text-[11px] font-medium",
+                  caption_label: "text-[11px] font-medium text-gray-900",
                   nav: "space-x-1 flex items-center",
-                  nav_button: "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none border border-input bg-background hover:bg-accent hover:text-accent-foreground h-7 w-7",
+                  nav_button: "inline-flex items-center justify-center rounded-md text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none border border-input bg-background hover:bg-accent hover:text-accent-foreground h-6 w-6",
                   nav_button_previous: "absolute left-1",
                   nav_button_next: "absolute right-1",
                   table: "w-full border-collapse space-y-1",
                   head_row: "flex",
-                  head_cell: "text-gray-500 rounded-md w-9 font-normal text-[0.8rem]",
+                  head_cell: "text-gray-500 rounded-md w-7 font-normal text-[10px]",
                   row: "flex w-full mt-2",
-                  cell: "h-9 w-9 text-center text-sm p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
-                  day: "inline-flex items-center justify-center rounded-md text-sm font-normal ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 aria-selected:opacity-100 h-9 w-9 hover:bg-gray-100 hover:text-gray-900 text-gray-900",
+                  cell: "h-7 w-7 text-center text-[11px] p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
+                  day: "inline-flex items-center justify-center rounded-md text-[11px] font-normal ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 aria-selected:opacity-100 h-7 w-7 hover:bg-gray-100 hover:text-gray-900 text-gray-900",
                   day_range_start: "day-range-start bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
                   day_range_end: "day-range-end bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
                   day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
@@ -140,17 +142,15 @@ export function DateRangePicker({
             {date && (
               <div className="bg-gray-50 border-t border-gray-100 px-4 py-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-600">
+                  <span className="badge-text text-gray-600">
                     선택된 기간: {formatDateRange(date)}
                   </span>
                   <Button
-                    variant="ghost"
-                    size="sm"
                     onClick={() => {
                       onDateChange?.(undefined)
                       setOpen(false)
                     }}
-                    className="h-6 px-2 text-xs"
+                    className="button-action-secondary"
                   >
                     지우기
                   </Button>
