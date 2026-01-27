@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 interface GeneratedPreviewPanelProps {
   bomItems: BOMItem[];
   coordinates: CoordinateItem[];
+  coordinatesProvided?: boolean;
   boardName: string;
   productionQuantity: number;
   artworkManager?: string;       // Artwork 담당자
@@ -35,6 +36,7 @@ export interface GeneratedPreviewPanelRef {
 const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPreviewPanelProps>(({ 
   bomItems: initialItems, 
   coordinates, 
+  coordinatesProvided = true,
   boardName,
   productionQuantity,
   artworkManager = '',
@@ -86,6 +88,7 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
   
   // BOM에는 있지만 좌표에 없는 품목 체크
   const hasMissingCoordinate = (item: BOMItem): boolean => {
+    if (!coordinatesProvided) return false;
     if (!item.refList) return false;
     const refs = item.refList.split(',').map(r => r.trim().toUpperCase()).filter(Boolean);
     // 하나라도 좌표에 없으면 true

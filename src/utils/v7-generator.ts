@@ -754,7 +754,7 @@ function mapTypeFromFootprint(part: string, footprint: string, learningData: Lea
 
 export async function processBOMAndCoordinates(
   bomFile: File,
-  coordFile: File,
+  coordFile: File | null,
   productionQuantity: number
 ): Promise<ProcessedResult> {
   console.log('🚀 BOM/좌표 처리 시작...');
@@ -764,7 +764,7 @@ export async function processBOMAndCoordinates(
   
   // 2. 파일 파싱
   const parsedBOM = await parseBOMFile(bomFile);
-  const parsedCoord = await parseCoordinateFile(coordFile);
+  const parsedCoord = coordFile ? await parseCoordinateFile(coordFile) : [];
 
   // Ref를 대문자로 정규화해 매핑 실패 방지
   parsedBOM.forEach(item => {

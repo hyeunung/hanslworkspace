@@ -77,7 +77,7 @@ export default function BomCoordinateIntegrated() {
   }>>([]);
   const [editingBoardId, setEditingBoardId] = useState<string | null>(null); // pending 상태 편집 중인 보드 ID
   const [loadingBoards, setLoadingBoards] = useState(false);
-  const [uploadedFilePaths, setUploadedFilePaths] = useState<{ bomPath: string; coordPath: string } | null>(null);
+  const [uploadedFilePaths, setUploadedFilePaths] = useState<{ bomPath: string; coordPath?: string } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [loadingText, setLoadingText] = useState('');
@@ -92,10 +92,11 @@ export default function BomCoordinateIntegrated() {
   const { mismatchCount, missingInCoord, missingInBom } = useMemo(() => {
     const bomItems = processedResult?.processedData?.bomItems ?? [];
     const coords = processedResult?.processedData?.coordinates ?? [];
+    const coordinatesProvided = processedResult?.processedData?.coordinatesProvided !== false;
 
-    console.log('[REF 비교] BOM 항목 수:', bomItems.length, '좌표 항목 수:', coords.length);
-    if (coords.length > 0) {
-      console.log('[REF 비교] 좌표 샘플:', coords[0]);
+    // 좌표 파일이 제공되지 않은 경우엔 불일치 계산을 하지 않음 (BOM-only 지원)
+    if (!coordinatesProvided) {
+      return { mismatchCount: 0, missingInCoord: 0, missingInBom: 0 };
     }
 
     const bomRefs = new Set<string>();
@@ -110,8 +111,6 @@ export default function BomCoordinateIntegrated() {
       const ref = coord?.refDes || (coord as any)?.ref;
       if (ref) coordRefs.add(ref.trim().toUpperCase());
     });
-
-    console.log('[REF 비교] BOM REF 수:', bomRefs.size, '좌표 REF 수:', coordRefs.size);
 
     let missingInCoord = 0;
     bomRefs.forEach(ref => {
@@ -434,8 +433,8 @@ export default function BomCoordinateIntegrated() {
   }, []);
 
   const handleProcess = async () => {
-    if (!fileInfo.bomFile || !fileInfo.coordFile) {
-      toast.error('BOM 파일과 좌표 파일을 모두 선택해주세요.');
+    if (!fileInfo.bomFile) {
+      toast.error('BOM 파일을 선택해주세요.');
       return;
     }
 
@@ -455,6 +454,7 @@ export default function BomCoordinateIntegrated() {
       return;
     }
 
+    const coordinatesProvided = Boolean(fileInfo.coordFile);
     let timer: NodeJS.Timeout | null = null;
     let textTimer: NodeJS.Timeout | null = null;
 
@@ -489,7 +489,7 @@ export default function BomCoordinateIntegrated() {
         setLoadingText((current) => {
           if (current === '파일 업로드 준비 중...') return 'BOM 파일 읽는 중...';
           if (current === 'BOM 파일 읽는 중...') return '데이터 구조 분석 중...';
-          if (current === '데이터 구조 분석 중...') return '좌표 데이터 매칭 중...';
+          if (current === '데이터 구조 분석 중...') return coordinatesProvided ? '좌표 데이터 매칭 중...' : 'BOM 정리 중...';
           if (current === '좌표 데이터 매칭 중...') return 'AI가 최종 정리 중입니다...';
           if (current === 'AI가 최종 정리 중입니다...') return '거의 다 되었습니다. 잠시만요!';
           return current;
@@ -514,9 +514,7 @@ export default function BomCoordinateIntegrated() {
       };
 
       const safeBomFileName = sanitizeFileName(fileInfo.bomFile.name);
-      const safeCoordFileName = sanitizeFileName(fileInfo.coordFile.name);
       const bomPath = `raw/${timestamp}_bom_${safeBomFileName}`;
-      const coordPath = `raw/${timestamp}_coord_${safeCoordFileName}`;
 
       // 파일 업로드
       const bomResult = await supabase.storage
@@ -525,13 +523,19 @@ export default function BomCoordinateIntegrated() {
 
       if (bomResult.error) throw bomResult.error;
 
-      const coordResult = await supabase.storage
-        .from('bom-files')
-        .upload(coordPath, fileInfo.coordFile, { cacheControl: '3600', upsert: true });
+      let coordPath: string | undefined;
+      if (fileInfo.coordFile) {
+        const safeCoordFileName = sanitizeFileName(fileInfo.coordFile.name);
+        coordPath = `raw/${timestamp}_coord_${safeCoordFileName}`;
 
-      if (coordResult.error) {
-        await supabase.storage.from('bom-files').remove([bomPath]);
-        throw coordResult.error;
+        const coordResult = await supabase.storage
+          .from('bom-files')
+          .upload(coordPath, fileInfo.coordFile, { cacheControl: '3600', upsert: true });
+
+        if (coordResult.error) {
+          await supabase.storage.from('bom-files').remove([bomPath]);
+          throw coordResult.error;
+        }
       }
 
       // Signed URL 생성
@@ -539,16 +543,16 @@ export default function BomCoordinateIntegrated() {
         .from('bom-files')
         .createSignedUrl(bomPath, 60 * 60);
 
-      const { data: coordUrlData } = await supabase.storage
-        .from('bom-files')
-        .createSignedUrl(coordPath, 60 * 60);
+      const coordUrlData = coordPath
+        ? (await supabase.storage.from('bom-files').createSignedUrl(coordPath, 60 * 60)).data
+        : undefined;
 
-      if (!bomUrlData?.signedUrl || !coordUrlData?.signedUrl) {
+      if (!bomUrlData?.signedUrl || (coordPath && !coordUrlData?.signedUrl)) {
         throw new Error('파일 URL 생성 실패');
       }
 
       // 업로드된 파일 경로 저장 (나중에 DB에 저장할 때 사용)
-      setUploadedFilePaths({ bomPath, coordPath });
+      setUploadedFilePaths({ bomPath, ...(coordPath ? { coordPath } : {}) });
 
       // 2. v7 엔진으로 BOM/좌표 처리 (학습 데이터 기반)
       console.log('Processing BOM with v7 engine...');
@@ -578,6 +582,7 @@ export default function BomCoordinateIntegrated() {
           topCoordinates: processedData.topCoordinates,
           bottomCoordinates: processedData.bottomCoordinates,
           coordinates: [...processedData.topCoordinates, ...processedData.bottomCoordinates],
+          coordinatesProvided,
           summary: processedData.summary
         }
       };
@@ -708,7 +713,9 @@ export default function BomCoordinateIntegrated() {
       }
 
       // 2. 원본 파일 정보 저장 (bom_raw_files)
-      if (fileInfo.bomFile && fileInfo.coordFile && uploadedFilePaths) {
+      // NOTE: bom_raw_files 스키마가 coordinate_file_* NOT NULL이라
+      // 좌표 파일 미업로드(BOM-only) 케이스에선 raw file 저장을 건너뜀.
+      if (fileInfo.bomFile && fileInfo.coordFile && uploadedFilePaths?.bomPath && uploadedFilePaths?.coordPath) {
         let bomFileUrl = '';
         let coordFileUrl = '';
 
@@ -790,7 +797,7 @@ export default function BomCoordinateIntegrated() {
       if (insertError) throw insertError;
 
       // 4. 좌표 데이터도 저장 (part_placements)
-      if (processedResult.processedData?.coordinates) {
+      if (Array.isArray(processedResult.processedData?.coordinates) && processedResult.processedData.coordinates.length > 0) {
         const { error: deleteCoordError } = await supabase
           .from('part_placements')
           .delete()
@@ -1639,7 +1646,7 @@ export default function BomCoordinateIntegrated() {
                     )}
                   </div>
 
-                  {/* 좌표 파일 업로드 */}
+                  {/* 좌표 파일 업로드 (선택) */}
                   <div 
                     className={cn(
                       "border-2 border-dashed rounded-lg p-2 text-center transition-colors cursor-pointer relative flex flex-col items-center justify-center h-full",
@@ -1677,7 +1684,7 @@ export default function BomCoordinateIntegrated() {
                       </div>
                     ) : (
                       <div className="flex flex-col items-center gap-1">
-                        <span className="text-xs font-bold text-gray-400">좌표</span>
+                        <span className="text-xs font-bold text-gray-400">좌표(선택)</span>
                         <p className="text-[10px] font-medium text-gray-700">파일 업로드</p>
                       </div>
                     )}
@@ -1821,7 +1828,6 @@ export default function BomCoordinateIntegrated() {
                         onClick={handleProcess}
                         disabled={
                           !fileInfo.bomFile || 
-                          !fileInfo.coordFile || 
                           !metadata.boardName || 
                           metadata.productionQuantity <= 0 ||
                           uploading
@@ -1842,7 +1848,7 @@ export default function BomCoordinateIntegrated() {
           {!fileInfo.bomFile && !fileInfo.coordFile && (
             <div className="text-center py-6 sm:py-8 text-gray-500">
               <Package className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 text-gray-300" />
-              <p className="text-xs sm:text-sm px-4">BOM 파일과 좌표 파일을 업로드하여 시작하세요</p>
+              <p className="text-xs sm:text-sm px-4">BOM 파일을 업로드하여 시작하세요 (좌표 파일은 선택)</p>
             </div>
           )}
         </div>
@@ -1958,12 +1964,12 @@ export default function BomCoordinateIntegrated() {
                         ⚠️ 수동 작성: {processedResult.processedData?.bomItems?.filter((item: { isManualRequired?: boolean }) => item.isManualRequired).length}
                       </span>
                     )}
-                    {mismatchCount > 0 && (
+                    {processedResult?.processedData?.coordinatesProvided !== false && mismatchCount > 0 && (
                       <span className="badge-stats bg-red-100 text-red-700 border border-red-200">
                         REF 불일치: {mismatchCount}
                       </span>
                     )}
-                    {missingInCoord > 0 && (
+                    {processedResult?.processedData?.coordinatesProvided !== false && missingInCoord > 0 && (
                       <span className="badge-stats bg-red-100 text-red-700 border border-red-200">
                         좌표에 없음: {missingInCoord}개
                       </span>
@@ -1985,7 +1991,7 @@ export default function BomCoordinateIntegrated() {
                         ⚠️ 수동 작성: {processedResult.processedData?.bomItems?.filter((item: { isManualRequired?: boolean }) => item.isManualRequired).length}
                       </span>
                     )}
-                    {missingInBom > 0 && (
+                    {processedResult?.processedData?.coordinatesProvided !== false && missingInBom > 0 && (
                       <span className="badge-stats bg-red-100 text-red-700 border border-red-200">
                         BOM에 없음: {missingInBom}개
                       </span>
@@ -1998,6 +2004,7 @@ export default function BomCoordinateIntegrated() {
                     ref={previewPanelRef}
                 bomItems={processedResult.processedData?.bomItems || []}
                 coordinates={processedResult.processedData?.coordinates || []}
+                    coordinatesProvided={processedResult?.processedData?.coordinatesProvided !== false}
                 boardName={metadata.boardName || 'Board'}
                 productionQuantity={metadata.productionQuantity}
                     artworkManager={employees.find(emp => emp.id === metadata.artworkManager)?.name || currentUser?.name || ''}

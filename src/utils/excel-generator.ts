@@ -67,9 +67,25 @@ export async function generateBOMExcelFromTemplate(
   // BOM 시트 채우기
   fillBOMSheet(workbook, bomItems, metadata);
 
-  // 좌표 시트 채우기
-  fillCoordinateSheet(workbook, 'TOP', topCoordinates);
-  fillCoordinateSheet(workbook, 'BOTTOM', bottomCoordinates);
+  // 좌표 시트 채우기 (좌표가 전혀 없으면 시트 자체 제거)
+  const hasAnyCoordinates = (topCoordinates?.length || 0) > 0 || (bottomCoordinates?.length || 0) > 0;
+
+  const removeWorksheetIfExists = (name: string) => {
+    const ws = workbook.getWorksheet(name);
+    if (!ws) return;
+    // ExcelJS: removeWorksheet는 worksheet.id를 받음
+    workbook.removeWorksheet(ws.id);
+  };
+
+  if (!hasAnyCoordinates) {
+    // BOM-only 케이스: 템플릿에 있는 TOP/BOTTOM 시트 제거
+    removeWorksheetIfExists('TOP');
+    removeWorksheetIfExists('BOTTOM');
+  } else {
+    // 좌표가 있으면 해당 시트만 채움 (없는 쪽은 템플릿 그대로일 수 있어 필요 시 추가로 제거 가능)
+    fillCoordinateSheet(workbook, 'TOP', topCoordinates || []);
+    fillCoordinateSheet(workbook, 'BOTTOM', bottomCoordinates || []);
+  }
 
   // Blob으로 반환
   const outBuffer = await workbook.xlsx.writeBuffer();
