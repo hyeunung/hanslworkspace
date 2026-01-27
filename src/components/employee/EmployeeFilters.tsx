@@ -66,13 +66,24 @@ export default function EmployeeFilters({
     loadOptions()
   }, [])
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    onFiltersChange({
-      ...filters,
-      search: localSearch.trim() || undefined
-    })
-  }
+  useEffect(() => {
+    setLocalSearch(filters.search || '')
+  }, [filters.search])
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      const nextSearch = localSearch.trim()
+      if (nextSearch === (filters.search || '')) {
+        return
+      }
+      onFiltersChange({
+        ...filters,
+        search: nextSearch || undefined
+      })
+    }, 300)
+
+    return () => clearTimeout(timeoutId)
+  }, [localSearch, filters, onFiltersChange])
 
   const handleDepartmentChange = (value: string) => {
     onFiltersChange({
@@ -91,7 +102,7 @@ export default function EmployeeFilters({
   const handleRoleChange = (value: string) => {
     onFiltersChange({
       ...filters,
-      purchase_role: value === 'all' ? undefined : value === 'none' ? '' : value
+      purchase_role: value === 'all' ? undefined : value
     })
   }
 
@@ -163,7 +174,7 @@ export default function EmployeeFilters({
 
       {/* 필터 섹션 */}
       <div className="bg-white p-3 sm:p-4 rounded-lg border space-y-4">
-        <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-end sm:flex-wrap">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-end sm:flex-wrap">
           {/* 검색 */}
           <div className="flex-1 sm:min-w-[250px]">
             <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
@@ -277,12 +288,9 @@ export default function EmployeeFilters({
             </Select>
           </div>
 
-          {/* 검색 및 초기화 버튼 */}
-          <div className="flex gap-2 w-full sm:w-auto">
-            <Button type="submit" className="flex-1 sm:flex-none h-9 text-sm">
-              검색
-            </Button>
-            {hasFilters && (
+          {/* 초기화 버튼 */}
+          {hasFilters && (
+            <div className="flex gap-2 w-full sm:w-auto">
               <Button 
                 type="button" 
                 variant="outline" 
@@ -293,9 +301,9 @@ export default function EmployeeFilters({
                 <span className="hidden sm:inline">초기화</span>
                 <span className="sm:hidden">초기</span>
               </Button>
-            )}
-          </div>
-        </form>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

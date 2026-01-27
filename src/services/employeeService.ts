@@ -39,8 +39,10 @@ class EmployeeService {
       }
 
       // 권한 필터 적용
-      if (filters?.purchase_role) {
-        query = query.eq('purchase_role', filters.purchase_role);
+      if (filters?.purchase_role === 'none') {
+        query = query.is('purchase_role', null);
+      } else if (filters?.purchase_role) {
+        query = query.contains('purchase_role', [filters.purchase_role]);
       }
 
       // 활성 상태 필터 적용
@@ -107,8 +109,11 @@ class EmployeeService {
         .insert({
           id: employeeId,
           ...employeeData,
-          purchase_role: employeeData.purchase_role?.join(',') || null,
-          is_active: true
+          purchase_role: employeeData.purchase_role && employeeData.purchase_role.length > 0
+            ? employeeData.purchase_role
+            : null,
+          is_active: true,
+          terminated_at: null
         })
         .select()
         .single();
@@ -142,14 +147,16 @@ class EmployeeService {
         }
       }
 
-      const updateData = {
-        ...employeeData,
-        purchase_role: employeeData.purchase_role ? employeeData.purchase_role.join(',') : undefined
+      const updateData: Record<string, any> = {
+        ...employeeData
       };
-      
-      // undefined 값 제거
-      if (updateData.purchase_role === undefined) {
+
+      if (employeeData.purchase_role === undefined) {
         delete updateData.purchase_role;
+      } else {
+        updateData.purchase_role = employeeData.purchase_role.length > 0
+          ? employeeData.purchase_role
+          : null;
       }
       
       const { data, error } = await this.supabase
@@ -185,7 +192,10 @@ class EmployeeService {
         // 발주 요청과 연결된 직원은 비활성화만 가능
         const { error } = await this.supabase
           .from('employees')
-          .update({ is_active: false })
+          .update({ 
+            is_active: false,
+            terminated_at: new Date().toISOString()
+          })
           .eq('id', id);
 
         if (error) throw error;
@@ -224,9 +234,13 @@ class EmployeeService {
       if (selectError) throw selectError;
 
       // 상태 토글
+      const nextIsActive = !currentEmployee.is_active
       const { data, error } = await this.supabase
         .from('employees')
-        .update({ is_active: !currentEmployee.is_active })
+        .update({ 
+          is_active: nextIsActive,
+          terminated_at: nextIsActive ? null : new Date().toISOString()
+        })
         .eq('id', id)
         .select()
         .single();
@@ -250,7 +264,7 @@ class EmployeeService {
     try {
       const { data, error } = await this.supabase
         .from('employees')
-        .update({ purchase_role: role })
+        .update({ purchase_role: role ? [role] : null })
         .eq('id', id)
         .select()
         .single();
@@ -351,7 +365,7 @@ class EmployeeService {
   }
 
   // 권한명 표시용 변환
-  private getRoleDisplayName(role?: string): string {
+  private getRoleDisplayName(role?: string | string[] | null): string {
     const roleNames: Record<string, string> = {
       'app_admin': '앱 관리자',
       'ceo': 'CEO',
@@ -361,7 +375,26 @@ class EmployeeService {
       'buyer': '구매자'
     };
     
-    return roleNames[role || ''] || role || '권한 없음';
+    const roles = this.normalizeRoles(role)
+    if (roles.length === 0) {
+      return '권한 없음'
+    }
+
+    return roles.map((value) => roleNames[value] || value).join(', ')
+  }
+
+  private normalizeRoles(role?: string | string[] | null): string[] {
+    if (!role) return []
+
+    if (Array.isArray(role)) {
+      return role.filter((value) => value && value.trim())
+    }
+
+    if (typeof role === 'string') {
+      return role.split(',').map((value) => value.trim()).filter(Boolean)
+    }
+
+    return []
   }
 
   // 권한 체크 함수
@@ -377,7 +410,8 @@ class EmployeeService {
         return { success: true, hasPermission: false };
       }
 
-      const hasPermission = requiredRoles.includes(employee.purchase_role);
+      const roles = this.normalizeRoles(employee.purchase_role)
+      const hasPermission = roles.some((role) => requiredRoles.includes(role));
       return { success: true, hasPermission };
     } catch (error) {
       return { 

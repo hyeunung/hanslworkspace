@@ -28,7 +28,6 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
   const navigate = useNavigate()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
-  const [unreadInquiryCount, setUnreadInquiryCount] = useState(0)
 
   const roles = Array.isArray(user?.purchase_role)
     ? user.purchase_role
@@ -117,78 +116,48 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
     }
   }, [isAdmin])
 
-  // 일반 사용자: 상단 로고 옆에 안읽은 문의 알림(inquiry_message/inquiry_resolved) 뱃지 표시
+  // 일반 사용자: 내 미처리 문의(open+in_progress) 건수 표시
   useEffect(() => {
     if (isAdmin) return
 
     const supabase = createClient()
     let subscription: any
     let cancelled = false
+    let currentUserId = ''
 
-    const loadUnreadCount = async () => {
-      const { data: { user: authUser } } = await supabase.auth.getUser()
-      const email = authUser?.email
-      if (!email) return
+    const loadMyPendingCount = async () => {
+      if (!currentUserId) {
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        currentUserId = authUser?.id || ''
+      }
+      if (!currentUserId) return
 
       const { count, error } = await supabase
-        .from('notifications')
+        .from('support_inquires')
         .select('id', { count: 'exact', head: true })
-        .eq('user_email', email)
-        .eq('is_read', false)
-        .in('type', ['inquiry_message', 'inquiry_resolved'])
+        .eq('user_id', currentUserId)
+        .in('status', ['open', 'in_progress'])
 
       if (!cancelled) {
-        if (!error && typeof count === 'number') setUnreadInquiryCount(count)
-      }
-
-      const isUnreadInquiryNotif = (row?: any) => {
-        if (!row) return false
-        return row.is_read === false && (row.type === 'inquiry_message' || row.type === 'inquiry_resolved')
-      }
-
-      // 실시간 구독(이메일 확인 후 1회만)
-      if (!subscription) {
-        subscription = supabase
-          .channel('header_inquiry_notifications_badge')
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'notifications',
-              filter: `user_email=eq.${email}`
-            },
-            (payload: any) => {
-              // ✅ 즉시 반영: unread 카운트 증감 후 보정은 loadUnreadCount로 처리
-              const eventType = payload?.eventType as 'INSERT' | 'UPDATE' | 'DELETE' | undefined
-              const newRow = payload?.new
-              const oldRow = payload?.old
-
-              if (eventType === 'INSERT') {
-                if (isUnreadInquiryNotif(newRow)) setUnreadInquiryCount((prev) => prev + 1)
-                return
-              }
-              if (eventType === 'DELETE') {
-                if (isUnreadInquiryNotif(oldRow)) setUnreadInquiryCount((prev) => Math.max(0, prev - 1))
-                return
-              }
-              if (eventType === 'UPDATE') {
-                const wasUnread = isUnreadInquiryNotif(oldRow)
-                const isNowUnread = isUnreadInquiryNotif(newRow)
-                if (wasUnread === isNowUnread) return
-                setUnreadInquiryCount((prev) => {
-                  const next = prev + (isNowUnread ? 1 : -1)
-                  return Math.max(0, next)
-                })
-                return
-              }
-            }
-          )
-          .subscribe()
+        if (!error && typeof count === 'number') setPendingInquiryCount(count)
       }
     }
 
-    loadUnreadCount()
+    loadMyPendingCount()
+
+    // 실시간 구독(문의 변경 시 내 건만 재조회)
+    if (!subscription) {
+      subscription = supportService.subscribeToInquiries((payload) => {
+        if (!currentUserId) {
+          loadMyPendingCount()
+          return
+        }
+        const newRow = payload?.new as { user_id?: string } | undefined
+        const oldRow = payload?.old as { user_id?: string } | undefined
+        if (newRow?.user_id !== currentUserId && oldRow?.user_id !== currentUserId) return
+        loadMyPendingCount()
+      })
+    }
 
     return () => {
       cancelled = true
@@ -230,18 +199,18 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
             </span>
           </div>
 
-          {/* 로고 오른쪽 문의 뱃지: admin=미처리건수 / user=안읽은 알림수 */}
-          {((isAdmin ? pendingInquiryCount : unreadInquiryCount) > 0) && (
+          {/* 로고 오른쪽 문의 뱃지: admin=전체 미처리 / user=내 미처리 */}
+          {pendingInquiryCount > 0 && (
             <button
               type="button"
               onClick={() => navigate('/support')}
               className="relative ml-3 inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-gray-50 transition-colors"
               title="미처리 문의 보기"
-              aria-label={`문의 알림 ${(isAdmin ? pendingInquiryCount : unreadInquiryCount)}건`}
+              aria-label={`문의 알림 ${pendingInquiryCount}건`}
             >
               <MessageCircle className="w-4 h-4 text-gray-600" />
               <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
-                {((isAdmin ? pendingInquiryCount : unreadInquiryCount) > 99) ? '99+' : (isAdmin ? pendingInquiryCount : unreadInquiryCount)}
+                {(pendingInquiryCount > 99) ? '99+' : pendingInquiryCount}
               </span>
             </button>
           )}

@@ -26,7 +26,6 @@ export default function Navigation({ role }: NavigationProps) {
   const location = useLocation()
   const pathname = location.pathname
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
-  const [unreadInquiryCount, setUnreadInquiryCount] = useState(0)
   
   // role 배열 확인
   const roles = Array.isArray(role) ? role : (role ? [role] : [])
@@ -59,51 +58,47 @@ export default function Navigation({ role }: NavigationProps) {
     }
   }, [isAdmin])
 
-  // 일반 사용자: 내 안읽은 문의 알림 개수 조회 (notifications 기반)
+  // 일반 사용자: 내 미처리 문의(open+in_progress) 개수 조회
   useEffect(() => {
     if (isAdmin) return
 
     const supabase = createClient()
     let subscription: any
     let cancelled = false
+    let currentUserId = ''
 
-    const loadUnreadCount = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      const email = user?.email
-      if (!email) return
+    const loadMyPendingCount = async () => {
+      if (!currentUserId) {
+        const { data: { user } } = await supabase.auth.getUser()
+        currentUserId = user?.id || ''
+      }
+      if (!currentUserId) return
 
       const { count, error } = await supabase
-        .from('notifications')
+        .from('support_inquires')
         .select('id', { count: 'exact', head: true })
-        .eq('user_email', email)
-        .eq('is_read', false)
-        .in('type', ['inquiry_message', 'inquiry_resolved'])
+        .eq('user_id', currentUserId)
+        .in('status', ['open', 'in_progress'])
 
       if (!cancelled) {
-        if (!error && typeof count === 'number') setUnreadInquiryCount(count)
-      }
-
-      // 실시간 구독은 이메일을 알아야 하므로 여기서 한번만 설정
-      if (!subscription) {
-        subscription = supabase
-          .channel('notifications_inquiry_badge')
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'notifications',
-              filter: `user_email=eq.${email}`
-            },
-            () => {
-              loadUnreadCount()
-            }
-          )
-          .subscribe()
+        if (!error && typeof count === 'number') setPendingInquiryCount(count)
       }
     }
 
-    loadUnreadCount()
+    loadMyPendingCount()
+
+    if (!subscription) {
+      subscription = supportService.subscribeToInquiries((payload) => {
+        if (!currentUserId) {
+          loadMyPendingCount()
+          return
+        }
+        const newRow = payload?.new as { user_id?: string } | undefined
+        const oldRow = payload?.old as { user_id?: string } | undefined
+        if (newRow?.user_id !== currentUserId && oldRow?.user_id !== currentUserId) return
+        loadMyPendingCount()
+      })
+    }
 
     return () => {
       cancelled = true
@@ -165,8 +160,8 @@ export default function Navigation({ role }: NavigationProps) {
       href: '/support',
       icon: MessageCircle,
       roles: ['all'],
-      badge: (isAdmin ? pendingInquiryCount : unreadInquiryCount) > 0
-        ? (isAdmin ? pendingInquiryCount : unreadInquiryCount)
+      badge: pendingInquiryCount > 0
+        ? pendingInquiryCount
         : undefined
     }
   ]

@@ -61,9 +61,10 @@ export interface Employee {
   department?: string
   position?: string
   phone?: string
-  purchase_role?: string  // 발주 관련 권한 (app_admin, ceo, middle_manager 등)
+  purchase_role?: string | string[]  // 발주 관련 권한 (app_admin, ceo, middle_manager 등)
   role?: string  // 직원 관리 권한 (hr, admin)
   is_active: boolean
+  terminated_at?: string | null
   created_at: string
   updated_at: string
   // 민감한 정보 (hr, admin만 볼 수 있음)

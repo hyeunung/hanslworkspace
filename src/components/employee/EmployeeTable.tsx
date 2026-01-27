@@ -93,7 +93,23 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh, cu
     }
   }
 
-  const getRoleDisplayName = (role?: string) => {
+  const normalizeRoles = (role?: string | string[] | null) => {
+    if (!role) return []
+    if (Array.isArray(role)) {
+      return role.filter((value) => value && value.trim())
+    }
+    if (typeof role === 'string') {
+      return role.split(',').map((value) => value.trim()).filter(Boolean)
+    }
+    return []
+  }
+
+  const getPrimaryRole = (role?: string | string[] | null) => {
+    const roles = normalizeRoles(role)
+    return roles[0]
+  }
+
+  const getRoleDisplayName = (role?: string | string[] | null) => {
     const roleNames: Record<string, string> = {
       'app_admin': '앱 관리자',
       'ceo': 'CEO',
@@ -103,10 +119,14 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh, cu
       'buyer': '구매자'
     }
     
-    return roleNames[role || ''] || '권한 없음'
+    const primaryRole = getPrimaryRole(role)
+    if (!primaryRole) {
+      return '권한 없음'
+    }
+    return roleNames[primaryRole] || primaryRole
   }
 
-  const getRoleBadgeColor = (role?: string) => {
+  const getRoleBadgeColor = (role?: string | string[] | null) => {
     const colorMap: Record<string, string> = {
       'app_admin': 'bg-purple-100 text-purple-800',
       'ceo': 'bg-red-100 text-red-800',
@@ -116,7 +136,8 @@ export default function EmployeeTable({ employees, onEdit, onView, onRefresh, cu
       'buyer': 'bg-gray-100 text-gray-800'
     }
     
-    return colorMap[role || ''] || 'bg-gray-100 text-gray-600'
+    const primaryRole = getPrimaryRole(role)
+    return colorMap[primaryRole || ''] || 'bg-gray-100 text-gray-600'
   }
 
   // formatDate는 utils/helpers.ts에서 import

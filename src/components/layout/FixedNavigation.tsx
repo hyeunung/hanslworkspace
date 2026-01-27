@@ -33,7 +33,6 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
   const pathname = location.pathname
 
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
-  const [unreadInquiryCount, setUnreadInquiryCount] = useState(0)
 
   const roles = Array.isArray(role) ? role : (role ? [role] : [])
   const isAdmin = roles.includes('app_admin')
@@ -59,55 +58,54 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
     return () => subscription.unsubscribe()
   }, [isAdmin])
 
-  // 사용자: 안읽은 문의 알림(메시지/완료) 개수
+  // 사용자: 내 미처리 문의(open+in_progress) 개수
   useEffect(() => {
     if (isAdmin) return
 
     const supabase = createClient()
     let subscription: any
     let cancelled = false
+    let currentUserId = ''
 
-    const loadUnreadCount = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      const email = user?.email
-      if (!email) return
+    const loadMyPendingCount = async () => {
+      if (!currentUserId) {
+        const { data: { user } } = await supabase.auth.getUser()
+        currentUserId = user?.id || ''
+      }
+      if (!currentUserId) return
 
       const { count } = await supabase
-        .from('notifications')
+        .from('support_inquires')
         .select('id', { count: 'exact', head: true })
-        .eq('user_email', email)
-        .eq('is_read', false)
-        .in('type', ['inquiry_message', 'inquiry_resolved'])
+        .eq('user_id', currentUserId)
+        .in('status', ['open', 'in_progress'])
 
       if (!cancelled && typeof count === 'number') {
-        setUnreadInquiryCount(count)
+        setPendingInquiryCount(count)
       }
 
       if (!subscription) {
-        subscription = supabase
-          .channel('notifications_inquiry_badge_fixednav')
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'notifications',
-              filter: `user_email=eq.${email}`
-            },
-            () => loadUnreadCount()
-          )
-          .subscribe()
+        subscription = supportService.subscribeToInquiries((payload) => {
+          if (!currentUserId) {
+            loadMyPendingCount()
+            return
+          }
+          const newRow = payload?.new as { user_id?: string } | undefined
+          const oldRow = payload?.old as { user_id?: string } | undefined
+          if (newRow?.user_id !== currentUserId && oldRow?.user_id !== currentUserId) return
+          loadMyPendingCount()
+        })
       }
     }
 
-    loadUnreadCount()
+    loadMyPendingCount()
     return () => {
       cancelled = true
       if (subscription) subscription.unsubscribe()
     }
   }, [isAdmin])
 
-  const supportBadge = isAdmin ? pendingInquiryCount : unreadInquiryCount
+  const supportBadge = pendingInquiryCount
 
   const menuItems = [
     {

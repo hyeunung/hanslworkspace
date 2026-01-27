@@ -108,6 +108,7 @@ export type Database = {
           fcm_token: string | null
           id: string
           is_admin: boolean | null
+          is_active: boolean
           join_date: string | null
           name: string | null
           phone: string | null
@@ -115,6 +116,7 @@ export type Database = {
           purchase_role: string[] | null
           remaining_annual_leave: number | null
           role: string | null
+          terminated_at: string | null
           updated_at: string | null
           used_annual_leave: number | null
         }
@@ -130,6 +132,7 @@ export type Database = {
           fcm_token?: string | null
           id?: string
           is_admin?: boolean | null
+          is_active?: boolean
           join_date?: string | null
           name?: string | null
           phone?: string | null
@@ -137,6 +140,7 @@ export type Database = {
           purchase_role?: string[] | null
           remaining_annual_leave?: number | null
           role?: string | null
+          terminated_at?: string | null
           updated_at?: string | null
           used_annual_leave?: number | null
         }
@@ -152,6 +156,7 @@ export type Database = {
           fcm_token?: string | null
           id?: string
           is_admin?: boolean | null
+          is_active?: boolean
           join_date?: string | null
           name?: string | null
           phone?: string | null
@@ -159,6 +164,7 @@ export type Database = {
           purchase_role?: string[] | null
           remaining_annual_leave?: number | null
           role?: string | null
+          terminated_at?: string | null
           updated_at?: string | null
           used_annual_leave?: number | null
         }
