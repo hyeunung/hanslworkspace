@@ -448,7 +448,7 @@ export default function SupportMain() {
   const purchaseMenuWidthPx = getMenuWidthPx(purchaseOptions, purchaseSelectPlaceholder)
 
   const itemSelectPlaceholder = '품목 선택/검색'
-  const itemControlWidthPx = getSelectControlWidthPx(itemOptions, itemSelectPlaceholder)
+  const itemControlWidthPx = getSelectControlWidthPx(itemOptions, itemSelectPlaceholder) + 16
   const itemMenuWidthPx = getMenuWidthPx(itemOptions, itemSelectPlaceholder)
   const priceChangeTypeOptions = [
     { value: 'unit_price', label: '단가' },
