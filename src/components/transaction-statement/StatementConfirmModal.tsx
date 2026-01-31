@@ -1958,6 +1958,17 @@ export default function StatementConfirmModal({
     return amount.toLocaleString('ko-KR');
   };
 
+  const handleOpenOriginalImage = () => {
+    const imageUrl = statementWithItems?.image_url || statement.image_url;
+    if (!imageUrl) return;
+
+    const width = 1000;
+    const height = 800;
+    const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
+    const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
+    window.open(imageUrl, 'transaction-statement-image', `width=${width},height=${height},left=${left},top=${top}`);
+  };
+
   // 매칭 상세 정보 가져오기
   const getMatchDetails = (ocrItem: TransactionStatementItemWithMatch) => {
     const matched = itemMatches.get(ocrItem.id);
@@ -2139,7 +2150,7 @@ export default function StatementConfirmModal({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setIsImageViewerOpen(true)}
+                onClick={handleOpenOriginalImage}
                 className="button-base h-7 text-[10px]"
               >
                 <ImageIcon className="w-3.5 h-3.5 mr-1" />

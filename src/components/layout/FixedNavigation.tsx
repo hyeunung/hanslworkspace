@@ -33,9 +33,11 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
   const pathname = location.pathname
 
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
+  const [pendingStatementCount, setPendingStatementCount] = useState(0)
 
   const roles = Array.isArray(role) ? role : (role ? [role] : [])
   const isAdmin = roles.includes('app_admin')
+  const canSeeStatementBadge = roles.includes('app_admin') || roles.includes('lead buyer')
 
   // 관리자: 미처리(open+in_progress) 건수
   useEffect(() => {
@@ -106,6 +108,47 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
   }, [isAdmin])
 
   const supportBadge = pendingInquiryCount
+  const statementBadge = pendingStatementCount
+
+  useEffect(() => {
+    if (!canSeeStatementBadge) return
+    const supabase = createClient()
+    let cancelled = false
+    let subscription: any
+
+    const loadPendingStatements = async () => {
+      const { count } = await supabase
+        .from('transaction_statements')
+        .select('id', { count: 'exact', head: true })
+        .in('status', ['pending', 'processing', 'extracted'])
+
+      if (!cancelled && typeof count === 'number') {
+        setPendingStatementCount(count)
+      }
+    }
+
+    loadPendingStatements()
+
+    subscription = supabase
+      .channel('transaction-statements-badge')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'transaction_statements'
+        },
+        () => {
+          loadPendingStatements()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      if (subscription) supabase.removeChannel(subscription)
+    }
+  }, [canSeeStatementBadge])
 
   const menuItems = [
     {
@@ -203,7 +246,14 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
                                 : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
                             )}
                           >
-                            <Icon className="w-4 h-4" />
+                            <div className="relative">
+                              <Icon className="w-4 h-4" />
+                              {item.href === '/transaction-statement' && canSeeStatementBadge && statementBadge > 0 && (
+                                <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                                  {statementBadge > 99 ? '99+' : statementBadge}
+                                </span>
+                              )}
+                            </div>
                           </Link>
                         </TooltipTrigger>
                         <TooltipContent side="right" className="ml-2 bg-white border border-gray-200 text-gray-900 shadow-md">

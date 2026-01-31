@@ -37,6 +37,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
@@ -46,6 +47,7 @@ import { AUTHORIZED_ROLES } from '@/constants/columnSettings'
 import ReactSelect from 'react-select'
 import transactionStatementService from '@/services/transactionStatementService'
 import type { TransactionStatement } from '@/types/transactionStatement'
+import { supportService, type SupportInquiryPayload } from '@/services/supportService'
 
 interface PurchaseDetailModalProps {
   purchaseId: number | null
@@ -57,6 +59,42 @@ interface PurchaseDetailModalProps {
   onRefresh?: (forceRefresh?: boolean, options?: { silent?: boolean }) => void | Promise<void>
   onOptimisticUpdate?: (purchaseId: number, updater: (prev: Purchase) => Purchase) => void
   onDelete?: (purchase: PurchaseRequestWithDetails) => void
+}
+
+type QuantityChangeRow = {
+  id: string
+  itemId: string
+  newQuantity: string
+}
+
+type QuantityChangePayloadItem = {
+  item_id: string
+  line_number?: number | null
+  item_name: string
+  specification?: string | null
+  current_quantity?: number | null
+  new_quantity: number
+}
+
+type PriceChangeType = 'unit_price' | 'amount'
+
+type PriceChangeRow = {
+  id: string
+  itemId: string
+  changeType: PriceChangeType
+  newValue: string
+}
+
+type PriceChangePayloadItem = {
+  item_id: string
+  line_number?: number | null
+  item_name: string
+  specification?: string | null
+  change_type: PriceChangeType
+  current_unit_price?: number | null
+  new_unit_price?: number | null
+  current_amount?: number | null
+  new_amount?: number | null
 }
 
 type SortableRenderProps = {
@@ -110,9 +148,13 @@ function PurchaseDetailModal({
   
   // 수정요청 관련 상태
   const [isModifyRequestOpen, setIsModifyRequestOpen] = useState(false)
-  const [modifySubject, setModifySubject] = useState('')
+  const [modifyInquiryType, setModifyInquiryType] = useState('')
   const [modifyMessage, setModifyMessage] = useState('')
+  const [requestedDeliveryDate, setRequestedDeliveryDate] = useState<Date | undefined>()
+  const [quantityChangeRows, setQuantityChangeRows] = useState<QuantityChangeRow[]>([])
+  const [priceChangeRows, setPriceChangeRows] = useState<PriceChangeRow[]>([])
   const [isSendingModify, setIsSendingModify] = useState(false)
+  const textMeasureCanvasRef = useRef<HTMLCanvasElement | null>(null)
   
   // 저장 로딩 상태
   const [isSaving, setIsSaving] = useState(false)
@@ -189,79 +231,466 @@ function PurchaseDetailModal({
     })
   }, [getSortableId, makeStableKey])
 
+  const handleModifyRequestOpenChange = (open: boolean) => {
+    setIsModifyRequestOpen(open)
+  }
+
   // 수정요청 초기값 설정
   useEffect(() => {
-    if (isModifyRequestOpen && purchase) {
-      setModifySubject(`[수정요청] 발주번호 ${purchase.purchase_order_number} 수정 요청합니다.`)
-      setModifyMessage('') // 내용은 빈 칸으로 시작
+    if (isModifyRequestOpen) {
+      setModifyInquiryType('')
+      setModifyMessage('')
+      setRequestedDeliveryDate(undefined)
+      setQuantityChangeRows([])
+      setPriceChangeRows([])
     }
-  }, [isModifyRequestOpen, purchase])
+  }, [isModifyRequestOpen])
+
+  useEffect(() => {
+    if (modifyInquiryType === 'quantity_change' && quantityChangeRows.length === 0) {
+      setQuantityChangeRows([{ id: createRowId(), itemId: '', newQuantity: '' }])
+    }
+    if (modifyInquiryType === 'price_change' && priceChangeRows.length === 0) {
+      setPriceChangeRows([{ id: createRowId(), itemId: '', changeType: 'unit_price', newValue: '' }])
+    }
+  }, [modifyInquiryType, quantityChangeRows.length, priceChangeRows.length])
+
+  const handleModifyPopoverWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (event.currentTarget.scrollHeight > event.currentTarget.clientHeight) {
+      event.preventDefault()
+      event.stopPropagation()
+      event.currentTarget.scrollTop += event.deltaY
+    }
+  }
+
+  const createRowId = () => `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
+  const selectedPurchaseItems = useMemo(() => {
+    if (!purchase?.purchase_request_items) return []
+    return [...purchase.purchase_request_items].sort((a: any, b: any) => {
+      const aLine = a.line_number ?? Number.MAX_SAFE_INTEGER
+      const bLine = b.line_number ?? Number.MAX_SAFE_INTEGER
+      return aLine - bLine
+    })
+  }, [purchase])
+
+  const itemOptions = useMemo(() => (
+    selectedPurchaseItems.map((item: any) => ({
+      value: String(item.id),
+      label: `${item.line_number ? `${item.line_number}.` : ''} ${item.item_name} (${item.specification || '-'})`.trim()
+    }))
+  ), [selectedPurchaseItems])
+
+  const modifyInquiryTypeOptions = [
+    { value: 'delivery_date_change', label: '입고일 변경 요청' },
+    { value: 'quantity_change', label: '수량 변경 요청' },
+    { value: 'price_change', label: '단가/합계 금액 변경 요청' },
+    { value: 'modify', label: '수정 요청' },
+    { value: 'delete', label: '삭제 요청' }
+  ]
+
+  const priceChangeTypeOptions = [
+    { value: 'unit_price', label: '단가' },
+    { value: 'amount', label: '합계액' }
+  ]
+
+  const getInquiryTypeLabel = (type: string) => {
+    switch (type) {
+      case 'delivery_date_change': return '입고일 변경 요청'
+      case 'quantity_change': return '수량 변경 요청'
+      case 'price_change': return '단가/합계 금액 변경 요청'
+      case 'modify': return '수정 요청'
+      case 'delete': return '삭제 요청'
+      default: return type
+    }
+  }
+
+  const getMeasureFont = () => {
+    if (typeof document === 'undefined') {
+      return '11px Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif'
+    }
+
+    const bodyStyle = window.getComputedStyle(document.body)
+    const fontFamily = bodyStyle.fontFamily || 'Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR", sans-serif'
+    const fontWeight = bodyStyle.fontWeight || '400'
+    return `${fontWeight} 11px ${fontFamily}`
+  }
+
+  const measureTextWidthPx = (text: string) => {
+    if (typeof document === 'undefined') {
+      return text.length * 7
+    }
+
+    if (!textMeasureCanvasRef.current) {
+      textMeasureCanvasRef.current = document.createElement('canvas')
+    }
+
+    const context = textMeasureCanvasRef.current.getContext('2d')
+    if (!context) {
+      return text.length * 7
+    }
+
+    context.font = getMeasureFont()
+    return Math.ceil(context.measureText(text).width)
+  }
+
+  const getLabelWidthEm = (label: string, padding = 4, min = 12) =>
+    Math.max(label.length + padding, min)
+
+  const SELECT_OPTION_PADDING_PX = 24
+  const SELECT_INDICATOR_PX = 30
+  const SELECT_SCROLLBAR_PX = 14
+  const getSelectLabelMaxPx = (options: Array<{ label?: string }>) =>
+    options.reduce((max, option) => {
+      const label = option.label ?? ''
+      return Math.max(max, measureTextWidthPx(label))
+    }, 0)
+  const getSelectControlWidthPx = (options: Array<{ label?: string }>, placeholder: string) => {
+    const maxLabelPx = getSelectLabelMaxPx(options)
+    const base = Math.max(maxLabelPx, measureTextWidthPx(placeholder))
+    return Math.ceil(base + SELECT_OPTION_PADDING_PX + SELECT_INDICATOR_PX)
+  }
+  const getMenuWidthPx = (options: Array<{ label?: string }>, placeholder: string) => {
+    const maxLabelPx = getSelectLabelMaxPx(options)
+    const base = Math.max(maxLabelPx, measureTextWidthPx(placeholder))
+    return Math.ceil(base + SELECT_OPTION_PADDING_PX + SELECT_INDICATOR_PX + SELECT_SCROLLBAR_PX)
+  }
+
+  const inquiryTypePlaceholder = '문의 유형을 선택해주세요'
+  const inquiryTypeControlWidthEm = getLabelWidthEm(inquiryTypePlaceholder, 3, 14)
+  const inquiryTypeMenuWidthEm = getLabelWidthEm(
+    modifyInquiryTypeOptions.reduce((max, option) => {
+      const label = option.label || ''
+      return label.length > max.length ? label : max
+    }, inquiryTypePlaceholder),
+    3,
+    inquiryTypeControlWidthEm
+  )
+
+  const itemSelectPlaceholder = '품목 선택/검색'
+  const itemControlWidthPx = getSelectControlWidthPx(itemOptions, itemSelectPlaceholder) + 16
+  const itemMenuWidthPx = getMenuWidthPx(itemOptions, itemSelectPlaceholder)
+
+  const getCompactSelectStyles = (controlWidthPx?: number, menuWidthPx?: number) => ({
+    control: (base: any) => ({
+      ...base,
+      minHeight: '28px',
+      height: '28px',
+      fontSize: '11px',
+      borderRadius: '8px',
+      borderColor: '#e5e7eb',
+      boxShadow: 'none'
+    }),
+    container: (base: any) => ({
+      ...base,
+      width: controlWidthPx ? `${controlWidthPx}px` : base.width,
+      maxWidth: '100%'
+    }),
+    valueContainer: (base: any) => ({
+      ...base,
+      padding: '0 8px'
+    }),
+    input: (base: any) => ({
+      ...base,
+      margin: 0,
+      padding: 0,
+      fontSize: '11px'
+    }),
+    indicatorsContainer: (base: any) => ({
+      ...base,
+      height: '28px'
+    }),
+    option: (base: any) => ({
+      ...base,
+      fontSize: '11px',
+      whiteSpace: 'nowrap',
+      overflow: 'visible',
+      textOverflow: 'clip'
+    }),
+    placeholder: (base: any) => ({
+      ...base,
+      fontSize: '11px',
+      color: '#9ca3af'
+    }),
+    singleValue: (base: any) => ({
+      ...base,
+      fontSize: '11px',
+      overflow: 'visible',
+      textOverflow: 'clip',
+      maxWidth: 'none'
+    }),
+    menu: (base: any) => ({
+      ...base,
+      width: menuWidthPx ? `${menuWidthPx}px` : base.width,
+      minWidth: menuWidthPx ? `${menuWidthPx}px` : base.minWidth,
+      maxWidth: menuWidthPx ? `${menuWidthPx}px` : '90vw'
+    }),
+    menuList: (base: any) => ({
+      ...base,
+      width: menuWidthPx ? `${menuWidthPx}px` : base.width,
+      minWidth: menuWidthPx ? `${menuWidthPx}px` : base.minWidth,
+      maxWidth: menuWidthPx ? `${menuWidthPx}px` : base.maxWidth
+    })
+  })
+
+  const formatNumericInput = (value: string) => {
+    if (!value) return ''
+    const numericValue = Number(value)
+    return Number.isFinite(numericValue) ? numericValue.toLocaleString('ko-KR') : value
+  }
+
+  const normalizeNumericInput = (value: string) => value.replace(/[^\d]/g, '')
 
   // 수정요청 전송
   const handleSendModifyRequest = async () => {
-    if (!modifySubject.trim() || !modifyMessage.trim()) {
-      toast.error('제목과 내용을 모두 입력해주세요.')
+    if (!modifyInquiryType || !modifyMessage.trim()) {
+      toast.error('모든 필드를 입력해주세요.')
+      return
+    }
+
+    if (!purchase) {
+      toast.error('발주요청 정보를 찾을 수 없습니다.')
       return
     }
 
     setIsSendingModify(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user) {
-        toast.error('로그인이 필요합니다.')
-        return
+      const subjectText = getInquiryTypeLabel(modifyInquiryType) || modifyInquiryType
+      let inquiryPayload: SupportInquiryPayload | null = null
+      const summaryLines: string[] = []
+
+      if (modifyInquiryType === 'delivery_date_change') {
+        if (!requestedDeliveryDate) {
+          toast.error('변경 입고일을 입력해주세요.')
+          setIsSendingModify(false)
+          return
+        }
+        const currentDateText = purchase.delivery_request_date
+          ? formatDateInput(new Date(purchase.delivery_request_date), 'yyyy-MM-dd')
+          : '-'
+        const requestedDateText = formatDateInput(requestedDeliveryDate, 'yyyy-MM-dd')
+
+        inquiryPayload = {
+          requested_date: requestedDateText,
+          current_date: purchase.delivery_request_date || null
+        }
+        summaryLines.push(`현재 입고요청일: ${currentDateText}`)
+        summaryLines.push(`변경 입고일: ${requestedDateText}`)
       }
 
-      const { data: createdInquiry, error } = await supabase
-        .from('support_inquires')
-        .insert({
-          user_id: user.id,
-          user_email: user.email,
-          user_name: currentUserName,
-          inquiry_type: 'modify',
-          subject: modifySubject,
-          message: modifyMessage,
-          status: 'open',
-          purchase_request_id: purchase?.id,
-          purchase_order_number: purchase?.purchase_order_number,
-          requester_id: purchase?.requester_id,
-          purchase_info: JSON.stringify({
-            vendor_name: purchase?.vendor_name,
-            total_amount: purchase?.total_amount,
-            item_count: purchase?.purchase_request_items?.length || 0
-          })
-        })
-        .select('id')
-        .single()
+      if (modifyInquiryType === 'quantity_change') {
+        const activeRows = quantityChangeRows.filter(row => row.itemId || row.newQuantity.trim())
+        if (activeRows.length === 0) {
+          toast.error('수량 변경할 품목을 추가해주세요.')
+          setIsSendingModify(false)
+          return
+        }
 
-      if (error) throw error
+        const itemsPayload: QuantityChangePayloadItem[] = []
+        for (const row of activeRows) {
+          if (!row.itemId || !row.newQuantity.trim()) {
+            toast.error('수량 변경 항목을 모두 입력해주세요.')
+            setIsSendingModify(false)
+            return
+          }
+          const newQuantity = Number(row.newQuantity)
+          if (!Number.isFinite(newQuantity)) {
+            toast.error('변경 수량이 올바르지 않습니다.')
+            setIsSendingModify(false)
+            return
+          }
 
-      // ✅ 대화 로그 첫 메시지 기록 (새 문의 알림/채팅 히스토리용)
-      const inquiryId = createdInquiry?.id
-      if (inquiryId) {
-        const { error: msgError } = await supabase
-          .from('support_inquiry_messages')
-          .insert({
-            inquiry_id: inquiryId,
-            sender_role: 'user',
-            sender_email: user.email,
-            message: modifyMessage,
-            attachments: []
+          const targetItem = selectedPurchaseItems.find((item: any) => String(item.id) === row.itemId)
+          if (!targetItem) {
+            toast.error('선택한 품목을 찾을 수 없습니다.')
+            setIsSendingModify(false)
+            return
+          }
+
+          itemsPayload.push({
+            item_id: String(targetItem.id),
+            line_number: targetItem.line_number ?? null,
+            item_name: targetItem.item_name,
+            specification: targetItem.specification ?? null,
+            current_quantity: targetItem.quantity ?? null,
+            new_quantity: newQuantity
           })
-        if (msgError) throw msgError
+          summaryLines.push(
+            `${targetItem.line_number ?? '-'}번 ${targetItem.item_name} (${targetItem.specification || '-'}) ` +
+            `${targetItem.quantity ?? 0} → ${newQuantity}`
+          )
+        }
+
+        inquiryPayload = { items: itemsPayload }
       }
 
-      toast.success('수정 요청이 전송되었습니다.')
-      setIsModifyRequestOpen(false)
-      setModifySubject('')
-      setModifyMessage('')
+      if (modifyInquiryType === 'price_change') {
+        const activeRows = priceChangeRows.filter(row => row.itemId || row.newValue.trim())
+        if (activeRows.length === 0) {
+          toast.error('단가/합계 금액 변경할 품목을 추가해주세요.')
+          setIsSendingModify(false)
+          return
+        }
+
+        const itemsPayload: PriceChangePayloadItem[] = []
+        for (const row of activeRows) {
+          if (!row.itemId || !row.newValue.trim()) {
+            toast.error('단가/합계 금액 변경 항목을 모두 입력해주세요.')
+            setIsSendingModify(false)
+            return
+          }
+          const newValue = Number(row.newValue)
+          if (!Number.isFinite(newValue)) {
+            toast.error('변경 값이 올바르지 않습니다.')
+            setIsSendingModify(false)
+            return
+          }
+
+          const targetItem = selectedPurchaseItems.find((item: any) => String(item.id) === row.itemId)
+          if (!targetItem) {
+            toast.error('선택한 품목을 찾을 수 없습니다.')
+            setIsSendingModify(false)
+            return
+          }
+
+          const currentUnitPrice = Number(targetItem.unit_price_value ?? targetItem.unit_price ?? 0)
+          const currentAmount = Number(targetItem.amount_value ?? (currentUnitPrice * (targetItem.quantity ?? 0)))
+          const quantityValue = Number(targetItem.quantity ?? 0)
+
+          if (row.changeType === 'amount') {
+            const newAmount = newValue
+            const newUnitPrice = quantityValue > 0 ? newAmount / quantityValue : 0
+
+            itemsPayload.push({
+              item_id: String(targetItem.id),
+              line_number: targetItem.line_number ?? null,
+              item_name: targetItem.item_name,
+              specification: targetItem.specification ?? null,
+              change_type: 'amount',
+              current_unit_price: currentUnitPrice,
+              new_unit_price: newUnitPrice,
+              current_amount: currentAmount,
+              new_amount: newAmount
+            })
+            summaryLines.push(
+              `${targetItem.line_number ?? '-'}번 ${targetItem.item_name} (${targetItem.specification || '-'}) ` +
+              `합계 ${currentAmount.toLocaleString('ko-KR')} → ${newAmount.toLocaleString('ko-KR')}`
+            )
+          } else {
+            const newUnitPrice = newValue
+            const newAmount = quantityValue * newUnitPrice
+
+            itemsPayload.push({
+              item_id: String(targetItem.id),
+              line_number: targetItem.line_number ?? null,
+              item_name: targetItem.item_name,
+              specification: targetItem.specification ?? null,
+              change_type: 'unit_price',
+              current_unit_price: currentUnitPrice,
+              new_unit_price: newUnitPrice,
+              current_amount: currentAmount,
+              new_amount: newAmount
+            })
+            summaryLines.push(
+              `${targetItem.line_number ?? '-'}번 ${targetItem.item_name} (${targetItem.specification || '-'}) ` +
+              `단가 ${currentUnitPrice.toLocaleString('ko-KR')} → ${newUnitPrice.toLocaleString('ko-KR')} ` +
+              `합계 ${currentAmount.toLocaleString('ko-KR')} → ${newAmount.toLocaleString('ko-KR')}`
+            )
+          }
+        }
+
+        inquiryPayload = { items: itemsPayload }
+      }
+
+      if (modifyInquiryType === 'delete') {
+        inquiryPayload = { reason: modifyMessage.trim() }
+      }
+
+      let purchaseInfo = ''
+      const itemsText = selectedPurchaseItems.map((item: any, index: number) =>
+        `- ${item.line_number ?? index + 1}. ${item.item_name} (${item.specification || '-'}) ${item.quantity}개`
+      ).join('\n')
+      purchaseInfo = `발주번호: ${purchase.purchase_order_number || '(승인대기)'}
+업체: ${purchase.vendor_name}
+요청자: ${purchase.requester_name}
+요청일: ${purchase.request_date || purchase.created_at || '-'}
+품목:
+${itemsText}`
+
+      const messageSections = [modifyMessage.trim()]
+      if (summaryLines.length > 0) {
+        messageSections.push(`[요청 상세]\n${summaryLines.join('\n')}`)
+      }
+      if (purchaseInfo) {
+        messageSections.push(`[관련 발주 정보]\n${purchaseInfo}`)
+      }
+      const finalMessage = messageSections.join('\n\n')
+
+      const purchaseIdValue = Number(purchase.id)
+      const purchaseRequestId = Number.isFinite(purchaseIdValue) ? purchaseIdValue : undefined
+
+      const result = await supportService.createInquiry({
+        inquiry_type: modifyInquiryType as any,
+        subject: subjectText,
+        message: finalMessage,
+        purchase_request_id: purchaseRequestId,
+        purchase_info: purchaseInfo,
+        purchase_order_number: purchase.purchase_order_number,
+        attachments: [],
+        inquiry_payload: inquiryPayload
+      })
+
+      if (result.success) {
+        toast.success('수정 요청이 전송되었습니다.')
+        setIsModifyRequestOpen(false)
+        setModifyInquiryType('')
+        setModifyMessage('')
+        setRequestedDeliveryDate(undefined)
+        setQuantityChangeRows([])
+        setPriceChangeRows([])
+      } else {
+        toast.error(result.error || '수정 요청 전송 중 오류가 발생했습니다.')
+      }
     } catch (error) {
       logger.error('수정 요청 전송 실패', error)
       toast.error('수정 요청 전송 중 오류가 발생했습니다.')
     } finally {
       setIsSendingModify(false)
     }
+  }
+
+  const addQuantityRow = () => {
+    setQuantityChangeRows(prev => [
+      ...prev,
+      { id: createRowId(), itemId: '', newQuantity: '' }
+    ])
+  }
+
+  const updateQuantityRow = (rowId: string, updates: Partial<QuantityChangeRow>) => {
+    setQuantityChangeRows(prev =>
+      prev.map(row => row.id === rowId ? { ...row, ...updates } : row)
+    )
+  }
+
+  const removeQuantityRow = (rowId: string) => {
+    setQuantityChangeRows(prev => prev.filter(row => row.id !== rowId))
+  }
+
+  const addPriceRow = () => {
+    setPriceChangeRows(prev => [
+      ...prev,
+      { id: createRowId(), itemId: '', changeType: 'unit_price', newValue: '' }
+    ])
+  }
+
+  const updatePriceRow = (rowId: string, updates: Partial<PriceChangeRow>) => {
+    setPriceChangeRows(prev =>
+      prev.map(row => row.id === rowId ? { ...row, ...updates } : row)
+    )
+  }
+
+  const removePriceRow = (rowId: string) => {
+    setPriceChangeRows(prev => prev.filter(row => row.id !== rowId))
   }
 
   // 메모리 캐시 동기화는 useEffect에서 처리
@@ -2500,7 +2929,9 @@ function PurchaseDetailModal({
     const currentReceivedQty = currentItem?.received_quantity || 0
     const newReceivedQty = receivedQuantity !== undefined ? receivedQuantity : requestedQty
     const totalReceivedQty = currentReceivedQty + newReceivedQty
-    const isFullyReceived = totalReceivedQty >= requestedQty
+    const shouldIncreaseRequestedQty = totalReceivedQty > requestedQty
+    const nextRequestedQty = shouldIncreaseRequestedQty ? totalReceivedQty : requestedQty
+    const isFullyReceived = totalReceivedQty >= nextRequestedQty
     const deliveryStatus: 'pending' | 'partial' | 'received' = totalReceivedQty === 0 ? 'pending' : (isFullyReceived ? 'received' : 'partial')
 
     // 기존 입고 이력 가져오기
@@ -2516,6 +2947,8 @@ function PurchaseDetailModal({
 
     const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
 
+    const quantityUpdate = shouldIncreaseRequestedQty ? { quantity: nextRequestedQty } : {}
+
     const applyOptimisticUpdate = () => {
       if (!Number.isNaN(purchaseIdNumber)) {
         onOptimisticUpdate?.(purchaseIdNumber, prev => {
@@ -2523,6 +2956,7 @@ function PurchaseDetailModal({
             String(item.id) === itemIdStr
               ? {
                   ...item,
+                  ...quantityUpdate,
                   is_received: isFullyReceived,
                   delivery_status: deliveryStatus,
                   actual_received_date: dateToISOString(selectedDate),
@@ -2554,7 +2988,8 @@ function PurchaseDetailModal({
           received_at: new Date().toISOString(),
           actual_received_date: dateToISOString(selectedDate),
           received_quantity: totalReceivedQty,
-          receipt_history: updatedHistory
+          receipt_history: updatedHistory,
+          ...(shouldIncreaseRequestedQty ? { quantity: nextRequestedQty } : {})
         })
         .eq('id', numericId)
 
@@ -2577,7 +3012,8 @@ function PurchaseDetailModal({
         const updatedItems = prev.items?.map(item => 
           String(item.id) === itemIdStr 
             ? { 
-                ...item, 
+                ...item,
+                ...quantityUpdate,
                 is_received: isFullyReceived, 
                 delivery_status: deliveryStatus,
                 received_at: new Date().toISOString(),
@@ -2590,7 +3026,8 @@ function PurchaseDetailModal({
         const updatedRequestItems = prev.purchase_request_items?.map(item => 
           String(item.id) === itemIdStr 
             ? { 
-                ...item, 
+                ...item,
+                ...quantityUpdate,
                 is_received: isFullyReceived, 
                 delivery_status: deliveryStatus,
                 received_at: new Date().toISOString(),
@@ -3766,6 +4203,7 @@ function PurchaseDetailModal({
                           side="bottom"
                           maxQuantity={actualReceivedAction.getRemainingQuantity(item)}
                           quantityInfoText={`미입고: ${actualReceivedAction.getRemainingQuantity(item)}개`}
+                          allowOverMaxQuantity
                         >
                           <button className="button-base bg-blue-300 hover:bg-blue-400 text-white">
                             부분입고
@@ -3782,6 +4220,7 @@ function PurchaseDetailModal({
                           side="bottom"
                           defaultQuantity={item.received_quantity ?? undefined}
                           maxQuantity={item.quantity}
+                          allowOverMaxQuantity
                         >
                           <button className="button-toggle-inactive">
                             {actualReceivedAction.config.waitingText}
@@ -3837,6 +4276,7 @@ function PurchaseDetailModal({
                           side="bottom"
                           maxQuantity={actualReceivedAction.getRemainingQuantity(item)}
                           quantityInfoText={`미입고: ${actualReceivedAction.getRemainingQuantity(item)}개`}
+                          allowOverMaxQuantity
                         >
                           <button className="button-base bg-blue-300 hover:bg-blue-400 text-white">
                             부분입고
@@ -5097,10 +5537,11 @@ function PurchaseDetailModal({
 
             </div>
 
-            {/* Right Column - Items List (Fit Width) */}
-            <div className="lg:w-fit lg:min-w-0 relative overflow-visible">
+            {/* Right Column - Items List */}
+            {/* NOTE: iPad(lg=1024) 구간에서 w-fit로 인해 카드가 컨테이너 밖으로 확장되는 현상 방지 */}
+            <div className="w-full min-w-0 xl:w-fit relative">
               
-              <div className="bg-white rounded-lg border border-gray-100 shadow-sm">
+              <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
                 <div className="p-2 sm:p-3 bg-gray-50 border-b border-gray-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
                   <h3 className="modal-section-title flex items-center">
                     <Package className="w-4 h-4 mr-2 text-gray-600" />
@@ -5256,13 +5697,13 @@ function PurchaseDetailModal({
                 </div>
                 
                 {/* Items List with Header Inside Scrollable Container */}
-                <div className="max-h-[50vh] sm:max-h-[40vh] overflow-auto">
-                  <div className="w-fit">
+                <div className="max-h-[50vh] sm:max-h-[40vh] overflow-auto w-full">
+                  <div className="min-w-max">
                     {/* Items Table Header - Sticky inside scroll container */}
-                    <div className={`bg-gray-50 px-2 sm:px-3 py-1 border-b border-gray-100 sticky top-0 z-10 w-fit ${isEditing ? 'pl-7 sm:pl-8' : ''}`}>
+                    <div className={`bg-gray-50 px-2 sm:px-3 py-1 border-b border-gray-100 sticky top-0 z-10 min-w-max ${isEditing ? 'pl-7 sm:pl-8' : ''}`}>
                       <div 
                         ref={headerRowRef}
-                         className="hidden sm:grid gap-1 modal-label w-fit"
+                         className="hidden sm:grid gap-1 modal-label min-w-max"
                         style={{
                           gridTemplateColumns: getGridTemplateColumns()
                         }}
@@ -5345,146 +5786,152 @@ function PurchaseDetailModal({
                       </DndContext>
                     )}
                     {!isEditing && (
-                    <div className="divide-y divide-gray-100 overflow-visible w-fit">
-                      {(displayItems)?.map((item, index) => (
-                        renderItemRow(item, index, undefined, getSortableId(item, index))
-                      ))}
-                    </div>
+                      <div className="divide-y divide-gray-100 overflow-visible min-w-max">
+                        {(displayItems)?.map((item, index) => (
+                          renderItemRow(item, index, undefined, getSortableId(item, index))
+                        ))}
+                      </div>
                     )}
                 </div>
               </div>
                 
                 {/* 합계 */}
                 <div className="bg-gray-50 px-2 sm:px-3 border-t border-gray-100">
-                  <div className="hidden sm:grid items-center gap-1 py-2 w-fit" style={{
-                    gridTemplateColumns: getGridTemplateColumns()
-                  }}>
-                    {/* 라인넘버 */}
-                    <div className="-ml-2 sm:-ml-3"></div>
-                    {/* 품목명 */}
-                    <div></div>
-                    {/* 규격 */}
-                    <div></div>
-                    {/* 수량 */}
-                    <div></div>
-                    {/* 단가 칼럼 - 라벨 표시 */}
-                    <div className="text-right flex items-center justify-end">
-                      <span className="text-[11px] text-gray-600 font-medium">공급가액</span>
-                    </div>
-                    {/* 합계 칼럼 - 합계 총액 표시 */}
-                    <div className="text-right flex items-center justify-end">
-                      <span className="text-[12px] font-bold text-gray-900">
-                        {activeTab === 'done' && !canViewFinancialInfo 
-                          ? '-' 
-                          : `${(isEditing ? editedPurchase?.currency : purchase.currency) === 'USD' ? '$' : '₩'}${formatCurrency(
-                              (displayItems)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
-                            )}`}
-                      </span>
-                    </div>
-                    {/* 세액 칼럼 (발주인 경우만) */}
-                    {purchase.payment_category === '발주' && (
+                  <div className="hidden sm:block overflow-x-auto w-full">
+                    <div
+                      className="sm:grid items-center gap-1 py-2 min-w-max"
+                      style={{ gridTemplateColumns: getGridTemplateColumns() }}
+                    >
+                      {/* 라인넘버 */}
+                      <div className="-ml-2 sm:-ml-3"></div>
+                      {/* 품목명 */}
+                      <div></div>
+                      {/* 규격 */}
+                      <div></div>
+                      {/* 수량 */}
+                      <div></div>
+                      {/* 단가 칼럼 - 라벨 표시 */}
                       <div className="text-right flex items-center justify-end">
-                        {/* 세액 합계 - 같은 행에 표시 */}
+                        <span className="text-[11px] text-gray-600 font-medium">공급가액</span>
+                      </div>
+                      {/* 합계 칼럼 - 합계 총액 표시 */}
+                      <div className="text-right flex items-center justify-end">
                         <span className="text-[12px] font-bold text-gray-900">
-                          {activeTab === 'done' && !canViewFinancialInfo 
-                            ? '-' 
+                          {activeTab === 'done' && !canViewFinancialInfo
+                            ? '-'
                             : `${(isEditing ? editedPurchase?.currency : purchase.currency) === 'USD' ? '$' : '₩'}${formatCurrency(
-                                (displayItems)?.reduce((sum, item) => sum + (item.tax_amount_value || 0), 0) || 0
+                                (displayItems)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
                               )}`}
                         </span>
                       </div>
-                    )}
-                    {/* 링크 */}
-                    <div></div>
-                    {/* 비고 */}
-                    <div></div>
-                    {/* 상태 또는 삭제 - pending 탭 제외, 발주인 경우 지출총합 텍스트 표시 */}
-                    {activeTab !== 'pending' && (
-                      isEditing ? (
-                        <div></div>
-                      ) : (
-                        <div className={activeTab === 'done' && purchase.payment_category === '발주' ? "text-right flex items-center justify-end" : ""}>
-                          {activeTab === 'done' && purchase.payment_category === '발주' && (
-                            <span className="text-[11px] text-gray-600 font-medium">지출총합</span>
-                          )}
+                      {/* 세액 칼럼 (발주인 경우만) */}
+                      {purchase.payment_category === '발주' && (
+                        <div className="text-right flex items-center justify-end">
+                          {/* 세액 합계 - 같은 행에 표시 */}
+                          <span className="text-[12px] font-bold text-gray-900">
+                            {activeTab === 'done' && !canViewFinancialInfo
+                              ? '-'
+                              : `${(isEditing ? editedPurchase?.currency : purchase.currency) === 'USD' ? '$' : '₩'}${formatCurrency(
+                                  (displayItems)?.reduce((sum, item) => sum + (item.tax_amount_value || 0), 0) || 0
+                                )}`}
+                          </span>
                         </div>
-                      )
-                    )}
-                    {activeTab === 'receipt' && <div></div>}
-                    {activeTab === 'done' && (
-                      <>
-                        {/* 거래명세서 칼럼 - 발주인 경우 지출총합 금액 표시 */}
-                        {purchase.payment_category === '발주' && (
-                          <>
-                            <div className="text-right flex items-center justify-end">
-                              <div className="text-[12px] font-bold text-blue-700">
-                                {!canViewFinancialInfo 
-                                  ? '-' 
-                                  : `₩${formatCurrency(
-                                      purchase.total_expenditure_amount ?? 
-                                      ((isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
-                                        return sum + (Number(item.expenditure_amount) || 0)
-                                      }, 0) || 0)
-                                    )}`}
+                      )}
+                      {/* 링크 */}
+                      <div></div>
+                      {/* 비고 */}
+                      <div></div>
+                      {/* 상태 또는 삭제 - pending 탭 제외, 발주인 경우 지출총합 텍스트 표시 */}
+                      {activeTab !== 'pending' && (
+                        isEditing ? (
+                          <div></div>
+                        ) : (
+                          <div className={activeTab === 'done' && purchase.payment_category === '발주' ? "text-right flex items-center justify-end" : ""}>
+                            {activeTab === 'done' && purchase.payment_category === '발주' && (
+                              <span className="text-[11px] text-gray-600 font-medium">지출총합</span>
+                            )}
+                          </div>
+                        )
+                      )}
+                      {activeTab === 'receipt' && <div></div>}
+                      {activeTab === 'done' && (
+                        <>
+                          {/* 거래명세서 칼럼 - 발주인 경우 지출총합 금액 표시 */}
+                          {purchase.payment_category === '발주' && (
+                            <>
+                              <div className="text-right flex items-center justify-end">
+                                <div className="text-[12px] font-bold text-blue-700">
+                                  {!canViewFinancialInfo
+                                    ? '-'
+                                    : `₩${formatCurrency(
+                                        purchase.total_expenditure_amount ??
+                                        ((isEditing ? editedItems : currentItems)?.reduce((sum: number, item: any) => {
+                                          return sum + (Number(item.expenditure_amount) || 0)
+                                        }, 0) || 0)
+                                      )}`}
+                                </div>
                               </div>
-                            </div>
+                              {/* 회계상 입고일 칼럼 */}
+                              <div></div>
+                              {/* 지출정보 칼럼 */}
+                              <div></div>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 합계+세액 행 (발주인 경우에만) */}
+                  {purchase.payment_category === '발주' && (
+                    <div className="hidden sm:block overflow-x-auto w-full">
+                      <div
+                        className="sm:grid items-center gap-1 py-2 min-w-max border-t border-gray-300"
+                        style={{ gridTemplateColumns: getGridTemplateColumns() }}
+                      >
+                        {/* 라인넘버 */}
+                        <div className="-ml-2 sm:-ml-3"></div>
+                        {/* 빈 칸들 */}
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        {/* 단가 칼럼 - 빈칸 */}
+                        <div></div>
+                        {/* 합계 칼럼 - 총액 라벨 */}
+                        <div className="text-right flex items-center justify-end">
+                          <span className="text-[11px] text-gray-600 font-medium">총액</span>
+                        </div>
+                        {/* 세액 칼럼 - 합계+세액 표시 */}
+                        <div className="text-right flex items-center justify-end">
+                          <span className="text-[12px] font-bold text-blue-600">
+                            {activeTab === 'done' && !canViewFinancialInfo
+                              ? '-'
+                              : formatMoney(
+                                  (isEditing ? editedItems : currentItems)?.reduce((sum, item) => {
+                                    const amount = item.amount_value || 0
+                                    const tax = item.tax_amount_value || 0
+                                    return sum + amount + tax
+                                  }, 0) || 0
+                                , getPurchaseDisplayCurrency())}
+                          </span>
+                        </div>
+                        {/* 링크 칼럼 - 빈칸 */}
+                        <div></div>
+                        {/* 나머지 빈 칸들 */}
+                        <div></div>
+                        {isEditing ? <div></div> : <div></div>}
+                        {activeTab === 'receipt' && <div></div>}
+                        {activeTab === 'done' && purchase.payment_category === '발주' && (
+                          <>
+                            {/* 거래명세서 칼럼 */}
+                            <div></div>
                             {/* 회계상 입고일 칼럼 */}
                             <div></div>
                             {/* 지출정보 칼럼 */}
                             <div></div>
                           </>
                         )}
-                      </>
-                    )}
-                  </div>
-
-                  {/* 합계+세액 행 (발주인 경우에만) */}
-                  {purchase.payment_category === '발주' && (
-                    <div className="hidden sm:grid items-center gap-1 py-2 w-fit border-t border-gray-300" style={{
-                      gridTemplateColumns: getGridTemplateColumns()
-                    }}>
-                      {/* 라인넘버 */}
-                      <div className="-ml-2 sm:-ml-3"></div>
-                      {/* 빈 칸들 */}
-                      <div></div>
-                      <div></div>
-                      <div></div>
-                      {/* 단가 칼럼 - 빈칸 */}
-                      <div></div>
-                      {/* 합계 칼럼 - 총액 라벨 */}
-                      <div className="text-right flex items-center justify-end">
-                        <span className="text-[11px] text-gray-600 font-medium">총액</span>
                       </div>
-                      {/* 세액 칼럼 - 합계+세액 표시 */}
-                      <div className="text-right flex items-center justify-end">
-                        <span className="text-[12px] font-bold text-blue-600">
-                          {activeTab === 'done' && !canViewFinancialInfo 
-                            ? '-' 
-                            : formatMoney(
-                                (isEditing ? editedItems : currentItems)?.reduce((sum, item) => {
-                                  const amount = item.amount_value || 0
-                                  const tax = item.tax_amount_value || 0
-                                  return sum + amount + tax
-                                }, 0) || 0
-                              , getPurchaseDisplayCurrency())}
-                        </span>
-                      </div>
-                      {/* 링크 칼럼 - 빈칸 */}
-                      <div></div>
-                      {/* 나머지 빈 칸들 */}
-                      <div></div>
-                      {isEditing ? <div></div> : <div></div>}
-                      {activeTab === 'receipt' && <div></div>}
-                      {activeTab === 'done' && purchase.payment_category === '발주' && (
-                        <>
-                          {/* 거래명세서 칼럼 */}
-                          <div></div>
-                          {/* 회계상 입고일 칼럼 */}
-                          <div></div>
-                          {/* 지출정보 칼럼 */}
-                          <div></div>
-                        </>
-                      )}
                     </div>
                   )}
                   
@@ -5654,7 +6101,7 @@ function PurchaseDetailModal({
             
             {/* 수정요청 버튼 (관리자 제외, 일반 직원 및 lead_buyer용) */}
             {!isAdmin && !isEditing && (
-              <Popover open={isModifyRequestOpen} onOpenChange={setIsModifyRequestOpen}>
+              <Popover open={isModifyRequestOpen} onOpenChange={handleModifyRequestOpenChange}>
                 <PopoverTrigger asChild>
                   <Button 
                     variant="outline" 
@@ -5667,48 +6114,277 @@ function PurchaseDetailModal({
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent 
-                  className="w-80 sm:w-96 p-4" 
+                  className="w-[680px] max-w-[95vw] p-4" 
                   align="end"
                   onOpenAutoFocus={(e) => e.preventDefault()}
                 >
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <h4 className="font-medium leading-none">수정 요청</h4>
-                      <p className="text-xs text-muted-foreground">
-                        해당 발주서에 대한 수정 요청사항을 입력해주세요.
+                  <div
+                    onWheel={handleModifyPopoverWheel}
+                    className="space-y-4 max-h-[70vh] overflow-y-auto pr-1"
+                  >
+                    <div className="space-y-1">
+                      <h4 className="modal-section-title text-gray-900">수정 요청</h4>
+                      <p className="card-description text-gray-500">
+                        해당 발주서에 대한 요청 사항을 선택해주세요.
                       </p>
                     </div>
-                    <div className="space-y-3">
-                      <div className="space-y-1">
-                        <Label htmlFor="subject" className="text-xs">제목</Label>
-                        <Input
-                          id="subject"
-                          value={modifySubject}
-                          onChange={(e) => setModifySubject(e.target.value)}
-                          className="h-8 text-xs"
-                          placeholder="제목을 입력하세요"
-                        />
+
+                    <div className="space-y-2">
+                      <label className="modal-label text-gray-600">문의 유형 *</label>
+                      <Select value={modifyInquiryType} onValueChange={setModifyInquiryType}>
+                        <SelectTrigger
+                          size="sm"
+                          className="button-base business-radius-input border border-gray-300 bg-white text-gray-700 w-auto !h-7 !px-2.5 !text-[11px]"
+                          style={{ width: `${inquiryTypeControlWidthEm}em`, maxWidth: '100%' }}
+                        >
+                          <SelectValue placeholder={inquiryTypePlaceholder} />
+                        </SelectTrigger>
+                        <SelectContent
+                          className="text-[11px] business-radius-card"
+                          style={{ minWidth: `${inquiryTypeMenuWidthEm}em` }}
+                        >
+                          {modifyInquiryTypeOptions.map((option) => (
+                            <SelectItem
+                              key={option.value}
+                              className="text-[11px] py-1.5"
+                              value={option.value}
+                            >
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2 p-3 bg-gray-50 business-radius-card border border-gray-200">
+                      <div className="modal-section-title text-gray-900">발주요청 정보</div>
+                      <div className="flex items-center gap-2">
+                        <span className="card-title">{purchase?.purchase_order_number || '(승인대기)'}</span>
+                        <span className="card-subtitle">{purchase?.vendor_name}</span>
+                        <span className="card-date">
+                          {(purchase?.request_date || purchase?.created_at) &&
+                            formatDateInput(new Date(purchase.request_date || purchase.created_at), 'MM/dd')}
+                        </span>
                       </div>
-                      <div className="space-y-1">
-                        <Label htmlFor="message" className="text-xs">내용</Label>
-                        <div className="relative" onWheel={(e) => e.stopPropagation()}>
-                          <Textarea
-                            id="message"
-                            value={modifyMessage}
-                            onChange={(e) => setModifyMessage(e.target.value)}
-                            className="min-h-[150px] text-xs font-mono overflow-auto"
-                            placeholder="요청 내용을 입력하세요"
-                            style={{ resize: 'none' }}
-                          />
+                      {selectedPurchaseItems.length > 0 && (
+                        <div className="mt-2 space-y-1">
+                          <div className="modal-label text-gray-600">품목 상세</div>
+                          {selectedPurchaseItems.map((item: any, index: number) => (
+                            <div key={item.id || index} className="flex items-center gap-2 pl-2">
+                              <span className="card-description text-gray-400">{item.line_number ?? index + 1}.</span>
+                              <span className="card-description">{item.item_name}</span>
+                              {item.specification && (
+                                <span className="card-description text-gray-500">({item.specification})</span>
+                              )}
+                              <span className="card-description text-gray-500">- {item.quantity}개</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {modifyInquiryType === 'delivery_date_change' && (
+                      <div className="space-y-3 p-3 bg-gray-50 business-radius-card border border-gray-200">
+                        <div className="modal-section-title text-gray-900">입고일 변경 요청</div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div>
+                            <label className="modal-label text-gray-600 mb-1 block">현재 입고요청일</label>
+                            <div className="modal-value text-gray-700">
+                              {purchase?.delivery_request_date
+                                ? formatDateInput(new Date(purchase.delivery_request_date), 'yyyy-MM-dd')
+                                : '-'}
+                            </div>
+                          </div>
+                          <div>
+                            <label className="modal-label text-gray-600 mb-1 block">변경 입고일</label>
+                            <DatePickerPopover
+                              onDateSelect={setRequestedDeliveryDate}
+                              placeholder="변경 입고일을 선택하세요"
+                              align="start"
+                              side="bottom"
+                            >
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="button-base justify-start border border-gray-300 bg-white text-gray-700 business-radius-input"
+                              >
+                                <Calendar className="mr-2 h-3.5 w-3.5" />
+                                {requestedDeliveryDate
+                                  ? formatDateInput(requestedDeliveryDate, 'yyyy-MM-dd')
+                                  : '날짜 선택'}
+                              </Button>
+                            </DatePickerPopover>
+                          </div>
                         </div>
                       </div>
+                    )}
+
+                    {modifyInquiryType === 'quantity_change' && (
+                      <div className="space-y-3 p-3 bg-gray-50 business-radius-card border border-gray-200">
+                        <div className="modal-section-title text-gray-900">수량 변경 요청</div>
+                        <div className="space-y-2">
+                          {quantityChangeRows.map((row) => {
+                            const selectedItem = selectedPurchaseItems.find((item: any) => String(item.id) === row.itemId)
+
+                            return (
+                              <div key={row.id} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                <div className="flex-1">
+                                  <ReactSelect
+                                    value={itemOptions.find(option => option.value === row.itemId) || null}
+                                    onChange={(option) => updateQuantityRow(row.id, { itemId: (option as any)?.value || '' })}
+                                    options={itemOptions}
+                                    placeholder="품목 선택/검색"
+                                    isSearchable
+                                    noOptionsMessage={() => '일치하는 품목이 없습니다'}
+                                    filterOption={(option, inputValue) =>
+                                      option.label.toLowerCase().includes(inputValue.toLowerCase())
+                                    }
+                                    styles={getCompactSelectStyles(itemControlWidthPx, itemMenuWidthPx)}
+                                  />
+                                </div>
+                                <div className="badge-text text-gray-600 sm:w-24 text-right">
+                                  변경 수량 :
+                                </div>
+                                <Input
+                                  type="number"
+                                  value={row.newQuantity}
+                                  onChange={(e) => updateQuantityRow(row.id, { newQuantity: e.target.value })}
+                                  placeholder={`입고 수량 : ${selectedItem?.quantity ?? '-'}`}
+                                  className="sm:w-28 business-radius-input h-7 !text-[11px] !leading-tight"
+                                  min={0}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removeQuantityRow(row.id)}
+                                  className="button-action-danger"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 mr-1" />
+                                  삭제
+                                </button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={addQuantityRow}
+                          className="button-action-secondary"
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1" />
+                          품목 추가
+                        </button>
+                      </div>
+                    )}
+
+                    {modifyInquiryType === 'price_change' && (
+                      <div className="space-y-3 p-3 bg-gray-50 business-radius-card border border-gray-200">
+                        <div className="modal-section-title text-gray-900">단가/합계 금액 변경 요청</div>
+                        <div className="space-y-2">
+                          {priceChangeRows.map((row) => {
+                            const selectedItem = selectedPurchaseItems.find((item: any) => String(item.id) === row.itemId)
+                            const currentUnitPrice = Number(selectedItem?.unit_price_value ?? selectedItem?.unit_price ?? 0)
+                            const currentAmount = Number(selectedItem?.amount_value ?? (currentUnitPrice * (selectedItem?.quantity ?? 0)))
+                            const currentUnitPriceLabel = selectedItem ? currentUnitPrice.toLocaleString('ko-KR') : '-'
+                            const currentAmountLabel = selectedItem ? currentAmount.toLocaleString('ko-KR') : '-'
+                            const placeholderText = row.changeType === 'amount'
+                              ? `현재 합계액: ${currentAmountLabel}`
+                              : `현재 단가: ${currentUnitPriceLabel}`
+
+                            return (
+                              <div key={row.id} className="flex flex-col lg:flex-row lg:items-center gap-2">
+                                <div className="flex-1">
+                                  <ReactSelect
+                                    value={itemOptions.find(option => option.value === row.itemId) || null}
+                                    onChange={(option) => updatePriceRow(row.id, { itemId: (option as any)?.value || '' })}
+                                    options={itemOptions}
+                                    placeholder="품목 선택/검색"
+                                    isSearchable
+                                    noOptionsMessage={() => '일치하는 품목이 없습니다'}
+                                    filterOption={(option, inputValue) =>
+                                      option.label.toLowerCase().includes(inputValue.toLowerCase())
+                                    }
+                                    styles={getCompactSelectStyles(itemControlWidthPx, itemMenuWidthPx)}
+                                  />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="badge-text text-gray-600">변경 요청</span>
+                                  <Select
+                                    value={row.changeType}
+                                    onValueChange={(value) =>
+                                      updatePriceRow(row.id, { changeType: value as PriceChangeType, newValue: '' })
+                                    }
+                                  >
+                                    <SelectTrigger
+                                      size="sm"
+                                      className="button-base business-radius-input border border-gray-300 bg-white text-gray-700 w-auto !h-7 !px-2.5 !text-[11px]"
+                                    >
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="text-[11px] business-radius-card">
+                                      {priceChangeTypeOptions.map((option) => (
+                                        <SelectItem
+                                          key={option.value}
+                                          className="text-[11px] py-1.5"
+                                          value={option.value}
+                                        >
+                                          {option.label}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <Input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={formatNumericInput(row.newValue)}
+                                  onChange={(e) => updatePriceRow(row.id, { newValue: normalizeNumericInput(e.target.value) })}
+                                  placeholder={placeholderText}
+                                  className="lg:w-40 business-radius-input h-7 !text-[11px] !leading-tight"
+                                  min={0}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removePriceRow(row.id)}
+                                  className="button-action-danger"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 mr-1" />
+                                  삭제
+                                </button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={addPriceRow}
+                          className="button-action-secondary"
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1" />
+                          품목 추가
+                        </button>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block modal-label text-gray-700 mb-1">
+                        내용 <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative" onWheel={(e) => e.stopPropagation()}>
+                        <Textarea
+                          value={modifyMessage}
+                          onChange={(e) => setModifyMessage(e.target.value)}
+                          className="business-radius-input min-h-20 text-[11px]"
+                          placeholder="문의 내용을 자세히 입력해주세요"
+                        />
+                      </div>
                     </div>
+
                     <div className="flex justify-end gap-2">
                       <Button 
                         variant="outline" 
                         size="sm" 
                         onClick={() => setIsModifyRequestOpen(false)}
-                        className="h-8 text-xs"
+                        className="button-base border border-gray-300 bg-white text-gray-700"
                       >
                         취소
                       </Button>
@@ -5716,7 +6392,7 @@ function PurchaseDetailModal({
                         size="sm" 
                         onClick={handleSendModifyRequest}
                         disabled={isSendingModify}
-                        className="h-8 text-xs bg-blue-600 hover:bg-blue-700"
+                        className="button-base bg-blue-500 hover:bg-blue-600 text-white"
                       >
                         {isSendingModify ? '전송 중...' : '요청 전송'}
                       </Button>

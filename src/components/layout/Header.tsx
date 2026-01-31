@@ -2,7 +2,7 @@
 
 import { useNavigate } from 'react-router-dom'
 import { createClient } from '@/lib/supabase/client'
-import { User, Menu, MessageCircle } from 'lucide-react'
+import { User, Menu, MessageCircle, Receipt } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { supportService } from '@/services/supportService'
 
@@ -28,11 +28,13 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
   const navigate = useNavigate()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
+  const [pendingStatementCount, setPendingStatementCount] = useState(0)
 
   const roles = Array.isArray(user?.purchase_role)
     ? user.purchase_role
     : (user?.purchase_role ? [user.purchase_role] : [])
   const isAdmin = roles.includes('app_admin')
+  const canSeeStatementBadge = roles.includes('app_admin') || roles.includes('lead buyer')
 
   // app_admin: 상단 로고 옆에 미처리 문의(open+in_progress) 뱃지 표시
   useEffect(() => {
@@ -164,6 +166,46 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
       if (subscription) subscription.unsubscribe()
     }
   }, [isAdmin])
+
+  useEffect(() => {
+    if (!canSeeStatementBadge) return
+    const supabase = createClient()
+    let cancelled = false
+    let subscription: any
+
+    const loadPendingStatements = async () => {
+      const { count } = await supabase
+        .from('transaction_statements')
+        .select('id', { count: 'exact', head: true })
+        .in('status', ['pending', 'processing', 'extracted'])
+
+      if (!cancelled && typeof count === 'number') {
+        setPendingStatementCount(count)
+      }
+    }
+
+    loadPendingStatements()
+
+    subscription = supabase
+      .channel('transaction-statements-header-badge')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'transaction_statements'
+        },
+        () => {
+          loadPendingStatements()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      if (subscription) supabase.removeChannel(subscription)
+    }
+  }, [canSeeStatementBadge])
   
   const handleLogout = async () => {
     const supabase = createClient()
@@ -199,7 +241,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
             </span>
           </div>
 
-          {/* 로고 오른쪽 문의 뱃지: admin=전체 미처리 / user=내 미처리 */}
+          {/* 로고 오른쪽 알림 배지 */}
           {pendingInquiryCount > 0 && (
             <button
               type="button"
@@ -211,6 +253,20 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
               <MessageCircle className="w-4 h-4 text-gray-600" />
               <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
                 {(pendingInquiryCount > 99) ? '99+' : pendingInquiryCount}
+              </span>
+            </button>
+          )}
+          {canSeeStatementBadge && pendingStatementCount > 0 && (
+            <button
+              type="button"
+              onClick={() => navigate('/transaction-statement')}
+              className="relative ml-2 inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-gray-50 transition-colors"
+              title="미확정 거래명세서 보기"
+              aria-label={`거래명세서 알림 ${pendingStatementCount}건`}
+            >
+              <Receipt className="w-4 h-4 text-gray-600" />
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                {(pendingStatementCount > 99) ? '99+' : pendingStatementCount}
               </span>
             </button>
           )}

@@ -155,9 +155,11 @@ serve(async (req) => {
       validatedVendorId
     )
     normalizedItems = correctionResult.items
-    if (!validatedVendorName && correctionResult.inferredVendorName) {
-      validatedVendorName = correctionResult.inferredVendorName
-      vendorMatchSource = 'po_infer'
+    if (correctionResult.inferredVendorName) {
+      if (!validatedVendorName || validatedVendorName !== correctionResult.inferredVendorName) {
+        validatedVendorName = correctionResult.inferredVendorName
+        vendorMatchSource = 'po_infer'
+      }
     }
 
     // 8. DB에 결과 저장 (에러 체크 추가)
@@ -888,12 +890,16 @@ async function correctOrderNumbersByDb(
 
   const { data: exactMatch } = await supabase
     .from('purchase_requests')
-    .select('id')
+    .select('id, vendor:vendors(vendor_name)')
     .or(`purchase_order_number.eq.${mostCommon},sales_order_number.eq.${mostCommon}`)
     .limit(1);
 
   if (exactMatch && exactMatch.length > 0) {
-    return { items };
+    const vendorName = (exactMatch[0].vendor as { vendor_name?: string } | null)?.vendor_name;
+    return {
+      items,
+      inferredVendorName: vendorName
+    };
   }
 
   const prefix = isPO ? mostCommon.slice(0, 9) : mostCommon.slice(0, 8);

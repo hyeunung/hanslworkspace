@@ -23,6 +23,7 @@ interface DateQuantityPickerPopoverProps {
   defaultDate?: Date
   defaultQuantity?: number
   maxQuantity?: number
+  allowOverMaxQuantity?: boolean
   hideQuantityInput?: boolean
   quantityInfoText?: string
 }
@@ -37,6 +38,7 @@ export function DateQuantityPickerPopover({
   defaultDate,
   defaultQuantity,
   maxQuantity,
+  allowOverMaxQuantity = false,
   hideQuantityInput = false,
   quantityInfoText = "요청입고수량과 동일한 수량으로 입력됩니다"
 }: DateQuantityPickerPopoverProps) {
@@ -70,7 +72,7 @@ export function DateQuantityPickerPopover({
       return
     }
 
-    if (maxQuantity && quantityNum > maxQuantity) {
+    if (maxQuantity !== undefined && !allowOverMaxQuantity && quantityNum > maxQuantity) {
       return
     }
 
@@ -154,11 +156,11 @@ export function DateQuantityPickerPopover({
                 placeholder="수량을 입력하세요"
                 className="border-gray-200 rounded-lg text-center w-full !h-5 !px-1.5 !py-0.5 !text-[9px] font-normal text-gray-600 focus:border-blue-400"
                 min="0"
-                max={maxQuantity}
+                max={allowOverMaxQuantity ? undefined : maxQuantity}
               />
-              {maxQuantity && (
+              {maxQuantity !== undefined && (
                 <p className="text-xs text-gray-500 mt-1">
-                  {quantityInfoText?.includes('미입고') ? quantityInfoText : `최대: ${maxQuantity.toLocaleString()}`}
+                  {quantityInfoText?.includes('미입고') ? quantityInfoText : `${allowOverMaxQuantity ? '요청수량' : '최대'}: ${maxQuantity.toLocaleString()}`}
                 </p>
               )}
             </div>
@@ -175,7 +177,7 @@ export function DateQuantityPickerPopover({
             <Button
               size="sm"
               onClick={handleConfirm}
-              disabled={!selectedDate || (!hideQuantityInput && (!quantity || parseFloat(quantity.replace(/,/g, '')) < 0 || (maxQuantity !== undefined && parseFloat(quantity.replace(/,/g, '')) > maxQuantity)))}
+              disabled={!selectedDate || (!hideQuantityInput && (!quantity || parseFloat(quantity.replace(/,/g, '')) < 0 || (!allowOverMaxQuantity && maxQuantity !== undefined && parseFloat(quantity.replace(/,/g, '')) > maxQuantity)))}
               className="button-base button-action-primary"
             >
               확인

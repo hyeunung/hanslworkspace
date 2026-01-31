@@ -21,7 +21,7 @@ export interface PurchaseMemoryCache {
   isLoading: boolean                   // 로딩 상태
   error: string | null                 // 에러 메시지
   
-  // 통계 정보 (옵션)
+  // 통계 정보 (옵션) 
   stats: {
     totalCount: number
     loadedCount: number
@@ -310,7 +310,9 @@ export const markItemAsReceived = (purchaseId: number | string, itemId: number |
       
       const requestedQty = item.quantity || 0
       const newReceivedQty = receivedQuantity !== undefined ? receivedQuantity : requestedQty
-      const isFullyReceived = newReceivedQty >= requestedQty
+      const shouldIncreaseRequestedQty = newReceivedQty > requestedQty
+      const nextRequestedQty = shouldIncreaseRequestedQty ? newReceivedQty : requestedQty
+      const isFullyReceived = newReceivedQty >= nextRequestedQty
       
       // 입고 상태 결정
       const deliveryStatus = newReceivedQty === 0 
@@ -320,7 +322,8 @@ export const markItemAsReceived = (purchaseId: number | string, itemId: number |
         : 'partial' as const
       
       return { 
-        ...item, 
+        ...item,
+        ...(shouldIncreaseRequestedQty ? { quantity: nextRequestedQty } : {}),
         is_received: isFullyReceived, 
         delivery_status: deliveryStatus, 
         received_at: currentTime,
