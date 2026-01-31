@@ -5696,14 +5696,14 @@ ${itemsText}`
                   <div className="text-xs font-medium text-gray-600">품목 목록 (터치하여 스크롤)</div>
                 </div>
                 
-                {/* Items List with Header Inside Scrollable Container */}
-                <div className="max-h-[50vh] sm:max-h-[40vh] overflow-auto w-full">
+                {/* Items List + Summary share ONE scroll (x+y) */}
+                <div className="max-h-[50vh] sm:max-h-[40vh] overflow-y-auto overflow-x-hidden sm:overflow-x-auto w-full">
                   <div className="min-w-max">
                     {/* Items Table Header - Sticky inside scroll container */}
-                    <div className={`bg-gray-50 px-2 sm:px-3 py-1 border-b border-gray-100 sticky top-0 z-10 min-w-max ${isEditing ? 'pl-7 sm:pl-8' : ''}`}>
-                      <div 
+                    <div className={`bg-gray-50 px-2 sm:px-3 py-1 border-b border-gray-100 sticky top-0 z-20 min-w-max ${isEditing ? 'pl-7 sm:pl-8' : ''}`}>
+                      <div
                         ref={headerRowRef}
-                         className="hidden sm:grid gap-1 modal-label min-w-max"
+                        className="hidden sm:grid gap-1 modal-label min-w-max"
                         style={{
                           gridTemplateColumns: getGridTemplateColumns()
                         }}
@@ -5770,38 +5770,38 @@ ${itemsText}`
                           )
                         )}
                       </div>
-                    </div>
-                    {isEditing && (
-                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                        <SortableContext
-                          items={sortableIds}
-                          strategy={verticalListSortingStrategy}
-                        >
-                          {(editedItems || []).map((item, index) => (
-                            <SortableRow key={getSortableId(item, index)} id={getSortableId(item, index)}>
-                              {(dragProps) => renderItemRow(item, index, dragProps, getSortableId(item, index))}
-                            </SortableRow>
-                          ))}
-                        </SortableContext>
-                      </DndContext>
-                    )}
-                    {!isEditing && (
-                      <div className="divide-y divide-gray-100 overflow-visible min-w-max">
-                        {(displayItems)?.map((item, index) => (
-                          renderItemRow(item, index, undefined, getSortableId(item, index))
-                        ))}
                       </div>
-                    )}
-                </div>
-              </div>
-                
-                {/* 합계 */}
-                <div className="bg-gray-50 px-2 sm:px-3 border-t border-gray-100">
-                  <div className="hidden sm:block overflow-x-auto w-full">
-                    <div
-                      className="sm:grid items-center gap-1 py-2 min-w-max"
-                      style={{ gridTemplateColumns: getGridTemplateColumns() }}
-                    >
+                    {/* Rows */}
+                    <div className="pb-16">
+                      {isEditing && (
+                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                          <SortableContext
+                            items={sortableIds}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            {(editedItems || []).map((item, index) => (
+                              <SortableRow key={getSortableId(item, index)} id={getSortableId(item, index)}>
+                                {(dragProps) => renderItemRow(item, index, dragProps, getSortableId(item, index))}
+                              </SortableRow>
+                            ))}
+                          </SortableContext>
+                        </DndContext>
+                      )}
+                      {!isEditing && (
+                        <div className="divide-y divide-gray-100 overflow-visible min-w-max">
+                          {(displayItems)?.map((item, index) => (
+                            renderItemRow(item, index, undefined, getSortableId(item, index))
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Desktop Summary (sticky bottom, shares horizontal scroll) */}
+                    <div className="hidden sm:block sticky bottom-0 z-20 bg-gray-50 border-t border-gray-100">
+                      <div className="px-2 sm:px-3">
+                        <div className="sm:grid items-center gap-1 py-2 min-w-max" style={{
+                          gridTemplateColumns: getGridTemplateColumns()
+                        }}>
                       {/* 라인넘버 */}
                       <div className="-ml-2 sm:-ml-3"></div>
                       {/* 품목명 */}
@@ -5879,16 +5879,13 @@ ${itemsText}`
                           )}
                         </>
                       )}
-                    </div>
-                  </div>
+                        </div>
 
-                  {/* 합계+세액 행 (발주인 경우에만) */}
-                  {purchase.payment_category === '발주' && (
-                    <div className="hidden sm:block overflow-x-auto w-full">
-                      <div
-                        className="sm:grid items-center gap-1 py-2 min-w-max border-t border-gray-300"
-                        style={{ gridTemplateColumns: getGridTemplateColumns() }}
-                      >
+                        {/* 합계+세액 행 (발주인 경우에만) */}
+                        {purchase.payment_category === '발주' && (
+                          <div className="sm:grid items-center gap-1 py-2 min-w-max border-t border-gray-300" style={{
+                            gridTemplateColumns: getGridTemplateColumns()
+                          }}>
                         {/* 라인넘버 */}
                         <div className="-ml-2 sm:-ml-3"></div>
                         {/* 빈 칸들 */}
@@ -5931,11 +5928,15 @@ ${itemsText}`
                             <div></div>
                           </>
                         )}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
-                  
-                  {/* Mobile 총액 */}
+                  </div>
+                </div>
+
+                {/* Mobile 총액 */}
+                <div className="bg-gray-50 px-2 sm:px-3 border-t border-gray-100">
                   <div className="block sm:hidden py-2 space-y-1">
                     <div className="flex justify-between items-center">
                       <span className="text-[12px] text-gray-500">합계 총액</span>
