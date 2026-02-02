@@ -1,16 +1,12 @@
 import { useMemo, useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AlertCircle, Calendar, Loader2, MessageSquarePlus, Check } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Purchase } from '@/types/purchase';
-import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { addCacheListener, updatePurchaseInMemory, notifyCacheListeners, findPurchaseInMemory } from '@/stores/purchaseMemoryStore';
+import { addCacheListener, findPurchaseInMemory } from '@/stores/purchaseMemoryStore';
 import { dateToISOString } from '@/utils/helpers';
 import { logger } from '@/lib/logger';
 
@@ -38,6 +34,7 @@ export default function DeliveryDateWarningModal({
   onRefresh,
   currentUserName
 }: DeliveryDateWarningModalProps) {
+  const navigate = useNavigate();
   // 완료된 항목 ID 목록 (로컬 상태로 즉시 UI 반영)
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set());
   // 모달이 열릴 때 고정된 경고 항목 (이후 재계산 방지)
@@ -46,10 +43,6 @@ export default function DeliveryDateWarningModal({
   const hasFixedItemsRef = useRef(false);
   // 자동 닫기가 이미 실행되었는지 추적 (중복 방지)
   const hasClosedRef = useRef(false);
-  const [openPopoverId, setOpenPopoverId] = useState<number | null>(null);
-  const [modifySubject, setModifySubject] = useState('');
-  const [modifyMessage, setModifyMessage] = useState('');
-  const [isSending, setIsSending] = useState(false);
   
   // 상세 모달 상태
   const [detailModalPurchaseId, setDetailModalPurchaseId] = useState<number | null>(null);
@@ -64,8 +57,6 @@ export default function DeliveryDateWarningModal({
   // onClose를 ref로 감싸서 useEffect 의존성 문제 해결
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  
-  const supabase = createClient();
 
   // 경고 항목 계산 함수
   const calculateWarningItems = useCallback(() => {
@@ -121,7 +112,6 @@ export default function DeliveryDateWarningModal({
   useEffect(() => {
     if (isOpen && !hasFixedItemsRef.current) {
       setCompletedIds(new Set());
-      setOpenPopoverId(null);
       hasClosedRef.current = false; // 자동 닫기 플래그 초기화
       // 모달 열릴 때 경고 항목 고정 (이후 재계산 방지)
       const items = calculateWarningItems();
@@ -242,105 +232,16 @@ export default function DeliveryDateWarningModal({
     return () => unsubscribe();
   }, [isOpen, onRefresh]);
 
-  // 팝오버 열기
-  const openPopover = useCallback((purchaseId: number, orderNumber: string) => {
-    setOpenPopoverId(purchaseId);
-    setModifySubject(`[입고일 수정요청] ${orderNumber}`);
-    setModifyMessage('');
-  }, []);
-
-  // 수정 요청 전송
-  const sendRequest = useCallback(async (purchase: Purchase) => {
-    if (!modifySubject.trim() || !modifyMessage.trim()) {
-      toast.error('제목과 내용을 모두 입력해주세요.');
+  const handleOpenDeliveryDateChangeSupport = useCallback((purchase: Purchase) => {
+    const purchaseId = purchase?.id;
+    if (!purchaseId) {
+      toast.error('발주요청 정보를 확인할 수 없습니다.');
       return;
     }
 
-    setIsSending(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error('로그인이 필요합니다.');
-        return;
-      }
-
-      // 1. 문의하기에 저장
-      const { data: createdInquiry, error: inquiryError } = await supabase
-        .from('support_inquires')
-        .insert({
-          user_id: user.id,
-          user_email: user.email,
-          user_name: currentUserName,
-          inquiry_type: 'modify',
-          subject: modifySubject,
-          message: modifyMessage,
-          status: 'open',
-          purchase_request_id: purchase.id,
-          purchase_order_number: purchase.purchase_order_number,
-          requester_id: purchase.requester_id,
-          purchase_info: JSON.stringify({
-            vendor_name: purchase.vendor_name,
-            delivery_request_date: purchase.delivery_request_date,
-            revised_delivery_request_date: purchase.revised_delivery_request_date
-          })
-        })
-        .select('id')
-        .single();
-
-      if (inquiryError) throw inquiryError;
-
-      // ✅ 대화 로그 첫 메시지 기록 (새 문의 알림/채팅 히스토리용)
-      const inquiryId = createdInquiry?.id
-      if (inquiryId) {
-        const { error: msgError } = await supabase
-          .from('support_inquiry_messages')
-          .insert({
-            inquiry_id: inquiryId,
-            sender_role: 'user',
-            sender_email: user.email,
-            message: modifyMessage,
-            attachments: []
-          })
-        if (msgError) throw msgError
-      }
-
-      // 2. 수정요청완료 플래그 업데이트
-      const { error: updateError } = await supabase
-        .from('purchase_requests')
-        .update({
-          delivery_revision_requested: true,
-          delivery_revision_requested_at: new Date().toISOString(),
-          delivery_revision_requested_by: currentUserName || 'unknown'
-        })
-        .eq('id', purchase.id);
-
-      if (updateError) throw updateError;
-
-      // 3. 메모리 캐시 즉시 업데이트 (deliveryWarningCount 재계산용)
-      const updated = updatePurchaseInMemory(purchase.id, (p) => ({
-        ...p,
-        delivery_revision_requested: true,
-        delivery_revision_requested_at: new Date().toISOString(),
-        delivery_revision_requested_by: currentUserName || 'unknown'
-      }));
-      if (updated) {
-        notifyCacheListeners(); // 구독자들에게 알림
-      }
-
-      // 4. 로컬 상태 즉시 업데이트 (UI 즉시 반영)
-      setCompletedIds(prev => new Set(prev).add(purchase.id));
-      setOpenPopoverId(null);
-      setModifySubject('');
-      setModifyMessage('');
-      toast.success('수정 요청이 전송되었습니다.');
-
-    } catch (error: any) {
-      console.error('수정 요청 실패:', error);
-      toast.error('수정 요청 전송에 실패했습니다.');
-    } finally {
-      setIsSending(false);
-    }
-  }, [supabase, currentUserName, modifySubject, modifyMessage]);
+    const returnTo = encodeURIComponent('/purchase/list?tab=receipt');
+    navigate(`/support?type=delivery_date_change&purchaseId=${purchaseId}&source=delivery-warning&returnTo=${returnTo}`);
+  }, [navigate]);
 
   // 닫기 핸들러
   const handleClose = useCallback(() => {
@@ -478,78 +379,15 @@ export default function DeliveryDateWarningModal({
                           요청 완료
                         </Button>
                       ) : (
-                        <Popover
-                          open={openPopoverId === item.purchase.id}
-                          onOpenChange={(open) => {
-                            if (open) {
-                              openPopover(item.purchase.id, item.purchase.purchase_order_number);
-                            } else {
-                              setOpenPopoverId(null);
-                            }
-                          }}
+                        <Button
+                          size="sm"
+                          className="button-base bg-hansl-600 hover:bg-hansl-700 text-white h-7 px-3 text-xs"
+                          onClick={() => handleOpenDeliveryDateChangeSupport(item.purchase)}
+                          title="입고일 변경 요청"
                         >
-                          <PopoverTrigger asChild>
-                            <Button
-                              size="sm"
-                              className="button-base bg-hansl-600 hover:bg-hansl-700 text-white h-7 px-3 text-xs"
-                            >
-                              <MessageSquarePlus className="w-3 h-3 mr-1" />
-                              수정 요청
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent
-                            className="w-80 p-4"
-                            align="end"
-                            onOpenAutoFocus={(e) => e.preventDefault()}
-                          >
-                            <div className="space-y-3">
-                              <div>
-                                <h4 className="font-medium text-sm">입고일 수정 요청</h4>
-                                <p className="text-xs text-gray-500 mt-0.5">
-                                  {item.purchase.vendor_name}
-                                </p>
-                              </div>
-                              <div className="space-y-2">
-                                <div>
-                                  <Label className="text-xs">제목</Label>
-                                  <Input
-                                    value={modifySubject}
-                                    onChange={(e) => setModifySubject(e.target.value)}
-                                    className="h-8 text-xs mt-1"
-                                  />
-                                </div>
-                                <div>
-                                  <Label className="text-xs">내용</Label>
-                                  <Textarea
-                                    value={modifyMessage}
-                                    onChange={(e) => setModifyMessage(e.target.value)}
-                                    className="min-h-[80px] text-xs mt-1"
-                                    placeholder="변경 요청 내용을 입력하세요"
-                                  />
-                                </div>
-                              </div>
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setOpenPopoverId(null)}
-                                  className="button-base h-7 text-xs"
-                                >
-                                  취소
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  onClick={() => sendRequest(item.purchase)}
-                                  disabled={isSending}
-                                  className="button-base bg-hansl-600 hover:bg-hansl-700 text-white h-7 text-xs"
-                                >
-                                  {isSending && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
-                                  요청 전송
-                                </Button>
-                              </div>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
+                          <MessageSquarePlus className="w-3 h-3 mr-1" />
+                          입고일 변경 요청
+                        </Button>
                       )}
                     </div>
                   </div>

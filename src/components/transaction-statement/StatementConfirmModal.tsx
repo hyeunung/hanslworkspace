@@ -1924,6 +1924,37 @@ export default function StatementConfirmModal({
     const matched = itemMatches.get(itemId);
   }, [itemMatches]);
 
+  useEffect(() => {
+    if (!statementWithItems || itemMatches.size === 0) return;
+
+    let didUpdate = false;
+    const nextMap = new Map(itemMatches);
+
+    statementWithItems.items.forEach((ocrItem) => {
+      const current = itemMatches.get(ocrItem.id);
+      if (!current || current.received_quantity != null) return;
+
+      const itemPO = isSamePONumber
+        ? selectedPONumber
+        : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
+      const systemItems = itemPO ? getSystemItemsForPO(itemPO) : [];
+      if (systemItems.length === 0) return;
+
+      const enriched = systemItems.find((sys) => sys.item_id === current.item_id);
+      if (enriched && enriched.received_quantity != null) {
+        nextMap.set(ocrItem.id, { ...current, received_quantity: enriched.received_quantity });
+        didUpdate = true;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:enrichReceivedQuantity',message:'enriched_received_quantity',data:{ocrItemId:ocrItem.id,itemId:current.item_id,receivedQuantity:enriched.received_quantity},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
+      }
+    });
+
+    if (didUpdate) {
+      setItemMatches(nextMap);
+    }
+  }, [statementWithItems, itemMatches, isSamePONumber, selectedPONumber, itemPONumbers, getSystemItemsForPO]);
+
   // 확정
   const handleConfirm = async () => {
     if (!statementWithItems) return;
@@ -2620,6 +2651,11 @@ export default function StatementConfirmModal({
                         }))
                         .sort((a, b) => b.score - a.score);
                       if (rowIndex === 0) {
+                        // #region agent log
+                        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:systemCandidates:calc',message:'system_candidates_loaded',data:{activePONumber,systemCount:systemCandidates.length,fallbackCount:fallbackCandidates.length,sample:displaySystemCandidates.slice(0,3).map(c=>({id:c.item_id,name:c.item_name,qty:c.quantity,received:c.received_quantity}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+                        // #endregion
+                      }
+                      if (rowIndex === 0) {
                         const logKey = `${ocrItem.id}|${isSamePONumber ? 'same' : 'multi'}|${activePONumber}|${systemCandidates.length}`;
                         if (systemCandidateLogKeyRef.current !== logKey) {
                           systemCandidateLogKeyRef.current = logKey;
@@ -2835,6 +2871,16 @@ export default function StatementConfirmModal({
                             <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>
                               {matchedSystem?.quantity ?? '-'} / {matchedSystem?.received_quantity ?? '-'}
                             </span>
+                            {rowIndex === 0 && (
+                              <>
+                                {/* #region agent log */}
+                                {(() => {
+                                  fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:matchedSystem:render',message:'matched_system_render',data:{ocrItemId:ocrItem.id,matchedItemId:matchedSystem?.item_id ?? null,quantity:matchedSystem?.quantity ?? null,receivedQuantity:matchedSystem?.received_quantity ?? null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+                                  return null;
+                                })()}
+                                {/* #endregion */}
+                              </>
+                            )}
                           </td>
                           <td className="p-1 text-right">
                             <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem ? formatAmount(matchedSystem.unit_price) : '-'}</span>
