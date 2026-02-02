@@ -4,14 +4,11 @@ import { Employee, EmployeeFilters as EmployeeFiltersType } from '@/types/purcha
 import { employeeService } from '@/services/employeeService'
 import EmployeeFilters from '@/components/employee/EmployeeFilters'
 import EmployeeTable from '@/components/employee/EmployeeTable'
-import EmployeeModal from '@/components/employee/EmployeeModal'
 import AttendanceDownload from '@/components/employee/AttendanceDownload'
 import AnnualLeaveUsageDownload from '@/components/employee/AnnualLeaveUsageDownload'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 // XLSX는 사용할 때만 동적으로 import (성능 최적화)
-
-type ModalMode = 'create' | 'edit' | 'view'
 
 export default function EmployeeMain() {
   const { currentUserRoles } = useAuth()
@@ -21,11 +18,7 @@ export default function EmployeeMain() {
   const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState<EmployeeFiltersType>({})
-  
-  // 모달 상태
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
-  const [modalMode, setModalMode] = useState<ModalMode>('create')
+  const [createRequestToken, setCreateRequestToken] = useState(0)
   
   // 출근현황표 모달 상태
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false)
@@ -61,44 +54,12 @@ export default function EmployeeMain() {
     loadEmployees()
   }, [filters])
 
-  // 모달 핸들러
   const handleCreateNew = () => {
     if (!canManageEmployees) {
       toast.error('직원 등록 권한이 없습니다.')
       return
     }
-    setSelectedEmployee(null)
-    setModalMode('create')
-    setIsModalOpen(true)
-  }
-
-  const handleEdit = (employee: Employee) => {
-    if (!canManageEmployees) {
-      toast.error('직원 수정 권한이 없습니다.')
-      return
-    }
-    setSelectedEmployee(employee)
-    setModalMode('edit')
-    setIsModalOpen(true)
-  }
-
-  const handleView = (employee: Employee) => {
-    if (!canManageEmployees) {
-      toast.error('직원 상세 조회 권한이 없습니다.')
-      return
-    }
-    setSelectedEmployee(employee)
-    setModalMode('view')
-    setIsModalOpen(true)
-  }
-
-  const handleModalClose = () => {
-    setIsModalOpen(false)
-    setSelectedEmployee(null)
-  }
-
-  const handleSave = () => {
-    loadEmployees()
+    setCreateRequestToken((prev) => prev + 1)
   }
 
   // Excel 내보내기 (동적 import로 성능 최적화)
@@ -182,21 +143,11 @@ export default function EmployeeMain() {
         
         <EmployeeTable
           employees={filteredEmployees}
-          onEdit={handleEdit}
-          onView={handleView}
           onRefresh={loadEmployees}
           currentUserRoles={currentUserRoles}
+          createRequestToken={createRequestToken}
         />
       </div>
-
-      {/* 직원 모달 */}
-      <EmployeeModal
-        isOpen={isModalOpen}
-        onClose={handleModalClose}
-        employee={selectedEmployee}
-        onSave={handleSave}
-        mode={modalMode}
-      />
 
       {/* 출근현황표 다운로드 모달 */}
       <AttendanceDownload

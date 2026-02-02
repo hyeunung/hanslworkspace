@@ -391,9 +391,6 @@ export default function StatementConfirmModal({
             if (hasCandidateMatch) {
               initialPONumbers.set(item.id, poNumber);
             }
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:loadData:poInit',message:'initial_po_check',data:{ocrItemId:item.id,poNumber,hasCandidateMatch,matchCandidateCount:item.match_candidates?.length ?? 0,hasMatchedPurchase:!!item.matched_purchase},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
-            // #endregion
           }
           
           // 기존 매칭 정보가 있으면 설정
@@ -483,9 +480,6 @@ export default function StatementConfirmModal({
               if (recommendedPO) {
                 initialPONumbers.set(item.id, recommendedPO);
               }
-              // #region agent log
-              fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:loadData:bestCandidate',message:'auto_recommend_po',data:{ocrItemId:item.id,recommendedPO,bestScore:bestCandidate.score ?? null,hadBestMatch:!!bestMatch},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H4'})}).catch(()=>{});
-              // #endregion
 
               if (!bestMatch && recommendedPO) {
                 const candidatesForPO = item.match_candidates.filter(c =>
@@ -514,9 +508,6 @@ export default function StatementConfirmModal({
                 if (bestItem) {
                   initialMatches.set(item.id, bestItem);
                 }
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:loadData:bestCandidate',message:'auto_recommend_item',data:{ocrItemId:item.id,recommendedPO,candidateCount:candidatesForPO.length,selectedItemId:bestItem?.item_id ?? null,selectedScore:bestItemScore},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H5'})}).catch(()=>{});
-                // #endregion
               }
             }
             
@@ -1095,9 +1086,6 @@ export default function StatementConfirmModal({
       }
     });
     const result = Array.from(poNumbers);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:getPOCandidatesForItem',message:'po_candidates_result',data:{ocrItemId,extractedNumber,useSONumber,count:result.length,sample:result.slice(0,3)},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H2'})}).catch(()=>{});
-    // #endregion
     return result;
   }, [statementWithItems]);
 
@@ -2010,9 +1998,6 @@ export default function StatementConfirmModal({
       if (enriched && enriched.received_quantity != null) {
         nextMap.set(ocrItem.id, { ...current, received_quantity: enriched.received_quantity });
         didUpdate = true;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:enrichReceivedQuantity',message:'enriched_received_quantity',data:{ocrItemId:ocrItem.id,itemId:current.item_id,receivedQuantity:enriched.received_quantity},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
       }
     });
 
@@ -2412,7 +2397,7 @@ export default function StatementConfirmModal({
 
               {/* 3단 비교 테이블 */}
               <div className="flex-1 overflow-auto border border-gray-200 business-radius-card">
-                <table className="modal-value table-auto min-w-full">
+                <table className="modal-value table-auto min-w-full border-collapse">
                   <thead className="bg-gray-100 sticky top-0 z-10">
                     <tr className="border-b border-gray-200">
                       {/* 좌측: 시스템 발주품목 헤더 */}
@@ -2674,6 +2659,21 @@ export default function StatementConfirmModal({
                   </thead>
                   <tbody>
                     {statementWithItems.items.map((ocrItem, rowIndex) => {
+                      const getDisplayPOForItem = (item: TransactionStatementItemWithMatch) => {
+                        const normalizedExtracted = item.extracted_po_number
+                          ? normalizeOrderNumber(item.extracted_po_number)
+                          : undefined;
+                        const candidates = getPOCandidatesForItem(item.id);
+                        const candidateSet = new Set(candidates.map(candidate => normalizeOrderNumber(candidate)));
+                        const selected = itemPONumbers.get(item.id);
+                        const normalizedSelected = selected ? normalizeOrderNumber(selected) : '';
+                        const extractedInDb = normalizedExtracted && candidateSet.has(normalizedExtracted)
+                          ? normalizedExtracted
+                          : '';
+                        return normalizedSelected && candidateSet.has(normalizedSelected)
+                          ? normalizedSelected
+                          : extractedInDb;
+                      };
                       const matchedSystem = itemMatches.get(ocrItem.id);
                       const matchStatus = getMatchStatus(ocrItem);
                       // OCR 추출 번호를 시스템 형식으로 정규화 (예: _01 → _001, -1 → -01)
@@ -2691,13 +2691,18 @@ export default function StatementConfirmModal({
                       const itemPO = normalizedSelectedPO && candidateSet.has(normalizedSelectedPO)
                         ? normalizedSelectedPO
                         : extractedInDb;
-                      const orderedPOs = Array.from(new Set(poCandidates));
-                      if (rowIndex === 0) {
-                        const ocrDisplayPO = getOCRItemValue(ocrItem, 'po_number') as string;
+                      if (rowIndex < 5) {
                         // #region agent log
-                        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:render:itemPO',message:'render_item_po_state',data:{ocrItemId:ocrItem.id,normalizedExtractedPO,selectedPO,normalizedSelectedPO,candidateCount:poCandidates.length,itemPO,orderedPOsCount:orderedPOs.length,ocrDisplayPO},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H3'})}).catch(()=>{});
+                        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:render:grouping',message:'grouping_inputs',data:{rowIndex,ocrItemId:ocrItem.id,normalizedExtractedPO,selectedPO,normalizedSelectedPO,itemPO,candidateCount:poCandidates.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H1'})}).catch(()=>{});
                         // #endregion
                       }
+                      const orderedPOs = Array.from(new Set(poCandidates));
+                      const nextItem = statementWithItems.items[rowIndex + 1];
+                      const nextItemPO = nextItem ? getDisplayPOForItem(nextItem) : '';
+                      const isGroupEnd = rowIndex < statementWithItems.items.length - 1 && itemPO !== nextItemPO;
+                      const rowClassName = isGroupEnd
+                        ? 'hover:bg-gray-50 border-b-2 border-gray-500'
+                        : 'hover:bg-gray-50';
                       const itemSearchValue = itemPOSearchInputs[ocrItem.id] || '';
                       const itemSearchResults = itemPOSearchResults[ocrItem.id] || [];
                       const itemSearchLoading = itemPOSearchLoading[ocrItem.id] || false;
@@ -2729,11 +2734,6 @@ export default function StatementConfirmModal({
                           score: calculateItemSimilarity(ocrItem.extracted_item_name || '', candidate.item_name, candidate.specification)
                         }))
                         .sort((a, b) => b.score - a.score);
-                      if (rowIndex === 0) {
-                        // #region agent log
-                        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:systemCandidates:calc',message:'system_candidates_loaded',data:{activePONumber,systemCount:systemCandidates.length,fallbackCount:fallbackCandidates.length,sample:displaySystemCandidates.slice(0,3).map(c=>({id:c.item_id,name:c.item_name,qty:c.quantity,received:c.received_quantity}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-                        // #endregion
-                      }
                       if (rowIndex === 0) {
                         const logKey = `${ocrItem.id}|${isSamePONumber ? 'same' : 'multi'}|${activePONumber}|${systemCandidates.length}`;
                         if (systemCandidateLogKeyRef.current !== logKey) {
@@ -2769,7 +2769,7 @@ export default function StatementConfirmModal({
                       const isFirstRow = rowIndex === 0;
                       
                       return (
-                        <tr key={ocrItem.id} className="hover:bg-gray-50">
+                        <tr key={ocrItem.id} className={rowClassName}>
                           {/* Case 2: 발주번호 컬럼 */}
                           {!isSamePONumber && (
                             <td className="p-1 whitespace-nowrap">
@@ -2950,16 +2950,6 @@ export default function StatementConfirmModal({
                             <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>
                               {matchedSystem?.quantity ?? '-'} / {matchedSystem?.received_quantity ?? '-'}
                             </span>
-                            {rowIndex === 0 && (
-                              <>
-                                {/* #region agent log */}
-                                {(() => {
-                                  fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:matchedSystem:render',message:'matched_system_render',data:{ocrItemId:ocrItem.id,matchedItemId:matchedSystem?.item_id ?? null,quantity:matchedSystem?.quantity ?? null,receivedQuantity:matchedSystem?.received_quantity ?? null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
-                                  return null;
-                                })()}
-                                {/* #endregion */}
-                              </>
-                            )}
                           </td>
                           <td className="p-1 text-right">
                             <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem ? formatAmount(matchedSystem.unit_price) : '-'}</span>

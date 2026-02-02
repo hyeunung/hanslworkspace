@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { Employee, EmployeeFormData, EmployeeFilters, PurchaseRole } from "@/types/purchase";
+import { Employee, EmployeeFilters, EmployeeUpsertData, PurchaseRole } from "@/types/purchase";
 import { logger } from "@/lib/logger";
 
 class EmployeeService {
@@ -86,34 +86,31 @@ class EmployeeService {
   }
 
   // 직원 생성
-  async createEmployee(employeeData: EmployeeFormData): Promise<{ success: boolean; data?: Employee; error?: string }> {
+  async createEmployee(employeeData: EmployeeUpsertData): Promise<{ success: boolean; data?: Employee; error?: string }> {
     try {
       // 이메일 중복 체크
-      if (employeeData.email) {
-        const { data: existingEmployee } = await this.supabase
-          .from('employees')
-          .select('id')
-          .eq('email', employeeData.email)
-          .single();
+      const { data: existingEmployee } = await this.supabase
+        .from('employees')
+        .select('id')
+        .eq('email', employeeData.email)
+        .single();
 
-        if (existingEmployee) {
-          return { success: false, error: '이미 등록된 이메일입니다.' };
-        }
+      if (existingEmployee) {
+        return { success: false, error: '이미 등록된 이메일입니다.' };
       }
 
       // ID 생성 (UUID 형태)
       const employeeId = crypto.randomUUID();
+      const isActive = employeeData.is_active ?? true
 
       const { data, error } = await this.supabase
         .from('employees')
         .insert({
           id: employeeId,
           ...employeeData,
-          purchase_role: employeeData.purchase_role && employeeData.purchase_role.length > 0
-            ? employeeData.purchase_role
-            : null,
-          is_active: true,
-          terminated_at: null
+          purchase_role: employeeData.purchase_role && employeeData.purchase_role.length > 0 ? employeeData.purchase_role : null,
+          is_active: isActive,
+          terminated_at: isActive ? null : new Date().toISOString()
         })
         .select()
         .single();
@@ -131,7 +128,7 @@ class EmployeeService {
   }
 
   // 직원 수정
-  async updateEmployee(id: string, employeeData: Partial<EmployeeFormData>): Promise<{ success: boolean; data?: Employee; error?: string }> {
+  async updateEmployee(id: string, employeeData: Partial<EmployeeUpsertData>): Promise<{ success: boolean; data?: Employee; error?: string }> {
     try {
       // 이메일 중복 체크 (자신 제외)
       if (employeeData.email) {
@@ -154,9 +151,12 @@ class EmployeeService {
       if (employeeData.purchase_role === undefined) {
         delete updateData.purchase_role;
       } else {
-        updateData.purchase_role = employeeData.purchase_role.length > 0
-          ? employeeData.purchase_role
-          : null;
+        updateData.purchase_role = employeeData.purchase_role.length > 0 ? employeeData.purchase_role : null;
+      }
+
+      // is_active를 직접 업데이트하는 경우 terminated_at도 일관되게 처리
+      if (employeeData.is_active !== undefined && employeeData.is_active !== null) {
+        updateData.terminated_at = employeeData.is_active ? null : new Date().toISOString()
       }
       
       const { data, error } = await this.supabase
@@ -368,6 +368,8 @@ class EmployeeService {
   private getRoleDisplayName(role?: string | string[] | null): string {
     const roleNames: Record<string, string> = {
       'app_admin': '앱 관리자',
+      'hr': 'HR',
+      'accounting': '회계',
       'ceo': 'CEO',
       'final_approver': '최종 승인자',
       'middle_manager': '중간 관리자',

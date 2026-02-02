@@ -50,7 +50,46 @@ export interface EmployeeFormData {
   purchase_role?: string[]
 }
 
-export type PurchaseRole = 'app_admin' | 'ceo' | 'middle_manager' | 'final_approver' | 'raw_material_manager' | 'consumable_manager' | 'purchase_manager' | 'requester' | 'lead buyer' | 'buyer'  // hanslwebapp과 동일
+export type PurchaseRole =
+  | 'app_admin'
+  | 'hr'
+  | 'accounting'
+  | 'ceo'
+  | 'middle_manager'
+  | 'final_approver'
+  | 'raw_material_manager'
+  | 'consumable_manager'
+  | 'purchase_manager'
+  | 'requester'
+  | 'lead buyer'
+  | 'buyer' // hanslwebapp과 동일
+
+export interface EmployeeUpsertData {
+  // 기본
+  employeeID?: string | null
+  employee_number?: string | null
+  name: string
+  email: string
+  department?: string | null
+  position?: string | null
+  phone?: string | null
+
+  // 권한/상태
+  purchase_role?: PurchaseRole[] | string[] | null
+  is_active?: boolean | null
+
+  // 민감 정보/기타
+  bank?: string | null
+  bank_account?: string | null
+  adress?: string | null
+  join_date?: string | null
+  birthday?: string | null
+
+  // 연차 정보
+  annual_leave_granted_current_year?: number | null
+  used_annual_leave?: number | null
+  remaining_annual_leave?: number | null
+}
 
 export interface Employee {
   id: string
