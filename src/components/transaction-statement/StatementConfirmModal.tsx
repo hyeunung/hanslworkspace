@@ -49,6 +49,7 @@ interface SystemPurchaseItem {
   item_name: string;
   specification?: string;  // 규격 추가 - 교차 비교용
   quantity?: number;
+  received_quantity?: number;
   unit_price?: number;
   amount?: number;
   vendor_name?: string;
@@ -259,6 +260,11 @@ export default function StatementConfirmModal({
   const [poSearchLoading, setPOSearchLoading] = useState(false);
   const [poDropdownOpen, setPODropdownOpen] = useState(false);
   const [manuallySelectedPO, setManuallySelectedPO] = useState(false); // 수동 선택 여부
+  const keepPODropdownOpenRef = useRef(false);
+  const [itemPOSearchInputs, setItemPOSearchInputs] = useState<Record<string, string>>({});
+  const [itemPOSearchResults, setItemPOSearchResults] = useState<Record<string, Array<{ id: number; poNumber: string; soNumber?: string; vendorName?: string }>>>({});
+  const [itemPOSearchLoading, setItemPOSearchLoading] = useState<Record<string, boolean>>({});
+  const lastSelectedSystemItemRef = useRef<string | null>(null);
   const [statementDateInput, setStatementDateInput] = useState('');
 
   // OCR 발주/수주번호 페어 캐시 (실시간 입력용)
@@ -1309,6 +1315,7 @@ export default function StatementConfirmModal({
               item_name,
               specification,
               quantity,
+              received_quantity,
               unit_price_value,
               amount_value
             `)
@@ -1323,6 +1330,7 @@ export default function StatementConfirmModal({
               item_name: item.item_name || '',
               specification: item.specification,
               quantity: item.quantity,
+              received_quantity: item.received_quantity,
               unit_price: item.unit_price_value,
               amount: item.amount_value,
               vendor_name: vendorName
@@ -1541,6 +1549,7 @@ export default function StatementConfirmModal({
               item_name,
               specification,
               quantity,
+              received_quantity,
               unit_price_value,
               amount_value
             )
@@ -1562,6 +1571,7 @@ export default function StatementConfirmModal({
             item_name: item.item_name,
             specification: item.specification,
             quantity: item.quantity ?? 0,
+            received_quantity: item.received_quantity,
             unit_price: item.unit_price_value,
             amount: item.amount_value,
             vendor_name: vendorName
@@ -1618,6 +1628,7 @@ export default function StatementConfirmModal({
             item_name,
             specification,
             quantity,
+            received_quantity,
             unit_price_value,
             amount_value
           )
@@ -1646,6 +1657,7 @@ export default function StatementConfirmModal({
           item_name: item.item_name || '',
           specification: item.specification,
           quantity: item.quantity,
+          received_quantity: item.received_quantity,
           unit_price: item.unit_price_value,
           amount: item.amount_value,
           vendor_name: vendorName
@@ -1844,8 +1856,55 @@ export default function StatementConfirmModal({
     });
   };
 
+  const getPurchaseIdByNumber = useCallback((poNumber: string) => {
+    const candidate = allPONumberCandidates.find(
+      c => c.poNumber === poNumber || c.salesOrderNumber === poNumber
+    );
+    return candidate?.purchaseId || candidate?.items?.[0]?.purchase_id;
+  }, [allPONumberCandidates]);
+
+  const handleItemPOSearch = useCallback(async (ocrItemId: string, searchValue: string) => {
+    setItemPOSearchInputs(prev => ({ ...prev, [ocrItemId]: searchValue }));
+
+    if (!searchValue || searchValue.trim().length < 2) {
+      setItemPOSearchResults(prev => ({ ...prev, [ocrItemId]: [] }));
+      return;
+    }
+
+    setItemPOSearchLoading(prev => ({ ...prev, [ocrItemId]: true }));
+
+    try {
+      const { data, error } = await supabase
+        .from('purchase_requests')
+        .select(`
+          id,
+          purchase_order_number,
+          sales_order_number,
+          vendor:vendors(vendor_name)
+        `)
+        .or(`purchase_order_number.ilike.%${searchValue}%,sales_order_number.ilike.%${searchValue}%`)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+
+      const results = (data || []).map((row: any) => ({
+        id: row.id,
+        poNumber: row.purchase_order_number || '',
+        soNumber: row.sales_order_number || undefined,
+        vendorName: row.vendor?.vendor_name
+      }));
+      setItemPOSearchResults(prev => ({ ...prev, [ocrItemId]: results }));
+    } catch (err) {
+      setItemPOSearchResults(prev => ({ ...prev, [ocrItemId]: [] }));
+    } finally {
+      setItemPOSearchLoading(prev => ({ ...prev, [ocrItemId]: false }));
+    }
+  }, [supabase]);
+
   // 시스템 품목 직접 선택
   const handleSelectSystemItem = (ocrItemId: string, systemItem: SystemPurchaseItem | null) => {
+    lastSelectedSystemItemRef.current = ocrItemId;
     setItemMatches(prev => {
       const newMap = new Map(prev);
       newMap.set(ocrItemId, systemItem);
@@ -1858,6 +1917,12 @@ export default function StatementConfirmModal({
       return newSet;
     });
   };
+
+  useEffect(() => {
+    if (!lastSelectedSystemItemRef.current) return;
+    const itemId = lastSelectedSystemItemRef.current;
+    const matched = itemMatches.get(itemId);
+  }, [itemMatches]);
 
   // 확정
   const handleConfirm = async () => {
@@ -1956,6 +2021,15 @@ export default function StatementConfirmModal({
   const formatAmount = (amount?: number) => {
     if (amount === undefined || amount === null) return '-';
     return amount.toLocaleString('ko-KR');
+  };
+
+  const getSystemItemLabel = (item?: SystemPurchaseItem | null) => {
+    if (!item) return '';
+    const name = item.item_name?.trim();
+    if (name) return name;
+    const spec = item.specification?.trim();
+    if (spec) return spec;
+    return `품목 #${item.item_id}`;
   };
 
   const handleOpenOriginalImage = () => {
@@ -2106,6 +2180,8 @@ export default function StatementConfirmModal({
   };
 
   const toggleDropdown = (key: string, event?: React.MouseEvent) => {
+    if (key.startsWith('item-')) {
+    }
     if (event && key === 'global-po') {
       const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
       setDropdownPosition({
@@ -2285,13 +2361,17 @@ export default function StatementConfirmModal({
                                         handlePOSearch(e.target.value);
                                       }}
                                       onBlur={() => {
+                                        if (keepPODropdownOpenRef.current) {
+                                          keepPODropdownOpenRef.current = false;
+                                          return;
+                                        }
                                         setTimeout(() => {
                                           setPOSearchInputOpen(false);
                                           setPODropdownOpen(false);
                                         }, 200);
                                       }}
                                       placeholder="F... 또는 HS..."
-                                      className="w-[90px] h-5 px-1.5 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-hansl-400"
+                                      className="w-[150px] h-5 px-1.5 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-hansl-400"
                                       style={{ fontSize: '10px', fontWeight: 500 }}
                                       autoFocus
                                       onClick={(e) => e.stopPropagation()}
@@ -2301,42 +2381,64 @@ export default function StatementConfirmModal({
                                     )}
                                     {/* 인라인 드롭다운 */}
                                     {poDropdownOpen && poSearchResults.length > 0 && (
-                                      <div className="absolute top-full left-0 mt-1 w-[200px] bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[180px] overflow-y-auto">
+                                      <div className="absolute top-full left-0 mt-1 w-[280px] bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[180px] overflow-y-auto">
                                         {poSearchResults.map((po) => (
-                                          <button
+                                          <div
                                             key={po.id}
-                                            onMouseDown={(e) => e.preventDefault()}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              // 검색어에 맞는 번호 선택: HS로 검색했으면 soNumber, F로 검색했으면 poNumber
-                                              const searchUpper = poSearchInput.trim().toUpperCase();
-                                              let selectedNumber: string;
-                                              if (searchUpper.startsWith('HS') && po.soNumber) {
-                                                selectedNumber = po.soNumber;
-                                              } else if (searchUpper.startsWith('F') && po.poNumber) {
-                                                selectedNumber = po.poNumber;
-                                              } else {
-                                                selectedNumber = po.poNumber || po.soNumber || '';
-                                              }
-                                              setPOSearchInput('');
-                                              setPOSearchInputOpen(false);
-                                              setPODropdownOpen(false);
-                                              // 수동 선택 플래그 설정 (자동 교정 방지)
-                                              setManuallySelectedPO(true);
-                                              // 발주번호 선택 및 품목 매칭 업데이트 (거래처명, 수주번호 포함)
-                                              handleSelectGlobalPO(selectedNumber, po.vendorName, po.soNumber);
-                                              toast.success(`${selectedNumber} 발주가 선택되었습니다`);
-                                            }}
-                                            className="w-full px-2 py-1.5 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                                            className="w-full px-2 py-1.5 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
                                           >
-                                            <div className="text-[10px] font-medium text-gray-900">
-                                              {po.poNumber}
-                                              {po.soNumber && <span className="text-gray-400 ml-1">({po.soNumber})</span>}
-                                            </div>
+                                            <button
+                                              onMouseDown={(e) => e.preventDefault()}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                keepPODropdownOpenRef.current = false;
+                                                // 검색어에 맞는 번호 선택: HS로 검색했으면 soNumber, F로 검색했으면 poNumber
+                                                const searchUpper = poSearchInput.trim().toUpperCase();
+                                                let selectedNumber: string;
+                                                if (searchUpper.startsWith('HS') && po.soNumber) {
+                                                  selectedNumber = po.soNumber;
+                                                } else if (searchUpper.startsWith('F') && po.poNumber) {
+                                                  selectedNumber = po.poNumber;
+                                                } else {
+                                                  selectedNumber = po.poNumber || po.soNumber || '';
+                                                }
+                                                setPOSearchInput('');
+                                                setPOSearchInputOpen(false);
+                                                setPODropdownOpen(false);
+                                                // 수동 선택 플래그 설정 (자동 교정 방지)
+                                                setManuallySelectedPO(true);
+                                                // 발주번호 선택 및 품목 매칭 업데이트 (거래처명, 수주번호 포함)
+                                                handleSelectGlobalPO(selectedNumber, po.vendorName, po.soNumber);
+                                                toast.success(`${selectedNumber} 발주가 선택되었습니다`);
+                                              }}
+                                              className="w-full text-left"
+                                            >
+                                              <div className="flex items-center justify-between gap-2">
+                                                <div className="text-[10px] font-medium text-gray-900">
+                                                  {po.poNumber}
+                                                  {po.soNumber && <span className="text-gray-400 ml-1">({po.soNumber})</span>}
+                                                </div>
+                                                <button
+                                                  type="button"
+                                                  onMouseDown={(e) => {
+                                                    keepPODropdownOpenRef.current = true;
+                                                    e.preventDefault();
+                                                  }}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSelectedPurchaseIdForDetail(po.id);
+                                                    setIsPurchaseDetailModalOpen(true);
+                                                  }}
+                                                  className="text-[9px] font-medium text-blue-600 hover:text-blue-800"
+                                                >
+                                                  상세
+                                                </button>
+                                              </div>
+                                            </button>
                                             {po.vendorName && (
                                               <div className="text-[9px] text-gray-500">{po.vendorName}</div>
                                             )}
-                                          </button>
+                                          </div>
                                         ))}
                                       </div>
                                     )}
@@ -2483,9 +2585,40 @@ export default function StatementConfirmModal({
                         : undefined;
                       const itemPO = itemPONumbers.get(ocrItem.id) || normalizedExtractedPO;
                       const poCandidates = getPOCandidatesForItem(ocrItem.id);
+                      const orderedPOs = Array.from(
+                        new Set([itemPO, ...poCandidates].filter(Boolean) as string[])
+                      );
+                      const itemSearchValue = itemPOSearchInputs[ocrItem.id] || '';
+                      const itemSearchResults = itemPOSearchResults[ocrItem.id] || [];
+                      const itemSearchLoading = itemPOSearchLoading[ocrItem.id] || false;
                       const activePONumber = isSamePONumber ? selectedPONumber : (itemPO || '');
                       const systemCandidates = getSystemItemsForPO(activePONumber);
-                      const showSystemList = isSamePONumber && rowIndex === 0 && !matchedSystem && systemCandidates.length > 0;
+                      const fallbackCandidates = systemCandidates.length === 0 && activePONumber
+                        ? (ocrItem.match_candidates || [])
+                          .filter(candidate =>
+                            candidate.purchase_order_number === activePONumber ||
+                            candidate.sales_order_number === activePONumber
+                          )
+                          .map((candidate): SystemPurchaseItem => ({
+                            purchase_id: candidate.purchase_id,
+                            item_id: candidate.item_id,
+                            purchase_order_number: candidate.purchase_order_number || '',
+                            sales_order_number: candidate.sales_order_number,
+                            item_name: candidate.item_name || '품목명 없음',
+                            specification: candidate.specification,
+                            quantity: candidate.quantity,
+                            unit_price: candidate.unit_price,
+                            amount: (candidate as any).amount,
+                            vendor_name: candidate.vendor_name
+                          }))
+                        : [];
+                      const displaySystemCandidates = systemCandidates.length > 0 ? systemCandidates : fallbackCandidates;
+                      const scoredSystemCandidates = displaySystemCandidates
+                        .map((candidate) => ({
+                          candidate,
+                          score: calculateItemSimilarity(ocrItem.extracted_item_name || '', candidate.item_name, candidate.specification)
+                        }))
+                        .sort((a, b) => b.score - a.score);
                       if (rowIndex === 0) {
                         const logKey = `${ocrItem.id}|${isSamePONumber ? 'same' : 'multi'}|${activePONumber}|${systemCandidates.length}`;
                         if (systemCandidateLogKeyRef.current !== logKey) {
@@ -2534,22 +2667,105 @@ export default function StatementConfirmModal({
                                   <span>{itemPO || '선택'}</span>
                                   <ChevronDown className="w-3 h-3 flex-shrink-0" />
                                 </button>
-                                {openDropdowns.has(`po-${ocrItem.id}`) && poCandidates.length > 0 && (
-                                  <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-md shadow-lg min-w-[150px] max-h-[150px] overflow-auto">
-                                    {poCandidates.map((po, idx) => (
-                                      <div
-                                        key={idx}
-                                        onClick={() => handleSelectItemPO(ocrItem.id, po)}
-                                        className={`px-2 py-1.5 hover:bg-gray-100 cursor-pointer text-[11px] font-medium ${po === itemPO ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700'}`}
-                                        style={{ fontSize: '11px' }}
-                                      >
-                                        {po}
-                                        {(() => {
-                                          const paired = getPairedOrderNumber(po);
-                                          return paired ? <span className="text-gray-400 ml-1">({paired})</span> : null;
-                                        })()}
+                                {openDropdowns.has(`po-${ocrItem.id}`) && (
+                                  <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-md shadow-lg w-[280px] max-h-[200px] overflow-auto">
+                                    <div className="p-2 border-b border-gray-100">
+                                      <div className="relative">
+                                        <input
+                                          type="text"
+                                          value={itemSearchValue}
+                                          onChange={(e) => handleItemPOSearch(ocrItem.id, e.target.value)}
+                                          placeholder="발주/수주번호 검색..."
+                                          className="w-full h-6 px-2 pr-6 text-[10px] bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-hansl-400"
+                                        />
+                                        {itemSearchLoading && (
+                                          <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 animate-spin text-gray-400" />
+                                        )}
                                       </div>
-                                    ))}
+                                    </div>
+                                    {itemSearchValue && itemSearchResults.length > 0 && (
+                                      <div className="border-b border-gray-100">
+                                        {itemSearchResults.map((po) => {
+                                          const searchUpper = itemSearchValue.trim().toUpperCase();
+                                          let selectedNumber: string;
+                                          if (searchUpper.startsWith('HS') && po.soNumber) {
+                                            selectedNumber = po.soNumber;
+                                          } else if (searchUpper.startsWith('F') && po.poNumber) {
+                                            selectedNumber = po.poNumber;
+                                          } else {
+                                            selectedNumber = po.poNumber || po.soNumber || '';
+                                          }
+                                          return (
+                                            <div
+                                              key={po.id}
+                                              className="px-2 py-1.5 hover:bg-gray-50 cursor-pointer text-[11px]"
+                                              onClick={() => handleSelectItemPO(ocrItem.id, selectedNumber)}
+                                            >
+                                              <div className="flex items-center justify-between gap-2">
+                                                <div className="font-medium text-gray-900">
+                                                  {po.poNumber}
+                                                  {po.soNumber && <span className="text-gray-400 ml-1">({po.soNumber})</span>}
+                                                </div>
+                                                <button
+                                                  type="button"
+                                                  onMouseDown={(e) => e.preventDefault()}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSelectedPurchaseIdForDetail(po.id);
+                                                    setIsPurchaseDetailModalOpen(true);
+                                                  }}
+                                                  className="text-[9px] font-medium text-blue-600 hover:text-blue-800"
+                                                >
+                                                  상세
+                                                </button>
+                                              </div>
+                                              {po.vendorName && (
+                                                <div className="text-[9px] text-gray-500">{po.vendorName}</div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                    {orderedPOs.length > 0 && (
+                                      <div>
+                                        {orderedPOs.map((po, idx) => {
+                                          const paired = getPairedOrderNumber(po);
+                                          const purchaseId = getPurchaseIdByNumber(po);
+                                          const isPreferred = po === itemPO;
+                                          return (
+                                            <div
+                                              key={`${po}-${idx}`}
+                                              onClick={() => handleSelectItemPO(ocrItem.id, po)}
+                                              className={`px-2 py-1.5 hover:bg-gray-100 cursor-pointer text-[11px] font-medium ${isPreferred ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700'}`}
+                                              style={{ fontSize: '11px' }}
+                                            >
+                                              <div className="flex items-center justify-between gap-2">
+                                                <div>
+                                                  {po}
+                                                  {paired && <span className="text-gray-400 ml-1">({paired})</span>}
+                                                  {isPreferred && <span className="text-orange-500 ml-1">추천</span>}
+                                                </div>
+                                                {purchaseId && (
+                                                  <button
+                                                    type="button"
+                                                    onMouseDown={(e) => e.preventDefault()}
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      setSelectedPurchaseIdForDetail(purchaseId);
+                                                      setIsPurchaseDetailModalOpen(true);
+                                                    }}
+                                                    className="text-[9px] font-medium text-blue-600 hover:text-blue-800"
+                                                  >
+                                                    상세
+                                                  </button>
+                                                )}
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -2558,48 +2774,42 @@ export default function StatementConfirmModal({
                           
                           {/* 좌측: 시스템 품목 */}
                           <td className="p-1">
-                            {matchedSystem ? (
-                              <div className="flex items-center gap-1 whitespace-nowrap">
-                                <span className="text-[11px] font-medium text-gray-900" style={{ fontSize: '11px' }}>{matchedSystem.item_name}</span>
-                                <button
-                                  onClick={() => handleSelectSystemItem(ocrItem.id, null)}
-                                  className="text-gray-400 hover:text-red-500 flex-shrink-0"
-                                  title="매칭 해제"
-                                >
-                                  <XCircle className="w-3 h-3" />
-                                </button>
-                              </div>
-                            ) : showSystemList ? (
-                              <div className="space-y-1">
-                                {systemCandidates.map((candidate, cidx) => (
-                                  <div key={cidx} className="text-[11px] font-medium text-gray-900" style={{ fontSize: '11px' }}>
-                                    {candidate.item_name}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : systemCandidates.length > 0 ? (
+                            {displaySystemCandidates.length > 0 ? (
                               <div className="relative">
-                                <button
-                                  onClick={() => toggleDropdown(`item-${ocrItem.id}`)}
-                                  className="flex items-center gap-1 text-blue-600 hover:text-blue-700 text-[11px]"
-                                  style={{ fontSize: '11px' }}
-                                >
-                                  <span>▼ 후보 선택</span>
-                                  <span className="text-gray-400">({systemCandidates.length})</span>
-                                </button>
-                                
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => {
+                                      toggleDropdown(`item-${ocrItem.id}`);
+                                    }}
+                                    className="inline-flex items-center gap-1 px-1.5 h-5 text-[10px] font-normal bg-white border border-gray-300 business-radius hover:bg-gray-50 text-gray-700 whitespace-nowrap"
+                                    style={{ fontSize: '11px' }}
+                                  >
+                                    <span>{getSystemItemLabel(matchedSystem) || '선택'}</span>
+                                    <ChevronDown className="w-3 h-3 flex-shrink-0" />
+                                  </button>
+                                  {matchedSystem && (
+                                    <button
+                                      onClick={() => handleSelectSystemItem(ocrItem.id, null)}
+                                      className="text-gray-400 hover:text-red-500 flex-shrink-0"
+                                      title="매칭 해제"
+                                    >
+                                      <XCircle className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
                                 {openDropdowns.has(`item-${ocrItem.id}`) && (
-                                  <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-md shadow-lg min-w-[280px] max-h-[200px] overflow-auto">
-                                    {systemCandidates.map((candidate, cidx) => {
-                                      const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', candidate.item_name, candidate.specification);
+                                  <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-md shadow-lg w-[280px] max-h-[200px] overflow-auto">
+                                    {scoredSystemCandidates.map(({ candidate, score }, cidx) => {
                                       return (
                                         <div
                                           key={cidx}
-                                          onClick={() => handleSelectSystemItem(ocrItem.id, candidate)}
+                                          onClick={() => {
+                                            handleSelectSystemItem(ocrItem.id, candidate);
+                                          }}
                                           className="px-2 py-1.5 hover:bg-gray-100 cursor-pointer"
                                         >
                                           <div className="flex items-center justify-between">
-                                            <p className="text-[11px] font-medium text-gray-900" style={{ fontSize: '11px' }}>{candidate.item_name}</p>
+                                            <p className="text-[11px] font-normal text-gray-900" style={{ fontSize: '11px' }}>{getSystemItemLabel(candidate)}</p>
                                             <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                                               score >= 80 ? 'bg-green-100 text-green-700' :
                                               score >= 50 ? 'bg-yellow-100 text-yellow-700' :
@@ -2609,7 +2819,7 @@ export default function StatementConfirmModal({
                                             </span>
                                           </div>
                                           <p className="text-[10px] text-gray-500">
-                                            {candidate.quantity ?? '-'}개 × {formatAmount(candidate.unit_price)} = {formatAmount(candidate.amount)}
+                                            요청/실제: {candidate.quantity ?? '-'} / {candidate.received_quantity ?? '-'}
                                           </p>
                                         </div>
                                       );
@@ -2622,43 +2832,15 @@ export default function StatementConfirmModal({
                             )}
                           </td>
                           <td className="p-1 text-right">
-                            {showSystemList ? (
-                              <div className="space-y-1">
-                                {systemCandidates.map((candidate, cidx) => (
-                                  <div key={cidx} className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>
-                                    {candidate.quantity ?? '-'}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem?.quantity ?? '-'}</span>
-                            )}
+                            <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>
+                              {matchedSystem?.quantity ?? '-'} / {matchedSystem?.received_quantity ?? '-'}
+                            </span>
                           </td>
                           <td className="p-1 text-right">
-                            {showSystemList ? (
-                              <div className="space-y-1">
-                                {systemCandidates.map((candidate, cidx) => (
-                                  <div key={cidx} className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>
-                                    {formatAmount(candidate.unit_price)}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem ? formatAmount(matchedSystem.unit_price) : '-'}</span>
-                            )}
+                            <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem ? formatAmount(matchedSystem.unit_price) : '-'}</span>
                           </td>
                           <td className="border-r-2 border-gray-300 p-1 text-right">
-                            {showSystemList ? (
-                              <div className="space-y-1">
-                                {systemCandidates.map((candidate, cidx) => (
-                                  <div key={cidx} className="text-[11px] font-bold text-gray-900" style={{ fontSize: '11px', fontWeight: 700 }}>
-                                    {formatAmount(candidate.amount)}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-[11px] font-bold text-gray-900" style={{ fontSize: '11px', fontWeight: 700 }}>{matchedSystem ? formatAmount(matchedSystem.amount) : '-'}</span>
-                            )}
+                            <span className="text-[11px] font-bold text-gray-900" style={{ fontSize: '11px', fontWeight: 700 }}>{matchedSystem ? formatAmount(matchedSystem.amount) : '-'}</span>
                           </td>
                           
                           {/* 중앙: 발주/수주 번호 일치 상태 (첫 행에만 rowSpan으로 세로 중앙 표시) */}
@@ -3224,7 +3406,7 @@ export default function StatementConfirmModal({
             setIsPurchaseDetailModalOpen(false);
             setSelectedPurchaseIdForDetail(null);
           }}
-          activeTab="all"
+          activeTab="receipt"
         />
       )}
     </>

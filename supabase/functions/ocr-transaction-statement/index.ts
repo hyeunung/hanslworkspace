@@ -95,6 +95,20 @@ serve(async (req) => {
     // 5. 발주/수주번호 패턴 정규화 (OCR 텍스트도 함께 전달하여 빈 칸에 적힌 번호도 찾음)
     let normalizedItems = normalizePoNumbers(extractionResult.items, visionText)
 
+    // 5-1. 손글씨 괄호/연결선 기반 PO 매핑 (품목별 보강)
+    try {
+      const bracketMappings = await extractPoMappingsWithGPT4o(
+        base64Image,
+        normalizedItems,
+        openaiApiKey
+      )
+      if (bracketMappings.length > 0) {
+        normalizedItems = applyPoMappings(normalizedItems, bracketMappings)
+      }
+    } catch (e) {
+      console.warn('Failed to extract PO mappings from brackets:', e)
+    }
+
     // 6. 거래처명 검증 - vendors 테이블에 반드시 존재해야 함
     let validatedVendorName: string | undefined = undefined
     let validatedVendorId: number | undefined = undefined
@@ -790,29 +804,88 @@ JSON 형식으로만 응답하세요.`
   return JSON.parse(content)
 }
 
+type PoMapping = {
+  line_number?: number
+  item_name?: string
+  po_number?: string
+  confidence?: number
+}
+
+async function extractPoMappingsWithGPT4o(
+  base64Image: string,
+  items: ExtractedItem[],
+  apiKey: string
+): Promise<PoMapping[]> {
+  const itemHints = items.map((item) => ({
+    line_number: item.line_number,
+    item_name: item.item_name
+  }))
+
+  const prompt = `거래명세서 이미지에서 손글씨 괄호/연결선으로 표시된 "발주번호/수주번호 포함 관계"를 읽어,
+아래 item 목록에 대해 품목별 po_number를 매핑해주세요.
+
+규칙:
+1) 손글씨로 적힌 번호(F########_### 또는 HS######-##)와 괄호/연결선이 가리키는 품목들을 묶어주세요.
+2) 매핑이 확실하지 않으면 제외하세요.
+3) 결과는 아래 JSON 형식만 반환:
+{"mappings":[{"line_number":번호,"item_name":"품목명","po_number":"F... 또는 HS...","confidence":0~1}]}
+
+item 목록:
+${JSON.stringify(itemHints)}
+`
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: 'You extract handwritten bracket-to-item mappings.' },
+        { role: 'user', content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}`, detail: 'high' } }
+        ] }
+      ],
+      temperature: 0.1,
+      max_tokens: 1200,
+      response_format: { type: 'json_object' }
+    })
+  })
+
+  const result = await response.json()
+  if (result.error) {
+    throw new Error(`GPT-4o error (mapping): ${result.error.message}`)
+  }
+  const content = result.choices?.[0]?.message?.content
+  if (!content) return []
+  const parsed = JSON.parse(content)
+  return Array.isArray(parsed.mappings) ? parsed.mappings : []
+}
+
+function normalizePO(num: string): string {
+  const match = num.toUpperCase().match(/^(F\d{8})_(\d{1,3})$/)
+  if (match) {
+    return `${match[1]}_${match[2].padStart(3, '0')}`
+  }
+  return num.toUpperCase()
+}
+
+function normalizeSO(num: string): string {
+  const match = num.toUpperCase().match(/^(HS\d{6})-(\d{1,2})$/)
+  if (match) {
+    return `${match[1]}-${match[2].padStart(2, '0')}`
+  }
+  return num.toUpperCase()
+}
+
 function normalizePoNumbers(items: ExtractedItem[], rawVisionText?: string): ExtractedItem[] {
   // 발주번호 패턴: F + YYYYMMDD + _ + 1~3자리 숫자 (OCR에서 읽힌 형태)
   const poPatternLoose = /F\d{8}_\d{1,3}/gi
   // 수주번호 패턴: HS + YYMMDD + - + 1~2자리 숫자 (OCR에서 읽힌 형태)
   const soPatternLoose = /HS\d{6}-\d{1,2}/gi
-
-  // 발주번호를 시스템 형식으로 정규화 (F20251008_1 → F20251008_001)
-  function normalizePO(num: string): string {
-    const match = num.toUpperCase().match(/^(F\d{8})_(\d{1,3})$/)
-    if (match) {
-      return `${match[1]}_${match[2].padStart(3, '0')}`
-    }
-    return num.toUpperCase()
-  }
-
-  // 수주번호를 시스템 형식으로 정규화 (HS251201-1 → HS251201-01)
-  function normalizeSO(num: string): string {
-    const match = num.toUpperCase().match(/^(HS\d{6})-(\d{1,2})$/)
-    if (match) {
-      return `${match[1]}-${match[2].padStart(2, '0')}`
-    }
-    return num.toUpperCase()
-  }
 
   // 전체 텍스트에서 모든 PO/SO 번호 추출 (빈 칸, 여백 등에서 발견된 번호들)
   const allFoundNumbers: string[] = []
@@ -982,6 +1055,41 @@ function normalizeItemText(value: string): string {
     .replace(/\s+/g, '')
     .replace(/[^a-z0-9가-힣]/g, '')
     .trim();
+}
+
+function normalizeMappedNumber(value?: string): string {
+  if (!value) return ''
+  const cleaned = value.toUpperCase().replace(/\s+/g, '').replace(/[^\w_-]/g, '')
+  if (cleaned.startsWith('F')) return normalizePO(cleaned)
+  if (cleaned.startsWith('HS')) return normalizeSO(cleaned)
+  return cleaned
+}
+
+function applyPoMappings(items: ExtractedItem[], mappings: PoMapping[]): ExtractedItem[] {
+  if (!mappings.length) return items
+
+  const byLine = new Map<number, PoMapping>()
+  const byName = new Map<string, PoMapping>()
+
+  mappings.forEach((m) => {
+    if (m.confidence !== undefined && m.confidence < 0.6) return
+    if (typeof m.line_number === 'number') {
+      byLine.set(m.line_number, m)
+      return
+    }
+    if (m.item_name) {
+      byName.set(normalizeItemText(m.item_name), m)
+    }
+  })
+
+  return items.map((item) => {
+    const byLineMatch = item.line_number !== undefined ? byLine.get(item.line_number) : undefined
+    const byNameMatch = byName.get(normalizeItemText(item.item_name || ''))
+    const selected = byLineMatch || byNameMatch
+    const mapped = normalizeMappedNumber(selected?.po_number)
+    if (!mapped) return item
+    return { ...item, po_number: mapped }
+  })
 }
 
 function calculateOrderSimilarity(
