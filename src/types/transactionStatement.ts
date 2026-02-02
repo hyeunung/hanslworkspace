@@ -227,6 +227,16 @@ export function normalizeOrderNumber(input: string): string {
     const [, prefix, num] = poMatch;
     return `${prefix}_${num.padStart(3, '0')}`;
   }
+
+  // OCR 오류 대응: 발주번호는 항상 "_" 사용 (날짜 길이 오인식 포함)
+  if (normalized.startsWith('F') && normalized.includes('-') && !normalized.includes('_')) {
+    const dashMatch = normalized.match(/^(F\d{6,8})-(\d{1,3})$/);
+    if (dashMatch) {
+      const [, prefix, num] = dashMatch;
+      return `${prefix}_${num.padStart(3, '0')}`;
+    }
+    return normalized.replace('-', '_');
+  }
   
   // 수주번호 정규화: HS251201-1 → HS251201-01
   const soMatch = normalized.match(/^(HS\d{6})-(\d{1,2})$/);

@@ -5772,7 +5772,7 @@ ${itemsText}`
                       </div>
                       </div>
                     {/* Rows */}
-                    <div className="pb-16">
+                    <div className="pb-0">
                       {isEditing && (
                         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                           <SortableContext

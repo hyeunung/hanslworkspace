@@ -385,11 +385,25 @@ export default function StatementConfirmModal({
           let poNumber = '';
           if (item.extracted_po_number) {
             poNumber = normalizeOrderNumber(item.extracted_po_number);
-            initialPONumbers.set(item.id, poNumber);
+            const hasCandidateMatch = item.match_candidates?.some(c =>
+              c.purchase_order_number === poNumber || c.sales_order_number === poNumber
+            );
+            if (hasCandidateMatch) {
+              initialPONumbers.set(item.id, poNumber);
+            }
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:loadData:poInit',message:'initial_po_check',data:{ocrItemId:item.id,poNumber,hasCandidateMatch,matchCandidateCount:item.match_candidates?.length ?? 0,hasMatchedPurchase:!!item.matched_purchase},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
+            // #endregion
           }
           
           // 기존 매칭 정보가 있으면 설정
           if (item.matched_purchase && item.matched_item_id) {
+            const matchedPO = item.matched_purchase.purchase_order_number ||
+              item.matched_purchase.sales_order_number ||
+              '';
+            if (matchedPO) {
+              initialPONumbers.set(item.id, matchedPO);
+            }
             initialMatches.set(item.id, {
               purchase_id: item.matched_purchase_id!,
               item_id: item.matched_item_id!,
@@ -459,8 +473,56 @@ export default function StatementConfirmModal({
                 }
               }
             }
+
+            if (!initialPONumbers.has(item.id) && item.match_candidates && item.match_candidates.length > 0) {
+              const bestCandidate = item.match_candidates.reduce((best, current) => {
+                if (!best) return current;
+                return (current.score ?? -1) > (best.score ?? -1) ? current : best;
+              }, item.match_candidates[0]);
+              const recommendedPO = bestCandidate.purchase_order_number || bestCandidate.sales_order_number || '';
+              if (recommendedPO) {
+                initialPONumbers.set(item.id, recommendedPO);
+              }
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:loadData:bestCandidate',message:'auto_recommend_po',data:{ocrItemId:item.id,recommendedPO,bestScore:bestCandidate.score ?? null,hadBestMatch:!!bestMatch},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H4'})}).catch(()=>{});
+              // #endregion
+
+              if (!bestMatch && recommendedPO) {
+                const candidatesForPO = item.match_candidates.filter(c =>
+                  c.purchase_order_number === recommendedPO || c.sales_order_number === recommendedPO
+                );
+                let bestItem: SystemPurchaseItem | null = null;
+                let bestItemScore = -1;
+                for (const c of candidatesForPO) {
+                  const score = calculateItemSimilarity(item.extracted_item_name || '', c.item_name, c.specification);
+                  if (score > bestItemScore) {
+                    bestItemScore = score;
+                    bestItem = {
+                      purchase_id: c.purchase_id,
+                      item_id: c.item_id,
+                      purchase_order_number: c.purchase_order_number || '',
+                      sales_order_number: c.sales_order_number,
+                      item_name: c.item_name,
+                      specification: c.specification,
+                      quantity: c.quantity,
+                      unit_price: c.unit_price,
+                      amount: (c as any).amount,
+                      vendor_name: c.vendor_name
+                    };
+                  }
+                }
+                if (bestItem) {
+                  initialMatches.set(item.id, bestItem);
+                }
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:loadData:bestCandidate',message:'auto_recommend_item',data:{ocrItemId:item.id,recommendedPO,candidateCount:candidatesForPO.length,selectedItemId:bestItem?.item_id ?? null,selectedScore:bestItemScore},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H5'})}).catch(()=>{});
+                // #endregion
+              }
+            }
             
-            initialMatches.set(item.id, bestMatch);
+            if (!initialMatches.has(item.id)) {
+              initialMatches.set(item.id, bestMatch);
+            }
           }
         });
         
@@ -1032,8 +1094,11 @@ export default function StatementConfirmModal({
         if (c.purchase_order_number) poNumbers.add(c.purchase_order_number);
       }
     });
-    
-    return Array.from(poNumbers);
+    const result = Array.from(poNumbers);
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:getPOCandidatesForItem',message:'po_candidates_result',data:{ocrItemId,extractedNumber,useSONumber,count:result.length,sample:result.slice(0,3)},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H2'})}).catch(()=>{});
+    // #endregion
+    return result;
   }, [statementWithItems]);
 
   // OCR 품목 편집 함수
@@ -1066,7 +1131,8 @@ export default function StatementConfirmModal({
       case 'amount':
         return ocrItem.extracted_amount ?? '';
       case 'po_number':
-        return ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : '';
+        return itemPONumbers.get(ocrItem.id) ||
+          (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : '');
       default:
         return '';
     }
@@ -2614,11 +2680,24 @@ export default function StatementConfirmModal({
                       const normalizedExtractedPO = ocrItem.extracted_po_number 
                         ? normalizeOrderNumber(ocrItem.extracted_po_number) 
                         : undefined;
-                      const itemPO = itemPONumbers.get(ocrItem.id) || normalizedExtractedPO;
                       const poCandidates = getPOCandidatesForItem(ocrItem.id);
-                      const orderedPOs = Array.from(
-                        new Set([itemPO, ...poCandidates].filter(Boolean) as string[])
-                      );
+                      const normalizedCandidates = poCandidates.map(candidate => normalizeOrderNumber(candidate));
+                      const candidateSet = new Set(normalizedCandidates);
+                      const selectedPO = itemPONumbers.get(ocrItem.id);
+                      const normalizedSelectedPO = selectedPO ? normalizeOrderNumber(selectedPO) : '';
+                      const extractedInDb = normalizedExtractedPO && candidateSet.has(normalizedExtractedPO)
+                        ? normalizedExtractedPO
+                        : '';
+                      const itemPO = normalizedSelectedPO && candidateSet.has(normalizedSelectedPO)
+                        ? normalizedSelectedPO
+                        : extractedInDb;
+                      const orderedPOs = Array.from(new Set(poCandidates));
+                      if (rowIndex === 0) {
+                        const ocrDisplayPO = getOCRItemValue(ocrItem, 'po_number') as string;
+                        // #region agent log
+                        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:render:itemPO',message:'render_item_po_state',data:{ocrItemId:ocrItem.id,normalizedExtractedPO,selectedPO,normalizedSelectedPO,candidateCount:poCandidates.length,itemPO,orderedPOsCount:orderedPOs.length,ocrDisplayPO},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H3'})}).catch(()=>{});
+                        // #endregion
+                      }
                       const itemSearchValue = itemPOSearchInputs[ocrItem.id] || '';
                       const itemSearchResults = itemPOSearchResults[ocrItem.id] || [];
                       const itemSearchLoading = itemPOSearchLoading[ocrItem.id] || false;
