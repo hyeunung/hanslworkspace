@@ -464,9 +464,12 @@ export default function EmployeeTable({
                 sortDirection={sortConfig.direction}
                 onSort={() => handleSort('email' as keyof Employee)}
               >
-                이메일
+                회사 이메일
               </SortableHeader>
             </TableHead>
+            {canManageEmployees && (
+              <TableHead className="w-40 min-w-[140px]">개인 이메일</TableHead>
+            )}
             {canManageEmployees && (
               <>
                 {/* 연차 정보 */}
@@ -494,7 +497,6 @@ export default function EmployeeTable({
                   </SortableHeader>
                 </TableHead>
                 {/* 민감한 정보 */}
-                <TableHead className="w-40 min-w-[140px]">개인 이메일</TableHead>
                 <TableHead className="w-24 min-w-[80px]">계좌번호</TableHead>
                 <TableHead className="min-w-[120px]">주소</TableHead>
                 <TableHead>
@@ -600,6 +602,20 @@ export default function EmployeeTable({
                   )}
                 </TableCell>
                 {canManageEmployees && (
+                  <TableCell className="px-2 py-1.5">
+                    {isEditingRow(employee.id) ? (
+                      <Input
+                        value={draft?.personal_email || ''}
+                        onChange={(e) => updateDraft('personal_email', e.target.value)}
+                        placeholder="personal@example.com"
+                        className="!h-auto !py-px !px-1 !text-[11px] !min-h-[20px] business-radius-input border border-gray-300 bg-white text-gray-700"
+                      />
+                    ) : (
+                      employee.personal_email || '-'
+                    )}
+                  </TableCell>
+                )}
+                {canManageEmployees && (
                   <>
                     {/* 연차 정보 */}
                     <TableCell className="text-center text-[11px] px-1 py-1.5">
@@ -665,18 +681,6 @@ export default function EmployeeTable({
                       )}
                     </TableCell>
                     {/* 민감한 정보 */}
-                    <TableCell className="px-2 py-1.5">
-                      {isEditingRow(employee.id) ? (
-                        <Input
-                          value={draft?.personal_email || ''}
-                          onChange={(e) => updateDraft('personal_email', e.target.value)}
-                          placeholder="personal@example.com"
-                          className="!h-auto !py-px !px-1 !text-[11px] !min-h-[20px] business-radius-input border border-gray-300 bg-white text-gray-700"
-                        />
-                      ) : (
-                        employee.personal_email || '-'
-                      )}
-                    </TableCell>
                     <TableCell className="px-2 py-1.5">
                       {isEditingRow(employee.id) ? (
                         <Input
@@ -907,7 +911,7 @@ export default function EmployeeTable({
                 }
               />
               <MobileCardItem
-                label="이메일"
+                label="회사 이메일"
                 value={
                   isEditingRow(employee.id) ? (
                     <Input
@@ -921,23 +925,25 @@ export default function EmployeeTable({
                 }
               />
               {canManageEmployees && (
+                <MobileCardItem
+                  label="개인 이메일"
+                  value={
+                    isEditingRow(employee.id) ? (
+                      <Input
+                        value={draft?.personal_email || ''}
+                        onChange={(e) => updateDraft('personal_email', e.target.value)}
+                        placeholder="personal@example.com"
+                        className="!h-auto !py-px !px-1.5 !text-[11px] !min-h-[20px] business-radius-input border border-gray-300 bg-white text-gray-700"
+                      />
+                    ) : (
+                      employee.personal_email || '-'
+                    )
+                  }
+                />
+              )}
+              {canManageEmployees && (
                 <>
                   <MobileCardItem
-                    label="개인 이메일"
-                    value={
-                      isEditingRow(employee.id) ? (
-                        <Input
-                          value={draft?.personal_email || ''}
-                          onChange={(e) => updateDraft('personal_email', e.target.value)}
-                          placeholder="personal@example.com"
-                          className="!h-auto !py-px !px-1.5 !text-[11px] !min-h-[20px] business-radius-input border border-gray-300 bg-white text-gray-700"
-                        />
-                      ) : (
-                        employee.personal_email || '-'
-                      )
-                    }
-                  />
-                  <MobileCardItem 
                     label="권한" 
                     value={
                       isEditingRow(employee.id) ? (
