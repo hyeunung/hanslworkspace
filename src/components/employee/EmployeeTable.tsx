@@ -59,7 +59,6 @@ type EmployeeDraft = {
   remaining_annual_leave: string
   join_date: string
   birthday: string
-  bank: string
   bank_account: string
   adress: string
   purchase_role: string
@@ -97,7 +96,6 @@ const defaultDraft = (): EmployeeDraft => ({
   remaining_annual_leave: '',
   join_date: '',
   birthday: '',
-  bank: '',
   bank_account: '',
   adress: '',
   purchase_role: '',
@@ -116,6 +114,7 @@ export default function EmployeeTable({
   const [editingRowId, setEditingRowId] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [draft, setDraft] = useState<EmployeeDraft | null>(null)
+  const [availableEmployeeColumns, setAvailableEmployeeColumns] = useState<Set<string> | null>(null)
 
   const handleToggleStatus = async (employee: Employee) => {
     if (!canManageEmployees) {
@@ -221,6 +220,11 @@ export default function EmployeeTable({
       toast.error('직원 등록 권한이 없습니다.')
       return
     }
+    // 신규 등록 시에는 현재 목록의 컬럼 키를 기준으로 payload를 제한
+    const sample = employees[0]
+    if (sample) {
+      setAvailableEmployeeColumns(new Set(Object.keys(sample)))
+    }
     setIsCreating(true)
     setEditingRowId(NEW_ROW_ID)
     setDraft(defaultDraft())
@@ -238,9 +242,14 @@ export default function EmployeeTable({
       return
     }
 
+    // #region agent log (hypothesis C: startEdit not firing / wrong row)
+    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C',location:'EmployeeTable.tsx:startEdit',message:'startEdit called',data:{employeeId:employee.id,canManageEmployees,employeeKeys:Object.keys(employee||{}).slice(0,80)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+
     const primaryRole = getPrimaryRole(employee.purchase_role) || ''
     setIsCreating(false)
     setEditingRowId(employee.id)
+    setAvailableEmployeeColumns(new Set(Object.keys(employee || {})))
     setDraft({
       employeeID: employee.employeeID || employee.employee_number || '',
       name: employee.name || '',
@@ -260,7 +269,6 @@ export default function EmployeeTable({
           : String(employee.remaining_annual_leave),
       join_date: toInputDate(employee.join_date),
       birthday: toInputDate(employee.birthday),
-      bank: employee.bank || '',
       bank_account: employee.bank_account || '',
       adress: employee.adress || '',
       purchase_role: primaryRole,
@@ -293,18 +301,28 @@ export default function EmployeeTable({
     }
     if (!draft || !editingRowId) return
 
+    // #region agent log (hypothesis C/D: save handler not running or draft missing)
+    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'C',location:'EmployeeTable.tsx:handleSave',message:'handleSave entered',data:{editingRowId,isCreating,hasDraft:!!draft,loadingIdActive:!!loadingId},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+
     const name = draft.name.trim()
     const email = draft.email.trim()
     if (!name) {
+      // #region agent log (hypothesis A: validation blocks save)
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A',location:'EmployeeTable.tsx:handleSave',message:'blocked by validation: missing name',data:{editingRowId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       toast.error('이름은 필수입니다.')
       return
     }
     if (!email) {
+      // #region agent log (hypothesis A: validation blocks save)
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'A',location:'EmployeeTable.tsx:handleSave',message:'blocked by validation: missing email',data:{editingRowId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       toast.error('이메일은 필수입니다.')
       return
     }
 
-    const payload: any = {
+    const rawPayload: any = {
       // 사번은 1칸 입력으로 받고, 하위호환 필드까지 동일 값으로 저장
       employeeID: toNullableTrimmed(draft.employeeID),
       employee_number: toNullableTrimmed(draft.employeeID),
@@ -318,12 +336,22 @@ export default function EmployeeTable({
       remaining_annual_leave: toNullableNumber(draft.remaining_annual_leave),
       join_date: toNullableTrimmed(draft.join_date),
       birthday: toNullableTrimmed(draft.birthday),
-      bank: toNullableTrimmed(draft.bank),
       bank_account: toNullableTrimmed(draft.bank_account),
       adress: toNullableTrimmed(draft.adress),
       purchase_role: draft.purchase_role ? [draft.purchase_role] : [],
       is_active: draft.is_active === 'true',
     }
+
+    const allowedColumns =
+      availableEmployeeColumns ?? (employees[0] ? new Set(Object.keys(employees[0])) : null)
+    const payload =
+      allowedColumns === null
+        ? rawPayload
+        : Object.fromEntries(Object.entries(rawPayload).filter(([key]) => allowedColumns.has(key)))
+
+    // #region agent log (hypothesis B: server rejects payload / unexpected nulls)
+    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'post-fix',hypothesisId:'B',location:'EmployeeTable.tsx:handleSave',message:'payload prepared+filtered (redacted)',data:{editingRowId,isCreate:editingRowId===NEW_ROW_ID,rawKeys:Object.keys(rawPayload),keys:Object.keys(payload),droppedKeys:Object.keys(rawPayload).filter((k)=>!(k in payload)),nullKeys:Object.entries(payload).filter(([,v])=>v===null).map(([k])=>k),purchaseRoleLen:Array.isArray(payload.purchase_role)?payload.purchase_role.length:0,isActive:payload.is_active},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     setLoadingId(editingRowId)
     try {
@@ -331,6 +359,10 @@ export default function EmployeeTable({
         editingRowId === NEW_ROW_ID
           ? await employeeService.createEmployee(payload)
           : await employeeService.updateEmployee(editingRowId, payload)
+
+      // #region agent log (hypothesis B: response indicates failure)
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B',location:'EmployeeTable.tsx:handleSave',message:'save result received',data:{editingRowId,success:!!result?.success,hasError:!!result?.error,errorMsg:result?.error?String(result.error).slice(0,180):null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
 
       if (result.success) {
         toast.success(editingRowId === NEW_ROW_ID ? '직원이 등록되었습니다.' : '직원 정보가 수정되었습니다.')
@@ -340,6 +372,9 @@ export default function EmployeeTable({
         toast.error(result.error || '저장에 실패했습니다.')
       }
     } catch (error) {
+      // #region agent log (hypothesis B: thrown exception)
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B',location:'EmployeeTable.tsx:handleSave',message:'save threw error',data:{editingRowId,errorMsg:error instanceof Error?error.message:String(error).slice(0,180)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       toast.error('저장 중 오류가 발생했습니다.')
     } finally {
       setLoadingId(null)
@@ -370,7 +405,6 @@ export default function EmployeeTable({
       terminated_at: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      bank: draft?.bank || '',
       bank_account: draft?.bank_account || '',
       adress: draft?.adress || '',
       join_date: draft?.join_date || '',
@@ -480,7 +514,6 @@ export default function EmployeeTable({
                   </SortableHeader>
                 </TableHead>
                 {/* 민감한 정보 */}
-                <TableHead className="w-14 min-w-[45px]">은행</TableHead>
                 <TableHead className="w-24 min-w-[80px]">계좌번호</TableHead>
                 <TableHead className="min-w-[120px]">주소</TableHead>
                 <TableHead>
@@ -511,7 +544,7 @@ export default function EmployeeTable({
         <TableBody>
           {displayRows.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={canManageEmployees ? 17 : 6} className="text-center py-8 text-gray-500">
+              <TableCell colSpan={canManageEmployees ? 16 : 6} className="text-center py-8 text-gray-500">
                 등록된 직원이 없습니다.
               </TableCell>
             </TableRow>
@@ -651,17 +684,6 @@ export default function EmployeeTable({
                       )}
                     </TableCell>
                     {/* 민감한 정보 */}
-                    <TableCell className="px-2 py-1.5">
-                      {isEditingRow(employee.id) ? (
-                        <Input
-                          value={draft?.bank || ''}
-                          onChange={(e) => updateDraft('bank', e.target.value)}
-                          className="!h-auto !py-px !px-1 !text-[11px] !min-h-[20px] business-radius-input border border-gray-300 bg-white text-gray-700"
-                        />
-                      ) : (
-                        employee.bank || '-'
-                      )}
-                    </TableCell>
                     <TableCell className="px-2 py-1.5">
                       {isEditingRow(employee.id) ? (
                         <Input
@@ -979,20 +1001,6 @@ export default function EmployeeTable({
                         />
                       ) : (
                         formatDate(employee.birthday)
-                      )
-                    }
-                  />
-                  <MobileCardItem
-                    label="은행"
-                    value={
-                      isEditingRow(employee.id) ? (
-                        <Input
-                          value={draft?.bank || ''}
-                          onChange={(e) => updateDraft('bank', e.target.value)}
-                          className="!h-auto !py-px !px-1.5 !text-[11px] !min-h-[20px] business-radius-input border border-gray-300 bg-white text-gray-700"
-                        />
-                      ) : (
-                        employee.bank || '-'
                       )
                     }
                   />
