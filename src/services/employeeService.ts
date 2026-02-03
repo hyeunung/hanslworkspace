@@ -88,10 +88,6 @@ class EmployeeService {
   // 직원 생성
   async createEmployee(employeeData: EmployeeUpsertData): Promise<{ success: boolean; data?: Employee; error?: string }> {
     try {
-      // #region agent log (hypothesis B: create request reaches service)
-      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B',location:'employeeService.ts:createEmployee',message:'createEmployee called',data:{keys:Object.keys(employeeData||{}),hasEmail:!!employeeData?.email,hasName:!!employeeData?.name},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-
       // 이메일 중복 체크
       const { data: existingEmployee } = await this.supabase
         .from('employees')
@@ -100,9 +96,6 @@ class EmployeeService {
         .single();
 
       if (existingEmployee) {
-        // #region agent log (hypothesis B: duplicate email rejection)
-        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B',location:'employeeService.ts:createEmployee',message:'duplicate email detected',data:{},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         return { success: false, error: '이미 등록된 이메일입니다.' };
       }
 
@@ -122,18 +115,11 @@ class EmployeeService {
         .select()
         .single();
 
-      // #region agent log (hypothesis B: create response)
-      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B',location:'employeeService.ts:createEmployee',message:'createEmployee response',data:{hasError:!!error,errorMsg:error?String((error as any).message||error).slice(0,180):null,hasData:!!data},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-
       if (error) throw error;
 
       return { success: true, data };
     } catch (error) {
       logger.error('직원 생성 실패', error);
-      // #region agent log (hypothesis B: create exception)
-      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B',location:'employeeService.ts:createEmployee',message:'createEmployee exception',data:{errorMsg:error instanceof Error?error.message:String(error).slice(0,180)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       const msg =
         error instanceof Error
           ? error.message
@@ -150,10 +136,6 @@ class EmployeeService {
   // 직원 수정
   async updateEmployee(id: string, employeeData: Partial<EmployeeUpsertData>): Promise<{ success: boolean; data?: Employee; error?: string }> {
     try {
-      // #region agent log (hypothesis B: update request reaches service)
-      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B',location:'employeeService.ts:updateEmployee',message:'updateEmployee called',data:{id,keys:Object.keys(employeeData||{}),hasEmail:employeeData?.email!==undefined,hasIsActive:employeeData?.is_active!==undefined},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-
       // 이메일 중복 체크 (자신 제외)
       if (employeeData.email) {
         const { data: existingEmployee } = await this.supabase
@@ -190,18 +172,11 @@ class EmployeeService {
         .select()
         .single();
 
-      // #region agent log (hypothesis B: update response)
-      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B',location:'employeeService.ts:updateEmployee',message:'updateEmployee response',data:{hasError:!!error,errorMsg:error?String((error as any).message||error).slice(0,180):null,hasData:!!data},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-
       if (error) throw error;
 
       return { success: true, data };
     } catch (error) {
       logger.error('직원 수정 실패', error);
-      // #region agent log (hypothesis B: update exception)
-      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'debug-session',runId:'pre-fix',hypothesisId:'B',location:'employeeService.ts:updateEmployee',message:'updateEmployee exception',data:{id,errorMsg:error instanceof Error?error.message:String(error).slice(0,180)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       const msg =
         error instanceof Error
           ? error.message

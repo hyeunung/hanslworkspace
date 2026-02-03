@@ -70,6 +70,7 @@ export interface EmployeeUpsertData {
   employee_number?: string | null
   name: string
   email: string
+  personal_email?: string | null
   department?: string | null
   position?: string | null
   phone?: string | null
@@ -97,6 +98,7 @@ export interface Employee {
   employee_number?: string  // 사번 (employeeID와 동일, 하위호환용)
   name: string
   email: string
+  personal_email?: string
   department?: string
   position?: string
   phone?: string
