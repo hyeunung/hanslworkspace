@@ -373,6 +373,7 @@ interface ParsedBOMItem {
   refs: string[];
   part: string;
   footprint: string;
+  format: 'item_no' | 'grouped_designator';
 }
 
 async function parseBOMFile(file: File): Promise<ParsedBOMItem[]> {
@@ -387,10 +388,14 @@ async function parseBOMFile(file: File): Promise<ParsedBOMItem[]> {
   
   // 헤더 찾기
   let headerRow = -1;
-  const colMap = { item: 0, ref: 1, qty: 2, part: 3, footprint: -1 };
-  const refKeywords = ['reference', 'references', 'ref', 'designator'];
-  const partKeywords = ['part', 'part number'];
-  const footprintKeywords = ['pcb footprint', 'footprint', 'partnumber'];
+  const colMap = { item: 0, ref: 1, qty: 2, part: 3, comment: -1, description: -1, footprint: -1 };
+  const itemKeywords = ['item', 'no', '#', 'line', 'ln'];
+  const refKeywords = ['reference', 'references', 'ref', 'refdes', 'designator', 'designators'];
+  const qtyKeywords = ['quantity', 'qty'];
+  const partKeywords = ['part', 'part number', 'value'];
+  const commentKeywords = ['comment'];
+  const descriptionKeywords = ['description', 'desc'];
+  const footprintKeywords = ['pcb footprint', 'footprint', 'package', 'partnumber'];
   
   for (let r = 0; r < Math.min(30, rows.length); r++) {
     const row = rows[r];
@@ -399,12 +404,26 @@ async function parseBOMFile(file: File): Promise<ParsedBOMItem[]> {
     const rowStr = row.map(c => String(c || '').toLowerCase()).join(' ');
     if (refKeywords.some(kw => rowStr.includes(kw))) {
       headerRow = r;
+      let partExplicitFound = false;
       row.forEach((cell, idx) => {
         const val = String(cell || '').toLowerCase().trim();
-        if (val === 'item' || val === 'no') colMap.item = idx;
+        if (itemKeywords.some(kw => val === kw)) colMap.item = idx;
         if (refKeywords.some(kw => val === kw)) colMap.ref = idx;
-        if (val === 'quantity' || val === 'qty') colMap.qty = idx;
-        if (partKeywords.some(kw => val === kw)) colMap.part = idx;
+        if (qtyKeywords.some(kw => val === kw)) colMap.qty = idx;
+        if (partKeywords.some(kw => val === kw)) {
+          colMap.part = idx;
+          partExplicitFound = true;
+        }
+        if (commentKeywords.some(kw => val === kw)) {
+          colMap.comment = idx;
+          // comment는 part/value 역할을 하는 경우가 많아 part로도 설정
+          if (!partExplicitFound) colMap.part = idx;
+        }
+        if (descriptionKeywords.some(kw => val === kw)) {
+          colMap.description = idx;
+          // description도 part/value 역할로 쓰일 수 있어, part가 comment로 잡히지 않았다면 fallback
+          if (!partExplicitFound && colMap.comment < 0) colMap.part = idx;
+        }
         if (footprintKeywords.some(kw => val === kw)) colMap.footprint = idx;
       });
       break;
@@ -476,39 +495,96 @@ async function parseBOMFile(file: File): Promise<ParsedBOMItem[]> {
     }
   }
   
+  // BOM 포맷 감지: (A) 기존 Item/No 기반 vs (B) Designator 그룹핑 기반
+  const headerCellsLower = headerRow >= 0 ? (rows[headerRow] || []).map(c => String(c || '').toLowerCase().trim()) : [];
+  const hasDesignatorHeader = headerCellsLower.includes('designator') || headerCellsLower.includes('designators');
+  const hasGroupedFields = (colMap.comment >= 0 || colMap.description >= 0) && colMap.qty >= 0;
+  const sampleRowsForDetect = rows.slice(headerRow + 1, Math.min(headerRow + 21, rows.length));
+  const itemNonEmptyCount = colMap.item >= 0
+    ? sampleRowsForDetect.filter(r => r && String(r[colMap.item] || '').trim().length > 0).length
+    : 0;
+  const itemNumericCount = colMap.item >= 0
+    ? sampleRowsForDetect.filter(r => r && /^\d+$/.test(String(r[colMap.item] || '').trim())).length
+    : 0;
+  const itemNumericRate = itemNonEmptyCount > 0 ? itemNumericCount / itemNonEmptyCount : 0;
+  const multiRefRate = colMap.ref >= 0
+    ? (sampleRowsForDetect.filter(r => {
+        const v = r && colMap.ref < r.length ? String(r[colMap.ref] || '') : '';
+        return v.includes(',') || v.includes(' ,');
+      }).length / Math.max(1, sampleRowsForDetect.length))
+    : 0;
+
+  const isGroupedDesignatorFormat =
+    hasGroupedFields &&
+    (hasDesignatorHeader || multiRefRate >= 0.2) &&
+    (itemNonEmptyCount === 0 || itemNumericRate < 0.3);
+
   let currentItem: ParsedBOMItem | null = null;
   
-  for (let r = headerRow + 1; r < rows.length; r++) {
-    const row = rows[r];
-    if (!row || row.length === 0) continue;
-    
-    const itemNum = String(row[colMap.item] || '').trim();
-    const reference = String(row[colMap.ref] || '').trim();
-    const quantity = String(row[colMap.qty] || '').trim();
-    const part = String(row[colMap.part] || '').trim();
-    const footprint = colMap.footprint >= 0 ? String(row[colMap.footprint] || '').trim() : '';
-    
-    if (reference.startsWith('_')) continue;
-    
-    if (itemNum && /^\d+$/.test(itemNum)) {
-      if (currentItem && currentItem.refs.length > 0) {
-        items.push(currentItem);
-      }
+  if (isGroupedDesignatorFormat) {
+    // ModeB: 각 row가 이미 1개 품목 (Designator에 REF list)
+    for (let r = headerRow + 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row || row.length === 0) continue;
+
+      const reference = String(row[colMap.ref] || '').trim();
+      if (!reference) continue;
+      if (reference.startsWith('_')) continue;
+
       const refs = Utils.parseRefs(reference).filter(ref => !Utils.isTP(ref));
-      currentItem = {
-        quantity: parseInt(quantity) || refs.length,
+      if (refs.length === 0) continue;
+
+      const quantityStr = String(row[colMap.qty] || '').trim();
+      const qty = parseInt(quantityStr) || refs.length;
+
+      const comment = colMap.comment >= 0 ? String(row[colMap.comment] || '').trim() : '';
+      const description = colMap.description >= 0 ? String(row[colMap.description] || '').trim() : '';
+      const part = (comment || description || String(row[colMap.part] || '')).trim();
+      const footprint = colMap.footprint >= 0 ? String(row[colMap.footprint] || '').trim() : '';
+
+      items.push({
+        quantity: qty,
         refs,
         part,
         footprint: footprint || part,
-      };
-    } else if (currentItem && reference) {
-      const additionalRefs = Utils.parseRefs(reference).filter(ref => !Utils.isTP(ref));
-      currentItem.refs.push(...additionalRefs);
+        format: 'grouped_designator',
+      });
     }
-  }
-  
-  if (currentItem && currentItem.refs.length > 0) {
-    items.push(currentItem);
+  } else {
+    // ModeA: 기존 Item/No 기반 (기존 로직 유지)
+    for (let r = headerRow + 1; r < rows.length; r++) {
+      const row = rows[r];
+      if (!row || row.length === 0) continue;
+
+      const itemNum = String(row[colMap.item] || '').trim();
+      const reference = String(row[colMap.ref] || '').trim();
+      const quantity = String(row[colMap.qty] || '').trim();
+      const part = String(row[colMap.part] || '').trim();
+      const footprint = colMap.footprint >= 0 ? String(row[colMap.footprint] || '').trim() : '';
+
+      if (reference.startsWith('_')) continue;
+
+      if (itemNum && /^\d+$/.test(itemNum)) {
+        if (currentItem && currentItem.refs.length > 0) {
+          items.push(currentItem);
+        }
+        const refs = Utils.parseRefs(reference).filter(ref => !Utils.isTP(ref));
+        currentItem = {
+          quantity: parseInt(quantity) || refs.length,
+          refs,
+          part,
+          footprint: footprint || part,
+          format: 'item_no',
+        };
+      } else if (currentItem && reference) {
+        const additionalRefs = Utils.parseRefs(reference).filter(ref => !Utils.isTP(ref));
+        currentItem.refs.push(...additionalRefs);
+      }
+    }
+
+    if (currentItem && currentItem.refs.length > 0) {
+      items.push(currentItem);
+    }
   }
   
   return items;
@@ -749,6 +825,151 @@ function mapTypeFromFootprint(part: string, footprint: string, learningData: Lea
 }
 
 // ============================================================
+// Grouped-Designator BOM 정규화 (Comment/Designator 형식 지원)
+// ============================================================
+
+function normalizeGroupedBomToken(token: string): string {
+  return (token || '').trim();
+}
+
+function detectOpenFromTokens(partRaw: string, footprintRaw: string): boolean {
+  const p = (partRaw || '').toUpperCase();
+  const f = (footprintRaw || '').toUpperCase();
+  // NC는 OPEN/미삽으로 취급 (기존 misapKeywords에도 포함)
+  return p.includes('/NC') || p.endsWith('NC') || f.includes('/NC') || f.endsWith('NC');
+}
+
+function extractMetricSize(partRaw: string, footprintRaw: string): string {
+  const candidates = `${footprintRaw || ''} ${partRaw || ''}`.toUpperCase();
+  const m = candidates.match(/(0603|1005|1608|2012|3216|3225)/);
+  return m?.[1] || '';
+}
+
+function extractVoltageToken(partRaw: string): string {
+  const parts = (partRaw || '').split('/').map(p => p.trim()).filter(Boolean);
+  const v = parts.find(p => /\d+\s*(V|KV)$/i.test(p));
+  return v ? v.toUpperCase().replace(/\s+/g, '') : '';
+}
+
+function normalizeCapValueForFootprintKey(valueRaw: string): { displayValue: string; keyValue: string } | null {
+  const v = normalizeGroupedBomToken(valueRaw);
+  if (!v) return null;
+  // value token 예: 0.1uF, 10pf, 1nF, 47u, 8pF
+  const m = v.match(/^([0-9]*\.?[0-9]+)\s*([uUnNpP])\s*([fF])?$/);
+  if (!m) return null;
+  const num = m[1];
+  const unitLetter = m[2].toLowerCase(); // u/n/p
+  const displayUnit = `${unitLetter}F`; // uF/nF/pF
+  const displayValue = `${num}${displayUnit}`;
+  const keyValue = `${num}${unitLetter.toUpperCase()}F`; // UF/NF/PF
+  return { displayValue, keyValue };
+}
+
+function normalizeResValueForFootprintKey(valueRaw: string): { displayValue: string; keyValue: string } | null {
+  const v = normalizeGroupedBomToken(valueRaw);
+  if (!v) return null;
+  // 예: 1k, 4.7k, 1M, 0, 0.007
+  const m = v.match(/^([0-9]*\.?[0-9]+)\s*([kKmMrR])?$/);
+  if (!m) return null;
+  const num = m[1];
+  const suffix = (m[2] || '').toUpperCase(); // K/M/R/'' (R은 일부 파일에서 ohm 표시로 쓰는 경우)
+  const displayValue = `${num}${suffix}`;
+  const keyValue = `${num}${suffix}`;
+  return { displayValue, keyValue };
+}
+
+function buildGroupedBomNormalization(
+  partRaw: string,
+  footprintRaw: string,
+  refs: string[]
+): {
+  partCandidates: string[];
+  footprintCandidates: string[];
+  fallbackStandardizedName: string;
+} {
+  const raw = normalizeGroupedBomToken(partRaw);
+  const fpRaw = normalizeGroupedBomToken(footprintRaw);
+  const firstRef = (refs?.[0] || '').toUpperCase();
+  const refPrefix = firstRef.replace(/\d+/g, '');
+
+  const isOpen = detectOpenFromTokens(raw, fpRaw);
+  const size = extractMetricSize(raw, fpRaw);
+  const voltage = extractVoltageToken(raw);
+
+  const segments = raw.split('/').map(s => s.trim()).filter(Boolean);
+  const valueSeg = segments[0] || raw;
+
+  const partCandidates: string[] = [];
+  const footprintCandidates: string[] = [];
+  let fallbackStandardizedName = raw || fpRaw || '';
+
+  // 기본 후보: raw 그대로도 항상 시도
+  if (raw) partCandidates.push(raw);
+  if (fpRaw) footprintCandidates.push(fpRaw);
+
+  if (refPrefix === 'C') {
+    const cap = normalizeCapValueForFootprintKey(valueSeg);
+    if (cap && size) {
+      const key = voltage
+        ? `C${cap.keyValue}_${voltage}_${size}`
+        : `C${cap.keyValue}_${size}`;
+      footprintCandidates.unshift(isOpen ? `${key}_OPEN` : key);
+      // mapping key는 partRaw(예: 0.1uF/16V/1005)로 쓰이는 케이스가 많아,
+      // u/n/p 단위를 uF/nF/pF로 통일한 variant도 같이 시도
+      const normalizedPart = (() => {
+        if (segments.length >= 3) {
+          const vSeg = segments.find(s => /\d+\s*(V|KV)$/i.test(s)) || '';
+          const sizeSeg = segments.find(s => /(0603|1005|1608|2012|3216|3225|1206)/i.test(s)) || '';
+          const part = `${cap.displayValue}${vSeg ? `/${vSeg.replace(/\s+/g, '')}` : ''}${sizeSeg ? `/${sizeSeg}` : ''}`;
+          return part;
+        }
+        return cap.displayValue;
+      })();
+      if (normalizedPart && normalizedPart !== raw) partCandidates.unshift(normalizedPart);
+      fallbackStandardizedName = `C${cap.displayValue}${voltage ? `/${voltage}` : ''}_${size}${isOpen ? '_OPEN' : ''}`;
+    }
+  } else if (refPrefix === 'R') {
+    const res = normalizeResValueForFootprintKey(valueSeg);
+    if (res && size) {
+      const key = `R${res.keyValue}_${size}${isOpen ? '_OPEN' : ''}`;
+      footprintCandidates.unshift(key);
+      const normalizedPart = (() => {
+        // partRaw가 "1k/1005" 같은 형태면 그대로 두되, K/M 대문자 통일 버전만 추가
+        if (segments.length >= 2) {
+          const sizeSeg = segments.find(s => /(0603|1005|1608|2012|3216|3225|1206)/i.test(s)) || '';
+          const tail = sizeSeg ? `/${sizeSeg}` : '';
+          const nc = isOpen ? '/NC' : '';
+          return `${res.displayValue}${tail}${nc}`;
+        }
+        return res.displayValue;
+      })();
+      if (normalizedPart && normalizedPart !== raw) partCandidates.unshift(normalizedPart);
+      fallbackStandardizedName = `R${res.displayValue}_${size}${isOpen ? '_OPEN' : ''}`;
+    }
+  }
+
+  // 후보 중복 제거 (순서 유지)
+  const uniq = (arr: string[]) => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const v of arr) {
+      const key = (v || '').trim();
+      if (!key) continue;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(key);
+    }
+    return out;
+  };
+
+  return {
+    partCandidates: uniq(partCandidates),
+    footprintCandidates: uniq(footprintCandidates),
+    fallbackStandardizedName,
+  };
+}
+
+// ============================================================
 // 메인 처리 함수
 // ============================================================
 
@@ -796,8 +1017,39 @@ export async function processBOMAndCoordinates(
   let lineNumber = 1;
   
   for (const item of parsedBOM) {
+    // 포맷별(part/footprint) 정규화 (특히 grouped_designator BOM은 raw footprint가 C1005/R1005 등이라 매핑 실패가 잦음)
+    const norm =
+      item.format === 'grouped_designator'
+        ? buildGroupedBomNormalization(item.part, item.footprint, item.refs)
+        : null;
+
+    // 매핑/수동확인 판단에 사용할 part/footprint (후보 탐색으로 결정)
+    let partForMatch = item.part;
+    let footprintForMatch = item.footprint;
+
+    if (norm) {
+      // part/footprint 후보 조합 중 학습데이터에 존재하는 매핑을 우선 선택
+      let matched = false;
+      for (const fp of norm.footprintCandidates) {
+        for (const p of norm.partCandidates) {
+          if (learningData.partNameMapping[`${p}|${fp}`] || learningData.partNameMapping[fp.toUpperCase()] || learningData.partNameMapping[fp]) {
+            partForMatch = p;
+            footprintForMatch = fp;
+            matched = true;
+            break;
+          }
+        }
+        if (matched) break;
+      }
+      // 매핑이 없어도 footprint는 정규화 후보가 있으면 그걸 우선 사용(표준화 fallback용)
+      if (!matched && norm.footprintCandidates.length > 0) {
+        footprintForMatch = norm.footprintCandidates[0];
+        partForMatch = norm.partCandidates[0] || item.part;
+      }
+    }
+
     // 수동 확인 필요 여부
-    const isManualRequired = Utils.isManualInputRequired(item.part, item.footprint, learningData);
+    const isManualRequired = Utils.isManualInputRequired(partForMatch, footprintForMatch, learningData);
     
     // 품명 매핑
     let mappedPartName: string;
@@ -807,9 +1059,34 @@ export async function processBOMAndCoordinates(
       mappedPartName = '데이터 없음 (수동 확인 필요)';
       manualRequiredCount++;
     } else {
-      const mapping = mapPartName(item.part, item.footprint, learningData);
-      mappedPartName = mapping.partName;
-      isNewPart = mapping.isNew;
+      // grouped_designator 포맷은 후보 조합을 순차 시도해 매핑 적중률을 극대화
+      if (norm) {
+        let found: { partName: string; isNew: boolean } | null = null;
+        for (const fp of norm.footprintCandidates) {
+          for (const p of norm.partCandidates) {
+            const m = mapPartName(p, fp, learningData);
+            if (!m.isNew) {
+              found = m;
+              partForMatch = p;
+              footprintForMatch = fp;
+              break;
+            }
+          }
+          if (found) break;
+        }
+        if (found) {
+          mappedPartName = found.partName;
+          isNewPart = found.isNew;
+        } else {
+          // 매핑 실패 시에도 표준화된 형태로 출력 (정답지처럼 일관된 형식 유지)
+          mappedPartName = norm.fallbackStandardizedName || (footprintForMatch || partForMatch);
+          isNewPart = true;
+        }
+      } else {
+        const mapping = mapPartName(partForMatch, footprintForMatch, learningData);
+        mappedPartName = mapping.partName;
+        isNewPart = mapping.isNew;
+      }
       if (isNewPart) {
         newPartCount++;
       }
@@ -824,7 +1101,7 @@ export async function processBOMAndCoordinates(
     }
     
     // 미삽 여부 (footprint와 part 모두 체크)
-    const isMisap = Utils.isMisap(item.footprint, item.part, learningData);
+    const isMisap = Utils.isMisap(footprintForMatch, partForMatch, learningData);
     if (isMisap) {
       misapCount++;
     }
