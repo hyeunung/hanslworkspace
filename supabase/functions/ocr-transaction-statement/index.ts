@@ -44,6 +44,29 @@ interface ExtractionResult {
   raw_text?: string;
 }
 
+type VisionWord = {
+  text: string;
+  bbox: { x: number; y: number; w: number; h: number };
+};
+
+type RowData = {
+  id: number;
+  text: string;
+  words: VisionWord[];
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  centerY: number;
+};
+
+type InferredPoInfo = {
+  inferred_po_number: string;
+  inferred_po_source: 'bracket' | 'margin_range' | 'per_item' | 'global';
+  inferred_po_confidence: number;
+  inferred_po_group_id?: string;
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -76,10 +99,12 @@ serve(async (req) => {
 
     // 3. Google Vision OCR 호출 (선택적 - credentials가 없으면 GPT-4o만 사용)
     let visionText = ''
+    let visionWords: VisionWord[] = []
     if (googleCredentials) {
       try {
-        visionText = await callGoogleVision(base64Image, googleCredentials)
-        console.log('Vision OCR result length:', visionText.length)
+        const visionResult = await callGoogleVision(base64Image, googleCredentials)
+        visionText = visionResult.text
+        visionWords = visionResult.words
       } catch (e) {
         console.warn('Google Vision failed, using GPT-4o only:', e)
       }
@@ -96,8 +121,9 @@ serve(async (req) => {
     let normalizedItems = normalizePoNumbers(extractionResult.items, visionText)
 
     // 5-1. 손글씨 괄호/연결선 기반 PO 매핑 (품목별 보강)
+    let bracketMappings: PoMapping[] = []
     try {
-      const bracketMappings = await extractPoMappingsWithGPT4o(
+      bracketMappings = await extractPoMappingsWithGPT4o(
         base64Image,
         normalizedItems,
         openaiApiKey
@@ -108,6 +134,13 @@ serve(async (req) => {
     } catch (e) {
       console.warn('Failed to extract PO mappings from brackets:', e)
     }
+
+    // 5-2. 좌측 번호/구간 추론 + 괄호 매핑 합의 (품목별 inferred 정보)
+    const inferredPoMap = buildInferredPoMap({
+      items: normalizedItems,
+      visionWords,
+      bracketMappings
+    })
 
     // 6. 거래처명 검증 - vendors 테이블에 반드시 존재해야 함
     let validatedVendorName: string | undefined = undefined
@@ -177,6 +210,14 @@ serve(async (req) => {
     }
 
     // 8. DB에 결과 저장 (에러 체크 추가)
+    const { data: existingStatement } = await supabase
+      .from('transaction_statements')
+      .select('extracted_data')
+      .eq('id', requestData.statementId)
+      .single()
+
+    const preservedActualReceivedDate = (existingStatement?.extracted_data as any)?.actual_received_date
+
     const { data: updateData, error: updateError } = await supabase
       .from('transaction_statements')
       .update({
@@ -188,6 +229,7 @@ serve(async (req) => {
         grand_total: extractionResult.grand_total || null,
         extracted_data: {
           ...extractionResult,
+          ...(preservedActualReceivedDate ? { actual_received_date: preservedActualReceivedDate } : {}),
           items: normalizedItems,
           raw_vision_text: visionText,
           // 학습용: 원본 OCR 추출 거래처명과 검증 결과
@@ -216,19 +258,28 @@ serve(async (req) => {
 
     // 9. 추출된 품목들을 transaction_statement_items에 저장
     if (normalizedItems.length > 0) {
-      const itemsToInsert = normalizedItems.map((item, idx) => ({
-        statement_id: requestData.statementId,
-        line_number: item.line_number || idx + 1,
-        extracted_item_name: item.item_name,
-        extracted_specification: item.specification,
-        extracted_quantity: item.quantity,
-        extracted_unit_price: item.unit_price,
-        extracted_amount: item.amount,
-        extracted_tax_amount: item.tax_amount,
-        extracted_po_number: item.po_number,
-        extracted_remark: item.remark,
-        match_confidence: item.confidence
-      }))
+      const itemsToInsert = normalizedItems.map((item, idx) => {
+        const lineNumber = item.line_number || idx + 1
+        const inferredInfo = inferredPoMap.get(lineNumber)
+
+        return {
+          statement_id: requestData.statementId,
+          line_number: lineNumber,
+          extracted_item_name: item.item_name,
+          extracted_specification: item.specification,
+          extracted_quantity: item.quantity,
+          extracted_unit_price: item.unit_price,
+          extracted_amount: item.amount,
+          extracted_tax_amount: item.tax_amount,
+          extracted_po_number: item.po_number,
+          extracted_remark: item.remark,
+          match_confidence: item.confidence,
+          inferred_po_number: inferredInfo?.inferred_po_number || null,
+          inferred_po_source: inferredInfo?.inferred_po_source || null,
+          inferred_po_confidence: inferredInfo?.inferred_po_confidence ?? null,
+          inferred_po_group_id: inferredInfo?.inferred_po_group_id || null
+        }
+      })
 
       const { error: itemsError } = await supabase
         .from('transaction_statement_items')
@@ -569,7 +620,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-async function callGoogleVision(base64Image: string, credentials: string): Promise<string> {
+async function callGoogleVision(base64Image: string, credentials: string): Promise<{ text: string; words: VisionWord[] }> {
   const credentialsJson = JSON.parse(credentials)
   
   // Google OAuth2 토큰 획득
@@ -609,12 +660,51 @@ async function callGoogleVision(base64Image: string, credentials: string): Promi
   )
 
   const visionResult = await visionResponse.json()
-  
-  if (visionResult.responses?.[0]?.fullTextAnnotation?.text) {
-    return visionResult.responses[0].fullTextAnnotation.text
+  const annotation = visionResult.responses?.[0]?.fullTextAnnotation
+  const words = annotation ? extractVisionWords(annotation) : []
+
+  if (annotation?.text) {
+    return { text: annotation.text, words }
   }
-  
-  return ''
+
+  return { text: '', words }
+}
+
+function extractVisionWords(annotation: any): VisionWord[] {
+  const words: VisionWord[] = []
+  const pages = annotation?.pages || []
+
+  pages.forEach((page: any) => {
+    (page.blocks || []).forEach((block: any) => {
+      (block.paragraphs || []).forEach((paragraph: any) => {
+        (paragraph.words || []).forEach((word: any) => {
+          const symbols = word.symbols || []
+          const text = symbols.map((symbol: any) => symbol.text).join('')
+          const vertices = word.boundingBox?.vertices || []
+          if (!text || vertices.length === 0) return
+
+          const xs = vertices.map((v: any) => v.x ?? 0)
+          const ys = vertices.map((v: any) => v.y ?? 0)
+          const minX = Math.min(...xs)
+          const maxX = Math.max(...xs)
+          const minY = Math.min(...ys)
+          const maxY = Math.max(...ys)
+
+          words.push({
+            text,
+            bbox: {
+              x: minX,
+              y: minY,
+              w: Math.max(1, maxX - minX),
+              h: Math.max(1, maxY - minY)
+            }
+          })
+        })
+      })
+    })
+  })
+
+  return words
 }
 
 async function createJWT(credentials: any): Promise<string> {
@@ -827,7 +917,9 @@ async function extractPoMappingsWithGPT4o(
 규칙:
 1) 손글씨로 적힌 번호(F########_### 또는 HS######-##)와 괄호/연결선이 가리키는 품목들을 묶어주세요.
 2) 매핑이 확실하지 않으면 제외하세요.
-3) 결과는 아래 JSON 형식만 반환:
+3) line_number는 문서의 행 순서입니다. 번호가 왼쪽 여백에 있고 괄호로 여러 행을 묶는 경우,
+   해당 line_number 범위를 모두 매핑해주세요.
+4) 결과는 아래 JSON 형식만 반환:
 {"mappings":[{"line_number":번호,"item_name":"품목명","po_number":"F... 또는 HS...","confidence":0~1}]}
 
 item 목록:
@@ -1090,6 +1182,332 @@ function applyPoMappings(items: ExtractedItem[], mappings: PoMapping[]): Extract
     if (!mapped) return item
     return { ...item, po_number: mapped }
   })
+}
+
+function buildInferredPoMap(params: {
+  items: ExtractedItem[];
+  visionWords: VisionWord[];
+  bracketMappings: PoMapping[];
+}): Map<number, InferredPoInfo> {
+  const { items, visionWords, bracketMappings } = params
+  const inferredMap = new Map<number, InferredPoInfo>()
+
+  if (!items.length) return inferredMap
+
+  const itemsWithLine = items.map((item, idx) => ({
+    item,
+    lineNumber: item.line_number || idx + 1
+  }))
+
+  const rows = visionWords.length > 0 ? groupWordsIntoRows(visionWords) : []
+  const itemRowMap = rows.length > 0 ? mapItemsToRows(itemsWithLine, rows) : new Map<number, RowData>()
+  const marginMap = rows.length > 0 ? mapMarginNumbersToItems(itemRowMap, rows) : new Map<number, InferredPoInfo>()
+  const bracketMap = mapBracketMappingsToItems(itemsWithLine, bracketMappings)
+  const perItemMap = mapPerItemNumbers(itemsWithLine)
+  const globalNumber = getGlobalPoNumber(items)
+
+  itemsWithLine.forEach(({ lineNumber }) => {
+    if (bracketMap.has(lineNumber)) {
+      inferredMap.set(lineNumber, bracketMap.get(lineNumber)!)
+      return
+    }
+    if (marginMap.has(lineNumber)) {
+      inferredMap.set(lineNumber, marginMap.get(lineNumber)!)
+      return
+    }
+    if (perItemMap.has(lineNumber)) {
+      inferredMap.set(lineNumber, perItemMap.get(lineNumber)!)
+      return
+    }
+    if (globalNumber) {
+      inferredMap.set(lineNumber, {
+        inferred_po_number: globalNumber,
+        inferred_po_source: 'global',
+        inferred_po_confidence: 0.55,
+        inferred_po_group_id: `global-${globalNumber}`
+      })
+    }
+  })
+
+  return inferredMap
+}
+
+function groupWordsIntoRows(words: VisionWord[]): RowData[] {
+  if (!words.length) return []
+
+  const heights = words.map(word => word.bbox.h).filter(h => h > 0).sort((a, b) => a - b)
+  const medianHeight = heights.length
+    ? heights[Math.floor(heights.length / 2)]
+    : 10
+  const rowGap = Math.max(6, Math.round(medianHeight * 0.6))
+
+  const sorted = [...words].sort((a, b) => (a.bbox.y + a.bbox.h / 2) - (b.bbox.y + b.bbox.h / 2))
+  const rows: RowData[] = []
+
+  sorted.forEach(word => {
+    const centerY = word.bbox.y + word.bbox.h / 2
+    const row = rows.find(r => Math.abs(r.centerY - centerY) <= rowGap)
+    if (row) {
+      row.words.push(word)
+      row.centerY = (row.centerY * (row.words.length - 1) + centerY) / row.words.length
+      row.minX = Math.min(row.minX, word.bbox.x)
+      row.maxX = Math.max(row.maxX, word.bbox.x + word.bbox.w)
+      row.minY = Math.min(row.minY, word.bbox.y)
+      row.maxY = Math.max(row.maxY, word.bbox.y + word.bbox.h)
+      return
+    }
+
+    rows.push({
+      id: rows.length + 1,
+      text: '',
+      words: [word],
+      minX: word.bbox.x,
+      maxX: word.bbox.x + word.bbox.w,
+      minY: word.bbox.y,
+      maxY: word.bbox.y + word.bbox.h,
+      centerY
+    })
+  })
+
+  rows.forEach(row => {
+    row.words.sort((a, b) => a.bbox.x - b.bbox.x)
+    row.text = row.words.map(word => word.text).join(' ')
+  })
+
+  rows.sort((a, b) => a.centerY - b.centerY)
+  return rows
+}
+
+function mapItemsToRows(
+  itemsWithLine: Array<{ item: ExtractedItem; lineNumber: number }>,
+  rows: RowData[]
+): Map<number, RowData> {
+  const rowMap = new Map<number, RowData>()
+
+  itemsWithLine.forEach(({ item, lineNumber }, idx) => {
+    const itemName = (item.item_name || '').trim()
+    if (!itemName) return
+
+    let bestRow: RowData | null = null
+    let bestScore = 0
+
+    rows.forEach(row => {
+      const score = calculateRowMatchScore(itemName, row.text)
+      if (score > bestScore) {
+        bestScore = score
+        bestRow = row
+      }
+    })
+
+    if (bestRow && bestScore >= 35) {
+      rowMap.set(lineNumber, bestRow)
+      return
+    }
+
+    const fallbackRow = rows[idx]
+    if (fallbackRow) {
+      rowMap.set(lineNumber, fallbackRow)
+    }
+  })
+
+  return rowMap
+}
+
+function mapMarginNumbersToItems(
+  itemRowMap: Map<number, RowData>,
+  rows: RowData[]
+): Map<number, InferredPoInfo> {
+  const inferredMap = new Map<number, InferredPoInfo>()
+  if (!rows.length) return inferredMap
+
+  const allMinX = rows.map(row => row.minX)
+  const allMaxX = rows.map(row => row.maxX)
+  const minX = Math.min(...allMinX)
+  const maxX = Math.max(...allMaxX)
+  const leftLimit = minX + (maxX - minX) * 0.2
+
+  const marginNumbers = rows
+    .map(row => {
+      const leftWords = row.words.filter(word => word.bbox.x <= leftLimit + 2)
+      const combinedText = leftWords.map(word => word.text).join(' ')
+      const number = extractOrderNumber(combinedText)
+      return number ? { number, centerY: row.centerY, rowId: row.id } : null
+    })
+    .filter((value): value is { number: string; centerY: number; rowId: number } => !!value)
+    .sort((a, b) => a.centerY - b.centerY)
+
+  if (!marginNumbers.length) return inferredMap
+
+  itemRowMap.forEach((row, lineNumber) => {
+    const match = marginNumbers
+      .filter(candidate => candidate.centerY <= row.centerY)
+      .slice(-1)[0]
+    if (!match) return
+
+    inferredMap.set(lineNumber, {
+      inferred_po_number: match.number,
+      inferred_po_source: 'margin_range',
+      inferred_po_confidence: 0.7,
+      inferred_po_group_id: `margin-${match.rowId}`
+    })
+  })
+
+  return inferredMap
+}
+
+function mapBracketMappingsToItems(
+  itemsWithLine: Array<{ item: ExtractedItem; lineNumber: number }>,
+  mappings: PoMapping[]
+): Map<number, InferredPoInfo> {
+  const inferredMap = new Map<number, InferredPoInfo>()
+  if (!mappings.length) return inferredMap
+
+  mappings.forEach(mapping => {
+    const mappedNumber = normalizeMappedNumber(mapping.po_number)
+    if (!mappedNumber) return
+
+    let lineNumber: number | undefined = undefined
+    if (typeof mapping.line_number === 'number') {
+      lineNumber = mapping.line_number
+    } else if (mapping.item_name) {
+      const bestMatch = findBestItemByName(itemsWithLine, mapping.item_name)
+      lineNumber = bestMatch?.lineNumber
+    }
+
+    if (!lineNumber) return
+
+    inferredMap.set(lineNumber, {
+      inferred_po_number: mappedNumber,
+      inferred_po_source: 'bracket',
+      inferred_po_confidence: Math.max(0.5, Math.min(0.95, mapping.confidence ?? 0.8)),
+      inferred_po_group_id: `bracket-${mappedNumber}`
+    })
+  })
+
+  return inferredMap
+}
+
+function mapPerItemNumbers(
+  itemsWithLine: Array<{ item: ExtractedItem; lineNumber: number }>
+): Map<number, InferredPoInfo> {
+  const inferredMap = new Map<number, InferredPoInfo>()
+
+  itemsWithLine.forEach(({ item, lineNumber }) => {
+    const number = normalizeMappedNumber(item.po_number)
+    if (!number) return
+
+    const confidence = item.confidence === 'high'
+      ? 0.85
+      : item.confidence === 'med'
+        ? 0.7
+        : 0.55
+
+    inferredMap.set(lineNumber, {
+      inferred_po_number: number,
+      inferred_po_source: 'per_item',
+      inferred_po_confidence: confidence
+    })
+  })
+
+  return inferredMap
+}
+
+function getGlobalPoNumber(items: ExtractedItem[]): string | null {
+  const uniqueNumbers = Array.from(new Set(
+    items
+      .map(item => normalizeMappedNumber(item.po_number))
+      .filter((value): value is string => !!value)
+  ))
+
+  if (uniqueNumbers.length === 1) {
+    return uniqueNumbers[0]
+  }
+
+  return null
+}
+
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[^a-z0-9가-힣]/g, '')
+    .trim()
+}
+
+function calculateRowMatchScore(itemName: string, rowText: string): number {
+  const normalizedItem = normalizeText(itemName)
+  const normalizedRow = normalizeText(rowText)
+  if (!normalizedItem || !normalizedRow) return 0
+
+  if (normalizedRow.includes(normalizedItem) || normalizedItem.includes(normalizedRow)) {
+    return 90
+  }
+
+  const itemTokens = tokenizeText(itemName)
+  const rowTokens = tokenizeText(rowText)
+  if (!itemTokens.length || !rowTokens.length) return 0
+
+  const commonCount = itemTokens.filter(token => rowTokens.includes(token)).length
+  const score = (commonCount / Math.max(itemTokens.length, rowTokens.length)) * 100
+  return Math.round(score)
+}
+
+function tokenizeText(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9가-힣]+/g)
+    .map(token => token.trim())
+    .filter(token => token.length >= 2)
+}
+
+function findBestItemByName(
+  itemsWithLine: Array<{ item: ExtractedItem; lineNumber: number }>,
+  query: string
+): { lineNumber: number } | null {
+  const normalizedQuery = normalizeText(query)
+  if (!normalizedQuery) return null
+
+  let bestLineNumber: number | null = null
+  let bestScore = -1
+  itemsWithLine.forEach(({ item, lineNumber }) => {
+    const name = normalizeText(item.item_name || '')
+    if (!name) return
+
+    let score = 0
+    if (name.includes(normalizedQuery) || normalizedQuery.includes(name)) {
+      score = 90
+    } else {
+      const queryTokens = tokenizeText(query)
+      const nameTokens = tokenizeText(item.item_name || '')
+      const commonCount = queryTokens.filter(token => nameTokens.includes(token)).length
+      score = (commonCount / Math.max(queryTokens.length, nameTokens.length || 1)) * 100
+    }
+
+    if (score > bestScore) {
+      bestScore = score
+      bestLineNumber = lineNumber
+    }
+  })
+
+  if (!bestLineNumber || bestScore < 35) return null
+  return { lineNumber: bestLineNumber }
+}
+
+function extractOrderNumber(text: string): string | null {
+  if (!text) return null
+  const cleaned = text.toUpperCase().replace(/\s+/g, '').replace(/[^\w_-]/g, '')
+
+  const poMatch = cleaned.match(/F\d{8}[_-]\d{1,3}/)
+  if (poMatch) {
+    return normalizePO(poMatch[0].replace('-', '_'))
+  }
+
+  const soMatch = cleaned.match(/HS\d{6}[-_]\d{1,2}/)
+  if (soMatch) {
+    return normalizeSO(soMatch[0].replace('_', '-'))
+  }
+
+  return null
 }
 
 function calculateOrderSimilarity(

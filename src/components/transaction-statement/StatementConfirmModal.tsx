@@ -196,6 +196,7 @@ export default function StatementConfirmModal({
   const [statementWithItems, setStatementWithItems] = useState<TransactionStatementWithItems | null>(null);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
   const [confirmerName, setConfirmerName] = useState("");
+  const dialogDebugId = "statement-confirm-dialog";
   
   // 선택된 발주/수주번호 (Case 1: 전체 적용용)
   const [selectedPONumber, setSelectedPONumber] = useState<string>("");
@@ -270,6 +271,42 @@ export default function StatementConfirmModal({
   // OCR 발주/수주번호 페어 캐시 (실시간 입력용)
   const [poPairOverrides, setPoPairOverrides] = useState<Map<string, string | null>>(new Map());
   const pendingPairLookupsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const logMetrics = (reason: string) => {
+      const el = document.querySelector(`[data-debug="${dialogDebugId}"]`) as HTMLElement | null;
+      const viewport = {
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        clientWidth: document.documentElement?.clientWidth,
+        clientHeight: document.documentElement?.clientHeight
+      };
+
+      if (!el) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:dialogMetrics:notFound',message:'dialog element not found',data:{reason,viewport},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
+        return;
+      }
+
+      const rect = el.getBoundingClientRect();
+      const styles = window.getComputedStyle(el);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:dialogMetrics',message:'dialog metrics',data:{reason,viewport,rect:{width:rect.width,height:rect.height,left:rect.left,top:rect.top},computed:{width:styles.width,maxWidth:styles.maxWidth,minWidth:styles.minWidth,boxSizing:styles.boxSizing,paddingLeft:styles.paddingLeft,paddingRight:styles.paddingRight},className:el.className},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+    };
+
+    const rafId = requestAnimationFrame(() => logMetrics("open"));
+    const handleResize = () => logMetrics("resize");
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [isOpen, dialogDebugId]);
   
   // 세트 매칭 결과 (Case 1용)
   const [setMatchResult, setSetMatchResult] = useState<{
@@ -2060,7 +2097,8 @@ export default function StatementConfirmModal({
       const result = await transactionStatementService.confirmStatement(
         {
           statementId: statement.id,
-          items: confirmItems
+          items: confirmItems,
+          actual_received_date: statementWithItems.extracted_data?.actual_received_date
         },
         confirmerName
       );
@@ -2103,6 +2141,35 @@ export default function StatementConfirmModal({
   const formatAmount = (amount?: number) => {
     if (amount === undefined || amount === null) return '-';
     return amount.toLocaleString('ko-KR');
+  };
+
+  const formatInferredSource = (source?: TransactionStatementItemWithMatch['inferred_po_source']) => {
+    switch (source) {
+      case 'bracket':
+        return '괄호';
+      case 'margin_range':
+        return '구간';
+      case 'per_item':
+        return '품목';
+      case 'global':
+        return '전체';
+      default:
+        return '추론';
+    }
+  };
+
+  const renderInferredInfo = (item: TransactionStatementItemWithMatch) => {
+    if (!item.inferred_po_number) return null;
+    const sourceLabel = formatInferredSource(item.inferred_po_source);
+    const confidence = item.inferred_po_confidence !== undefined && item.inferred_po_confidence !== null
+      ? Math.round(item.inferred_po_confidence * 100)
+      : null;
+
+    return (
+      <div className="mt-0.5 text-[9px] text-gray-500">
+        추론: {item.inferred_po_number} ({sourceLabel}{confidence !== null ? `, ${confidence}%` : ''})
+      </div>
+    );
   };
 
   const getSystemItemLabel = (item?: SystemPurchaseItem | null) => {
@@ -2290,7 +2357,9 @@ export default function StatementConfirmModal({
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent 
-          className="max-w-[95vw] md:max-w-[1200px] max-h-[90vh] overflow-hidden flex flex-col business-radius-modal" 
+          maxWidth="max-w-[85vw] sm:max-w-[85vw]"
+          className="max-h-[90vh] overflow-hidden flex flex-col business-radius-modal" 
+          data-debug={dialogDebugId}
           showCloseButton={false}
           onInteractOutside={(e) => {
             // 드롭다운이 열려있을 때는 외부 클릭으로 모달 닫기 방지
@@ -2982,18 +3051,21 @@ export default function StatementConfirmModal({
                           
                           {/* 우측: OCR 품목 (편집 가능) */}
                           <td className="p-1 whitespace-nowrap">
-                            <input
-                              type="text"
-                              value={getOCRItemValue(ocrItem, 'item_name') as string}
-                              onChange={(e) => handleEditOCRItem(ocrItem.id, 'item_name', e.target.value)}
-                              className={`min-w-[180px] w-auto px-1 h-5 !text-[10px] !font-medium text-gray-900 border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
-                                isOCRItemEdited(ocrItem, 'item_name') 
-                                  ? 'border-orange-400 bg-orange-50' 
-                                  : 'border-gray-200 bg-white'
-                              }`}
-                              style={{ fontSize: '11px', fontWeight: 500, width: `${Math.max(180, (getOCRItemValue(ocrItem, 'item_name') as string).length * 8)}px` }}
-                              title={isOCRItemEdited(ocrItem, 'item_name') ? `원본: ${ocrItem.extracted_item_name}` : undefined}
-                            />
+                            <div className="flex flex-col">
+                              <input
+                                type="text"
+                                value={getOCRItemValue(ocrItem, 'item_name') as string}
+                                onChange={(e) => handleEditOCRItem(ocrItem.id, 'item_name', e.target.value)}
+                                className={`min-w-[180px] w-auto px-1 h-5 !text-[10px] !font-medium text-gray-900 border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                                  isOCRItemEdited(ocrItem, 'item_name') 
+                                    ? 'border-orange-400 bg-orange-50' 
+                                    : 'border-gray-200 bg-white'
+                                }`}
+                                style={{ fontSize: '11px', fontWeight: 500, width: `${Math.max(180, (getOCRItemValue(ocrItem, 'item_name') as string).length * 8)}px` }}
+                                title={isOCRItemEdited(ocrItem, 'item_name') ? `원본: ${ocrItem.extracted_item_name}` : undefined}
+                              />
+                              {renderInferredInfo(ocrItem)}
+                            </div>
                           </td>
                           <td className="p-1 text-right w-16">
                             <input

@@ -60,6 +60,12 @@ export interface TransactionStatementItem {
   extracted_tax_amount?: number;
   extracted_po_number?: string;
   extracted_remark?: string;
+
+  // 추론된 발주/수주번호 정보
+  inferred_po_number?: string;
+  inferred_po_source?: 'bracket' | 'margin_range' | 'per_item' | 'global';
+  inferred_po_confidence?: number;
+  inferred_po_group_id?: string;
   
   // 매칭 정보
   matched_purchase_id?: number;
@@ -124,6 +130,7 @@ export interface ExtractedData {
   total_amount?: number;
   tax_amount?: number;
   grand_total?: number;
+  actual_received_date?: string;
   items: ExtractedItem[];
   raw_vision_text?: string;
 }
@@ -187,6 +194,7 @@ export interface ExtractStatementRequest {
 export interface ConfirmStatementRequest {
   statementId: string;
   items: ConfirmItemRequest[];
+  actual_received_date?: string;
 }
 
 export interface ConfirmItemRequest {

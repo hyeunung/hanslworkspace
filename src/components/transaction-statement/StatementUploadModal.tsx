@@ -11,6 +11,8 @@ import { Upload, X, Image as ImageIcon, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import transactionStatementService from "@/services/transactionStatementService";
+import { DateQuantityPickerPopover } from "@/components/ui/date-quantity-picker-popover";
+import { format } from "date-fns";
 
 interface StatementUploadModalProps {
   isOpen: boolean;
@@ -30,6 +32,7 @@ export default function StatementUploadModal({
   const [preview, setPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploaderName, setUploaderName] = useState<string>("");
+  const [actualReceiptDate, setActualReceiptDate] = useState<Date | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
 
@@ -122,13 +125,19 @@ export default function StatementUploadModal({
       return;
     }
 
+    if (!actualReceiptDate) {
+      toast.error('실입고일을 선택해주세요.');
+      return;
+    }
+
 
     try {
       setUploading(true);
 
       const result = await transactionStatementService.uploadStatement(
         file,
-        uploaderName || '알 수 없음'
+        uploaderName || '알 수 없음',
+        actualReceiptDate
       );
 
       if (result.success && result.data) {
@@ -150,6 +159,7 @@ export default function StatementUploadModal({
     
     setFile(null);
     setPreview(null);
+    setActualReceiptDate(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -219,6 +229,22 @@ export default function StatementUploadModal({
                 </p>
               </>
             )}
+          </div>
+
+          <div className="mt-3 flex items-center justify-between gap-3">
+            <div className="modal-label text-gray-600">실입고일</div>
+            <DateQuantityPickerPopover
+              onConfirm={(date) => setActualReceiptDate(date)}
+              placeholder="입고일을 선택하세요"
+              align="end"
+              side="bottom"
+              hideQuantityInput={true}
+              disabled={uploading}
+            >
+              <button className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">
+                {actualReceiptDate ? format(actualReceiptDate, 'yyyy-MM-dd') : '실입고일 선택'}
+              </button>
+            </DateQuantityPickerPopover>
           </div>
 
           {/* 안내 문구 */}

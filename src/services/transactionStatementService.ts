@@ -19,6 +19,7 @@ import type {
   SaveCorrectionRequest
 } from "@/types/transactionStatement";
 import { normalizeOrderNumber } from "@/types/transactionStatement";
+import { dateToISOString } from "@/utils/helpers";
 
 class TransactionStatementService {
   private supabase;
@@ -32,7 +33,8 @@ class TransactionStatementService {
    */
   async uploadStatement(
     file: File,
-    uploaderName: string
+    uploaderName: string,
+    actualReceiptDate?: Date
   ): Promise<{ success: boolean; data?: { statementId: string; imageUrl: string }; error?: string }> {
     try {
       // 고유 파일명 생성
@@ -66,6 +68,8 @@ class TransactionStatementService {
       // DB에 레코드 생성
       console.log('[Upload] DB 레코드 생성 시도:', { imageUrl, fileName: file.name, userId: user?.id, uploaderName });
       
+      const actualReceiptDateIso = actualReceiptDate ? dateToISOString(actualReceiptDate) : null;
+
       const { data: statement, error: dbError } = await this.supabase
         .from('transaction_statements')
         .insert({
@@ -73,7 +77,10 @@ class TransactionStatementService {
           file_name: file.name,
           uploaded_by: user?.id,
           uploaded_by_name: uploaderName,
-          status: 'pending'
+          status: 'pending',
+          extracted_data: actualReceiptDateIso
+            ? { actual_received_date: actualReceiptDateIso }
+            : null
         })
         .select()
         .single();
@@ -1140,6 +1147,7 @@ class TransactionStatementService {
   ): Promise<{ success: boolean; error?: string }> {
     try {
       const { data: { user } } = await this.supabase.auth.getUser();
+      const actualReceivedDate = request.actual_received_date;
 
       // 1. 품목별 확정 처리
       for (const item of request.items) {
@@ -1165,16 +1173,59 @@ class TransactionStatementService {
         const hasValidUnitPrice = item.confirmed_unit_price !== undefined && item.confirmed_unit_price !== null;
         const hasValidAmount = item.confirmed_amount !== undefined && item.confirmed_amount !== null;
         
-        if (item.matched_item_id && (hasValidUnitPrice || hasValidAmount)) {
-          // 업데이트할 데이터 구성 (유효한 값만 포함)
-          const updateData: { unit_price_value?: number; amount_value?: number } = {};
-          if (hasValidUnitPrice) {
-            updateData.unit_price_value = item.confirmed_unit_price!;
-          }
-          if (hasValidAmount) {
-            updateData.amount_value = item.confirmed_amount!;
-          }
-          
+        const updateData: {
+          unit_price_value?: number;
+          amount_value?: number;
+          actual_received_date?: string;
+          received_quantity?: number;
+          is_received?: boolean;
+          delivery_status?: string;
+          receipt_history?: Array<{ seq: number; qty: number; date: string; by: string }>;
+          received_at?: string;
+        } = {};
+
+        if (hasValidUnitPrice) {
+          updateData.unit_price_value = item.confirmed_unit_price!;
+        }
+        if (hasValidAmount) {
+          updateData.amount_value = item.confirmed_amount!;
+        }
+
+        if (
+          actualReceivedDate &&
+          item.matched_item_id &&
+          item.confirmed_quantity !== undefined &&
+          item.confirmed_quantity !== null
+        ) {
+          const { data: existingItem } = await this.supabase
+            .from('purchase_request_items')
+            .select('receipt_history')
+            .eq('id', item.matched_item_id)
+            .single();
+
+          const existingHistory = Array.isArray(existingItem?.receipt_history)
+            ? (existingItem?.receipt_history as Array<{ seq: number; qty: number; date: string; by: string }>)
+            : [];
+          const nextSeq = existingHistory.length + 1;
+          const updatedHistory = [
+            ...existingHistory,
+            {
+              seq: nextSeq,
+              qty: item.confirmed_quantity,
+              date: actualReceivedDate,
+              by: confirmerName || '알수없음'
+            }
+          ];
+
+          updateData.actual_received_date = actualReceivedDate;
+          updateData.received_quantity = item.confirmed_quantity;
+          updateData.is_received = true;
+          updateData.delivery_status = 'received';
+          updateData.receipt_history = updatedHistory;
+          updateData.received_at = new Date().toISOString();
+        }
+
+        if (item.matched_item_id && Object.keys(updateData).length > 0) {
           const { error: purchaseError } = await this.supabase
             .from('purchase_request_items')
             .update(updateData)
