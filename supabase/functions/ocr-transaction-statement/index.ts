@@ -2,6 +2,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 // @ts-ignore - Deno runtime imports
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// @ts-ignore - Deno runtime imports
+import { Image } from 'https://deno.land/x/imagescript@1.3.0/mod.ts'
 
 declare const Deno: {
   env: {
@@ -62,9 +64,20 @@ type RowData = {
 
 type InferredPoInfo = {
   inferred_po_number: string;
-  inferred_po_source: 'bracket' | 'margin_range' | 'per_item' | 'global';
+  inferred_po_source: 'bracket' | 'handwriting_range' | 'margin_range' | 'per_item' | 'global';
   inferred_po_confidence: number;
   inferred_po_group_id?: string;
+};
+
+type PreprocessResult = {
+  image: Image;
+  base64: string;
+};
+
+type ImageTile = {
+  base64: string;
+  offsetX: number;
+  offsetY: number;
 };
 
 serve(async (req) => {
@@ -96,15 +109,52 @@ serve(async (req) => {
     // 2. 이미지 다운로드
     const imageBuffer = await downloadImage(requestData.imageUrl)
     const base64Image = arrayBufferToBase64(imageBuffer)
+    let visionBase64 = base64Image
+    let tileImages: ImageTile[] = []
+    let decodedImage: Image | null = null
+
+    try {
+      decodedImage = await decodeImageFromBuffer(imageBuffer)
+      if (decodedImage) {
+        const preprocessed = await preprocessImage(decodedImage.clone())
+        if (preprocessed) {
+          visionBase64 = preprocessed.base64
+          decodedImage = preprocessed.image
+        }
+        tileImages = await buildImageTiles(decodedImage)
+      }
+    } catch (_) {
+      decodedImage = null
+      tileImages = []
+      visionBase64 = base64Image
+    }
 
     // 3. Google Vision OCR 호출 (선택적 - credentials가 없으면 GPT-4o만 사용)
     let visionText = ''
     let visionWords: VisionWord[] = []
     if (googleCredentials) {
       try {
-        const visionResult = await callGoogleVision(base64Image, googleCredentials)
+        const visionResult = await callGoogleVision(visionBase64, googleCredentials)
         visionText = visionResult.text
         visionWords = visionResult.words
+
+        if (tileImages.length > 0) {
+          const tileResults = await Promise.allSettled(
+            tileImages.map((tile) => callGoogleVision(tile.base64, googleCredentials))
+          )
+          tileResults.forEach((result, index) => {
+            if (result.status !== 'fulfilled') return
+            const tile = tileImages[index]
+            if (result.value.text) {
+              visionText = [visionText, result.value.text].filter(Boolean).join('\n')
+            }
+            if (result.value.words.length > 0) {
+              visionWords = visionWords.concat(
+                offsetVisionWords(result.value.words, tile.offsetX, tile.offsetY)
+              )
+            }
+          })
+        }
       } catch (e) {
         console.warn('Google Vision failed, using GPT-4o only:', e)
       }
@@ -112,15 +162,33 @@ serve(async (req) => {
 
     // 4. GPT-4o 비전으로 구조화 추출
     const extractionResult = await extractWithGPT4o(
-      base64Image, 
-      visionText, 
+      base64Image,
+      visionText,
       openaiApiKey
     )
 
-    // 5. 발주/수주번호 패턴 정규화 (OCR 텍스트도 함께 전달하여 빈 칸에 적힌 번호도 찾음)
-    let normalizedItems = normalizePoNumbers(extractionResult.items, visionText)
+    // 5. 숫자 패턴 전용 2차 추출 (저신뢰/누락에만)
+    let extraOrderNumbers: string[] = []
+    if (shouldRetryOrderNumberPass(extractionResult.items)) {
+      try {
+        extraOrderNumbers = await extractOrderNumbersWithGPT4o(
+          base64Image,
+          tileImages.map((tile) => tile.base64),
+          openaiApiKey
+        )
+      } catch (_) {
+        extraOrderNumbers = []
+      }
+    }
 
-    // 5-1. 손글씨 괄호/연결선 기반 PO 매핑 (품목별 보강)
+    // 6. 발주/수주번호 패턴 정규화 (OCR 텍스트도 함께 전달하여 빈 칸에 적힌 번호도 찾음)
+    let normalizedItems = normalizePoNumbers(
+      extractionResult.items,
+      visionText,
+      extraOrderNumbers
+    )
+
+    // 6-1. 손글씨 괄호/연결선 기반 PO 매핑 (품목별 보강)
     let bracketMappings: PoMapping[] = []
     try {
       bracketMappings = await extractPoMappingsWithGPT4o(
@@ -135,19 +203,32 @@ serve(async (req) => {
       console.warn('Failed to extract PO mappings from brackets:', e)
     }
 
-    // 5-2. 좌측 번호/구간 추론 + 괄호 매핑 합의 (품목별 inferred 정보)
+    // 6-2. 손글씨 좌측 번호/구간 추론 (품목별 보강)
+    let rangeMappings: RangeMapping[] = []
+    try {
+      rangeMappings = await extractPoRangesWithGPT4o(
+        base64Image,
+        normalizedItems,
+        openaiApiKey
+      )
+    } catch (e) {
+      console.warn('Failed to extract PO ranges from handwriting:', e)
+    }
+
+    // 6-3. 좌측 번호/구간 추론 + 괄호 매핑 합의 (품목별 inferred 정보)
     const inferredPoMap = buildInferredPoMap({
       items: normalizedItems,
       visionWords,
-      bracketMappings
+      bracketMappings,
+      rangeMappings
     })
 
-    // 6. 거래처명 검증 - vendors 테이블에 반드시 존재해야 함
+    // 7. 거래처명 검증 - vendors 테이블에 반드시 존재해야 함
     let validatedVendorName: string | undefined = undefined
     let validatedVendorId: number | undefined = undefined
     let vendorMatchSource: 'gpt_extract' | 'text_scan' | 'po_infer' | 'not_found' = 'not_found'
     
-    // 6-1. GPT가 추출한 거래처명으로 먼저 시도 (한글명)
+    // 7-1. GPT가 추출한 거래처명으로 먼저 시도 (한글명)
     if (extractionResult.vendor_name) {
       const vendorResult = await validateAndMatchVendor(
         supabase, 
@@ -162,7 +243,7 @@ serve(async (req) => {
       }
     }
     
-    // 6-1-2. 한글명 매칭 실패 시 영문명으로 재시도
+    // 7-1-2. 한글명 매칭 실패 시 영문명으로 재시도
     if (!validatedVendorName && extractionResult.vendor_name_english) {
       const vendorResultEng = await validateAndMatchVendor(
         supabase, 
@@ -177,7 +258,7 @@ serve(async (req) => {
       }
     }
     
-    // 6-2. GPT 추출 실패 또는 거래처 못찾음 → 전체 텍스트에서 vendors 테이블 대조
+    // 7-2. GPT 추출 실패 또는 거래처 못찾음 → 전체 텍스트에서 vendors 테이블 대조
     if (!validatedVendorName && visionText) {
       console.log('📝 거래처 못찾음 - 전체 OCR 텍스트에서 vendors 테이블 대조 시작...')
       const vendorFromText = await findVendorInText(supabase, visionText)
@@ -190,12 +271,12 @@ serve(async (req) => {
       }
     }
     
-    // 6-3. 그래도 못찾으면 경고
+    // 7-3. 그래도 못찾으면 경고
     if (!validatedVendorName) {
       console.warn(`⚠️ 거래처를 찾을 수 없음 - 수동 확인 필요`)
     }
 
-    // 7. 발주/수주번호 오인식 보정 (거래처/품목/수량 기준)
+    // 8. 발주/수주번호 오인식 보정 (거래처/품목/수량 기준)
     const correctionResult = await correctOrderNumbersByDb(
       supabase,
       normalizedItems,
@@ -209,7 +290,7 @@ serve(async (req) => {
       }
     }
 
-    // 8. DB에 결과 저장 (에러 체크 추가)
+    // 9. DB에 결과 저장 (에러 체크 추가)
     const { data: existingStatement } = await supabase
       .from('transaction_statements')
       .select('extracted_data')
@@ -256,7 +337,7 @@ serve(async (req) => {
 
     console.log('✅ 거래명세서 업데이트 완료:', { id: requestData.statementId, vendor_name: validatedVendorName })
 
-    // 9. 추출된 품목들을 transaction_statement_items에 저장
+    // 10. 추출된 품목들을 transaction_statement_items에 저장
     if (normalizedItems.length > 0) {
       const itemsToInsert = normalizedItems.map((item, idx) => {
         const lineNumber = item.line_number || idx + 1
@@ -612,12 +693,131 @@ function levenshteinDistance(s1: string, s2: string): number {
 }
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer)
+  return uint8ArrayToBase64(new Uint8Array(buffer))
+}
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
   let binary = ''
   for (let i = 0; i < bytes.byteLength; i++) {
     binary += String.fromCharCode(bytes[i])
   }
   return btoa(binary)
+}
+
+async function decodeImageFromBuffer(buffer: ArrayBuffer): Promise<Image | null> {
+  try {
+    return await Image.decode(new Uint8Array(buffer))
+  } catch (_) {
+    return null
+  }
+}
+
+async function encodeImageToBase64(image: Image): Promise<string> {
+  const encoded = await image.encode(1)
+  return uint8ArrayToBase64(encoded)
+}
+
+function applyContrast(image: Image, contrast: number): void {
+  const factor = (259 * (contrast + 255)) / (255 * (259 - contrast))
+  const data = image.bitmap
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = clampColor(factor * (data[i] - 128) + 128)
+    data[i + 1] = clampColor(factor * (data[i + 1] - 128) + 128)
+    data[i + 2] = clampColor(factor * (data[i + 2] - 128) + 128)
+  }
+}
+
+function applySharpen(image: Image): void {
+  const width = image.width
+  const height = image.height
+  const data = image.bitmap
+  const output = new Uint8ClampedArray(data.length)
+  output.set(data)
+
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const idx = (y * width + x) * 4
+      for (let c = 0; c < 3; c += 1) {
+        const center = data[idx + c]
+        const top = data[((y - 1) * width + x) * 4 + c]
+        const bottom = data[((y + 1) * width + x) * 4 + c]
+        const left = data[(y * width + (x - 1)) * 4 + c]
+        const right = data[(y * width + (x + 1)) * 4 + c]
+        const value = (5 * center) - top - bottom - left - right
+        output[idx + c] = clampColor(value)
+      }
+    }
+  }
+
+  data.set(output)
+}
+
+function clampColor(value: number): number {
+  return Math.max(0, Math.min(255, Math.round(value)))
+}
+
+async function preprocessImage(image: Image): Promise<PreprocessResult | null> {
+  const processed = image.clone()
+  processed.saturation(0, true)
+  applyContrast(processed, 30)
+
+  const pixelCount = processed.width * processed.height
+  if (pixelCount <= 6_000_000) {
+    applySharpen(processed)
+  }
+
+  const maxDim = Math.max(processed.width, processed.height)
+  let scaleFactor = 1
+  if (maxDim <= 2000) {
+    scaleFactor = 2
+  } else if (maxDim <= 3000) {
+    scaleFactor = 1.5
+  }
+
+  if (scaleFactor !== 1) {
+    processed.scale(scaleFactor, Image.RESIZE_NEAREST_NEIGHBOR)
+  }
+
+  const base64 = await encodeImageToBase64(processed)
+  return { image: processed, base64 }
+}
+
+async function buildImageTiles(image: Image): Promise<ImageTile[]> {
+  const tiles: ImageTile[] = []
+  if (image.width < 1200 || image.height < 1200) return tiles
+
+  const rows = 2
+  const cols = 2
+  const tileWidth = Math.ceil(image.width / cols)
+  const tileHeight = Math.ceil(image.height / rows)
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const offsetX = col * tileWidth
+      const offsetY = row * tileHeight
+      const width = Math.min(tileWidth, image.width - offsetX)
+      const height = Math.min(tileHeight, image.height - offsetY)
+      if (width <= 0 || height <= 0) continue
+
+      const tile = image.clone().crop(offsetX, offsetY, width, height)
+      const base64 = await encodeImageToBase64(tile)
+      tiles.push({ base64, offsetX, offsetY })
+    }
+  }
+
+  return tiles
+}
+
+function offsetVisionWords(words: VisionWord[], offsetX: number, offsetY: number): VisionWord[] {
+  return words.map((word) => ({
+    ...word,
+    bbox: {
+      x: word.bbox.x + offsetX,
+      y: word.bbox.y + offsetY,
+      w: word.bbox.w,
+      h: word.bbox.h
+    }
+  }))
 }
 
 async function callGoogleVision(base64Image: string, credentials: string): Promise<{ text: string; words: VisionWord[] }> {
@@ -896,8 +1096,17 @@ JSON 형식으로만 응답하세요.`
 
 type PoMapping = {
   line_number?: number
+  start_line?: number
+  end_line?: number
   item_name?: string
   po_number?: string
+  confidence?: number
+}
+
+type RangeMapping = {
+  po_number?: string
+  start_line?: number
+  end_line?: number
   confidence?: number
 }
 
@@ -916,11 +1125,11 @@ async function extractPoMappingsWithGPT4o(
 
 규칙:
 1) 손글씨로 적힌 번호(F########_### 또는 HS######-##)와 괄호/연결선이 가리키는 품목들을 묶어주세요.
-2) 매핑이 확실하지 않으면 제외하세요.
-3) line_number는 문서의 행 순서입니다. 번호가 왼쪽 여백에 있고 괄호로 여러 행을 묶는 경우,
-   해당 line_number 범위를 모두 매핑해주세요.
-4) 결과는 아래 JSON 형식만 반환:
-{"mappings":[{"line_number":번호,"item_name":"품목명","po_number":"F... 또는 HS...","confidence":0~1}]}
+2) 번호가 품목 옆이 아니라 두번째 줄에 적혀 있어도, 괄호/연결선이 위쪽 품목까지 이어지면 위쪽 행도 포함하세요.
+3) line_number는 문서의 행 순서입니다. 여러 행 묶음은 start_line/end_line 범위로 반환해도 됩니다.
+4) 매핑이 확실하지 않으면 제외하세요.
+5) 결과는 아래 JSON 형식만 반환:
+{"mappings":[{"start_line":1,"end_line":4,"po_number":"F... 또는 HS...","confidence":0~1},{"line_number":번호,"item_name":"품목명","po_number":"F... 또는 HS...","confidence":0~1}]}
 
 item 목록:
 ${JSON.stringify(itemHints)}
@@ -957,6 +1166,126 @@ ${JSON.stringify(itemHints)}
   return Array.isArray(parsed.mappings) ? parsed.mappings : []
 }
 
+async function extractPoRangesWithGPT4o(
+  base64Image: string,
+  items: ExtractedItem[],
+  apiKey: string
+): Promise<RangeMapping[]> {
+  const itemHints = items.map((item) => ({
+    line_number: item.line_number,
+    item_name: item.item_name
+  }))
+
+  const prompt = `거래명세서 이미지에서 왼쪽 여백에 손글씨로 적힌 발주/수주번호가 있고,
+그 아래 여러 품목에 같은 번호가 적용되는 경우를 찾아 line_number 범위를 추론해주세요.
+
+규칙:
+1) 번호는 F########_### 또는 HS######-## 형식입니다.
+2) 번호가 중간에 바뀌면 여러 구간으로 나눠주세요.
+3) 확실하지 않으면 제외하세요.
+4) 결과는 아래 JSON 형식만 반환:
+{"ranges":[{"po_number":"F... 또는 HS...","start_line":1,"end_line":5,"confidence":0~1}]}
+
+item 목록:
+${JSON.stringify(itemHints)}
+`
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: 'You detect handwritten margin order numbers and their line ranges.' },
+        { role: 'user', content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}`, detail: 'high' } }
+        ] }
+      ],
+      temperature: 0.1,
+      max_tokens: 1200,
+      response_format: { type: 'json_object' }
+    })
+  })
+
+  const result = await response.json()
+  if (result.error) {
+    throw new Error(`GPT-4o error (range mapping): ${result.error.message}`)
+  }
+  const content = result.choices?.[0]?.message?.content
+  if (!content) return []
+  const parsed = JSON.parse(content)
+  return Array.isArray(parsed.ranges) ? parsed.ranges : []
+}
+
+function shouldRetryOrderNumberPass(items: ExtractedItem[]): boolean {
+  if (!items.length) return false
+  const lowConfidenceCount = items.filter((item) => item.confidence === 'low').length
+  const missingCount = items.filter((item) => !item.po_number).length
+  const lowConfidenceRatio = lowConfidenceCount / items.length
+  const missingRatio = missingCount / items.length
+  return missingRatio >= 0.4 || lowConfidenceRatio >= 0.4 || missingCount === items.length
+}
+
+async function extractOrderNumbersWithGPT4o(
+  base64Image: string,
+  tileImages: string[],
+  apiKey: string
+): Promise<string[]> {
+  const prompt = `거래명세서 이미지에서 손글씨/필기체로 적힌 발주번호 또는 수주번호만 추출하세요.
+
+규칙:
+1) 번호 패턴만 반환: F########_### 또는 HS######-## 형태
+2) 불확실하면 제외하세요.
+3) 결과는 아래 JSON 형식만 반환:
+{"numbers":["F...","HS..."]}
+`
+
+  const imageContents = [
+    { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}`, detail: 'high' } }
+  ]
+
+  tileImages.slice(0, 4).forEach((tile) => {
+    imageContents.push({
+      type: 'image_url',
+      image_url: { url: `data:image/png;base64,${tile}`, detail: 'high' }
+    })
+  })
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: 'You only extract handwritten order numbers.' },
+        { role: 'user', content: [
+          { type: 'text', text: prompt },
+          ...imageContents
+        ] }
+      ],
+      temperature: 0.1,
+      max_tokens: 800,
+      response_format: { type: 'json_object' }
+    })
+  })
+
+  const result = await response.json()
+  if (result.error) {
+    throw new Error(`GPT-4o error (numbers): ${result.error.message}`)
+  }
+  const content = result.choices?.[0]?.message?.content
+  if (!content) return []
+  const parsed = JSON.parse(content)
+  return Array.isArray(parsed.numbers) ? parsed.numbers : []
+}
+
 function normalizePO(num: string): string {
   const match = num.toUpperCase().match(/^(F\d{8})_(\d{1,3})$/)
   if (match) {
@@ -973,7 +1302,11 @@ function normalizeSO(num: string): string {
   return num.toUpperCase()
 }
 
-function normalizePoNumbers(items: ExtractedItem[], rawVisionText?: string): ExtractedItem[] {
+function normalizePoNumbers(
+  items: ExtractedItem[],
+  rawVisionText?: string,
+  extraNumbers: string[] = []
+): ExtractedItem[] {
   // 발주번호 패턴: F + YYYYMMDD + _ + 1~3자리 숫자 (OCR에서 읽힌 형태)
   const poPatternLoose = /F\d{8}_\d{1,3}/gi
   // 수주번호 패턴: HS + YYMMDD + - + 1~2자리 숫자 (OCR에서 읽힌 형태)
@@ -986,6 +1319,12 @@ function normalizePoNumbers(items: ExtractedItem[], rawVisionText?: string): Ext
     const soMatches = rawVisionText.match(soPatternLoose) || []
     allFoundNumbers.push(...poMatches.map(n => normalizePO(n)))
     allFoundNumbers.push(...soMatches.map(n => normalizeSO(n)))
+  }
+  if (extraNumbers.length > 0) {
+    extraNumbers.forEach((value) => {
+      const normalized = normalizeMappedNumber(value)
+      if (normalized) allFoundNumbers.push(normalized)
+    })
   }
 
   return items.map((item, idx) => {
@@ -1011,10 +1350,11 @@ function normalizePoNumbers(items: ExtractedItem[], rawVisionText?: string): Ext
     } else if (allFoundNumbers.length > 0) {
       // 품목에 번호가 없지만 전체 문서에서 번호가 발견된 경우
       // 단일 번호만 있으면 모든 품목에 적용 (하나의 발주에 대한 거래명세서)
-      if (allFoundNumbers.length === 1) {
+      const uniqueCount = new Set(allFoundNumbers).size
+      if (uniqueCount === 1) {
         poNumber = allFoundNumbers[0]
-      } else if (allFoundNumbers.length === items.length) {
-        // 번호 개수와 품목 개수가 같으면 순서대로 매칭
+      } else if (allFoundNumbers.length === items.length && uniqueCount === items.length) {
+        // 번호 개수와 품목 개수가 같고 중복이 없으면 순서대로 매칭
         poNumber = allFoundNumbers[idx]
       }
       // 그 외의 경우는 수동 매칭 필요
@@ -1151,10 +1491,39 @@ function normalizeItemText(value: string): string {
 
 function normalizeMappedNumber(value?: string): string {
   if (!value) return ''
-  const cleaned = value.toUpperCase().replace(/\s+/g, '').replace(/[^\w_-]/g, '')
+  const cleaned = normalizeOrderCandidate(value)
   if (cleaned.startsWith('F')) return normalizePO(cleaned)
   if (cleaned.startsWith('HS')) return normalizeSO(cleaned)
   return cleaned
+}
+
+function normalizeOrderCandidate(value: string): string {
+  const cleaned = value.toUpperCase().replace(/\s+/g, '').replace(/[^\w_-]/g, '')
+  if (cleaned.startsWith('H5')) {
+    return `HS${normalizeDigitConfusions(cleaned.slice(2))}`
+  }
+  if (cleaned.startsWith('HS')) {
+    return `HS${normalizeDigitConfusions(cleaned.slice(2))}`
+  }
+  if (cleaned.startsWith('F')) {
+    return `F${normalizeDigitConfusions(cleaned.slice(1))}`
+  }
+  return normalizeDigitConfusions(cleaned)
+}
+
+function normalizeDigitConfusions(value: string): string {
+  const replacements: Record<string, string> = {
+    O: '0',
+    I: '1',
+    L: '1',
+    S: '5',
+    B: '8',
+    Z: '2'
+  }
+  return value
+    .split('')
+    .map((char) => replacements[char] ?? char)
+    .join('')
 }
 
 function applyPoMappings(items: ExtractedItem[], mappings: PoMapping[]): ExtractedItem[] {
@@ -1162,9 +1531,16 @@ function applyPoMappings(items: ExtractedItem[], mappings: PoMapping[]): Extract
 
   const byLine = new Map<number, PoMapping>()
   const byName = new Map<string, PoMapping>()
+  const ranges: Array<{ start: number; end: number; po_number?: string; confidence?: number }> = []
 
   mappings.forEach((m) => {
     if (m.confidence !== undefined && m.confidence < 0.6) return
+    if (typeof m.start_line === 'number' && typeof m.end_line === 'number') {
+      if (m.start_line <= m.end_line) {
+        ranges.push({ start: m.start_line, end: m.end_line, po_number: m.po_number, confidence: m.confidence })
+      }
+      return
+    }
     if (typeof m.line_number === 'number') {
       byLine.set(m.line_number, m)
       return
@@ -1174,10 +1550,17 @@ function applyPoMappings(items: ExtractedItem[], mappings: PoMapping[]): Extract
     }
   })
 
-  return items.map((item) => {
-    const byLineMatch = item.line_number !== undefined ? byLine.get(item.line_number) : undefined
+  return items.map((item, idx) => {
+    const lineNumber = item.line_number ?? idx + 1
+    const rangeMatches = ranges.filter(range => lineNumber >= range.start && lineNumber <= range.end)
+    let rangeMatch: { po_number?: string; confidence?: number } | undefined = undefined
+    if (rangeMatches.length > 0) {
+      rangeMatch = rangeMatches
+        .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0) || (a.end - a.start) - (b.end - b.start))[0]
+    }
+    const byLineMatch = byLine.get(lineNumber)
     const byNameMatch = byName.get(normalizeItemText(item.item_name || ''))
-    const selected = byLineMatch || byNameMatch
+    const selected = rangeMatch || byLineMatch || byNameMatch
     const mapped = normalizeMappedNumber(selected?.po_number)
     if (!mapped) return item
     return { ...item, po_number: mapped }
@@ -1188,8 +1571,9 @@ function buildInferredPoMap(params: {
   items: ExtractedItem[];
   visionWords: VisionWord[];
   bracketMappings: PoMapping[];
+  rangeMappings: RangeMapping[];
 }): Map<number, InferredPoInfo> {
-  const { items, visionWords, bracketMappings } = params
+  const { items, visionWords, bracketMappings, rangeMappings } = params
   const inferredMap = new Map<number, InferredPoInfo>()
 
   if (!items.length) return inferredMap
@@ -1203,12 +1587,17 @@ function buildInferredPoMap(params: {
   const itemRowMap = rows.length > 0 ? mapItemsToRows(itemsWithLine, rows) : new Map<number, RowData>()
   const marginMap = rows.length > 0 ? mapMarginNumbersToItems(itemRowMap, rows) : new Map<number, InferredPoInfo>()
   const bracketMap = mapBracketMappingsToItems(itemsWithLine, bracketMappings)
+  const rangeMap = mapRangeMappingsToItems(itemsWithLine, rangeMappings)
   const perItemMap = mapPerItemNumbers(itemsWithLine)
   const globalNumber = getGlobalPoNumber(items)
 
   itemsWithLine.forEach(({ lineNumber }) => {
     if (bracketMap.has(lineNumber)) {
       inferredMap.set(lineNumber, bracketMap.get(lineNumber)!)
+      return
+    }
+    if (rangeMap.has(lineNumber)) {
+      inferredMap.set(lineNumber, rangeMap.get(lineNumber)!)
       return
     }
     if (marginMap.has(lineNumber)) {
@@ -1362,9 +1751,34 @@ function mapBracketMappingsToItems(
   const inferredMap = new Map<number, InferredPoInfo>()
   if (!mappings.length) return inferredMap
 
-  mappings.forEach(mapping => {
+  const itemByLine = new Map<number, ExtractedItem>()
+  itemsWithLine.forEach(({ item, lineNumber }) => {
+    itemByLine.set(lineNumber, item)
+  })
+
+  mappings.forEach((mapping, index) => {
     const mappedNumber = normalizeMappedNumber(mapping.po_number)
     if (!mappedNumber) return
+    const confidence = Math.max(0.5, Math.min(0.95, mapping.confidence ?? 0.8))
+
+    if (typeof mapping.start_line === 'number' && typeof mapping.end_line === 'number') {
+      const startLine = mapping.start_line
+      const endLine = mapping.end_line
+      if (startLine <= endLine) {
+        const groupId = `bracket-range-${index + 1}-${mappedNumber}`
+        itemsWithLine.forEach(({ lineNumber }) => {
+          if (lineNumber >= startLine && lineNumber <= endLine && !inferredMap.has(lineNumber)) {
+            inferredMap.set(lineNumber, {
+              inferred_po_number: mappedNumber,
+              inferred_po_source: 'bracket',
+              inferred_po_confidence: confidence,
+              inferred_po_group_id: groupId
+            })
+          }
+        })
+      }
+      return
+    }
 
     let lineNumber: number | undefined = undefined
     if (typeof mapping.line_number === 'number') {
@@ -1376,11 +1790,60 @@ function mapBracketMappingsToItems(
 
     if (!lineNumber) return
 
+    const groupId = `bracket-${mappedNumber}`
     inferredMap.set(lineNumber, {
       inferred_po_number: mappedNumber,
       inferred_po_source: 'bracket',
-      inferred_po_confidence: Math.max(0.5, Math.min(0.95, mapping.confidence ?? 0.8)),
-      inferred_po_group_id: `bracket-${mappedNumber}`
+      inferred_po_confidence: confidence,
+      inferred_po_group_id: groupId
+    })
+
+    const previousLine = lineNumber - 1
+    const previousItem = itemByLine.get(previousLine)
+    if (
+      previousItem &&
+      !inferredMap.has(previousLine) &&
+      confidence >= 0.75 &&
+      (previousItem.item_name || '').trim().length >= 2
+    ) {
+      inferredMap.set(previousLine, {
+        inferred_po_number: mappedNumber,
+        inferred_po_source: 'bracket',
+        inferred_po_confidence: confidence,
+        inferred_po_group_id: groupId
+      })
+    }
+  })
+
+  return inferredMap
+}
+
+function mapRangeMappingsToItems(
+  itemsWithLine: Array<{ item: ExtractedItem; lineNumber: number }>,
+  mappings: RangeMapping[]
+): Map<number, InferredPoInfo> {
+  const inferredMap = new Map<number, InferredPoInfo>()
+  if (!mappings.length) return inferredMap
+
+  mappings.forEach((mapping, index) => {
+    const mappedNumber = normalizeMappedNumber(mapping.po_number)
+    if (!mappedNumber) return
+    const startLine = mapping.start_line
+    const endLine = mapping.end_line
+    if (!startLine || !endLine || startLine > endLine) return
+
+    const confidence = Math.max(0.5, Math.min(0.95, mapping.confidence ?? 0.75))
+    const groupId = `range-${index + 1}-${mappedNumber}`
+
+    itemsWithLine.forEach(({ lineNumber }) => {
+      if (lineNumber >= startLine && lineNumber <= endLine) {
+        inferredMap.set(lineNumber, {
+          inferred_po_number: mappedNumber,
+          inferred_po_source: 'handwriting_range',
+          inferred_po_confidence: confidence,
+          inferred_po_group_id: groupId
+        })
+      }
     })
   })
 
@@ -1497,14 +1960,16 @@ function extractOrderNumber(text: string): string | null {
   if (!text) return null
   const cleaned = text.toUpperCase().replace(/\s+/g, '').replace(/[^\w_-]/g, '')
 
-  const poMatch = cleaned.match(/F\d{8}[_-]\d{1,3}/)
+  const poMatch = cleaned.match(/F[0-9A-Z]{8}[_-][0-9A-Z]{1,3}/)
   if (poMatch) {
-    return normalizePO(poMatch[0].replace('-', '_'))
+    const normalized = normalizeOrderCandidate(poMatch[0]).replace('-', '_')
+    return normalizePO(normalized)
   }
 
-  const soMatch = cleaned.match(/HS\d{6}[-_]\d{1,2}/)
+  const soMatch = cleaned.match(/H[5S][0-9A-Z]{6}[-_][0-9A-Z]{1,2}/)
   if (soMatch) {
-    return normalizeSO(soMatch[0].replace('_', '-'))
+    const normalized = normalizeOrderCandidate(soMatch[0]).replace('_', '-')
+    return normalizeSO(normalized)
   }
 
   return null

@@ -77,6 +77,9 @@ export default function TransactionStatementMain() {
   // 데이터 로드
   const loadStatements = useCallback(async () => {
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:loadStatements:start',message:'loadStatements start',data:{statusFilter,dateFilter,searchTerm},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
       setLoading(true);
       const result = await transactionStatementService.getStatements({
         status: statusFilter !== 'all' ? statusFilter : undefined,
@@ -88,10 +91,19 @@ export default function TransactionStatementMain() {
       if (result.success) {
         setStatements(result.data || []);
         setTotalCount(result.count || 0);
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:loadStatements:success',message:'loadStatements success',data:{count:result.count,firstStatuses:(result.data||[]).slice(0,5).map((s)=>({id:s.id,status:s.status}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
       } else {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:loadStatements:failure',message:'loadStatements failure',data:{error:result.error},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
         toast.error(result.error || '데이터를 불러오는데 실패했습니다.');
       }
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:loadStatements:error',message:'loadStatements error',data:{error:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
       toast.error('데이터를 불러오는데 실패했습니다.');
     } finally {
       setLoading(false);
@@ -104,42 +116,133 @@ export default function TransactionStatementMain() {
 
   // Supabase Realtime 구독 - 상태 변경 시 자동 갱신
   const supabaseRef = useRef(createClient());
+  const realtimeChannelRef = useRef<ReturnType<typeof createClient>['channel'] | null>(null);
+  const realtimeReconnectAttemptsRef = useRef(0);
+  const shouldReconnectRef = useRef(true);
+  const realtimeIsSubscribingRef = useRef(false);
+  const realtimeIsSubscribedRef = useRef(false);
   
   useEffect(() => {
     const supabase = supabaseRef.current;
-    
-    // transaction_statements 테이블의 변경사항 구독
-    const channel = supabase
-      .channel('transaction-statements-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // INSERT, UPDATE, DELETE 모두 구독
-          schema: 'public',
-          table: 'transaction_statements'
-        },
-        (payload: any) => {
-          console.log('[Realtime] Statement changed:', payload);
-          
-          // 상태가 변경되면 목록 갱신
-          if (payload.eventType === 'UPDATE') {
-            const newStatus = payload.new?.status;
-            const oldStatus = payload.old?.status;
+
+    const setupRealtimeAuth = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const token = data?.session?.access_token;
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:auth',message:'realtime auth session checked',data:{hasSession:!!data?.session,hasToken:!!token},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H4'})}).catch(()=>{});
+        // #endregion
+        if (token) {
+          supabase.realtime.setAuth(token);
+        }
+        supabase.realtime.connect();
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:connect',message:'realtime connect called',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H4'})}).catch(()=>{});
+        // #endregion
+      } catch (_) {
+        // ignore auth setup errors; fallback to anon
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:auth-error',message:'realtime auth setup failed',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H4'})}).catch(()=>{});
+        // #endregion
+      }
+    };
+
+    const subscribeRealtime = () => {
+      if (!shouldReconnectRef.current) return;
+      if (realtimeIsSubscribingRef.current || realtimeIsSubscribedRef.current) {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:subscribe:skip',message:'subscribe skipped (already active)',data:{isSubscribing:realtimeIsSubscribingRef.current,isSubscribed:realtimeIsSubscribedRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H5'})}).catch(()=>{});
+        // #endregion
+        return;
+      }
+      realtimeIsSubscribingRef.current = true;
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:subscribe:start',message:'subscribeRealtime called',data:{attempt:realtimeReconnectAttemptsRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+
+      realtimeChannelRef.current = supabase
+        .channel('transaction-statements-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*', // INSERT, UPDATE, DELETE 모두 구독
+            schema: 'public',
+            table: 'transaction_statements'
+          },
+          (payload: any) => {
+            // #region agent log
+            fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:callback',message:'realtime event received',data:{eventType:payload.eventType,oldStatus:payload.old?.status,newStatus:payload.new?.status,statementId:payload.new?.id||payload.old?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+            // #endregion
+            console.log('[Realtime] Statement changed:', payload);
             
-            // 상태가 processing → extracted 또는 다른 상태로 변경됐을 때
-            if (newStatus !== oldStatus) {
-              console.log(`[Realtime] Status changed: ${oldStatus} → ${newStatus}`);
+            // 상태가 변경되면 목록 갱신
+            if (payload.eventType === 'UPDATE') {
+              const newStatus = payload.new?.status;
+              const oldStatus = payload.old?.status;
+              
+              // 상태가 processing → extracted 또는 다른 상태로 변경됐을 때
+              if (newStatus !== oldStatus) {
+                // #region agent log
+                fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:status-change',message:'realtime status change detected',data:{oldStatus,newStatus},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+                // #endregion
+                console.log(`[Realtime] Status changed: ${oldStatus} → ${newStatus}`);
+                loadStatements();
+              }
+            } else if (payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
+              // #region agent log
+              fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:insert-delete',message:'realtime insert/delete triggers loadStatements',data:{eventType:payload.eventType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+              // #endregion
               loadStatements();
             }
-          } else if (payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
+          }
+        )
+        .subscribe((status: string, err?: Error) => {
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:subscribe',message:'realtime subscribe status',data:{status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+          // #endregion
+          if (err) {
+            // #region agent log
+            fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:subscribe-error',message:'realtime subscribe error',data:{message:err.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H6'})}).catch(()=>{});
+            // #endregion
+          }
+          if (status === 'SUBSCRIBED') {
+            realtimeReconnectAttemptsRef.current = 0;
+            realtimeIsSubscribingRef.current = false;
+            realtimeIsSubscribedRef.current = true;
             loadStatements();
           }
-        }
-      )
-      .subscribe();
+          if (status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 'TIMED_OUT') {
+            realtimeIsSubscribingRef.current = false;
+            realtimeIsSubscribedRef.current = false;
+            if (shouldReconnectRef.current && realtimeReconnectAttemptsRef.current < 3) {
+              realtimeReconnectAttemptsRef.current += 1;
+              subscribeRealtime();
+            }
+          }
+        });
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:subscribe:created',message:'realtime channel created',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+    };
+
+    shouldReconnectRef.current = true;
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:effect',message:'realtime effect init',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
+    // #endregion
+    setupRealtimeAuth().finally(() => {
+      subscribeRealtime();
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      shouldReconnectRef.current = false;
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
     };
   }, [loadStatements]);
 

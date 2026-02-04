@@ -63,7 +63,7 @@ export interface TransactionStatementItem {
 
   // 추론된 발주/수주번호 정보
   inferred_po_number?: string;
-  inferred_po_source?: 'bracket' | 'margin_range' | 'per_item' | 'global';
+  inferred_po_source?: 'bracket' | 'handwriting_range' | 'margin_range' | 'per_item' | 'global';
   inferred_po_confidence?: number;
   inferred_po_group_id?: string;
   

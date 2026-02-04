@@ -16,7 +16,8 @@ import {
   ChevronDown,
   Check,
   ExternalLink,
-  Search
+  Search,
+  RefreshCw
 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -193,6 +194,7 @@ export default function StatementConfirmModal({
 }: StatementConfirmModalProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isReextracting, setIsReextracting] = useState(false);
   const [statementWithItems, setStatementWithItems] = useState<TransactionStatementWithItems | null>(null);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
   const [confirmerName, setConfirmerName] = useState("");
@@ -2143,34 +2145,6 @@ export default function StatementConfirmModal({
     return amount.toLocaleString('ko-KR');
   };
 
-  const formatInferredSource = (source?: TransactionStatementItemWithMatch['inferred_po_source']) => {
-    switch (source) {
-      case 'bracket':
-        return '괄호';
-      case 'margin_range':
-        return '구간';
-      case 'per_item':
-        return '품목';
-      case 'global':
-        return '전체';
-      default:
-        return '추론';
-    }
-  };
-
-  const renderInferredInfo = (item: TransactionStatementItemWithMatch) => {
-    if (!item.inferred_po_number) return null;
-    const sourceLabel = formatInferredSource(item.inferred_po_source);
-    const confidence = item.inferred_po_confidence !== undefined && item.inferred_po_confidence !== null
-      ? Math.round(item.inferred_po_confidence * 100)
-      : null;
-
-    return (
-      <div className="mt-0.5 text-[9px] text-gray-500">
-        추론: {item.inferred_po_number} ({sourceLabel}{confidence !== null ? `, ${confidence}%` : ''})
-      </div>
-    );
-  };
 
   const getSystemItemLabel = (item?: SystemPurchaseItem | null) => {
     if (!item) return '';
@@ -2190,6 +2164,58 @@ export default function StatementConfirmModal({
     const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
     const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
     window.open(imageUrl, 'transaction-statement-image', `width=${width},height=${height},left=${left},top=${top}`);
+  };
+
+  const resetReextractState = () => {
+    setEditedOCRItems(new Map());
+    setItemPONumbers(new Map());
+    setItemMatches(new Map());
+    setSelectedPONumber('');
+    setSetMatchResult(null);
+    setManuallySelectedPO(false);
+    setPoPairOverrides(new Map());
+    setItemPOSearchInputs({});
+    setItemPOSearchResults({});
+    setItemPOSearchLoading({});
+    setPOSearchInput('');
+    setPOSearchInputOpen(false);
+    setPODropdownOpen(false);
+    setVendorInputValue('');
+    setVendorSearchResults([]);
+    setVendorDropdownOpen(false);
+    setOverrideVendorName(null);
+    setMatchDetailPopup(null);
+    setIsIntegratedMatchDetailOpen(false);
+    setOpenDropdowns(new Set());
+    autoVendorSelectionRef.current = false;
+    systemCandidateLogKeyRef.current = null;
+  };
+
+  const handleReextract = async () => {
+    if (isReextracting || loading) return;
+    const imageUrl = statementWithItems?.image_url || statement.image_url;
+    if (!imageUrl) {
+      toast.error('이미지 URL을 찾을 수 없습니다.');
+      return;
+    }
+
+    setIsReextracting(true);
+    resetReextractState();
+    toast.loading('OCR 재추출 중... (약 10~30초 소요)', { id: `reextract-${statement.id}` });
+
+    try {
+      const result = await transactionStatementService.extractStatementData(statement.id, imageUrl);
+      if (result.success) {
+        toast.success('OCR 재추출이 완료되었습니다.', { id: `reextract-${statement.id}` });
+        await loadData();
+      } else {
+        toast.error(result.error || 'OCR 재추출에 실패했습니다.', { id: `reextract-${statement.id}` });
+      }
+    } catch (error) {
+      toast.error('OCR 재추출 중 오류가 발생했습니다.', { id: `reextract-${statement.id}` });
+    } finally {
+      setIsReextracting(false);
+    }
   };
 
   // 매칭 상세 정보 가져오기
@@ -2374,15 +2400,31 @@ export default function StatementConfirmModal({
                 <CheckCircle className="w-4 h-4 text-hansl-600" />
                 거래명세서 확인 및 확정
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleOpenOriginalImage}
-                className="button-base h-7 text-[10px]"
-              >
-                <ImageIcon className="w-3.5 h-3.5 mr-1" />
-                원본 보기
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReextract}
+                  disabled={loading || isReextracting}
+                  className="button-base h-7 text-[10px]"
+                >
+                  {isReextracting ? (
+                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                  )}
+                  재추출
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleOpenOriginalImage}
+                  className="button-base h-7 text-[10px]"
+                >
+                  <ImageIcon className="w-3.5 h-3.5 mr-1" />
+                  원본 보기
+                </Button>
+              </div>
             </DialogTitle>
           </DialogHeader>
 
@@ -3051,21 +3093,18 @@ export default function StatementConfirmModal({
                           
                           {/* 우측: OCR 품목 (편집 가능) */}
                           <td className="p-1 whitespace-nowrap">
-                            <div className="flex flex-col">
-                              <input
-                                type="text"
-                                value={getOCRItemValue(ocrItem, 'item_name') as string}
-                                onChange={(e) => handleEditOCRItem(ocrItem.id, 'item_name', e.target.value)}
-                                className={`min-w-[180px] w-auto px-1 h-5 !text-[10px] !font-medium text-gray-900 border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
-                                  isOCRItemEdited(ocrItem, 'item_name') 
-                                    ? 'border-orange-400 bg-orange-50' 
-                                    : 'border-gray-200 bg-white'
-                                }`}
-                                style={{ fontSize: '11px', fontWeight: 500, width: `${Math.max(180, (getOCRItemValue(ocrItem, 'item_name') as string).length * 8)}px` }}
-                                title={isOCRItemEdited(ocrItem, 'item_name') ? `원본: ${ocrItem.extracted_item_name}` : undefined}
-                              />
-                              {renderInferredInfo(ocrItem)}
-                            </div>
+                            <input
+                              type="text"
+                              value={getOCRItemValue(ocrItem, 'item_name') as string}
+                              onChange={(e) => handleEditOCRItem(ocrItem.id, 'item_name', e.target.value)}
+                              className={`min-w-[180px] w-auto px-1 h-5 !text-[10px] !font-medium text-gray-900 border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                                isOCRItemEdited(ocrItem, 'item_name') 
+                                  ? 'border-orange-400 bg-orange-50' 
+                                  : 'border-gray-200 bg-white'
+                              }`}
+                              style={{ fontSize: '11px', fontWeight: 500, width: `${Math.max(180, (getOCRItemValue(ocrItem, 'item_name') as string).length * 8)}px` }}
+                              title={isOCRItemEdited(ocrItem, 'item_name') ? `원본: ${ocrItem.extracted_item_name}` : undefined}
+                            />
                           </td>
                           <td className="p-1 text-right w-16">
                             <input
