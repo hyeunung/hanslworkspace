@@ -121,6 +121,7 @@ export default function TransactionStatementMain() {
   const shouldReconnectRef = useRef(true);
   const realtimeIsSubscribingRef = useRef(false);
   const realtimeIsSubscribedRef = useRef(false);
+  const realtimeInstanceIdRef = useRef(Math.random().toString(36).slice(2, 8));
   
   useEffect(() => {
     const supabase = supabaseRef.current;
@@ -231,13 +232,16 @@ export default function TransactionStatementMain() {
 
     shouldReconnectRef.current = true;
     // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:effect',message:'realtime effect init',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:effect',message:'realtime effect init',data:{instanceId:realtimeInstanceIdRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'H7'})}).catch(()=>{});
     // #endregion
     setupRealtimeAuth().finally(() => {
       subscribeRealtime();
     });
 
     return () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:cleanup',message:'realtime effect cleanup',data:{instanceId:realtimeInstanceIdRef.current,wasSubscribed:realtimeIsSubscribedRef.current,wasSubscribing:realtimeIsSubscribingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'H7'})}).catch(()=>{});
+      // #endregion
       shouldReconnectRef.current = false;
       if (realtimeChannelRef.current) {
         supabase.removeChannel(realtimeChannelRef.current);

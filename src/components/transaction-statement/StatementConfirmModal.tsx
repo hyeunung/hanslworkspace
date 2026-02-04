@@ -2204,7 +2204,7 @@ export default function StatementConfirmModal({
     toast.loading('OCR 재추출 중... (약 10~30초 소요)', { id: `reextract-${statement.id}` });
 
     try {
-      const result = await transactionStatementService.extractStatementData(statement.id, imageUrl);
+      const result = await transactionStatementService.extractStatementData(statement.id, imageUrl, true);
       if (result.success) {
         toast.success('OCR 재추출이 완료되었습니다.', { id: `reextract-${statement.id}` });
         await loadData();

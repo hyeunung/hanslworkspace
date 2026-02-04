@@ -20,6 +20,7 @@ const corsHeaders = {
 interface OCRRequest {
   statementId: string;
   imageUrl: string;
+  reset_before_extract?: boolean;
 }
 
 interface ExtractedItem {
@@ -99,6 +100,37 @@ serve(async (req) => {
     const requestData: OCRRequest = await req.json()
 
     console.log(`Processing transaction statement: ${requestData.statementId}`)
+
+    // 0. 재추출 초기화 (실입고일만 유지)
+    if (requestData.reset_before_extract) {
+      const { data: existingStatement } = await supabase
+        .from('transaction_statements')
+        .select('extracted_data')
+        .eq('id', requestData.statementId)
+        .single()
+
+      const preservedActualReceivedDate = (existingStatement?.extracted_data as any)?.actual_received_date
+
+      await supabase
+        .from('transaction_statement_items')
+        .delete()
+        .eq('statement_id', requestData.statementId)
+
+      await supabase
+        .from('transaction_statements')
+        .update({
+          statement_date: null,
+          vendor_name: null,
+          total_amount: null,
+          tax_amount: null,
+          grand_total: null,
+          extraction_error: null,
+          extracted_data: preservedActualReceivedDate
+            ? { actual_received_date: preservedActualReceivedDate }
+            : null
+        })
+        .eq('id', requestData.statementId)
+    }
 
     // 1. 상태를 processing으로 업데이트
     await supabase

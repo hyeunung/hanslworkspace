@@ -114,7 +114,8 @@ class TransactionStatementService {
    */
   async extractStatementData(
     statementId: string,
-    imageUrl: string
+    imageUrl: string,
+    resetBeforeExtract: boolean = false
   ): Promise<{ success: boolean; data?: TransactionStatementWithItems; error?: string }> {
     try {
       console.log('[Service] Calling Edge Function with:', { statementId, imageUrl });
@@ -129,7 +130,8 @@ class TransactionStatementService {
       const { data, error } = await this.supabase.functions.invoke('ocr-transaction-statement', {
         body: {
           statementId,
-          imageUrl
+          imageUrl,
+          reset_before_extract: resetBeforeExtract
         }
       });
 
