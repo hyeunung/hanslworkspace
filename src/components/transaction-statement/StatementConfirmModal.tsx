@@ -2206,8 +2206,12 @@ export default function StatementConfirmModal({
     try {
       const result = await transactionStatementService.extractStatementData(statement.id, imageUrl, true);
       if (result.success) {
-        toast.success('OCR 재추출이 완료되었습니다.', { id: `reextract-${statement.id}` });
-        await loadData();
+        if (result.queued) {
+          toast.info('재추출이 대기열에 등록되었습니다.', { id: `reextract-${statement.id}` });
+        } else {
+          toast.success('OCR 재추출이 완료되었습니다.', { id: `reextract-${statement.id}` });
+          await loadData();
+        }
       } else {
         toast.error(result.error || 'OCR 재추출에 실패했습니다.', { id: `reextract-${statement.id}` });
       }

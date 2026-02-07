@@ -114,6 +114,10 @@ export default function TransactionStatementMain() {
     loadStatements();
   }, [loadStatements]);
 
+  useEffect(() => {
+    transactionStatementService.kickQueue();
+  }, []);
+
   // Supabase Realtime 구독 - 상태 변경 시 자동 갱신
   const supabaseRef = useRef(createClient());
   const realtimeChannelRef = useRef<ReturnType<typeof createClient>['channel'] | null>(null);
@@ -192,6 +196,13 @@ export default function TransactionStatementMain() {
                 // #endregion
                 console.log(`[Realtime] Status changed: ${oldStatus} → ${newStatus}`);
                 loadStatements();
+
+                if (
+                  oldStatus === 'processing' &&
+                  ['extracted', 'failed', 'confirmed', 'rejected'].includes(newStatus)
+                ) {
+                  transactionStatementService.kickQueue();
+                }
               }
             } else if (payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
               // #region agent log
@@ -251,7 +262,7 @@ export default function TransactionStatementMain() {
   }, [loadStatements]);
 
   // 상태 배지 렌더링
-  const renderStatusBadge = (status: TransactionStatementStatus) => {
+  const renderStatusBadge = (status: TransactionStatementStatus, errorMessage?: string | null) => {
     const baseClass = "inline-flex items-center gap-1 business-radius-badge px-2 py-0.5 text-[10px] font-medium leading-tight";
     
     switch (status) {
@@ -260,6 +271,13 @@ export default function TransactionStatementMain() {
           <span className={`${baseClass} bg-gray-100 text-gray-600 border border-gray-200`}>
             <Clock className="w-3 h-3" />
             대기중
+          </span>
+        );
+      case 'queued':
+        return (
+          <span className={`${baseClass} bg-slate-100 text-slate-600 border border-slate-200`}>
+            <Clock className="w-3 h-3" />
+            대기열
           </span>
         );
       case 'processing':
@@ -288,6 +306,16 @@ export default function TransactionStatementMain() {
           <span className={`${baseClass} bg-red-50 text-red-600 border border-red-200`}>
             <XCircle className="w-3 h-3" />
             거부됨
+          </span>
+        );
+      case 'failed':
+        return (
+          <span
+            className={`${baseClass} bg-red-50 text-red-700 border border-red-200`}
+            title={errorMessage || '처리 실패'}
+          >
+            <XCircle className="w-3 h-3" />
+            실패
           </span>
         );
       default:
@@ -320,7 +348,12 @@ export default function TransactionStatementMain() {
           }
         });
       }
-    } else if (statement.status === 'confirmed' || statement.status === 'pending') {
+    } else if (
+      statement.status === 'confirmed' ||
+      statement.status === 'pending' ||
+      statement.status === 'queued' ||
+      statement.status === 'failed'
+    ) {
       // 그 외 - 이미지 뷰어 열기
       setViewerImageUrl(statement.image_url);
       setIsImageViewerOpen(true);
@@ -351,8 +384,9 @@ export default function TransactionStatementMain() {
     e.stopPropagation();
     console.log('[OCR] Button clicked, statement:', statement);
     
-    if (statement.status !== 'pending' || extractingIds.has(statement.id)) {
-      console.log('[OCR] Status is not pending or already extracting:', statement.status);
+    const canExtract = ['pending', 'queued', 'failed'].includes(statement.status);
+    if (!canExtract || extractingIds.has(statement.id)) {
+      console.log('[OCR] Status is not eligible or already extracting:', statement.status);
       toast.info('이미 처리 중이거나 완료된 건입니다.');
       return;
     }
@@ -371,6 +405,12 @@ export default function TransactionStatementMain() {
       console.log('[OCR] Result:', result);
 
       if (result.success) {
+        if (result.queued) {
+          toast.info('처리 대기열에 등록되었습니다.', { id: `extraction-${statement.id}` });
+          loadStatements();
+          return;
+        }
+
         toast.success('OCR 추출이 완료되었습니다!', { id: `extraction-${statement.id}` });
         loadStatements();
         
@@ -434,13 +474,18 @@ export default function TransactionStatementMain() {
       const result = await transactionStatementService.extractStatementData(statementId, imageUrl);
       
       if (result.success) {
-        toast.success('OCR 추출이 완료되었습니다. 결과를 확인해주세요.', { id: `extraction-${statementId}` });
-        loadStatements();
-        
-        // 추출 완료 후 바로 확인 모달 열기
-        if (result.data) {
-          setSelectedStatement(result.data);
-          setIsConfirmModalOpen(true);
+        if (result.queued) {
+          toast.info('처리 대기열에 등록되었습니다.', { id: `extraction-${statementId}` });
+          loadStatements();
+        } else {
+          toast.success('OCR 추출이 완료되었습니다. 결과를 확인해주세요.', { id: `extraction-${statementId}` });
+          loadStatements();
+          
+          // 추출 완료 후 바로 확인 모달 열기
+          if (result.data) {
+            setSelectedStatement(result.data);
+            setIsConfirmModalOpen(true);
+          }
         }
       } else {
         toast.error(result.error || 'OCR 추출에 실패했습니다.', { id: `extraction-${statementId}` });
@@ -536,9 +581,11 @@ export default function TransactionStatementMain() {
             <SelectContent className="min-w-[100px]">
               <SelectItem value="all" className="text-[12px] py-1.5">전체 상태</SelectItem>
               <SelectItem value="pending" className="text-[12px] py-1.5">대기중</SelectItem>
+              <SelectItem value="queued" className="text-[12px] py-1.5">대기열</SelectItem>
               <SelectItem value="extracted" className="text-[12px] py-1.5">확인필요</SelectItem>
               <SelectItem value="confirmed" className="text-[12px] py-1.5">확정됨</SelectItem>
               <SelectItem value="rejected" className="text-[12px] py-1.5">거부됨</SelectItem>
+              <SelectItem value="failed" className="text-[12px] py-1.5">실패</SelectItem>
             </SelectContent>
           </Select>
           
@@ -629,7 +676,7 @@ export default function TransactionStatementMain() {
                         <td className="px-3 py-2.5 text-center">
                           {extractingIds.has(statement.id) 
                             ? renderStatusBadge('processing') 
-                            : renderStatusBadge(statement.status)}
+                            : renderStatusBadge(statement.status, statement.extraction_error)}
                         </td>
                         <td className="px-3 py-2.5 text-[11px] text-center text-gray-600">
                           {formatDate(statement.uploaded_at)}
@@ -654,6 +701,15 @@ export default function TransactionStatementMain() {
                         </td>
                         <td className="px-3 py-2.5 text-center">
                           <div className="flex items-center justify-center gap-1">
+                {statement.status === 'failed' && (
+                              <Button
+                                type="button"
+                                onClick={(e) => handleStartExtraction(e, statement)}
+                                className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                              >
+                                {statement.status === 'failed' ? '재시도' : '추출 시작'}
+                              </Button>
+                            )}
                             <button
                               onClick={(e) => handleViewImage(e, statement.image_url)}
                               className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
@@ -687,7 +743,7 @@ export default function TransactionStatementMain() {
                     <div className="flex items-start justify-between mb-2">
                       {extractingIds.has(statement.id) 
                         ? renderStatusBadge('processing') 
-                        : renderStatusBadge(statement.status)}
+                        : renderStatusBadge(statement.status, statement.extraction_error)}
                       <span className="text-[10px] text-gray-400">
                         {formatDate(statement.uploaded_at)}
                       </span>
@@ -706,6 +762,15 @@ export default function TransactionStatementMain() {
                       </p>
                     )}
                     <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-gray-100">
+                  {statement.status === 'failed' && (
+                        <Button
+                          type="button"
+                          onClick={(e) => handleStartExtraction(e, statement)}
+                          className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                        >
+                          {statement.status === 'failed' ? '재시도' : '추출 시작'}
+                        </Button>
+                      )}
                       <button
                         onClick={(e) => handleViewImage(e, statement.image_url)}
                         className="button-base px-2 py-1 text-[10px] border border-gray-200 text-gray-600 hover:bg-gray-50"

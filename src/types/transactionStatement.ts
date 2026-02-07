@@ -5,10 +5,12 @@
 // 거래명세서 상태
 export type TransactionStatementStatus = 
   | 'pending'     // 업로드됨, 처리 대기
+  | 'queued'      // 처리 대기열
   | 'processing'  // OCR 처리 중
   | 'extracted'   // 추출 완료, 확인 대기
   | 'confirmed'   // 확정됨
-  | 'rejected';   // 거부됨
+  | 'rejected'    // 거부됨
+  | 'failed';     // 처리 실패
 
 // 매칭 신뢰도
 export type MatchConfidence = 'low' | 'med' | 'high';
@@ -35,6 +37,14 @@ export interface TransactionStatement {
   grand_total?: number;
   extracted_data?: ExtractedData;
   extraction_error?: string;
+  queued_at?: string;
+  processing_started_at?: string;
+  processing_finished_at?: string;
+  reset_before_extract?: boolean;
+  retry_count?: number;
+  next_retry_at?: string;
+  last_error_at?: string;
+  locked_by?: string;
   created_at: string;
   updated_at: string;
   // 목록 조회 시 첫 번째 매칭된 발주 ID (호환성 유지)

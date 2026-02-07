@@ -17,10 +17,13 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
+type OCRMode = 'process_specific' | 'process_next';
+
 interface OCRRequest {
-  statementId: string;
-  imageUrl: string;
+  statementId?: string;
+  imageUrl?: string;
   reset_before_extract?: boolean;
+  mode?: OCRMode;
 }
 
 interface ExtractedItem {
@@ -86,9 +89,15 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  let statementId: string | null = null
+  let claimedStatement: any | null = null
+  let supabaseUrl = ''
+  let supabaseServiceKey = ''
+  let currentStage = 'init'
+
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
     const googleCredentials = Deno.env.get('GOOGLE_VISION_CREDENTIALS')
 
@@ -97,16 +106,87 @@ serve(async (req) => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
-    const requestData: OCRRequest = await req.json()
+    const requestData: OCRRequest = await req.json().catch(() => ({}))
+    const mode: OCRMode = requestData.mode || 'process_specific'
+    const workerId = crypto.randomUUID()
+    statementId = requestData.statementId || null
+    let imageUrl = requestData.imageUrl || null
 
-    console.log(`Processing transaction statement: ${requestData.statementId}`)
+    // 오래된 processing 정리 (안전장치)
+    currentStage = 'cleanup_stale'
+    try {
+      await supabase.rpc('mark_stale_transaction_statements_failed', {
+        processing_timeout: '15 minutes'
+      })
+    } catch (_) {
+      // ignore cleanup errors
+    }
+
+    currentStage = 'claim_statement'
+    if (mode === 'process_next') {
+      const { data, error } = await supabase.rpc('claim_next_transaction_statement', {
+        worker_id: workerId,
+        processing_timeout: '15 minutes'
+      })
+      if (error) throw error
+      const claimed = Array.isArray(data) ? data[0] : data
+      if (!claimed) {
+        return new Response(
+          JSON.stringify({ success: true, skipped: true, reason: 'no_queue_or_processing_active' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      claimedStatement = claimed
+      statementId = claimed.id
+      imageUrl = claimed.image_url
+    } else {
+      if (!statementId) {
+        throw new Error('statementId is required')
+      }
+      const { data, error } = await supabase.rpc('claim_transaction_statement', {
+        statement_id: statementId,
+        worker_id: workerId,
+        processing_timeout: '15 minutes'
+      })
+      if (error) throw error
+      const claimed = Array.isArray(data) ? data[0] : data
+      if (!claimed) {
+        const queueUpdate: Record<string, any> = {
+          status: 'queued',
+          queued_at: new Date().toISOString()
+        }
+        if (requestData.reset_before_extract) {
+          queueUpdate.reset_before_extract = true
+        }
+        await supabase
+          .from('transaction_statements')
+          .update(queueUpdate)
+          .in('status', ['pending', 'queued', 'failed'])
+          .eq('id', statementId)
+        return new Response(
+          JSON.stringify({ success: true, queued: true, status: 'queued', statementId }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      claimedStatement = claimed
+      statementId = claimed.id
+      imageUrl = claimed.image_url || imageUrl
+    }
+
+    if (!statementId || !imageUrl) {
+      throw new Error('Missing statementId or imageUrl')
+    }
+
+    const shouldReset = Boolean(requestData.reset_before_extract) || Boolean(claimedStatement?.reset_before_extract)
+
+    console.log(`Processing transaction statement: ${statementId}`)
 
     // 0. 재추출 초기화 (실입고일만 유지)
-    if (requestData.reset_before_extract) {
+    if (shouldReset) {
       const { data: existingStatement } = await supabase
         .from('transaction_statements')
         .select('extracted_data')
-        .eq('id', requestData.statementId)
+        .eq('id', statementId)
         .single()
 
       const preservedActualReceivedDate = (existingStatement?.extracted_data as any)?.actual_received_date
@@ -114,7 +194,7 @@ serve(async (req) => {
       await supabase
         .from('transaction_statement_items')
         .delete()
-        .eq('statement_id', requestData.statementId)
+        .eq('statement_id', statementId)
 
       await supabase
         .from('transaction_statements')
@@ -125,30 +205,26 @@ serve(async (req) => {
           tax_amount: null,
           grand_total: null,
           extraction_error: null,
+          reset_before_extract: false,
           extracted_data: preservedActualReceivedDate
             ? { actual_received_date: preservedActualReceivedDate }
             : null
         })
-        .eq('id', requestData.statementId)
+        .eq('id', statementId)
     }
 
-    // 1. 상태를 processing으로 업데이트
-    await supabase
-      .from('transaction_statements')
-      .update({ status: 'processing' })
-      .eq('id', requestData.statementId)
-
-    // 2. 이미지 다운로드
-    const imageBuffer = await downloadImage(requestData.imageUrl)
-    const base64Image = arrayBufferToBase64(imageBuffer)
-    let visionBase64 = base64Image
+    // 1. 이미지 다운로드
+    currentStage = 'download_image'
+    const imageBuffer = await downloadImage(imageUrl)
+    let visionBase64 = ''
     let tileImages: ImageTile[] = []
     let decodedImage: Image | null = null
 
     try {
+      currentStage = 'decode_preprocess'
       decodedImage = await decodeImageFromBuffer(imageBuffer)
       if (decodedImage) {
-        const preprocessed = await preprocessImage(decodedImage.clone())
+        const preprocessed = await preprocessImage(decodedImage)
         if (preprocessed) {
           visionBase64 = preprocessed.base64
           decodedImage = preprocessed.image
@@ -158,14 +234,19 @@ serve(async (req) => {
     } catch (_) {
       decodedImage = null
       tileImages = []
-      visionBase64 = base64Image
     }
+
+    if (!visionBase64) {
+      visionBase64 = arrayBufferToBase64(imageBuffer)
+    }
+    const base64Image = visionBase64
 
     // 3. Google Vision OCR 호출 (선택적 - credentials가 없으면 GPT-4o만 사용)
     let visionText = ''
     let visionWords: VisionWord[] = []
     if (googleCredentials) {
       try {
+        currentStage = 'google_vision'
         const visionResult = await callGoogleVision(visionBase64, googleCredentials)
         visionText = visionResult.text
         visionWords = visionResult.words
@@ -193,6 +274,7 @@ serve(async (req) => {
     }
 
     // 4. GPT-4o 비전으로 구조화 추출
+    currentStage = 'gpt_extract'
     const extractionResult = await extractWithGPT4o(
       base64Image,
       visionText,
@@ -203,6 +285,7 @@ serve(async (req) => {
     let extraOrderNumbers: string[] = []
     if (shouldRetryOrderNumberPass(extractionResult.items)) {
       try {
+        currentStage = 'order_numbers_retry'
         extraOrderNumbers = await extractOrderNumbersWithGPT4o(
           base64Image,
           tileImages.map((tile) => tile.base64),
@@ -256,6 +339,7 @@ serve(async (req) => {
     })
 
     // 7. 거래처명 검증 - vendors 테이블에 반드시 존재해야 함
+    currentStage = 'vendor_match'
     let validatedVendorName: string | undefined = undefined
     let validatedVendorId: number | undefined = undefined
     let vendorMatchSource: 'gpt_extract' | 'text_scan' | 'po_infer' | 'not_found' = 'not_found'
@@ -326,15 +410,19 @@ serve(async (req) => {
     const { data: existingStatement } = await supabase
       .from('transaction_statements')
       .select('extracted_data')
-      .eq('id', requestData.statementId)
+      .eq('id', statementId)
       .single()
 
     const preservedActualReceivedDate = (existingStatement?.extracted_data as any)?.actual_received_date
 
+    currentStage = 'db_update'
     const { data: updateData, error: updateError } = await supabase
       .from('transaction_statements')
       .update({
         status: 'extracted',
+        processing_finished_at: new Date().toISOString(),
+        locked_by: null,
+        reset_before_extract: false,
         statement_date: extractionResult.statement_date || null,
         vendor_name: validatedVendorName || null, // 검증된 거래처명 사용
         total_amount: extractionResult.total_amount || null,
@@ -352,7 +440,7 @@ serve(async (req) => {
           vendor_mismatch: !validatedVendorName // 거래처 못찾음 여부
         }
       })
-      .eq('id', requestData.statementId)
+      .eq('id', statementId)
       .select()
       .single()
 
@@ -367,16 +455,17 @@ serve(async (req) => {
       )
     }
 
-    console.log('✅ 거래명세서 업데이트 완료:', { id: requestData.statementId, vendor_name: validatedVendorName })
+    console.log('✅ 거래명세서 업데이트 완료:', { id: statementId, vendor_name: validatedVendorName })
 
     // 10. 추출된 품목들을 transaction_statement_items에 저장
     if (normalizedItems.length > 0) {
+      currentStage = 'db_insert_items'
       const itemsToInsert = normalizedItems.map((item, idx) => {
         const lineNumber = item.line_number || idx + 1
         const inferredInfo = inferredPoMap.get(lineNumber)
 
         return {
-          statement_id: requestData.statementId,
+          statement_id: statementId,
           line_number: lineNumber,
           extracted_item_name: item.item_name,
           extracted_specification: item.specification,
@@ -403,10 +492,15 @@ serve(async (req) => {
       }
     }
 
+    if (statementId) {
+      triggerNextQueuedProcessing(supabaseUrl, supabaseServiceKey)
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
-        statementId: requestData.statementId,
+        statementId: statementId,
+        status: 'extracted',
         vendor_name: validatedVendorName || null, // 검증된 거래처명 포함
         vendor_match_source: vendorMatchSource, // 매칭 방법
         result: {
@@ -419,30 +513,40 @@ serve(async (req) => {
     )
 
   } catch (error: any) {
+    const errorMessage = `[stage:${currentStage}] ${error?.message || 'Unknown error'}`
     console.error('Error processing transaction statement:', error)
 
     // 에러 시 상태 업데이트
     try {
-      const requestData = await req.json().catch(() => ({}))
-      if (requestData.statementId) {
-        const supabase = createClient(
-          Deno.env.get('SUPABASE_URL')!,
-          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-        )
+      if (statementId) {
+        const supabase = createClient(supabaseUrl, supabaseServiceKey)
+        const retryCount = (claimedStatement?.retry_count ?? 0) + 1
+        const delayMinutes = Math.min(30, Math.pow(2, Math.min(retryCount, 4)))
+        const nextRetryAt = new Date(Date.now() + delayMinutes * 60 * 1000).toISOString()
         await supabase
           .from('transaction_statements')
           .update({ 
-            status: 'pending',
-            extraction_error: error.message 
+            status: 'failed',
+            extraction_error: errorMessage,
+            processing_finished_at: new Date().toISOString(),
+            last_error_at: new Date().toISOString(),
+            retry_count: retryCount,
+            next_retry_at: nextRetryAt,
+            locked_by: null,
+            reset_before_extract: false
           })
-          .eq('id', requestData.statementId)
+          .eq('id', statementId)
       }
     } catch (e) {
       console.error('Failed to update error status:', e)
     }
 
+    if (statementId) {
+      triggerNextQueuedProcessing(supabaseUrl, supabaseServiceKey)
+    }
+
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
@@ -452,6 +556,19 @@ async function downloadImage(url: string): Promise<ArrayBuffer> {
   const response = await fetch(url)
   if (!response.ok) throw new Error(`Failed to download image: ${response.statusText}`)
   return await response.arrayBuffer()
+}
+
+function triggerNextQueuedProcessing(supabaseUrl: string, supabaseServiceKey: string) {
+  const functionUrl = `${supabaseUrl}/functions/v1/ocr-transaction-statement`
+  fetch(functionUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${supabaseServiceKey}`,
+      'apikey': supabaseServiceKey
+    },
+    body: JSON.stringify({ mode: 'process_next' })
+  }).catch(() => {})
 }
 
 /**
@@ -789,7 +906,7 @@ function clampColor(value: number): number {
 }
 
 async function preprocessImage(image: Image): Promise<PreprocessResult | null> {
-  const processed = image.clone()
+  const processed = image
   processed.saturation(0, true)
   applyContrast(processed, 30)
 
@@ -799,14 +916,9 @@ async function preprocessImage(image: Image): Promise<PreprocessResult | null> {
   }
 
   const maxDim = Math.max(processed.width, processed.height)
-  let scaleFactor = 1
-  if (maxDim <= 2000) {
-    scaleFactor = 2
-  } else if (maxDim <= 3000) {
-    scaleFactor = 1.5
-  }
-
-  if (scaleFactor !== 1) {
+  const targetMaxDim = 2200
+  if (maxDim > targetMaxDim) {
+    const scaleFactor = targetMaxDim / maxDim
     processed.scale(scaleFactor, Image.RESIZE_NEAREST_NEIGHBOR)
   }
 
@@ -816,7 +928,9 @@ async function preprocessImage(image: Image): Promise<PreprocessResult | null> {
 
 async function buildImageTiles(image: Image): Promise<ImageTile[]> {
   const tiles: ImageTile[] = []
+  const maxDim = Math.max(image.width, image.height)
   if (image.width < 1200 || image.height < 1200) return tiles
+  if (maxDim > 2200) return tiles
 
   const rows = 2
   const cols = 2

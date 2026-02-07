@@ -10,6 +10,7 @@
 import { createClient } from "@/lib/supabase/client";
 import type {
   TransactionStatement,
+  TransactionStatementStatus,
   TransactionStatementItem,
   TransactionStatementWithItems,
   TransactionStatementItemWithMatch,
@@ -28,6 +29,39 @@ class TransactionStatementService {
     this.supabase = createClient();
   }
 
+  private async prepareOcrImage(file: File): Promise<File> {
+    if (!file.type.startsWith('image/')) return file;
+
+    const maxDimension = 2200;
+    const quality = 0.85;
+
+    try {
+      const bitmap = await createImageBitmap(file);
+      const maxDim = Math.max(bitmap.width, bitmap.height);
+      const scale = maxDim > maxDimension ? maxDimension / maxDim : 1;
+      const targetWidth = Math.round(bitmap.width * scale);
+      const targetHeight = Math.round(bitmap.height * scale);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return file;
+      ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, 'image/jpeg', quality)
+      );
+      if (!blob) return file;
+
+      return new File([blob], file.name.replace(/\.\w+$/, '.jpg'), {
+        type: 'image/jpeg'
+      });
+    } catch (_) {
+      return file;
+    }
+  }
+
   /**
    * 거래명세서 이미지 업로드
    */
@@ -37,8 +71,9 @@ class TransactionStatementService {
     actualReceiptDate?: Date
   ): Promise<{ success: boolean; data?: { statementId: string; imageUrl: string }; error?: string }> {
     try {
+      const uploadFile = await this.prepareOcrImage(file);
       // 고유 파일명 생성
-      const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+      const ext = uploadFile.name.split('.').pop()?.toLowerCase() || 'png';
       const uuid = crypto.randomUUID();
       const fileName = `${uuid}.${ext}`;
       const storagePath = `Transaction Statement/${fileName}`;
@@ -47,8 +82,8 @@ class TransactionStatementService {
       const { data: uploadData, error: uploadError } = await this.supabase
         .storage
         .from('receipt-images')
-        .upload(storagePath, file, {
-          contentType: file.type,
+        .upload(storagePath, uploadFile, {
+          contentType: uploadFile.type,
           upsert: false
         });
 
@@ -77,7 +112,8 @@ class TransactionStatementService {
           file_name: file.name,
           uploaded_by: user?.id,
           uploaded_by_name: uploaderName,
-          status: 'pending',
+          status: 'queued',
+          queued_at: new Date().toISOString(),
           extracted_data: actualReceiptDateIso
             ? { actual_received_date: actualReceiptDateIso }
             : null
@@ -116,30 +152,61 @@ class TransactionStatementService {
     statementId: string,
     imageUrl: string,
     resetBeforeExtract: boolean = false
-  ): Promise<{ success: boolean; data?: TransactionStatementWithItems; error?: string }> {
+  ): Promise<{ success: boolean; data?: TransactionStatementWithItems; error?: string; queued?: boolean; status?: TransactionStatementStatus }> {
+    let invokeContextStatus: number | null = null;
+    let invokeContextBody: string | null = null;
     try {
       console.log('[Service] Calling Edge Function with:', { statementId, imageUrl });
-      
-      // OCR 시작 전 상태를 processing으로 변경
-      await this.supabase
-        .from('transaction_statements')
-        .update({ status: 'processing' })
-        .eq('id', statementId);
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:start',message:'extractStatementData start',data:{statementId,hasImageUrl:!!imageUrl,resetBeforeExtract},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+
+      const { data: sessionData } = await this.supabase.auth.getSession();
+      const session = sessionData?.session;
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:session',message:'session before invoke',data:{statementId,hasSession:!!session,hasAccessToken:!!session?.access_token,userId:session?.user?.id??null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H8'})}).catch(()=>{});
+      // #endregion
       
       // Edge Function 호출
       const { data, error } = await this.supabase.functions.invoke('ocr-transaction-statement', {
         body: {
           statementId,
           imageUrl,
-          reset_before_extract: resetBeforeExtract
+          reset_before_extract: resetBeforeExtract,
+          mode: 'process_specific'
         }
       });
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:invoke',message:'edge invoke response',data:{statementId,hasData:!!data,success:data?.success??null,queued:data?.queued??null,status:data?.status??null,errorMessage:(error as any)?.message||data?.error||null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
+      // #endregion
+      if (error) {
+        const context = (error as any)?.context;
+        invokeContextStatus = context?.status ?? null;
+        try {
+          if (context?.clone) {
+            const text = await context.clone().text();
+            invokeContextBody = text ? text.slice(0, 800) : null;
+          } else if (context?.text) {
+            const text = await context.text();
+            invokeContextBody = text ? text.slice(0, 800) : null;
+          }
+        } catch (_) {
+          invokeContextBody = null;
+        }
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:invoke:error',message:'edge invoke error detail',data:{statementId,errorStatus:(error as any)?.status??null,errorName:(error as any)?.name??null,contextStatus:context?.status??null,contextStatusText:context?.statusText??null,contextBody:invokeContextBody},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H9'})}).catch(()=>{});
+        // #endregion
+      }
 
       console.log('[Service] Edge Function response:', { data, error });
 
       if (error) throw error;
 
-      if (!data.success) {
+      if (data?.queued) {
+        return { success: true, queued: true, status: 'queued' };
+      }
+
+      if (!data?.success) {
         throw new Error(data.error || 'OCR 추출 실패');
       }
 
@@ -154,9 +221,61 @@ class TransactionStatementService {
       return result;
     } catch (error) {
       console.error('[Service] Extract statement error:', error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'OCR 추출 중 오류가 발생했습니다.';
+      let resolvedErrorMessage = errorMessage;
+      if (invokeContextBody) {
+        try {
+          const parsed = JSON.parse(invokeContextBody);
+          resolvedErrorMessage = parsed?.error || invokeContextBody;
+        } catch (_) {
+          resolvedErrorMessage = invokeContextBody;
+        }
+      }
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:catch',message:'extractStatementData catch',data:{statementId,errorMessage,resolvedErrorMessage,invokeContextStatus,invokeContextBody},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H2'})}).catch(()=>{});
+      // #endregion
+
+      try {
+        const { data: updateData, error: updateError } = await this.supabase
+          .from('transaction_statements')
+          .update({
+            status: 'failed',
+            extraction_error: resolvedErrorMessage,
+            last_error_at: new Date().toISOString(),
+            processing_finished_at: new Date().toISOString()
+          })
+          .eq('id', statementId)
+          .in('status', ['pending', 'queued', 'processing'])
+          .is('extraction_error', null)
+          .select('id, status, extraction_error');
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:reset-pending',message:'set status pending on extract failure',data:{statementId,ok:!updateError,error:updateError?.message||null,updatedRows:Array.isArray(updateData)?updateData.length:0,updateStatus:updateData?.[0]?.status||null,updateExtractionError:updateData?.[0]?.extraction_error||null},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
+      } catch (_) {
+        // ignore update errors
+      }
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'OCR 추출 중 오류가 발생했습니다.'
+        error: resolvedErrorMessage
+      };
+    }
+  }
+
+  /**
+   * OCR 대기열 처리 트리거
+   */
+  async kickQueue(): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { error } = await this.supabase.functions.invoke('ocr-transaction-statement', {
+        body: { mode: 'process_next' }
+      });
+      if (error) throw error;
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '큐 처리를 시작하지 못했습니다.'
       };
     }
   }
