@@ -8,6 +8,7 @@
  */
 
 import { createClient } from "@/lib/supabase/client";
+import { logger } from "@/lib/logger";
 import type {
   TransactionStatement,
   TransactionStatementStatus,
@@ -156,6 +157,9 @@ class TransactionStatementService {
     let invokeContextStatus: number | null = null;
     let invokeContextBody: string | null = null;
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:start',message:'extractStatementData start',data:{statementId,hasImageUrl:Boolean(imageUrl),resetBeforeExtract},timestamp:Date.now(),runId:'run1',hypothesisId:'H1'} )}).catch(()=>{});
+      // #endregion
       console.log('[Service] Calling Edge Function with:', { statementId, imageUrl });
       // #region agent log
       fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:start',message:'extractStatementData start',data:{statementId,hasImageUrl:!!imageUrl,resetBeforeExtract},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
@@ -199,6 +203,9 @@ class TransactionStatementService {
       }
 
       console.log('[Service] Edge Function response:', { data, error });
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:invoke',message:'edge invoke result',data:{statementId,success:data?.success??null,queued:data?.queued??null,status:data?.status??null,errorMessage:(error as any)?.message||data?.error||null,contextStatus:invokeContextStatus},timestamp:Date.now(),runId:'run1',hypothesisId:'H1'} )}).catch(()=>{});
+      // #endregion
 
       if (error) throw error;
 
@@ -1265,10 +1272,9 @@ class TransactionStatementService {
   async confirmStatement(
     request: ConfirmStatementRequest,
     confirmerName: string
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; finalized?: boolean; updatedStatement?: TransactionStatement }> {
     try {
       const { data: { user } } = await this.supabase.auth.getUser();
-      const actualReceivedDate = request.actual_received_date;
 
       // 1. 품목별 확정 처리
       for (const item of request.items) {
@@ -1288,12 +1294,128 @@ class TransactionStatementService {
           .eq('id', item.itemId);
 
         if (itemError) throw itemError;
+      }
 
-        // 2. 발주 품목에 단가/금액 반영
-        // 단가 또는 금액 중 하나라도 유효한 값이 있으면 업데이트
+      // 2. 확정자(관리자) 확인 기록
+      const confirmedAt = new Date().toISOString();
+      const { data: updatedStatement, error: stmtError } = await this.supabase
+        .from('transaction_statements')
+        .update({
+          manager_confirmed_at: confirmedAt,
+          manager_confirmed_by: user?.id,
+          manager_confirmed_by_name: confirmerName || null
+        })
+        .eq('id', request.statementId)
+        .select('*')
+        .single();
+
+      if (stmtError) throw stmtError;
+
+      // 3. 두 단계 완료 여부 확인 후 최종 반영
+      const finalizeResult = await this.tryFinalizeStatement(request.statementId);
+      if (!finalizeResult.success) {
+        return { success: false, error: finalizeResult.error };
+      }
+
+      return {
+        success: true,
+        finalized: finalizeResult.finalized,
+        updatedStatement: finalizeResult.updatedStatement || updatedStatement
+      };
+    } catch (error) {
+      console.error('Confirm statement error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '확정 중 오류가 발생했습니다.'
+      };
+    }
+  }
+
+  /**
+   * 수량일치 확인
+   */
+  async confirmQuantityMatch(
+    statementId: string,
+    confirmerName: string
+  ): Promise<{ success: boolean; error?: string; finalized?: boolean; updatedStatement?: TransactionStatement }> {
+    try {
+      const { data: { user } } = await this.supabase.auth.getUser();
+      const confirmedAt = new Date().toISOString();
+      const { data: updatedStatement, error: stmtError } = await this.supabase
+        .from('transaction_statements')
+        .update({
+          quantity_match_confirmed_at: confirmedAt,
+          quantity_match_confirmed_by: user?.id,
+          quantity_match_confirmed_by_name: confirmerName || null
+        })
+        .eq('id', statementId)
+        .select('*')
+        .single();
+
+      if (stmtError) throw stmtError;
+
+      const finalizeResult = await this.tryFinalizeStatement(statementId);
+      if (!finalizeResult.success) {
+        return { success: false, error: finalizeResult.error };
+      }
+
+      return {
+        success: true,
+        finalized: finalizeResult.finalized,
+        updatedStatement: finalizeResult.updatedStatement || updatedStatement
+      };
+    } catch (error) {
+      logger.error('Confirm quantity match error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '수량일치 확인 중 오류가 발생했습니다.'
+      };
+    }
+  }
+
+  /**
+   * 확정/수량일치 모두 완료 시 최종 반영
+   */
+  private async tryFinalizeStatement(
+    statementId: string
+  ): Promise<{ success: boolean; finalized: boolean; error?: string; updatedStatement?: TransactionStatement }> {
+    try {
+      const { data: statement, error: stmtError } = await this.supabase
+        .from('transaction_statements')
+        .select('*')
+        .eq('id', statementId)
+        .single();
+
+      if (stmtError) throw stmtError;
+
+      if (statement.status === 'confirmed') {
+        return { success: true, finalized: true, updatedStatement: statement };
+      }
+
+      const isManagerConfirmed = !!statement.manager_confirmed_at;
+      const isQuantityMatched = !!statement.quantity_match_confirmed_at;
+
+      if (!isManagerConfirmed || !isQuantityMatched) {
+        return { success: true, finalized: false, updatedStatement: statement };
+      }
+
+      const { data: items, error: itemsError } = await this.supabase
+        .from('transaction_statement_items')
+        .select('*')
+        .eq('statement_id', statementId)
+        .order('line_number', { ascending: true });
+
+      if (itemsError) throw itemsError;
+
+      const actualReceivedDate = (statement.extracted_data as { actual_received_date?: string } | null)?.actual_received_date;
+      const receiptByName = statement.quantity_match_confirmed_by_name
+        || statement.manager_confirmed_by_name
+        || '알수없음';
+
+      for (const item of items || []) {
         const hasValidUnitPrice = item.confirmed_unit_price !== undefined && item.confirmed_unit_price !== null;
         const hasValidAmount = item.confirmed_amount !== undefined && item.confirmed_amount !== null;
-        
+
         const updateData: {
           unit_price_value?: number;
           amount_value?: number;
@@ -1334,7 +1456,7 @@ class TransactionStatementService {
               seq: nextSeq,
               qty: item.confirmed_quantity,
               date: actualReceivedDate,
-              by: confirmerName || '알수없음'
+              by: receiptByName
             }
           ];
 
@@ -1353,52 +1475,54 @@ class TransactionStatementService {
             .eq('id', item.matched_item_id);
 
           if (purchaseError) {
-            console.warn('Failed to update purchase item:', purchaseError);
+            logger.warn('Failed to update purchase item:', purchaseError);
           }
         }
 
-        // 3. 추가 공정 처리 (새 품목 삽입)
         if (item.is_additional_item && item.matched_purchase_id && !item.matched_item_id) {
-          const statementItem = await this.getStatementItem(item.itemId);
-          if (statementItem) {
-            const { error: insertError } = await this.supabase
-              .from('purchase_request_items')
-              .insert({
-                purchase_request_id: item.matched_purchase_id,
-                item_name: statementItem.extracted_item_name || '추가 공정',
-                specification: statementItem.extracted_specification,
-                quantity: item.confirmed_quantity || statementItem.extracted_quantity || 1,
-                unit_price_value: item.confirmed_unit_price || statementItem.extracted_unit_price,
-                amount_value: item.confirmed_amount || statementItem.extracted_amount,
-                remark: '거래명세서에서 추가됨'
-              });
+          const { error: insertError } = await this.supabase
+            .from('purchase_request_items')
+            .insert({
+              purchase_request_id: item.matched_purchase_id,
+              item_name: item.extracted_item_name || '추가 공정',
+              specification: item.extracted_specification,
+              quantity: item.confirmed_quantity || item.extracted_quantity || 1,
+              unit_price_value: item.confirmed_unit_price || item.extracted_unit_price,
+              amount_value: item.confirmed_amount || item.extracted_amount,
+              remark: '거래명세서에서 추가됨'
+            });
 
-            if (insertError) {
-              console.warn('Failed to insert additional item:', insertError);
-            }
+          if (insertError) {
+            logger.warn('Failed to insert additional item:', insertError);
           }
         }
       }
 
-      // 4. 거래명세서 상태를 confirmed로 변경
-      const { error: stmtError } = await this.supabase
+      const confirmedAt = new Date().toISOString();
+      const confirmedBy = statement.manager_confirmed_by || statement.quantity_match_confirmed_by || null;
+      const confirmedByName = statement.manager_confirmed_by_name || statement.quantity_match_confirmed_by_name || null;
+
+      const { data: finalizedStatement, error: finalizeError } = await this.supabase
         .from('transaction_statements')
         .update({
           status: 'confirmed',
-          confirmed_at: new Date().toISOString(),
-          confirmed_by: user?.id,
-          confirmed_by_name: confirmerName
+          confirmed_at: confirmedAt,
+          confirmed_by: confirmedBy,
+          confirmed_by_name: confirmedByName
         })
-        .eq('id', request.statementId);
+        .eq('id', statementId)
+        .select('*')
+        .single();
 
-      if (stmtError) throw stmtError;
+      if (finalizeError) throw finalizeError;
 
-      return { success: true };
+      return { success: true, finalized: true, updatedStatement: finalizedStatement };
     } catch (error) {
-      console.error('Confirm statement error:', error);
+      logger.error('Finalize statement error:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : '확정 중 오류가 발생했습니다.'
+        finalized: false,
+        error: error instanceof Error ? error.message : '확정 처리 중 오류가 발생했습니다.'
       };
     }
   }

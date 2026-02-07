@@ -30,6 +30,12 @@ export interface TransactionStatement {
   confirmed_at?: string;
   confirmed_by?: string;
   confirmed_by_name?: string;
+  manager_confirmed_at?: string;
+  manager_confirmed_by?: string;
+  manager_confirmed_by_name?: string;
+  quantity_match_confirmed_at?: string;
+  quantity_match_confirmed_by?: string;
+  quantity_match_confirmed_by_name?: string;
   statement_date?: string;
   vendor_name?: string;
   total_amount?: number;

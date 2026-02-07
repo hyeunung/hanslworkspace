@@ -233,18 +233,23 @@ export default function StatementUploadModal({
 
           <div className="mt-3 flex items-center justify-between gap-3">
             <div className="modal-label text-gray-600">실입고일</div>
-            <DateQuantityPickerPopover
-              onConfirm={(date) => setActualReceiptDate(date)}
-              placeholder="입고일을 선택하세요"
-              align="end"
-              side="bottom"
-              hideQuantityInput={true}
-              disabled={uploading}
-            >
-              <button className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">
-                {actualReceiptDate ? format(actualReceiptDate, 'yyyy-MM-dd') : '실입고일 선택'}
-              </button>
-            </DateQuantityPickerPopover>
+            <div className="flex items-center gap-2">
+              {!actualReceiptDate && (
+                <span className="text-[10px] text-red-500 font-medium">실입고일을 입력해주세요.</span>
+              )}
+              <DateQuantityPickerPopover
+                onConfirm={(date) => setActualReceiptDate(date)}
+                placeholder="입고일을 선택하세요"
+                align="end"
+                side="bottom"
+                hideQuantityInput={true}
+                disabled={uploading}
+              >
+                <button className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">
+                  {actualReceiptDate ? format(actualReceiptDate, 'yyyy-MM-dd') : '실입고일 선택'}
+                </button>
+              </DateQuantityPickerPopover>
+            </div>
           </div>
 
           {/* 안내 문구 */}
@@ -267,7 +272,7 @@ export default function StatementUploadModal({
           </Button>
           <Button
             onClick={handleUpload}
-            disabled={!file || uploading}
+            disabled={!file || !actualReceiptDate || uploading}
             className="button-base h-8 text-[11px] bg-hansl-600 hover:bg-hansl-700 text-white"
           >
             {uploading ? (

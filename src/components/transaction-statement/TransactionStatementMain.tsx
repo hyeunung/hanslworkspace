@@ -91,6 +91,12 @@ export default function TransactionStatementMain() {
       if (result.success) {
         setStatements(result.data || []);
         setTotalCount(result.count || 0);
+        const processingIds = (result.data || [])
+          .filter((item) => item.status === 'processing')
+          .map((item) => item.id);
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:loadStatements:processing',message:'loadStatements processing snapshot',data:{processingCount:processingIds.length,processingIds:processingIds.slice(0,5),extractingCount:extractingIds.size},timestamp:Date.now(),runId:'run1',hypothesisId:'H1'} )}).catch(()=>{});
+        // #endregion
         // #region agent log
         fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:loadStatements:success',message:'loadStatements success',data:{count:result.count,firstStatuses:(result.data||[]).slice(0,5).map((s)=>({id:s.id,status:s.status}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
         // #endregion
@@ -385,6 +391,9 @@ export default function TransactionStatementMain() {
     console.log('[OCR] Button clicked, statement:', statement);
     
     const canExtract = ['pending', 'queued', 'failed'].includes(statement.status);
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:handleStartExtraction:entry',message:'start extraction clicked',data:{statementId:statement.id,status:statement.status,canExtract,alreadyExtracting:extractingIds.has(statement.id)},timestamp:Date.now(),runId:'run1',hypothesisId:'H2'} )}).catch(()=>{});
+    // #endregion
     if (!canExtract || extractingIds.has(statement.id)) {
       console.log('[OCR] Status is not eligible or already extracting:', statement.status);
       toast.info('이미 처리 중이거나 완료된 건입니다.');
@@ -432,6 +441,9 @@ export default function TransactionStatementMain() {
         next.delete(statement.id);
         return next;
       });
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:handleStartExtraction:finally',message:'extraction finished cleanup',data:{statementId:statement.id},timestamp:Date.now(),runId:'run1',hypothesisId:'H2'} )}).catch(()=>{});
+      // #endregion
     }
   };
 
@@ -460,6 +472,9 @@ export default function TransactionStatementMain() {
   // 업로드 성공 후 처리 - 자동으로 OCR 시작
   const handleUploadSuccess = async (statementId: string, imageUrl: string) => {
     setIsUploadModalOpen(false);
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:handleUploadSuccess:entry',message:'upload success triggers extract',data:{statementId,hasImageUrl:Boolean(imageUrl)},timestamp:Date.now(),runId:'run1',hypothesisId:'H2'} )}).catch(()=>{});
+    // #endregion
     
     // 1. 업로드 직후 바로 목록 갱신 (목록에 즉시 표시)
     await loadStatements();
@@ -659,7 +674,6 @@ export default function TransactionStatementMain() {
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">업로드일</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">명세서일</th>
                       <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">거래처명</th>
-                      <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">파일명</th>
                       <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">합계금액</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">등록자</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">확정자</th>
@@ -686,9 +700,6 @@ export default function TransactionStatementMain() {
                         </td>
                         <td className="px-3 py-2.5 text-[11px] font-medium text-gray-900">
                           {statement.vendor_name || '-'}
-                        </td>
-                        <td className="px-3 py-2.5 text-[11px] text-gray-700 max-w-[180px] truncate">
-                          {statement.file_name || '-'}
                         </td>
                         <td className="px-3 py-2.5 text-[11px] font-medium text-right text-gray-900">
                           {formatAmount(statement.grand_total)}
@@ -751,9 +762,6 @@ export default function TransactionStatementMain() {
                     <div className="mb-2">
                       <p className="text-[11px] font-medium text-gray-900">
                         {statement.vendor_name || '거래처 미확인'}
-                      </p>
-                      <p className="text-[10px] text-gray-500 truncate">
-                        {statement.file_name}
                       </p>
                     </div>
                     {statement.grand_total && (

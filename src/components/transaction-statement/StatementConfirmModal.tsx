@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import transactionStatementService from "@/services/transactionStatementService";
 import type { 
   TransactionStatement, 
@@ -194,11 +195,13 @@ export default function StatementConfirmModal({
 }: StatementConfirmModalProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingAction, setSavingAction] = useState<'confirm' | 'quantity-match' | 'reject' | null>(null);
   const [isReextracting, setIsReextracting] = useState(false);
   const [statementWithItems, setStatementWithItems] = useState<TransactionStatementWithItems | null>(null);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
   const [confirmerName, setConfirmerName] = useState("");
   const dialogDebugId = "statement-confirm-dialog";
+  const { currentUserRoles, currentUserId, currentUserName } = useAuth();
   
   // 선택된 발주/수주번호 (Case 1: 전체 적용용)
   const [selectedPONumber, setSelectedPONumber] = useState<string>("");
@@ -2045,12 +2048,25 @@ export default function StatementConfirmModal({
     }
   }, [statementWithItems, itemMatches, isSamePONumber, selectedPONumber, itemPONumbers, getSystemItemsForPO]);
 
+  const effectiveConfirmerName = confirmerName || currentUserName || '알수없음';
+  const uploaderId = statementWithItems?.uploaded_by ?? statement.uploaded_by;
+  const isLeadBuyer = currentUserRoles.includes('lead buyer');
+  const isUploader = Boolean(currentUserId && uploaderId && currentUserId === uploaderId);
+  const isManagerConfirmed = Boolean(statementWithItems?.manager_confirmed_at);
+  const isQuantityMatchConfirmed = Boolean(statementWithItems?.quantity_match_confirmed_at);
+  const isStatementConfirmed = statementWithItems?.status === 'confirmed';
+  const isConfirmDisabled = saving || !statementWithItems || !isLeadBuyer || isManagerConfirmed || isStatementConfirmed;
+  const isQuantityMatchDisabled = saving || !statementWithItems || !isUploader || isQuantityMatchConfirmed || isStatementConfirmed;
+  const confirmButtonLabel = isManagerConfirmed || isStatementConfirmed ? '확정 완료' : '확정';
+  const quantityMatchButtonLabel = isQuantityMatchConfirmed || isStatementConfirmed ? '수량일치 완료' : '수량일치';
+
   // 확정
   const handleConfirm = async () => {
     if (!statementWithItems) return;
 
     try {
       setSaving(true);
+      setSavingAction('confirm');
 
       // 1. OCR 수정사항 학습 데이터로 저장
       await saveOCRCorrections();
@@ -2102,11 +2118,18 @@ export default function StatementConfirmModal({
           items: confirmItems,
           actual_received_date: statementWithItems.extracted_data?.actual_received_date
         },
-        confirmerName
+        effectiveConfirmerName
       );
 
       if (result.success) {
-        toast.success('거래명세서가 확정되었습니다.');
+        if (result.updatedStatement) {
+          setStatementWithItems(prev => (prev ? { ...prev, ...result.updatedStatement } : prev));
+        }
+        if (result.finalized) {
+          toast.success('거래명세서가 확정되었습니다.');
+        } else {
+          toast.success('확정 처리 완료 (수량일치 대기)');
+        }
         onConfirm();
       } else {
         toast.error(result.error || '확정에 실패했습니다.');
@@ -2115,6 +2138,41 @@ export default function StatementConfirmModal({
       toast.error('확정 중 오류가 발생했습니다.');
     } finally {
       setSaving(false);
+      setSavingAction(null);
+    }
+  };
+
+  // 수량일치 확인
+  const handleQuantityMatch = async () => {
+    if (!statementWithItems) return;
+
+    try {
+      setSaving(true);
+      setSavingAction('quantity-match');
+
+      const result = await transactionStatementService.confirmQuantityMatch(
+        statement.id,
+        effectiveConfirmerName
+      );
+
+      if (result.success) {
+        if (result.updatedStatement) {
+          setStatementWithItems(prev => (prev ? { ...prev, ...result.updatedStatement } : prev));
+        }
+        if (result.finalized) {
+          toast.success('거래명세서가 확정되었습니다.');
+        } else {
+          toast.success('수량일치 확인 완료 (확정 대기)');
+        }
+        onConfirm();
+      } else {
+        toast.error(result.error || '수량일치 확인에 실패했습니다.');
+      }
+    } catch (error) {
+      toast.error('수량일치 확인 중 오류가 발생했습니다.');
+    } finally {
+      setSaving(false);
+      setSavingAction(null);
     }
   };
 
@@ -2124,6 +2182,7 @@ export default function StatementConfirmModal({
 
     try {
       setSaving(true);
+      setSavingAction('reject');
       
       const result = await transactionStatementService.rejectStatement(statement.id);
       
@@ -2137,6 +2196,7 @@ export default function StatementConfirmModal({
       toast.error('거부 처리 중 오류가 발생했습니다.');
     } finally {
       setSaving(false);
+      setSavingAction(null);
     }
   };
 
@@ -3249,11 +3309,15 @@ export default function StatementConfirmModal({
               닫기
             </Button>
             <Button
-              onClick={handleConfirm}
-              disabled={saving || !statementWithItems}
-              className="button-base h-8 text-[11px] bg-hansl-600 hover:bg-hansl-700 text-white"
+              onClick={handleQuantityMatch}
+              disabled={isQuantityMatchDisabled}
+              className={`button-base h-8 text-[11px] ${
+                isQuantityMatchDisabled
+                  ? 'border border-gray-300 bg-white text-gray-400'
+                  : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
             >
-              {saving ? (
+              {savingAction === 'quantity-match' ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
                   처리 중...
@@ -3261,7 +3325,28 @@ export default function StatementConfirmModal({
               ) : (
                 <>
                   <CheckCircle className="w-3.5 h-3.5 mr-1" />
-                  확정
+                  {quantityMatchButtonLabel}
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={handleConfirm}
+              disabled={isConfirmDisabled}
+              className={`button-base h-8 text-[11px] ${
+                isConfirmDisabled
+                  ? 'border border-gray-300 bg-white text-gray-400'
+                  : 'bg-hansl-600 hover:bg-hansl-700 text-white'
+              }`}
+            >
+              {savingAction === 'confirm' ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                  처리 중...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                  {confirmButtonLabel}
                 </>
               )}
             </Button>
