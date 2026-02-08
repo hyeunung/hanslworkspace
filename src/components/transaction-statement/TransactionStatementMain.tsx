@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,7 +21,9 @@ import {
   ExternalLink,
   X,
   ChevronDown,
-  Package
+  Package,
+  ChevronsUpDown,
+  Check
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -37,7 +39,21 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import transactionStatementService from "@/services/transactionStatementService";
+import { useAuth } from "@/contexts/AuthContext";
 import type { 
   TransactionStatement, 
   TransactionStatementStatus,
@@ -54,7 +70,19 @@ import PurchaseDetailModal from "@/components/purchase/PurchaseDetailModal";
  * 
  * 거래명세서 목록 조회, 업로드, OCR 추출, 발주 매칭, 확정 기능을 제공합니다.
  */
+// 직원 목록 타입 (등록자 변경용)
+interface EmployeeOption {
+  id: string;
+  name: string;
+}
+
 export default function TransactionStatementMain() {
+  const { currentUserRoles } = useAuth();
+  const supabase = createClient();
+  
+  // app_admin 권한 확인
+  const isAppAdmin = currentUserRoles.includes('app_admin');
+  
   const [statements, setStatements] = useState<TransactionStatement[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -62,6 +90,13 @@ export default function TransactionStatementMain() {
   const [dateFilter, setDateFilter] = useState("");
   const [totalCount, setTotalCount] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
+  
+  // 서브 탭 상태 (거래명세서 / 입고수량)
+  const [activeTab, setActiveTab] = useState<'default' | 'receipt'>('default');
+  
+  // 직원 목록 (등록자 변경용 - app_admin만)
+  const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+  const [editingUploaderId, setEditingUploaderId] = useState<string | null>(null);
   
   // 모달 상태
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -84,6 +119,66 @@ export default function TransactionStatementMain() {
     statement: TransactionStatement | null;
     position: { top: number; left: number };
   }>({ isOpen: false, statement: null, position: { top: 0, left: 0 } });
+
+  // 탭별 필터링된 목록 및 카운트
+  const { filteredStatements, defaultCount, receiptCount } = useMemo(() => {
+    const defaultItems = statements.filter(s => (s.statement_mode ?? 'default') === 'default');
+    const receiptItems = statements.filter(s => s.statement_mode === 'receipt');
+    
+    return {
+      filteredStatements: activeTab === 'default' ? defaultItems : receiptItems,
+      defaultCount: defaultItems.length,
+      receiptCount: receiptItems.length
+    };
+  }, [statements, activeTab]);
+
+  // 직원 목록 로드 (app_admin만)
+  useEffect(() => {
+    if (!isAppAdmin) return;
+    
+    const loadEmployees = async () => {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, name')
+        .order('name');
+      
+      if (!error && data) {
+        setEmployees(data.map((e: { id: string; name: string }) => ({ id: e.id, name: e.name })));
+      }
+    };
+    
+    loadEmployees();
+  }, [isAppAdmin, supabase]);
+
+  // 등록자 변경 핸들러 (app_admin만)
+  const handleUploaderChange = async (statementId: string, newUploaderId: string) => {
+    if (!isAppAdmin) return;
+    
+    const selectedEmployee = employees.find(e => e.id === newUploaderId);
+    if (!selectedEmployee) return;
+    
+    const { error } = await supabase
+      .from('transaction_statements')
+      .update({ 
+        uploaded_by: newUploaderId,
+        uploaded_by_name: selectedEmployee.name
+      })
+      .eq('id', statementId);
+    
+    if (error) {
+      toast.error('등록자 변경에 실패했습니다.');
+      return;
+    }
+    
+    // 로컬 상태 업데이트
+    setStatements(prev => prev.map(s => 
+      s.id === statementId 
+        ? { ...s, uploaded_by: newUploaderId, uploaded_by_name: selectedEmployee.name }
+        : s
+    ));
+    setEditingUploaderId(null);
+    toast.success('등록자가 변경되었습니다.');
+  };
 
   // 데이터 로드
   const loadStatements = useCallback(async () => {
@@ -683,16 +778,58 @@ export default function TransactionStatementMain() {
       {/* 목록 카드 */}
       <Card className="overflow-hidden border border-gray-200 business-radius-card">
         <CardContent className="p-0">
+          {/* 서브 탭 */}
+          <div className="flex border-b border-gray-200">
+            <button
+              onClick={() => setActiveTab('default')}
+              className={`flex items-center gap-2 px-4 py-2.5 text-[11px] font-medium transition-colors ${
+                activeTab === 'default'
+                  ? 'text-hansl-600 border-b-2 border-hansl-600 bg-hansl-50/50'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <FileCheck className="w-3.5 h-3.5" />
+              거래명세서
+              <span className={`px-1.5 py-0.5 text-[10px] rounded-full ${
+                activeTab === 'default' ? 'bg-hansl-100 text-hansl-700' : 'bg-gray-100 text-gray-600'
+              }`}>
+                {defaultCount}
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('receipt')}
+              className={`flex items-center gap-2 px-4 py-2.5 text-[11px] font-medium transition-colors ${
+                activeTab === 'receipt'
+                  ? 'text-orange-600 border-b-2 border-orange-600 bg-orange-50/50'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <Package className="w-3.5 h-3.5" />
+              입고수량
+              <span className={`px-1.5 py-0.5 text-[10px] rounded-full ${
+                activeTab === 'receipt' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'
+              }`}>
+                {receiptCount}
+              </span>
+            </button>
+          </div>
+
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="w-6 h-6 border-2 border-hansl-500 border-t-transparent rounded-full animate-spin" />
               <span className="ml-3 text-[11px] text-gray-500">로딩 중...</span>
             </div>
-          ) : statements.length === 0 ? (
+          ) : filteredStatements.length === 0 ? (
             <div className="text-center py-12">
               <FileCheck className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-              <h3 className="text-[12px] font-medium text-gray-700 mb-1">거래명세서가 없습니다</h3>
-              <p className="text-[11px] text-gray-500">업로드된 거래명세서가 없거나 검색 조건에 맞는 결과가 없습니다.</p>
+              <h3 className="text-[12px] font-medium text-gray-700 mb-1">
+                {activeTab === 'default' ? '거래명세서가 없습니다' : '입고수량 데이터가 없습니다'}
+              </h3>
+              <p className="text-[11px] text-gray-500">
+                {activeTab === 'default' 
+                  ? '업로드된 거래명세서가 없거나 검색 조건에 맞는 결과가 없습니다.'
+                  : '업로드된 입고수량 데이터가 없거나 검색 조건에 맞는 결과가 없습니다.'}
+              </p>
             </div>
           ) : (
             <>
@@ -712,7 +849,7 @@ export default function TransactionStatementMain() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
-                    {statements.map((statement) => (
+                    {filteredStatements.map((statement) => (
                       <tr
                         key={statement.id}
                         className="hover:bg-gray-50 transition-colors cursor-pointer"
@@ -736,7 +873,57 @@ export default function TransactionStatementMain() {
                           {formatAmount(statement.grand_total)}
                         </td>
                         <td className="px-3 py-2.5 text-[11px] text-center text-gray-600">
-                          {statement.uploaded_by_name || '-'}
+                          {isAppAdmin ? (
+                            <div className="flex justify-center">
+                              <Popover 
+                                open={editingUploaderId === statement.id} 
+                                onOpenChange={(open) => setEditingUploaderId(open ? statement.id : null)}
+                              >
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    role="combobox"
+                                    className="h-6 w-20 justify-between text-[10px] px-2 border-gray-200"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <span className="truncate">
+                                      {statement.uploaded_by_name || '-'}
+                                    </span>
+                                    <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[180px] p-0" align="center">
+                                  <Command>
+                                    <CommandInput placeholder="이름 검색..." className="h-8 text-xs" />
+                                    <CommandList>
+                                      <CommandEmpty>검색 결과 없음</CommandEmpty>
+                                      <CommandGroup className="max-h-[200px] overflow-auto">
+                                        {employees.map((emp) => (
+                                          <CommandItem
+                                            key={emp.id}
+                                            value={emp.name}
+                                            onSelect={() => {
+                                              handleUploaderChange(statement.id, emp.id);
+                                            }}
+                                            className="text-[11px]"
+                                          >
+                                            <Check
+                                              className={`mr-2 h-3 w-3 ${
+                                                statement.uploaded_by === emp.id ? "opacity-100" : "opacity-0"
+                                              }`}
+                                            />
+                                            {emp.name}
+                                          </CommandItem>
+                                        ))}
+                                      </CommandGroup>
+                                    </CommandList>
+                                  </Command>
+                                </PopoverContent>
+                              </Popover>
+                            </div>
+                          ) : (
+                            statement.uploaded_by_name || '-'
+                          )}
                         </td>
                         <td className="px-3 py-2.5 text-[11px] text-center text-gray-600">
                           {statement.confirmed_by_name || '-'}
@@ -776,7 +963,7 @@ export default function TransactionStatementMain() {
 
               {/* 모바일 카드 뷰 */}
               <div className="md:hidden divide-y divide-gray-100">
-                {statements.map((statement) => (
+                {filteredStatements.map((statement) => (
                   <div
                     key={statement.id}
                     className="p-3 hover:bg-gray-50 transition-colors cursor-pointer"
