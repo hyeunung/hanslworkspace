@@ -19,7 +19,9 @@ import {
   SlidersHorizontal,
   ChevronRight,
   ExternalLink,
-  X
+  X,
+  ChevronDown,
+  Package
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -29,12 +31,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import transactionStatementService from "@/services/transactionStatementService";
 import type { 
   TransactionStatement, 
-  TransactionStatementStatus 
+  TransactionStatementStatus,
+  StatementMode
 } from "@/types/transactionStatement";
 import StatementUploadModal from "./StatementUploadModal";
+import ReceiptQuantityUploadModal from "./ReceiptQuantityUploadModal";
 import StatementConfirmModal from "./StatementConfirmModal";
 import StatementImageViewer from "./StatementImageViewer";
 import PurchaseDetailModal from "@/components/purchase/PurchaseDetailModal";
@@ -55,6 +65,7 @@ export default function TransactionStatementMain() {
   
   // 모달 상태
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isReceiptUploadModalOpen, setIsReceiptUploadModalOpen] = useState(false); // 입고수량 업로드 모달
   const [selectedStatement, setSelectedStatement] = useState<TransactionStatement | null>(null);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
@@ -268,7 +279,7 @@ export default function TransactionStatementMain() {
   }, [loadStatements]);
 
   // 상태 배지 렌더링
-  const renderStatusBadge = (status: TransactionStatementStatus, errorMessage?: string | null) => {
+  const renderStatusBadge = (status: TransactionStatementStatus, errorMessage?: string | null, statementMode?: 'default' | 'receipt') => {
     const baseClass = "inline-flex items-center gap-1 business-radius-badge px-2 py-0.5 text-[10px] font-medium leading-tight";
     
     switch (status) {
@@ -301,10 +312,11 @@ export default function TransactionStatementMain() {
           </span>
         );
       case 'confirmed':
+        // 입고수량 모드에서는 "완료"로 표시
         return (
           <span className={`${baseClass} bg-green-50 text-green-600 border border-green-200`}>
             <CheckCircle className="w-3 h-3" />
-            확정됨
+            {statementMode === 'receipt' ? '완료' : '확정됨'}
           </span>
         );
       case 'rejected':
@@ -555,13 +567,32 @@ export default function TransactionStatementMain() {
           </div>
           
           <div className="flex items-center gap-2">
-            <Button
-              onClick={() => setIsUploadModalOpen(true)}
-              className="!h-auto button-base bg-hansl-600 hover:bg-hansl-700 text-white"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">업로드</span>
-            </Button>
+            {/* 업로드 드롭다운 메뉴 */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="!h-auto button-base bg-hansl-600 hover:bg-hansl-700 text-white">
+                  <Plus className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline ml-1">업로드</span>
+                  <ChevronDown className="w-3 h-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem 
+                  onClick={() => setIsUploadModalOpen(true)}
+                  className="text-[12px] py-2 cursor-pointer"
+                >
+                  <FileCheck className="w-4 h-4 mr-2 text-hansl-600" />
+                  거래명세서 업로드
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={() => setIsReceiptUploadModalOpen(true)}
+                  className="text-[12px] py-2 cursor-pointer"
+                >
+                  <Package className="w-4 h-4 mr-2 text-orange-600" />
+                  입고수량 업로드
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               variant="outline"
               onClick={loadStatements}
@@ -690,7 +721,7 @@ export default function TransactionStatementMain() {
                         <td className="px-3 py-2.5 text-center">
                           {extractingIds.has(statement.id) 
                             ? renderStatusBadge('processing') 
-                            : renderStatusBadge(statement.status, statement.extraction_error)}
+                            : renderStatusBadge(statement.status, statement.extraction_error, statement.statement_mode)}
                         </td>
                         <td className="px-3 py-2.5 text-[11px] text-center text-gray-600">
                           {formatDate(statement.uploaded_at)}
@@ -754,7 +785,7 @@ export default function TransactionStatementMain() {
                     <div className="flex items-start justify-between mb-2">
                       {extractingIds.has(statement.id) 
                         ? renderStatusBadge('processing') 
-                        : renderStatusBadge(statement.status, statement.extraction_error)}
+                        : renderStatusBadge(statement.status, statement.extraction_error, statement.statement_mode)}
                       <span className="text-[10px] text-gray-400">
                         {formatDate(statement.uploaded_at)}
                       </span>
@@ -799,6 +830,13 @@ export default function TransactionStatementMain() {
       <StatementUploadModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
+        onSuccess={handleUploadSuccess}
+      />
+
+      {/* 입고수량 업로드 모달 */}
+      <ReceiptQuantityUploadModal
+        isOpen={isReceiptUploadModalOpen}
+        onClose={() => setIsReceiptUploadModalOpen(false)}
         onSuccess={handleUploadSuccess}
       />
 

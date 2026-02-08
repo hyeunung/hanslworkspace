@@ -29,7 +29,8 @@ import type {
   TransactionStatementItemWithMatch,
   ConfirmItemRequest,
   MatchCandidate,
-  OCRFieldType
+  OCRFieldType,
+  StatementMode
 } from "@/types/transactionStatement";
 import { normalizeOrderNumber } from "@/types/transactionStatement";
 import StatementImageViewer from "./StatementImageViewer";
@@ -2055,10 +2056,15 @@ export default function StatementConfirmModal({
   const isManagerConfirmed = Boolean(statementWithItems?.manager_confirmed_at);
   const isQuantityMatchConfirmed = Boolean(statementWithItems?.quantity_match_confirmed_at);
   const isStatementConfirmed = statementWithItems?.status === 'confirmed';
-  const isConfirmDisabled = saving || !statementWithItems || !isLeadBuyer || isManagerConfirmed || isStatementConfirmed;
+  
+  // 입고수량 모드 확인 (월말결제용 - 수량만 확인)
+  const isReceiptMode = (statementWithItems?.statement_mode ?? statement.statement_mode) === 'receipt';
+  
+  // 입고수량 모드에서는 확정 버튼 비활성화 (lead_buyer 승인 불필요)
+  const isConfirmDisabled = saving || !statementWithItems || !isLeadBuyer || isManagerConfirmed || isStatementConfirmed || isReceiptMode;
   const isQuantityMatchDisabled = saving || !statementWithItems || !isUploader || isQuantityMatchConfirmed || isStatementConfirmed;
   const confirmButtonLabel = isManagerConfirmed || isStatementConfirmed ? '확정 완료' : '확정';
-  const quantityMatchButtonLabel = isQuantityMatchConfirmed || isStatementConfirmed ? '수량일치 완료' : '수량일치';
+  const quantityMatchButtonLabel = isQuantityMatchConfirmed || isStatementConfirmed ? (isReceiptMode ? '완료' : '수량일치 완료') : '수량일치';
 
   // 확정
   const handleConfirm = async () => {
@@ -2576,7 +2582,7 @@ export default function StatementConfirmModal({
                   <thead className="bg-gray-100 sticky top-0 z-10">
                     <tr className="border-b border-gray-200">
                       {/* 좌측: 시스템 발주품목 헤더 */}
-                      <th colSpan={isSamePONumber ? 4 : 5} className="border-r-2 border-gray-300 p-2 text-left w-[45%]">
+                      <th colSpan={isReceiptMode ? (isSamePONumber ? 3 : 4) : (isSamePONumber ? 4 : 5)} className="border-r-2 border-gray-300 p-2 text-left w-[45%]">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="modal-section-title text-gray-700">시스템 발주품목</span>
                           {isSamePONumber && allPONumberCandidates.length > 0 && (
@@ -2745,7 +2751,7 @@ export default function StatementConfirmModal({
                       </th>
                       
                       {/* 우측: OCR 추출 품목 헤더 */}
-                      <th colSpan={isSamePONumber ? 4 : 5} className="p-2 text-left w-[45%]">
+                      <th colSpan={isReceiptMode ? (isSamePONumber ? 3 : 4) : (isSamePONumber ? 4 : 5)} className="p-2 text-left w-[45%]">
                         <div className="flex items-center gap-2">
                           <span className="modal-section-title text-gray-700">
                             OCR 추출 품목
@@ -2814,8 +2820,16 @@ export default function StatementConfirmModal({
                       )}
                       <th className="p-1 text-left modal-label">품목명</th>
                       <th className="p-1 text-right modal-label">수량</th>
-                      <th className="p-1 text-right modal-label">단가</th>
-                      <th className="border-r-2 border-gray-300 p-1 text-right modal-label">합계</th>
+                      {/* 입고수량 모드에서는 단가/합계 숨김 */}
+                      {!isReceiptMode && (
+                        <>
+                          <th className="p-1 text-right modal-label">단가</th>
+                          <th className="border-r-2 border-gray-300 p-1 text-right modal-label">합계</th>
+                        </>
+                      )}
+                      {isReceiptMode && (
+                        <th className="border-r-2 border-gray-300 p-1"></th>
+                      )}
                       
                       {/* 중앙 */}
                       <th className="border-r-2 border-gray-300 p-1 text-center bg-blue-50/30">
@@ -2825,8 +2839,16 @@ export default function StatementConfirmModal({
                       {/* 우측 컬럼 */}
                       <th className="p-1 text-left whitespace-nowrap modal-label">품목명</th>
                       <th className="p-1 text-right whitespace-nowrap w-16 modal-label">수량</th>
-                      <th className="p-1 text-right whitespace-nowrap w-20 modal-label">단가</th>
-                      <th className="p-1 text-right whitespace-nowrap w-24 modal-label">합계</th>
+                      {/* 입고수량 모드에서는 단가/합계 숨김 */}
+                      {!isReceiptMode && (
+                        <>
+                          <th className="p-1 text-right whitespace-nowrap w-20 modal-label">단가</th>
+                          <th className="p-1 text-right whitespace-nowrap w-24 modal-label">합계</th>
+                        </>
+                      )}
+                      {isReceiptMode && (
+                        <th className="p-1"></th>
+                      )}
                       {!isSamePONumber && (
                         <th className="p-1 text-left whitespace-nowrap modal-label">발주/수주번호</th>
                       )}
@@ -3126,12 +3148,20 @@ export default function StatementConfirmModal({
                               {matchedSystem?.quantity ?? '-'} / {matchedSystem?.received_quantity ?? '-'}
                             </span>
                           </td>
-                          <td className="p-1 text-right">
-                            <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem ? formatAmount(matchedSystem.unit_price) : '-'}</span>
-                          </td>
-                          <td className="border-r-2 border-gray-300 p-1 text-right">
-                            <span className="text-[11px] font-bold text-gray-900" style={{ fontSize: '11px', fontWeight: 700 }}>{matchedSystem ? formatAmount(matchedSystem.amount) : '-'}</span>
-                          </td>
+                          {/* 입고수량 모드에서는 단가/합계 숨김 */}
+                          {!isReceiptMode && (
+                            <>
+                              <td className="p-1 text-right">
+                                <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem ? formatAmount(matchedSystem.unit_price) : '-'}</span>
+                              </td>
+                              <td className="border-r-2 border-gray-300 p-1 text-right">
+                                <span className="text-[11px] font-bold text-gray-900" style={{ fontSize: '11px', fontWeight: 700 }}>{matchedSystem ? formatAmount(matchedSystem.amount) : '-'}</span>
+                              </td>
+                            </>
+                          )}
+                          {isReceiptMode && (
+                            <td className="border-r-2 border-gray-300 p-1"></td>
+                          )}
                           
                           {/* 중앙: 발주/수주 번호 일치 상태 (첫 행에만 rowSpan으로 세로 중앙 표시) */}
                           {isFirstRow && (
@@ -3184,34 +3214,42 @@ export default function StatementConfirmModal({
                               title={isOCRItemEdited(ocrItem, 'quantity') ? `원본: ${ocrItem.extracted_quantity}` : undefined}
                             />
                           </td>
-                          <td className="p-1 text-right w-20">
-                            <input
-                              type="number"
-                              value={getOCRItemValue(ocrItem, 'unit_price') as number}
-                              onChange={(e) => handleEditOCRItem(ocrItem.id, 'unit_price', e.target.value ? Number(e.target.value) : 0)}
-                              className={`w-16 px-1 h-5 !text-[10px] !font-medium text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
-                                isOCRItemEdited(ocrItem, 'unit_price') 
-                                  ? 'border-orange-400 bg-orange-50' 
-                                  : 'border-gray-200 bg-white'
-                              }`}
-                              style={{ fontSize: '11px', fontWeight: 500 }}
-                              title={isOCRItemEdited(ocrItem, 'unit_price') ? `원본: ${ocrItem.extracted_unit_price}` : undefined}
-                            />
-                          </td>
-                          <td className="p-1 text-right w-24">
-                            <input
-                              type="number"
-                              value={getOCRItemValue(ocrItem, 'amount') as number}
-                              onChange={(e) => handleEditOCRItem(ocrItem.id, 'amount', e.target.value ? Number(e.target.value) : 0)}
-                              className={`w-20 px-1 h-5 !text-[10px] !font-bold text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
-                                isOCRItemEdited(ocrItem, 'amount') 
-                                  ? 'border-orange-400 bg-orange-50' 
-                                  : 'border-gray-200 bg-white'
-                              }`}
-                              style={{ fontSize: '11px', fontWeight: 700 }}
-                              title={isOCRItemEdited(ocrItem, 'amount') ? `원본: ${ocrItem.extracted_amount}` : undefined}
-                            />
-                          </td>
+                          {/* 입고수량 모드에서는 단가/합계 셀 숨김 */}
+                          {!isReceiptMode && (
+                            <>
+                              <td className="p-1 text-right w-20">
+                                <input
+                                  type="number"
+                                  value={getOCRItemValue(ocrItem, 'unit_price') as number}
+                                  onChange={(e) => handleEditOCRItem(ocrItem.id, 'unit_price', e.target.value ? Number(e.target.value) : 0)}
+                                  className={`w-16 px-1 h-5 !text-[10px] !font-medium text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                                    isOCRItemEdited(ocrItem, 'unit_price') 
+                                      ? 'border-orange-400 bg-orange-50' 
+                                      : 'border-gray-200 bg-white'
+                                  }`}
+                                  style={{ fontSize: '11px', fontWeight: 500 }}
+                                  title={isOCRItemEdited(ocrItem, 'unit_price') ? `원본: ${ocrItem.extracted_unit_price}` : undefined}
+                                />
+                              </td>
+                              <td className="p-1 text-right w-24">
+                                <input
+                                  type="number"
+                                  value={getOCRItemValue(ocrItem, 'amount') as number}
+                                  onChange={(e) => handleEditOCRItem(ocrItem.id, 'amount', e.target.value ? Number(e.target.value) : 0)}
+                                  className={`w-20 px-1 h-5 !text-[10px] !font-bold text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                                    isOCRItemEdited(ocrItem, 'amount') 
+                                      ? 'border-orange-400 bg-orange-50' 
+                                      : 'border-gray-200 bg-white'
+                                  }`}
+                                  style={{ fontSize: '11px', fontWeight: 700 }}
+                                  title={isOCRItemEdited(ocrItem, 'amount') ? `원본: ${ocrItem.extracted_amount}` : undefined}
+                                />
+                              </td>
+                            </>
+                          )}
+                          {isReceiptMode && (
+                            <td className="p-1"></td>
+                          )}
                           
                           {/* Case 2: OCR 발주번호 표시 (편집 가능) */}
                           {!isSamePONumber && (
@@ -3250,36 +3288,38 @@ export default function StatementConfirmModal({
                       );
                     })}
                     
-                    {/* 합계 행 */}
-                    <tr className="bg-gray-50 font-medium border-t border-gray-100">
-                      <td colSpan={isSamePONumber ? 3 : 4} className="p-1 text-right text-gray-600">
-                        시스템 합계
-                      </td>
-                      <td className="border-r-2 border-gray-300 p-1 text-right text-gray-900">
-                        {formatAmount(
-                          Array.from(itemMatches.values())
-                            .filter(Boolean)
-                            .reduce((sum, item) => sum + (item?.amount || 0), 0)
-                        )}
-                      </td>
-                      <td className="border-r-2 border-gray-300 p-1 bg-blue-50/50"></td>
-                      <td colSpan={isSamePONumber ? 3 : 4} className="p-1 text-right text-gray-600">
-                        OCR 합계
-                        {editedOCRItems.size > 0 && (
-                          <span className="ml-1 text-[9px] text-orange-600">(수정됨)</span>
-                        )}
-                      </td>
-                      <td className="p-1 text-right text-gray-900">
-                        {formatAmount(
-                          statementWithItems.items.reduce((sum, item) => {
-                            const edited = editedOCRItems.get(item.id);
-                            const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
-                            return sum + amount;
-                          }, 0)
-                        )}
-                      </td>
-                      {!isSamePONumber && <td className="p-1"></td>}
-                    </tr>
+                    {/* 합계 행 - 입고수량 모드에서는 숨김 */}
+                    {!isReceiptMode && (
+                      <tr className="bg-gray-50 font-medium border-t border-gray-100">
+                        <td colSpan={isSamePONumber ? 3 : 4} className="p-1 text-right text-gray-600">
+                          시스템 합계
+                        </td>
+                        <td className="border-r-2 border-gray-300 p-1 text-right text-gray-900">
+                          {formatAmount(
+                            Array.from(itemMatches.values())
+                              .filter(Boolean)
+                              .reduce((sum, item) => sum + (item?.amount || 0), 0)
+                          )}
+                        </td>
+                        <td className="border-r-2 border-gray-300 p-1 bg-blue-50/50"></td>
+                        <td colSpan={isSamePONumber ? 3 : 4} className="p-1 text-right text-gray-600">
+                          OCR 합계
+                          {editedOCRItems.size > 0 && (
+                            <span className="ml-1 text-[9px] text-orange-600">(수정됨)</span>
+                          )}
+                        </td>
+                        <td className="p-1 text-right text-gray-900">
+                          {formatAmount(
+                            statementWithItems.items.reduce((sum, item) => {
+                              const edited = editedOCRItems.get(item.id);
+                              const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
+                              return sum + amount;
+                            }, 0)
+                          )}
+                        </td>
+                        {!isSamePONumber && <td className="p-1"></td>}
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -3314,7 +3354,7 @@ export default function StatementConfirmModal({
               className={`button-base h-8 text-[11px] ${
                 isQuantityMatchDisabled
                   ? 'border border-gray-300 bg-white text-gray-400'
-                  : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                  : 'bg-hansl-600 hover:bg-hansl-700 text-white'
               }`}
             >
               {savingAction === 'quantity-match' ? (
@@ -3329,27 +3369,30 @@ export default function StatementConfirmModal({
                 </>
               )}
             </Button>
-            <Button
-              onClick={handleConfirm}
-              disabled={isConfirmDisabled}
-              className={`button-base h-8 text-[11px] ${
-                isConfirmDisabled
-                  ? 'border border-gray-300 bg-white text-gray-400'
-                  : 'bg-hansl-600 hover:bg-hansl-700 text-white'
-              }`}
-            >
-              {savingAction === 'confirm' ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-                  처리 중...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-3.5 h-3.5 mr-1" />
-                  {confirmButtonLabel}
-                </>
-              )}
-            </Button>
+            {/* 입고수량 모드에서는 확정 버튼 숨김 (lead_buyer 승인 불필요) */}
+            {!isReceiptMode && (
+              <Button
+                onClick={handleConfirm}
+                disabled={isConfirmDisabled}
+                className={`button-base h-8 text-[11px] ${
+                  isConfirmDisabled
+                    ? 'border border-gray-300 bg-white text-gray-400'
+                    : 'bg-hansl-600 hover:bg-hansl-700 text-white'
+                }`}
+              >
+                {savingAction === 'confirm' ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    처리 중...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                    {confirmButtonLabel}
+                  </>
+                )}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

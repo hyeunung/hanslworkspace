@@ -147,6 +147,106 @@ class TransactionStatementService {
   }
 
   /**
+   * 입고수량 업로드 (월말결제용 - 수량만 추출)
+   * statement_mode: 'receipt'로 저장, 새 Edge Function 호출
+   */
+  async uploadReceiptQuantity(
+    file: File,
+    uploaderName: string,
+    actualReceiptDate?: Date
+  ): Promise<{ success: boolean; data?: { statementId: string; imageUrl: string }; error?: string }> {
+    try {
+      const uploadFile = await this.prepareOcrImage(file);
+      // 고유 파일명 생성
+      const ext = uploadFile.name.split('.').pop()?.toLowerCase() || 'png';
+      const uuid = crypto.randomUUID();
+      const fileName = `${uuid}.${ext}`;
+      const storagePath = `Transaction Statement/${fileName}`;
+
+      // Storage에 업로드
+      const { data: uploadData, error: uploadError } = await this.supabase
+        .storage
+        .from('receipt-images')
+        .upload(storagePath, uploadFile, {
+          contentType: uploadFile.type,
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Public URL 가져오기
+      const { data: urlData } = this.supabase
+        .storage
+        .from('receipt-images')
+        .getPublicUrl(storagePath);
+
+      const imageUrl = urlData.publicUrl;
+
+      // 현재 사용자 정보
+      const { data: { user } } = await this.supabase.auth.getUser();
+
+      const actualReceiptDateIso = actualReceiptDate ? dateToISOString(actualReceiptDate) : null;
+
+      // DB에 레코드 생성 (statement_mode: 'receipt')
+      const { data: statement, error: dbError } = await this.supabase
+        .from('transaction_statements')
+        .insert({
+          image_url: imageUrl,
+          file_name: file.name,
+          uploaded_by: user?.id,
+          uploaded_by_name: uploaderName,
+          status: 'queued',
+          queued_at: new Date().toISOString(),
+          statement_mode: 'receipt', // 입고수량 모드로 설정
+          extracted_data: actualReceiptDateIso
+            ? { actual_received_date: actualReceiptDateIso }
+            : null
+        })
+        .select()
+        .single();
+
+      if (dbError) {
+        console.error('[Upload Receipt] DB insert 실패:', dbError);
+        throw new Error(`DB 저장 실패: ${dbError.message} (code: ${dbError.code})`);
+      }
+
+      // 입고수량 전용 Edge Function 호출 트리거
+      this.triggerReceiptQuantityExtraction(statement.id, imageUrl);
+
+      return {
+        success: true,
+        data: {
+          statementId: statement.id,
+          imageUrl
+        }
+      };
+    } catch (error) {
+      console.error('Upload receipt quantity error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '업로드 중 오류가 발생했습니다.'
+      };
+    }
+  }
+
+  /**
+   * 입고수량 추출 Edge Function 호출 (비동기)
+   */
+  private async triggerReceiptQuantityExtraction(statementId: string, imageUrl: string) {
+    try {
+      await this.supabase.functions.invoke('ocr-receipt-quantity', {
+        body: {
+          statementId,
+          imageUrl,
+          mode: 'process_specific'
+        }
+      });
+    } catch (error) {
+      console.warn('Failed to trigger receipt quantity extraction:', error);
+    }
+  }
+
+  /**
    * OCR/LLM 추출 실행 (Edge Function 호출)
    */
   async extractStatementData(
