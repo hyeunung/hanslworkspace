@@ -56,6 +56,7 @@ interface PurchaseDetailModalProps {
   embedded?: boolean  // Dialog 없이 내용만 렌더링
   currentUserRoles?: string[]
   activeTab?: string
+  forceShowStatementColumns?: boolean
   onRefresh?: (forceRefresh?: boolean, options?: { silent?: boolean }) => void | Promise<void>
   onOptimisticUpdate?: (purchaseId: number, updater: (prev: Purchase) => Purchase) => void
   onDelete?: (purchase: PurchaseRequestWithDetails) => void
@@ -127,6 +128,7 @@ function PurchaseDetailModal({
   embedded = false,
   currentUserRoles = [],
   activeTab,
+  forceShowStatementColumns = false,
   onRefresh,
   onOptimisticUpdate,
   onDelete
@@ -970,10 +972,13 @@ ${itemsText}`
   // 재무 정보 열람 권한 체크
   const canViewFinancialInfo = effectiveRoles.some(role => AUTHORIZED_ROLES.includes(role))
   
-  const showStatementColumns = purchase?.payment_category === '발주' && (
-    activeTab === 'done' || (activeTab === 'receipt' && effectiveRoles.includes('lead buyer'))
+  const showStatementColumns = forceShowStatementColumns || (
+    purchase?.payment_category === '발주' && (
+      activeTab === 'done' || (activeTab === 'receipt' && effectiveRoles.includes('lead buyer'))
+    )
   )
-  const showExpenditureColumn = purchase?.payment_category === '발주' && activeTab === 'done'
+  const showExpenditureColumn = (forceShowStatementColumns && activeTab === 'done') || (purchase?.payment_category === '발주' && activeTab === 'done')
+
   
   // 삭제 권한: 관리자 또는 요청자 본인 (단, 승인된 요청은 관리자만, lead buyer는 삭제 불가)
   const isApproved = purchase?.final_manager_status === 'approved';
@@ -1415,6 +1420,7 @@ ${itemsText}`
             ...item,
             is_statement_received: true,
             statement_received_date: selectedDateIso,
+            accounting_received_date: selectedDateIso,
             statement_received_by_name: currentUserName
           }
         }
@@ -1423,6 +1429,7 @@ ${itemsText}`
           ...item,
           is_statement_received: false,
           statement_received_date: null,
+          accounting_received_date: null,
           statement_received_by_name: null
         }
       })
@@ -1451,6 +1458,7 @@ ${itemsText}`
             ...item,
             is_statement_received: true,
             statement_received_date: selectedDateIso,
+            accounting_received_date: selectedDateIso,
             statement_received_by_name: currentUserName
           }
         }
@@ -1459,6 +1467,7 @@ ${itemsText}`
           ...item,
           is_statement_received: false,
           statement_received_date: null,
+          accounting_received_date: null,
           statement_received_by_name: null
         }
       })
@@ -1481,6 +1490,7 @@ ${itemsText}`
             ...item,
             is_statement_received: true,
             statement_received_date: selectedDateIso,
+            accounting_received_date: selectedDateIso,
             statement_received_by_name: currentUserName
           }
         }
@@ -1489,6 +1499,7 @@ ${itemsText}`
           ...item,
           is_statement_received: false,
           statement_received_date: null,
+          accounting_received_date: null,
           statement_received_by_name: null
         }
       })
@@ -1722,7 +1733,7 @@ ${itemsText}`
           )
         }
       }
-      if (activeTab === 'done' && purchase?.payment_category === '발주') {
+      if (activeTab === 'done' && (purchase?.payment_category === '발주' || forceShowStatementColumns)) {
         columnConfigs.push(
           { key: 'transaction_confirm', minWidth: 85, maxWidth: 120, baseWidth: 85, isFixed: false }, // 거래명세서 확인 칼럼 너비 축소
           { key: 'accounting_date', minWidth: 70, maxWidth: 70, baseWidth: 70, isFixed: true }, // 회계상 입고일 칼럼 너비 축소
@@ -1828,7 +1839,7 @@ ${itemsText}`
             cellValue = item.is_statement_received ? '확인완료' : '미확인'
             break
           case 'accounting_date':
-            cellValue = item.statement_received_date ? formatDate(item.statement_received_date) : ''
+            cellValue = item.accounting_received_date ? formatDate(item.accounting_received_date) : ''
             break
           case 'expenditure_info':
             // 지출정보는 날짜와 금액이 2줄로 표시되므로 특별 처리
@@ -1885,7 +1896,7 @@ ${itemsText}`
   }
 
   // 동적 gridTemplateColumns 생성
-  const getGridTemplateColumns = () => {
+  function getGridTemplateColumns() {
     // 동적 계산된 너비가 있으면 사용 (단, 특정 컬럼은 고정값 강제)
     if (columnWidths.length > 0) {
       const widths = columnWidths.map(width => `${width}px`)
@@ -3561,6 +3572,7 @@ ${itemsText}`
                   ...item, 
                   is_statement_received: true, 
                   statement_received_date: selectedDateIso,
+                  accounting_received_date: selectedDateIso,
                   statement_received_by_name: currentUserName || null
                 }
               : item
@@ -3594,6 +3606,7 @@ ${itemsText}`
         const updateData = {
           is_statement_received: true,
           statement_received_date: selectedDateIso,
+          accounting_received_date: selectedDateIso,
           statement_received_by_name: currentUserName || null
         };
 
@@ -4409,9 +4422,9 @@ ${itemsText}`
           {/* 회계상 입고일 - 발주 + 리드바이어 입고현황/전체항목 */}
           {showStatementColumns && (
             <div className="text-center flex justify-center items-center">
-              {statementReceivedAction.getCompletedDate(item) ? (
+              {item.accounting_received_date ? (
                 <div className="modal-subtitle text-blue-700">
-                  {new Date(statementReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
+                  {new Date(item.accounting_received_date).toLocaleDateString('ko-KR', {
                     year: 'numeric',
                     month: '2-digit',
                     day: '2-digit'
@@ -4821,11 +4834,11 @@ ${itemsText}`
             </div>
           )}
 
-          {!isEditing && showStatementColumns && statementReceivedAction.getCompletedDate(item) && (
+          {!isEditing && showStatementColumns && item.accounting_received_date && (
             <div className="flex items-center justify-between">
               <span className="text-gray-500 text-xs">회계상 입고일:</span>
               <span className="modal-subtitle text-blue-700">
-                {new Date(statementReceivedAction.getCompletedDate(item)).toLocaleDateString('ko-KR', {
+                {new Date(item.accounting_received_date).toLocaleDateString('ko-KR', {
                   year: 'numeric',
                   month: '2-digit',
                   day: '2-digit'
@@ -5696,8 +5709,8 @@ ${itemsText}`
                   <div className="text-xs font-medium text-gray-600">품목 목록 (터치하여 스크롤)</div>
                 </div>
                 
-                {/* Items List + Summary share ONE scroll (x+y) */}
-                <div className="max-h-[50vh] sm:max-h-[40vh] overflow-y-auto overflow-x-hidden sm:overflow-x-auto w-full">
+                {/* Items List (vertical scroll) + Summary (fixed) */}
+                <div className="w-full sm:overflow-x-auto">
                   <div className="min-w-max">
                     {/* Items Table Header - Sticky inside scroll container */}
                     <div className={`bg-gray-50 px-2 sm:px-3 py-1 border-b border-gray-100 sticky top-0 z-20 min-w-max ${isEditing ? 'pl-7 sm:pl-8' : ''}`}>
@@ -5772,7 +5785,8 @@ ${itemsText}`
                       </div>
                       </div>
                     {/* Rows */}
-                    <div className="pb-0">
+                    <div className="max-h-[50vh] sm:max-h-[40vh] overflow-y-auto overflow-x-hidden">
+                      <div className="pb-0">
                       {isEditing && (
                         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                           <SortableContext
@@ -5794,10 +5808,11 @@ ${itemsText}`
                           ))}
                         </div>
                       )}
+                      </div>
                     </div>
 
-                    {/* Desktop Summary (sticky bottom, shares horizontal scroll) */}
-                    <div className="hidden sm:block sticky bottom-0 z-20 bg-gray-50 border-t border-gray-100">
+                    {/* Desktop Summary (fixed bottom, horizontal scroll aligned) */}
+                    <div className="hidden sm:block bg-gray-50 border-t border-gray-100">
                       <div className="px-2 sm:px-3">
                         <div className="sm:grid items-center gap-1 py-2 min-w-max" style={{
                           gridTemplateColumns: getGridTemplateColumns()

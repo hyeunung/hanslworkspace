@@ -203,6 +203,7 @@ export default function StatementConfirmModal({
   const [confirmerName, setConfirmerName] = useState("");
   const dialogDebugId = "statement-confirm-dialog";
   const { currentUserRoles, currentUserId, currentUserName } = useAuth();
+  const supabase = createClient();
   
   // 선택된 발주/수주번호 (Case 1: 전체 적용용)
   const [selectedPONumber, setSelectedPONumber] = useState<string>("");
@@ -245,6 +246,62 @@ export default function StatementConfirmModal({
     status: 'high' | 'med' | 'low' | 'unmatched';
     reasons: string[];
   } | null>(null);
+  const [purchaseCurrencyMap, setPurchaseCurrencyMap] = useState<Map<number, string>>(new Map());
+
+  const isReceiptMode =
+    (statementWithItems?.statement_mode ?? statement.statement_mode) === "receipt";
+
+  useEffect(() => {
+    if (!statementWithItems) return;
+    const sample = statementWithItems.items.slice(0, 5).map(item => {
+      const matchedSystem = itemMatches.get(item.id);
+      return {
+        itemId: item.id,
+        matched: Boolean(matchedSystem),
+        sysUnitPrice: matchedSystem?.unit_price ?? null,
+        sysAmount: matchedSystem?.amount ?? null,
+        sysKeys: matchedSystem ? Object.keys(matchedSystem) : []
+      };
+    });
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:system-amounts:snapshot',message:'matched system amounts snapshot',data:{statementId:statement.id,itemMatchesSize:itemMatches.size,isReceiptMode, sample},timestamp:Date.now(),runId:'debug3',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+  }, [statementWithItems, itemMatches, isReceiptMode, statement.id]);
+
+  useEffect(() => {
+    if (!statementWithItems) return;
+    const matchedSample = Array.from(itemMatches.values()).find(Boolean) as any;
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:currency:probe',message:'currency probe for totals',data:{statementId:statement.id,statementCurrency:(statementWithItems as any)?.currency || null,extractedCurrency:(statementWithItems as any)?.extracted_data?.currency || null,matchedSampleCurrency:matchedSample?.amount_currency || matchedSample?.unit_price_currency || matchedSample?.currency || null},timestamp:Date.now(),runId:'debug3',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+  }, [statementWithItems, itemMatches, statement.id]);
+
+  useEffect(() => {
+    if (!statementWithItems) return;
+    const purchaseIds = Array.from(itemMatches.values())
+      .filter(Boolean)
+      .map(item => (item as SystemPurchaseItem).purchase_id)
+      .filter((id): id is number => typeof id === 'number');
+    const uniqueIds = Array.from(new Set(purchaseIds));
+    if (uniqueIds.length === 0) return;
+
+    const loadCurrencies = async () => {
+      const { data, error } = await supabase
+        .from('purchase_requests')
+        .select('id, currency')
+        .in('id', uniqueIds);
+      if (error || !data) return;
+      const map = new Map<number, string>();
+      data.forEach(row => {
+        if (row?.id) map.set(row.id, row.currency || 'KRW');
+      });
+      setPurchaseCurrencyMap(map);
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:currency:map',message:'purchase currency map loaded',data:{statementId:statement.id,uniqueIds,currencies:Array.from(map.values())},timestamp:Date.now(),runId:'debug3',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+    };
+    loadCurrencies();
+  }, [statementWithItems, itemMatches, supabase, statement.id]);
   
   // 통합 매칭 상세 팝업 (발주번호 전체 매칭 내역)
   const [isIntegratedMatchDetailOpen, setIsIntegratedMatchDetailOpen] = useState(false);
@@ -342,11 +399,10 @@ export default function StatementConfirmModal({
     }>;
   } | null>(null);
   
-  const supabase = createClient();
-
   // 모든 품목의 발주/수주번호가 동일한지 확인
   const isSamePONumber = useMemo(() => {
     if (!statementWithItems?.items.length) return true;
+    if (statementWithItems?.po_scope === 'single') return true;
     
     const poNumbers = statementWithItems.items
       .map(item => item.extracted_po_number ? normalizeOrderNumber(item.extracted_po_number) : null)
@@ -418,6 +474,9 @@ export default function StatementConfirmModal({
       
       if (result.success && result.data) {
         setStatementWithItems(result.data);
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:loadData:items',message:'loaded statement items snapshot',data:{statementId:statement.id,items:result.data.items.slice(0,3).map(i=>({id:i.id,extracted_quantity:i.extracted_quantity,confirmed_quantity:(i as any).confirmed_quantity,extracted_unit_price:i.extracted_unit_price,confirmed_unit_price:(i as any).confirmed_unit_price,extracted_amount:i.extracted_amount,confirmed_amount:(i as any).confirmed_amount,extracted_po_number:i.extracted_po_number})),itemsCount:result.data.items.length},timestamp:Date.now(),runId:'debug5',hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
         
         // 초기 발주번호 설정 및 자동 매칭
         const initialPONumbers = new Map<string, string>();
@@ -574,7 +633,8 @@ export default function StatementConfirmModal({
         const poNumbers = result.data.items
           .map(item => item.extracted_po_number ? normalizeOrderNumber(item.extracted_po_number) : null)
           .filter(Boolean);
-        const allSamePO = poNumbers.length === 0 || poNumbers.every(po => po === poNumbers[0]);
+        const isSingleScope = result.data.po_scope === 'single';
+        const allSamePO = isSingleScope || poNumbers.length === 0 || poNumbers.every(po => po === poNumbers[0]);
         
         if (allSamePO) {
           // 세트 매칭 호출 - 전체 품목 비교 (거래처 필터링 포함)
@@ -631,6 +691,13 @@ export default function StatementConfirmModal({
               toast.success(
                 `세트 매칭 완료! ${setMatchResponse.data.bestMatch.matchedItemCount}/${result.data.items.length}개 품목 매칭 (신뢰도: ${confText})`
               );
+            }
+            if (isSingleScope && !setMatchResponse.data.bestMatch && !firstPO) {
+              const fallbackCandidate = result.data.items[0]?.match_candidates?.[0];
+              const fallbackPO = fallbackCandidate?.purchase_order_number || fallbackCandidate?.sales_order_number || '';
+              if (fallbackPO) {
+                setSelectedPONumber(fallbackPO);
+              }
             }
           }
         }
@@ -1138,7 +1205,62 @@ export default function StatementConfirmModal({
       const newMap = new Map(prev);
       const existing = newMap.get(itemId) || {};
       newMap.set(itemId, { ...existing, [field]: value });
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleEditOCRItem',message:'ocr item edited',data:{statementId:statement.id,itemId,field,value,editedCount:newMap.size},timestamp:Date.now(),runId:'debug5',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
       return newMap;
+    });
+  };
+
+  // 수동 수정값을 DB에 반영 (모달 재오픈 시 유지)
+  const persistEditedOCRItems = async () => {
+    if (!statementWithItems || editedOCRItems.size === 0) return;
+
+    const updates = Array.from(editedOCRItems.entries())
+      .map(([itemId, edited]) => {
+        const updateData: {
+          extracted_item_name?: string;
+          extracted_quantity?: number;
+          extracted_unit_price?: number;
+          extracted_amount?: number;
+          extracted_po_number?: string;
+        } = {};
+
+        if (edited.item_name !== undefined) updateData.extracted_item_name = edited.item_name;
+        if (edited.quantity !== undefined) updateData.extracted_quantity = Number(edited.quantity);
+        if (edited.unit_price !== undefined) updateData.extracted_unit_price = Number(edited.unit_price);
+        if (edited.amount !== undefined) updateData.extracted_amount = Number(edited.amount);
+        if (edited.po_number !== undefined) updateData.extracted_po_number = edited.po_number;
+
+        return Object.keys(updateData).length > 0 ? { itemId, updateData } : null;
+      })
+      .filter((item): item is { itemId: string; updateData: Record<string, unknown> } => Boolean(item));
+
+    if (updates.length === 0) return;
+
+    const results = await Promise.all(
+      updates.map(({ itemId, updateData }) =>
+        supabase
+          .from('transaction_statement_items')
+          .update(updateData)
+          .eq('id', itemId)
+      )
+    );
+
+    const hasError = results.some(({ error }) => error);
+    if (hasError) {
+      toast.error('수정값 저장에 실패했습니다.');
+      return;
+    }
+
+    // 로컬 상태도 최신 값으로 반영
+    setStatementWithItems(prev => {
+      if (!prev) return prev;
+      const updatedItems = prev.items.map(item => {
+        const update = updates.find(u => u.itemId === item.id);
+        return update ? { ...item, ...update.updateData } : item;
+      });
+      return { ...prev, items: updatedItems };
     });
   };
 
@@ -1960,6 +2082,11 @@ export default function StatementConfirmModal({
     return candidate?.purchaseId || candidate?.items?.[0]?.purchase_id;
   }, [allPONumberCandidates]);
 
+  const handleOpenPurchaseDetail = useCallback((purchaseId: number) => {
+    setSelectedPurchaseIdForDetail(purchaseId);
+    setIsPurchaseDetailModalOpen(true);
+  }, []);
+
   const handleItemPOSearch = useCallback(async (ocrItemId: string, searchValue: string) => {
     setItemPOSearchInputs(prev => ({ ...prev, [ocrItemId]: searchValue }));
 
@@ -2051,18 +2178,20 @@ export default function StatementConfirmModal({
 
   const effectiveConfirmerName = confirmerName || currentUserName || '알수없음';
   const uploaderId = statementWithItems?.uploaded_by ?? statement.uploaded_by;
+  const isAppAdmin = currentUserRoles.includes('app_admin');
   const isLeadBuyer = currentUserRoles.includes('lead buyer');
   const isUploader = Boolean(currentUserId && uploaderId && currentUserId === uploaderId);
   const isManagerConfirmed = Boolean(statementWithItems?.manager_confirmed_at);
   const isQuantityMatchConfirmed = Boolean(statementWithItems?.quantity_match_confirmed_at);
   const isStatementConfirmed = statementWithItems?.status === 'confirmed';
   
-  // 입고수량 모드 확인 (월말결제용 - 수량만 확인)
-  const isReceiptMode = (statementWithItems?.statement_mode ?? statement.statement_mode) === 'receipt';
+  // 권한 체크: app_admin은 모든 작업 가능
+  const canConfirm = isLeadBuyer || isAppAdmin;
+  const canQuantityMatch = isUploader || isAppAdmin;
   
   // 입고수량 모드에서는 확정 버튼 비활성화 (lead_buyer 승인 불필요)
-  const isConfirmDisabled = saving || !statementWithItems || !isLeadBuyer || isManagerConfirmed || isStatementConfirmed || isReceiptMode;
-  const isQuantityMatchDisabled = saving || !statementWithItems || !isUploader || isQuantityMatchConfirmed || isStatementConfirmed;
+  const isConfirmDisabled = saving || !statementWithItems || !canConfirm || isManagerConfirmed || isStatementConfirmed || isReceiptMode;
+  const isQuantityMatchDisabled = saving || !statementWithItems || !canQuantityMatch || isQuantityMatchConfirmed || isStatementConfirmed;
   const confirmButtonLabel = isManagerConfirmed || isStatementConfirmed ? '확정 완료' : '확정';
   const quantityMatchButtonLabel = isQuantityMatchConfirmed || isStatementConfirmed ? (isReceiptMode ? '완료' : '수량일치 완료') : '수량일치';
 
@@ -2076,6 +2205,8 @@ export default function StatementConfirmModal({
 
       // 1. OCR 수정사항 학습 데이터로 저장
       await saveOCRCorrections();
+      // 1.2 수동 수정값 DB 반영 (모달 재오픈 시 유지)
+      await persistEditedOCRItems();
 
       // 1.5 거래일 수정 반영
       const normalizedOriginalDate = normalizeStatementDate(statementWithItems.statement_date);
@@ -2117,12 +2248,16 @@ export default function StatementConfirmModal({
           confirmed_amount: confirmedAmount
         };
       });
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleConfirm:payload',message:'confirm payload snapshot',data:{statementId:statement.id,editedCount:editedOCRItems.size,sample:confirmItems.slice(0,3)},timestamp:Date.now(),runId:'debug5',hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
 
       const result = await transactionStatementService.confirmStatement(
         {
           statementId: statement.id,
           items: confirmItems,
-          actual_received_date: statementWithItems.extracted_data?.actual_received_date
+          actual_received_date: statementWithItems.extracted_data?.actual_received_date,
+          accounting_received_date: normalizeStatementDate(statementDateInput)
         },
         effectiveConfirmerName
       );
@@ -2155,9 +2290,36 @@ export default function StatementConfirmModal({
     try {
       setSaving(true);
       setSavingAction('quantity-match');
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleQuantityMatch:entry',message:'quantity match started',data:{statementId:statement.id,editedCount:editedOCRItems.size},timestamp:Date.now(),runId:'debug5',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+
+      // 수동 수정값 학습/저장
+      await saveOCRCorrections();
+      await persistEditedOCRItems();
+
+      const confirmItems: ConfirmItemRequest[] = statementWithItems.items.map(item => {
+        const matched = itemMatches.get(item.id);
+        const edited = editedOCRItems.get(item.id);
+
+        const confirmedQuantity = edited?.quantity !== undefined
+          ? edited.quantity
+          : item.extracted_quantity;
+
+        return {
+          itemId: item.id,
+          matched_purchase_id: matched?.purchase_id,
+          matched_item_id: matched?.item_id,
+          confirmed_quantity: confirmedQuantity
+        };
+      });
 
       const result = await transactionStatementService.confirmQuantityMatch(
-        statement.id,
+        {
+          statementId: statement.id,
+          items: confirmItems,
+          actual_received_date: statementWithItems.extracted_data?.actual_received_date
+        },
         effectiveConfirmerName
       );
 
@@ -2210,6 +2372,38 @@ export default function StatementConfirmModal({
     if (amount === undefined || amount === null) return '-';
     return amount.toLocaleString('ko-KR');
   };
+
+  const getCurrencySymbol = (currency?: string | null) => {
+    if (!currency) return '₩';
+    if (currency === 'USD') return '$';
+    if (currency === 'KRW' || currency === '원' || currency === '₩') return '₩';
+    return currency;
+  };
+
+  const getTotalsCurrencySymbol = () => {
+    const currencies = Array.from(purchaseCurrencyMap.values()).filter(Boolean);
+    if (currencies.length === 0) return '₩';
+    const unique = Array.from(new Set(currencies));
+    if (unique.length === 1) return getCurrencySymbol(unique[0]);
+    return '₩';
+  };
+
+  const getSystemAmount = (item?: SystemPurchaseItem | null) => {
+    if (!item) return null;
+    if (item.amount !== undefined && item.amount !== null) return item.amount;
+    if (item.unit_price !== undefined && item.unit_price !== null && item.quantity !== undefined && item.quantity !== null) {
+      return item.unit_price * item.quantity;
+    }
+    return null;
+  };
+
+  useEffect(() => {
+    if (!statementWithItems) return;
+    const hasAnyMatched = Array.from(itemMatches.values()).some(Boolean);
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:amounts:flags',message:'amount render flags',data:{statementId:statement.id,isReceiptMode,hasAnyMatched},timestamp:Date.now(),runId:'debug3',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+  }, [statementWithItems, itemMatches, isReceiptMode, statement.id]);
 
 
   const getSystemItemLabel = (item?: SystemPurchaseItem | null) => {
@@ -2689,8 +2883,7 @@ export default function StatementConfirmModal({
                                                   }}
                                                   onClick={(e) => {
                                                     e.stopPropagation();
-                                                    setSelectedPurchaseIdForDetail(po.id);
-                                                    setIsPurchaseDetailModalOpen(true);
+                                                    handleOpenPurchaseDetail(po.id);
                                                   }}
                                                   className="text-[9px] font-medium text-blue-600 hover:text-blue-800"
                                                 >
@@ -2730,8 +2923,7 @@ export default function StatementConfirmModal({
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setSelectedPurchaseIdForDetail(purchaseId);
-                                      setIsPurchaseDetailModalOpen(true);
+                                      handleOpenPurchaseDetail(purchaseId);
                                     }}
                                     className="inline-flex items-center gap-0.5 px-1 h-5 text-[9px] font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
                                     title="발주 상세 보기"
@@ -3023,8 +3215,7 @@ export default function StatementConfirmModal({
                                                   onMouseDown={(e) => e.preventDefault()}
                                                   onClick={(e) => {
                                                     e.stopPropagation();
-                                                    setSelectedPurchaseIdForDetail(po.id);
-                                                    setIsPurchaseDetailModalOpen(true);
+                                                    handleOpenPurchaseDetail(po.id);
                                                   }}
                                                   className="text-[9px] font-medium text-blue-600 hover:text-blue-800"
                                                 >
@@ -3064,8 +3255,7 @@ export default function StatementConfirmModal({
                                                     onMouseDown={(e) => e.preventDefault()}
                                                     onClick={(e) => {
                                                       e.stopPropagation();
-                                                      setSelectedPurchaseIdForDetail(purchaseId);
-                                                      setIsPurchaseDetailModalOpen(true);
+                                                      handleOpenPurchaseDetail(purchaseId);
                                                     }}
                                                     className="text-[9px] font-medium text-blue-600 hover:text-blue-800"
                                                   >
@@ -3155,7 +3345,7 @@ export default function StatementConfirmModal({
                                 <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem ? formatAmount(matchedSystem.unit_price) : '-'}</span>
                               </td>
                               <td className="border-r-2 border-gray-300 p-1 text-right">
-                                <span className="text-[11px] font-bold text-gray-900" style={{ fontSize: '11px', fontWeight: 700 }}>{matchedSystem ? formatAmount(matchedSystem.amount) : '-'}</span>
+                                <span className="text-[11px] font-bold text-gray-900" style={{ fontSize: '11px', fontWeight: 700 }}>{matchedSystem ? formatAmount(getSystemAmount(matchedSystem) ?? undefined) : '-'}</span>
                               </td>
                             </>
                           )}
@@ -3295,11 +3485,11 @@ export default function StatementConfirmModal({
                           시스템 합계
                         </td>
                         <td className="border-r-2 border-gray-300 p-1 text-right text-gray-900">
-                          {formatAmount(
-                            Array.from(itemMatches.values())
-                              .filter(Boolean)
-                              .reduce((sum, item) => sum + (item?.amount || 0), 0)
-                          )}
+                        {`${getTotalsCurrencySymbol()}${formatAmount(
+                          Array.from(itemMatches.values())
+                            .filter(Boolean)
+                            .reduce((sum, item) => sum + (getSystemAmount(item) || 0), 0)
+                        )}`}
                         </td>
                         <td className="border-r-2 border-gray-300 p-1 bg-blue-50/50"></td>
                         <td colSpan={isSamePONumber ? 3 : 4} className="p-1 text-right text-gray-600">
@@ -3309,13 +3499,13 @@ export default function StatementConfirmModal({
                           )}
                         </td>
                         <td className="p-1 text-right text-gray-900">
-                          {formatAmount(
-                            statementWithItems.items.reduce((sum, item) => {
-                              const edited = editedOCRItems.get(item.id);
-                              const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
-                              return sum + amount;
-                            }, 0)
-                          )}
+                        {`${getTotalsCurrencySymbol()}${formatAmount(
+                          statementWithItems.items.reduce((sum, item) => {
+                            const edited = editedOCRItems.get(item.id);
+                            const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
+                            return sum + amount;
+                          }, 0)
+                        )}`}
                         </td>
                         {!isSamePONumber && <td className="p-1"></td>}
                       </tr>
@@ -3764,7 +3954,8 @@ export default function StatementConfirmModal({
             setIsPurchaseDetailModalOpen(false);
             setSelectedPurchaseIdForDetail(null);
           }}
-          activeTab="receipt"
+          activeTab="done"
+          forceShowStatementColumns={true}
         />
       )}
     </>

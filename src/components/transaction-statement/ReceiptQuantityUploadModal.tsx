@@ -7,6 +7,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Upload, X, Image as ImageIcon, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -33,6 +34,7 @@ export default function ReceiptQuantityUploadModal({
   const [uploading, setUploading] = useState(false);
   const [uploaderName, setUploaderName] = useState<string>("");
   const [actualReceiptDate, setActualReceiptDate] = useState<Date | null>(null);
+  const [poScope, setPoScope] = useState<"single" | "multi" | "">("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClient();
 
@@ -129,6 +131,10 @@ export default function ReceiptQuantityUploadModal({
       toast.error('실입고일을 선택해주세요.');
       return;
     }
+    if (!poScope) {
+      toast.error('단일/다중 여부를 선택해주세요.');
+      return;
+    }
 
     try {
       setUploading(true);
@@ -137,7 +143,8 @@ export default function ReceiptQuantityUploadModal({
       const result = await transactionStatementService.uploadReceiptQuantity(
         file,
         uploaderName || '알 수 없음',
-        actualReceiptDate
+        actualReceiptDate,
+        poScope
       );
 
       if (result.success && result.data) {
@@ -160,6 +167,7 @@ export default function ReceiptQuantityUploadModal({
     setFile(null);
     setPreview(null);
     setActualReceiptDate(null);
+    setPoScope("");
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -176,7 +184,7 @@ export default function ReceiptQuantityUploadModal({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="py-4">
+        <div className="py-4 px-1">
           {/* 드래그앤드롭 영역 */}
           <div
             className={`
@@ -231,29 +239,53 @@ export default function ReceiptQuantityUploadModal({
             )}
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-3">
-            <div className="modal-label text-gray-600">실입고일</div>
-            <div className="flex items-center gap-2">
-              {!actualReceiptDate && (
-                <span className="text-[10px] text-red-500 font-medium">실입고일을 입력해주세요.</span>
-              )}
-              <DateQuantityPickerPopover
-                onConfirm={(date) => setActualReceiptDate(date)}
-                placeholder="입고일을 선택하세요"
-                align="end"
-                side="bottom"
-                hideQuantityInput={true}
-                disabled={uploading}
-              >
-                <button className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">
-                  {actualReceiptDate ? format(actualReceiptDate, 'yyyy-MM-dd') : '실입고일 선택'}
-                </button>
-              </DateQuantityPickerPopover>
+          <div className="mt-4 space-y-3 rounded-lg border border-gray-200 bg-gray-50/50 p-3">
+            <div className="flex items-start justify-between gap-4">
+              <div className="modal-label text-gray-600">발주/수주 구분</div>
+              <div className="flex flex-col items-end gap-1">
+                <Select
+                  value={poScope}
+                  onValueChange={(value) => setPoScope(value as "single" | "multi")}
+                  disabled={uploading}
+                >
+                  <SelectTrigger className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">
+                    <SelectValue placeholder="단일/다중 선택" />
+                  </SelectTrigger>
+                  <SelectContent className="border border-gray-200 business-radius-card shadow-md">
+                    <SelectItem value="single" className="text-[11px]">단일 발주</SelectItem>
+                    <SelectItem value="multi" className="text-[11px]">다중 발주</SelectItem>
+                  </SelectContent>
+                </Select>
+                {!poScope && (
+                  <span className="text-[10px] text-red-500 font-medium">단일/다중을 선택해주세요.</span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-start justify-between gap-4">
+              <div className="modal-label text-gray-600">실입고일</div>
+              <div className="flex flex-col items-end gap-1">
+                <DateQuantityPickerPopover
+                  onConfirm={(date) => setActualReceiptDate(date)}
+                  placeholder="입고일을 선택하세요"
+                  align="end"
+                  side="bottom"
+                  hideQuantityInput={true}
+                  disabled={uploading}
+                >
+                  <button className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">
+                    {actualReceiptDate ? format(actualReceiptDate, 'yyyy-MM-dd') : '실입고일 선택'}
+                  </button>
+                </DateQuantityPickerPopover>
+                {!actualReceiptDate && (
+                  <span className="text-[10px] text-red-500 font-medium">실입고일을 입력해주세요.</span>
+                )}
+              </div>
             </div>
           </div>
 
           {/* 안내 문구 - 입고수량 전용 */}
-          <div className="mt-3 p-2.5 bg-orange-50 business-radius-card border border-orange-100">
+          <div className="mt-4 p-3 bg-orange-50 business-radius-card border border-orange-100">
             <p className="text-[10px] text-orange-700 leading-relaxed">
               📦 월말결제 업체용 입고수량 확인 기능입니다.
               거래명세서에서 수량만 추출하여 실입고수량을 기록합니다.
@@ -273,7 +305,7 @@ export default function ReceiptQuantityUploadModal({
           </Button>
           <Button
             onClick={handleUpload}
-            disabled={!file || !actualReceiptDate || uploading}
+            disabled={!file || !actualReceiptDate || !poScope || uploading}
             className="button-base h-8 text-[11px] bg-orange-600 hover:bg-orange-700 text-white"
           >
             {uploading ? (

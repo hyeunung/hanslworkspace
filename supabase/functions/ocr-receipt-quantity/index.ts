@@ -277,10 +277,22 @@ serve(async (req) => {
 
     // 4. GPT-4o 비전으로 구조화 추출
     currentStage = 'gpt_extract'
+    let poScope: 'single' | 'multi' | null = null
+    if (claimedStatement?.po_scope) {
+      poScope = claimedStatement.po_scope
+    } else {
+      const { data: scopeRow } = await supabase
+        .from('transaction_statements')
+        .select('po_scope')
+        .eq('id', statementId)
+        .single()
+      poScope = (scopeRow as any)?.po_scope || null
+    }
     const extractionResult = await extractWithGPT4o(
       base64Image,
       visionText,
-      openaiApiKey
+      openaiApiKey,
+      poScope
     )
 
     // 5. 숫자 패턴 전용 2차 추출 (저신뢰/누락에만)
@@ -1122,10 +1134,18 @@ function pemToDer(pem: string): ArrayBuffer {
 async function extractWithGPT4o(
   base64Image: string, 
   visionText: string, 
-  apiKey: string
+  apiKey: string,
+  poScope: 'single' | 'multi' | null
 ): Promise<ExtractionResult> {
+  const scopeHint = poScope === 'single'
+    ? '이 거래명세서는 단일 발주/수주 건입니다. 발주/수주번호가 없을 수 있으며, 모든 품목은 동일한 발주/수주로 취급하세요.'
+    : poScope === 'multi'
+    ? '이 거래명세서는 다중 발주/수주 건입니다. 서로 다른 발주/수주번호가 존재할 수 있으니 각 품목별로 분리해 추출하세요.'
+    : ''
   // 입고수량 업로드용 프롬프트 - 금액 추출 제외
   const prompt = `거래명세서 이미지입니다. **입고수량 확인용**으로 수량 관련 정보만 추출합니다. 금액/단가는 추출하지 마세요.
+
+${scopeHint ? `⚠️ **발주/수주 범위 힌트:** ${scopeHint}` : ''}
 
 ⚠️ **거래처(공급자) 식별 방법 - 매우 중요:**
 한국 거래명세서에는 두 회사 정보가 있습니다:

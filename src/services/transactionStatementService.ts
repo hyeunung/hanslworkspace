@@ -69,7 +69,8 @@ class TransactionStatementService {
   async uploadStatement(
     file: File,
     uploaderName: string,
-    actualReceiptDate?: Date
+    actualReceiptDate?: Date,
+    poScope?: 'single' | 'multi'
   ): Promise<{ success: boolean; data?: { statementId: string; imageUrl: string }; error?: string }> {
     try {
       const uploadFile = await this.prepareOcrImage(file);
@@ -115,6 +116,7 @@ class TransactionStatementService {
           uploaded_by_name: uploaderName,
           status: 'queued',
           queued_at: new Date().toISOString(),
+          po_scope: poScope,
           extracted_data: actualReceiptDateIso
             ? { actual_received_date: actualReceiptDateIso }
             : null
@@ -153,7 +155,8 @@ class TransactionStatementService {
   async uploadReceiptQuantity(
     file: File,
     uploaderName: string,
-    actualReceiptDate?: Date
+    actualReceiptDate?: Date,
+    poScope?: 'single' | 'multi'
   ): Promise<{ success: boolean; data?: { statementId: string; imageUrl: string }; error?: string }> {
     try {
       const uploadFile = await this.prepareOcrImage(file);
@@ -198,6 +201,7 @@ class TransactionStatementService {
           status: 'queued',
           queued_at: new Date().toISOString(),
           statement_mode: 'receipt', // 입고수량 모드로 설정
+          po_scope: poScope,
           extracted_data: actualReceiptDateIso
             ? { actual_received_date: actualReceiptDateIso }
             : null
@@ -1394,6 +1398,19 @@ class TransactionStatementService {
           .eq('id', item.itemId);
 
         if (itemError) throw itemError;
+
+        if (item.matched_item_id && request.accounting_received_date) {
+          const { error: accountingError } = await this.supabase
+            .from('purchase_request_items')
+            .update({
+              accounting_received_date: request.accounting_received_date
+            })
+            .eq('id', item.matched_item_id);
+
+          if (accountingError) {
+            logger.warn('Failed to update accounting received date:', accountingError);
+          }
+        }
       }
 
       // 2. 확정자(관리자) 확인 기록
@@ -1435,7 +1452,7 @@ class TransactionStatementService {
    * 수량일치 확인
    */
   async confirmQuantityMatch(
-    statementId: string,
+    request: ConfirmStatementRequest,
     confirmerName: string
   ): Promise<{ success: boolean; error?: string; finalized?: boolean; updatedStatement?: TransactionStatement }> {
     try {
@@ -1448,13 +1465,59 @@ class TransactionStatementService {
           quantity_match_confirmed_by: user?.id,
           quantity_match_confirmed_by_name: confirmerName || null
         })
-        .eq('id', statementId)
+        .eq('id', request.statementId)
         .select('*')
         .single();
 
       if (stmtError) throw stmtError;
 
-      const finalizeResult = await this.tryFinalizeStatement(statementId);
+      // 수량일치 시점에 실입고 정보 즉시 반영
+      if (request.actual_received_date) {
+        const receiptByName = confirmerName || '알수없음';
+        for (const item of request.items) {
+          if (!item.matched_item_id || item.confirmed_quantity === undefined || item.confirmed_quantity === null) {
+            continue;
+          }
+
+          const { data: existingItem } = await this.supabase
+            .from('purchase_request_items')
+            .select('receipt_history')
+            .eq('id', item.matched_item_id)
+            .single();
+
+          const existingHistory = Array.isArray(existingItem?.receipt_history)
+            ? (existingItem?.receipt_history as Array<{ seq: number; qty: number; date: string; by: string }>)
+            : [];
+          const nextSeq = existingHistory.length + 1;
+          const updatedHistory = [
+            ...existingHistory,
+            {
+              seq: nextSeq,
+              qty: item.confirmed_quantity,
+              date: request.actual_received_date,
+              by: receiptByName
+            }
+          ];
+
+          const { error: purchaseError } = await this.supabase
+            .from('purchase_request_items')
+            .update({
+              actual_received_date: request.actual_received_date,
+              received_quantity: item.confirmed_quantity,
+              is_received: true,
+              delivery_status: 'received',
+              receipt_history: updatedHistory,
+              received_at: new Date().toISOString()
+            })
+            .eq('id', item.matched_item_id);
+
+          if (purchaseError) {
+            logger.warn('Failed to update purchase item:', purchaseError);
+          }
+        }
+      }
+
+      const finalizeResult = await this.tryFinalizeStatement(request.statementId);
       if (!finalizeResult.success) {
         return { success: false, error: finalizeResult.error };
       }

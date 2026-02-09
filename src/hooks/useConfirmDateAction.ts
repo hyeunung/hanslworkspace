@@ -110,7 +110,8 @@ ${config.confirmMessage.confirm}`
         updateData = {
           is_statement_received: true,
           statement_received_date: dateToISOString(selectedDate),
-          statement_received_by_name: currentUserName
+          statement_received_by_name: currentUserName,
+          accounting_received_date: dateToISOString(selectedDate)
         }
       } else if (config.field === 'actual_received') {
         // 분할 입고 처리: receipt_history에 이력 추가
@@ -276,7 +277,8 @@ ${config.confirmMessage.cancel}`
         updateData = {
           is_statement_received: false,
           statement_received_date: null,
-          statement_received_by_name: null
+          statement_received_by_name: null,
+          accounting_received_date: null
         }
       } else if (config.field === 'actual_received') {
         // 분할 입고 취소: receipt_history 전체 초기화

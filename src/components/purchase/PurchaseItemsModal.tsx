@@ -33,6 +33,7 @@ interface PurchaseItem {
   is_statement_received?: boolean;
   statement_received_date?: string | null;
   statement_received_by_name?: string | null;
+  accounting_received_date?: string | null;
 }
 
 interface PurchaseItemsModalProps {

@@ -412,6 +412,7 @@ export const markItemAsStatementReceived = (purchaseId: number | string, itemId:
             ...item, 
             is_statement_received: true, 
             statement_received_date: statementReceivedDate,
+            accounting_received_date: statementReceivedDate,
             statement_received_by_name: userName || null
           }
         : item
@@ -451,6 +452,7 @@ export const markItemAsStatementCanceled = (purchaseId: number | string, itemId:
             ...item, 
             is_statement_received: false, 
             statement_received_date: null,
+            accounting_received_date: null,
             statement_received_by_name: null
           }
         : item

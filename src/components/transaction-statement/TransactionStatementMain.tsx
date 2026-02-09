@@ -166,6 +166,26 @@ export default function TransactionStatementMain() {
       .eq('id', statementId);
     
     if (error) {
+      if (error.message?.includes('transaction_statements_uploaded_by_fkey')) {
+        const { error: fallbackError } = await supabase
+          .from('transaction_statements')
+          .update({
+            uploaded_by: null,
+            uploaded_by_name: selectedEmployee.name
+          })
+          .eq('id', statementId);
+        if (fallbackError) {
+          toast.error('등록자 변경에 실패했습니다.');
+          return;
+        }
+        setStatements(prev => prev.map(s => 
+          s.id === statementId 
+            ? { ...s, uploaded_by: null, uploaded_by_name: selectedEmployee.name }
+            : s
+        ));
+        setEditingUploaderId(null);
+        return;
+      }
       toast.error('등록자 변경에 실패했습니다.');
       return;
     }
@@ -438,6 +458,9 @@ export default function TransactionStatementMain() {
 
   // 상세 모달 열기
   const handleViewStatement = (statement: TransactionStatement, event?: React.MouseEvent) => {
+    const target = event?.target as HTMLElement | undefined;
+    const isUploaderInteraction = Boolean(target?.closest?.('[data-uploader-control="true"]'));
+    if (isUploaderInteraction) return;
     setSelectedStatement(statement);
     
     if (statement.status === 'extracted') {
@@ -874,7 +897,7 @@ export default function TransactionStatementMain() {
                         </td>
                         <td className="px-3 py-2.5 text-[11px] text-center text-gray-600">
                           {isAppAdmin ? (
-                            <div className="flex justify-center">
+                            <div className="flex justify-center" data-uploader-control="true">
                               <Popover 
                                 open={editingUploaderId === statement.id} 
                                 onOpenChange={(open) => setEditingUploaderId(open ? statement.id : null)}
@@ -892,9 +915,9 @@ export default function TransactionStatementMain() {
                                     <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
                                   </Button>
                                 </PopoverTrigger>
-                                <PopoverContent className="w-[180px] p-0" align="center">
+                                <PopoverContent className="w-[180px] p-0" align="center" data-uploader-control="true" onClick={(e) => e.stopPropagation()}>
                                   <Command>
-                                    <CommandInput placeholder="이름 검색..." className="h-8 text-xs" />
+                                    <CommandInput placeholder="이름 검색..." className="h-8 text-xs" onKeyDown={(e) => e.stopPropagation()} />
                                     <CommandList>
                                       <CommandEmpty>검색 결과 없음</CommandEmpty>
                                       <CommandGroup className="max-h-[200px] overflow-auto">
@@ -902,6 +925,8 @@ export default function TransactionStatementMain() {
                                           <CommandItem
                                             key={emp.id}
                                             value={emp.name}
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                            onClick={(e) => e.stopPropagation()}
                                             onSelect={() => {
                                               handleUploaderChange(statement.id, emp.id);
                                             }}
@@ -1111,7 +1136,8 @@ export default function TransactionStatementMain() {
             setIsPurchaseModalOpen(false);
             setSelectedPurchaseId(null);
           }}
-          activeTab="all"
+          activeTab="done"
+          forceShowStatementColumns={true}
         />
       )}
     </div>

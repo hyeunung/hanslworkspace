@@ -416,6 +416,7 @@ export type Database = {
       purchase_request_items: {
         Row: {
           actual_received_date: string | null
+          accounting_received_date: string | null
           amount_currency: string
           amount_value: number
           created_at: string | null
@@ -447,6 +448,7 @@ export type Database = {
         }
         Insert: {
           actual_received_date?: string | null
+          accounting_received_date?: string | null
           amount_currency: string
           amount_value: number
           created_at?: string | null
@@ -478,6 +480,7 @@ export type Database = {
         }
         Update: {
           actual_received_date?: string | null
+          accounting_received_date?: string | null
           amount_currency?: string
           amount_value?: number
           created_at?: string | null

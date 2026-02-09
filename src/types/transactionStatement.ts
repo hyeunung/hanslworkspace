@@ -31,6 +31,7 @@ export interface TransactionStatement {
   uploaded_by_name?: string;
   status: TransactionStatementStatus;
   statement_mode?: StatementMode;
+  po_scope?: 'single' | 'multi';
   confirmed_at?: string;
   confirmed_by?: string;
   confirmed_by_name?: string;
@@ -215,6 +216,7 @@ export interface ConfirmStatementRequest {
   statementId: string;
   items: ConfirmItemRequest[];
   actual_received_date?: string;
+  accounting_received_date?: string;
 }
 
 export interface ConfirmItemRequest {
