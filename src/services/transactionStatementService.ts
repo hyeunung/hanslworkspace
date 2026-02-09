@@ -234,6 +234,120 @@ class TransactionStatementService {
   }
 
   /**
+   * 월말결제 거래명세서 업로드 (엑셀/PDF/이미지)
+   */
+  async uploadMonthlyStatement(
+    file: File,
+    uploaderName: string,
+    actualReceiptDate?: Date,
+    poScope?: 'single' | 'multi',
+    fileType?: 'excel' | 'pdf' | 'image'
+  ): Promise<{ success: boolean; data?: { statementId: string; fileUrl: string }; error?: string }> {
+    try {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:uploadMonthlyStatement:entry',message:'monthly upload start',data:{fileName:file.name,fileType,fileSize:file.size},timestamp:Date.now(),runId:'debug7',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
+      // 이미지인 경우 전처리
+      const uploadFile = fileType === 'image' ? await this.prepareOcrImage(file) : file;
+      
+      const ext = uploadFile.name.split('.').pop()?.toLowerCase() || 'bin';
+      const uuid = crypto.randomUUID();
+      const fileName = `${uuid}.${ext}`;
+      const storagePath = `Transaction Statement/${fileName}`;
+
+      const { data: uploadData, error: uploadError } = await this.supabase
+        .storage
+        .from('receipt-images')
+        .upload(storagePath, uploadFile, {
+          contentType: uploadFile.type || 'application/octet-stream',
+          upsert: false
+        });
+
+      if (uploadError) {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:uploadMonthlyStatement:storageError',message:'storage upload failed',data:{error:uploadError.message},timestamp:Date.now(),runId:'debug7',hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
+        throw uploadError;
+      }
+
+      const { data: urlData } = this.supabase
+        .storage
+        .from('receipt-images')
+        .getPublicUrl(storagePath);
+
+      const fileUrl = urlData.publicUrl;
+      const { data: { user } } = await this.supabase.auth.getUser();
+
+      const actualReceiptDateIso = actualReceiptDate ? dateToISOString(actualReceiptDate) : null;
+
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:uploadMonthlyStatement:beforeDB',message:'about to insert DB',data:{fileUrl:fileUrl.substring(0,80),userId:user?.id,uploaderName},timestamp:Date.now(),runId:'debug7',hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
+
+      const { data: statement, error: dbError } = await this.supabase
+        .from('transaction_statements')
+        .insert({
+          image_url: fileUrl,
+          file_name: file.name,
+          uploaded_by: user?.id,
+          uploaded_by_name: uploaderName,
+          status: 'processing',
+          processing_started_at: new Date().toISOString(),
+          statement_mode: 'monthly',
+          po_scope: poScope || null,
+          extracted_data: {
+            ...(actualReceiptDateIso ? { actual_received_date: actualReceiptDateIso } : {}),
+            file_type: fileType || 'excel'
+          }
+        })
+        .select()
+        .single();
+
+      if (dbError) {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:uploadMonthlyStatement:dbError',message:'DB insert failed',data:{error:dbError.message,code:dbError.code},timestamp:Date.now(),runId:'debug7',hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
+        console.error('[Upload Monthly] DB insert 실패:', dbError);
+        throw new Error(`DB 저장 실패: ${dbError.message} (code: ${dbError.code})`);
+      }
+
+      // 월말결제 전용 Edge Function 호출
+      this.triggerMonthlyStatementParsing(statement.id, fileUrl, fileType || 'excel');
+
+      return {
+        success: true,
+        data: {
+          statementId: statement.id,
+          fileUrl
+        }
+      };
+    } catch (error) {
+      console.error('Upload monthly statement error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '업로드 중 오류가 발생했습니다.'
+      };
+    }
+  }
+
+  /**
+   * 월말결제 파싱 Edge Function 호출 (비동기)
+   */
+  private async triggerMonthlyStatementParsing(statementId: string, fileUrl: string, fileType: string) {
+    try {
+      await this.supabase.functions.invoke('parse-monthly-statement', {
+        body: {
+          statementId,
+          fileUrl,
+          fileType
+        }
+      });
+    } catch (error) {
+      console.warn('Failed to trigger monthly statement parsing:', error);
+    }
+  }
+
+  /**
    * 입고수량 추출 Edge Function 호출 (비동기)
    */
   private async triggerReceiptQuantityExtraction(statementId: string, imageUrl: string) {
@@ -557,7 +671,7 @@ class TransactionStatementService {
           if (item.matched_item_id) {
             const { data: purchaseItem } = await this.supabase
               .from('purchase_request_items')
-              .select('id, item_name, specification, quantity, unit_price_value')
+              .select('id, item_name, specification, quantity, unit_price_value, amount_value, received_quantity')
               .eq('id', item.matched_item_id)
               .single();
             
@@ -567,7 +681,9 @@ class TransactionStatementService {
                 item_name: purchaseItem.item_name,
                 specification: purchaseItem.specification,
                 quantity: purchaseItem.quantity,
-                unit_price_value: purchaseItem.unit_price_value
+                unit_price_value: purchaseItem.unit_price_value,
+                amount_value: purchaseItem.amount_value,
+                received_quantity: purchaseItem.received_quantity
               };
             }
           }

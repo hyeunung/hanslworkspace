@@ -18,8 +18,8 @@ export type MatchConfidence = 'low' | 'med' | 'high';
 // 매칭 방법
 export type MatchMethod = 'po_number' | 'item_similarity' | 'manual';
 
-// 거래명세서 모드 (기본/입고확인)
-export type StatementMode = 'default' | 'receipt';
+// 거래명세서 모드 (기본/입고확인/월말결제)
+export type StatementMode = 'default' | 'receipt' | 'monthly';
 
 // 거래명세서 테이블 타입
 export interface TransactionStatement {

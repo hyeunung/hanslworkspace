@@ -61,6 +61,7 @@ import type {
 } from "@/types/transactionStatement";
 import StatementUploadModal from "./StatementUploadModal";
 import ReceiptQuantityUploadModal from "./ReceiptQuantityUploadModal";
+import MonthlyStatementUploadModal from "./MonthlyStatementUploadModal";
 import StatementConfirmModal from "./StatementConfirmModal";
 import StatementImageViewer from "./StatementImageViewer";
 import PurchaseDetailModal from "@/components/purchase/PurchaseDetailModal";
@@ -101,6 +102,7 @@ export default function TransactionStatementMain() {
   // 모달 상태
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isReceiptUploadModalOpen, setIsReceiptUploadModalOpen] = useState(false); // 입고수량 업로드 모달
+  const [isMonthlyUploadModalOpen, setIsMonthlyUploadModalOpen] = useState(false); // 월말결제 업로드 모달
   const [selectedStatement, setSelectedStatement] = useState<TransactionStatement | null>(null);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
@@ -122,7 +124,7 @@ export default function TransactionStatementMain() {
 
   // 탭별 필터링된 목록 및 카운트
   const { filteredStatements, defaultCount, receiptCount } = useMemo(() => {
-    const defaultItems = statements.filter(s => (s.statement_mode ?? 'default') === 'default');
+    const defaultItems = statements.filter(s => (s.statement_mode ?? 'default') === 'default' || s.statement_mode === 'monthly');
     const receiptItems = statements.filter(s => s.statement_mode === 'receipt');
     
     return {
@@ -180,7 +182,7 @@ export default function TransactionStatementMain() {
         }
         setStatements(prev => prev.map(s => 
           s.id === statementId 
-            ? { ...s, uploaded_by: null, uploaded_by_name: selectedEmployee.name }
+            ? { ...s, uploaded_by: undefined, uploaded_by_name: selectedEmployee.name }
             : s
         ));
         setEditingUploaderId(null);
@@ -394,7 +396,7 @@ export default function TransactionStatementMain() {
   }, [loadStatements]);
 
   // 상태 배지 렌더링
-  const renderStatusBadge = (status: TransactionStatementStatus, errorMessage?: string | null, statementMode?: 'default' | 'receipt') => {
+  const renderStatusBadge = (status: TransactionStatementStatus, errorMessage?: string | null, statementMode?: StatementMode) => {
     const baseClass = "inline-flex items-center gap-1 business-radius-badge px-2 py-0.5 text-[10px] font-medium leading-tight";
     
     switch (status) {
@@ -708,6 +710,13 @@ export default function TransactionStatementMain() {
                 >
                   <Package className="w-4 h-4 mr-2 text-orange-600" />
                   입고수량 업로드
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={() => setIsMonthlyUploadModalOpen(true)}
+                  className="text-[12px] py-2 cursor-pointer"
+                >
+                  <FileCheck className="w-4 h-4 mr-2 text-emerald-600" />
+                  거래명세서(월말결제)
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1050,6 +1059,17 @@ export default function TransactionStatementMain() {
         isOpen={isReceiptUploadModalOpen}
         onClose={() => setIsReceiptUploadModalOpen(false)}
         onSuccess={handleUploadSuccess}
+      />
+
+      {/* 월말결제 업로드 모달 */}
+      <MonthlyStatementUploadModal
+        isOpen={isMonthlyUploadModalOpen}
+        onClose={() => setIsMonthlyUploadModalOpen(false)}
+        onSuccess={async (statementId: string) => {
+          setIsMonthlyUploadModalOpen(false);
+          toast.success('월말결제 거래명세서 업로드 완료. 파싱 처리 중...');
+          await loadStatements();
+        }}
       />
 
       {/* 확인/수정/확정 모달 */}

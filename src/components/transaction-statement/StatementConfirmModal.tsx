@@ -250,6 +250,8 @@ export default function StatementConfirmModal({
 
   const isReceiptMode =
     (statementWithItems?.statement_mode ?? statement.statement_mode) === "receipt";
+  const isMonthlyMode =
+    (statementWithItems?.statement_mode ?? statement.statement_mode) === "monthly";
 
   useEffect(() => {
     if (!statementWithItems) return;
@@ -496,6 +498,9 @@ export default function StatementConfirmModal({
           }
           
           // 기존 매칭 정보가 있으면 설정
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:loadData:matchInfo',message:'item match info',data:{itemId:item.id,lineNumber:item.line_number,hasMatchedPurchase:Boolean(item.matched_purchase),matchedPurchaseId:item.matched_purchase_id,matchedItemId:item.matched_item_id,matchedPurchase:item.matched_purchase,matchedItem:(item as any).matched_item},timestamp:Date.now(),runId:'debug8',hypothesisId:'H1'})}).catch(()=>{});
+          // #endregion
           if (item.matched_purchase && item.matched_item_id) {
             const matchedPO = item.matched_purchase.purchase_order_number ||
               item.matched_purchase.sales_order_number ||
@@ -508,10 +513,12 @@ export default function StatementConfirmModal({
               item_id: item.matched_item_id!,
               purchase_order_number: item.matched_purchase.purchase_order_number || '',
               sales_order_number: item.matched_purchase.sales_order_number,
-              item_name: (item as any).matched_item_name || '',
-              quantity: (item as any).matched_item_quantity,
-              unit_price: (item as any).matched_item_unit_price,
-              amount: (item as any).matched_item_amount,
+              item_name: (item as any).matched_item?.item_name || (item as any).matched_item_name || '',
+              specification: (item as any).matched_item?.specification,
+              quantity: (item as any).matched_item?.quantity ?? (item as any).matched_item_quantity,
+              unit_price: (item as any).matched_item?.unit_price_value ?? (item as any).matched_item_unit_price,
+              amount: (item as any).matched_item?.amount_value ?? (item as any).matched_item_amount,
+              received_quantity: (item as any).matched_item?.received_quantity,
               vendor_name: item.matched_purchase.vendor_name
             });
           } else {
@@ -738,8 +745,12 @@ export default function StatementConfirmModal({
         ? selectedPONumber 
         : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
       
-      // 현재 매칭이 있고 발주번호가 일치하면 유지
-      if (currentMatch && (currentMatch.purchase_order_number === poNumber || currentMatch.sales_order_number === poNumber)) {
+      // 현재 매칭이 있고 (발주번호가 일치하거나, 월말결제 등 DB에서 직접 매칭된 경우) 유지
+      if (currentMatch && (
+        currentMatch.purchase_order_number === poNumber || 
+        currentMatch.sales_order_number === poNumber ||
+        (currentMatch.purchase_id && isMonthlyMode)
+      )) {
         newMatches.set(ocrItem.id, currentMatch);
         return;
       }
@@ -2408,6 +2419,11 @@ export default function StatementConfirmModal({
 
   const getSystemItemLabel = (item?: SystemPurchaseItem | null) => {
     if (!item) return '';
+    // 월말결제 모드: 규격(specification)을 우선 표시 (엑셀 모델명과 비교 용이)
+    if (isMonthlyMode) {
+      const spec = item.specification?.trim();
+      if (spec) return spec;
+    }
     const name = item.item_name?.trim();
     if (name) return name;
     const spec = item.specification?.trim();
@@ -3059,9 +3075,11 @@ export default function StatementConfirmModal({
                         const extractedInDb = normalizedExtracted && candidateSet.has(normalizedExtracted)
                           ? normalizedExtracted
                           : '';
-                        return normalizedSelected && candidateSet.has(normalizedSelected)
-                          ? normalizedSelected
-                          : extractedInDb;
+                        if (normalizedSelected && candidateSet.has(normalizedSelected)) return normalizedSelected;
+                        if (extractedInDb) return extractedInDb;
+                        // 월말결제 등: 후보에 없어도 매칭된 발주번호가 있으면 그대로 표시
+                        if (normalizedSelected) return normalizedSelected;
+                        return '';
                       };
                       const matchedSystem = itemMatches.get(ocrItem.id);
                       const matchStatus = getMatchStatus(ocrItem);
@@ -3079,13 +3097,20 @@ export default function StatementConfirmModal({
                         : '';
                       const itemPO = normalizedSelectedPO && candidateSet.has(normalizedSelectedPO)
                         ? normalizedSelectedPO
-                        : extractedInDb;
+                        : extractedInDb || (normalizedSelectedPO || '');
                       if (rowIndex < 5) {
                         // #region agent log
                         fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:render:grouping',message:'grouping_inputs',data:{rowIndex,ocrItemId:ocrItem.id,normalizedExtractedPO,selectedPO,normalizedSelectedPO,itemPO,candidateCount:poCandidates.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H1'})}).catch(()=>{});
                         // #endregion
                       }
-                      const orderedPOs = Array.from(new Set(poCandidates));
+                      // 매칭된 발주번호를 맨 앞에 추가 (추천 표시용)
+                      const matchedPONumber = matchedSystem?.purchase_order_number || matchedSystem?.sales_order_number || '';
+                      const rawOrderedPOs = Array.from(new Set(poCandidates));
+                      const orderedPOs = matchedPONumber && !rawOrderedPOs.includes(matchedPONumber)
+                        ? [matchedPONumber, ...rawOrderedPOs]
+                        : matchedPONumber
+                          ? [matchedPONumber, ...rawOrderedPOs.filter(po => po !== matchedPONumber)]
+                          : rawOrderedPOs;
                       const nextItem = statementWithItems.items[rowIndex + 1];
                       const nextItemPO = nextItem ? getDisplayPOForItem(nextItem) : '';
                       const isGroupEnd = rowIndex < statementWithItems.items.length - 1 && itemPO !== nextItemPO;
@@ -3116,7 +3141,11 @@ export default function StatementConfirmModal({
                             vendor_name: candidate.vendor_name
                           }))
                         : [];
-                      const displaySystemCandidates = systemCandidates.length > 0 ? systemCandidates : fallbackCandidates;
+                      // 매칭된 시스템 품목이 있으면 후보에 추가 (월말결제 등에서 후보가 비어있어도 표시)
+                      let displaySystemCandidates = systemCandidates.length > 0 ? systemCandidates : fallbackCandidates;
+                      if (displaySystemCandidates.length === 0 && matchedSystem) {
+                        displaySystemCandidates = [matchedSystem];
+                      }
                       const scoredSystemCandidates = displaySystemCandidates
                         .map((candidate) => ({
                           candidate,
@@ -3236,18 +3265,19 @@ export default function StatementConfirmModal({
                                           const paired = getPairedOrderNumber(po);
                                           const purchaseId = getPurchaseIdByNumber(po);
                                           const isPreferred = po === itemPO;
+                                          const isRecommended = po === matchedPONumber;
                                           return (
                                             <div
                                               key={`${po}-${idx}`}
                                               onClick={() => handleSelectItemPO(ocrItem.id, po)}
-                                              className={`px-2 py-1.5 hover:bg-gray-100 cursor-pointer text-[11px] font-medium ${isPreferred ? 'bg-gray-100 text-gray-900 font-semibold' : 'text-gray-700'}`}
+                                              className={`px-2 py-1.5 hover:bg-gray-100 cursor-pointer text-[11px] font-medium ${isPreferred ? 'bg-blue-50 text-blue-900 font-semibold' : isRecommended ? 'bg-green-50 text-green-900' : 'text-gray-700'}`}
                                               style={{ fontSize: '11px' }}
                                             >
                                               <div className="flex items-center justify-between gap-2">
                                                 <div>
                                                   {po}
                                                   {paired && <span className="text-gray-400 ml-1">({paired})</span>}
-                                                  {isPreferred && <span className="text-orange-500 ml-1">추천</span>}
+                                                  {isRecommended && <span className="text-green-600 ml-1 text-[9px] font-bold">추천</span>}
                                                 </div>
                                                 {purchaseId && (
                                                   <button
