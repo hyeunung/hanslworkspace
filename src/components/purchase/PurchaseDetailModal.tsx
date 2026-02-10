@@ -162,7 +162,7 @@ function PurchaseDetailModal({
   const [isSaving, setIsSaving] = useState(false)
 
   // 거래명세서 관련 상태
-  const [linkedStatements, setLinkedStatements] = useState<TransactionStatement[]>([])
+  const [linkedStatements, setLinkedStatements] = useState<(TransactionStatement & { linked_line_numbers?: number[] })[]>([])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
@@ -5509,7 +5509,7 @@ ${itemsText}`
                     </h3>
                   </div>
                   <div className="space-y-2">
-                    {linkedStatements.map((stmt) => (
+                    {linkedStatements.map((stmt, idx) => (
                       <div
                         key={stmt.id}
                         className="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
@@ -5518,9 +5518,18 @@ ${itemsText}`
                         <div className="flex items-center gap-2 min-w-0">
                           <ImageIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
                           <div className="min-w-0">
-                            <p className="text-xs font-medium text-gray-900 truncate">
-                              {stmt.vendor_name || stmt.file_name || '거래명세서'}
-                            </p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-xs font-medium text-gray-900 truncate">
+                                {stmt.vendor_name || stmt.file_name || '거래명세서'}
+                              </p>
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+                                stmt.status === 'confirmed' ? 'bg-green-100 text-green-700' :
+                                stmt.status === 'extracted' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-gray-100 text-gray-600'
+                              }`}>
+                                {stmt.status === 'confirmed' ? '확정' : stmt.status === 'extracted' ? '확인필요' : stmt.status === 'processing' ? '처리중' : stmt.status}
+                              </span>
+                            </div>
                             <p className="text-[10px] text-gray-500">
                               {stmt.statement_date 
                                 ? formatDate(stmt.statement_date)
@@ -5528,10 +5537,15 @@ ${itemsText}`
                               }
                               {stmt.grand_total && (
                                 <span className="ml-2 text-gray-700">
-                                  {stmt.grand_total.toLocaleString()}원
+                                  {Number(stmt.grand_total).toLocaleString()}원
                                 </span>
                               )}
                             </p>
+                            {stmt.linked_line_numbers && stmt.linked_line_numbers.length > 0 && (
+                              <p className="text-[9px] text-blue-600 mt-0.5">
+                                품목: {stmt.linked_line_numbers.map(n => `#${n}`).join(', ')}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <Button

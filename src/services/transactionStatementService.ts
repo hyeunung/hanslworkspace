@@ -37,6 +37,7 @@ class TransactionStatementService {
     const quality = 0.85;
 
     try {
+      // EXIF 회전 정보를 자동 적용하여 올바른 방향으로 변환
       const bitmap = await createImageBitmap(file);
       const maxDim = Math.max(bitmap.width, bitmap.height);
       const scale = maxDim > maxDimension ? maxDimension / maxDim : 1;
@@ -244,9 +245,6 @@ class TransactionStatementService {
     fileType?: 'excel' | 'pdf' | 'image'
   ): Promise<{ success: boolean; data?: { statementId: string; fileUrl: string }; error?: string }> {
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:uploadMonthlyStatement:entry',message:'monthly upload start',data:{fileName:file.name,fileType,fileSize:file.size},timestamp:Date.now(),runId:'debug7',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
       // 이미지인 경우 전처리
       const uploadFile = fileType === 'image' ? await this.prepareOcrImage(file) : file;
       
@@ -264,9 +262,6 @@ class TransactionStatementService {
         });
 
       if (uploadError) {
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:uploadMonthlyStatement:storageError',message:'storage upload failed',data:{error:uploadError.message},timestamp:Date.now(),runId:'debug7',hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
         throw uploadError;
       }
 
@@ -279,10 +274,6 @@ class TransactionStatementService {
       const { data: { user } } = await this.supabase.auth.getUser();
 
       const actualReceiptDateIso = actualReceiptDate ? dateToISOString(actualReceiptDate) : null;
-
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:uploadMonthlyStatement:beforeDB',message:'about to insert DB',data:{fileUrl:fileUrl.substring(0,80),userId:user?.id,uploaderName},timestamp:Date.now(),runId:'debug7',hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
 
       const { data: statement, error: dbError } = await this.supabase
         .from('transaction_statements')
@@ -304,9 +295,6 @@ class TransactionStatementService {
         .single();
 
       if (dbError) {
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:uploadMonthlyStatement:dbError',message:'DB insert failed',data:{error:dbError.message,code:dbError.code},timestamp:Date.now(),runId:'debug7',hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
         console.error('[Upload Monthly] DB insert 실패:', dbError);
         throw new Error(`DB 저장 실패: ${dbError.message} (code: ${dbError.code})`);
       }
@@ -375,19 +363,10 @@ class TransactionStatementService {
     let invokeContextStatus: number | null = null;
     let invokeContextBody: string | null = null;
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:start',message:'extractStatementData start',data:{statementId,hasImageUrl:Boolean(imageUrl),resetBeforeExtract},timestamp:Date.now(),runId:'run1',hypothesisId:'H1'} )}).catch(()=>{});
-      // #endregion
       console.log('[Service] Calling Edge Function with:', { statementId, imageUrl });
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:start',message:'extractStatementData start',data:{statementId,hasImageUrl:!!imageUrl,resetBeforeExtract},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
 
       const { data: sessionData } = await this.supabase.auth.getSession();
       const session = sessionData?.session;
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:session',message:'session before invoke',data:{statementId,hasSession:!!session,hasAccessToken:!!session?.access_token,userId:session?.user?.id??null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H8'})}).catch(()=>{});
-      // #endregion
       
       // Edge Function 호출
       const { data, error } = await this.supabase.functions.invoke('ocr-transaction-statement', {
@@ -398,9 +377,6 @@ class TransactionStatementService {
           mode: 'process_specific'
         }
       });
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:invoke',message:'edge invoke response',data:{statementId,hasData:!!data,success:data?.success??null,queued:data?.queued??null,status:data?.status??null,errorMessage:(error as any)?.message||data?.error||null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
       if (error) {
         const context = (error as any)?.context;
         invokeContextStatus = context?.status ?? null;
@@ -415,15 +391,9 @@ class TransactionStatementService {
         } catch (_) {
           invokeContextBody = null;
         }
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:invoke:error',message:'edge invoke error detail',data:{statementId,errorStatus:(error as any)?.status??null,errorName:(error as any)?.name??null,contextStatus:context?.status??null,contextStatusText:context?.statusText??null,contextBody:invokeContextBody},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H9'})}).catch(()=>{});
-        // #endregion
       }
 
       console.log('[Service] Edge Function response:', { data, error });
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:invoke',message:'edge invoke result',data:{statementId,success:data?.success??null,queued:data?.queued??null,status:data?.status??null,errorMessage:(error as any)?.message||data?.error||null,contextStatus:invokeContextStatus},timestamp:Date.now(),runId:'run1',hypothesisId:'H1'} )}).catch(()=>{});
-      // #endregion
 
       if (error) throw error;
 
@@ -457,9 +427,6 @@ class TransactionStatementService {
           resolvedErrorMessage = invokeContextBody;
         }
       }
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:catch',message:'extractStatementData catch',data:{statementId,errorMessage,resolvedErrorMessage,invokeContextStatus,invokeContextBody},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
 
       try {
         const { data: updateData, error: updateError } = await this.supabase
@@ -474,9 +441,6 @@ class TransactionStatementService {
           .in('status', ['pending', 'queued', 'processing'])
           .is('extraction_error', null)
           .select('id, status, extraction_error');
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'transactionStatementService.ts:extract:reset-pending',message:'set status pending on extract failure',data:{statementId,ok:!updateError,error:updateError?.message||null,updatedRows:Array.isArray(updateData)?updateData.length:0,updateStatus:updateData?.[0]?.status||null,updateExtractionError:updateData?.[0]?.extraction_error||null},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
       } catch (_) {
         // ignore update errors
       }
@@ -2232,25 +2196,35 @@ class TransactionStatementService {
   }
 
   /**
-   * 특정 발주에 연결된 거래명세서 목록 조회
+   * 특정 발주에 연결된 거래명세서 목록 조회 (품목 라인넘버 포함)
    */
   async getStatementsByPurchaseId(purchaseId: number): Promise<{
     success: boolean;
-    data?: TransactionStatement[];
+    data?: (TransactionStatement & { linked_line_numbers?: number[] })[];
     error?: string;
   }> {
     try {
-      // 해당 발주에 매칭된 품목이 있는 거래명세서 조회
+      // 해당 발주에 매칭된 품목이 있는 거래명세서 조회 (라인넘버 포함)
       const { data: items } = await this.supabase
         .from('transaction_statement_items')
-        .select('statement_id')
+        .select('statement_id, line_number')
         .eq('matched_purchase_id', purchaseId);
 
       if (!items || items.length === 0) {
         return { success: true, data: [] };
       }
 
-      const statementIds = [...new Set(items.map((i: { statement_id: string }) => i.statement_id))];
+      // 거래명세서별 라인넘버 그룹핑
+      const lineNumbersByStatement = new Map<string, number[]>();
+      items.forEach((i: { statement_id: string; line_number: number }) => {
+        const existing = lineNumbersByStatement.get(i.statement_id) || [];
+        if (i.line_number && !existing.includes(i.line_number)) {
+          existing.push(i.line_number);
+        }
+        lineNumbersByStatement.set(i.statement_id, existing);
+      });
+
+      const statementIds = [...lineNumbersByStatement.keys()];
 
       const { data: statements, error } = await this.supabase
         .from('transaction_statements')
@@ -2260,7 +2234,13 @@ class TransactionStatementService {
 
       if (error) throw error;
 
-      return { success: true, data: statements || [] };
+      // 라인넘버 병합
+      const result = (statements || []).map((stmt: any) => ({
+        ...stmt,
+        linked_line_numbers: (lineNumbersByStatement.get(stmt.id) || []).sort((a: number, b: number) => a - b)
+      }));
+
+      return { success: true, data: result };
     } catch (error) {
       console.error('Get statements by purchase error:', error);
       return {

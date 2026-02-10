@@ -265,17 +265,11 @@ export default function StatementConfirmModal({
         sysKeys: matchedSystem ? Object.keys(matchedSystem) : []
       };
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:system-amounts:snapshot',message:'matched system amounts snapshot',data:{statementId:statement.id,itemMatchesSize:itemMatches.size,isReceiptMode, sample},timestamp:Date.now(),runId:'debug3',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
   }, [statementWithItems, itemMatches, isReceiptMode, statement.id]);
 
   useEffect(() => {
     if (!statementWithItems) return;
     const matchedSample = Array.from(itemMatches.values()).find(Boolean) as any;
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:currency:probe',message:'currency probe for totals',data:{statementId:statement.id,statementCurrency:(statementWithItems as any)?.currency || null,extractedCurrency:(statementWithItems as any)?.extracted_data?.currency || null,matchedSampleCurrency:matchedSample?.amount_currency || matchedSample?.unit_price_currency || matchedSample?.currency || null},timestamp:Date.now(),runId:'debug3',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
   }, [statementWithItems, itemMatches, statement.id]);
 
   useEffect(() => {
@@ -298,9 +292,6 @@ export default function StatementConfirmModal({
         if (row?.id) map.set(row.id, row.currency || 'KRW');
       });
       setPurchaseCurrencyMap(map);
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:currency:map',message:'purchase currency map loaded',data:{statementId:statement.id,uniqueIds,currencies:Array.from(map.values())},timestamp:Date.now(),runId:'debug3',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
     };
     loadCurrencies();
   }, [statementWithItems, itemMatches, supabase, statement.id]);
@@ -350,17 +341,11 @@ export default function StatementConfirmModal({
       };
 
       if (!el) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:dialogMetrics:notFound',message:'dialog element not found',data:{reason,viewport},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
         return;
       }
 
       const rect = el.getBoundingClientRect();
       const styles = window.getComputedStyle(el);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:dialogMetrics',message:'dialog metrics',data:{reason,viewport,rect:{width:rect.width,height:rect.height,left:rect.left,top:rect.top},computed:{width:styles.width,maxWidth:styles.maxWidth,minWidth:styles.minWidth,boxSizing:styles.boxSizing,paddingLeft:styles.paddingLeft,paddingRight:styles.paddingRight},className:el.className},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
     };
 
     const rafId = requestAnimationFrame(() => logMetrics("open"));
@@ -476,9 +461,6 @@ export default function StatementConfirmModal({
       
       if (result.success && result.data) {
         setStatementWithItems(result.data);
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:loadData:items',message:'loaded statement items snapshot',data:{statementId:statement.id,items:result.data.items.slice(0,3).map(i=>({id:i.id,extracted_quantity:i.extracted_quantity,confirmed_quantity:(i as any).confirmed_quantity,extracted_unit_price:i.extracted_unit_price,confirmed_unit_price:(i as any).confirmed_unit_price,extracted_amount:i.extracted_amount,confirmed_amount:(i as any).confirmed_amount,extracted_po_number:i.extracted_po_number})),itemsCount:result.data.items.length},timestamp:Date.now(),runId:'debug5',hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
         
         // 초기 발주번호 설정 및 자동 매칭
         const initialPONumbers = new Map<string, string>();
@@ -498,9 +480,6 @@ export default function StatementConfirmModal({
           }
           
           // 기존 매칭 정보가 있으면 설정
-          // #region agent log
-          fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:loadData:matchInfo',message:'item match info',data:{itemId:item.id,lineNumber:item.line_number,hasMatchedPurchase:Boolean(item.matched_purchase),matchedPurchaseId:item.matched_purchase_id,matchedItemId:item.matched_item_id,matchedPurchase:item.matched_purchase,matchedItem:(item as any).matched_item},timestamp:Date.now(),runId:'debug8',hypothesisId:'H1'})}).catch(()=>{});
-          // #endregion
           if (item.matched_purchase && item.matched_item_id) {
             const matchedPO = item.matched_purchase.purchase_order_number ||
               item.matched_purchase.sales_order_number ||
@@ -1216,9 +1195,6 @@ export default function StatementConfirmModal({
       const newMap = new Map(prev);
       const existing = newMap.get(itemId) || {};
       newMap.set(itemId, { ...existing, [field]: value });
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleEditOCRItem',message:'ocr item edited',data:{statementId:statement.id,itemId,field,value,editedCount:newMap.size},timestamp:Date.now(),runId:'debug5',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
       return newMap;
     });
   };
@@ -1840,6 +1816,13 @@ export default function StatementConfirmModal({
     setVendorDropdownOpen(false);
     setVendorSearchResults([]);
     
+    // 거래처명 즉시 DB 저장
+    supabase
+      .from('transaction_statements')
+      .update({ vendor_name: vendorName })
+      .eq('id', statement.id)
+      .then(() => {});
+
     if (shouldNotify) {
       toast.success(`거래처가 "${vendorName}"(으)로 변경되었습니다. 발주 후보를 다시 검색합니다.`);
     }
@@ -2259,9 +2242,6 @@ export default function StatementConfirmModal({
           confirmed_amount: confirmedAmount
         };
       });
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleConfirm:payload',message:'confirm payload snapshot',data:{statementId:statement.id,editedCount:editedOCRItems.size,sample:confirmItems.slice(0,3)},timestamp:Date.now(),runId:'debug5',hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
 
       const result = await transactionStatementService.confirmStatement(
         {
@@ -2301,9 +2281,6 @@ export default function StatementConfirmModal({
     try {
       setSaving(true);
       setSavingAction('quantity-match');
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:handleQuantityMatch:entry',message:'quantity match started',data:{statementId:statement.id,editedCount:editedOCRItems.size},timestamp:Date.now(),runId:'debug5',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
 
       // 수동 수정값 학습/저장
       await saveOCRCorrections();
@@ -2411,22 +2388,17 @@ export default function StatementConfirmModal({
   useEffect(() => {
     if (!statementWithItems) return;
     const hasAnyMatched = Array.from(itemMatches.values()).some(Boolean);
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:amounts:flags',message:'amount render flags',data:{statementId:statement.id,isReceiptMode,hasAnyMatched},timestamp:Date.now(),runId:'debug3',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
   }, [statementWithItems, itemMatches, isReceiptMode, statement.id]);
 
 
   const getSystemItemLabel = (item?: SystemPurchaseItem | null) => {
     if (!item) return '';
-    // 월말결제 모드: 규격(specification)을 우선 표시 (엑셀 모델명과 비교 용이)
-    if (isMonthlyMode) {
-      const spec = item.specification?.trim();
-      if (spec) return spec;
-    }
-    const name = item.item_name?.trim();
+    const name = item.item_name?.trim() || '';
+    const spec = item.specification?.trim() || '';
+    // specification이 있고 item_name보다 구체적(길면) → specification 표시
+    // (모델명/규격이 보통 PCB, METAL MASK 같은 품목명보다 길고 구체적)
+    if (spec && spec.length > name.length) return spec;
     if (name) return name;
-    const spec = item.specification?.trim();
     if (spec) return spec;
     return `품목 #${item.item_id}`;
   };
@@ -2732,7 +2704,17 @@ export default function StatementConfirmModal({
                       }}
                       onBlur={() => {
                         // delay to allow click on dropdown
-                        setTimeout(() => setVendorDropdownOpen(false), 200);
+                        setTimeout(() => {
+                          setVendorDropdownOpen(false);
+                          // 거래처명 즉시 DB 저장
+                          if (vendorInputValue.trim()) {
+                            supabase
+                              .from('transaction_statements')
+                              .update({ vendor_name: vendorInputValue.trim() })
+                              .eq('id', statement.id)
+                              .then(() => {});
+                          }
+                        }, 200);
                       }}
                       placeholder="거래처 검색..."
                       className={`w-[120px] h-5 px-1.5 bg-white border business-radius focus:outline-none focus:ring-1 focus:ring-hansl-400 ${
@@ -2769,7 +2751,19 @@ export default function StatementConfirmModal({
                   <input
                     type="date"
                     value={statementDateInput}
-                    onChange={(e) => setStatementDateInput(e.target.value)}
+                    onChange={(e) => {
+                      const newDate = e.target.value;
+                      setStatementDateInput(newDate);
+                      // 즉시 DB 저장
+                      const normalized = normalizeStatementDate(newDate);
+                      if (normalized) {
+                        supabase
+                          .from('transaction_statements')
+                          .update({ statement_date: normalized })
+                          .eq('id', statement.id)
+                          .then(() => {});
+                      }
+                    }}
                     className="w-[120px] h-5 px-1.5 bg-white border border-gray-300 business-radius-input focus:outline-none focus:ring-1 focus:ring-hansl-400 text-gray-900"
                     style={{ fontSize: '11px', fontWeight: 600 }}
                   />
@@ -2777,7 +2771,7 @@ export default function StatementConfirmModal({
                 <div>
                   <p className="modal-label">합계금액</p>
                   <p className="modal-value-large">
-                    {formatAmount(statementWithItems.grand_total)}원
+                    {formatAmount(statementWithItems.grand_total ?? statementWithItems.total_amount)}원
                   </p>
                 </div>
                 <div>
@@ -3099,9 +3093,6 @@ export default function StatementConfirmModal({
                         ? normalizedSelectedPO
                         : extractedInDb || (normalizedSelectedPO || '');
                       if (rowIndex < 5) {
-                        // #region agent log
-                        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'StatementConfirmModal.tsx:render:grouping',message:'grouping_inputs',data:{rowIndex,ocrItemId:ocrItem.id,normalizedExtractedPO,selectedPO,normalizedSelectedPO,itemPO,candidateCount:poCandidates.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H1'})}).catch(()=>{});
-                        // #endregion
                       }
                       // 매칭된 발주번호를 맨 앞에 추가 (추천 표시용)
                       const matchedPONumber = matchedSystem?.purchase_order_number || matchedSystem?.sales_order_number || '';

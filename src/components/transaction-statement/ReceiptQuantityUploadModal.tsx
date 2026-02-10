@@ -79,11 +79,21 @@ export default function ReceiptQuantityUploadModal({
 
     setFile(selectedFile);
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setPreview(reader.result as string);
-    };
-    reader.readAsDataURL(selectedFile);
+    // EXIF 회전 적용된 미리보기 생성
+    createImageBitmap(selectedFile).then(bitmap => {
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(bitmap, 0, 0);
+        setPreview(canvas.toDataURL('image/jpeg', 0.8));
+      }
+    }).catch(() => {
+      const reader = new FileReader();
+      reader.onloadend = () => setPreview(reader.result as string);
+      reader.readAsDataURL(selectedFile);
+    });
   };
 
   // 드래그앤드롭 처리

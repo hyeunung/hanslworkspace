@@ -205,9 +205,6 @@ export default function TransactionStatementMain() {
   // 데이터 로드
   const loadStatements = useCallback(async () => {
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:loadStatements:start',message:'loadStatements start',data:{statusFilter,dateFilter,searchTerm},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
       setLoading(true);
       const result = await transactionStatementService.getStatements({
         status: statusFilter !== 'all' ? statusFilter : undefined,
@@ -222,22 +219,11 @@ export default function TransactionStatementMain() {
         const processingIds = (result.data || [])
           .filter((item) => item.status === 'processing')
           .map((item) => item.id);
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:loadStatements:processing',message:'loadStatements processing snapshot',data:{processingCount:processingIds.length,processingIds:processingIds.slice(0,5),extractingCount:extractingIds.size},timestamp:Date.now(),runId:'run1',hypothesisId:'H1'} )}).catch(()=>{});
-        // #endregion
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:loadStatements:success',message:'loadStatements success',data:{count:result.count,firstStatuses:(result.data||[]).slice(0,5).map((s)=>({id:s.id,status:s.status}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
+
       } else {
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:loadStatements:failure',message:'loadStatements failure',data:{error:result.error},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
-        // #endregion
         toast.error(result.error || '데이터를 불러오는데 실패했습니다.');
       }
     } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:loadStatements:error',message:'loadStatements error',data:{error:String(error)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
       toast.error('데이터를 불러오는데 실패했습니다.');
     } finally {
       setLoading(false);
@@ -268,36 +254,21 @@ export default function TransactionStatementMain() {
       try {
         const { data } = await supabase.auth.getSession();
         const token = data?.session?.access_token;
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:auth',message:'realtime auth session checked',data:{hasSession:!!data?.session,hasToken:!!token},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H4'})}).catch(()=>{});
-        // #endregion
         if (token) {
           supabase.realtime.setAuth(token);
         }
         supabase.realtime.connect();
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:connect',message:'realtime connect called',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H4'})}).catch(()=>{});
-        // #endregion
       } catch (_) {
         // ignore auth setup errors; fallback to anon
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:auth-error',message:'realtime auth setup failed',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H4'})}).catch(()=>{});
-        // #endregion
       }
     };
 
     const subscribeRealtime = () => {
       if (!shouldReconnectRef.current) return;
       if (realtimeIsSubscribingRef.current || realtimeIsSubscribedRef.current) {
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:subscribe:skip',message:'subscribe skipped (already active)',data:{isSubscribing:realtimeIsSubscribingRef.current,isSubscribed:realtimeIsSubscribedRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H5'})}).catch(()=>{});
-        // #endregion
         return;
       }
       realtimeIsSubscribingRef.current = true;
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:subscribe:start',message:'subscribeRealtime called',data:{attempt:realtimeReconnectAttemptsRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
       if (realtimeChannelRef.current) {
         supabase.removeChannel(realtimeChannelRef.current);
         realtimeChannelRef.current = null;
@@ -313,9 +284,6 @@ export default function TransactionStatementMain() {
             table: 'transaction_statements'
           },
           (payload: any) => {
-            // #region agent log
-            fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:callback',message:'realtime event received',data:{eventType:payload.eventType,oldStatus:payload.old?.status,newStatus:payload.new?.status,statementId:payload.new?.id||payload.old?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-            // #endregion
             console.log('[Realtime] Statement changed:', payload);
             
             // 상태가 변경되면 목록 갱신
@@ -325,9 +293,6 @@ export default function TransactionStatementMain() {
               
               // 상태가 processing → extracted 또는 다른 상태로 변경됐을 때
               if (newStatus !== oldStatus) {
-                // #region agent log
-                fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:status-change',message:'realtime status change detected',data:{oldStatus,newStatus},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
-                // #endregion
                 console.log(`[Realtime] Status changed: ${oldStatus} → ${newStatus}`);
                 loadStatements();
 
@@ -339,21 +304,12 @@ export default function TransactionStatementMain() {
                 }
               }
             } else if (payload.eventType === 'INSERT' || payload.eventType === 'DELETE') {
-              // #region agent log
-              fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:insert-delete',message:'realtime insert/delete triggers loadStatements',data:{eventType:payload.eventType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H2'})}).catch(()=>{});
-              // #endregion
               loadStatements();
             }
           }
         )
         .subscribe((status: string, err?: Error) => {
-          // #region agent log
-          fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:subscribe',message:'realtime subscribe status',data:{status},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H1'})}).catch(()=>{});
-          // #endregion
           if (err) {
-            // #region agent log
-            fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:subscribe-error',message:'realtime subscribe error',data:{message:err.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H6'})}).catch(()=>{});
-            // #endregion
           }
           if (status === 'SUBSCRIBED') {
             realtimeReconnectAttemptsRef.current = 0;
@@ -370,23 +326,14 @@ export default function TransactionStatementMain() {
             }
           }
         });
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:subscribe:created',message:'realtime channel created',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
     };
 
     shouldReconnectRef.current = true;
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:effect',message:'realtime effect init',data:{instanceId:realtimeInstanceIdRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'H7'})}).catch(()=>{});
-    // #endregion
     setupRealtimeAuth().finally(() => {
       subscribeRealtime();
     });
 
     return () => {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:realtime:cleanup',message:'realtime effect cleanup',data:{instanceId:realtimeInstanceIdRef.current,wasSubscribed:realtimeIsSubscribedRef.current,wasSubscribing:realtimeIsSubscribingRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'H7'})}).catch(()=>{});
-      // #endregion
       shouldReconnectRef.current = false;
       if (realtimeChannelRef.current) {
         supabase.removeChannel(realtimeChannelRef.current);
@@ -396,8 +343,9 @@ export default function TransactionStatementMain() {
   }, [loadStatements]);
 
   // 상태 배지 렌더링
-  const renderStatusBadge = (status: TransactionStatementStatus, errorMessage?: string | null, statementMode?: StatementMode) => {
+  const renderStatusBadge = (status: TransactionStatementStatus, errorMessage?: string | null, statementMode?: StatementMode, statement?: TransactionStatement) => {
     const baseClass = "inline-flex items-center gap-1 business-radius-badge px-2 py-0.5 text-[10px] font-medium leading-tight";
+    const miniClass = "inline-flex items-center gap-0.5 business-radius-badge px-1.5 py-0.5 text-[9px] font-medium leading-tight";
     
     switch (status) {
       case 'pending':
@@ -429,7 +377,6 @@ export default function TransactionStatementMain() {
           </span>
         );
       case 'confirmed':
-        // 입고수량 모드에서는 "완료"로 표시
         return (
           <span className={`${baseClass} bg-green-50 text-green-600 border border-green-200`}>
             <CheckCircle className="w-3 h-3" />
@@ -523,9 +470,6 @@ export default function TransactionStatementMain() {
     console.log('[OCR] Button clicked, statement:', statement);
     
     const canExtract = ['pending', 'queued', 'failed'].includes(statement.status);
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:handleStartExtraction:entry',message:'start extraction clicked',data:{statementId:statement.id,status:statement.status,canExtract,alreadyExtracting:extractingIds.has(statement.id)},timestamp:Date.now(),runId:'run1',hypothesisId:'H2'} )}).catch(()=>{});
-    // #endregion
     if (!canExtract || extractingIds.has(statement.id)) {
       console.log('[OCR] Status is not eligible or already extracting:', statement.status);
       toast.info('이미 처리 중이거나 완료된 건입니다.');
@@ -573,9 +517,6 @@ export default function TransactionStatementMain() {
         next.delete(statement.id);
         return next;
       });
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:handleStartExtraction:finally',message:'extraction finished cleanup',data:{statementId:statement.id},timestamp:Date.now(),runId:'run1',hypothesisId:'H2'} )}).catch(()=>{});
-      // #endregion
     }
   };
 
@@ -604,9 +545,6 @@ export default function TransactionStatementMain() {
   // 업로드 성공 후 처리 - 자동으로 OCR 시작
   const handleUploadSuccess = async (statementId: string, imageUrl: string) => {
     setIsUploadModalOpen(false);
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TransactionStatementMain.tsx:handleUploadSuccess:entry',message:'upload success triggers extract',data:{statementId,hasImageUrl:Boolean(imageUrl)},timestamp:Date.now(),runId:'run1',hypothesisId:'H2'} )}).catch(()=>{});
-    // #endregion
     
     // 1. 업로드 직후 바로 목록 갱신 (목록에 즉시 표시)
     await loadStatements();
@@ -870,13 +808,16 @@ export default function TransactionStatementMain() {
                 <table className="w-full min-w-fit">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
+                      <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">종류</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">상태</th>
+                      <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">수량/금액</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">업로드일</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">명세서일</th>
                       <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">거래처명</th>
                       <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">합계금액</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">등록자</th>
-                      <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">확정자</th>
+                      <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">수량확인</th>
+                      <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">금액확정</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">액션</th>
                     </tr>
                   </thead>
@@ -884,13 +825,41 @@ export default function TransactionStatementMain() {
                     {filteredStatements.map((statement) => (
                       <tr
                         key={statement.id}
-                        className="hover:bg-gray-50 transition-colors cursor-pointer"
+                        className="hover:bg-gray-50 transition-colors cursor-pointer [&>td]:align-middle"
                         onClick={(e) => handleViewStatement(statement, e)}
                       >
+                        <td className="px-3 py-2.5">
+                          <div className="flex items-center justify-center h-full">
+                            <span className={`inline-flex items-center gap-1 business-radius-badge px-2 py-0.5 text-[10px] font-medium leading-tight ${
+                              statement.statement_mode === 'monthly' ? 'bg-emerald-100 text-emerald-700' :
+                              statement.statement_mode === 'receipt' ? 'bg-orange-100 text-orange-700' :
+                              'bg-blue-100 text-blue-700'
+                            }`}>
+                              {statement.statement_mode === 'monthly' ? '월말결제' :
+                               statement.statement_mode === 'receipt' ? '입고수량' :
+                               '일반'}
+                            </span>
+                          </div>
+                        </td>
                         <td className="px-3 py-2.5 text-center">
                           {extractingIds.has(statement.id) 
                             ? renderStatusBadge('processing') 
-                            : renderStatusBadge(statement.status, statement.extraction_error, statement.statement_mode)}
+                            : renderStatusBadge(statement.status, statement.extraction_error, statement.statement_mode, statement)}
+                        </td>
+                        <td className="px-3 py-2.5 text-center">
+                          {(statement.status === 'extracted' || statement.status === 'confirmed') ? (
+                            <div className="flex items-center justify-center gap-1 text-[11px] font-medium">
+                              <span className={statement.quantity_match_confirmed_at ? 'text-green-600' : 'text-gray-400'}>
+                                수량{statement.quantity_match_confirmed_at ? '✓' : ''}
+                              </span>
+                              <span className="text-gray-300">|</span>
+                              <span className={statement.manager_confirmed_at ? 'text-green-600' : 'text-gray-400'}>
+                                금액{statement.manager_confirmed_at ? '✓' : ''}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-gray-300">-</span>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 text-[11px] text-center text-gray-600">
                           {formatDate(statement.uploaded_at)}
@@ -902,7 +871,7 @@ export default function TransactionStatementMain() {
                           {statement.vendor_name || '-'}
                         </td>
                         <td className="px-3 py-2.5 text-[11px] font-medium text-right text-gray-900">
-                          {formatAmount(statement.grand_total)}
+                          {formatAmount(statement.grand_total ?? statement.total_amount)}
                         </td>
                         <td className="px-3 py-2.5 text-[11px] text-center text-gray-600">
                           {isAppAdmin ? (
@@ -960,7 +929,10 @@ export default function TransactionStatementMain() {
                           )}
                         </td>
                         <td className="px-3 py-2.5 text-[11px] text-center text-gray-600">
-                          {statement.confirmed_by_name || '-'}
+                          {statement.quantity_match_confirmed_by_name || '-'}
+                        </td>
+                        <td className="px-3 py-2.5 text-[11px] text-center text-gray-600">
+                          {statement.manager_confirmed_by_name || '-'}
                         </td>
                         <td className="px-3 py-2.5 text-center">
                           <div className="flex items-center justify-center gap-1">
@@ -1004,9 +976,20 @@ export default function TransactionStatementMain() {
                     onClick={(e) => handleViewStatement(statement, e)}
                   >
                     <div className="flex items-start justify-between mb-2">
-                      {extractingIds.has(statement.id) 
-                        ? renderStatusBadge('processing') 
-                        : renderStatusBadge(statement.status, statement.extraction_error, statement.statement_mode)}
+                      <div className="flex items-center gap-1.5">
+                        <span className={`inline-flex items-center gap-1 business-radius-badge px-2 py-0.5 text-[10px] font-medium leading-tight ${
+                          statement.statement_mode === 'monthly' ? 'bg-emerald-100 text-emerald-700' :
+                          statement.statement_mode === 'receipt' ? 'bg-orange-100 text-orange-700' :
+                          'bg-blue-100 text-blue-700'
+                        }`}>
+                          {statement.statement_mode === 'monthly' ? '월말결제' :
+                           statement.statement_mode === 'receipt' ? '입고수량' :
+                           '일반'}
+                        </span>
+                        {extractingIds.has(statement.id) 
+                          ? renderStatusBadge('processing') 
+                          : renderStatusBadge(statement.status, statement.extraction_error, statement.statement_mode, statement)}
+                    </div>
                       <span className="text-[10px] text-gray-400">
                         {formatDate(statement.uploaded_at)}
                       </span>
@@ -1016,9 +999,9 @@ export default function TransactionStatementMain() {
                         {statement.vendor_name || '거래처 미확인'}
                       </p>
                     </div>
-                    {statement.grand_total && (
+                    {(statement.grand_total || statement.total_amount) && (
                       <p className="text-[12px] font-bold text-gray-900">
-                        {formatAmount(statement.grand_total)}
+                        {formatAmount(statement.grand_total ?? statement.total_amount)}
                       </p>
                     )}
                     <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-gray-100">

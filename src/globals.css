@@ -3,6 +3,9 @@
 @tailwind utilities;
 
 @layer base {
+  img {
+    image-orientation: from-image;
+  }
   :root {
     /* Professional Background System */
     --background: 0 0% 98.5%; /* Subtle off-white for sophistication */

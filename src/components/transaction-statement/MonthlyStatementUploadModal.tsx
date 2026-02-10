@@ -89,13 +89,22 @@ export default function MonthlyStatementUploadModal({
 
     setFile(selectedFile);
 
-    // 이미지인 경우 미리보기
+    // 이미지인 경우 EXIF 회전 적용된 미리보기 생성
     if (selectedFile.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreview(reader.result as string);
-      };
-      reader.readAsDataURL(selectedFile);
+      createImageBitmap(selectedFile).then(bitmap => {
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(bitmap, 0, 0);
+          setPreview(canvas.toDataURL('image/jpeg', 0.8));
+        }
+      }).catch(() => {
+        const reader = new FileReader();
+        reader.onloadend = () => setPreview(reader.result as string);
+        reader.readAsDataURL(selectedFile);
+      });
     } else {
       setPreview(null);
     }
@@ -138,10 +147,6 @@ export default function MonthlyStatementUploadModal({
       setUploading(true);
       const fileType = getFileType(file);
 
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MonthlyStatementUploadModal.tsx:handleUpload',message:'upload start',data:{fileName:file.name,fileType,fileSize:file.size},timestamp:Date.now(),runId:'debug7',hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
-
       const result = await transactionStatementService.uploadMonthlyStatement(
         file,
         uploaderName || '알 수 없음',
@@ -149,10 +154,6 @@ export default function MonthlyStatementUploadModal({
         undefined,
         fileType
       );
-
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MonthlyStatementUploadModal.tsx:handleUpload:result',message:'upload result',data:{success:result.success,error:result.error,hasData:Boolean(result.data)},timestamp:Date.now(),runId:'debug7',hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
 
       if (result.success && result.data) {
         toast.success('월말결제 거래명세서 업로드가 완료되었습니다.');
@@ -162,9 +163,6 @@ export default function MonthlyStatementUploadModal({
         toast.error(result.error || '업로드에 실패했습니다.');
       }
     } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'MonthlyStatementUploadModal.tsx:handleUpload:catch',message:'upload exception',data:{error:String(error)},timestamp:Date.now(),runId:'debug7',hypothesisId:'H3'})}).catch(()=>{});
-      // #endregion
       toast.error('업로드 중 오류가 발생했습니다.');
     } finally {
       setUploading(false);
