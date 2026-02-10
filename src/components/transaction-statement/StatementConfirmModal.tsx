@@ -605,6 +605,39 @@ export default function StatementConfirmModal({
           }
         });
         
+        // 발주번호는 세팅됐는데 매칭이 없는 품목: 해당 발주번호 후보에서 자동 매칭
+        result.data.items.forEach(item => {
+          const itemPO = initialPONumbers.get(item.id);
+          if (itemPO && !initialMatches.get(item.id)) {
+            const candidates = item.match_candidates?.filter(c =>
+              c.purchase_order_number === itemPO || c.sales_order_number === itemPO
+            ) || [];
+            if (candidates.length > 0) {
+              let best: SystemPurchaseItem | null = null;
+              let bestScore = -1;
+              for (const c of candidates) {
+                const score = calculateItemSimilarity(item.extracted_item_name || '', c.item_name, c.specification);
+                if (score > bestScore) {
+                  bestScore = score;
+                  best = {
+                    purchase_id: c.purchase_id,
+                    item_id: c.item_id,
+                    purchase_order_number: c.purchase_order_number || '',
+                    sales_order_number: c.sales_order_number,
+                    item_name: c.item_name,
+                    specification: c.specification,
+                    quantity: c.quantity,
+                    unit_price: c.unit_price,
+                    amount: (c as any).amount,
+                    vendor_name: c.vendor_name
+                  };
+                }
+              }
+              if (best) initialMatches.set(item.id, best);
+            }
+          }
+        });
+
         setItemPONumbers(initialPONumbers);
         setItemMatches(initialMatches);
         
@@ -728,7 +761,7 @@ export default function StatementConfirmModal({
       if (currentMatch && (
         currentMatch.purchase_order_number === poNumber || 
         currentMatch.sales_order_number === poNumber ||
-        (currentMatch.purchase_id && isMonthlyMode)
+        currentMatch.purchase_id // DB에서 로드한 매칭이면 유지 (OCR 발주번호 오독 방지)
       )) {
         newMatches.set(ocrItem.id, currentMatch);
         return;
@@ -1589,7 +1622,6 @@ export default function StatementConfirmModal({
 
         newMatches.set(ocrItem.id, bestMatch);
       });
-
       setItemMatches(newMatches);
     }
   };
@@ -1947,6 +1979,13 @@ export default function StatementConfirmModal({
         }));
         
         statementWithItems.items.forEach(ocrItem => {
+          // 기존 매칭이 있으면 유지
+          const existingMatch = itemMatches.get(ocrItem.id);
+          if (existingMatch && existingMatch.purchase_id) {
+            newMatches.set(ocrItem.id, existingMatch);
+            return;
+          }
+          
           let bestMatch: SystemPurchaseItem | null = null;
           let bestScore = 0;
           
@@ -1960,7 +1999,6 @@ export default function StatementConfirmModal({
           
           newMatches.set(ocrItem.id, bestMatch);
         });
-        
         setItemMatches(newMatches);
         
         // 세트 매칭 결과 업데이트 (allPONumberCandidates 갱신용)
