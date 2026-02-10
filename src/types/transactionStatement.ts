@@ -165,6 +165,7 @@ export interface MatchCandidate {
   item_name: string;
   specification?: string;
   quantity: number;
+  received_quantity?: number;
   unit_price?: number;
   vendor_name?: string;
   score: number; // 매칭 점수 (0-100)

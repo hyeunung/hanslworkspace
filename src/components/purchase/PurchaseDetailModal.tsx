@@ -30,7 +30,8 @@ import {
   Loader2,
   GripVertical,
   Image as ImageIcon,
-  FileCheck
+  FileCheck,
+  ListPlus
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -666,6 +667,22 @@ ${itemsText}`
       ...prev,
       { id: createRowId(), itemId: '', newQuantity: '' }
     ])
+  }
+
+  const addAllQuantityRows = () => {
+    if (selectedPurchaseItems.length === 0) return
+    const existingItemIds = new Set(quantityChangeRows.map(row => row.itemId))
+    const newRows = selectedPurchaseItems
+      .filter((item: any) => !existingItemIds.has(String(item.id)))
+      .map((item: any) => ({
+        id: createRowId(),
+        itemId: String(item.id),
+        newQuantity: ''
+      }))
+    if (newRows.length === 0) {
+      return
+    }
+    setQuantityChangeRows(prev => [...prev.filter(row => row.itemId), ...newRows])
   }
 
   const updateQuantityRow = (rowId: string, updates: Partial<QuantityChangeRow>) => {
@@ -6295,14 +6312,25 @@ ${itemsText}`
                             )
                           })}
                         </div>
-                        <button
-                          type="button"
-                          onClick={addQuantityRow}
-                          className="button-action-secondary"
-                        >
-                          <Plus className="w-3.5 h-3.5 mr-1" />
-                          품목 추가
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={addQuantityRow}
+                            className="button-action-secondary"
+                          >
+                            <Plus className="w-3.5 h-3.5 mr-1" />
+                            품목 추가
+                          </button>
+                          <button
+                            type="button"
+                            onClick={addAllQuantityRows}
+                            className="button-action-secondary"
+                            disabled={selectedPurchaseItems.length === 0}
+                          >
+                            <ListPlus className="w-3.5 h-3.5 mr-1" />
+                            전체 품목 추가
+                          </button>
+                        </div>
                       </div>
                     )}
 

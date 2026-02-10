@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { MessageCircle, Send, Calendar, Search, CheckCircle, Clock, AlertCircle, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Eye, X, Edit2, Trash2, Save, ImagePlus, Loader2, Plus } from 'lucide-react'
+import { MessageCircle, Send, Calendar, Search, CheckCircle, Clock, AlertCircle, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Eye, X, Edit2, Trash2, Save, ImagePlus, Loader2, Plus, ListPlus } from 'lucide-react'
 import { supportService, type SupportInquiry, type SupportAttachment, type SupportInquiryMessage, type SupportInquiryPayload } from '@/services/supportService'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
@@ -593,6 +593,22 @@ export default function SupportMain() {
       ...prev,
       { id: createRowId(), itemId: '', newQuantity: '' }
     ])
+  }
+
+  const addAllQuantityRows = () => {
+    if (selectedPurchaseItems.length === 0) return
+    const existingItemIds = new Set(quantityChangeRows.map(row => row.itemId))
+    const newRows = selectedPurchaseItems
+      .filter((item: any) => !existingItemIds.has(String(item.id)))
+      .map((item: any) => ({
+        id: createRowId(),
+        itemId: String(item.id),
+        newQuantity: ''
+      }))
+    if (newRows.length === 0) {
+      return
+    }
+    setQuantityChangeRows(prev => [...prev.filter(row => row.itemId), ...newRows])
   }
 
   const addPriceRow = () => {
@@ -1755,15 +1771,26 @@ ${itemsText}`;
                       })}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={addQuantityRow}
-                      className="button-action-secondary"
-                      disabled={!selectedPurchase}
-                    >
-                      <Plus className="w-3.5 h-3.5 mr-1" />
-                      품목 추가
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={addQuantityRow}
+                        className="button-action-secondary"
+                        disabled={!selectedPurchase}
+                      >
+                        <Plus className="w-3.5 h-3.5 mr-1" />
+                        품목 추가
+                      </button>
+                      <button
+                        type="button"
+                        onClick={addAllQuantityRows}
+                        className="button-action-secondary"
+                        disabled={!selectedPurchase || selectedPurchaseItems.length === 0}
+                      >
+                        <ListPlus className="w-3.5 h-3.5 mr-1" />
+                        전체 품목 추가
+                      </button>
+                    </div>
                   </div>
                 )}
 

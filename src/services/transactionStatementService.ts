@@ -735,7 +735,7 @@ class TransactionStatementService {
             purchase_order_number, 
             sales_order_number,
             vendor:vendors(vendor_name),
-            items:purchase_request_items(id, item_name, specification, quantity, unit_price_value)
+            items:purchase_request_items(id, item_name, specification, quantity, received_quantity, unit_price_value)
           `)
           .or(`purchase_order_number.eq.${normalizedNumber},sales_order_number.eq.${normalizedNumber}`)
           .limit(10);
@@ -800,6 +800,7 @@ class TransactionStatementService {
                 item_name: purchaseItem.item_name,
                 specification: purchaseItem.specification,
                 quantity: purchaseItem.quantity,
+                received_quantity: purchaseItem.received_quantity,
                 unit_price: purchaseItem.unit_price_value,
                 vendor_name: sysVendorName,
                 score,
@@ -821,7 +822,7 @@ class TransactionStatementService {
             purchase_order_number, 
             sales_order_number,
             vendor:vendors(vendor_name),
-            items:purchase_request_items(id, item_name, specification, quantity, unit_price_value)
+            items:purchase_request_items(id, item_name, specification, quantity, received_quantity, unit_price_value)
           `)
           .or(`purchase_order_number.ilike.${datePrefix}%,sales_order_number.ilike.${datePrefix}%`)
           .limit(20);
@@ -888,6 +889,7 @@ class TransactionStatementService {
                 item_name: purchaseItem.item_name,
                 specification: purchaseItem.specification,
                 quantity: purchaseItem.quantity,
+                received_quantity: purchaseItem.received_quantity,
                 unit_price: purchaseItem.unit_price_value,
                 vendor_name: sysVendorName,
                 score,
@@ -923,6 +925,7 @@ class TransactionStatementService {
               item_name, 
               specification, 
               quantity, 
+              received_quantity,
               unit_price_value,
               purchase:purchase_requests!inner(
                 id, 
@@ -1019,6 +1022,7 @@ class TransactionStatementService {
                   item_name: purchaseItem.item_name,
                   specification: purchaseItem.specification,
                   quantity: purchaseItem.quantity,
+                  received_quantity: purchaseItem.received_quantity,
                   unit_price: purchaseItem.unit_price_value,
                   vendor_name: purchaseItem.purchase?.vendor?.vendor_name,
                   score,
@@ -1067,7 +1071,7 @@ class TransactionStatementService {
                 purchase_order_number, 
                 sales_order_number,
                 vendor:vendors(vendor_name),
-                items:purchase_request_items(id, item_name, specification, quantity, unit_price_value)
+                items:purchase_request_items(id, item_name, specification, quantity, received_quantity, unit_price_value)
               `)
               .in('vendor_id', vendorIds)
               .gte('created_at', threeMonthsAgo.toISOString())
@@ -1130,6 +1134,7 @@ class TransactionStatementService {
                       item_name: purchaseItem.item_name,
                       specification: purchaseItem.specification,
                       quantity: purchaseItem.quantity,
+                      received_quantity: purchaseItem.received_quantity,
                       unit_price: purchaseItem.unit_price_value,
                       vendor_name: sysVendorName,
                       score,
@@ -1490,7 +1495,7 @@ class TransactionStatementService {
     try {
       const { data: { user } } = await this.supabase.auth.getUser();
 
-      // 1. 품목별 확정 처리
+      // 1. 품목별 확정 처리 + 단가/금액/회계상입고일 즉시 시스템 반영
       for (const item of request.items) {
         // 품목 확정 상태 업데이트
         const { error: itemError } = await this.supabase
@@ -1509,16 +1514,54 @@ class TransactionStatementService {
 
         if (itemError) throw itemError;
 
-        if (item.matched_item_id && request.accounting_received_date) {
-          const { error: accountingError } = await this.supabase
-            .from('purchase_request_items')
-            .update({
-              accounting_received_date: request.accounting_received_date
-            })
-            .eq('id', item.matched_item_id);
+        // 매칭된 발주 품목이 있으면 단가/금액/회계상입고일 즉시 반영
+        if (item.matched_item_id) {
+          const updateData: {
+            unit_price_value?: number;
+            amount_value?: number;
+            accounting_received_date?: string;
+          } = {};
 
-          if (accountingError) {
-            logger.warn('Failed to update accounting received date:', accountingError);
+          if (item.confirmed_unit_price !== undefined && item.confirmed_unit_price !== null) {
+            updateData.unit_price_value = item.confirmed_unit_price;
+          }
+          if (item.confirmed_amount !== undefined && item.confirmed_amount !== null) {
+            updateData.amount_value = item.confirmed_amount;
+          }
+          if (request.accounting_received_date) {
+            updateData.accounting_received_date = request.accounting_received_date;
+          }
+
+          if (Object.keys(updateData).length > 0) {
+            const { error: purchaseError } = await this.supabase
+              .from('purchase_request_items')
+              .update(updateData)
+              .eq('id', item.matched_item_id);
+
+            if (purchaseError) {
+              logger.warn('Failed to update purchase item (unit_price/amount/accounting_date):', purchaseError);
+            }
+          }
+        }
+
+        // 추가 품목인 경우 발주 품목으로 신규 등록 (원본 OCR 데이터 참조)
+        if (item.is_additional_item && item.matched_purchase_id && !item.matched_item_id) {
+          const statementItem = await this.getStatementItem(item.itemId);
+          const { error: insertError } = await this.supabase
+            .from('purchase_request_items')
+            .insert({
+              purchase_request_id: item.matched_purchase_id,
+              item_name: statementItem?.extracted_item_name || '추가 공정',
+              specification: statementItem?.extracted_specification,
+              quantity: item.confirmed_quantity || 1,
+              unit_price_value: item.confirmed_unit_price,
+              amount_value: item.confirmed_amount,
+              accounting_received_date: request.accounting_received_date,
+              remark: '거래명세서에서 추가됨'
+            });
+
+          if (insertError) {
+            logger.warn('Failed to insert additional item:', insertError);
           }
         }
       }
@@ -1538,7 +1581,7 @@ class TransactionStatementService {
 
       if (stmtError) throw stmtError;
 
-      // 3. 두 단계 완료 여부 확인 후 최종 반영
+      // 3. 두 단계 완료 여부 확인 후 상태 업데이트
       const finalizeResult = await this.tryFinalizeStatement(request.statementId);
       if (!finalizeResult.success) {
         return { success: false, error: finalizeResult.error };
@@ -1550,7 +1593,7 @@ class TransactionStatementService {
         updatedStatement: finalizeResult.updatedStatement || updatedStatement
       };
     } catch (error) {
-      console.error('Confirm statement error:', error);
+      logger.error('Confirm statement error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : '확정 중 오류가 발생했습니다.'
@@ -1647,7 +1690,8 @@ class TransactionStatementService {
   }
 
   /**
-   * 확정/수량일치 모두 완료 시 최종 반영
+   * 확정/수량일치 모두 완료 시 상태 칼럼만 업데이트 (시각적 표시용)
+   * - 실제 데이터 반영은 각 단계(confirmStatement, confirmQuantityMatch)에서 즉시 처리
    */
   private async tryFinalizeStatement(
     statementId: string
@@ -1668,109 +1712,12 @@ class TransactionStatementService {
       const isManagerConfirmed = !!statement.manager_confirmed_at;
       const isQuantityMatched = !!statement.quantity_match_confirmed_at;
 
+      // 둘 다 완료되지 않았으면 아직 최종 확정 아님
       if (!isManagerConfirmed || !isQuantityMatched) {
         return { success: true, finalized: false, updatedStatement: statement };
       }
 
-      const { data: items, error: itemsError } = await this.supabase
-        .from('transaction_statement_items')
-        .select('*')
-        .eq('statement_id', statementId)
-        .order('line_number', { ascending: true });
-
-      if (itemsError) throw itemsError;
-
-      const actualReceivedDate = (statement.extracted_data as { actual_received_date?: string } | null)?.actual_received_date;
-      const receiptByName = statement.quantity_match_confirmed_by_name
-        || statement.manager_confirmed_by_name
-        || '알수없음';
-
-      for (const item of items || []) {
-        const hasValidUnitPrice = item.confirmed_unit_price !== undefined && item.confirmed_unit_price !== null;
-        const hasValidAmount = item.confirmed_amount !== undefined && item.confirmed_amount !== null;
-
-        const updateData: {
-          unit_price_value?: number;
-          amount_value?: number;
-          actual_received_date?: string;
-          received_quantity?: number;
-          is_received?: boolean;
-          delivery_status?: string;
-          receipt_history?: Array<{ seq: number; qty: number; date: string; by: string }>;
-          received_at?: string;
-        } = {};
-
-        if (hasValidUnitPrice) {
-          updateData.unit_price_value = item.confirmed_unit_price!;
-        }
-        if (hasValidAmount) {
-          updateData.amount_value = item.confirmed_amount!;
-        }
-
-        if (
-          actualReceivedDate &&
-          item.matched_item_id &&
-          item.confirmed_quantity !== undefined &&
-          item.confirmed_quantity !== null
-        ) {
-          const { data: existingItem } = await this.supabase
-            .from('purchase_request_items')
-            .select('receipt_history')
-            .eq('id', item.matched_item_id)
-            .single();
-
-          const existingHistory = Array.isArray(existingItem?.receipt_history)
-            ? (existingItem?.receipt_history as Array<{ seq: number; qty: number; date: string; by: string }>)
-            : [];
-          const nextSeq = existingHistory.length + 1;
-          const updatedHistory = [
-            ...existingHistory,
-            {
-              seq: nextSeq,
-              qty: item.confirmed_quantity,
-              date: actualReceivedDate,
-              by: receiptByName
-            }
-          ];
-
-          updateData.actual_received_date = actualReceivedDate;
-          updateData.received_quantity = item.confirmed_quantity;
-          updateData.is_received = true;
-          updateData.delivery_status = 'received';
-          updateData.receipt_history = updatedHistory;
-          updateData.received_at = new Date().toISOString();
-        }
-
-        if (item.matched_item_id && Object.keys(updateData).length > 0) {
-          const { error: purchaseError } = await this.supabase
-            .from('purchase_request_items')
-            .update(updateData)
-            .eq('id', item.matched_item_id);
-
-          if (purchaseError) {
-            logger.warn('Failed to update purchase item:', purchaseError);
-          }
-        }
-
-        if (item.is_additional_item && item.matched_purchase_id && !item.matched_item_id) {
-          const { error: insertError } = await this.supabase
-            .from('purchase_request_items')
-            .insert({
-              purchase_request_id: item.matched_purchase_id,
-              item_name: item.extracted_item_name || '추가 공정',
-              specification: item.extracted_specification,
-              quantity: item.confirmed_quantity || item.extracted_quantity || 1,
-              unit_price_value: item.confirmed_unit_price || item.extracted_unit_price,
-              amount_value: item.confirmed_amount || item.extracted_amount,
-              remark: '거래명세서에서 추가됨'
-            });
-
-          if (insertError) {
-            logger.warn('Failed to insert additional item:', insertError);
-          }
-        }
-      }
-
+      // 둘 다 완료 → 상태만 'confirmed'로 업데이트
       const confirmedAt = new Date().toISOString();
       const confirmedBy = statement.manager_confirmed_by || statement.quantity_match_confirmed_by || null;
       const confirmedByName = statement.manager_confirmed_by_name || statement.quantity_match_confirmed_by_name || null;
@@ -1951,7 +1898,7 @@ class TransactionStatementService {
             purchase_order_number, 
             sales_order_number,
             vendor:vendors(vendor_name),
-            items:purchase_request_items(id, item_name, specification, quantity, unit_price_value)
+            items:purchase_request_items(id, item_name, specification, quantity, received_quantity, unit_price_value)
           `)
           .or(`purchase_order_number.eq.${normalizedNumber},sales_order_number.eq.${normalizedNumber}`)
           .limit(5);
@@ -2024,7 +1971,7 @@ class TransactionStatementService {
           purchase_order_number, 
           sales_order_number,
           vendor:vendors(vendor_name),
-          items:purchase_request_items(id, item_name, specification, quantity, unit_price_value)
+          items:purchase_request_items(id, item_name, specification, quantity, received_quantity, unit_price_value)
         `)
         .gte('created_at', threeMonthsAgo.toISOString())
         .order('created_at', { ascending: false })

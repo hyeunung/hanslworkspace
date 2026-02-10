@@ -33,6 +33,7 @@ import type {
   StatementMode
 } from "@/types/transactionStatement";
 import { normalizeOrderNumber } from "@/types/transactionStatement";
+import { logger } from "@/lib/logger";
 import StatementImageViewer from "./StatementImageViewer";
 import PurchaseDetailModal from "@/components/purchase/PurchaseDetailModal";
 
@@ -235,6 +236,9 @@ export default function StatementConfirmModal({
   }
   const [editedOCRItems, setEditedOCRItems] = useState<Map<string, EditedOCRItem>>(new Map());
   
+  // 디바운스 타이머 (OCR 수정 자동 저장용)
+  const editDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
   // 매칭 상세 정보 팝업
   const [matchDetailPopup, setMatchDetailPopup] = useState<{
     isOpen: boolean;
@@ -327,6 +331,15 @@ export default function StatementConfirmModal({
   // OCR 발주/수주번호 페어 캐시 (실시간 입력용)
   const [poPairOverrides, setPoPairOverrides] = useState<Map<string, string | null>>(new Map());
   const pendingPairLookupsRef = useRef<Set<string>>(new Set());
+
+  // 모달 닫힐 때 디바운스 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (editDebounceTimerRef.current) {
+        clearTimeout(editDebounceTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -522,6 +535,7 @@ export default function StatementConfirmModal({
                   item_name: c.item_name,
                   specification: c.specification,
                   quantity: c.quantity,
+                  received_quantity: c.received_quantity,
                   unit_price: c.unit_price,
                   amount: (c as any).amount,
                   vendor_name: c.vendor_name
@@ -543,6 +557,7 @@ export default function StatementConfirmModal({
                     item_name: c.item_name,
                     specification: c.specification,
                     quantity: c.quantity,
+                    received_quantity: c.received_quantity,
                     unit_price: c.unit_price,
                     amount: (c as any).amount,
                     vendor_name: c.vendor_name
@@ -587,6 +602,7 @@ export default function StatementConfirmModal({
                       item_name: c.item_name,
                       specification: c.specification,
                       quantity: c.quantity,
+                      received_quantity: c.received_quantity,
                       unit_price: c.unit_price,
                       amount: (c as any).amount,
                       vendor_name: c.vendor_name
@@ -627,6 +643,7 @@ export default function StatementConfirmModal({
                     item_name: c.item_name,
                     specification: c.specification,
                     quantity: c.quantity,
+                    received_quantity: c.received_quantity,
                     unit_price: c.unit_price,
                     amount: (c as any).amount,
                     vendor_name: c.vendor_name
@@ -688,6 +705,7 @@ export default function StatementConfirmModal({
                       item_name: candidate.item_name,
                       specification: candidate.specification,
                       quantity: candidate.quantity,
+                      received_quantity: candidate.received_quantity,
                       unit_price: candidate.unit_price,
                       amount: (candidate as any).amount,
                       vendor_name: candidate.vendor_name
@@ -790,6 +808,7 @@ export default function StatementConfirmModal({
             item_name: c.item_name,
             specification: c.specification,
             quantity: c.quantity,
+            received_quantity: c.received_quantity,
             unit_price: c.unit_price,
             amount: (c as any).amount,
             vendor_name: c.vendor_name
@@ -811,6 +830,7 @@ export default function StatementConfirmModal({
               item_name: c.item_name,
               specification: c.specification,
               quantity: c.quantity,
+              received_quantity: c.received_quantity,
               unit_price: c.unit_price,
               amount: (c as any).amount,
               vendor_name: c.vendor_name
@@ -1173,6 +1193,7 @@ export default function StatementConfirmModal({
             item_name: candidate.item_name,
             specification: candidate.specification,
             quantity: candidate.quantity,
+            received_quantity: candidate.received_quantity,
             unit_price: candidate.unit_price,
             amount: (candidate as any).amount, // amount는 일부 후보에만 존재
             vendor_name: candidate.vendor_name
@@ -1222,7 +1243,30 @@ export default function StatementConfirmModal({
     return result;
   }, [statementWithItems]);
 
-  // OCR 품목 편집 함수
+  // 단일 OCR 품목 수정값 즉시 DB 저장
+  const persistSingleOCRItem = useCallback(async (itemId: string, field: keyof EditedOCRItem, value: string | number) => {
+    const fieldMap: Record<string, string> = {
+      item_name: 'extracted_item_name',
+      quantity: 'extracted_quantity',
+      unit_price: 'extracted_unit_price',
+      amount: 'extracted_amount',
+      po_number: 'extracted_po_number',
+    };
+    const dbField = fieldMap[field];
+    if (!dbField) return;
+
+    const dbValue = field === 'item_name' || field === 'po_number' ? value : Number(value);
+    const { error } = await supabase
+      .from('transaction_statement_items')
+      .update({ [dbField]: dbValue })
+      .eq('id', itemId);
+
+    if (error) {
+      logger.warn('OCR 수정값 자동 저장 실패:', error);
+    }
+  }, [supabase]);
+
+  // OCR 품목 편집 함수 (수정 즉시 디바운스 500ms 후 DB 저장)
   const handleEditOCRItem = (itemId: string, field: keyof EditedOCRItem, value: string | number) => {
     setEditedOCRItems(prev => {
       const newMap = new Map(prev);
@@ -1230,9 +1274,17 @@ export default function StatementConfirmModal({
       newMap.set(itemId, { ...existing, [field]: value });
       return newMap;
     });
+
+    // 디바운스: 500ms 후 자동 저장
+    if (editDebounceTimerRef.current) {
+      clearTimeout(editDebounceTimerRef.current);
+    }
+    editDebounceTimerRef.current = setTimeout(() => {
+      persistSingleOCRItem(itemId, field, value);
+    }, 500);
   };
 
-  // 수동 수정값을 DB에 반영 (모달 재오픈 시 유지)
+  // 수동 수정값을 DB에 일괄 반영 (확정/수량일치 시 호출)
   const persistEditedOCRItems = async () => {
     if (!statementWithItems || editedOCRItems.size === 0) return;
 
@@ -1623,6 +1675,22 @@ export default function StatementConfirmModal({
         newMatches.set(ocrItem.id, bestMatch);
       });
       setItemMatches(newMatches);
+      
+      // 전체 품목의 발주번호 + 매칭 결과 즉시 DB 저장
+      statementWithItems.items.forEach(ocrItem => {
+        const matched = newMatches.get(ocrItem.id);
+        supabase
+          .from('transaction_statement_items')
+          .update({
+            extracted_po_number: poNumber,
+            matched_purchase_id: matched?.purchase_id ?? null,
+            matched_item_id: matched?.item_id ?? null,
+          })
+          .eq('id', ocrItem.id)
+          .then(({ error }: { error: any }) => {
+            if (error) logger.warn('전체 발주번호 선택 자동 저장 실패:', error);
+          });
+      });
     }
   };
 
@@ -2068,6 +2136,7 @@ export default function StatementConfirmModal({
               item_name: c.item_name,
               specification: c.specification,
               quantity: c.quantity,
+              received_quantity: c.received_quantity,
               unit_price: c.unit_price,
               amount: (c as any).amount,
               vendor_name: c.vendor_name
@@ -2098,6 +2167,10 @@ export default function StatementConfirmModal({
         newMap.set(ocrItemId, bestMatch);
         return newMap;
       });
+      
+      // 즉시 DB 저장 (매칭 + 발주번호)
+      persistMatchChange(ocrItemId, bestMatch);
+      persistSingleOCRItem(ocrItemId, 'po_number', poNumber);
     }
     
     setOpenDropdowns(prev => {
@@ -2158,6 +2231,21 @@ export default function StatementConfirmModal({
     }
   }, [supabase]);
 
+  // 매칭 변경 즉시 DB 저장
+  const persistMatchChange = useCallback(async (ocrItemId: string, systemItem: SystemPurchaseItem | null) => {
+    const { error } = await supabase
+      .from('transaction_statement_items')
+      .update({
+        matched_purchase_id: systemItem?.purchase_id ?? null,
+        matched_item_id: systemItem?.item_id ?? null,
+      })
+      .eq('id', ocrItemId);
+
+    if (error) {
+      logger.warn('매칭 변경 자동 저장 실패:', error);
+    }
+  }, [supabase]);
+
   // 시스템 품목 직접 선택
   const handleSelectSystemItem = (ocrItemId: string, systemItem: SystemPurchaseItem | null) => {
     lastSelectedSystemItemRef.current = ocrItemId;
@@ -2166,6 +2254,9 @@ export default function StatementConfirmModal({
       newMap.set(ocrItemId, systemItem);
       return newMap;
     });
+    
+    // 즉시 DB 저장
+    persistMatchChange(ocrItemId, systemItem);
     
     setOpenDropdowns(prev => {
       const newSet = new Set(prev);
@@ -3165,6 +3256,7 @@ export default function StatementConfirmModal({
                             item_name: candidate.item_name || '품목명 없음',
                             specification: candidate.specification,
                             quantity: candidate.quantity,
+                            received_quantity: candidate.received_quantity,
                             unit_price: candidate.unit_price,
                             amount: (candidate as any).amount,
                             vendor_name: candidate.vendor_name
