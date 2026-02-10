@@ -605,23 +605,58 @@ class TransactionStatementService {
 
       if (itemsError) throw itemsError;
 
-      // 품목별 매칭 후보 조회 (거래처명을 전달하여 필터링)
+      // 품목별 매칭 후보 조회 (캐시 활용 - DB에 저장된 후보가 있으면 재사용)
       const statementVendorName = statement.vendor_name || '';
+      
+      // 매칭된 purchase_id 일괄 조회 (N+1 방지)
+      const purchaseIds = [...new Set((items || []).map((i: any) => i.matched_purchase_id).filter(Boolean))];
+      const itemIds = [...new Set((items || []).map((i: any) => i.matched_item_id).filter(Boolean))];
+      
+      const purchaseMap = new Map<number, any>();
+      const itemMap = new Map<number, any>();
+      
+      if (purchaseIds.length > 0) {
+        const { data: purchases } = await this.supabase
+          .from('purchase_requests')
+          .select('id, purchase_order_number, sales_order_number, vendor:vendors(vendor_name)')
+          .in('id', purchaseIds);
+        (purchases || []).forEach((p: any) => purchaseMap.set(p.id, p));
+      }
+      
+      if (itemIds.length > 0) {
+        const { data: purchaseItems } = await this.supabase
+          .from('purchase_request_items')
+          .select('id, item_name, specification, quantity, unit_price_value, amount_value, received_quantity')
+          .in('id', itemIds);
+        (purchaseItems || []).forEach((i: any) => itemMap.set(i.id, i));
+      }
+
       const itemsWithMatch: TransactionStatementItemWithMatch[] = await Promise.all(
         (items || []).map(async (item: TransactionStatementItem) => {
-          const matchCandidates = await this.findMatchCandidates(item, statementVendorName);
+          // 캐시된 후보가 있으면 사용, 없으면 계산 후 캐시
+          let matchCandidates: MatchCandidate[];
+          const cachedCandidates = (item as any).match_candidates_data;
           
-          // 매칭된 발주/품목 정보
+          if (cachedCandidates && Array.isArray(cachedCandidates) && cachedCandidates.length > 0) {
+            matchCandidates = cachedCandidates;
+          } else {
+            matchCandidates = await this.findMatchCandidates(item, statementVendorName);
+            // 캐시에 저장 (비동기, 에러 무시)
+            if (matchCandidates.length > 0) {
+              this.supabase
+                .from('transaction_statement_items')
+                .update({ match_candidates_data: matchCandidates })
+                .eq('id', item.id)
+                .then(() => {});
+            }
+          }
+          
+          // 매칭된 발주/품목 정보 (일괄 조회 결과에서 가져오기)
           let matchedPurchase = undefined;
           let matchedItem = undefined;
           
           if (item.matched_purchase_id) {
-            const { data: purchase } = await this.supabase
-              .from('purchase_requests')
-              .select('id, purchase_order_number, sales_order_number, vendor:vendors(vendor_name)')
-              .eq('id', item.matched_purchase_id)
-              .single();
-            
+            const purchase = purchaseMap.get(item.matched_purchase_id);
             if (purchase) {
               matchedPurchase = {
                 id: purchase.id,
@@ -633,12 +668,7 @@ class TransactionStatementService {
           }
 
           if (item.matched_item_id) {
-            const { data: purchaseItem } = await this.supabase
-              .from('purchase_request_items')
-              .select('id, item_name, specification, quantity, unit_price_value, amount_value, received_quantity')
-              .eq('id', item.matched_item_id)
-              .single();
-            
+            const purchaseItem = itemMap.get(item.matched_item_id);
             if (purchaseItem) {
               matchedItem = {
                 id: purchaseItem.id,
