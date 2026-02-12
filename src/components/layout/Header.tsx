@@ -2,7 +2,7 @@
 
 import { useNavigate } from 'react-router-dom'
 import { createClient } from '@/lib/supabase/client'
-import { User, Menu, MessageCircle, Receipt, FileText } from 'lucide-react'
+import { User, Menu, MessageCircle, FileText, FileCheck } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { supportService } from '@/services/supportService'
 import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
@@ -271,7 +271,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
               title="미확정 거래명세서 보기"
               aria-label={`거래명세서 알림 ${pendingStatementCount}건`}
             >
-              <Receipt className="w-4 h-4 text-gray-600" />
+              <FileCheck className="w-4 h-4 text-gray-500" />
               <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
                 {(pendingStatementCount > 99) ? '99+' : pendingStatementCount}
               </span>
