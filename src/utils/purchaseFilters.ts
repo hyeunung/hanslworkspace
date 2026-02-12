@@ -560,6 +560,77 @@ export const filterPendingApprovals = (
 }
 
 /**
+ * 사이드바 발주요청 승인대기 배지 카운트
+ * - middle_manager: 1차 승인 대기만
+ * - final_approver: 최종 승인 대기만
+ * - app_admin: 1차/최종 모두
+ * - ceo: 제외
+ */
+export const countPendingApprovalsForSidebarBadge = (
+  purchases: Purchase[],
+  purchaseRole: string | string[] | null | undefined
+): number => {
+  if (!purchases || purchases.length === 0) return 0
+
+  const roles = parseRoles(purchaseRole)
+  const hasAppAdmin = roles.includes('app_admin')
+  const hasMiddleManager = roles.includes('middle_manager')
+  const hasFinalApprover = roles.includes('final_approver')
+  const hasCeo = roles.includes('ceo')
+
+  // ceo는 알림 배지 대상에서 제외 (app_admin이 함께 있으면 app_admin 우선)
+  if (hasCeo && !hasAppAdmin) return 0
+
+  // 발주/구매요청 카테고리 관리자 역할이 있으면 해당 카테고리만 카운트
+  const hasConsumableManager = roles.includes('consumable_manager')
+  const hasRawMaterialManager = roles.includes('raw_material_manager')
+  const hasCategoryLimiter = hasConsumableManager || hasRawMaterialManager
+
+  const matchesManagedCategory = (purchase: Purchase) => {
+    if (!hasCategoryLimiter) return true
+    if (hasConsumableManager && purchase.payment_category === '구매 요청') return true
+    if (hasRawMaterialManager && purchase.payment_category === '발주') return true
+    return false
+  }
+
+  return purchases.filter(purchase => {
+    // 승인 완료/반려 제외
+    if (
+      purchase.middle_manager_status === 'approved' &&
+      purchase.final_manager_status === 'approved'
+    ) {
+      return false
+    }
+    if (
+      purchase.middle_manager_status === 'rejected' ||
+      purchase.final_manager_status === 'rejected'
+    ) {
+      return false
+    }
+
+    if (!matchesManagedCategory(purchase)) return false
+
+    const isMiddlePending = ['pending', '대기', '', null, undefined].includes(
+      purchase.middle_manager_status as any
+    )
+    const isFinalPending =
+      purchase.middle_manager_status === 'approved' &&
+      ['pending', '대기', '', null, undefined].includes(
+        purchase.final_manager_status as any
+      )
+
+    if (hasAppAdmin) {
+      return isMiddlePending || isFinalPending
+    }
+
+    if (hasMiddleManager && isMiddlePending) return true
+    if (hasFinalApprover && isFinalPending) return true
+
+    return false
+  }).length
+}
+
+/**
  * 1차 승인 대기 필터 (ApprovalMain용)
  */
 export const filterMiddlePendingApprovals = (

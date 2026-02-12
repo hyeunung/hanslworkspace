@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { 
   Home, 
   ShoppingCart, 
@@ -15,6 +15,8 @@ import {
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { supportService } from '@/services/supportService'
+import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
+import { countPendingApprovalsForSidebarBadge } from '@/utils/purchaseFilters'
 import {
   Tooltip,
   TooltipContent,
@@ -31,6 +33,7 @@ interface NavigationProps {
 export default function FixedNavigation({ role, isOpen = false, onClose }: NavigationProps) {
   const location = useLocation()
   const pathname = location.pathname
+  const { allPurchases } = usePurchaseMemory()
 
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
   const [pendingStatementCount, setPendingStatementCount] = useState(0)
@@ -109,6 +112,10 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
 
   const supportBadge = pendingInquiryCount
   const statementBadge = pendingStatementCount
+  const purchasePendingBadge = useMemo(
+    () => countPendingApprovalsForSidebarBadge(allPurchases, role),
+    [allPurchases, role]
+  )
 
   useEffect(() => {
     if (!canSeeStatementBadge) return
@@ -248,6 +255,11 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
                           >
                             <div className="relative">
                               <Icon className="w-4 h-4" />
+                              {item.href === '/purchase/list' && purchasePendingBadge > 0 && (
+                                <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                                  {purchasePendingBadge > 99 ? '99+' : purchasePendingBadge}
+                                </span>
+                              )}
                               {item.href === '/transaction-statement' && canSeeStatementBadge && statementBadge > 0 && (
                                 <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
                                   {statementBadge > 99 ? '99+' : statementBadge}

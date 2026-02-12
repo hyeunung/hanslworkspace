@@ -2,9 +2,11 @@
 
 import { useNavigate } from 'react-router-dom'
 import { createClient } from '@/lib/supabase/client'
-import { User, Menu, MessageCircle, Receipt } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { User, Menu, MessageCircle, Receipt, FileText } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { supportService } from '@/services/supportService'
+import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
+import { countPendingApprovalsForSidebarBadge } from '@/utils/purchaseFilters'
 
 interface HeaderProps {
   user: any
@@ -29,12 +31,17 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
   const [pendingStatementCount, setPendingStatementCount] = useState(0)
+  const { allPurchases } = usePurchaseMemory()
 
   const roles = Array.isArray(user?.purchase_role)
     ? user.purchase_role
     : (user?.purchase_role ? [user.purchase_role] : [])
   const isAdmin = roles.includes('app_admin')
   const canSeeStatementBadge = roles.includes('app_admin') || roles.includes('lead buyer')
+  const pendingPurchaseCount = useMemo(
+    () => countPendingApprovalsForSidebarBadge(allPurchases, user?.purchase_role),
+    [allPurchases, user?.purchase_role]
+  )
 
   // app_admin: 상단 로고 옆에 미처리 문의(open+in_progress) 뱃지 표시
   useEffect(() => {
@@ -267,6 +274,20 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
               <Receipt className="w-4 h-4 text-gray-600" />
               <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
                 {(pendingStatementCount > 99) ? '99+' : pendingStatementCount}
+              </span>
+            </button>
+          )}
+          {pendingPurchaseCount > 0 && (
+            <button
+              type="button"
+              onClick={() => navigate('/purchase/list?tab=pending')}
+              className="relative ml-2 inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-gray-50 transition-colors"
+              title="승인대기 발주요청 보기"
+              aria-label={`발주 승인대기 알림 ${pendingPurchaseCount}건`}
+            >
+              <FileText className="w-4 h-4 text-gray-500" />
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                {(pendingPurchaseCount > 99) ? '99+' : pendingPurchaseCount}
               </span>
             </button>
           )}

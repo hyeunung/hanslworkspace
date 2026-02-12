@@ -292,7 +292,7 @@ export default function StatementConfirmModal({
         .in('id', uniqueIds);
       if (error || !data) return;
       const map = new Map<number, string>();
-      data.forEach(row => {
+      data.forEach((row: { id: number | null; currency: string | null }) => {
         if (row?.id) map.set(row.id, row.currency || 'KRW');
       });
       setPurchaseCurrencyMap(map);
@@ -1676,6 +1676,19 @@ export default function StatementConfirmModal({
       });
       setItemMatches(newMatches);
       
+      // 로컬 state에 발주번호 반영 (OCR input이 즉시 변경되도록)
+      const newEditedItems = new Map(editedOCRItems);
+      const newItemPONumbers = new Map(itemPONumbers);
+      statementWithItems.items.forEach(ocrItem => {
+        // editedOCRItems 업데이트
+        const existing = newEditedItems.get(ocrItem.id) || {};
+        newEditedItems.set(ocrItem.id, { ...existing, po_number: poNumber });
+        // itemPONumbers 업데이트
+        newItemPONumbers.set(ocrItem.id, poNumber);
+      });
+      setEditedOCRItems(newEditedItems);
+      setItemPONumbers(newItemPONumbers);
+
       // 전체 품목의 발주번호 + 매칭 결과 즉시 DB 저장
       statementWithItems.items.forEach(ocrItem => {
         const matched = newMatches.get(ocrItem.id);
@@ -1691,6 +1704,7 @@ export default function StatementConfirmModal({
             if (error) logger.warn('전체 발주번호 선택 자동 저장 실패:', error);
           });
       });
+
     }
   };
 
