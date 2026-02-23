@@ -3,65 +3,145 @@ import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Filter, Receipt, Printer, Download, Calendar, Plus, Trash2 } from "lucide-react";
+import { Search, Filter, Receipt, Printer, Download, Calendar, Plus, Trash2, Images } from "lucide-react";
 import { toast } from "sonner";
 import ReceiptDetailModal from "./ReceiptDetailModal";
 import MobileReceiptCard from "./MobileReceiptCard";
 import ReceiptUploadModal from "./ReceiptUploadModal";
 import { useReceiptPermissions } from "@/hooks/useReceiptPermissions";
-import type { ReceiptItem } from "@/types/receipt";
+import type { ReceiptItem, ReceiptGroup } from "@/types/receipt";
 import { formatDate, formatFileSize } from "@/utils/helpers";
 import { extractStoragePathFromUrl } from "@/utils/receipt";
 import { logger } from "@/lib/logger";
 
-/**
- * 영수증 관리 메인 페이지 컴포넌트
- * 
- * 영수증 목록 조회, 검색, 필터링, 업로드, 다운로드, 인쇄, 삭제 기능을 제공합니다.
- * 사용자 권한에 따라 기능이 제한됩니다.
- * 
- * @component
- * 
- * ### 주요 기능
- * - 영수증 목록 조회 (데스크톱: 테이블, 모바일: 카드)
- * - 파일명, 메모, 날짜 기반 검색
- * - 날짜 필터링
- * - 권한 기반 UI 제어
- * - 영수증 상세보기 모달
- * - 업로드 모달
- * 
- * ### 권한 체계
- * - `app_admin`: 모든 기능 + 삭제 + 등록인 정보 조회
- * - `hr`, `lead buyer`: 조회, 업로드, 다운로드, 인쇄
- * - 기타: 접근 불가
- * 
- * @example
- * ```tsx
- * // App.tsx에서 라우팅
- * <Route path="/receipts" element={<ReceiptsMain />} />
- * ```
- */
+function buildGroups(receipts: ReceiptItem[]): ReceiptGroup[] {
+  const groupMap = new Map<string, ReceiptItem[]>();
+  const singles: ReceiptItem[] = [];
+
+  for (const r of receipts) {
+    if (r.group_id) {
+      const list = groupMap.get(r.group_id) || [];
+      list.push(r);
+      groupMap.set(r.group_id, list);
+    } else {
+      singles.push(r);
+    }
+  }
+
+  const groups: ReceiptGroup[] = [];
+
+  for (const [gid, items] of groupMap) {
+    items.sort((a, b) => new Date(a.uploaded_at).getTime() - new Date(b.uploaded_at).getTime());
+    groups.push({ group_id: gid, receipts: items, primary: items[0], count: items.length });
+  }
+
+  for (const s of singles) {
+    groups.push({ group_id: null, receipts: [s], primary: s, count: 1 });
+  }
+
+  groups.sort((a, b) => new Date(b.primary.uploaded_at).getTime() - new Date(a.primary.uploaded_at).getTime());
+  return groups;
+}
+
+function printReceiptImages(imageUrls: string[], onPrintDone?: () => void) {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    toast.error('팝업이 차단되었습니다. 팝업을 허용해주세요.');
+    return;
+  }
+
+  const imagesHtml = imageUrls.map((url, i) => {
+    const isLast = i === imageUrls.length - 1;
+    return `<div class="page${isLast ? '' : ' page-break'}"><img src="${url}" alt="영수증 ${i + 1}" class="receipt-image" /></div>`;
+  }).join('\n');
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>영수증 인쇄</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: white; }
+        .page {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          min-height: 100vh;
+        }
+        .page-break { page-break-after: always; }
+        .receipt-image {
+          max-width: 100%;
+          max-height: 100vh;
+          object-fit: contain;
+        }
+        @media print {
+          @page { margin: 0; size: auto; }
+          body { margin: 0; padding: 0; }
+          .page { min-height: auto; }
+          .page-break { page-break-after: always; }
+          .receipt-image {
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
+          }
+        }
+      </style>
+      <script>
+        var loaded = 0;
+        var total = ${imageUrls.length};
+        function onImgLoad() {
+          loaded++;
+          if (loaded >= total) {
+            setTimeout(function(){ window.print(); window.close(); }, 200);
+          }
+        }
+        function onImgError() {
+          loaded++;
+          if (loaded >= total) {
+            alert('일부 이미지를 불러올 수 없습니다.');
+            window.close();
+          }
+        }
+      </script>
+    </head>
+    <body>
+      ${imagesHtml.replace(/onload="[^"]*"/g, '').replace(/<img /g, '<img onload="onImgLoad()" onerror="onImgError()" ')}
+    </body>
+    </html>
+  `);
+
+  printWindow.document.close();
+
+  if (onPrintDone) {
+    setTimeout(() => {
+      if (confirm('인쇄를 완료하셨습니까?')) {
+        onPrintDone();
+      }
+    }, 1000);
+  }
+}
+
 export default function ReceiptsMain() {
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptItem | null>(null);
+  const [selectedGroupReceipts, setSelectedGroupReceipts] = useState<ReceiptItem[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
   const supabase = createClient();
   const { permissions, loading: permissionsLoading } = useReceiptPermissions();
 
-  // 권한 없는 사용자 접근 차단
   useEffect(() => {
     if (!permissionsLoading && !permissions.canView) {
       toast.error('영수증 관리에 접근할 권한이 없습니다.');
-      // 적절한 페이지로 리다이렉트 가능
     }
   }, [permissions.canView, permissionsLoading]);
 
-  // 영수증 데이터 로드 - useCallback으로 최적화
   const loadReceipts = useCallback(async () => {
     if (!permissions.canView) return;
     
@@ -82,7 +162,8 @@ export default function ReceiptsMain() {
           is_printed,
           printed_at,
           printed_by,
-          printed_by_name
+          printed_by_name,
+          group_id
         `)
         .order('uploaded_at', { ascending: false });
 
@@ -96,11 +177,9 @@ export default function ReceiptsMain() {
     }
   }, [permissions.canView, supabase]);
 
-  // 필터링 로직 - useMemo로 최적화
   const filteredReceipts = useMemo(() => {
     let filtered = [...receipts];
 
-    // 검색어 필터
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       filtered = filtered.filter(receipt => 
@@ -111,7 +190,6 @@ export default function ReceiptsMain() {
       );
     }
 
-    // 날짜 필터
     if (dateFilter) {
       filtered = filtered.filter(receipt => {
         if (!receipt.uploaded_at) return false;
@@ -123,50 +201,28 @@ export default function ReceiptsMain() {
     return filtered;
   }, [receipts, searchTerm, dateFilter]);
 
-  // 컴포넌트 마운트 시 데이터 로드
+  const groups = useMemo(() => buildGroups(filteredReceipts), [filteredReceipts]);
+
   useEffect(() => {
     if (!permissionsLoading) {
       loadReceipts();
     }
   }, [loadReceipts, permissionsLoading]);
 
-  // formatDate는 utils에서 import하므로 제거
-
-  // 영수증 상세보기
-  const handleViewReceipt = (receipt: ReceiptItem) => {
-    setSelectedReceipt(receipt);
+  const handleViewReceipt = (group: ReceiptGroup) => {
+    setSelectedReceipt(group.primary);
+    setSelectedGroupReceipts(group.receipts);
     setIsModalOpen(true);
   };
 
-  // 영수증 인쇄 완료 처리
-  const markAsPrinted = useCallback(async (receiptId: string) => {
-    logger.debug('영수증 인쇄 완료 처리 시작', {
-      receiptId,
-      timestamp: new Date().toISOString(),
-      location: 'ReceiptsMain.tsx'
-    });
-
+  const markGroupAsPrinted = useCallback(async (receiptIds: string[]) => {
     try {
-      // 1. 사용자 인증 정보 확인
       const { data: { user }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError) {
+      if (authError || !user) {
         toast.error('사용자 인증에 실패했습니다.');
         return;
       }
-      
-      if (!user) {
-        toast.error('사용자 정보를 불러올 수 없습니다.');
-        return;
-      }
 
-      logger.debug('사용자 인증 정보 확인 완료', {
-        userId: user.id,
-        email: user.email,
-        lastSignIn: user.last_sign_in_at
-      });
-
-      // 2. 사용자 권한 및 정보 확인
       const { data: employee, error: empError } = await supabase
         .from('employees')
         .select('name, purchase_role')
@@ -178,30 +234,14 @@ export default function ReceiptsMain() {
         return;
       }
 
-      logger.debug('직원 정보 조회 완료', {
-        name: employee?.name,
-        email: user.email,
-        role: employee?.purchase_role
-      });
-
-      // 3. 권한 검증
       const role = employee?.purchase_role || '';
       const hasPermission = role.includes('app_admin') || role.includes('hr') || role.includes('lead buyer');
       
-      logger.debug('권한 검증 결과', {
-        role,
-        hasPermission,
-        isAppAdmin: role.includes('app_admin'),
-        isHr: role.includes('hr'),
-        isLeadBuyer: role.includes('lead buyer')
-      });
-
       if (!hasPermission) {
         toast.error('인쇄완료 처리 권한이 없습니다.');
         return;
       }
 
-      // 4. 업데이트 데이터 준비
       const updateData = {
         is_printed: true,
         printed_at: new Date().toISOString(),
@@ -209,148 +249,40 @@ export default function ReceiptsMain() {
         printed_by_name: employee?.name || user.email
       };
 
-
-      // 5. 데이터베이스 업데이트 실행
-      const startTime = performance.now();
-      
-      const { data: updateResult, error: updateError } = await supabase
+      const { error: updateError } = await supabase
         .from('purchase_receipts')
         .update(updateData)
-        .eq('id', receiptId)
-        .select('*');
-
-      const endTime = performance.now();
-      const executionTime = endTime - startTime;
+        .in('id', receiptIds);
 
       if (updateError) {
-        logger.error('영수증 인쇄완료 업데이트 실패', updateError, {
-          error: updateError,
-          code: updateError.code,
-          message: updateError.message,
-          details: updateError.details,
-          hint: updateError.hint,
-          executionTime: `${executionTime.toFixed(2)}ms`
-        });
-        
-        // RLS 관련 오류 특별 처리
-        if (updateError.code === '42501' || updateError.message?.includes('policy')) {
-          toast.error('데이터베이스 권한 오류가 발생했습니다. 관리자에게 문의하세요.');
-        } else {
-          toast.error(`업데이트 실패: ${updateError.message}`);
-        }
+        logger.error('영수증 인쇄완료 업데이트 실패', updateError);
+        toast.error(`업데이트 실패: ${updateError.message}`);
         return;
       }
 
-      logger.debug('영수증 인쇄완료 업데이트 성공', {
-        updateResult,
-        executionTime: `${executionTime.toFixed(2)}ms`,
-        affectedRows: updateResult?.length || 0
-      });
-
-      // 6. 성공 처리
       toast.success('인쇄 완료로 표시되었습니다.');
-      
-      // 7. 목록 새로고침
       loadReceipts();
-
-      logger.debug('영수증 인쇄완료 처리 성공', {
-        receiptId,
-        success: true,
-        timestamp: new Date().toISOString()
-      });
-
     } catch (error) {
       const errorObj = error as any;
-      logger.error('영수증 인쇄완료 처리 중 예외 발생', error, {
-        error,
-        message: errorObj?.message,
-        stack: errorObj?.stack,
-        receiptId,
-        timestamp: new Date().toISOString()
-      });
-      
+      logger.error('영수증 인쇄완료 처리 중 예외 발생', error);
       toast.error(`인쇄 완료 처리에 실패했습니다: ${errorObj?.message || '알 수 없는 오류'}`);
     }
   }, [supabase, loadReceipts]);
 
-  // 영수증 인쇄
-  const handlePrintReceipt = async (receipt: ReceiptItem) => {
-    if (!receipt.receipt_image_url) {
+  const handlePrintGroup = (group: ReceiptGroup) => {
+    const imageUrls = group.receipts
+      .filter(r => r.receipt_image_url)
+      .map(r => r.receipt_image_url);
+
+    if (imageUrls.length === 0) {
       toast.error('영수증 이미지가 없습니다.');
       return;
     }
 
-    try {
-      // 새 창에서 인쇄용 페이지 열기
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        toast.error('팝업이 차단되었습니다. 팝업을 허용해주세요.');
-        return;
-      }
-
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>영수증 인쇄</title>
-          <style>
-            * {
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
-            }
-            body {
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              min-height: 100vh;
-              background: white;
-            }
-            .receipt-image {
-              max-width: 100%;
-              max-height: 100vh;
-              object-fit: contain;
-            }
-            @media print {
-              body {
-                margin: 0;
-                padding: 0;
-              }
-              .receipt-image {
-                max-width: 100%;
-                max-height: 100%;
-                width: auto;
-                height: auto;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <img 
-            src="${receipt.receipt_image_url}" 
-            alt="영수증" 
-            class="receipt-image"
-            onload="window.print(); window.close();"
-            onerror="alert('이미지를 불러올 수 없습니다.'); window.close();"
-          />
-        </body>
-        </html>
-      `);
-      
-      printWindow.document.close();
-
-      // 인쇄 완료 확인 다이얼로그
-      setTimeout(() => {
-        if (confirm('인쇄를 완료하셨습니까?')) {
-          markAsPrinted(receipt.id);
-        }
-      }, 1000);
-    } catch (error) {
-      toast.error('인쇄에 실패했습니다.');
-    }
+    const receiptIds = group.receipts.map(r => r.id);
+    printReceiptImages(imageUrls, () => markGroupAsPrinted(receiptIds));
   };
 
-  // 영수증 이미지 다운로드
   const handleDownloadReceipt = async (receipt: ReceiptItem) => {
     if (!receipt.receipt_image_url) {
       toast.error('영수증 이미지가 없습니다.');
@@ -358,7 +290,6 @@ export default function ReceiptsMain() {
     }
 
     try {
-      // URL에서 파일 경로 추출 (Supabase Storage 경로)
       const url = new URL(receipt.receipt_image_url);
       const pathSegments = url.pathname.split('/');
       const bucketIndex = pathSegments.indexOf('receipt-images');
@@ -369,14 +300,12 @@ export default function ReceiptsMain() {
       
       const filePath = pathSegments.slice(bucketIndex + 1).join('/');
 
-      // Supabase Storage에서 다운로드
       const { data, error } = await supabase.storage
         .from('receipt-images')
         .download(filePath);
 
       if (error) throw error;
 
-      // Blob을 다운로드 가능한 URL로 변환
       const blob = new Blob([data], { type: 'image/jpeg' });
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -393,48 +322,47 @@ export default function ReceiptsMain() {
     }
   };
 
-  // 영수증 삭제 - useCallback으로 최적화
-  const handleDeleteReceipt = useCallback(async (receipt: ReceiptItem) => {
+  const handleDeleteGroup = useCallback(async (group: ReceiptGroup) => {
     if (!permissions.canDelete) {
       toast.error('삭제 권한이 없습니다.');
       return;
     }
 
-    if (!confirm(`정말로 "${receipt.file_name}" 영수증을 삭제하시겠습니까?`)) {
+    const countText = group.count > 1 ? `${group.count}장의 영수증을` : `"${group.primary.file_name}" 영수증을`;
+    if (!confirm(`정말로 ${countText} 삭제하시겠습니까?`)) {
       return;
     }
 
     try {
-      // URL에서 파일 경로 추출 (유틸리티 함수 사용)
-      const filePath = extractStoragePathFromUrl(receipt.receipt_image_url);
-      
-      if (filePath) {
-        logger.debug('Storage 파일 삭제 시작', { filePath });
+      for (const receipt of group.receipts) {
+        const filePath = extractStoragePathFromUrl(receipt.receipt_image_url);
         
-        // Supabase Storage에서 파일 삭제
-        const { error: storageError } = await supabase.storage
-          .from('receipt-images')
-          .remove([filePath]);
+        if (filePath) {
+          const { error: storageError } = await supabase.storage
+            .from('receipt-images')
+            .remove([filePath]);
 
-        if (storageError) {
-          logger.warn('Storage 파일 삭제 실패', { storageError, filePath });
+          if (storageError) {
+            logger.warn('Storage 파일 삭제 실패', { storageError, filePath });
+          }
         }
+
+        const { error: dbError } = await supabase
+          .from('purchase_receipts')
+          .delete()
+          .eq('id', receipt.id);
+
+        if (dbError) throw dbError;
       }
 
-      // DB에서 레코드 삭제
-      const { error: dbError } = await supabase
-        .from('purchase_receipts')
-        .delete()
-        .eq('id', receipt.id);
-
-      if (dbError) throw dbError;
-
       toast.success('영수증이 삭제되었습니다.');
-      loadReceipts(); // 목록 새로고침
+      loadReceipts();
     } catch (error) {
       toast.error('삭제에 실패했습니다.');
     }
   }, [permissions.canDelete, loadReceipts]);
+
+  const isGroupPrinted = (group: ReceiptGroup) => group.receipts.every(r => r.is_printed);
 
   return (
     <div className="w-full">
@@ -449,13 +377,13 @@ export default function ReceiptsMain() {
             onClick={() => {
               setIsUploadModalOpen(true);
             }}
-            className="bg-hansl-600 hover:bg-hansl-700 text-white"
+            className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
           >
-            <Plus className="w-4 h-4 mr-2" />
+            <Plus className="w-4 h-4 mr-1" />
             영수증 업로드
           </Button>
           <span className="badge-stats bg-gray-100 text-gray-600 modal-subtitle">
-            총 {filteredReceipts.length}건
+            총 {groups.length}건
           </span>
         </div>
       </div>
@@ -523,7 +451,7 @@ export default function ReceiptsMain() {
               <h3 className="modal-section-title mb-2">접근 권한 없음</h3>
               <p className="card-subtitle">영수증 관리에 접근할 권한이 없습니다.</p>
             </div>
-          ) : filteredReceipts.length === 0 ? (
+          ) : groups.length === 0 ? (
             <div className="text-center py-12">
               <Receipt className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h3 className="modal-section-title mb-2">영수증이 없습니다</h3>
@@ -538,7 +466,6 @@ export default function ReceiptsMain() {
                   <tr>
                     <th className="px-4 py-3 text-center header-title text-gray-600 uppercase tracking-wider">인쇄완료</th>
                     <th className="px-4 py-3 text-center header-title text-gray-600 uppercase tracking-wider">업로드일</th>
-                    <th className="px-4 py-3 text-left header-title text-gray-600 uppercase tracking-wider">파일명</th>
                     <th className="px-4 py-3 text-left header-title text-gray-600 uppercase tracking-wider">메모</th>
                     {permissions.canViewUploaderInfo && (
                       <th className="px-4 py-3 text-left header-title text-gray-600 uppercase tracking-wider">등록인</th>
@@ -551,100 +478,111 @@ export default function ReceiptsMain() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredReceipts.map((receipt) => (
-                    <tr 
-                      key={receipt.id} 
-                      className="hover:bg-gray-50 transition-colors cursor-pointer"
-                      onClick={() => handleViewReceipt(receipt)}
-                    >
-                      <td className="px-4 py-3 modal-subtitle text-center">
-                        {receipt.is_printed ? (
-                          <span className="badge-stats bg-green-100 text-green-700">
-                            ✓ 완료
-                          </span>
-                        ) : (
-                          <span className="badge-stats bg-gray-100 text-gray-600">
-                            미완료
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 modal-subtitle text-center text-gray-600">
-                        {formatDate(receipt.uploaded_at)}
-                      </td>
-                      <td className="px-4 py-3 modal-value text-gray-900">
-                        {receipt.file_name}
-                      </td>
-                      <td className="px-4 py-3 modal-subtitle text-gray-900">
-                        {receipt.memo || '-'}
-                      </td>
-                      {permissions.canViewUploaderInfo && (
-                        <td className="px-4 py-3 modal-subtitle text-gray-600">
-                          {receipt.uploaded_by_name || receipt.uploaded_by}
-                        </td>
-                      )}
-                      <td className="px-4 py-3 modal-subtitle text-center text-gray-600">
-                        {formatFileSize(receipt.file_size)}
-                      </td>
-                      <td className="px-4 py-3 modal-subtitle text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handlePrintReceipt(receipt);
-                            }}
-                            className="h-8 w-8 p-0"
-                            title="인쇄"
-                          >
-                            <Printer className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownloadReceipt(receipt);
-                            }}
-                            className="h-8 w-8 p-0"
-                            title="다운로드"
-                          >
-                            <Download className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </td>
-                      {permissions.canDelete && (
+                  {groups.map((group) => {
+                    const r = group.primary;
+                    const printed = isGroupPrinted(group);
+                    const totalSize = group.receipts.reduce((acc, cur) => acc + (cur.file_size || 0), 0);
+                    return (
+                      <tr 
+                        key={group.group_id || r.id} 
+                        className="hover:bg-gray-50 transition-colors cursor-pointer"
+                        onClick={() => handleViewReceipt(group)}
+                      >
                         <td className="px-4 py-3 modal-subtitle text-center">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteReceipt(receipt);
-                            }}
-                            className="h-8 w-8 p-0 text-red-600 hover:bg-red-50"
-                            title="삭제"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          {printed ? (
+                            <span className="badge-stats bg-green-100 text-green-700">
+                              ✓ 완료
+                            </span>
+                          ) : (
+                            <span className="badge-stats bg-gray-100 text-gray-600">
+                              미완료
+                            </span>
+                          )}
                         </td>
-                      )}
-                    </tr>
-                  ))}
+                        <td className="px-4 py-3 modal-subtitle text-center text-gray-600">
+                          {formatDate(r.uploaded_at)}
+                        </td>
+                        <td className="px-4 py-3 modal-subtitle text-gray-900">
+                          <div className="flex items-center gap-1.5">
+                            {r.memo || '-'}
+                            {group.count > 1 && (
+                              <span className="inline-flex items-center gap-0.5 badge-stats bg-blue-100 text-blue-700">
+                                <Images className="w-3 h-3" />
+                                {group.count}장
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        {permissions.canViewUploaderInfo && (
+                          <td className="px-4 py-3 modal-subtitle text-gray-600">
+                            {r.uploaded_by_name || r.uploaded_by}
+                          </td>
+                        )}
+                        <td className="px-4 py-3 modal-subtitle text-center text-gray-600">
+                          {formatFileSize(totalSize)}
+                        </td>
+                        <td className="px-4 py-3 modal-subtitle text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePrintGroup(group);
+                              }}
+                              className="h-8 w-8 p-0"
+                              title={group.count > 1 ? `${group.count}장 인쇄` : '인쇄'}
+                            >
+                              <Printer className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownloadReceipt(r);
+                              }}
+                              className="h-8 w-8 p-0"
+                              title="다운로드"
+                            >
+                              <Download className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </td>
+                        {permissions.canDelete && (
+                          <td className="px-4 py-3 modal-subtitle text-center">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteGroup(group);
+                              }}
+                              className="h-8 w-8 p-0 text-red-600 hover:bg-red-50"
+                              title="삭제"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
                 </tbody>
                 </table>
               </div>
 
               {/* 모바일 카드 뷰 */}
               <div className="md:hidden space-y-3 p-4">
-                {filteredReceipts.map((receipt) => (
+                {groups.map((group) => (
                   <MobileReceiptCard
-                    key={receipt.id}
-                    receipt={receipt}
-                    onView={handleViewReceipt}
-                    onPrint={handlePrintReceipt}
+                    key={group.group_id || group.primary.id}
+                    receipt={group.primary}
+                    groupCount={group.count}
+                    onView={() => handleViewReceipt(group)}
+                    onPrint={() => handlePrintGroup(group)}
                     onDownload={handleDownloadReceipt}
-                    onDelete={permissions.canDelete ? handleDeleteReceipt : undefined}
+                    onDelete={permissions.canDelete ? () => handleDeleteGroup(group) : undefined}
                   />
                 ))}
               </div>
@@ -657,13 +595,15 @@ export default function ReceiptsMain() {
       {selectedReceipt && (
         <ReceiptDetailModal
           receipt={selectedReceipt}
+          groupReceipts={selectedGroupReceipts}
           isOpen={isModalOpen}
           onClose={() => {
             setIsModalOpen(false);
             setSelectedReceipt(null);
+            setSelectedGroupReceipts([]);
           }}
           onDelete={() => {
-            loadReceipts(); // 삭제 후 목록 새로고침
+            loadReceipts();
           }}
         />
       )}
@@ -673,7 +613,7 @@ export default function ReceiptsMain() {
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onSuccess={() => {
-          loadReceipts(); // 업로드 후 목록 새로고침
+          loadReceipts();
         }}
       />
     </div>

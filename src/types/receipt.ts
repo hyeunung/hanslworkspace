@@ -14,6 +14,14 @@ export interface ReceiptItem {
   printed_at?: string;
   printed_by?: string;
   printed_by_name?: string;
+  group_id?: string | null;
+}
+
+export interface ReceiptGroup {
+  group_id: string | null;
+  receipts: ReceiptItem[];
+  primary: ReceiptItem;
+  count: number;
 }
 
 export interface ReceiptUploadData {

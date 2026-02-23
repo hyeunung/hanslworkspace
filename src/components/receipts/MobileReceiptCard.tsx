@@ -1,35 +1,42 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Printer, Download, Calendar, User, FileText, Trash2 } from "lucide-react";
+import { Printer, Download, Calendar, User, FileText, Trash2, Images } from "lucide-react";
 import type { ReceiptItem } from "@/types/receipt";
 import { formatDate, formatFileSize } from "@/utils/helpers";
 
 interface MobileReceiptCardProps {
   receipt: ReceiptItem;
+  groupCount?: number;
   onView: (receipt: ReceiptItem) => void;
   onPrint: (receipt: ReceiptItem) => void;
   onDownload: (receipt: ReceiptItem) => void;
   onDelete?: (receipt: ReceiptItem) => void;
 }
 
-export default function MobileReceiptCard({ receipt, onView, onPrint, onDownload, onDelete }: MobileReceiptCardProps) {
-  // formatDate와 formatFileSize는 utils에서 import
-
+export default function MobileReceiptCard({ receipt, groupCount = 1, onView, onPrint, onDownload, onDelete }: MobileReceiptCardProps) {
   return (
     <Card className="w-full border border-gray-200 hover:shadow-md transition-shadow cursor-pointer" onClick={() => onView(receipt)}>
       <CardContent className="p-4">
         <div className="space-y-3">
           {/* 상단: 인쇄 상태 + 업로드일 */}
           <div className="flex items-center justify-between">
-            {receipt.is_printed ? (
-              <span className="badge-stats bg-green-100 text-green-700 badge-text">
-                ✓ 인쇄완료
-              </span>
-            ) : (
-              <span className="badge-stats bg-gray-100 text-gray-600 badge-text">
-                미완료
-              </span>
-            )}
+            <div className="flex items-center gap-1.5">
+              {receipt.is_printed ? (
+                <span className="badge-stats bg-green-100 text-green-700 badge-text">
+                  ✓ 인쇄완료
+                </span>
+              ) : (
+                <span className="badge-stats bg-gray-100 text-gray-600 badge-text">
+                  미완료
+                </span>
+              )}
+              {groupCount > 1 && (
+                <span className="inline-flex items-center gap-0.5 badge-stats bg-blue-100 text-blue-700 badge-text">
+                  <Images className="w-3 h-3" />
+                  {groupCount}장
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-1 badge-text text-gray-500">
               <Calendar className="w-3 h-3" />
               <span>{formatDate(receipt.uploaded_at)}</span>
@@ -72,7 +79,7 @@ export default function MobileReceiptCard({ receipt, onView, onPrint, onDownload
               className="flex-1"
             >
               <Printer className="w-4 h-4 mr-1" />
-              인쇄
+              인쇄{groupCount > 1 ? ` (${groupCount})` : ''}
             </Button>
             <Button
               size="sm"

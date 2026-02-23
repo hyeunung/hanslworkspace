@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Upload, X, FileImage } from "lucide-react";
+import { Upload, X, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { useReceiptPermissions } from "@/hooks/useReceiptPermissions";
@@ -20,8 +20,14 @@ interface ReceiptUploadModalProps {
   onSuccess: () => void;
 }
 
+interface FileWithPreview {
+  file: File;
+  preview: string;
+  id: string;
+}
+
 export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: ReceiptUploadModalProps) {
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<FileWithPreview[]>([]);
   const [memo, setMemo] = useState("");
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -29,24 +35,40 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
   const supabase = createClient();
   const { permissions } = useReceiptPermissions();
 
-  // 파일 선택 핸들러 - useCallback으로 최적화
-  const handleFileSelect = useCallback((selectedFile: File) => {
-    // 이미지 파일만 허용
+  const validateAndAddFile = useCallback((selectedFile: File) => {
     if (!selectedFile.type.startsWith('image/')) {
       toast.error('이미지 파일만 업로드할 수 있습니다.');
       return;
     }
 
-    // 파일 크기 제한 (10MB)
     if (selectedFile.size > 10 * 1024 * 1024) {
       toast.error('파일 크기는 10MB 이하여야 합니다.');
       return;
     }
 
-    setFile(selectedFile);
+    const preview = URL.createObjectURL(selectedFile);
+    const newFile: FileWithPreview = {
+      file: selectedFile,
+      preview,
+      id: crypto.randomUUID(),
+    };
+
+    setFiles(prev => [...prev, newFile]);
   }, []);
 
-  // 드래그 앤 드롭 핸들러
+  const handleFileSelect = useCallback((selectedFiles: FileList | File[]) => {
+    const fileArray = Array.from(selectedFiles);
+    fileArray.forEach(f => validateAndAddFile(f));
+  }, [validateAndAddFile]);
+
+  const handleRemoveFile = useCallback((id: string) => {
+    setFiles(prev => {
+      const removed = prev.find(f => f.id === id);
+      if (removed) URL.revokeObjectURL(removed.preview);
+      return prev.filter(f => f.id !== id);
+    });
+  }, []);
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(true);
@@ -61,20 +83,19 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
     e.preventDefault();
     setDragOver(false);
     
-    const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      handleFileSelect(files[0]);
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    if (droppedFiles.length > 0) {
+      handleFileSelect(droppedFiles);
     }
   };
 
-  // 업로드 핸들러 - useCallback으로 최적화
   const handleUpload = useCallback(async () => {
     if (!permissions.canUpload) {
       toast.error('업로드 권한이 없습니다.');
       return;
     }
 
-    if (!file) {
+    if (files.length === 0) {
       toast.error('파일을 선택해주세요.');
       return;
     }
@@ -82,14 +103,12 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
     try {
       setUploading(true);
 
-      // 현재 사용자 정보 가져오기
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) {
         throw new Error('로그인이 필요합니다.');
       }
 
-      // 사용자 이름 가져오기
-      const { data: employee, error: employeeError } = await supabase
+      const { data: employee } = await supabase
         .from('employees')
         .select('name')
         .eq('email', user.email)
@@ -97,45 +116,47 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
 
       const userName = employee?.name || '';
 
-      // 파일명 생성
-      const now = new Date();
-      const fileExtension = file.name.split('.').pop() || 'jpg';
-      const fileName = `rec${now.getFullYear().toString().substring(2)}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}.${fileExtension}`;
-      
-      // 파일 경로
-      const filePath = `receipts/web/${now.getTime()}/${fileName}`;
+      // 2장 이상이면 group_id 생성
+      const groupId = files.length > 1 ? crypto.randomUUID() : null;
 
-      // Supabase Storage에 업로드
-      const { error: uploadError } = await supabase.storage
-        .from('receipt-images')
-        .upload(filePath, file, {
-          contentType: file.type,
-          upsert: false,
-        });
+      for (const fileItem of files) {
+        const now = new Date();
+        const fileExtension = fileItem.file.name.split('.').pop() || 'jpg';
+        const fileName = `rec${now.getFullYear().toString().substring(2)}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}.${fileExtension}`;
+        
+        const filePath = `receipts/web/${now.getTime()}_${fileItem.id.slice(0, 8)}/${fileName}`;
 
-      if (uploadError) throw uploadError;
+        const { error: uploadError } = await supabase.storage
+          .from('receipt-images')
+          .upload(filePath, fileItem.file, {
+            contentType: fileItem.file.type,
+            upsert: false,
+          });
 
-      // Public URL 생성
-      const { data: { publicUrl } } = supabase.storage
-        .from('receipt-images')
-        .getPublicUrl(filePath);
+        if (uploadError) throw uploadError;
 
-      // DB에 저장 - memo 칼럼 포함
-      const { error: dbError } = await supabase
-        .from('purchase_receipts')
-        .insert({
-          receipt_image_url: publicUrl,
-          file_name: fileName,
-          file_size: file.size,
-          uploaded_by: user.email!,
-          uploaded_by_name: userName,
-          memo: memo || null,
-          uploaded_at: new Date().toISOString(),
-        });
+        const { data: { publicUrl } } = supabase.storage
+          .from('receipt-images')
+          .getPublicUrl(filePath);
 
-      if (dbError) throw dbError;
+        const { error: dbError } = await supabase
+          .from('purchase_receipts')
+          .insert({
+            receipt_image_url: publicUrl,
+            file_name: fileName,
+            file_size: fileItem.file.size,
+            uploaded_by: user.email!,
+            uploaded_by_name: userName,
+            memo: memo || null,
+            uploaded_at: new Date().toISOString(),
+            group_id: groupId,
+          });
 
-      toast.success('영수증이 성공적으로 업로드되었습니다.');
+        if (dbError) throw dbError;
+      }
+
+      const countText = files.length > 1 ? `${files.length}장이` : '영수증이';
+      toast.success(`${countText} 성공적으로 업로드되었습니다.`);
       handleClose();
       onSuccess();
     } catch (error) {
@@ -143,46 +164,36 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
     } finally {
       setUploading(false);
     }
-  }, [file, memo, permissions.canUpload, onSuccess]);
+  }, [files, memo, permissions.canUpload, onSuccess]);
 
-  // 모달 닫기 - useCallback으로 최적화
   const handleClose = useCallback(() => {
-    setFile(null);
+    files.forEach(f => URL.revokeObjectURL(f.preview));
+    setFiles([]);
     setMemo("");
     setUploading(false);
     setDragOver(false);
     onClose();
-  }, [onClose]);
+  }, [onClose, files]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader className="space-y-3">
-          <div className="flex items-center justify-between">
-            <DialogTitle className="modal-title">📎 영수증 업로드</DialogTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleClose}
-              className="h-7 w-7 p-0 hover:bg-gray-100"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="modal-title">📎 영수증 업로드</DialogTitle>
           <DialogDescription className="modal-subtitle">
-            영수증 이미지를 업로드하고 메모를 추가할 수 있습니다.
+            영수증 이미지를 여러 장 업로드할 수 있습니다. 같은 항목이면 함께 묶어서 관리됩니다.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 pt-2">
+        <div className="px-8 py-4 space-y-4">
           {/* 파일 업로드 영역 */}
           <div className="space-y-2">
-            <Label className="modal-label">파일 선택</Label>
+            <Label className="modal-label">파일 선택 <span className="text-gray-400 badge-text">(여러 장 가능)</span></Label>
             <div
-              className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-200 cursor-pointer ${
+              className={`relative border-2 border-dashed business-radius-card p-6 text-center transition-all duration-200 cursor-pointer ${
                 dragOver
-                  ? 'border-hansl-400 bg-hansl-50 scale-[1.02]'
-                  : file
+                  ? 'border-hansl-400 bg-hansl-50'
+                  : files.length > 0
                   ? 'border-green-400 bg-green-50'
                   : 'border-gray-300 hover:border-hansl-300 hover:bg-gray-50'
               }`}
@@ -190,52 +201,71 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
             >
-              {file ? (
+              {files.length > 0 ? (
                 <div className="space-y-3">
-                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-                    <FileImage className="w-8 h-8 text-green-600" />
+                  <div className="grid grid-cols-3 gap-2">
+                    {files.map((fileItem) => (
+                      <div key={fileItem.id} className="relative group">
+                        <img
+                          src={fileItem.preview}
+                          alt={fileItem.file.name}
+                          className="w-full h-24 object-cover business-radius-card border border-gray-200"
+                        />
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveFile(fileItem.id);
+                          }}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                        <p className="mt-1 text-[9px] text-gray-500 truncate">{fileItem.file.name}</p>
+                      </div>
+                    ))}
+                    <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed border-gray-300 business-radius-card cursor-pointer hover:border-hansl-400 hover:bg-hansl-50 transition-colors">
+                      <Plus className="w-5 h-5 text-gray-400" />
+                      <span className="text-[9px] text-gray-400 mt-1">추가</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(e) => {
+                          if (e.target.files) handleFileSelect(e.target.files);
+                          e.target.value = '';
+                        }}
+                        className="hidden"
+                      />
+                    </label>
                   </div>
-                  <div className="space-y-1">
-                    <p className="modal-value text-green-800 truncate max-w-[200px] mx-auto">{file.name}</p>
-                    <p className="badge-text text-green-600">
-                      {(file.size / 1024 / 1024).toFixed(2)}MB
-                    </p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setFile(null)}
-                    className="mt-3 text-red-600 border-red-200 hover:bg-red-50"
-                  >
-                    <X className="w-3 h-3 mr-1" />
-                    제거
-                  </Button>
+                  <p className="text-[10px] text-green-600 font-medium">
+                    {files.length}장 선택됨 {files.length > 1 && '(하나의 그룹으로 묶입니다)'}
+                  </p>
                 </div>
               ) : (
-                <div className="space-y-4">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
-                    <Upload className="w-8 h-8 text-gray-400" />
+                <div className="space-y-3">
+                  <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
+                    <Upload className="w-7 h-7 text-gray-400" />
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     <p className="modal-value">
                       이미지를 드래그하여 놓거나 클릭하여 선택하세요
                     </p>
                     <p className="badge-text text-gray-500">
-                      JPG, PNG, HEIC, WebP • 최대 10MB
+                      JPG, PNG, HEIC, WebP • 최대 10MB • 여러 장 선택 가능
                     </p>
                   </div>
                 </div>
               )}
               
-              {!file && (
+              {files.length === 0 && (
                 <input
                   type="file"
                   accept="image/*"
+                  multiple
                   onChange={(e) => {
-                    const selectedFile = e.target.files?.[0];
-                    if (selectedFile) {
-                      handleFileSelect(selectedFile);
-                    }
+                    if (e.target.files) handleFileSelect(e.target.files);
+                    e.target.value = '';
                   }}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
@@ -253,40 +283,39 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
               placeholder="영수증에 대한 간단한 메모를 입력하세요"
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
-              className="resize-none border-gray-200 focus:border-hansl-400 focus:ring-hansl-400"
+              className="resize-none border-gray-200 focus:border-hansl-400 focus:ring-hansl-400 business-radius-input"
               rows={3}
             />
           </div>
+        </div>
 
-
-          {/* 업로드 버튼 */}
-          <div className="flex gap-3 pt-6 border-t border-gray-100">
-            <Button
-              variant="outline"
-              onClick={handleClose}
-              className="flex-1 h-9 border-gray-200 hover:bg-gray-50"
-              disabled={uploading}
-            >
-              취소
-            </Button>
-            <Button
-              onClick={handleUpload}
-              disabled={!file || uploading}
-              className="flex-1 h-9 bg-hansl-600 hover:bg-hansl-700 text-white badge-text shadow-sm"
-            >
-              {uploading ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  업로드 중...
-                </div>
-              ) : (
-                <>
-                  <Upload className="w-4 h-4 mr-2" />
-                  업로드
-                </>
-              )}
-            </Button>
-          </div>
+        {/* 하단 버튼 */}
+        <div className="flex justify-end gap-2 px-8 py-4 border-t border-gray-100">
+          <Button
+            variant="outline"
+            onClick={handleClose}
+            className="button-base w-20 border-gray-200 hover:bg-gray-50"
+            disabled={uploading}
+          >
+            취소
+          </Button>
+          <Button
+            onClick={handleUpload}
+            disabled={files.length === 0 || uploading}
+            className="button-base w-20 bg-hansl-600 hover:bg-hansl-700 text-white"
+          >
+            {uploading ? (
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                업로드 중...
+              </div>
+            ) : (
+              <>
+                <Upload className="w-4 h-4 mr-2" />
+                업로드 {files.length > 1 && `(${files.length}장)`}
+              </>
+            )}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
