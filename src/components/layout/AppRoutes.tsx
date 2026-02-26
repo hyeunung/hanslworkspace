@@ -5,7 +5,7 @@ import ErrorBoundary from '@/components/ErrorBoundary'
 // 페이지 컴포넌트들을 lazy loading으로 변경 (코드 스플리팅)
 const DashboardMain = lazy(() => import('@/components/dashboard/DashboardMain'))
 const PurchaseNewMain = lazy(() => import('@/components/purchase/PurchaseNewMain'))
-const PurchaseListMain = lazy(() => import('@/components/purchase/PurchaseListMain'))
+const RequestListMain = lazy(() => import('@/components/purchase/RequestListMain'))
 const PurchaseDetailMain = lazy(() => import('@/components/purchase/PurchaseDetailMain'))
 const VendorMain = lazy(() => import('@/components/vendor/VendorMain'))
 const EmployeeMain = lazy(() => import('@/components/employee/EmployeeMain'))
@@ -44,9 +44,9 @@ export default function AppRoutes() {
           
           {/* 메인 페이지들 */}
           <Route path="/dashboard" element={<DashboardMain />} />
-          <Route path="/purchase" element={<PurchaseListMain showEmailButton={false} />} />
+          <Route path="/purchase" element={<RequestListMain showEmailButton={false} />} />
           <Route path="/purchase/new" element={<PurchaseNewMain />} />
-          <Route path="/purchase/list" element={<PurchaseListMain showEmailButton={false} />} />
+          <Route path="/purchase/list" element={<RequestListMain showEmailButton={false} />} />
           <Route path="/purchase/detail/:id" element={<PurchaseDetailMain />} />
           <Route path="/purchase/requests/:id" element={<PurchaseDetailMain />} />
           <Route path="/vendor" element={<VendorMain />} />

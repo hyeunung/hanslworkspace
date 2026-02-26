@@ -6,7 +6,7 @@ import { logger } from '@/lib/logger'
 
 // 즉시 로딩할 핵심 컴포넌트들 (자주 사용되는 페이지)
 import DashboardMain from '@/components/dashboard/DashboardMain'
-import PurchaseListMain from '@/components/purchase/PurchaseListMain'
+import RequestListMain from '@/components/purchase/RequestListMain'
 
 // 필요시에만 lazy loading할 컴포넌트들
 import { lazy } from 'react'
@@ -87,8 +87,8 @@ export default function OptimizedRoutes() {
         
         {/* 즉시 로딩 페이지들 */}
         <Route path="/dashboard" element={<DashboardMain />} />
-        <Route path="/purchase" element={<PurchaseListMain showEmailButton={false} />} />
-        <Route path="/purchase/list" element={<PurchaseListMain showEmailButton={false} />} />
+        <Route path="/purchase" element={<RequestListMain showEmailButton={false} />} />
+        <Route path="/purchase/list" element={<RequestListMain showEmailButton={false} />} />
         
         {/* Lazy 로딩 페이지들 - 스마트 로딩 UI */}
         <Route 

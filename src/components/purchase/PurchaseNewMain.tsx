@@ -165,7 +165,7 @@ export default function PurchaseNewMain() {
       progress_type: "",
       payment_category: "",
       currency: "KRW",
-      po_template_type: "일반",
+      po_template_type: "",
       request_type: "",
       contacts: [],
       sales_order_number: '',
@@ -633,12 +633,18 @@ export default function PurchaseNewMain() {
 
   // 필수 항목 체크 함수
   const checkRequiredFields = () => {
-    const requestType = watch('request_type');
-    const progressType = watch('progress_type');
-    const paymentCategory = watch('payment_category');
-    const vendorId = watch('vendor_id');
+    const templateType = watch('po_template_type');
+    if (!templateType) return false;
     
-    return !!(requestType && progressType && paymentCategory && vendorId && vendorId !== 0 && fields.length > 0);
+    if (templateType === '발주/구매') {
+      const requestType = watch('request_type');
+      const progressType = watch('progress_type');
+      const paymentCategory = watch('payment_category');
+      const vendorId = watch('vendor_id');
+      return !!(requestType && progressType && paymentCategory && vendorId && vendorId !== 0 && fields.length > 0);
+    }
+    
+    return true;
   };
 
   // 실시간 필수항목 체크를 위한 state
@@ -647,7 +653,7 @@ export default function PurchaseNewMain() {
   // 필수항목 변경 감지
   useEffect(() => {
     setIsFormValid(checkRequiredFields());
-  }, [watch('request_type'), watch('progress_type'), watch('payment_category'), watch('vendor_id'), fields]);
+  }, [watch('po_template_type'), watch('request_type'), watch('progress_type'), watch('payment_category'), watch('vendor_id'), fields]);
 
   // 발주요청번호 생성 함수 (재시도 로직 포함)
   const generatePurchaseOrderNumber = async () => {
@@ -841,7 +847,7 @@ export default function PurchaseNewMain() {
         progress_type: "",
         payment_category: "",
         currency: "KRW",
-        po_template_type: "일반",
+        po_template_type: "",
         request_type: "",
         contacts: [],
         sales_order_number: '',
@@ -1069,26 +1075,35 @@ export default function PurchaseNewMain() {
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-start">
         {/* 발주 기본 정보 - 모바일: 전체 폭, 데스크톱: 280px 고정 */}
         <div className="w-full lg:w-[280px] lg:min-w-[280px] lg:flex-shrink-0 relative bg-muted/20 border border-border rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 p-3 lg:p-4 space-y-2.5">
-          {/* 헤더: 제목만 */}
+          {/* 헤더: 템플릿에 따라 제목 변경 */}
           <div className="flex flex-col">
-            <h4 className="font-semibold text-foreground text-sm">발주 기본 정보</h4>
-            <p className="text-[10px] text-muted-foreground">Basic Information</p>
+            <h4 className="font-semibold text-foreground text-sm">
+              {{'발주/구매': '발주/구매 요청 정보', '카드사용': '카드사용 요청 정보', '출장': '출장 요청 정보', '차량': '차량 요청 정보'}[watch('po_template_type')] || '요청 정보'}
+            </h4>
+            <p className="text-[10px] text-muted-foreground">
+              {{'발주/구매': 'Purchase Request', '카드사용': 'Card Usage Request', '출장': 'Business Trip Request', '차량': 'Vehicle Request'}[watch('po_template_type')] || 'Request Information'}
+            </p>
           </div>
 
-          {/* 템플릿 + 보드명 - 같은 행 */}
+          {/* 템플릿 선택 */}
+          <div>
+            <Label className="mb-0.5 block text-[10px] sm:text-xs">템플릿<span className="text-red-500 ml-0.5">*</span></Label>
+            <Select value={watch('po_template_type') || undefined} onValueChange={(value) => setValue('po_template_type', value)}>
+              <SelectTrigger className={`!h-7 !py-0 !leading-none bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200 [&>svg]:hidden ${!watch('po_template_type') ? 'text-gray-400' : ''}`}>
+                <SelectValue placeholder="선택" />
+              </SelectTrigger>
+              <SelectContent position="popper" className="z-[9999]">
+                <SelectItem value="발주/구매">발주/구매</SelectItem>
+                <SelectItem value="카드사용">카드사용</SelectItem>
+                <SelectItem value="출장">출장</SelectItem>
+                <SelectItem value="차량">차량</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* 보드명 - 발주/구매에서만 표시 */}
+          {watch('po_template_type') === '발주/구매' && (
           <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
-            <div>
-              <Label className="mb-0.5 block text-[10px] sm:text-xs">템플릿</Label>
-              <Select value={watch('po_template_type')} onValueChange={(value) => setValue('po_template_type', value)}>
-                <SelectTrigger className="!h-7 !py-0 !leading-none bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md transition-shadow duration-200 [&>svg]:hidden">
-                  <SelectValue placeholder="선택" />
-                </SelectTrigger>
-                <SelectContent position="popper" className="z-[9999]">
-                  <SelectItem value="일반">일반</SelectItem>
-                  <SelectItem value="프로젝트">프로젝트</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
             <div>
               <div className="flex items-center gap-1 mb-0.5">
                 <Label className="text-[10px] sm:text-xs">보드명</Label>
@@ -1167,8 +1182,9 @@ export default function PurchaseNewMain() {
               </div>
             </div>
           </div>
+          )}
               
-          {watch('po_template_type') === '일반' && (
+          {watch('po_template_type') === '발주/구매' && (
             <div className="space-y-2.5">
               
               {/* 요청 설정 */}
@@ -1516,7 +1532,8 @@ export default function PurchaseNewMain() {
           )}
         </div>
 
-        {/* Professional Items Section - 모바일: 전체폭, 데스크톱: 3/4 폭 */}
+        {/* Professional Items Section - 템플릿 선택 후에만 표시 */}
+        {watch('po_template_type') && (
         <div className="w-full lg:w-3/4 space-y-4">
 
           {/* 테이블 형태의 품목 리스트 */}
@@ -1904,12 +1921,13 @@ export default function PurchaseNewMain() {
               ) : (
                 <>
                   <Save className="w-4 h-4 mr-2" />
-                  발주요청
+                  {{'발주/구매': '발주요청', '카드사용': '카드사용요청', '출장': '출장요청', '차량': '차량요청'}[watch('po_template_type')] || '요청'}
                 </>
               )}
             </Button>
           </div>
         </div>
+        )}
       </div>
 
       {/* 에러 메시지 */}

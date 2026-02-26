@@ -30,7 +30,7 @@ interface ExtractedItem {
   line_number: number;
   item_name: string;
   specification?: string;
-  quantity: number;
+  quantity?: number | null;
   unit_price: number;
   amount: number;
   tax_amount?: number;
@@ -84,6 +84,8 @@ type ImageTile = {
   offsetY: number;
 };
 
+let invalidPoTokenLogCount = 0
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -109,9 +111,20 @@ serve(async (req) => {
     const requestData: OCRRequest = await req.json().catch(() => ({}))
     const mode: OCRMode = requestData.mode || 'process_specific'
     const workerId = crypto.randomUUID()
+    const perfDebug: Record<string, number | boolean | null> = {
+      total_ms: 0,
+      download_preprocess_ms: 0,
+      google_vision_ms: 0,
+      gpt_extract_ms: 0,
+      po_assist_ms: 0,
+      normalize_and_infer_ms: 0,
+      correction_ms: 0,
+      used_unified_po_assist: false,
+      used_assist_numbers: false
+    }
+    const requestStartedAt = Date.now()
     statementId = requestData.statementId || null
     let imageUrl = requestData.imageUrl || null
-
     // 오래된 processing 정리 (안전장치)
     currentStage = 'cleanup_stale'
     try {
@@ -130,7 +143,7 @@ serve(async (req) => {
       })
       if (error) throw error
       const claimed = Array.isArray(data) ? data[0] : data
-      if (!claimed) {
+      if (!claimed?.id) {
         return new Response(
           JSON.stringify({ success: true, skipped: true, reason: 'no_queue_or_processing_active' }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -150,10 +163,42 @@ serve(async (req) => {
       })
       if (error) throw error
       const claimed = Array.isArray(data) ? data[0] : data
-      if (!claimed) {
+      if (!claimed?.id) {
+        let rowStatus: string | null = null
+        let rowLockedBy: string | null = null
+        let rowNextRetryAt: string | null = null
+        let rowProcessingStartedAt: string | null = null
+        let activeProcessingCount: number | null = null
+        try {
+          const { data: row } = await supabase
+            .from('transaction_statements')
+            .select('status, locked_by, next_retry_at, processing_started_at')
+            .eq('id', statementId)
+            .maybeSingle()
+          rowStatus = (row as any)?.status ?? null
+          rowLockedBy = (row as any)?.locked_by ?? null
+          rowNextRetryAt = (row as any)?.next_retry_at ?? null
+          rowProcessingStartedAt = (row as any)?.processing_started_at ?? null
+          const { count } = await supabase
+            .from('transaction_statements')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'processing')
+            .not('processing_started_at', 'is', null)
+          activeProcessingCount = typeof count === 'number' ? count : null
+        } catch (_) {
+          // ignore snapshot errors
+        }
+        const debugInfo = {
+          rowStatus,
+          rowLocked: Boolean(rowLockedBy),
+          rowNextRetryAt,
+          rowProcessingStartedAt,
+          activeProcessingCount
+        }
         const queueUpdate: Record<string, any> = {
           status: 'queued',
-          queued_at: new Date().toISOString()
+          queued_at: new Date().toISOString(),
+          next_retry_at: new Date().toISOString()
         }
         if (requestData.reset_before_extract) {
           queueUpdate.reset_before_extract = true
@@ -164,7 +209,14 @@ serve(async (req) => {
           .in('status', ['pending', 'queued', 'failed'])
           .eq('id', statementId)
         return new Response(
-          JSON.stringify({ success: true, queued: true, status: 'queued', statementId }),
+          JSON.stringify({
+            success: true,
+            queued: true,
+            status: 'queued',
+            statementId,
+            reason: 'claim_failed',
+            debug: debugInfo
+          }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
@@ -172,7 +224,6 @@ serve(async (req) => {
       statementId = claimed.id
       imageUrl = claimed.image_url || imageUrl
     }
-
     if (!statementId || !imageUrl) {
       throw new Error('Missing statementId or imageUrl')
     }
@@ -181,7 +232,7 @@ serve(async (req) => {
 
     console.log(`Processing transaction statement: ${statementId}`)
 
-    // 0. 재추출 초기화 (실입고일만 유지)
+    // 0. 재추출 초기화 (실입고일 + po_scope만 유지, 나머지 백지)
     if (shouldReset) {
       const { data: existingStatement } = await supabase
         .from('transaction_statements')
@@ -206,6 +257,21 @@ serve(async (req) => {
           grand_total: null,
           extraction_error: null,
           reset_before_extract: false,
+          retry_count: 0,
+          next_retry_at: null,
+          last_error_at: null,
+          locked_by: null,
+          processing_started_at: null,
+          processing_finished_at: null,
+          confirmed_at: null,
+          confirmed_by: null,
+          confirmed_by_name: null,
+          manager_confirmed_at: null,
+          manager_confirmed_by: null,
+          manager_confirmed_by_name: null,
+          quantity_match_confirmed_at: null,
+          quantity_match_confirmed_by: null,
+          quantity_match_confirmed_by_name: null,
           extracted_data: preservedActualReceivedDate
             ? { actual_received_date: preservedActualReceivedDate }
             : null
@@ -215,6 +281,7 @@ serve(async (req) => {
 
     // 1. 이미지 다운로드
     currentStage = 'download_image'
+    const downloadStartAt = Date.now()
     const imageBuffer = await downloadImage(imageUrl)
     let visionBase64 = ''
     let tileImages: ImageTile[] = []
@@ -240,8 +307,10 @@ serve(async (req) => {
       visionBase64 = arrayBufferToBase64(imageBuffer)
     }
     const base64Image = visionBase64
+    perfDebug.download_preprocess_ms = Date.now() - downloadStartAt
 
     // 3. Google Vision OCR 호출 (선택적 - credentials가 없으면 GPT-4o만 사용)
+    const googleVisionStartAt = Date.now()
     let visionText = ''
     let visionWords: VisionWord[] = []
     if (googleCredentials) {
@@ -272,9 +341,11 @@ serve(async (req) => {
         console.warn('Google Vision failed, using GPT-4o only:', e)
       }
     }
+    perfDebug.google_vision_ms = Date.now() - googleVisionStartAt
 
     // 4. GPT-4o 비전으로 구조화 추출
     currentStage = 'gpt_extract'
+    const gptExtractStartAt = Date.now()
     let poScope: 'single' | 'multi' | null = null
     if (claimedStatement?.po_scope) {
       poScope = claimedStatement.po_scope
@@ -286,60 +357,107 @@ serve(async (req) => {
         .single()
       poScope = (scopeRow as any)?.po_scope || null
     }
+    const preGptVisionOrderCandidates = extractOrderNumbersFromText(visionText).slice(0, 40)
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H1',location:'ocr-transaction-statement/index.ts:beforeExtractWithGPT4o',message:'vision text order candidates before gpt',data:{statementId,visionTextLength:visionText?.length||0,preGptVisionOrderCandidates},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const extractionResult = await extractWithGPT4o(
       base64Image,
       visionText,
       openaiApiKey,
       poScope
     )
+    perfDebug.gpt_extract_ms = Date.now() - gptExtractStartAt
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H2',location:'ocr-transaction-statement/index.ts:afterExtractWithGPT4o',message:'gpt extracted po snapshot',data:{statementId,itemCount:Array.isArray(extractionResult?.items)?extractionResult.items.length:0,gptItemPoSample:(Array.isArray(extractionResult?.items)?extractionResult.items:[]).slice(0,30).map((item,idx)=>({line:item?.line_number??idx+1,po_number:item?.po_number??null,spec:(item?.specification||'').slice(0,60),item_name:(item?.item_name||'').slice(0,40)}))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
-    // 5. 숫자 패턴 전용 2차 추출 (저신뢰/누락에만)
+    // 5. 보조 손글씨 추출 단일 패스 (괄호 매핑 + 여백 구간 + 번호 목록)
+    const poAssistStartAt = Date.now()
+    let bracketMappings: PoMapping[] = []
+    let rangeMappings: RangeMapping[] = []
     let extraOrderNumbers: string[] = []
-    if (shouldRetryOrderNumberPass(extractionResult.items)) {
-      try {
-        currentStage = 'order_numbers_retry'
-        extraOrderNumbers = await extractOrderNumbersWithGPT4o(
-          base64Image,
-          tileImages.map((tile) => tile.base64),
-          openaiApiKey
-        )
-      } catch (_) {
-        extraOrderNumbers = []
+    const hasRetryOrderPassFn = typeof shouldRetryOrderNumberPass === 'function'
+    const shouldUseAssistNumbers = hasRetryOrderPassFn && shouldRetryOrderNumberPass(extractionResult.items)
+    let usedUnifiedPoAssist = false
+
+    try {
+      currentStage = 'po_assist_extract'
+      const poAssistResult = await extractPoAssistDataWithGPT4o(
+        base64Image,
+        tileImages.map((tile) => tile.base64),
+        extractionResult.items,
+        openaiApiKey
+      )
+      bracketMappings = poAssistResult.mappings
+      rangeMappings = poAssistResult.ranges
+      if (shouldUseAssistNumbers) {
+        extraOrderNumbers = poAssistResult.numbers
+      }
+      usedUnifiedPoAssist = true
+    } catch (e) {
+      console.warn('Unified PO assist extraction failed, falling back to legacy pass:', e)
+      if (shouldUseAssistNumbers) {
+        try {
+          currentStage = 'order_numbers_retry'
+          extraOrderNumbers = await extractOrderNumbersWithGPT4o(
+            base64Image,
+            tileImages.map((tile) => tile.base64),
+            openaiApiKey
+          )
+        } catch (_) {
+          extraOrderNumbers = []
+        }
       }
     }
+    perfDebug.po_assist_ms = Date.now() - poAssistStartAt
+    perfDebug.used_unified_po_assist = usedUnifiedPoAssist
+    perfDebug.used_assist_numbers = shouldUseAssistNumbers
 
     // 6. 발주/수주번호 패턴 정규화 (OCR 텍스트도 함께 전달하여 빈 칸에 적힌 번호도 찾음)
+    const normalizeStartAt = Date.now()
     let normalizedItems = normalizePoNumbers(
       extractionResult.items,
       visionText,
       extraOrderNumbers
     )
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H4',location:'ocr-transaction-statement/index.ts:afterNormalizePoNumbers',message:'po normalization result snapshot',data:{statementId,normalizedUniquePONumbers:Array.from(new Set(normalizedItems.map((item)=>item.po_number).filter((value)=>!!value))).slice(0,20),itemPoDiffSample:normalizedItems.slice(0,20).map((item,idx)=>({line:item.line_number??idx+1,gptRawPo:extractionResult.items?.[idx]?.po_number??null,normalizedPo:item.po_number??null,spec:(item.specification||'').slice(0,50)}))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     // 6-1. 손글씨 괄호/연결선 기반 PO 매핑 (품목별 보강)
-    let bracketMappings: PoMapping[] = []
-    try {
-      bracketMappings = await extractPoMappingsWithGPT4o(
-        base64Image,
-        normalizedItems,
-        openaiApiKey
-      )
+    if (usedUnifiedPoAssist) {
       if (bracketMappings.length > 0) {
         normalizedItems = applyPoMappings(normalizedItems, bracketMappings)
       }
-    } catch (e) {
-      console.warn('Failed to extract PO mappings from brackets:', e)
+    } else {
+      try {
+        currentStage = 'po_mapping_fallback'
+        bracketMappings = await extractPoMappingsWithGPT4o(
+          base64Image,
+          normalizedItems,
+          openaiApiKey
+        )
+        if (bracketMappings.length > 0) {
+          normalizedItems = applyPoMappings(normalizedItems, bracketMappings)
+        }
+      } catch (e) {
+        console.warn('Failed to extract PO mappings from brackets:', e)
+      }
     }
 
     // 6-2. 손글씨 좌측 번호/구간 추론 (품목별 보강)
-    let rangeMappings: RangeMapping[] = []
-    try {
-      rangeMappings = await extractPoRangesWithGPT4o(
-        base64Image,
-        normalizedItems,
-        openaiApiKey
-      )
-    } catch (e) {
-      console.warn('Failed to extract PO ranges from handwriting:', e)
+    if (!usedUnifiedPoAssist) {
+      try {
+        currentStage = 'po_range_fallback'
+        rangeMappings = await extractPoRangesWithGPT4o(
+          base64Image,
+          normalizedItems,
+          openaiApiKey
+        )
+      } catch (e) {
+        console.warn('Failed to extract PO ranges from handwriting:', e)
+      }
     }
 
     // 6-3. 좌측 번호/구간 추론 + 괄호 매핑 합의 (품목별 inferred 정보)
@@ -349,6 +467,7 @@ serve(async (req) => {
       bracketMappings,
       rangeMappings
     })
+    perfDebug.normalize_and_infer_ms = Date.now() - normalizeStartAt
 
     // 7. 거래처명 검증 - vendors 테이블에 반드시 존재해야 함
     currentStage = 'vendor_match'
@@ -405,12 +524,15 @@ serve(async (req) => {
     }
 
     // 8. 발주/수주번호 오인식 보정 (거래처/품목/수량 기준)
+    const correctionStartAt = Date.now()
     const correctionResult = await correctOrderNumbersByDb(
       supabase,
       normalizedItems,
       validatedVendorId
     )
     normalizedItems = correctionResult.items
+    const systemLineNumbers = correctionResult.systemLineNumbers
+    perfDebug.correction_ms = Date.now() - correctionStartAt
     if (correctionResult.inferredVendorName) {
       if (!validatedVendorName || validatedVendorName !== correctionResult.inferredVendorName) {
         validatedVendorName = correctionResult.inferredVendorName
@@ -432,6 +554,7 @@ serve(async (req) => {
       .from('transaction_statements')
       .update({
         status: 'extracted',
+        extraction_error: null,
         processing_finished_at: new Date().toISOString(),
         locked_by: null,
         reset_before_extract: false,
@@ -473,8 +596,9 @@ serve(async (req) => {
     if (normalizedItems.length > 0) {
       currentStage = 'db_insert_items'
       const itemsToInsert = normalizedItems.map((item, idx) => {
-        const lineNumber = item.line_number || idx + 1
-        const inferredInfo = inferredPoMap.get(lineNumber)
+        const ocrLineNumber = item.line_number || idx + 1
+        const lineNumber = systemLineNumbers?.get(ocrLineNumber) ?? ocrLineNumber
+        const inferredInfo = inferredPoMap.get(ocrLineNumber)
 
         return {
           statement_id: statementId,
@@ -487,7 +611,7 @@ serve(async (req) => {
           extracted_tax_amount: item.tax_amount,
           extracted_po_number: item.po_number,
           extracted_remark: item.remark,
-          match_confidence: item.confidence,
+          match_confidence: normalizeItemConfidence(item.confidence),
           inferred_po_number: inferredInfo?.inferred_po_number || null,
           inferred_po_source: inferredInfo?.inferred_po_source || null,
           inferred_po_confidence: inferredInfo?.inferred_po_confidence ?? null,
@@ -501,6 +625,7 @@ serve(async (req) => {
 
       if (itemsError) {
         console.error('Failed to insert items:', itemsError)
+        throw new Error(`품목 저장 실패: ${itemsError.message}`)
       }
     }
 
@@ -515,9 +640,17 @@ serve(async (req) => {
         status: 'extracted',
         vendor_name: validatedVendorName || null, // 검증된 거래처명 포함
         vendor_match_source: vendorMatchSource, // 매칭 방법
+        debug_perf_ms: {
+          ...perfDebug,
+          total_ms: Date.now() - requestStartedAt
+        },
         result: {
           ...extractionResult,
           vendor_name: validatedVendorName || null, // DB에 없으면 vendor_name 비움
+          debug_perf_ms: {
+            ...perfDebug,
+            total_ms: Date.now() - requestStartedAt
+          },
           items: normalizedItems
         }
       }),
@@ -1172,6 +1305,8 @@ ${scopeHint ? `⚠️ **발주/수주 범위 힌트:** ${scopeHint}` : ''}
 - 수량 값은 항상 **순수한 정수** (1, 5, 10, 15, 100 등)
 - 규격 칼럼에 있는 숫자(예: 110, 200mm)를 수량으로 착각하지 마세요!
 - **헤더를 무시하고 순서로만 추측하지 마세요!**
+- **행의 수량 칸이 비어있으면 이전 행 수량을 복사하지 마세요.**
+- 수량 칸이 비어있는 행은 quantity를 null로 반환하세요. (빈칸/하이픈/미기재 포함)
 
 ⚠️ **단가가 비어있을 수 있음:**
 - 단가(UNIT PRICE)가 비어있거나 "-"일 수 있습니다. 이 경우 0 또는 null로 처리
@@ -1183,7 +1318,7 @@ ${scopeHint ? `⚠️ **발주/수주 범위 힌트:** ${scopeHint}` : ''}
 - line_number: 순번
 - item_name: 품목명/품명
 - specification: 규격/SIZE (예: 197X, 100mm, 110x50 등) - 없으면 빈 문자열
-- quantity: 수량/QTY (정수, 주문 개수)
+- quantity: 수량/QTY (정수, 주문 개수. 비어있으면 null)
 - unit_price: 단가/UNIT PRICE (숫자, 비어있으면 0 또는 null)
 - amount: 금액/공급가액/AMOUNT (숫자)
 - tax_amount: 세액 (숫자, 없으면 null)
@@ -1257,7 +1392,8 @@ JSON 형식으로만 응답하세요.`
     throw new Error('No content in GPT-4o response')
   }
 
-  return JSON.parse(content)
+  const parsed = JSON.parse(content)
+  return parsed
 }
 
 type PoMapping = {
@@ -1274,6 +1410,106 @@ type RangeMapping = {
   start_line?: number
   end_line?: number
   confidence?: number
+}
+
+type PoAssistExtraction = {
+  mappings: PoMapping[]
+  ranges: RangeMapping[]
+  numbers: string[]
+}
+
+async function extractPoAssistDataWithGPT4o(
+  base64Image: string,
+  tileImages: string[],
+  items: ExtractedItem[],
+  apiKey: string
+): Promise<PoAssistExtraction> {
+  const itemHints = items.map((item) => ({
+    line_number: item.line_number,
+    item_name: item.item_name
+  }))
+
+  const prompt = `거래명세서 이미지에서 손글씨/필기체 발주번호/수주번호 보조 추출을 수행하세요.
+아래 3가지를 동시에 추출해야 합니다.
+
+[1] 괄호/연결선 매핑 (mappings)
+- 손글씨로 적힌 번호(F########_### 또는 HS######-##)와 괄호/연결선이 가리키는 품목들을 묶어주세요.
+- 번호가 품목 옆이 아니라 두번째 줄에 적혀 있어도, 괄호/연결선이 위쪽 품목까지 이어지면 위쪽 행도 포함하세요.
+- line_number는 문서의 행 순서입니다. 여러 행 묶음은 start_line/end_line 범위로 반환해도 됩니다.
+
+[2] 왼쪽 여백 구간 추론 (ranges)
+- 왼쪽 여백에 손글씨로 적힌 번호가 있고, 그 아래 여러 품목에 같은 번호가 적용되는 경우 line_number 범위를 추론하세요.
+- 번호가 중간에 바뀌면 여러 구간으로 나눠주세요.
+
+[3] 번호 목록 추출 (numbers)
+- 손글씨/필기체로 적힌 발주번호/수주번호를 번호 목록으로 추출하세요.
+- 번호 패턴만 반환: F########_### 또는 HS######-## 형태
+
+공통 규칙:
+- 확실하지 않으면 제외하세요.
+- 결과는 아래 JSON 형식만 반환:
+{
+  "mappings":[{"start_line":1,"end_line":4,"po_number":"F... 또는 HS...","confidence":0~1},{"line_number":번호,"item_name":"품목명","po_number":"F... 또는 HS...","confidence":0~1}],
+  "ranges":[{"po_number":"F... 또는 HS...","start_line":1,"end_line":5,"confidence":0~1}],
+  "numbers":["F...","HS..."]
+}
+
+item 목록:
+${JSON.stringify(itemHints)}
+`
+
+  const imageContents = [
+    { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}`, detail: 'high' } }
+  ]
+
+  tileImages.slice(0, 4).forEach((tile) => {
+    imageContents.push({
+      type: 'image_url',
+      image_url: { url: `data:image/png;base64,${tile}`, detail: 'high' }
+    })
+  })
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: 'You extract handwritten order-number assist data from Korean transaction statements. Return JSON only.' },
+        { role: 'user', content: [
+          { type: 'text', text: prompt },
+          ...imageContents
+        ] }
+      ],
+      temperature: 0.1,
+      max_tokens: 2200,
+      response_format: { type: 'json_object' }
+    })
+  })
+
+  const result = await response.json()
+  if (result.error) {
+    throw new Error(`GPT-4o error (po assist): ${result.error.message}`)
+  }
+
+  const content = result.choices?.[0]?.message?.content
+  if (!content) {
+    return { mappings: [], ranges: [], numbers: [] }
+  }
+
+  const parsed = JSON.parse(content)
+  const mappings = Array.isArray(parsed.mappings) ? parsed.mappings : []
+  const ranges = Array.isArray(parsed.ranges) ? parsed.ranges : []
+  const numbersRaw: unknown[] = Array.isArray(parsed.numbers) ? parsed.numbers : []
+  const normalizedNumbers = numbersRaw
+    .map((value) => typeof value === 'string' ? normalizeMappedNumber(value) : '')
+    .filter((value): value is string => Boolean(value))
+  const numbers = Array.from(new Set<string>(normalizedNumbers))
+
+  return { mappings, ranges, numbers }
 }
 
 async function extractPoMappingsWithGPT4o(
@@ -1460,6 +1696,32 @@ function normalizePO(num: string): string {
   return num.toUpperCase()
 }
 
+/** Parse F-pattern PO (FYYYYMMDD_NNN) into datePart and seqPart. */
+function parsePoNumber(value: string): { datePart: string; seqPart: string } | null {
+  const m = value.match(/^F(\d{8})_(\d{3})$/)
+  if (!m) return null
+  return { datePart: m[1], seqPart: m[2] }
+}
+
+/** Check if 8-digit datePart is valid YYYYMMDD (MM 01-12, DD 01-31). */
+function isValidYyyyMmDd(datePart: string): boolean {
+  if (!/^\d{8}$/.test(datePart)) return false
+  const y = parseInt(datePart.slice(0, 4), 10)
+  const m = parseInt(datePart.slice(4, 6), 10)
+  const d = parseInt(datePart.slice(6, 8), 10)
+  if (m < 1 || m > 12) return false
+  if (d < 1 || d > 31) return false
+  const lastDay = new Date(y, m, 0).getDate()
+  return d <= lastDay
+}
+
+/** True if PO matches F pattern but date part is invalid (e.g. F20205120_005). */
+function hasValidPoDate(poNumber: string): boolean {
+  const parsed = parsePoNumber(poNumber)
+  if (!parsed) return true
+  return isValidYyyyMmDd(parsed.datePart)
+}
+
 function normalizeSO(num: string): string {
   const match = num.toUpperCase().match(/^(HS\d{6})-(\d{1,2})$/)
   if (match) {
@@ -1468,23 +1730,157 @@ function normalizeSO(num: string): string {
   return num.toUpperCase()
 }
 
+function normalizeItemConfidence(confidence: unknown): 'low' | 'med' | 'high' {
+  const fromNumeric = (raw: number): 'low' | 'med' | 'high' => {
+    if (!Number.isFinite(raw)) return 'med'
+    let value = raw
+
+    // 0~1 점수와 0~100 퍼센트 값을 모두 허용
+    if (value > 1 && value <= 100) {
+      value = value / 100
+    }
+
+    if (value >= 0.8) return 'high'
+    if (value >= 0.45) return 'med'
+    return 'low'
+  }
+
+  if (typeof confidence === 'number') {
+    return fromNumeric(confidence)
+  }
+
+  if (typeof confidence === 'string') {
+    const normalized = confidence.trim().toLowerCase()
+    if (normalized === 'high' || normalized === 'h') return 'high'
+    if (normalized === 'med' || normalized === 'medium' || normalized === 'm') return 'med'
+    if (normalized === 'low' || normalized === 'l') return 'low'
+
+    const numeric = Number(normalized.replace('%', ''))
+    if (!Number.isNaN(numeric)) {
+      return fromNumeric(numeric)
+    }
+  }
+
+  if (confidence === true) return 'high'
+  if (confidence === false) return 'low'
+
+  return 'med'
+}
+
+function normalizeItemQuantity(quantity: unknown): number {
+  if (typeof quantity === 'number' && Number.isFinite(quantity)) {
+    return quantity > 0 ? quantity : 1
+  }
+
+  if (typeof quantity === 'string') {
+    const cleaned = quantity.trim().replace(/[^0-9.-]/g, '')
+    if (!cleaned) return 1
+    const parsed = Number(cleaned)
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed
+    }
+  }
+
+  return 1
+}
+
+function normalizeOrderToken(candidate?: string): string | null {
+  if (!candidate) return null
+
+  const cleaned = normalizeOrderCandidate(candidate)
+
+  // 예: F20260122_007-01 (뒤 -01은 라인 번호로 보고 본 발주번호만 사용)
+  const poWithLineMatch = cleaned.match(/^(F\d{8})[_-](\d{1,3})[-_](\d{1,3})$/)
+  if (poWithLineMatch) {
+    const normalized = normalizePO(`${poWithLineMatch[1]}_${poWithLineMatch[2]}`)
+    if (!hasValidPoDate(normalized)) {
+      if (invalidPoTokenLogCount < 30) {
+        invalidPoTokenLogCount += 1
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H3',location:'ocr-transaction-statement/index.ts:normalizeOrderToken:poWithLine',message:'reject invalid-date po token',data:{candidate,cleaned,normalized},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+      }
+      return null
+    }
+    return normalized
+  }
+
+  // 예: F20260122_007 또는 F20260122-007
+  const poOnlyMatch = cleaned.match(/^(F\d{8})[_-](\d{1,3})$/)
+  if (poOnlyMatch) {
+    const normalized = normalizePO(`${poOnlyMatch[1]}_${poOnlyMatch[2]}`)
+    if (!hasValidPoDate(normalized)) {
+      if (invalidPoTokenLogCount < 30) {
+        invalidPoTokenLogCount += 1
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H3',location:'ocr-transaction-statement/index.ts:normalizeOrderToken:poOnly',message:'reject invalid-date po token',data:{candidate,cleaned,normalized},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+      }
+      return null
+    }
+    return normalized
+  }
+
+  // 예: HS251201-01-3 (뒤 -3은 라인 번호로 보고 본 수주번호만 사용)
+  const soWithLineMatch = cleaned.match(/^(HS\d{6})[-_](\d{1,2})[-_](\d{1,3})$/)
+  if (soWithLineMatch) {
+    return normalizeSO(`${soWithLineMatch[1]}-${soWithLineMatch[2]}`)
+  }
+
+  // 예: HS251201-01 또는 HS251201_01
+  const soOnlyMatch = cleaned.match(/^(HS\d{6})[-_](\d{1,2})$/)
+  if (soOnlyMatch) {
+    return normalizeSO(`${soOnlyMatch[1]}-${soOnlyMatch[2]}`)
+  }
+
+  return null
+}
+
+function extractOrderNumbersFromText(text?: string): string[] {
+  if (!text) return []
+
+  const cleaned = text.toUpperCase().replace(/\s+/g, '')
+  const poCandidates = cleaned.match(/F[0-9A-Z]{8}[_-][0-9A-Z]{1,3}(?:[-_][0-9A-Z]{1,3})?/g) || []
+  const soCandidates = cleaned.match(/H[5S][0-9A-Z]{6}[-_][0-9A-Z]{1,2}(?:[-_][0-9A-Z]{1,3})?/g) || []
+  const numbers: string[] = []
+
+  ;[...poCandidates, ...soCandidates].forEach((candidate) => {
+    const normalized = normalizeOrderToken(candidate)
+    if (normalized) numbers.push(normalized)
+  })
+
+  return numbers
+}
+
+function extractPoFromSpecification(specification?: string): string | undefined {
+  const numbers = extractOrderNumbersFromText(specification)
+  return numbers[0]
+}
+
+function pickDominantOrderNumber(numbers: string[]): string | null {
+  if (!numbers.length) return null
+  const counts = new Map<string, number>()
+  numbers.forEach((n) => counts.set(n, (counts.get(n) ?? 0) + 1))
+  let maxCount = 0
+  let dominant: string | null = null
+  counts.forEach((count, num) => {
+    if (count > maxCount) {
+      maxCount = count
+      dominant = num
+    }
+  })
+  return dominant
+}
+
 function normalizePoNumbers(
   items: ExtractedItem[],
   rawVisionText?: string,
   extraNumbers: string[] = []
 ): ExtractedItem[] {
-  // 발주번호 패턴: F + YYYYMMDD + _ + 1~3자리 숫자 (OCR에서 읽힌 형태)
-  const poPatternLoose = /F\d{8}_\d{1,3}/gi
-  // 수주번호 패턴: HS + YYMMDD + - + 1~2자리 숫자 (OCR에서 읽힌 형태)
-  const soPatternLoose = /HS\d{6}-\d{1,2}/gi
-
-  // 전체 텍스트에서 모든 PO/SO 번호 추출 (빈 칸, 여백 등에서 발견된 번호들)
+  // 전체 텍스트에서 모든 PO/SO 번호 추출 (빈 칸, 여백, 손글씨 영역 포함)
   const allFoundNumbers: string[] = []
   if (rawVisionText) {
-    const poMatches = rawVisionText.match(poPatternLoose) || []
-    const soMatches = rawVisionText.match(soPatternLoose) || []
-    allFoundNumbers.push(...poMatches.map(n => normalizePO(n)))
-    allFoundNumbers.push(...soMatches.map(n => normalizeSO(n)))
+    allFoundNumbers.push(...extractOrderNumbersFromText(rawVisionText))
   }
   if (extraNumbers.length > 0) {
     extraNumbers.forEach((value) => {
@@ -1492,50 +1888,87 @@ function normalizePoNumbers(
       if (normalized) allFoundNumbers.push(normalized)
     })
   }
+  const dominantDocumentNumber = pickDominantOrderNumber(allFoundNumbers)
+  // #region agent log
+  fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H4',location:'ocr-transaction-statement/index.ts:normalizePoNumbers:documentNumbers',message:'document-level order number candidates',data:{allFoundNumbersSample:allFoundNumbers.slice(0,60),allFoundCount:allFoundNumbers.length,dominantDocumentNumber},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
-  return items.map((item, idx) => {
-    let poNumber = item.po_number
+  const decisionSample: Array<{
+    line: number;
+    rawPo: string | null;
+    normalizedFromItem: string | null;
+    finalPo: string | null;
+    source: string;
+    specSnippet: string;
+  }> = []
 
-    if (poNumber) {
-      // 패턴 매칭으로 정규화
-      let normalized = poNumber.toUpperCase().replace(/\s+/g, '').replace(/[^\w_-]/g, '')
-      
-      // 발주번호 패턴 체크 및 정규화
-      const poMatch = normalized.match(poPatternLoose)
-      if (poMatch) {
-        poNumber = normalizePO(poMatch[0])
-      } else {
-        // 수주번호 패턴 체크 및 정규화
-        const soMatch = normalized.match(soPatternLoose)
-        if (soMatch) {
-          poNumber = normalizeSO(soMatch[0])
-        } else {
-          poNumber = normalized
-        }
+  const normalizedItems = items.map((item, idx) => {
+    let poNumber: string | undefined = undefined
+    let poSource = 'none'
+    const rawPo = item.po_number
+    const normalizedFromItem = rawPo
+      ? normalizeOrderToken(rawPo.toUpperCase().replace(/\s+/g, '').replace(/[^\w_-]/g, ''))
+      : null
+    if (normalizedFromItem) {
+      poNumber = normalizedFromItem
+      poSource = 'item_token'
+    }
+    if (!poNumber) {
+      const extractedFromFields =
+        extractPoFromSpecification(item.specification) ||
+        extractPoFromSpecification(item.remark) ||
+        extractPoFromSpecification(item.item_name)
+      if (extractedFromFields) {
+        poNumber = extractedFromFields
+        poSource = 'field_scan'
       }
-    } else if (allFoundNumbers.length > 0) {
-      // 품목에 번호가 없지만 전체 문서에서 번호가 발견된 경우
-      // 단일 번호만 있으면 모든 품목에 적용 (하나의 발주에 대한 거래명세서)
+    }
+    if (!poNumber && dominantDocumentNumber) {
+      poNumber = dominantDocumentNumber
+      poSource = 'dominant_document'
+    }
+    if (!poNumber && allFoundNumbers.length > 0) {
       const uniqueCount = new Set(allFoundNumbers).size
       if (uniqueCount === 1) {
         poNumber = allFoundNumbers[0]
+        poSource = 'single_document_number'
       } else if (allFoundNumbers.length === items.length && uniqueCount === items.length) {
-        // 번호 개수와 품목 개수가 같고 중복이 없으면 순서대로 매칭
         poNumber = allFoundNumbers[idx]
+        poSource = 'index_aligned_document_numbers'
       }
-      // 그 외의 경우는 수동 매칭 필요
+    }
+
+    const normalizedConfidence = normalizeItemConfidence(item.confidence)
+    const normalizedQuantity = normalizeItemQuantity((item as any)?.quantity)
+
+    if (decisionSample.length < 20) {
+      decisionSample.push({
+        line: item.line_number ?? idx + 1,
+        rawPo: rawPo ?? null,
+        normalizedFromItem,
+        finalPo: poNumber ?? null,
+        source: poSource,
+        specSnippet: (item.specification || '').slice(0, 60)
+      })
     }
 
     return {
       ...item,
-      po_number: poNumber || item.po_number
+      po_number: poNumber ?? undefined,
+      confidence: normalizedConfidence,
+      quantity: normalizedQuantity
     }
   })
+  // #region agent log
+  fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H4',location:'ocr-transaction-statement/index.ts:normalizePoNumbers:itemDecisions',message:'item-level po assignment decisions',data:{decisionSample,normalizedUniquePONumbers:Array.from(new Set(normalizedItems.map((item)=>item.po_number).filter((value)=>!!value))).slice(0,20)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+  return normalizedItems
 }
 
 type OrderCorrectionResult = {
   items: ExtractedItem[];
   inferredVendorName?: string;
+  systemLineNumbers?: Map<number, number>;
 };
 
 async function correctOrderNumbersByDb(
@@ -1559,21 +1992,32 @@ async function correctOrderNumbersByDb(
   const isSO = /^HS\d{6}-\d{2}$/.test(mostCommon);
   if (!isPO && !isSO) return { items };
 
+  const hasInvalidPoDate = isPO && !hasValidPoDate(mostCommon);
+
   const { data: exactMatch } = await supabase
     .from('purchase_requests')
     .select('id, vendor:vendors(vendor_name)')
     .or(`purchase_order_number.eq.${mostCommon},sales_order_number.eq.${mostCommon}`)
     .limit(1);
+  // #region agent log
+  fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H5',location:'ocr-transaction-statement/index.ts:correctOrderNumbersByDb:exactMatchCheck',message:'db correction entry and exact-match result',data:{itemCount:items.length,mostCommon,isPO,isSO,hasInvalidPoDate,vendorId:vendorId??null,exactMatchCount:Array.isArray(exactMatch)?exactMatch.length:0},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   if (exactMatch && exactMatch.length > 0) {
     const vendorName = (exactMatch[0].vendor as { vendor_name?: string } | null)?.vendor_name;
+    const purchaseId = exactMatch[0].id;
+    const systemLineMap = await matchSystemLineNumbers(supabase, items, purchaseId);
     return {
       items,
-      inferredVendorName: vendorName
+      inferredVendorName: vendorName,
+      systemLineNumbers: systemLineMap
     };
   }
 
-  const prefix = isPO ? mostCommon.slice(0, 9) : mostCommon.slice(0, 8);
+  const useFallbackSuffix = hasInvalidPoDate;
+  const candidateLimit = useFallbackSuffix ? 120 : 30;
+  const acceptanceThreshold = useFallbackSuffix ? 55 : 65;
+
   let query = supabase
     .from('purchase_requests')
     .select(`
@@ -1583,23 +2027,40 @@ async function correctOrderNumbersByDb(
       vendor:vendors(vendor_name),
       items:purchase_request_items(
         id,
+        line_number,
         item_name,
         specification,
         quantity
       )
     `)
-    .limit(30);
+    .limit(candidateLimit);
 
-  query = isPO
-    ? query.ilike('purchase_order_number', `${prefix}%`)
-    : query.ilike('sales_order_number', `${prefix}%`);
+  if (useFallbackSuffix && isPO) {
+    const parsed = parsePoNumber(mostCommon);
+    if (parsed) {
+      query = query.ilike('purchase_order_number', `%_${parsed.seqPart}`);
+    } else {
+      const prefix = mostCommon.slice(0, 9);
+      query = query.ilike('purchase_order_number', `${prefix}%`);
+    }
+  } else {
+    const prefix = isPO ? mostCommon.slice(0, 9) : mostCommon.slice(0, 8);
+    query = isPO
+      ? query.ilike('purchase_order_number', `${prefix}%`)
+      : query.ilike('sales_order_number', `${prefix}%`);
+  }
 
   if (vendorId) {
     query = query.eq('vendor_id', vendorId);
   }
 
   const { data: candidates } = await query;
-  if (!candidates || candidates.length === 0) return { items };
+  if (!candidates || candidates.length === 0) {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H5',location:'ocr-transaction-statement/index.ts:correctOrderNumbersByDb:noCandidates',message:'db correction skipped due to empty candidates',data:{mostCommon,useFallbackSuffix,candidateLimit,acceptanceThreshold,vendorId:vendorId??null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    return { items };
+  }
 
   const cleanedItems = items.map(item => ({
     name: normalizeItemText(item.item_name || ''),
@@ -1624,8 +2085,11 @@ async function correctOrderNumbersByDb(
       bestCandidate = candidate;
     }
   }
+  // #region agent log
+  fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H5',location:'ocr-transaction-statement/index.ts:correctOrderNumbersByDb:scoringResult',message:'db correction scoring outcome',data:{mostCommon,useFallbackSuffix,candidateCount:candidates.length,acceptanceThreshold,bestScore,bestPurchaseOrderNumber:bestCandidate?.purchase_order_number||null,bestSalesOrderNumber:bestCandidate?.sales_order_number||null},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
-  if (!bestCandidate || bestScore < 65) {
+  if (!bestCandidate || bestScore < acceptanceThreshold) {
     return { items };
   }
 
@@ -1637,14 +2101,88 @@ async function correctOrderNumbersByDb(
     return { items };
   }
 
-  const correctedItems = items.map(item => ({
-    ...item,
-    po_number: correctedNumber
-  }));
+  const applySelectively = useFallbackSuffix;
+  const correctedItems = items.map(item => {
+    if (!applySelectively) {
+      return { ...item, po_number: correctedNumber };
+    }
+    const itemPo = item.po_number;
+    const shouldApply =
+      !itemPo ||
+      itemPo === mostCommon ||
+      (parsePoNumber(itemPo) && !hasValidPoDate(itemPo));
+    return {
+      ...item,
+      po_number: shouldApply ? correctedNumber : itemPo
+    };
+  });
 
   const inferredVendorName = (bestCandidate.vendor as { vendor_name?: string } | null)?.vendor_name;
+  const systemLineMap = matchSystemLineNumbersFromCandidate(items, bestCandidate.items || []);
 
-  return { items: correctedItems, inferredVendorName };
+  return { items: correctedItems, inferredVendorName, systemLineNumbers: systemLineMap };
+}
+
+async function matchSystemLineNumbers(
+  supabase: any,
+  ocrItems: ExtractedItem[],
+  purchaseRequestId: number
+): Promise<Map<number, number>> {
+  const { data: systemItems } = await supabase
+    .from('purchase_request_items')
+    .select('line_number, item_name, specification, quantity')
+    .eq('purchase_request_id', purchaseRequestId)
+    .order('line_number', { ascending: true });
+
+  if (!systemItems || systemItems.length === 0) return new Map();
+  return matchSystemLineNumbersFromCandidate(ocrItems, systemItems);
+}
+
+function matchSystemLineNumbersFromCandidate(
+  ocrItems: ExtractedItem[],
+  systemItems: Array<{ line_number?: number; item_name: string; specification?: string; quantity?: number }>
+): Map<number, number> {
+  const result = new Map<number, number>();
+  const usedSystemIndices = new Set<number>();
+
+  for (let ocrIdx = 0; ocrIdx < ocrItems.length; ocrIdx++) {
+    const ocrItem = ocrItems[ocrIdx];
+    const ocrName = normalizeItemText(ocrItem.item_name || '');
+    const ocrLineNumber = ocrItem.line_number || ocrIdx + 1;
+    let bestScore = 0;
+    let bestSystemIdx = -1;
+
+    for (let sysIdx = 0; sysIdx < systemItems.length; sysIdx++) {
+      if (usedSystemIndices.has(sysIdx)) continue;
+      const sys = systemItems[sysIdx];
+      const sysName = normalizeItemText(sys.item_name || '');
+      const sysSpec = normalizeItemText(sys.specification || '');
+
+      const nameScore = calculateNameSimilarity(ocrName, sysName);
+      const specScore = sysSpec ? calculateNameSimilarity(ocrName, sysSpec) : 0;
+      let score = Math.max(nameScore, specScore);
+
+      if (ocrItem.quantity && sys.quantity) {
+        if (ocrItem.quantity === sys.quantity) score += 20;
+        else if (ocrItem.quantity <= sys.quantity) score += 10;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestSystemIdx = sysIdx;
+      }
+    }
+
+    if (bestScore >= 60 && bestSystemIdx >= 0) {
+      usedSystemIndices.add(bestSystemIdx);
+      const sysLineNumber = systemItems[bestSystemIdx].line_number;
+      if (sysLineNumber != null) {
+        result.set(ocrLineNumber, sysLineNumber);
+      }
+    }
+  }
+
+  return result;
 }
 
 function normalizeItemText(value: string): string {
@@ -1658,7 +2196,12 @@ function normalizeItemText(value: string): string {
 function normalizeMappedNumber(value?: string): string {
   if (!value) return ''
   const cleaned = normalizeOrderCandidate(value)
-  if (cleaned.startsWith('F')) return normalizePO(cleaned)
+  const tokenNormalized = normalizeOrderToken(cleaned)
+  if (tokenNormalized) return tokenNormalized
+  if (cleaned.startsWith('F')) {
+    const normalized = normalizePO(cleaned)
+    return hasValidPoDate(normalized) ? normalized : ''
+  }
   if (cleaned.startsWith('HS')) return normalizeSO(cleaned)
   return cleaned
 }
@@ -1716,7 +2259,19 @@ function applyPoMappings(items: ExtractedItem[], mappings: PoMapping[]): Extract
     }
   })
 
-  return items.map((item, idx) => {
+  let keptExistingCount = 0
+  let appliedMappingCount = 0
+  let unresolvedCount = 0
+
+  const mappedItems = items.map((item, idx) => {
+    const existingNormalized = normalizeOrderToken(item.po_number)
+    // OCR 본문(규격/비고/품목명)에서 이미 추출된 품목별 번호가 있으면
+    // 괄호/연결선 매핑으로 덮어쓰지 않는다.
+    if (existingNormalized) {
+      keptExistingCount += 1
+      return { ...item, po_number: existingNormalized }
+    }
+
     const lineNumber = item.line_number ?? idx + 1
     const rangeMatches = ranges.filter(range => lineNumber >= range.start && lineNumber <= range.end)
     let rangeMatch: { po_number?: string; confidence?: number } | undefined = undefined
@@ -1728,9 +2283,15 @@ function applyPoMappings(items: ExtractedItem[], mappings: PoMapping[]): Extract
     const byNameMatch = byName.get(normalizeItemText(item.item_name || ''))
     const selected = rangeMatch || byLineMatch || byNameMatch
     const mapped = normalizeMappedNumber(selected?.po_number)
-    if (!mapped) return item
+    if (!mapped) {
+      unresolvedCount += 1
+      return item
+    }
+    appliedMappingCount += 1
     return { ...item, po_number: mapped }
   })
+
+  return mappedItems
 }
 
 function buildInferredPoMap(params: {

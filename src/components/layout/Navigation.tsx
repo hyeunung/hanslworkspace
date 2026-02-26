@@ -114,13 +114,13 @@ export default function Navigation({ role }: NavigationProps) {
       roles: ['all']
     },
     {
-      label: '새 발주요청',
+      label: '새 요청',
       href: '/purchase/new',
       icon: ShoppingCart,
       roles: ['all']
     },
     {
-      label: '발주요청 목록',
+      label: '요청 목록',
       href: '/purchase/list',
       icon: FileText,
       roles: ['all']

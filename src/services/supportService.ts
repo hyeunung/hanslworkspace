@@ -294,11 +294,35 @@ class SupportService {
 
   async resolveInquiry(inquiryId: number): Promise<{ success: boolean; error?: string }> {
     try {
+      const { data: inquiryMeta } = await this.supabase
+        .from('support_inquires')
+        .select('inquiry_type,inquiry_payload')
+        .eq('id', inquiryId)
+        .maybeSingle()
+      const payloadItems = Array.isArray((inquiryMeta as any)?.inquiry_payload?.items)
+        ? (inquiryMeta as any).inquiry_payload.items
+        : []
+      const hasUndefinedItemId = payloadItems.some((item: any) => {
+        const rawItemId = item?.item_id
+        return rawItemId === undefined || rawItemId === null || rawItemId === 'undefined' || rawItemId === ''
+      })
+      const inquiryType = (inquiryMeta as any)?.inquiry_type || null
+      const shouldUseFallbackResolve =
+        (inquiryType === 'quantity_change' || inquiryType === 'price_change') && hasUndefinedItemId
+
+      if (shouldUseFallbackResolve) {
+        const fallbackResult = await this.updateInquiryStatus(inquiryId, 'resolved')
+        if (!fallbackResult.success) {
+          return { success: false, error: fallbackResult.error || '완료 처리 실패' }
+        }
+        return { success: true }
+      }
+
       const { error } = await this.supabase.rpc('resolve_inquiry', { p_inquiry_id: inquiryId })
       if (error) throw error
 
       // 상태 확인(비밀 없음): resolved로 실제 반영됐는지
-      const { data: row, error: statusErr } = await this.supabase
+      await this.supabase
         .from('support_inquires')
         .select('id,status,processed_at,updated_at')
         .eq('id', inquiryId)

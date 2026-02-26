@@ -46,7 +46,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isWarningModalOpen, setIsWarningModalOpen] = useState(false);
-  const hasShownWarningRef = useRef(false); // 현재 마운트에서 이미 모달 표시했는지
+  const hasShownWarningRef = useRef(false);
   
   // 🔍 디버깅: 컴포넌트 마운트/언마운트 추적
   useEffect(() => {
@@ -610,9 +610,13 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     });
   }, [getFilteredPurchases, activeTab, selectedEmployee, searchTerm, activeFilters, sortConfig, purchases]);
 
-  
-  // 메모리 기반 필터링으로 이미 모든 필터 적용됨 
-  const tabFilteredPurchases = baseFilteredPurchases;
+  // 발주/구매 템플릿 데이터만 표시 (기존 데이터 호환: '일반' 및 null 포함)
+  const tabFilteredPurchases = useMemo(() => {
+    return baseFilteredPurchases.filter((p: Purchase) => {
+      const templateType = (p as any).po_template_type;
+      return !templateType || templateType === '발주/구매' || templateType === '일반';
+    });
+  }, [baseFilteredPurchases]);
 
 
   // 탭별 카운트 계산 및 캐싱
@@ -958,9 +962,10 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
             </Button>
           )}
         </div>
+
       </div>
 
-      {/* 고급 필터 툴바 - 탭바 위 왼쪽 상단에 여백 추가 */}
+      {/* 고급 필터 툴바 */}
       <div className="mb-3">
         <FilterToolbar
           activeFilters={activeFilters}
@@ -987,7 +992,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         
       </div>
 
-      {/* 직접 구현한 탭 (hanslwebapp 방식) - 빠른 성능 */}
+      {/* 진행상태 탭 */}
       <div className="space-y-3">
 
         {/* 탭 버튼들 - 모바일 반응형 개선 */}

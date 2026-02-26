@@ -25,6 +25,7 @@ import { dateToISOString } from "@/utils/helpers";
 
 class TransactionStatementService {
   private supabase;
+  private lastKickQueueAt = 0;
 
   constructor() {
     this.supabase = createClient();
@@ -360,6 +361,7 @@ class TransactionStatementService {
     imageUrl: string,
     resetBeforeExtract: boolean = false
   ): Promise<{ success: boolean; data?: TransactionStatementWithItems; error?: string; queued?: boolean; status?: TransactionStatementStatus }> {
+    const requestStartAt = Date.now();
     let invokeContextStatus: number | null = null;
     let invokeContextBody: string | null = null;
     try {
@@ -367,8 +369,68 @@ class TransactionStatementService {
 
       const { data: sessionData } = await this.supabase.auth.getSession();
       const session = sessionData?.session;
+      let preRowStatus: string | null = null;
+      let preRowLocked: boolean | null = null;
+      let preRowNextRetryAt: string | null = null;
+      let preRowProcessingStartedAt: string | null = null;
+      let preProcessingCount: number | null = null;
+      try {
+        const { data: row } = await this.supabase
+          .from('transaction_statements')
+          .select('status, locked_by, next_retry_at, processing_started_at')
+          .eq('id', statementId)
+          .maybeSingle();
+        preRowStatus = (row as any)?.status ?? null;
+        preRowLocked = Boolean((row as any)?.locked_by);
+        preRowNextRetryAt = (row as any)?.next_retry_at ?? null;
+        preRowProcessingStartedAt = (row as any)?.processing_started_at ?? null;
+
+        const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+        const { count } = await this.supabase
+          .from('transaction_statements')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'processing')
+          .not('processing_started_at', 'is', null)
+          .gt('processing_started_at', cutoff);
+        preProcessingCount = typeof count === 'number' ? count : null;
+      } catch (_) {
+        // ignore snapshot errors
+      }
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b9515'},body:JSON.stringify({sessionId:'5b9515',runId:'reextract-debug',hypothesisId:'H1-H3',location:'transactionStatementService.ts:extractStatementData:preQueueCheck',message:'pre-queue status check for reextract',data:{statementId,resetBeforeExtract,preRowStatus,preRowLocked,preProcessingCount,willAttemptQueueUpdate:resetBeforeExtract&&preRowStatus==='extracted'},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      if (resetBeforeExtract && preRowStatus === 'extracted') {
+        const queueTimestamp = new Date().toISOString();
+        const { data: preQueueRows, error: preQueueError } = await this.supabase
+          .from('transaction_statements')
+          .update({
+            status: 'queued',
+            queued_at: queueTimestamp,
+            next_retry_at: queueTimestamp,
+            reset_before_extract: true,
+            processing_started_at: null,
+            processing_finished_at: null,
+            locked_by: null
+          })
+          .eq('id', statementId)
+          .eq('status', 'extracted')
+          .select('id, status');
+        const preQueueUpdatedRows = Array.isArray(preQueueRows) ? preQueueRows.length : 0;
+        if (preQueueUpdatedRows > 0) {
+          preRowStatus = 'queued';
+          preRowLocked = false;
+          preRowNextRetryAt = queueTimestamp;
+          preRowProcessingStartedAt = null;
+        }
+      }
+      const preClaimable =
+        Boolean(preRowStatus && ['pending', 'queued', 'failed'].includes(preRowStatus)) &&
+        (preProcessingCount === 0 || preProcessingCount === null);
       
       // Edge Function 호출
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H6',location:'transactionStatementService.ts:extractStatementData:beforeInvoke',message:'frontend invoking ocr edge function',data:{statementId,resetBeforeExtract,mode:'process_specific',preRowStatus,preRowLocked,preRowNextRetryAt,preRowProcessingStartedAt,preProcessingCount,preClaimable},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       const { data, error } = await this.supabase.functions.invoke('ocr-transaction-statement', {
         body: {
           statementId,
@@ -377,6 +439,12 @@ class TransactionStatementService {
           mode: 'process_specific'
         }
       });
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H7',location:'transactionStatementService.ts:extractStatementData:afterInvoke',message:'frontend received ocr edge response',data:{statementId,hasError:Boolean(error),errorMessage:(error as any)?.message||null,responseQueued:!!(data as any)?.queued,responseSuccess:!!(data as any)?.success,responseStatus:(data as any)?.status||null,responseReason:(data as any)?.reason||null,responseDebug:(data as any)?.debug||null,responseDebugPerf:(data as any)?.debug_perf_ms||null,responseDebugKeys:(data as any)?.debug?Object.keys((data as any).debug):[],responseKeys:data&&typeof data==='object'?Object.keys(data as any):[]},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H8',location:'transactionStatementService.ts:extractStatementData:invokePayloadSnapshot',message:'edge payload po numbers snapshot',data:{statementId,responseDebugPerf:(data as any)?.debug_perf_ms||((data as any)?.result?.debug_perf_ms)||null,responseUniquePONumbers:Array.from(new Set((((data as any)?.result?.items||[]) as any[]).map((it)=>it?.po_number).filter((v)=>!!v))).slice(0,20),responseItemSample:((((data as any)?.result?.items||[]) as any[]).slice(0,20)).map((it,idx)=>({line:it?.line_number??idx+1,po_number:it?.po_number??null,spec:(it?.specification||'').slice(0,60),item_name:(it?.item_name||'').slice(0,40)})),responseItemCount:Array.isArray((data as any)?.result?.items)?(data as any).result.items.length:0},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (error) {
         const context = (error as any)?.context;
         invokeContextStatus = context?.status ?? null;
@@ -398,10 +466,24 @@ class TransactionStatementService {
       if (error) throw error;
 
       if (data?.queued) {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H14',location:'transactionStatementService.ts:extractStatementData:queuedReturn',message:'extract api returned queued response',data:{statementId,elapsedMs:Date.now()-requestStartAt,responseReason:(data as any)?.reason||null,responseDebug:(data as any)?.debug||null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'post-fix',hypothesisId:'H14',location:'transactionStatementService.ts:extractStatementData:queuedKickTrigger',message:'queued response triggers background kickQueue',data:{statementId},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        void this.kickQueue().then((kickResult) => {
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'post-fix',hypothesisId:'H14',location:'transactionStatementService.ts:extractStatementData:queuedKickResult',message:'background kickQueue result after queued response',data:{statementId,kickSuccess:kickResult.success,kickError:kickResult.error||null},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
+        }).catch(() => {});
         return { success: true, queued: true, status: 'queued' };
       }
 
       if (!data?.success) {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b9515'},body:JSON.stringify({sessionId:'5b9515',runId:'reextract-debug',hypothesisId:'H5',location:'transactionStatementService.ts:extractStatementData:dataNotSuccess',message:'edge function returned success=false',data:{statementId,resetBeforeExtract,dataError:data?.error||null,dataKeys:data?Object.keys(data):[],elapsedMs:Date.now()-requestStartAt},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         throw new Error(data.error || 'OCR 추출 실패');
       }
 
@@ -413,9 +495,39 @@ class TransactionStatementService {
 
       // 추출된 데이터 조회
       const result = await this.getStatementWithItems(statementId);
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H9',location:'transactionStatementService.ts:extractStatementData:afterGetStatementWithItems',message:'db-loaded item po numbers snapshot',data:{statementId,dbLoadSuccess:result.success,dbLoadItemCount:result?.data?.items?.length||0,dbLoadUniquePONumbers:Array.from(new Set((result?.data?.items||[]).map((it)=>it?.extracted_po_number).filter((v)=>!!v))).slice(0,20),dbLoadItemSample:(result?.data?.items||[]).slice(0,20).map((it,idx)=>({line:it?.line_number??idx+1,extracted_po_number:it?.extracted_po_number??null,item_name:(it?.extracted_item_name||'').slice(0,40),spec:(it?.extracted_specification||'').slice(0,60)}))},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H14',location:'transactionStatementService.ts:extractStatementData:successReturn',message:'extract api completed with full data',data:{statementId,elapsedMs:Date.now()-requestStartAt,itemCount:result?.data?.items?.length||0},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return result;
     } catch (error) {
       console.error('[Service] Extract statement error:', error);
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b9515'},body:JSON.stringify({sessionId:'5b9515',runId:'reextract-debug',hypothesisId:'H4-H5',location:'transactionStatementService.ts:extractStatementData:catch',message:'extractStatementData threw error',data:{statementId,resetBeforeExtract,errorName:(error as any)?.name||null,errorMessage:(error as any)?.message||null,errorStack:((error as any)?.stack||'').slice(0,500),invokeContextStatus,invokeContextBody:invokeContextBody?.slice(0,500)||null,elapsedMs:Date.now()-requestStartAt},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      // 546 WORKER_LIMIT: 워커 리소스 부족 → 대기열로 전환하여 자동 재시도
+      if (invokeContextStatus === 546) {
+        try {
+          const queueTimestamp = new Date().toISOString();
+          await this.supabase
+            .from('transaction_statements')
+            .update({
+              status: 'queued',
+              queued_at: queueTimestamp,
+              next_retry_at: new Date(Date.now() + 30_000).toISOString(),
+              locked_by: null,
+              processing_started_at: null,
+              processing_finished_at: null,
+              reset_before_extract: resetBeforeExtract || undefined
+            })
+            .eq('id', statementId);
+        } catch (_) {}
+        void this.kickQueue().catch(() => {});
+        return { success: true, queued: true, status: 'queued' as TransactionStatementStatus };
+      }
+
       const errorMessage =
         error instanceof Error ? error.message : 'OCR 추출 중 오류가 발생했습니다.';
       let resolvedErrorMessage = errorMessage;
@@ -429,21 +541,18 @@ class TransactionStatementService {
       }
 
       try {
-        const { data: updateData, error: updateError } = await this.supabase
+        await this.supabase
           .from('transaction_statements')
           .update({
             status: 'failed',
             extraction_error: resolvedErrorMessage,
             last_error_at: new Date().toISOString(),
-            processing_finished_at: new Date().toISOString()
+            processing_finished_at: new Date().toISOString(),
+            locked_by: null
           })
           .eq('id', statementId)
-          .in('status', ['pending', 'queued', 'processing'])
-          .is('extraction_error', null)
-          .select('id, status, extraction_error');
-      } catch (_) {
-        // ignore update errors
-      }
+          .in('status', ['pending', 'queued', 'processing', 'failed']);
+      } catch (_) {}
       return {
         success: false,
         error: resolvedErrorMessage
@@ -455,13 +564,33 @@ class TransactionStatementService {
    * OCR 대기열 처리 트리거
    */
   async kickQueue(): Promise<{ success: boolean; error?: string }> {
+    const now = Date.now();
+    const minIntervalMs = 8000;
+    if (now - this.lastKickQueueAt < minIntervalMs) {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'post-fix',hypothesisId:'H15',location:'transactionStatementService.ts:kickQueue:skippedByMinInterval',message:'kickQueue skipped by minInterval guard',data:{elapsedSinceLastKickMs:now-this.lastKickQueueAt,minIntervalMs},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      return { success: true };
+    }
+
+    this.lastKickQueueAt = now;
+    const invokeStartAt = Date.now();
     try {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'post-fix',hypothesisId:'H15',location:'transactionStatementService.ts:kickQueue:beforeInvoke',message:'kickQueue invoking process_next edge function',data:{lastKickQueueAt:this.lastKickQueueAt},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       const { error } = await this.supabase.functions.invoke('ocr-transaction-statement', {
         body: { mode: 'process_next' }
       });
       if (error) throw error;
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'post-fix',hypothesisId:'H15',location:'transactionStatementService.ts:kickQueue:success',message:'kickQueue process_next completed successfully',data:{elapsedMs:Date.now()-invokeStartAt},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return { success: true };
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'post-fix',hypothesisId:'H15',location:'transactionStatementService.ts:kickQueue:error',message:'kickQueue failed',data:{elapsedMs:Date.now()-invokeStartAt,errorMessage:error instanceof Error?error.message:String(error)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return {
         success: false,
         error: error instanceof Error ? error.message : '큐 처리를 시작하지 못했습니다.'
@@ -626,7 +755,7 @@ class TransactionStatementService {
       if (itemIds.length > 0) {
         const { data: purchaseItems } = await this.supabase
           .from('purchase_request_items')
-          .select('id, item_name, specification, quantity, unit_price_value, amount_value, received_quantity')
+          .select('id, line_number, item_name, specification, quantity, unit_price_value, amount_value, received_quantity')
           .in('id', itemIds);
         (purchaseItems || []).forEach((i: any) => itemMap.set(i.id, i));
       }
@@ -637,7 +766,12 @@ class TransactionStatementService {
           let matchCandidates: MatchCandidate[];
           const cachedCandidates = (item as any).match_candidates_data;
           
-          if (cachedCandidates && Array.isArray(cachedCandidates) && cachedCandidates.length > 0) {
+          const hasAmountFieldInCache = Array.isArray(cachedCandidates)
+            && cachedCandidates.some((candidate: any) => Object.prototype.hasOwnProperty.call(candidate, 'amount'));
+          const hasLineNumberInCache = Array.isArray(cachedCandidates)
+            && cachedCandidates.some((candidate: any) => Object.prototype.hasOwnProperty.call(candidate, 'line_number'));
+
+          if (cachedCandidates && Array.isArray(cachedCandidates) && cachedCandidates.length > 0 && hasAmountFieldInCache && hasLineNumberInCache) {
             matchCandidates = cachedCandidates;
           } else {
             matchCandidates = await this.findMatchCandidates(item, statementVendorName);
@@ -735,7 +869,7 @@ class TransactionStatementService {
             purchase_order_number, 
             sales_order_number,
             vendor:vendors(vendor_name),
-            items:purchase_request_items(id, item_name, specification, quantity, received_quantity, unit_price_value)
+            items:purchase_request_items(id, line_number, item_name, specification, quantity, received_quantity, unit_price_value, amount_value)
           `)
           .or(`purchase_order_number.eq.${normalizedNumber},sales_order_number.eq.${normalizedNumber}`)
           .limit(10);
@@ -797,11 +931,13 @@ class TransactionStatementService {
                 purchase_order_number: purchase.purchase_order_number || '',
                 sales_order_number: purchase.sales_order_number,
                 item_id: purchaseItem.id,
+                line_number: purchaseItem.line_number,
                 item_name: purchaseItem.item_name,
                 specification: purchaseItem.specification,
                 quantity: purchaseItem.quantity,
                 received_quantity: purchaseItem.received_quantity,
                 unit_price: purchaseItem.unit_price_value,
+                amount: purchaseItem.amount_value,
                 vendor_name: sysVendorName,
                 score,
                 match_reasons: matchReasons
@@ -822,7 +958,7 @@ class TransactionStatementService {
             purchase_order_number, 
             sales_order_number,
             vendor:vendors(vendor_name),
-            items:purchase_request_items(id, item_name, specification, quantity, received_quantity, unit_price_value)
+            items:purchase_request_items(id, line_number, item_name, specification, quantity, received_quantity, unit_price_value, amount_value)
           `)
           .or(`purchase_order_number.ilike.${datePrefix}%,sales_order_number.ilike.${datePrefix}%`)
           .limit(20);
@@ -886,11 +1022,13 @@ class TransactionStatementService {
                 purchase_order_number: purchase.purchase_order_number || '',
                 sales_order_number: purchase.sales_order_number,
                 item_id: purchaseItem.id,
+                line_number: purchaseItem.line_number,
                 item_name: purchaseItem.item_name,
                 specification: purchaseItem.specification,
                 quantity: purchaseItem.quantity,
                 received_quantity: purchaseItem.received_quantity,
                 unit_price: purchaseItem.unit_price_value,
+                amount: purchaseItem.amount_value,
                 vendor_name: sysVendorName,
                 score,
                 match_reasons: matchReasons
@@ -922,11 +1060,13 @@ class TransactionStatementService {
             .from('purchase_request_items')
             .select(`
               id, 
+              line_number,
               item_name, 
               specification, 
               quantity, 
               received_quantity,
               unit_price_value,
+              amount_value,
               purchase:purchase_requests!inner(
                 id, 
                 purchase_order_number, 
@@ -1019,11 +1159,13 @@ class TransactionStatementService {
                   purchase_order_number: sysPO,
                   sales_order_number: sysSO,
                   item_id: purchaseItem.id,
+                  line_number: purchaseItem.line_number,
                   item_name: purchaseItem.item_name,
                   specification: purchaseItem.specification,
                   quantity: purchaseItem.quantity,
                   received_quantity: purchaseItem.received_quantity,
                   unit_price: purchaseItem.unit_price_value,
+                  amount: purchaseItem.amount_value,
                   vendor_name: purchaseItem.purchase?.vendor?.vendor_name,
                   score,
                   match_reasons: matchReasons
@@ -1071,7 +1213,7 @@ class TransactionStatementService {
                 purchase_order_number, 
                 sales_order_number,
                 vendor:vendors(vendor_name),
-                items:purchase_request_items(id, item_name, specification, quantity, received_quantity, unit_price_value)
+                items:purchase_request_items(id, line_number, item_name, specification, quantity, received_quantity, unit_price_value, amount_value)
               `)
               .in('vendor_id', vendorIds)
               .gte('created_at', threeMonthsAgo.toISOString())
@@ -1131,11 +1273,13 @@ class TransactionStatementService {
                       purchase_order_number: sysPO,
                       sales_order_number: sysSO,
                       item_id: purchaseItem.id,
+                      line_number: purchaseItem.line_number,
                       item_name: purchaseItem.item_name,
                       specification: purchaseItem.specification,
                       quantity: purchaseItem.quantity,
                       received_quantity: purchaseItem.received_quantity,
                       unit_price: purchaseItem.unit_price_value,
+                      amount: purchaseItem.amount_value,
                       vendor_name: sysVendorName,
                       score,
                       match_reasons: matchReasons
@@ -1520,6 +1664,9 @@ class TransactionStatementService {
             unit_price_value?: number;
             amount_value?: number;
             accounting_received_date?: string;
+            is_statement_received?: boolean;
+            statement_received_date?: string;
+            statement_received_by_name?: string | null;
           } = {};
 
           if (item.confirmed_unit_price !== undefined && item.confirmed_unit_price !== null) {
@@ -1530,6 +1677,11 @@ class TransactionStatementService {
           }
           if (request.accounting_received_date) {
             updateData.accounting_received_date = request.accounting_received_date;
+            // 거래명세서 확정 모달에서 회계상 입고일이 입력되면
+            // 발주 상세 모달의 거래명세서 확인 칼럼도 자동 완료 상태가 되도록 동기화
+            updateData.is_statement_received = true;
+            updateData.statement_received_date = request.accounting_received_date;
+            updateData.statement_received_by_name = confirmerName || null;
           }
 
           if (Object.keys(updateData).length > 0) {
@@ -1547,18 +1699,38 @@ class TransactionStatementService {
         // 추가 품목인 경우 발주 품목으로 신규 등록 (원본 OCR 데이터 참조)
         if (item.is_additional_item && item.matched_purchase_id && !item.matched_item_id) {
           const statementItem = await this.getStatementItem(item.itemId);
+          const insertData: {
+            purchase_request_id: number;
+            item_name: string;
+            specification: string | null | undefined;
+            quantity: number;
+            unit_price_value: number | undefined;
+            amount_value: number | undefined;
+            accounting_received_date: string | undefined;
+            remark: string;
+            is_statement_received?: boolean;
+            statement_received_date?: string;
+            statement_received_by_name?: string | null;
+          } = {
+            purchase_request_id: item.matched_purchase_id,
+            item_name: statementItem?.extracted_item_name || '추가 공정',
+            specification: statementItem?.extracted_specification,
+            quantity: item.confirmed_quantity || 1,
+            unit_price_value: item.confirmed_unit_price,
+            amount_value: item.confirmed_amount,
+            accounting_received_date: request.accounting_received_date,
+            remark: '거래명세서에서 추가됨'
+          };
+
+          if (request.accounting_received_date) {
+            insertData.is_statement_received = true;
+            insertData.statement_received_date = request.accounting_received_date;
+            insertData.statement_received_by_name = confirmerName || null;
+          }
+
           const { error: insertError } = await this.supabase
             .from('purchase_request_items')
-            .insert({
-              purchase_request_id: item.matched_purchase_id,
-              item_name: statementItem?.extracted_item_name || '추가 공정',
-              specification: statementItem?.extracted_specification,
-              quantity: item.confirmed_quantity || 1,
-              unit_price_value: item.confirmed_unit_price,
-              amount_value: item.confirmed_amount,
-              accounting_received_date: request.accounting_received_date,
-              remark: '거래명세서에서 추가됨'
-            });
+            .insert(insertData);
 
           if (insertError) {
             logger.warn('Failed to insert additional item:', insertError);
@@ -1898,7 +2070,7 @@ class TransactionStatementService {
             purchase_order_number, 
             sales_order_number,
             vendor:vendors(vendor_name),
-            items:purchase_request_items(id, item_name, specification, quantity, received_quantity, unit_price_value)
+            items:purchase_request_items(id, line_number, item_name, specification, quantity, received_quantity, unit_price_value)
           `)
           .or(`purchase_order_number.eq.${normalizedNumber},sales_order_number.eq.${normalizedNumber}`)
           .limit(5);
@@ -1971,7 +2143,7 @@ class TransactionStatementService {
           purchase_order_number, 
           sales_order_number,
           vendor:vendors(vendor_name),
-          items:purchase_request_items(id, item_name, specification, quantity, received_quantity, unit_price_value)
+          items:purchase_request_items(id, line_number, item_name, specification, quantity, received_quantity, unit_price_value)
         `)
         .gte('created_at', threeMonthsAgo.toISOString())
         .order('created_at', { ascending: false })

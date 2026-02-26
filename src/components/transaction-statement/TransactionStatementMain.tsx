@@ -110,6 +110,8 @@ export default function TransactionStatementMain() {
   
   // OCR 추출 진행 중인 ID들
   const [extractingIds, setExtractingIds] = useState<Set<string>>(new Set());
+  const reextractTraceIdRef = useRef<string | null>(null);
+  const optimisticReextractIdsRef = useRef<Set<string>>(new Set());
   
   // 발주 상세 모달 상태
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
@@ -123,12 +125,24 @@ export default function TransactionStatementMain() {
   }>({ isOpen: false, statement: null, position: { top: 0, left: 0 } });
 
   // 탭별 필터링된 목록 및 카운트
+  // 확정된 건(confirmed)은 날짜순으로 맨 아래 배치
   const { filteredStatements, defaultCount, receiptCount } = useMemo(() => {
+    const sortWithConfirmedLast = (items: TransactionStatement[]) => {
+      const nonConfirmed = items.filter(s => s.status !== 'confirmed');
+      const confirmed = items.filter(s => s.status === 'confirmed');
+      confirmed.sort((a, b) => {
+        const dateA = a.confirmed_at || a.uploaded_at || '';
+        const dateB = b.confirmed_at || b.uploaded_at || '';
+        return dateA.localeCompare(dateB);
+      });
+      return [...nonConfirmed, ...confirmed];
+    };
+
     const defaultItems = statements.filter(s => (s.statement_mode ?? 'default') === 'default' || s.statement_mode === 'monthly');
     const receiptItems = statements.filter(s => s.statement_mode === 'receipt');
     
     return {
-      filteredStatements: activeTab === 'default' ? defaultItems : receiptItems,
+      filteredStatements: sortWithConfirmedLast(activeTab === 'default' ? defaultItems : receiptItems),
       defaultCount: defaultItems.length,
       receiptCount: receiptItems.length
     };
@@ -216,10 +230,42 @@ export default function TransactionStatementMain() {
       if (result.success) {
         setStatements(result.data || []);
         setTotalCount(result.count || 0);
+        const trackedId = reextractTraceIdRef.current;
+        const trackedRow = trackedId
+          ? (result.data || []).find((item) => item.id === trackedId)
+          : null;
+        const firstProcessingRow = (result.data || []).find((item) => item.status === 'processing');
+        const processingStartedAt = trackedRow?.processing_started_at || firstProcessingRow?.processing_started_at || null;
+        const processingAgeMinutes = processingStartedAt
+          ? Math.round((Date.now() - new Date(processingStartedAt).getTime()) / 60000)
+          : null;
+        const staleProcessingSuspected = processingAgeMinutes !== null && processingAgeMinutes >= 6;
         const processingIds = (result.data || [])
           .filter((item) => item.status === 'processing')
           .map((item) => item.id);
-
+        const staleProcessingIds = (result.data || [])
+          .filter((item) => {
+            if (item.status !== 'processing') return false;
+            if (!item.processing_started_at) return false;
+            const startedAt = new Date(item.processing_started_at).getTime();
+            if (!Number.isFinite(startedAt)) return false;
+            return Date.now() - startedAt >= 6 * 60 * 1000;
+          })
+          .map((item) => item.id);
+        const mergedExtractingIds = new Set([
+          ...processingIds,
+          ...Array.from(optimisticReextractIdsRef.current),
+        ]);
+        setExtractingIds(mergedExtractingIds);
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H11',location:'TransactionStatementMain.tsx:loadStatements:extractingMerge',message:'processing ids merged with optimistic ids',data:{trackedId:trackedId||null,trackedRowStatus:trackedRow?.status||null,trackedRowQueuedAt:trackedRow?.queued_at||null,trackedRowProcessingStartedAt:trackedRow?.processing_started_at||null,trackedRowProcessingFinishedAt:trackedRow?.processing_finished_at||null,trackedRowNextRetryAt:trackedRow?.next_retry_at||null,statusCounts:(result.data||[]).reduce((acc,item)=>{const key=item.status||'unknown';acc[key]=(acc[key]||0)+1;return acc;},{} as Record<string,number>),processingIds,optimisticIds:Array.from(optimisticReextractIdsRef.current),mergedExtractingIds:Array.from(mergedExtractingIds),staleProcessingIds,processingAgeMinutes},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        if (staleProcessingIds.length > 0) {
+          transactionStatementService.kickQueue()
+            .then(() => {
+            })
+            .catch(() => {});
+        }
       } else {
         toast.error(result.error || '데이터를 불러오는데 실패했습니다.');
       }
@@ -285,7 +331,6 @@ export default function TransactionStatementMain() {
           },
           (payload: any) => {
             console.log('[Realtime] Statement changed:', payload);
-            
             // 상태가 변경되면 목록 갱신
             if (payload.eventType === 'UPDATE') {
               const newStatus = payload.new?.status;
@@ -468,7 +513,9 @@ export default function TransactionStatementMain() {
   const handleStartExtraction = async (e: React.MouseEvent, statement: TransactionStatement) => {
     e.stopPropagation();
     console.log('[OCR] Button clicked, statement:', statement);
-    
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b9515'},body:JSON.stringify({sessionId:'5b9515',runId:'reextract-debug',hypothesisId:'H-retry',location:'TransactionStatementMain.tsx:handleStartExtraction:entry',message:'retry/start extraction button pressed',data:{statementId:statement.id,status:statement.status,imageUrl:statement.image_url?.slice(0,100)||null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const canExtract = ['pending', 'queued', 'failed'].includes(statement.status);
     if (!canExtract || extractingIds.has(statement.id)) {
       console.log('[OCR] Status is not eligible or already extracting:', statement.status);
@@ -593,6 +640,34 @@ export default function TransactionStatementMain() {
   const handleConfirmModalClose = () => {
     setIsConfirmModalOpen(false);
     setSelectedStatement(null);
+    loadStatements();
+  };
+
+  // 재추출 시작: 모달이 닫힌 뒤에도 상태 칼럼을 즉시 처리중으로 표시
+  const handleReextractStartFromModal = (statementId: string) => {
+    reextractTraceIdRef.current = statementId;
+    optimisticReextractIdsRef.current.add(statementId);
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H12',location:'TransactionStatementMain.tsx:handleReextractStartFromModal',message:'optimistic extracting state added at reextract start',data:{statementId,optimisticIdsAfterAdd:Array.from(optimisticReextractIdsRef.current)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    setExtractingIds(prev => {
+      const next = new Set(prev);
+      next.add(statementId);
+      return next;
+    });
+  };
+
+  // 재추출 종료: 처리중 표시 해제 후 서버 상태 동기화
+  const handleReextractFinishFromModal = (statementId: string) => {
+    optimisticReextractIdsRef.current.delete(statementId);
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H13',location:'TransactionStatementMain.tsx:handleReextractFinishFromModal',message:'optimistic extracting state removed at reextract finish',data:{statementId,optimisticIdsAfterDelete:Array.from(optimisticReextractIdsRef.current)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    setExtractingIds(prev => {
+      const next = new Set(prev);
+      next.delete(statementId);
+      return next;
+    });
     loadStatements();
   };
 
@@ -1062,6 +1137,8 @@ export default function TransactionStatementMain() {
           statement={selectedStatement}
           onClose={handleConfirmModalClose}
           onConfirm={handleConfirmModalClose}
+          onReextractStart={handleReextractStartFromModal}
+          onReextractFinish={handleReextractFinishFromModal}
         />
       )}
 

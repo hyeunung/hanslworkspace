@@ -42,16 +42,19 @@ interface StatementConfirmModalProps {
   statement: TransactionStatement;
   onClose: () => void;
   onConfirm: () => void;
+  onReextractStart?: (statementId: string) => void;
+  onReextractFinish?: (statementId: string) => void;
 }
 
 // 시스템 발주 품목 타입
 interface SystemPurchaseItem {
   purchase_id: number;
   item_id: number;
+  line_number?: number;
   purchase_order_number: string;
   sales_order_number?: string;
   item_name: string;
-  specification?: string;  // 규격 추가 - 교차 비교용
+  specification?: string;
   quantity?: number;
   received_quantity?: number;
   unit_price?: number;
@@ -194,11 +197,12 @@ export default function StatementConfirmModal({
   statement,
   onClose,
   onConfirm,
+  onReextractStart,
+  onReextractFinish,
 }: StatementConfirmModalProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingAction, setSavingAction] = useState<'confirm' | 'quantity-match' | 'reject' | null>(null);
-  const [isReextracting, setIsReextracting] = useState(false);
   const [statementWithItems, setStatementWithItems] = useState<TransactionStatementWithItems | null>(null);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
   const [confirmerName, setConfirmerName] = useState("");
@@ -403,6 +407,7 @@ export default function StatementConfirmModal({
   const isSamePONumber = useMemo(() => {
     if (!statementWithItems?.items.length) return true;
     if (statementWithItems?.po_scope === 'single') return true;
+    if (statementWithItems?.po_scope === 'multi') return false;
     
     const poNumbers = statementWithItems.items
       .map(item => item.extracted_po_number ? normalizeOrderNumber(item.extracted_po_number) : null)
@@ -530,6 +535,7 @@ export default function StatementConfirmModal({
                 bestMatch = {
                   purchase_id: c.purchase_id,
                   item_id: c.item_id,
+                  line_number: c.line_number,
                   purchase_order_number: c.purchase_order_number || '',
                   sales_order_number: c.sales_order_number,
                   item_name: c.item_name,
@@ -552,6 +558,7 @@ export default function StatementConfirmModal({
                   bestMatch = {
                     purchase_id: c.purchase_id,
                     item_id: c.item_id,
+                    line_number: c.line_number,
                     purchase_order_number: c.purchase_order_number || '',
                     sales_order_number: c.sales_order_number,
                     item_name: c.item_name,
@@ -597,6 +604,7 @@ export default function StatementConfirmModal({
                     bestItem = {
                       purchase_id: c.purchase_id,
                       item_id: c.item_id,
+                      line_number: c.line_number,
                       purchase_order_number: c.purchase_order_number || '',
                       sales_order_number: c.sales_order_number,
                       item_name: c.item_name,
@@ -638,6 +646,7 @@ export default function StatementConfirmModal({
                   best = {
                     purchase_id: c.purchase_id,
                     item_id: c.item_id,
+                    line_number: c.line_number,
                     purchase_order_number: c.purchase_order_number || '',
                     sales_order_number: c.sales_order_number,
                     item_name: c.item_name,
@@ -655,13 +664,18 @@ export default function StatementConfirmModal({
           }
         });
 
+        const initialMatchedValues = Array.from(initialMatches.values()).filter(Boolean) as SystemPurchaseItem[];
         setItemPONumbers(initialPONumbers);
         setItemMatches(initialMatches);
         
         // Case 1: 공통 발주번호 설정
         const firstPO = result.data.items.find(i => i.extracted_po_number)?.extracted_po_number;
         if (firstPO) {
-          setSelectedPONumber(normalizeOrderNumber(firstPO));
+          const normalizedFirstPO = normalizeOrderNumber(firstPO);
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H10',location:'StatementConfirmModal.tsx:loadData:firstPO',message:'selectedPONumber set from first extracted po',data:{statementId:statement.id,firstPO,normalizedFirstPO},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
+          setSelectedPONumber(normalizedFirstPO);
         }
         
         // 세트 매칭 실행 (Case 1: 모든 품목이 같은 발주번호일 때)
@@ -670,7 +684,12 @@ export default function StatementConfirmModal({
           .map(item => item.extracted_po_number ? normalizeOrderNumber(item.extracted_po_number) : null)
           .filter(Boolean);
         const isSingleScope = result.data.po_scope === 'single';
-        const allSamePO = isSingleScope || poNumbers.length === 0 || poNumbers.every(po => po === poNumbers[0]);
+        const isMultiScope = result.data.po_scope === 'multi';
+        const allSamePO = isSingleScope
+          ? true
+          : isMultiScope
+            ? false
+            : poNumbers.length === 0 || poNumbers.every(po => po === poNumbers[0]);
         
         if (allSamePO) {
           // 세트 매칭 호출 - 전체 품목 비교 (거래처 필터링 포함)
@@ -687,6 +706,9 @@ export default function StatementConfirmModal({
             if (setMatchResponse.data.bestMatch) {
               const bestPO = setMatchResponse.data.bestMatch.purchase_order_number || 
                             setMatchResponse.data.bestMatch.sales_order_number || '';
+              // #region agent log
+              fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H10',location:'StatementConfirmModal.tsx:loadData:setMatchBestPO',message:'selectedPONumber overridden by set-match bestPO',data:{statementId:statement.id,bestPO,bestMatchConfidence:setMatchResponse.data.bestMatch.confidence,bestMatchItemCount:setMatchResponse.data.bestMatch.matchedItemCount,totalItems:result.data.items.length},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
               setSelectedPONumber(bestPO);
               
               // 세트 매칭 결과로 품목들 자동 매칭
@@ -700,6 +722,7 @@ export default function StatementConfirmModal({
                     autoMatchedItems.set(match.ocrItemId, {
                       purchase_id: candidate.purchase_id,
                       item_id: candidate.item_id,
+                      line_number: candidate.line_number,
                       purchase_order_number: candidate.purchase_order_number || '',
                       sales_order_number: candidate.sales_order_number,
                       item_name: candidate.item_name,
@@ -720,6 +743,7 @@ export default function StatementConfirmModal({
               autoMatchedItems.forEach((value, key) => {
                 if (value) mergedMatches.set(key, value);
               });
+              const mergedValues = Array.from(mergedMatches.values()).filter(Boolean) as SystemPurchaseItem[];
               setItemMatches(mergedMatches);
               
               // 세트 매칭 성공 알림
@@ -753,7 +777,7 @@ export default function StatementConfirmModal({
       setManuallySelectedPO(false); // 모달 열릴 때 수동 선택 플래그 리셋
       loadData();
     }
-  }, [isOpen, statement, loadData]);
+  }, [isOpen, statement.id, loadData]);
 
   // 발주번호 변경 시 itemMatches 자동 동기화 + 매칭된 시스템 발주번호로 업데이트
   useEffect(() => {
@@ -803,6 +827,7 @@ export default function StatementConfirmModal({
           bestMatch = {
             purchase_id: c.purchase_id,
             item_id: c.item_id,
+            line_number: c.line_number,
             purchase_order_number: c.purchase_order_number || '',
             sales_order_number: c.sales_order_number,
             item_name: c.item_name,
@@ -825,6 +850,7 @@ export default function StatementConfirmModal({
             bestMatch = {
               purchase_id: c.purchase_id,
               item_id: c.item_id,
+              line_number: c.line_number,
               purchase_order_number: c.purchase_order_number || '',
               sales_order_number: c.sales_order_number,
               item_name: c.item_name,
@@ -859,6 +885,12 @@ export default function StatementConfirmModal({
       }
     });
     
+    const newMatchValues = Array.from(newMatches.values()).filter(Boolean) as SystemPurchaseItem[];
+    if (lastSelectedSystemItemRef.current) {
+      const selectedItemId = lastSelectedSystemItemRef.current;
+      const currentSelected = itemMatches.get(selectedItemId);
+      const nextSelected = newMatches.get(selectedItemId);
+    }
     // 변경이 있을 때만 상태 업데이트 (무한 루프 방지)
     if (hasMatchChanges) {
       setItemMatches(newMatches);
@@ -1146,6 +1178,9 @@ export default function StatementConfirmModal({
       const matchingPO = matchingCandidate.poNumber || matchingCandidate.salesOrderNumber || '';
       // 현재 선택된 것과 다르면 변경
       if (matchingPO && matchingPO !== selectedPONumber) {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H10',location:'StatementConfirmModal.tsx:autoSelect:orderMatchCandidate',message:'selectedPONumber auto-switched by hasOrderNumberMatch candidate',data:{statementId:statement.id,previousSelectedPONumber:selectedPONumber,nextSelectedPONumber:matchingPO,candidateCount:allPONumberCandidates.length},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         console.log(`[자동 선택] 발주번호 일치 후보 "${matchingPO}"로 자동 선택`);
         setSelectedPONumber(matchingPO);
         return;
@@ -1162,6 +1197,9 @@ export default function StatementConfirmModal({
       const firstCandidate = allPONumberCandidates[0];
       const newPO = firstCandidate.poNumber || firstCandidate.salesOrderNumber || '';
       if (newPO) {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H10',location:'StatementConfirmModal.tsx:autoSelect:firstCandidateFallback',message:'selectedPONumber auto-switched because current not in candidates',data:{statementId:statement.id,previousSelectedPONumber:selectedPONumber,nextSelectedPONumber:newPO,candidateCount:allPONumberCandidates.length},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         console.log(`[자동 수정] OCR 발주번호 "${selectedPONumber}"가 DB에 없음 → 추천 발주 "${newPO}"로 변경`);
         setSelectedPONumber(newPO);
       }
@@ -1176,7 +1214,7 @@ export default function StatementConfirmModal({
       const deduped = mappedItems.filter((item, index, self) => 
         index === self.findIndex(t => t.item_id === item.item_id)
       );
-      return deduped;
+      return [...deduped].sort((a, b) => (a.line_number ?? a.item_id ?? 0) - (b.line_number ?? b.item_id ?? 0));
     }
     
     const items: SystemPurchaseItem[] = [];
@@ -1188,6 +1226,7 @@ export default function StatementConfirmModal({
           items.push({
             purchase_id: candidate.purchase_id,
             item_id: candidate.item_id,
+            line_number: candidate.line_number,
             purchase_order_number: candidate.purchase_order_number || '',
             sales_order_number: candidate.sales_order_number,
             item_name: candidate.item_name,
@@ -1195,7 +1234,7 @@ export default function StatementConfirmModal({
             quantity: candidate.quantity,
             received_quantity: candidate.received_quantity,
             unit_price: candidate.unit_price,
-            amount: (candidate as any).amount, // amount는 일부 후보에만 존재
+            amount: (candidate as any).amount,
             vendor_name: candidate.vendor_name
           });
         }
@@ -1206,7 +1245,7 @@ export default function StatementConfirmModal({
     const deduped = items.filter((item, index, self) => 
       index === self.findIndex(t => t.item_id === item.item_id)
     );
-    return deduped;
+    return [...deduped].sort((a, b) => (a.line_number ?? a.item_id ?? 0) - (b.line_number ?? b.item_id ?? 0));
   }, [statementWithItems, poItemsMap]);
 
   // 특정 OCR 품목에 대한 발주번호 후보 목록 (시스템 데이터베이스에서 가져온 것만)
@@ -1242,6 +1281,177 @@ export default function StatementConfirmModal({
     const result = Array.from(poNumbers);
     return result;
   }, [statementWithItems]);
+
+  const resolveItemPONumber = useCallback((item: TransactionStatementItemWithMatch): string => {
+    const normalizedExtracted = item.extracted_po_number
+      ? normalizeOrderNumber(item.extracted_po_number)
+      : '';
+    const candidates = getPOCandidatesForItem(item.id);
+    const candidateSet = new Set(candidates.map(candidate => normalizeOrderNumber(candidate)));
+    const selected = itemPONumbers.get(item.id);
+    const normalizedSelected = selected ? normalizeOrderNumber(selected) : '';
+    const extractedInDb = normalizedExtracted && candidateSet.has(normalizedExtracted)
+      ? normalizedExtracted
+      : '';
+    if (normalizedSelected && candidateSet.has(normalizedSelected)) return normalizedSelected;
+    if (extractedInDb) return extractedInDb;
+    if (normalizedSelected) return normalizedSelected;
+    return normalizedExtracted || '';
+  }, [getPOCandidatesForItem, itemPONumbers]);
+
+  const ocrLineSeqByItemId = useMemo(() => {
+    const seqMap = new Map<string, number>();
+    if (!statementWithItems) return seqMap;
+
+    const groupCounter = new Map<string, number>();
+
+    statementWithItems.items.forEach((item) => {
+      const itemPO = isSamePONumber
+        ? (selectedPONumber ? normalizeOrderNumber(selectedPONumber) : '')
+        : resolveItemPONumber(item);
+      const groupKey = itemPO || 'NO_PO';
+      const seq = (groupCounter.get(groupKey) || 0) + 1;
+      groupCounter.set(groupKey, seq);
+      seqMap.set(item.id, seq);
+    });
+
+    return seqMap;
+  }, [statementWithItems, resolveItemPONumber, isSamePONumber, selectedPONumber]);
+
+  const systemLineByPurchaseItemKey = useMemo(() => {
+    const lineMap = new Map<string, number>();
+    poItemsMap.forEach((items) => {
+      items.forEach((item) => {
+        const key = `${item.purchase_id}:${item.item_id}`;
+        if (!lineMap.has(key) && item.line_number != null) {
+          lineMap.set(key, item.line_number);
+        }
+      });
+    });
+    return lineMap;
+  }, [poItemsMap]);
+
+  const displayLineByItemId = useMemo(() => {
+    const lineMap = new Map<string, number>();
+    if (!statementWithItems) return lineMap;
+
+    const perPOParsed = new Map<string, Array<{ itemId: string; line: number | null }>>();
+    const perPOUsedLines = new Map<string, Set<number>>();
+
+    const extractRawLine = (raw?: string): { base: string; line: number | null } => {
+      if (!raw) return { base: '', line: null };
+      const cleaned = raw.toUpperCase().replace(/\s+/g, '').replace(/[^\w-]/g, '');
+      const poMatch = cleaned.match(/^(F\d{8}[_-]\d{1,3})[-_](\d{1,3})$/);
+      if (poMatch) {
+        return {
+          base: normalizeOrderNumber(poMatch[1]),
+          line: Number(poMatch[2]),
+        };
+      }
+      const soMatch = cleaned.match(/^(HS\d{6}[-_]\d{1,2})[-_](\d{1,3})$/);
+      if (soMatch) {
+        return {
+          base: normalizeOrderNumber(soMatch[1]),
+          line: Number(soMatch[2]),
+        };
+      }
+      return {
+        base: normalizeOrderNumber(cleaned),
+        line: null,
+      };
+    };
+
+    statementWithItems.items.forEach((item) => {
+      const activePO = isSamePONumber
+        ? (selectedPONumber ? normalizeOrderNumber(selectedPONumber) : '')
+        : resolveItemPONumber(item);
+      const poKey = activePO || 'NO_PO';
+      const parsed = extractRawLine(item.extracted_po_number || undefined);
+      const list = perPOParsed.get(poKey) || [];
+      const lineForPO = parsed.base && activePO && parsed.base === activePO ? parsed.line : null;
+      list.push({ itemId: item.id, line: lineForPO });
+      perPOParsed.set(poKey, list);
+    });
+
+    const poSuffixMeaningful = new Map<string, boolean>();
+    perPOParsed.forEach((entries, poKey) => {
+      const lines = entries.map((entry) => entry.line).filter((line): line is number => typeof line === 'number' && Number.isFinite(line));
+      const uniqueCount = new Set(lines).size;
+      const meaningful = lines.length > 0 && (uniqueCount > 1 || lines.length === 1);
+      poSuffixMeaningful.set(poKey, meaningful);
+      perPOUsedLines.set(poKey, new Set<number>());
+    });
+
+    statementWithItems.items.forEach((item, rowIndex) => {
+      const activePO = isSamePONumber
+        ? (selectedPONumber ? normalizeOrderNumber(selectedPONumber) : '')
+        : resolveItemPONumber(item);
+      const poKey = activePO || 'NO_PO';
+      const used = perPOUsedLines.get(poKey) || new Set<number>();
+      perPOUsedLines.set(poKey, used);
+
+      const parsed = extractRawLine(item.extracted_po_number || undefined);
+      const rawLine = parsed.base && activePO && parsed.base === activePO ? parsed.line : null;
+      const useRawLine = poSuffixMeaningful.get(poKey) === true;
+
+      const matchedSystem = itemMatches.get(item.id);
+      const systemLine = matchedSystem?.line_number ?? null;
+
+      const fallbackSeq = ocrLineSeqByItemId.get(item.id) ?? (rowIndex + 1);
+      const candidates: number[] = [];
+      if (useRawLine && rawLine !== null) candidates.push(rawLine);
+      if (systemLine !== null) candidates.push(systemLine);
+      candidates.push(fallbackSeq);
+
+      const chosen = candidates.find((line) => !used.has(line)) ?? candidates[0];
+      if (chosen !== undefined) {
+        used.add(chosen);
+        lineMap.set(item.id, chosen);
+      }
+    });
+
+    return lineMap;
+  }, [
+    statementWithItems,
+    isSamePONumber,
+    selectedPONumber,
+    resolveItemPONumber,
+    itemMatches,
+    ocrLineSeqByItemId,
+  ]);
+
+  useEffect(() => {
+    if (!statementWithItems || !isOpen) return;
+
+    const sample = statementWithItems.items.slice(0, 12).map((ocrItem) => {
+      const activePONumber = isSamePONumber
+        ? (selectedPONumber ? normalizeOrderNumber(selectedPONumber) : '')
+        : resolveItemPONumber(ocrItem);
+
+      const matchedSystem = itemMatches.get(ocrItem.id);
+      const systemLine = matchedSystem?.line_number ?? null;
+      const legacyUiSeq = ocrLineSeqByItemId.get(ocrItem.id) ?? null;
+      const displayedLine = systemLine ?? (matchedSystem ? null : legacyUiSeq);
+
+      return {
+        ocrItemId: ocrItem.id,
+        ocrItemName: (ocrItem.extracted_item_name || '').slice(0, 30),
+        activePONumber: activePONumber || null,
+        matchedItemId: matchedSystem?.item_id ?? null,
+        systemItemsCount: 0,
+        systemLine: systemLine ?? null,
+        legacyUiSeq,
+        displayedLineByMap: displayLineByItemId.get(ocrItem.id) ?? null,
+        displayedLine,
+        lineSource: systemLine !== null ? 'db-line' : (matchedSystem ? 'unresolved' : 'ocr-seq'),
+        legacyMismatch: systemLine !== null && legacyUiSeq !== null ? systemLine !== legacyUiSeq : null
+      };
+    });
+
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'system-line-debug',hypothesisId:'H1',location:'StatementConfirmModal.tsx:systemLineNumberSnapshot',message:'system line number snapshot vs ui sequence',data:{statementId:statement.id,isSamePONumber,selectedPONumber:selectedPONumber||null,sample,legacyMismatchCount:sample.filter((it)=>it.legacyMismatch===true).length,resolvedFromPoMapCount:sample.filter((it)=>it.lineSource==='po-map').length,unresolvedCount:sample.filter((it)=>it.lineSource==='unresolved').length,duplicateDisplayLineCount:(() => {const lines=sample.map((it)=>it.displayedLineByMap).filter((v)=>typeof v==='number') as number[]; return lines.length - new Set(lines).size;})(),missingMatchedCount:sample.filter((it)=>it.matchedItemId===null).length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+  }, [statementWithItems, isOpen, selectedPONumber, isSamePONumber, itemMatches, ocrLineSeqByItemId, displayLineByItemId, resolveItemPONumber, statement.id]);
 
   // 단일 OCR 품목 수정값 즉시 DB 저장
   const persistSingleOCRItem = useCallback(async (itemId: string, field: keyof EditedOCRItem, value: string | number) => {
@@ -1356,8 +1566,9 @@ export default function StatementConfirmModal({
       case 'amount':
         return ocrItem.extracted_amount ?? '';
       case 'po_number':
-        return itemPONumbers.get(ocrItem.id) ||
-          (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : '');
+        // OCR 컬럼은 기본적으로 DB의 extracted_po_number를 보여준다.
+        // (itemPONumbers는 매칭/추천 흐름용 상태이며 OCR 원문 표시를 덮어쓰지 않음)
+        return ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : '';
       default:
         return '';
     }
@@ -1534,6 +1745,7 @@ export default function StatementConfirmModal({
       systemItems = poCandidate.items.map(item => ({
         purchase_id: item.purchase_id,
         item_id: item.item_id,
+        line_number: item.line_number,
         purchase_order_number: item.purchase_order_number || '',
         sales_order_number: item.sales_order_number,
         item_name: item.item_name,
@@ -1603,6 +1815,7 @@ export default function StatementConfirmModal({
             .from('purchase_request_items')
             .select(`
               id,
+              line_number,
               item_name,
               specification,
               quantity,
@@ -1616,6 +1829,7 @@ export default function StatementConfirmModal({
             systemItems = purchaseItems.map((item: any) => ({
               purchase_id: purchaseRequest.id,
               item_id: item.id,
+              line_number: item.line_number,
               purchase_order_number: purchaseRequest.purchase_order_number || '',
               sales_order_number: purchaseRequest.sales_order_number,
               item_name: item.item_name || '',
@@ -1866,6 +2080,7 @@ export default function StatementConfirmModal({
             vendor:vendors(vendor_name),
             purchase_request_items (
               id,
+              line_number,
               item_name,
               specification,
               quantity,
@@ -1886,6 +2101,7 @@ export default function StatementConfirmModal({
           const newItems = items.map((item: any) => ({
             purchase_id: purchase.id,
             item_id: item.id,
+            line_number: item.line_number,
             purchase_order_number: purchase.purchase_order_number || '',
             sales_order_number: purchase.sales_order_number,
             item_name: item.item_name,
@@ -1952,6 +2168,7 @@ export default function StatementConfirmModal({
           vendor:vendors!inner(vendor_name),
           items:purchase_request_items(
             id,
+            line_number,
             item_name,
             specification,
             quantity,
@@ -1979,6 +2196,7 @@ export default function StatementConfirmModal({
         const mappedItems: SystemPurchaseItem[] = (purchase.items || []).map((item: any) => ({
           purchase_id: purchase.id,
           item_id: item.id,
+          line_number: item.line_number,
           purchase_order_number: purchase.purchase_order_number || '',
           sales_order_number: purchase.sales_order_number,
           item_name: item.item_name || '',
@@ -2050,6 +2268,7 @@ export default function StatementConfirmModal({
         const systemItems: SystemPurchaseItem[] = (purchases[0]?.items || []).map((item: any) => ({
           purchase_id: purchases[0].id,
           item_id: item.id,
+          line_number: item.line_number,
           purchase_order_number: purchases[0].purchase_order_number || '',
           sales_order_number: purchases[0].sales_order_number,
           item_name: item.item_name || '',
@@ -2124,6 +2343,12 @@ export default function StatementConfirmModal({
       newMap.set(ocrItemId, poNumber);
       return newMap;
     });
+    setEditedOCRItems(prev => {
+      const next = new Map(prev);
+      const current = next.get(ocrItemId) || {};
+      next.set(ocrItemId, { ...current, po_number: poNumber });
+      return next;
+    });
     
     const ocrItem = statementWithItems?.items.find(i => i.id === ocrItemId);
     
@@ -2145,6 +2370,7 @@ export default function StatementConfirmModal({
             bestMatch = {
               purchase_id: c.purchase_id,
               item_id: c.item_id,
+              line_number: c.line_number,
               purchase_order_number: c.purchase_order_number || '',
               sales_order_number: c.sales_order_number,
               item_name: c.item_name,
@@ -2202,9 +2428,15 @@ export default function StatementConfirmModal({
   }, [allPONumberCandidates]);
 
   const handleOpenPurchaseDetail = useCallback((purchaseId: number) => {
+    // 상세 모달이 최상위가 되도록 기존 드롭다운을 먼저 닫는다.
+    setOpenDropdowns(new Set());
     setSelectedPurchaseIdForDetail(purchaseId);
     setIsPurchaseDetailModalOpen(true);
-  }, []);
+  }, [statement.id, openDropdowns]);
+
+  useEffect(() => {
+    if (!isPurchaseDetailModalOpen) return;
+  }, [isPurchaseDetailModalOpen, openDropdowns, statement.id]);
 
   const handleItemPOSearch = useCallback(async (ocrItemId: string, searchValue: string) => {
     setItemPOSearchInputs(prev => ({ ...prev, [ocrItemId]: searchValue }));
@@ -2530,20 +2762,28 @@ export default function StatementConfirmModal({
 
   useEffect(() => {
     if (!statementWithItems) return;
-    const hasAnyMatched = Array.from(itemMatches.values()).some(Boolean);
+    const matchedValues = Array.from(itemMatches.values()).filter(Boolean) as SystemPurchaseItem[];
+    const totalFromUI = matchedValues.reduce((sum, item) => sum + (getSystemAmount(item) || 0), 0);
+    const totalFromUnitPriceQty = matchedValues.reduce((sum, item) => {
+      const qty = item.quantity ?? 0;
+      const unitPrice = item.unit_price ?? 0;
+      return sum + (qty * unitPrice);
+    }, 0);
   }, [statementWithItems, itemMatches, isReceiptMode, statement.id]);
 
 
-  const getSystemItemLabel = (item?: SystemPurchaseItem | null) => {
+  const getSystemItemLabel = (item?: SystemPurchaseItem | null, showLineNumber = true) => {
     if (!item) return '';
     const name = item.item_name?.trim() || '';
     const spec = item.specification?.trim() || '';
-    // specification이 있고 item_name보다 구체적(길면) → specification 표시
-    // (모델명/규격이 보통 PCB, METAL MASK 같은 품목명보다 길고 구체적)
-    if (spec && spec.length > name.length) return spec;
-    if (name) return name;
-    if (spec) return spec;
-    return `품목 #${item.item_id}`;
+    let label = '';
+    if (spec && spec.length > name.length) label = spec;
+    else if (name) label = name;
+    else if (spec) label = spec;
+    else label = `품목 #${item.item_id}`;
+
+    if (showLineNumber && item.line_number != null) return `${item.line_number}. ${label}`;
+    return label;
   };
 
   const handleOpenOriginalImage = () => {
@@ -2583,33 +2823,45 @@ export default function StatementConfirmModal({
   };
 
   const handleReextract = async () => {
-    if (isReextracting || loading) return;
+    if (loading) return;
     const imageUrl = statementWithItems?.image_url || statement.image_url;
     if (!imageUrl) {
       toast.error('이미지 URL을 찾을 수 없습니다.');
       return;
     }
 
-    setIsReextracting(true);
     resetReextractState();
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H16',location:'StatementConfirmModal.tsx:handleReextract:start',message:'reextract initiated from confirm modal',data:{statementId:statement.id,imageUrlExists:Boolean(imageUrl)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    onReextractStart?.(statement.id);
+    onClose();
     toast.loading('OCR 재추출 중... (약 10~30초 소요)', { id: `reextract-${statement.id}` });
 
     try {
       const result = await transactionStatementService.extractStatementData(statement.id, imageUrl, true);
       if (result.success) {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H16',location:'StatementConfirmModal.tsx:handleReextract:serviceResult',message:'reextract service returned',data:{statementId:statement.id,success:result.success,queued:!!result.queued,status:result.status||null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (result.queued) {
           toast.info('재추출이 대기열에 등록되었습니다.', { id: `reextract-${statement.id}` });
         } else {
           toast.success('OCR 재추출이 완료되었습니다.', { id: `reextract-${statement.id}` });
-          await loadData();
         }
       } else {
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b9515'},body:JSON.stringify({sessionId:'5b9515',runId:'reextract-debug',hypothesisId:'H-modal',location:'StatementConfirmModal.tsx:handleReextract:failed',message:'reextract returned success=false',data:{statementId:statement.id,error:result.error||null,queued:!!result.queued,status:result.status||null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         toast.error(result.error || 'OCR 재추출에 실패했습니다.', { id: `reextract-${statement.id}` });
       }
     } catch (error) {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b9515'},body:JSON.stringify({sessionId:'5b9515',runId:'reextract-debug',hypothesisId:'H-modal-catch',location:'StatementConfirmModal.tsx:handleReextract:catch',message:'reextract threw exception',data:{statementId:statement.id,errorName:(error as any)?.name||null,errorMessage:(error as any)?.message||null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       toast.error('OCR 재추출 중 오류가 발생했습니다.', { id: `reextract-${statement.id}` });
     } finally {
-      setIsReextracting(false);
+      onReextractFinish?.(statement.id);
     }
   };
 
@@ -2749,14 +3001,19 @@ export default function StatementConfirmModal({
     }
   };
 
-  const toggleDropdown = (key: string, event?: React.MouseEvent) => {
-    if (key.startsWith('item-')) {
-    }
-    if (event && key === 'global-po') {
-      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const getDropdownWidth = (key: string) => (key === 'global-po' ? 320 : 280);
+
+  const toggleDropdown = (key: string, event?: React.MouseEvent<HTMLElement>) => {
+    if (event) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const dropdownWidth = getDropdownWidth(key);
+      const viewportPadding = 8;
+      const maxLeft = Math.max(viewportPadding, window.innerWidth - dropdownWidth - viewportPadding);
+      const nextLeft = Math.min(Math.max(rect.left, viewportPadding), maxLeft);
+
       setDropdownPosition({
         top: rect.bottom + 4,
-        left: rect.left
+        left: nextLeft
       });
     }
     
@@ -2771,6 +3028,20 @@ export default function StatementConfirmModal({
       return newSet;
     });
   };
+
+  const handleGlobalPODropdownWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
+    const beforeScrollTop = el.scrollTop;
+    const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    const nextScrollTop = Math.min(maxScrollTop, Math.max(0, beforeScrollTop + event.deltaY));
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (nextScrollTop !== beforeScrollTop) {
+      el.scrollTop = nextScrollTop;
+    }
+  }, []);
 
   if (!statement) return null;
 
@@ -2800,14 +3071,10 @@ export default function StatementConfirmModal({
                   variant="outline"
                   size="sm"
                   onClick={handleReextract}
-                  disabled={loading || isReextracting}
+                  disabled={loading}
                   className="button-base h-7 text-[10px]"
                 >
-                  {isReextracting ? (
-                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-3.5 h-3.5 mr-1" />
-                  )}
+                  <RefreshCw className="w-3.5 h-3.5 mr-1" />
                   재추출
                 </Button>
                 <Button
@@ -3265,6 +3532,7 @@ export default function StatementConfirmModal({
                           .map((candidate): SystemPurchaseItem => ({
                             purchase_id: candidate.purchase_id,
                             item_id: candidate.item_id,
+                            line_number: candidate.line_number,
                             purchase_order_number: candidate.purchase_order_number || '',
                             sales_order_number: candidate.sales_order_number,
                             item_name: candidate.item_name || '품목명 없음',
@@ -3287,6 +3555,8 @@ export default function StatementConfirmModal({
                           score: calculateItemSimilarity(ocrItem.extracted_item_name || '', candidate.item_name, candidate.specification)
                         }))
                         .sort((a, b) => b.score - a.score);
+                      const displayLineNumber = displayLineByItemId.get(ocrItem.id) ?? (ocrLineSeqByItemId.get(ocrItem.id) ?? rowIndex + 1);
+                      const displayLineLabel = displayLineNumber !== null ? `${displayLineNumber}.` : '-';
                       if (rowIndex === 0) {
                         const logKey = `${ocrItem.id}|${isSamePONumber ? 'same' : 'multi'}|${activePONumber}|${systemCandidates.length}`;
                         if (systemCandidateLogKeyRef.current !== logKey) {
@@ -3328,112 +3598,126 @@ export default function StatementConfirmModal({
                             <td className="p-1 whitespace-nowrap">
                               <div className="relative">
                                 <button
-                                  onClick={() => toggleDropdown(`po-${ocrItem.id}`)}
+                                  onClick={(e) => toggleDropdown(`po-${ocrItem.id}`, e)}
                                   className="inline-flex items-center gap-1 px-1.5 h-5 text-[10px] font-medium bg-white border border-gray-300 business-radius hover:bg-gray-50 text-gray-700 whitespace-nowrap"
                                   style={{ fontSize: '11px' }}
                                 >
                                   <span>{itemPO || '선택'}</span>
                                   <ChevronDown className="w-3 h-3 flex-shrink-0" />
                                 </button>
-                                {openDropdowns.has(`po-${ocrItem.id}`) && (
-                                  <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-md shadow-lg w-[280px] max-h-[200px] overflow-auto">
-                                    <div className="p-2 border-b border-gray-100">
-                                      <div className="relative">
-                                        <input
-                                          type="text"
-                                          value={itemSearchValue}
-                                          onChange={(e) => handleItemPOSearch(ocrItem.id, e.target.value)}
-                                          placeholder="발주/수주번호 검색..."
-                                          className="w-full h-6 px-2 pr-6 text-[10px] bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-hansl-400"
-                                        />
-                                        {itemSearchLoading && (
-                                          <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 animate-spin text-gray-400" />
-                                        )}
+                                {openDropdowns.has(`po-${ocrItem.id}`) && createPortal(
+                                  <>
+                                    <div
+                                      className="fixed inset-0 z-[9998]"
+                                      onClick={() => toggleDropdown(`po-${ocrItem.id}`)}
+                                    />
+                                    <div
+                                      className="fixed z-[9999] pointer-events-auto bg-white border border-gray-200 rounded-lg shadow-xl w-[280px] max-h-[360px] overflow-y-auto"
+                                      style={{
+                                        top: dropdownPosition.top,
+                                        left: dropdownPosition.left
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <div className="p-2 border-b border-gray-100">
+                                        <div className="relative">
+                                          <input
+                                            type="text"
+                                            value={itemSearchValue}
+                                            onChange={(e) => handleItemPOSearch(ocrItem.id, e.target.value)}
+                                            placeholder="발주/수주번호 검색..."
+                                            className="w-full h-6 px-2 pr-6 text-[10px] bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-hansl-400"
+                                          />
+                                          {itemSearchLoading && (
+                                            <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 animate-spin text-gray-400" />
+                                          )}
+                                        </div>
                                       </div>
-                                    </div>
-                                    {itemSearchValue && itemSearchResults.length > 0 && (
-                                      <div className="border-b border-gray-100">
-                                        {itemSearchResults.map((po) => {
-                                          const searchUpper = itemSearchValue.trim().toUpperCase();
-                                          let selectedNumber: string;
-                                          if (searchUpper.startsWith('HS') && po.soNumber) {
-                                            selectedNumber = po.soNumber;
-                                          } else if (searchUpper.startsWith('F') && po.poNumber) {
-                                            selectedNumber = po.poNumber;
-                                          } else {
-                                            selectedNumber = po.poNumber || po.soNumber || '';
-                                          }
-                                          return (
-                                            <div
-                                              key={po.id}
-                                              className="px-2 py-1.5 hover:bg-gray-50 cursor-pointer text-[11px]"
-                                              onClick={() => handleSelectItemPO(ocrItem.id, selectedNumber)}
-                                            >
-                                              <div className="flex items-center justify-between gap-2">
-                                                <div className="font-medium text-gray-900">
-                                                  {po.poNumber}
-                                                  {po.soNumber && <span className="text-gray-400 ml-1">({po.soNumber})</span>}
-                                                </div>
-                                                <button
-                                                  type="button"
-                                                  onMouseDown={(e) => e.preventDefault()}
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleOpenPurchaseDetail(po.id);
-                                                  }}
-                                                  className="text-[9px] font-medium text-blue-600 hover:text-blue-800"
-                                                >
-                                                  상세
-                                                </button>
-                                              </div>
-                                              {po.vendorName && (
-                                                <div className="text-[9px] text-gray-500">{po.vendorName}</div>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                    {orderedPOs.length > 0 && (
-                                      <div>
-                                        {orderedPOs.map((po, idx) => {
-                                          const paired = getPairedOrderNumber(po);
-                                          const purchaseId = getPurchaseIdByNumber(po);
-                                          const isPreferred = po === itemPO;
-                                          const isRecommended = po === matchedPONumber;
-                                          return (
-                                            <div
-                                              key={`${po}-${idx}`}
-                                              onClick={() => handleSelectItemPO(ocrItem.id, po)}
-                                              className={`px-2 py-1.5 hover:bg-gray-100 cursor-pointer text-[11px] font-medium ${isPreferred ? 'bg-blue-50 text-blue-900 font-semibold' : isRecommended ? 'bg-green-50 text-green-900' : 'text-gray-700'}`}
-                                              style={{ fontSize: '11px' }}
-                                            >
-                                              <div className="flex items-center justify-between gap-2">
-                                                <div>
-                                                  {po}
-                                                  {paired && <span className="text-gray-400 ml-1">({paired})</span>}
-                                                  {isRecommended && <span className="text-green-600 ml-1 text-[9px] font-bold">추천</span>}
-                                                </div>
-                                                {purchaseId && (
+                                      {itemSearchValue && itemSearchResults.length > 0 && (
+                                        <div className="border-b border-gray-100">
+                                          {itemSearchResults.map((po) => {
+                                            const searchUpper = itemSearchValue.trim().toUpperCase();
+                                            let selectedNumber: string;
+                                            if (searchUpper.startsWith('HS') && po.soNumber) {
+                                              selectedNumber = po.soNumber;
+                                            } else if (searchUpper.startsWith('F') && po.poNumber) {
+                                              selectedNumber = po.poNumber;
+                                            } else {
+                                              selectedNumber = po.poNumber || po.soNumber || '';
+                                            }
+                                            return (
+                                              <div
+                                                key={po.id}
+                                                className="px-2 py-1.5 hover:bg-gray-50 cursor-pointer text-[11px]"
+                                                onClick={() => handleSelectItemPO(ocrItem.id, selectedNumber)}
+                                              >
+                                                <div className="flex items-center justify-between gap-2">
+                                                  <div className="font-medium text-gray-900">
+                                                    {po.poNumber}
+                                                    {po.soNumber && <span className="text-gray-400 ml-1">({po.soNumber})</span>}
+                                                  </div>
                                                   <button
                                                     type="button"
                                                     onMouseDown={(e) => e.preventDefault()}
                                                     onClick={(e) => {
                                                       e.stopPropagation();
-                                                      handleOpenPurchaseDetail(purchaseId);
+                                                      handleOpenPurchaseDetail(po.id);
                                                     }}
                                                     className="text-[9px] font-medium text-blue-600 hover:text-blue-800"
                                                   >
                                                     상세
                                                   </button>
+                                                </div>
+                                                {po.vendorName && (
+                                                  <div className="text-[9px] text-gray-500">{po.vendorName}</div>
                                                 )}
                                               </div>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                      {orderedPOs.length > 0 && (
+                                        <div>
+                                          {orderedPOs.map((po, idx) => {
+                                            const paired = getPairedOrderNumber(po);
+                                            const purchaseId = getPurchaseIdByNumber(po);
+                                            const isPreferred = po === itemPO;
+                                            const isRecommended = po === matchedPONumber;
+                                            return (
+                                              <div
+                                                key={`${po}-${idx}`}
+                                                onClick={() => handleSelectItemPO(ocrItem.id, po)}
+                                                className={`px-2 py-1.5 hover:bg-gray-100 cursor-pointer text-[11px] font-medium ${isPreferred ? 'bg-blue-50 text-blue-900 font-semibold' : isRecommended ? 'bg-green-50 text-green-900' : 'text-gray-700'}`}
+                                                style={{ fontSize: '11px' }}
+                                              >
+                                                <div className="flex items-center justify-between gap-2">
+                                                  <div>
+                                                    {po}
+                                                    {paired && <span className="text-gray-400 ml-1">({paired})</span>}
+                                                    {isRecommended && <span className="text-green-600 ml-1 text-[9px] font-bold">추천</span>}
+                                                  </div>
+                                                  {purchaseId && (
+                                                    <button
+                                                      type="button"
+                                                      onMouseDown={(e) => e.preventDefault()}
+                                                      onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleOpenPurchaseDetail(purchaseId);
+                                                      }}
+                                                      className="text-[9px] font-medium text-blue-600 hover:text-blue-800"
+                                                    >
+                                                      상세
+                                                    </button>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </>,
+                                  document.body
                                 )}
                               </div>
                             </td>
@@ -3444,14 +3728,17 @@ export default function StatementConfirmModal({
                             {displaySystemCandidates.length > 0 ? (
                               <div className="relative">
                                 <div className="flex items-center gap-1">
+                                  <span className="modal-label min-w-[18px] text-right">
+                                    {displayLineLabel}
+                                  </span>
                                   <button
-                                    onClick={() => {
-                                      toggleDropdown(`item-${ocrItem.id}`);
+                                    onClick={(e) => {
+                                      toggleDropdown(`item-${ocrItem.id}`, e);
                                     }}
                                     className="inline-flex items-center gap-1 px-1.5 h-5 text-[10px] font-normal bg-white border border-gray-300 business-radius hover:bg-gray-50 text-gray-700 whitespace-nowrap"
                                     style={{ fontSize: '11px' }}
                                   >
-                                    <span>{getSystemItemLabel(matchedSystem) || '선택'}</span>
+                                    <span>{getSystemItemLabel(matchedSystem, false) || '선택'}</span>
                                     <ChevronDown className="w-3 h-3 flex-shrink-0" />
                                   </button>
                                   {matchedSystem && (
@@ -3464,38 +3751,59 @@ export default function StatementConfirmModal({
                                     </button>
                                   )}
                                 </div>
-                                {openDropdowns.has(`item-${ocrItem.id}`) && (
-                                  <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-md shadow-lg w-[280px] max-h-[200px] overflow-auto">
-                                    {scoredSystemCandidates.map(({ candidate, score }, cidx) => {
-                                      return (
-                                        <div
-                                          key={cidx}
-                                          onClick={() => {
-                                            handleSelectSystemItem(ocrItem.id, candidate);
-                                          }}
-                                          className="px-2 py-1.5 hover:bg-gray-100 cursor-pointer"
-                                        >
-                                          <div className="flex items-center justify-between">
-                                            <p className="text-[11px] font-normal text-gray-900" style={{ fontSize: '11px' }}>{getSystemItemLabel(candidate)}</p>
-                                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                                              score >= 80 ? 'bg-green-100 text-green-700' :
-                                              score >= 50 ? 'bg-yellow-100 text-yellow-700' :
-                                              'bg-gray-100 text-gray-600'
-                                            }`}>
-                                              {Math.round(score)}%
-                                            </span>
+                                {openDropdowns.has(`item-${ocrItem.id}`) && createPortal(
+                                  <>
+                                    <div
+                                      className="fixed inset-0 z-[9998]"
+                                      onClick={() => toggleDropdown(`item-${ocrItem.id}`)}
+                                    />
+                                    <div
+                                      className="fixed z-[9999] pointer-events-auto bg-white border border-gray-200 rounded-lg shadow-xl w-[280px] max-h-[360px] overflow-y-auto"
+                                      style={{
+                                        top: dropdownPosition.top,
+                                        left: dropdownPosition.left
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {scoredSystemCandidates.map(({ candidate, score }, cidx) => {
+                                        return (
+                                          <div
+                                            key={cidx}
+                                            onMouseDown={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              handleSelectSystemItem(ocrItem.id, candidate);
+                                            }}
+                                            onClick={() => {
+                                              handleSelectSystemItem(ocrItem.id, candidate);
+                                            }}
+                                            className="px-2 py-1.5 hover:bg-gray-100 cursor-pointer"
+                                          >
+                                            <div className="flex items-center justify-between">
+                                              <p className="text-[11px] font-normal text-gray-900" style={{ fontSize: '11px' }}>{getSystemItemLabel(candidate)}</p>
+                                              <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                                score >= 80 ? 'bg-green-100 text-green-700' :
+                                                score >= 50 ? 'bg-yellow-100 text-yellow-700' :
+                                                'bg-gray-100 text-gray-600'
+                                              }`}>
+                                                {Math.round(score)}%
+                                              </span>
+                                            </div>
+                                            <p className="text-[10px] text-gray-500">
+                                              요청/실제: {candidate.quantity ?? '-'} / {candidate.received_quantity ?? '-'}
+                                            </p>
                                           </div>
-                                          <p className="text-[10px] text-gray-500">
-                                            요청/실제: {candidate.quantity ?? '-'} / {candidate.received_quantity ?? '-'}
-                                          </p>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </>,
+                                  document.body
                                 )}
                               </div>
                             ) : (
-                              <span className="text-[11px] text-gray-400" style={{ fontSize: '11px' }}>후보 없음</span>
+                              <span className="text-[11px] text-gray-400" style={{ fontSize: '11px' }}>
+                                {displayLineLabel} 후보 없음
+                              </span>
                             )}
                           </td>
                           <td className="p-1 text-right">
@@ -3542,18 +3850,23 @@ export default function StatementConfirmModal({
                           
                           {/* 우측: OCR 품목 (편집 가능) */}
                           <td className="p-1 whitespace-nowrap">
-                            <input
-                              type="text"
-                              value={getOCRItemValue(ocrItem, 'item_name') as string}
-                              onChange={(e) => handleEditOCRItem(ocrItem.id, 'item_name', e.target.value)}
-                              className={`min-w-[180px] w-auto px-1 h-5 !text-[10px] !font-medium text-gray-900 border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
-                                isOCRItemEdited(ocrItem, 'item_name') 
-                                  ? 'border-orange-400 bg-orange-50' 
-                                  : 'border-gray-200 bg-white'
-                              }`}
-                              style={{ fontSize: '11px', fontWeight: 500, width: `${Math.max(180, (getOCRItemValue(ocrItem, 'item_name') as string).length * 8)}px` }}
-                              title={isOCRItemEdited(ocrItem, 'item_name') ? `원본: ${ocrItem.extracted_item_name}` : undefined}
-                            />
+                            <div className="flex items-center gap-1">
+                              <span className="modal-label min-w-[18px] text-right">
+                                {displayLineLabel}
+                              </span>
+                              <input
+                                type="text"
+                                value={getOCRItemValue(ocrItem, 'item_name') as string}
+                                onChange={(e) => handleEditOCRItem(ocrItem.id, 'item_name', e.target.value)}
+                                className={`min-w-[180px] w-auto px-1 h-5 !text-[10px] !font-medium text-gray-900 border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                                  isOCRItemEdited(ocrItem, 'item_name') 
+                                    ? 'border-orange-400 bg-orange-50' 
+                                    : 'border-gray-200 bg-white'
+                                }`}
+                                style={{ fontSize: '11px', fontWeight: 500, width: `${Math.max(180, (getOCRItemValue(ocrItem, 'item_name') as string).length * 8)}px` }}
+                                title={isOCRItemEdited(ocrItem, 'item_name') ? `원본: ${ocrItem.extracted_item_name}` : undefined}
+                              />
+                            </div>
                           </td>
                           <td className="p-1 text-right w-16">
                             <input
@@ -4027,19 +4340,20 @@ export default function StatementConfirmModal({
         <>
           {/* 오버레이 */}
           <div 
-            className="fixed inset-0 z-[100]" 
+            className="fixed inset-0 z-[9998]" 
             style={{ pointerEvents: 'auto' }}
             onClick={() => toggleDropdown('global-po')}
           />
           {/* 드롭다운 */}
           <div 
-            className="fixed z-[101] bg-white border border-gray-200 rounded-lg shadow-xl min-w-[280px] max-h-[350px] overflow-y-auto"
+            className="fixed z-[9999] pointer-events-auto bg-white border border-gray-200 rounded-lg shadow-xl min-w-[280px] max-h-[350px] overflow-y-auto"
             style={{
               top: dropdownPosition.top,
               left: dropdownPosition.left,
               pointerEvents: 'auto'
             }}
             onClick={(e) => e.stopPropagation()}
+            onWheel={handleGlobalPODropdownWheel}
           >
             <div className="sticky top-0 bg-gray-50 px-3 py-2 border-b border-gray-100 rounded-t-lg">
               <span className="text-[10px] font-semibold text-gray-600">발주번호 선택</span>

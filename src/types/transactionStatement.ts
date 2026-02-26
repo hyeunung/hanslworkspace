@@ -162,11 +162,13 @@ export interface MatchCandidate {
   purchase_order_number: string;
   sales_order_number?: string;
   item_id: number;
+  line_number?: number;
   item_name: string;
   specification?: string;
   quantity: number;
   received_quantity?: number;
   unit_price?: number;
+  amount?: number;
   vendor_name?: string;
   score: number; // 매칭 점수 (0-100)
   match_reasons: string[]; // 매칭 이유
@@ -251,6 +253,20 @@ export function normalizeOrderNumber(input: string): string {
   if (!input) return input;
   
   const normalized = input.toUpperCase().replace(/\s+/g, '');
+
+  // 발주/수주번호 뒤에 붙는 라인 번호 suffix 제거
+  // 예) F20260120_007-14 -> F20260120_007, HS251201-01-3 -> HS251201-01
+  const poWithLineMatch = normalized.match(/^(F\d{8})[_-](\d{1,3})[-_](\d{1,3})$/);
+  if (poWithLineMatch) {
+    const [, prefix, num] = poWithLineMatch;
+    return `${prefix}_${num.padStart(3, '0')}`;
+  }
+
+  const soWithLineMatch = normalized.match(/^(HS\d{6})[-_](\d{1,2})[-_](\d{1,3})$/);
+  if (soWithLineMatch) {
+    const [, prefix, num] = soWithLineMatch;
+    return `${prefix}-${num.padStart(2, '0')}`;
+  }
   
   // 발주번호 정규화: F20251008_1 또는 F20251008-01 → F20251008_001
   const poMatch = normalized.match(/^(F\d{8})[_-](\d{1,3})$/);

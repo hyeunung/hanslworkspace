@@ -99,8 +99,8 @@ class NavigationOptimizer {
   private getRouteImporters() {
     return {
       '/dashboard': () => import('@/components/dashboard/DashboardMain'),
-      '/purchase': () => import('@/components/purchase/PurchaseListMain'),
-      '/purchase/list': () => import('@/components/purchase/PurchaseListMain'),
+      '/purchase': () => import('@/components/purchase/RequestListMain'),
+      '/purchase/list': () => import('@/components/purchase/RequestListMain'),
       '/purchase/new': () => import('@/components/lazy/LazyPurchaseNewMain'),
       '/vendor': () => import('@/components/vendor/VendorMain'),
       '/employee': () => import('@/components/employee/EmployeeMain'),
