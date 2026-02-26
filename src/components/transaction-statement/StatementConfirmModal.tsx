@@ -32,7 +32,7 @@ import type {
   OCRFieldType,
   StatementMode
 } from "@/types/transactionStatement";
-import { normalizeOrderNumber } from "@/types/transactionStatement";
+import { normalizeOrderNumber, extractLineNumberFromPO } from "@/types/transactionStatement";
 import { logger } from "@/lib/logger";
 import StatementImageViewer from "./StatementImageViewer";
 import PurchaseDetailModal from "@/components/purchase/PurchaseDetailModal";
@@ -187,6 +187,21 @@ function getQuantityMatchLevel(ocrQuantity: number | undefined | null, systemQua
   if (ocrQuantity <= systemQuantity) return 'partial';
   
   return 'mismatch';
+}
+
+// 드롭다운 후보 점수 계산 (품목명 유사도 + 수량 일치 보너스)
+function calculateCandidateScore(
+  ocrItemName: string,
+  ocrQuantity: number | undefined | null,
+  candidateItemName: string,
+  candidateSpec?: string,
+  candidateQuantity?: number | null
+): number {
+  const nameScore = calculateItemSimilarity(ocrItemName, candidateItemName, candidateSpec);
+  if (!ocrQuantity || !candidateQuantity) return nameScore;
+  if (ocrQuantity === candidateQuantity) return Math.min(100, nameScore + 20);
+  if (ocrQuantity <= candidateQuantity) return Math.min(100, nameScore + 10);
+  return nameScore;
 }
 
 /**
@@ -496,7 +511,24 @@ export default function StatementConfirmModal({
         // 초기 발주번호 설정 및 자동 매칭
         const initialPONumbers = new Map<string, string>();
         const initialMatches = new Map<string, SystemPurchaseItem | null>();
-        
+
+        // 라인넘버 유효성 판단: 같은 발주번호 내에서 라인넘버가 다양하면 유효
+        const poLineNumbers = new Map<string, Set<number>>();
+        result.data.items.forEach(item => {
+          if (!item.extracted_po_number) return;
+          const po = normalizeOrderNumber(item.extracted_po_number);
+          const lineNum = extractLineNumberFromPO(item.extracted_po_number);
+          if (po && lineNum !== null) {
+            const existing = poLineNumbers.get(po) || new Set();
+            existing.add(lineNum);
+            poLineNumbers.set(po, existing);
+          }
+        });
+        const validLineNumberPOs = new Set<string>();
+        poLineNumbers.forEach((lineNums, po) => {
+          if (lineNums.size > 1) validLineNumberPOs.add(po);
+        });
+
         result.data.items.forEach(item => {
           // 추출된 발주번호 설정 (시스템 형식으로 정규화)
           let poNumber = '';
@@ -535,30 +567,58 @@ export default function StatementConfirmModal({
             // 자동 매칭: 해당 발주번호의 후보 중에서 가장 유사한 품목 찾기
             let bestMatch: SystemPurchaseItem | null = null;
             let bestScore = -1;
-            
-            // 1. 해당 발주번호와 일치하는 후보 검색
-            const matchingCandidates = item.match_candidates?.filter(c => 
-              c.purchase_order_number === poNumber || c.sales_order_number === poNumber
-            ) || [];
-            
-            for (const c of matchingCandidates) {
-              const score = calculateItemSimilarity(item.extracted_item_name || '', c.item_name, c.specification);
-              if (score > bestScore) {
-                bestScore = score;
+
+            // 0. 라인넘버 기반 매칭 우선 시도
+            const ocrLineNum = extractLineNumberFromPO(item.extracted_po_number || '');
+            if (ocrLineNum !== null && poNumber && validLineNumberPOs.has(poNumber)) {
+              const lineMatchCandidate = item.match_candidates?.find(c =>
+                (c.purchase_order_number === poNumber || c.sales_order_number === poNumber) &&
+                c.line_number === ocrLineNum
+              );
+              if (lineMatchCandidate) {
                 bestMatch = {
-                  purchase_id: c.purchase_id,
-                  item_id: c.item_id,
-                  line_number: c.line_number,
-                  purchase_order_number: c.purchase_order_number || '',
-                  sales_order_number: c.sales_order_number,
-                  item_name: c.item_name,
-                  specification: c.specification,
-                  quantity: c.quantity,
-                  received_quantity: c.received_quantity,
-                  unit_price: c.unit_price,
-                  amount: (c as any).amount,
-                  vendor_name: c.vendor_name
+                  purchase_id: lineMatchCandidate.purchase_id,
+                  item_id: lineMatchCandidate.item_id,
+                  line_number: lineMatchCandidate.line_number,
+                  purchase_order_number: lineMatchCandidate.purchase_order_number || '',
+                  sales_order_number: lineMatchCandidate.sales_order_number,
+                  item_name: lineMatchCandidate.item_name,
+                  specification: lineMatchCandidate.specification,
+                  quantity: lineMatchCandidate.quantity,
+                  received_quantity: lineMatchCandidate.received_quantity,
+                  unit_price: lineMatchCandidate.unit_price,
+                  amount: (lineMatchCandidate as any).amount,
+                  vendor_name: lineMatchCandidate.vendor_name
                 };
+                bestScore = 100;
+              }
+            }
+            
+            // 1. 라인넘버로 못 찾으면 해당 발주번호와 일치하는 후보에서 유사도 검색
+            if (!bestMatch) {
+              const matchingCandidates = item.match_candidates?.filter(c => 
+                c.purchase_order_number === poNumber || c.sales_order_number === poNumber
+              ) || [];
+              
+              for (const c of matchingCandidates) {
+                const score = calculateItemSimilarity(item.extracted_item_name || '', c.item_name, c.specification);
+                if (score > bestScore && score >= 40) {
+                  bestScore = score;
+                  bestMatch = {
+                    purchase_id: c.purchase_id,
+                    item_id: c.item_id,
+                    line_number: c.line_number,
+                    purchase_order_number: c.purchase_order_number || '',
+                    sales_order_number: c.sales_order_number,
+                    item_name: c.item_name,
+                    specification: c.specification,
+                    quantity: c.quantity,
+                    received_quantity: c.received_quantity,
+                    unit_price: c.unit_price,
+                    amount: (c as any).amount,
+                    vendor_name: c.vendor_name
+                  };
+                }
               }
             }
             
@@ -803,6 +863,21 @@ export default function StatementConfirmModal({
     const newPONumbers = new Map<string, string>(itemPONumbers);
     let hasMatchChanges = false;
     let hasPOChanges = false;
+
+    // 라인넘버 유효성 판단
+    const rPoLineNumbers = new Map<string, Set<number>>();
+    statementWithItems.items.forEach(oi => {
+      if (!oi.extracted_po_number) return;
+      const po = normalizeOrderNumber(oi.extracted_po_number);
+      const ln = extractLineNumberFromPO(oi.extracted_po_number);
+      if (po && ln !== null) {
+        const s = rPoLineNumbers.get(po) || new Set();
+        s.add(ln);
+        rPoLineNumbers.set(po, s);
+      }
+    });
+    const rValidLineNumberPOs = new Set<string>();
+    rPoLineNumbers.forEach((lns, po) => { if (lns.size >= 1) rValidLineNumberPOs.add(po); });
     
     statementWithItems.items.forEach(ocrItem => {
       const currentMatch = itemMatches.get(ocrItem.id);
@@ -816,7 +891,7 @@ export default function StatementConfirmModal({
       if (currentMatch && (
         currentMatch.purchase_order_number === poNumber || 
         currentMatch.sales_order_number === poNumber ||
-        currentMatch.purchase_id // DB에서 로드한 매칭이면 유지 (OCR 발주번호 오독 방지)
+        currentMatch.purchase_id
       )) {
         newMatches.set(ocrItem.id, currentMatch);
         return;
@@ -825,40 +900,68 @@ export default function StatementConfirmModal({
       // 새로운 매칭 찾기
       let bestMatch: SystemPurchaseItem | null = null;
       let bestScore = -1;
-      
-      // 해당 발주번호 후보에서 검색
-      const matchingCandidates = poNumber 
-        ? ocrItem.match_candidates?.filter(c => 
-            c.purchase_order_number === poNumber || c.sales_order_number === poNumber
-          ) || []
-        : [];
-      
-      for (const c of matchingCandidates) {
-        const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', c.item_name, c.specification);
-        if (score > bestScore) {
-          bestScore = score;
+
+      // 0. 라인넘버 기반 매칭 우선 시도
+      const rOcrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '');
+      if (rOcrLineNum !== null && poNumber && rValidLineNumberPOs.has(poNumber)) {
+        const lineMatchC = ocrItem.match_candidates?.find(c =>
+          (c.purchase_order_number === poNumber || c.sales_order_number === poNumber) &&
+          c.line_number === rOcrLineNum
+        );
+        if (lineMatchC) {
           bestMatch = {
-            purchase_id: c.purchase_id,
-            item_id: c.item_id,
-            line_number: c.line_number,
-            purchase_order_number: c.purchase_order_number || '',
-            sales_order_number: c.sales_order_number,
-            item_name: c.item_name,
-            specification: c.specification,
-            quantity: c.quantity,
-            received_quantity: c.received_quantity,
-            unit_price: c.unit_price,
-            amount: (c as any).amount,
-            vendor_name: c.vendor_name
+            purchase_id: lineMatchC.purchase_id,
+            item_id: lineMatchC.item_id,
+            line_number: lineMatchC.line_number,
+            purchase_order_number: lineMatchC.purchase_order_number || '',
+            sales_order_number: lineMatchC.sales_order_number,
+            item_name: lineMatchC.item_name,
+            specification: lineMatchC.specification,
+            quantity: lineMatchC.quantity,
+            received_quantity: lineMatchC.received_quantity,
+            unit_price: lineMatchC.unit_price,
+            amount: (lineMatchC as any).amount,
+            vendor_name: lineMatchC.vendor_name
           };
+          bestScore = 100;
         }
       }
       
-      // 못 찾으면 전체 후보에서 검색 (fallback)
+      // 1. 라인넘버로 못 찾으면 해당 발주번호 후보에서 유사도 검색
+      if (!bestMatch) {
+        const matchingCandidates = poNumber 
+          ? ocrItem.match_candidates?.filter(c => 
+              c.purchase_order_number === poNumber || c.sales_order_number === poNumber
+            ) || []
+          : [];
+        
+        for (const c of matchingCandidates) {
+          const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', c.item_name, c.specification);
+          if (score > bestScore && score >= 40) {
+            bestScore = score;
+            bestMatch = {
+              purchase_id: c.purchase_id,
+              item_id: c.item_id,
+              line_number: c.line_number,
+              purchase_order_number: c.purchase_order_number || '',
+              sales_order_number: c.sales_order_number,
+              item_name: c.item_name,
+              specification: c.specification,
+              quantity: c.quantity,
+              received_quantity: c.received_quantity,
+              unit_price: c.unit_price,
+              amount: (c as any).amount,
+              vendor_name: c.vendor_name
+            };
+          }
+        }
+      }
+      
+      // 2. 못 찾으면 전체 후보에서 검색 (fallback)
       if (!bestMatch && ocrItem.match_candidates) {
         for (const c of ocrItem.match_candidates) {
           const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', c.item_name, c.specification);
-          if (score > bestScore && score >= 40) { // 최소 40점 이상
+          if (score > bestScore && score >= 40) {
             bestScore = score;
             bestMatch = {
               purchase_id: c.purchase_id,
@@ -3742,11 +3845,18 @@ export default function StatementConfirmModal({
                       const scoredSystemCandidates = displaySystemCandidates
                         .map((candidate) => ({
                           candidate,
-                          score: calculateItemSimilarity(ocrItem.extracted_item_name || '', candidate.item_name, candidate.specification)
+                          score: calculateCandidateScore(
+                            ocrItem.extracted_item_name || '',
+                            ocrItem.extracted_quantity,
+                            candidate.item_name,
+                            candidate.specification,
+                            candidate.quantity
+                          )
                         }))
                         .sort((a, b) => b.score - a.score);
-                      const displayLineNumber = displayLineByItemId.get(ocrItem.id) ?? (ocrLineSeqByItemId.get(ocrItem.id) ?? rowIndex + 1);
-                      const displayLineLabel = displayLineNumber !== null ? `${displayLineNumber}.` : '-';
+                      const systemDisplayLineNumber = displayLineByItemId.get(ocrItem.id) ?? (ocrLineSeqByItemId.get(ocrItem.id) ?? rowIndex + 1);
+                      const systemDisplayLineLabel = systemDisplayLineNumber !== null ? `${systemDisplayLineNumber}.` : '-';
+                      const ocrDisplayLineLabel = systemDisplayLineLabel;
                       if (rowIndex === 0) {
                         const logKey = `${ocrItem.id}|${isSamePONumber ? 'same' : 'multi'}|${activePONumber}|${systemCandidates.length}`;
                         if (systemCandidateLogKeyRef.current !== logKey) {
@@ -3919,7 +4029,7 @@ export default function StatementConfirmModal({
                               <div className="relative">
                                 <div className="flex items-center gap-1">
                                   <span className="modal-label min-w-[18px] text-right">
-                                    {displayLineLabel}
+                                    {systemDisplayLineLabel}
                                   </span>
                                   <button
                                     onClick={(e) => {
@@ -3994,7 +4104,7 @@ export default function StatementConfirmModal({
                               <div className="relative">
                                 <div className="flex items-center gap-1">
                                   <span className="modal-label min-w-[18px] text-right">
-                                    {displayLineLabel}
+                                    {systemDisplayLineLabel}
                                   </span>
                                   <button
                                     onClick={(e) => {
@@ -4042,7 +4152,13 @@ export default function StatementConfirmModal({
                                         return allItems
                                           .map((candidate) => ({
                                             candidate,
-                                            score: calculateItemSimilarity(ocrItem.extracted_item_name || '', candidate.item_name, candidate.specification)
+                                            score: calculateCandidateScore(
+                                              ocrItem.extracted_item_name || '',
+                                              ocrItem.extracted_quantity,
+                                              candidate.item_name,
+                                              candidate.specification,
+                                              candidate.quantity
+                                            )
                                           }))
                                           .sort((a, b) => b.score - a.score)
                                           .map(({ candidate, score }, cidx) => (
@@ -4081,7 +4197,7 @@ export default function StatementConfirmModal({
                               </div>
                             ) : (
                               <span className="text-[11px] text-gray-400" style={{ fontSize: '11px' }}>
-                                {displayLineLabel} 후보 없음
+                                {systemDisplayLineLabel} 후보 없음
                               </span>
                             )}
                           </td>
@@ -4131,7 +4247,7 @@ export default function StatementConfirmModal({
                           <td className="p-1 whitespace-nowrap">
                             <div className="flex items-center gap-1">
                               <span className="modal-label min-w-[18px] text-right">
-                                {displayLineLabel}
+                                {ocrDisplayLineLabel}
                               </span>
                               <input
                                 type="text"

@@ -396,46 +396,65 @@ class TransactionStatementService {
       } catch (_) {
         // ignore snapshot errors
       }
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b9515'},body:JSON.stringify({sessionId:'5b9515',runId:'reextract-debug',hypothesisId:'H1-H3',location:'transactionStatementService.ts:extractStatementData:preQueueCheck',message:'pre-queue status check for reextract',data:{statementId,resetBeforeExtract,preRowStatus,preRowLocked,preProcessingCount,willAttemptQueueUpdate:resetBeforeExtract&&preRowStatus==='extracted'},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      if (resetBeforeExtract && preRowStatus === 'extracted') {
-        const queueTimestamp = new Date().toISOString();
-        const { data: preQueueRows, error: preQueueError } = await this.supabase
+      // 재추출 시 완전 초기화: items 삭제 + 상태를 pending으로 리셋 (처음 추출과 동일한 경로 사용)
+      if (resetBeforeExtract) {
+        const { data: existingStmt } = await this.supabase
+          .from('transaction_statements')
+          .select('extracted_data, po_scope')
+          .eq('id', statementId)
+          .single();
+        const preservedActualReceivedDate = (existingStmt?.extracted_data as any)?.actual_received_date || null;
+        const preservedPoScope = (existingStmt as any)?.po_scope || null;
+
+        await this.supabase
+          .from('transaction_statement_items')
+          .delete()
+          .eq('statement_id', statementId);
+
+        await this.supabase
           .from('transaction_statements')
           .update({
-            status: 'queued',
-            queued_at: queueTimestamp,
-            next_retry_at: queueTimestamp,
-            reset_before_extract: true,
+            status: 'pending',
+            statement_date: null,
+            vendor_name: null,
+            total_amount: null,
+            tax_amount: null,
+            grand_total: null,
+            extraction_error: null,
+            reset_before_extract: false,
+            retry_count: 0,
+            next_retry_at: null,
+            last_error_at: null,
+            locked_by: null,
             processing_started_at: null,
             processing_finished_at: null,
-            locked_by: null
+            confirmed_at: null,
+            confirmed_by: null,
+            confirmed_by_name: null,
+            manager_confirmed_at: null,
+            manager_confirmed_by: null,
+            manager_confirmed_by_name: null,
+            quantity_match_confirmed_at: null,
+            quantity_match_confirmed_by: null,
+            quantity_match_confirmed_by_name: null,
+            extracted_data: preservedActualReceivedDate
+              ? { actual_received_date: preservedActualReceivedDate }
+              : null,
+            po_scope: preservedPoScope
           })
-          .eq('id', statementId)
-          .eq('status', 'extracted')
-          .select('id, status');
-        const preQueueUpdatedRows = Array.isArray(preQueueRows) ? preQueueRows.length : 0;
-        if (preQueueUpdatedRows > 0) {
-          preRowStatus = 'queued';
-          preRowLocked = false;
-          preRowNextRetryAt = queueTimestamp;
-          preRowProcessingStartedAt = null;
-        }
+          .eq('id', statementId);
+
+        preRowStatus = 'pending';
+        preRowLocked = false;
+        preRowNextRetryAt = null;
+        preRowProcessingStartedAt = null;
       }
-      const preClaimable =
-        Boolean(preRowStatus && ['pending', 'queued', 'failed'].includes(preRowStatus)) &&
-        (preProcessingCount === 0 || preProcessingCount === null);
-      
-      // Edge Function 호출
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H6',location:'transactionStatementService.ts:extractStatementData:beforeInvoke',message:'frontend invoking ocr edge function',data:{statementId,resetBeforeExtract,mode:'process_specific',preRowStatus,preRowLocked,preRowNextRetryAt,preRowProcessingStartedAt,preProcessingCount,preClaimable},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
+
+      // Edge Function 호출 (재추출이든 첫 추출이든 동일한 경로)
       const { data, error } = await this.supabase.functions.invoke('ocr-transaction-statement', {
         body: {
           statementId,
           imageUrl,
-          reset_before_extract: resetBeforeExtract,
           mode: 'process_specific'
         }
       });
@@ -617,6 +636,7 @@ class TransactionStatementService {
           *,
           items:transaction_statement_items(matched_purchase_id)
         `, { count: 'exact' })
+        .order('statement_date', { ascending: false, nullsFirst: false })
         .order('uploaded_at', { ascending: false });
 
       if (filters?.status && filters.status !== 'all') {

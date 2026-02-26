@@ -296,6 +296,24 @@ export function normalizeOrderNumber(input: string): string {
   return normalized;
 }
 
+/**
+ * 발주번호 뒤에 붙은 라인넘버를 추출 (매칭용, 저장하지 않음)
+ * F20260120_007-14 → 14, F20260224_003-01 → 1
+ * 라인넘버가 없으면 null 반환
+ */
+export function extractLineNumberFromPO(rawPO: string): number | null {
+  if (!rawPO) return null;
+  const normalized = rawPO.toUpperCase().replace(/\s+/g, '');
+
+  const poMatch = normalized.match(/^F\d{8}[_-]\d{1,3}[-_](\d{1,3})$/);
+  if (poMatch) return parseInt(poMatch[1], 10);
+
+  const soMatch = normalized.match(/^HS\d{6}[-_]\d{1,2}[-_](\d{1,3})$/);
+  if (soMatch) return parseInt(soMatch[1], 10);
+
+  return null;
+}
+
 // 패턴 검증 함수
 export function isValidPoNumber(value: string): boolean {
   return PO_NUMBER_PATTERN.test(value.toUpperCase());

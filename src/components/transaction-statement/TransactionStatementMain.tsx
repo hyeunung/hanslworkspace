@@ -131,8 +131,8 @@ export default function TransactionStatementMain() {
       const nonConfirmed = items.filter(s => s.status !== 'confirmed');
       const confirmed = items.filter(s => s.status === 'confirmed');
       confirmed.sort((a, b) => {
-        const dateA = a.confirmed_at || a.uploaded_at || '';
-        const dateB = b.confirmed_at || b.uploaded_at || '';
+        const dateA = a.statement_date || a.uploaded_at || '';
+        const dateB = b.statement_date || b.uploaded_at || '';
         return dateA.localeCompare(dateB);
       });
       return [...nonConfirmed, ...confirmed];
@@ -401,42 +401,42 @@ export default function TransactionStatementMain() {
     switch (status) {
       case 'pending':
         return (
-          <span className={`${baseClass} bg-gray-100 text-gray-600 border border-gray-200`}>
+          <span className={`${baseClass} bg-gray-500 text-white`}>
             <Clock className="w-3 h-3" />
             대기중
           </span>
         );
       case 'queued':
         return (
-          <span className={`${baseClass} bg-slate-100 text-slate-600 border border-slate-200`}>
+          <span className={`${baseClass} border border-gray-300 text-gray-500 bg-white`}>
             <Clock className="w-3 h-3" />
             대기열
           </span>
         );
       case 'processing':
         return (
-          <span className={`${baseClass} bg-blue-50 text-blue-600 border border-blue-200`}>
+          <span className={`${baseClass} bg-blue-500 text-white`}>
             <Loader2 className="w-3 h-3 animate-spin" />
             처리중
           </span>
         );
       case 'extracted':
         return (
-          <span className={`${baseClass} bg-yellow-50 text-yellow-600 border border-yellow-200`}>
+          <span className={`${baseClass} bg-yellow-500 text-white`}>
             <AlertCircle className="w-3 h-3" />
             확인필요
           </span>
         );
       case 'confirmed':
         return (
-          <span className={`${baseClass} bg-green-50 text-green-600 border border-green-200`}>
+          <span className={`${baseClass} bg-blue-500 text-white`}>
             <CheckCircle className="w-3 h-3" />
             {statementMode === 'receipt' ? '완료' : '확정됨'}
           </span>
         );
       case 'rejected':
         return (
-          <span className={`${baseClass} bg-red-50 text-red-600 border border-red-200`}>
+          <span className={`${baseClass} bg-red-500 text-white`}>
             <XCircle className="w-3 h-3" />
             거부됨
           </span>
@@ -444,7 +444,7 @@ export default function TransactionStatementMain() {
       case 'failed':
         return (
           <span
-            className={`${baseClass} bg-red-50 text-red-700 border border-red-200`}
+            className={`${baseClass} bg-red-500 text-white`}
             title={errorMessage || '처리 실패'}
           >
             <XCircle className="w-3 h-3" />
@@ -452,7 +452,7 @@ export default function TransactionStatementMain() {
           </span>
         );
       default:
-        return <span className={`${baseClass} bg-gray-100 text-gray-600`}>{status}</span>;
+        return <span className={`${baseClass} bg-gray-500 text-white`}>{status}</span>;
     }
   };
 
@@ -906,15 +906,19 @@ export default function TransactionStatementMain() {
                     {filteredStatements.map((statement) => (
                       <tr
                         key={statement.id}
-                        className="hover:bg-gray-50 transition-colors cursor-pointer [&>td]:align-middle"
+                        className={`hover:bg-gray-50 transition-colors cursor-pointer [&>td]:align-middle ${
+                          extractingIds.has(statement.id) || statement.status === 'processing'
+                            ? 'bg-gray-50'
+                            : ''
+                        }`}
                         onClick={(e) => handleViewStatement(statement, e)}
                       >
                         <td className="px-3 py-2.5">
                           <div className="flex items-center justify-center h-full">
                             <span className={`inline-flex items-center gap-1 business-radius-badge px-2 py-0.5 text-[10px] font-medium leading-tight ${
-                              statement.statement_mode === 'monthly' ? 'bg-emerald-100 text-emerald-700' :
-                              statement.statement_mode === 'receipt' ? 'bg-orange-100 text-orange-700' :
-                              'bg-blue-100 text-blue-700'
+                              statement.statement_mode === 'monthly' ? 'bg-emerald-500 text-white' :
+                              statement.statement_mode === 'receipt' ? 'bg-orange-500 text-white' :
+                              'bg-green-500 text-white'
                             }`}>
                               {statement.statement_mode === 'monthly' ? '월말결제' :
                                statement.statement_mode === 'receipt' ? '입고수량' :
@@ -1053,7 +1057,11 @@ export default function TransactionStatementMain() {
                 {filteredStatements.map((statement) => (
                   <div
                     key={statement.id}
-                    className="p-3 hover:bg-gray-50 transition-colors cursor-pointer"
+                    className={`p-3 hover:bg-gray-50 transition-colors cursor-pointer ${
+                      extractingIds.has(statement.id) || statement.status === 'processing'
+                        ? 'bg-gray-50'
+                        : ''
+                    }`}
                     onClick={(e) => handleViewStatement(statement, e)}
                   >
                     <div className="flex items-start justify-between mb-2">

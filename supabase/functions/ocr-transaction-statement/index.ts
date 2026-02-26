@@ -595,6 +595,13 @@ serve(async (req) => {
       const itemsToInsert = normalizedItems.map((item, idx) => {
         const ocrLineNumber = item.line_number || idx + 1
         const inferredInfo = inferredPoMap.get(ocrLineNumber)
+        // GPT 원본 po_number (라인넘버 포함, 예: F20260210_003-14)
+        const rawGptPo = extractionResult.items[idx]?.po_number || ''
+        const rawPoUpper = rawGptPo.toUpperCase().replace(/\s+/g, '').replace(/[^\w_-]/g, '')
+        // 라인넘버가 포함된 원본을 저장하되, 패턴에 맞으면 원본 유지, 아니면 정규화된 값 사용
+        const hasLineSuffix = /^F\d{8}[_-]\d{1,3}[-_]\d{1,3}$/.test(rawPoUpper) ||
+          /^HS\d{6}[-_]\d{1,2}[-_]\d{1,3}$/.test(rawPoUpper)
+        const poToStore = hasLineSuffix ? rawPoUpper : (item.po_number || null)
 
         return {
           statement_id: statementId,
@@ -605,7 +612,7 @@ serve(async (req) => {
           extracted_unit_price: item.unit_price,
           extracted_amount: item.amount,
           extracted_tax_amount: item.tax_amount,
-          extracted_po_number: item.po_number,
+          extracted_po_number: poToStore,
           extracted_remark: item.remark,
           match_confidence: normalizeItemConfidence(item.confidence),
           inferred_po_number: inferredInfo?.inferred_po_number || null,
