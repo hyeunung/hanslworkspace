@@ -228,12 +228,10 @@ serve(async (req) => {
       throw new Error('Missing statementId or imageUrl')
     }
 
-    const shouldReset = Boolean(requestData.reset_before_extract) || Boolean(claimedStatement?.reset_before_extract)
-
     console.log(`Processing transaction statement: ${statementId}`)
 
-    // 0. 재추출 초기화 (실입고일 + po_scope만 유지, 나머지 백지)
-    if (shouldReset) {
+    // 0. 초기화 (실입고일 + po_scope만 유지, 나머지 백지)
+    {
       const { data: existingStatement } = await supabase
         .from('transaction_statements')
         .select('extracted_data')
@@ -531,7 +529,6 @@ serve(async (req) => {
       validatedVendorId
     )
     normalizedItems = correctionResult.items
-    const systemLineNumbers = correctionResult.systemLineNumbers
     perfDebug.correction_ms = Date.now() - correctionStartAt
     if (correctionResult.inferredVendorName) {
       if (!validatedVendorName || validatedVendorName !== correctionResult.inferredVendorName) {
@@ -597,12 +594,11 @@ serve(async (req) => {
       currentStage = 'db_insert_items'
       const itemsToInsert = normalizedItems.map((item, idx) => {
         const ocrLineNumber = item.line_number || idx + 1
-        const lineNumber = systemLineNumbers?.get(ocrLineNumber) ?? ocrLineNumber
         const inferredInfo = inferredPoMap.get(ocrLineNumber)
 
         return {
           statement_id: statementId,
-          line_number: lineNumber,
+          line_number: ocrLineNumber,
           extracted_item_name: item.item_name,
           extracted_specification: item.specification,
           extracted_quantity: item.quantity,
@@ -626,6 +622,15 @@ serve(async (req) => {
       if (itemsError) {
         console.error('Failed to insert items:', itemsError)
         throw new Error(`품목 저장 실패: ${itemsError.message}`)
+      }
+
+      // 항목 합계로 grand_total/total_amount 동기화
+      const calculatedTotal = normalizedItems.reduce((sum, item) => sum + (item.amount || 0), 0)
+      if (calculatedTotal > 0) {
+        await supabase
+          .from('transaction_statements')
+          .update({ grand_total: calculatedTotal, total_amount: calculatedTotal })
+          .eq('id', statementId)
       }
     }
 

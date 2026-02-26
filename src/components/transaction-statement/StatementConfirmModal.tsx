@@ -478,6 +478,19 @@ export default function StatementConfirmModal({
       const result = await transactionStatementService.getStatementWithItems(statement.id);
       
       if (result.success && result.data) {
+        // 합계금액을 OCR 항목에서 계산하여 동기화
+        const itemsTotal = result.data.items.reduce((sum, item) => sum + (item.extracted_amount || 0), 0);
+        const dbTotal = result.data.grand_total ?? result.data.total_amount ?? 0;
+        if (itemsTotal > 0 && itemsTotal !== dbTotal) {
+          result.data.grand_total = itemsTotal;
+          result.data.total_amount = itemsTotal;
+          supabase
+            .from('transaction_statements')
+            .update({ grand_total: itemsTotal, total_amount: itemsTotal })
+            .eq('id', statement.id)
+            .then();
+        }
+
         setStatementWithItems(result.data);
         
         // 초기 발주번호 설정 및 자동 매칭
@@ -901,6 +914,95 @@ export default function StatementConfirmModal({
       setItemPONumbers(newPONumbers);
     }
   }, [selectedPONumber, isSamePONumber, statementWithItems, isOpen, loading]);
+
+  // 부품명 별칭 사전을 활용한 보강 매칭
+  // 기존 자동 매칭(유사도 기반)으로 매칭 안 된 품목에 대해,
+  // 과거 학습된 "OCR 부품명 → 시스템 품목명" 매핑을 조회하여 추가 매칭
+  const aliasBoostAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!statementWithItems || !isOpen || loading) return;
+    if (aliasBoostAppliedRef.current) return;
+
+    const unmatchedItems = statementWithItems.items.filter(item => {
+      const matched = itemMatches.get(item.id);
+      return !matched && item.extracted_item_name;
+    });
+
+    if (unmatchedItems.length === 0) return;
+
+    const ocrNames = unmatchedItems.map(item => (item.extracted_item_name || '').trim()).filter(Boolean);
+    if (ocrNames.length === 0) return;
+
+    aliasBoostAppliedRef.current = true;
+
+    (async () => {
+      try {
+        const aliasMap = await transactionStatementService.findItemNameAliases(ocrNames);
+        if (aliasMap.size === 0) return;
+
+        const newMatches = new Map(itemMatches);
+        let hasChanges = false;
+
+        unmatchedItems.forEach(ocrItem => {
+          const ocrName = (ocrItem.extracted_item_name || '').trim();
+          const aliases = aliasMap.get(ocrName);
+          if (!aliases || aliases.length === 0) return;
+
+          // 현재 발주번호에 해당하는 시스템 후보들 중에서 별칭과 일치하는 것 찾기
+          const candidates = ocrItem.match_candidates || [];
+          if (candidates.length === 0) return;
+
+          let bestMatch: typeof candidates[0] | null = null;
+          let bestAliasCount = 0;
+
+          for (const candidate of candidates) {
+            for (const alias of aliases) {
+              const sysNameMatch = (candidate.item_name || '').trim() === alias.system_item_name;
+              const sysSpecMatch = alias.system_specification
+                ? (candidate.specification || '').trim() === alias.system_specification
+                : true;
+
+              if (sysNameMatch && sysSpecMatch && alias.match_count > bestAliasCount) {
+                bestMatch = candidate;
+                bestAliasCount = alias.match_count;
+              }
+            }
+          }
+
+          if (bestMatch) {
+            newMatches.set(ocrItem.id, {
+              purchase_id: bestMatch.purchase_id,
+              item_id: bestMatch.item_id,
+              line_number: bestMatch.line_number,
+              purchase_order_number: bestMatch.purchase_order_number || '',
+              sales_order_number: bestMatch.sales_order_number,
+              item_name: bestMatch.item_name,
+              specification: bestMatch.specification,
+              quantity: bestMatch.quantity,
+              received_quantity: bestMatch.received_quantity,
+              unit_price: bestMatch.unit_price,
+              amount: (bestMatch as any).amount,
+              vendor_name: bestMatch.vendor_name
+            });
+            hasChanges = true;
+          }
+        });
+
+        if (hasChanges) {
+          setItemMatches(newMatches);
+        }
+      } catch (_) {
+        // 별칭 조회 실패는 무시 (기존 매칭에 영향 없음)
+      }
+    })();
+  }, [statementWithItems, isOpen, loading, itemMatches]);
+
+  // 모달 닫힐 때 별칭 부스트 플래그 초기화
+  useEffect(() => {
+    if (!isOpen) {
+      aliasBoostAppliedRef.current = false;
+    }
+  }, [isOpen]);
 
   // 발주/수주번호 후보 목록 (세트 매칭 결과 + 기존 후보)
   // - 세트 매칭 결과가 있으면 점수 포함하여 정렬
@@ -1535,6 +1637,17 @@ export default function StatementConfirmModal({
       return;
     }
 
+    // 합계금액 부모 테이블에도 반영
+    const newGrandTotal = statementWithItems.items.reduce((sum, item) => {
+      const edited = editedOCRItems.get(item.id);
+      const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
+      return sum + amount;
+    }, 0);
+    await supabase
+      .from('transaction_statements')
+      .update({ grand_total: newGrandTotal, total_amount: newGrandTotal })
+      .eq('id', statementWithItems.id);
+
     // 로컬 상태도 최신 값으로 반영
     setStatementWithItems(prev => {
       if (!prev) return prev;
@@ -1542,7 +1655,7 @@ export default function StatementConfirmModal({
         const update = updates.find(u => u.itemId === item.id);
         return update ? { ...item, ...update.updateData } : item;
       });
-      return { ...prev, items: updatedItems };
+      return { ...prev, items: updatedItems, grand_total: newGrandTotal, total_amount: newGrandTotal };
     });
   };
 
@@ -1670,6 +1783,49 @@ export default function StatementConfirmModal({
         await transactionStatementService.saveCorrection(correction);
       }
       toast.success(`${corrections.length}건의 OCR 수정사항이 학습 데이터로 저장되었습니다.`);
+    }
+  };
+
+  // 부품명 별칭 학습 저장 (확정/수량일치 시 호출)
+  // OCR 추출 부품명과 매칭된 시스템 품목의 관계를 저장하여 다음 매칭에 활용
+  const saveItemNameAliasesFromMatches = async () => {
+    if (!statementWithItems) return;
+
+    const aliases: Array<{
+      system_item_name: string;
+      system_specification?: string;
+      alias_name: string;
+    }> = [];
+
+    statementWithItems.items.forEach(ocrItem => {
+      const matched = itemMatches.get(ocrItem.id);
+      if (!matched) return;
+
+      const ocrName = (ocrItem.extracted_item_name || '').trim();
+      const systemName = (matched.item_name || '').trim();
+      const systemSpec = (matched.specification || '').trim();
+
+      if (!ocrName || !systemName) return;
+
+      // OCR 부품명이 시스템 품목명/규격과 다를 때만 저장
+      const ocrLower = ocrName.toLowerCase();
+      const sysNameLower = systemName.toLowerCase();
+      const sysSpecLower = systemSpec.toLowerCase();
+      if (ocrLower === sysNameLower || ocrLower === sysSpecLower) return;
+
+      aliases.push({
+        system_item_name: systemName,
+        system_specification: systemSpec || undefined,
+        alias_name: ocrName
+      });
+    });
+
+    if (aliases.length > 0) {
+      try {
+        await transactionStatementService.saveItemNameAliases(aliases);
+      } catch (_) {
+        // 별칭 저장 실패는 확정 프로세스를 막지 않음
+      }
     }
   };
 
@@ -2574,6 +2730,8 @@ export default function StatementConfirmModal({
 
       // 1. OCR 수정사항 학습 데이터로 저장
       await saveOCRCorrections();
+      // 1.1 부품명 별칭 학습 (매칭 관계 저장)
+      await saveItemNameAliasesFromMatches();
       // 1.2 수동 수정값 DB 반영 (모달 재오픈 시 유지)
       await persistEditedOCRItems();
 
@@ -2618,12 +2776,19 @@ export default function StatementConfirmModal({
         };
       });
 
+      const confirmedGrandTotal = statementWithItems.items.reduce((sum, item) => {
+        const edited = editedOCRItems.get(item.id);
+        const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
+        return sum + amount;
+      }, 0);
+
       const result = await transactionStatementService.confirmStatement(
         {
           statementId: statement.id,
           items: confirmItems,
           actual_received_date: statementWithItems.extracted_data?.actual_received_date,
-          accounting_received_date: normalizeStatementDate(statementDateInput)
+          accounting_received_date: normalizeStatementDate(statementDateInput),
+          confirmed_grand_total: confirmedGrandTotal
         },
         effectiveConfirmerName
       );
@@ -2659,6 +2824,8 @@ export default function StatementConfirmModal({
 
       // 수동 수정값 학습/저장
       await saveOCRCorrections();
+      // 부품명 별칭 학습 (매칭 관계 저장)
+      await saveItemNameAliasesFromMatches();
       await persistEditedOCRItems();
 
       const confirmItems: ConfirmItemRequest[] = statementWithItems.items.map(item => {
@@ -2677,11 +2844,18 @@ export default function StatementConfirmModal({
         };
       });
 
+      const qmGrandTotal = statementWithItems.items.reduce((sum, item) => {
+        const edited = editedOCRItems.get(item.id);
+        const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
+        return sum + amount;
+      }, 0);
+
       const result = await transactionStatementService.confirmQuantityMatch(
         {
           statementId: statement.id,
           items: confirmItems,
-          actual_received_date: statementWithItems.extracted_data?.actual_received_date
+          actual_received_date: statementWithItems.extracted_data?.actual_received_date,
+          confirmed_grand_total: qmGrandTotal
         },
         effectiveConfirmerName
       );
@@ -2772,15 +2946,25 @@ export default function StatementConfirmModal({
   }, [statementWithItems, itemMatches, isReceiptMode, statement.id]);
 
 
-  const getSystemItemLabel = (item?: SystemPurchaseItem | null, showLineNumber = true) => {
+  const getSystemItemLabel = (item?: SystemPurchaseItem | null, showLineNumber = true, ocrExtractedName?: string) => {
     if (!item) return '';
     const name = item.item_name?.trim() || '';
     const spec = item.specification?.trim() || '';
     let label = '';
-    if (spec && spec.length > name.length) label = spec;
-    else if (name) label = name;
-    else if (spec) label = spec;
-    else label = `품목 #${item.item_id}`;
+
+    if (ocrExtractedName && name && spec) {
+      const nameScore = calculateStringSimilarity(ocrExtractedName, name);
+      const specScore = calculateStringSimilarity(ocrExtractedName, spec);
+      label = specScore > nameScore ? spec : name;
+    } else if (spec && spec.length > name.length) {
+      label = spec;
+    } else if (name) {
+      label = name;
+    } else if (spec) {
+      label = spec;
+    } else {
+      label = `품목 #${item.item_id}`;
+    }
 
     if (showLineNumber && item.line_number != null) return `${item.line_number}. ${label}`;
     return label;
@@ -3181,7 +3365,13 @@ export default function StatementConfirmModal({
                 <div>
                   <p className="modal-label">합계금액</p>
                   <p className="modal-value-large">
-                    {formatAmount(statementWithItems.grand_total ?? statementWithItems.total_amount)}원
+                    {formatAmount(
+                      statementWithItems.items.reduce((sum, item) => {
+                        const edited = editedOCRItems.get(item.id);
+                        const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
+                        return sum + amount;
+                      }, 0)
+                    )}원
                   </p>
                 </div>
                 <div>
@@ -3738,7 +3928,7 @@ export default function StatementConfirmModal({
                                     className="inline-flex items-center gap-1 px-1.5 h-5 text-[10px] font-normal bg-white border border-gray-300 business-radius hover:bg-gray-50 text-gray-700 whitespace-nowrap"
                                     style={{ fontSize: '11px' }}
                                   >
-                                    <span>{getSystemItemLabel(matchedSystem, false) || '선택'}</span>
+                                    <span>{getSystemItemLabel(matchedSystem, false, ocrItem.extracted_item_name || undefined) || '선택'}</span>
                                     <ChevronDown className="w-3 h-3 flex-shrink-0" />
                                   </button>
                                   {matchedSystem && (
@@ -3780,7 +3970,7 @@ export default function StatementConfirmModal({
                                             className="px-2 py-1.5 hover:bg-gray-100 cursor-pointer"
                                           >
                                             <div className="flex items-center justify-between">
-                                              <p className="text-[11px] font-normal text-gray-900" style={{ fontSize: '11px' }}>{getSystemItemLabel(candidate)}</p>
+                                              <p className="text-[11px] font-normal text-gray-900" style={{ fontSize: '11px' }}>{getSystemItemLabel(candidate, true, ocrItem.extracted_item_name || undefined)}</p>
                                               <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                                                 score >= 80 ? 'bg-green-100 text-green-700' :
                                                 score >= 50 ? 'bg-yellow-100 text-yellow-700' :
@@ -3795,6 +3985,95 @@ export default function StatementConfirmModal({
                                           </div>
                                         );
                                       })}
+                                    </div>
+                                  </>,
+                                  document.body
+                                )}
+                              </div>
+                            ) : activePONumber ? (
+                              <div className="relative">
+                                <div className="flex items-center gap-1">
+                                  <span className="modal-label min-w-[18px] text-right">
+                                    {displayLineLabel}
+                                  </span>
+                                  <button
+                                    onClick={(e) => {
+                                      toggleDropdown(`item-${ocrItem.id}`, e);
+                                    }}
+                                    className="inline-flex items-center gap-1 px-1.5 h-5 text-[10px] font-normal bg-white border border-orange-300 business-radius hover:bg-orange-50 text-orange-600 whitespace-nowrap"
+                                    style={{ fontSize: '11px' }}
+                                  >
+                                    <span>{getSystemItemLabel(matchedSystem, false, ocrItem.extracted_item_name || undefined) || '수동 선택'}</span>
+                                    <ChevronDown className="w-3 h-3 flex-shrink-0" />
+                                  </button>
+                                  {matchedSystem && (
+                                    <button
+                                      onClick={() => handleSelectSystemItem(ocrItem.id, null)}
+                                      className="text-gray-400 hover:text-red-500 flex-shrink-0"
+                                      title="매칭 해제"
+                                    >
+                                      <XCircle className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+                                {openDropdowns.has(`item-${ocrItem.id}`) && createPortal(
+                                  <>
+                                    <div
+                                      className="fixed inset-0 z-[9998]"
+                                      onClick={() => toggleDropdown(`item-${ocrItem.id}`)}
+                                    />
+                                    <div
+                                      className="fixed z-[9999] pointer-events-auto bg-white border border-gray-200 rounded-lg shadow-xl w-[280px] max-h-[360px] overflow-y-auto"
+                                      style={{
+                                        top: dropdownPosition.top,
+                                        left: dropdownPosition.left
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {(() => {
+                                        const allItems = getSystemItemsForPO(activePONumber);
+                                        if (allItems.length === 0) {
+                                          return (
+                                            <div className="px-2 py-3 text-center text-[11px] text-gray-400">
+                                              해당 발주에 품목이 없습니다
+                                            </div>
+                                          );
+                                        }
+                                        return allItems
+                                          .map((candidate) => ({
+                                            candidate,
+                                            score: calculateItemSimilarity(ocrItem.extracted_item_name || '', candidate.item_name, candidate.specification)
+                                          }))
+                                          .sort((a, b) => b.score - a.score)
+                                          .map(({ candidate, score }, cidx) => (
+                                            <div
+                                              key={cidx}
+                                              onMouseDown={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                handleSelectSystemItem(ocrItem.id, candidate);
+                                              }}
+                                              onClick={() => {
+                                                handleSelectSystemItem(ocrItem.id, candidate);
+                                              }}
+                                              className="px-2 py-1.5 hover:bg-gray-100 cursor-pointer"
+                                            >
+                                              <div className="flex items-center justify-between">
+                                                <p className="text-[11px] font-normal text-gray-900" style={{ fontSize: '11px' }}>{getSystemItemLabel(candidate, true, ocrItem.extracted_item_name || undefined)}</p>
+                                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                                                  score >= 80 ? 'bg-green-100 text-green-700' :
+                                                  score >= 50 ? 'bg-yellow-100 text-yellow-700' :
+                                                  'bg-gray-100 text-gray-600'
+                                                }`}>
+                                                  {Math.round(score)}%
+                                                </span>
+                                              </div>
+                                              <p className="text-[10px] text-gray-500">
+                                                요청/실제: {candidate.quantity ?? '-'} / {candidate.received_quantity ?? '-'}
+                                              </p>
+                                            </div>
+                                          ));
+                                      })()}
                                     </div>
                                   </>,
                                   document.body
@@ -3887,30 +4166,36 @@ export default function StatementConfirmModal({
                             <>
                               <td className="p-1 text-right w-20">
                                 <input
-                                  type="number"
-                                  value={getOCRItemValue(ocrItem, 'unit_price') as number}
-                                  onChange={(e) => handleEditOCRItem(ocrItem.id, 'unit_price', e.target.value ? Number(e.target.value) : 0)}
+                                  type="text"
+                                  value={formatAmount(getOCRItemValue(ocrItem, 'unit_price') as number)}
+                                  onChange={(e) => {
+                                    const num = Number(e.target.value.replace(/[^0-9.-]/g, ''));
+                                    handleEditOCRItem(ocrItem.id, 'unit_price', isNaN(num) ? 0 : num);
+                                  }}
                                   className={`w-16 px-1 h-5 !text-[10px] !font-medium text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                     isOCRItemEdited(ocrItem, 'unit_price') 
                                       ? 'border-orange-400 bg-orange-50' 
                                       : 'border-gray-200 bg-white'
                                   }`}
                                   style={{ fontSize: '11px', fontWeight: 500 }}
-                                  title={isOCRItemEdited(ocrItem, 'unit_price') ? `원본: ${ocrItem.extracted_unit_price}` : undefined}
+                                  title={isOCRItemEdited(ocrItem, 'unit_price') ? `원본: ${formatAmount(ocrItem.extracted_unit_price ?? undefined)}` : undefined}
                                 />
                               </td>
                               <td className="p-1 text-right w-24">
                                 <input
-                                  type="number"
-                                  value={getOCRItemValue(ocrItem, 'amount') as number}
-                                  onChange={(e) => handleEditOCRItem(ocrItem.id, 'amount', e.target.value ? Number(e.target.value) : 0)}
+                                  type="text"
+                                  value={formatAmount(getOCRItemValue(ocrItem, 'amount') as number)}
+                                  onChange={(e) => {
+                                    const num = Number(e.target.value.replace(/[^0-9.-]/g, ''));
+                                    handleEditOCRItem(ocrItem.id, 'amount', isNaN(num) ? 0 : num);
+                                  }}
                                   className={`w-20 px-1 h-5 !text-[10px] !font-bold text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                     isOCRItemEdited(ocrItem, 'amount') 
                                       ? 'border-orange-400 bg-orange-50' 
                                       : 'border-gray-200 bg-white'
                                   }`}
                                   style={{ fontSize: '11px', fontWeight: 700 }}
-                                  title={isOCRItemEdited(ocrItem, 'amount') ? `원본: ${ocrItem.extracted_amount}` : undefined}
+                                  title={isOCRItemEdited(ocrItem, 'amount') ? `원본: ${formatAmount(ocrItem.extracted_amount ?? undefined)}` : undefined}
                                 />
                               </td>
                             </>

@@ -220,6 +220,7 @@ export interface ConfirmStatementRequest {
   items: ConfirmItemRequest[];
   actual_received_date?: string;
   accounting_received_date?: string;
+  confirmed_grand_total?: number;
 }
 
 export interface ConfirmItemRequest {

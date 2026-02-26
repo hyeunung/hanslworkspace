@@ -1738,15 +1738,20 @@ class TransactionStatementService {
         }
       }
 
-      // 2. 확정자(관리자) 확인 기록
+      // 2. 확정자(관리자) 확인 기록 + 합계금액 갱신
       const confirmedAt = new Date().toISOString();
+      const updateData: Record<string, unknown> = {
+        manager_confirmed_at: confirmedAt,
+        manager_confirmed_by: user?.id,
+        manager_confirmed_by_name: confirmerName || null
+      };
+      if (request.confirmed_grand_total !== undefined) {
+        updateData.grand_total = request.confirmed_grand_total;
+        updateData.total_amount = request.confirmed_grand_total;
+      }
       const { data: updatedStatement, error: stmtError } = await this.supabase
         .from('transaction_statements')
-        .update({
-          manager_confirmed_at: confirmedAt,
-          manager_confirmed_by: user?.id,
-          manager_confirmed_by_name: confirmerName || null
-        })
+        .update(updateData)
         .eq('id', request.statementId)
         .select('*')
         .single();
@@ -1783,13 +1788,18 @@ class TransactionStatementService {
     try {
       const { data: { user } } = await this.supabase.auth.getUser();
       const confirmedAt = new Date().toISOString();
+      const qmUpdateData: Record<string, unknown> = {
+        quantity_match_confirmed_at: confirmedAt,
+        quantity_match_confirmed_by: user?.id,
+        quantity_match_confirmed_by_name: confirmerName || null
+      };
+      if (request.confirmed_grand_total !== undefined) {
+        qmUpdateData.grand_total = request.confirmed_grand_total;
+        qmUpdateData.total_amount = request.confirmed_grand_total;
+      }
       const { data: updatedStatement, error: stmtError } = await this.supabase
         .from('transaction_statements')
-        .update({
-          quantity_match_confirmed_at: confirmedAt,
-          quantity_match_confirmed_by: user?.id,
-          quantity_match_confirmed_by_name: confirmerName || null
-        })
+        .update(qmUpdateData)
         .eq('id', request.statementId)
         .select('*')
         .single();
@@ -2397,6 +2407,102 @@ class TransactionStatementService {
         error: error instanceof Error ? error.message : '조회 중 오류가 발생했습니다.'
       };
     }
+  }
+
+  /**
+   * 부품명 별칭 매핑 저장 (확정 시 수동 매칭한 관계를 학습)
+   * OCR 추출 부품명 → 시스템 품목명/규격 매핑을 item_name_aliases에 저장
+   */
+  async saveItemNameAliases(
+    aliases: Array<{
+      system_item_name: string;
+      system_specification?: string;
+      alias_name: string;
+    }>
+  ): Promise<void> {
+    if (aliases.length === 0) return;
+
+    const { data: { user } } = await this.supabase.auth.getUser();
+
+    for (const alias of aliases) {
+      const normalizedAlias = alias.alias_name.trim();
+      const normalizedSystem = alias.system_item_name.trim();
+      const normalizedSpec = alias.system_specification?.trim() || null;
+
+      if (!normalizedAlias || !normalizedSystem) continue;
+      if (normalizedAlias === normalizedSystem) continue;
+
+      // 기존 매핑이 있으면 match_count 증가, 없으면 새로 생성
+      let query = this.supabase
+        .from('item_name_aliases')
+        .select('id, match_count')
+        .eq('system_item_name', normalizedSystem)
+        .eq('alias_name', normalizedAlias);
+      
+      if (normalizedSpec) {
+        query = query.eq('system_specification', normalizedSpec);
+      } else {
+        query = query.is('system_specification', null);
+      }
+
+      const { data: existing } = await query.limit(1);
+
+      if (existing && existing.length > 0) {
+        await this.supabase
+          .from('item_name_aliases')
+          .update({
+            match_count: (existing[0].match_count || 1) + 1,
+            last_used_at: new Date().toISOString()
+          })
+          .eq('id', existing[0].id);
+      } else {
+        await this.supabase
+          .from('item_name_aliases')
+          .insert({
+            system_item_name: normalizedSystem,
+            system_specification: normalizedSpec,
+            alias_name: normalizedAlias,
+            match_count: 1,
+            created_by: user?.id,
+            last_used_at: new Date().toISOString()
+          });
+      }
+    }
+  }
+
+  /**
+   * 부품명 별칭으로 시스템 품목 후보 조회
+   * OCR 추출된 부품명(파트넘버)으로 과거 매핑된 시스템 품목명/규격을 찾는다
+   */
+  async findItemNameAliases(
+    aliasNames: string[]
+  ): Promise<Map<string, Array<{ system_item_name: string; system_specification: string | null; match_count: number }>>> {
+    const result = new Map<string, Array<{ system_item_name: string; system_specification: string | null; match_count: number }>>();
+    if (aliasNames.length === 0) return result;
+
+    const uniqueNames = [...new Set(aliasNames.map(n => n.trim()).filter(Boolean))];
+    if (uniqueNames.length === 0) return result;
+
+    const { data, error } = await this.supabase
+      .from('item_name_aliases')
+      .select('system_item_name, system_specification, alias_name, match_count')
+      .in('alias_name', uniqueNames)
+      .order('match_count', { ascending: false });
+
+    if (error || !data) return result;
+
+    for (const row of data) {
+      const key = row.alias_name;
+      const existing = result.get(key) || [];
+      existing.push({
+        system_item_name: row.system_item_name,
+        system_specification: row.system_specification,
+        match_count: row.match_count
+      });
+      result.set(key, existing);
+    }
+
+    return result;
   }
 }
 

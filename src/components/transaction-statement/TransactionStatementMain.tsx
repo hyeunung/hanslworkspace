@@ -335,13 +335,19 @@ export default function TransactionStatementMain() {
             if (payload.eventType === 'UPDATE') {
               const newStatus = payload.new?.status;
               const oldStatus = payload.old?.status;
+              const newGrandTotal = payload.new?.grand_total;
+              const oldGrandTotal = payload.old?.grand_total;
+              const newTotalAmount = payload.new?.total_amount;
+              const oldTotalAmount = payload.old?.total_amount;
               
-              // 상태가 processing → extracted 또는 다른 상태로 변경됐을 때
-              if (newStatus !== oldStatus) {
-                console.log(`[Realtime] Status changed: ${oldStatus} → ${newStatus}`);
+              const statusChanged = newStatus !== oldStatus;
+              const amountChanged = newGrandTotal !== oldGrandTotal || newTotalAmount !== oldTotalAmount;
+
+              if (statusChanged || amountChanged) {
                 loadStatements();
 
                 if (
+                  statusChanged &&
                   oldStatus === 'processing' &&
                   ['extracted', 'failed', 'confirmed', 'rejected'].includes(newStatus)
                 ) {
