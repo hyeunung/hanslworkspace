@@ -2900,6 +2900,50 @@ export default function StatementConfirmModal({
         if (result.updatedStatement) {
           setStatementWithItems(prev => (prev ? { ...prev, ...result.updatedStatement } : prev));
         }
+
+        // 확정 후 모든 매칭 품목에 received_quantity가 이미 있으면 자동 수량일치
+        if (!result.finalized && statementWithItems) {
+          const allReceived = statementWithItems.items.every(ocrItem => {
+            const matched = itemMatches.get(ocrItem.id);
+            return matched && matched.received_quantity != null && matched.received_quantity > 0;
+          });
+
+          if (allReceived) {
+            try {
+              const qmItems: ConfirmItemRequest[] = statementWithItems.items.map(item => {
+                const matched = itemMatches.get(item.id);
+                const edited = editedOCRItems.get(item.id);
+                return {
+                  itemId: item.id,
+                  matched_purchase_id: matched?.purchase_id,
+                  matched_item_id: matched?.item_id,
+                  confirmed_quantity: edited?.quantity !== undefined ? edited.quantity : item.extracted_quantity
+                };
+              });
+
+              const qmResult = await transactionStatementService.confirmQuantityMatch(
+                {
+                  statementId: statement.id,
+                  items: qmItems,
+                  actual_received_date: statementWithItems.extracted_data?.actual_received_date
+                },
+                effectiveConfirmerName
+              );
+
+              if (qmResult.success) {
+                if (qmResult.updatedStatement) {
+                  setStatementWithItems(prev => (prev ? { ...prev, ...qmResult.updatedStatement } : prev));
+                }
+                toast.success(qmResult.finalized ? '거래명세서가 확정되었습니다.' : '확정 + 수량일치 자동 완료');
+                onConfirm();
+                return;
+              }
+            } catch (_) {
+              // 자동 수량일치 실패 시 확정만 완료된 상태로 진행
+            }
+          }
+        }
+
         if (result.finalized) {
           toast.success('거래명세서가 확정되었습니다.');
         } else {
@@ -2983,6 +3027,74 @@ export default function StatementConfirmModal({
       setSavingAction(null);
     }
   };
+
+  // 자동 수량일치: 매칭된 모든 품목의 received_quantity가 채워져 있으면 자동 처리
+  // 권한 무관하게 시스템이 자동 판단 (수동 입고가 이미 완료된 경우)
+  const autoQuantityMatchTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (!statementWithItems || !isOpen || loading || saving) return;
+    if (isQuantityMatchConfirmed || isStatementConfirmed) return;
+    if (autoQuantityMatchTriggeredRef.current) return;
+    if (itemMatches.size === 0) return;
+
+    const allItems = statementWithItems.items;
+    if (allItems.length === 0) return;
+
+    const allMatched = allItems.every(ocrItem => {
+      const matched = itemMatches.get(ocrItem.id);
+      return matched && matched.received_quantity != null && matched.received_quantity > 0;
+    });
+
+    if (allMatched) {
+      autoQuantityMatchTriggeredRef.current = true;
+      // 권한 체크 없이 시스템 자동 처리
+      (async () => {
+        try {
+          const qmItems: ConfirmItemRequest[] = statementWithItems.items.map(item => {
+            const matched = itemMatches.get(item.id);
+            const edited = editedOCRItems.get(item.id);
+            return {
+              itemId: item.id,
+              matched_purchase_id: matched?.purchase_id,
+              matched_item_id: matched?.item_id,
+              confirmed_quantity: edited?.quantity !== undefined ? edited.quantity : item.extracted_quantity
+            };
+          });
+
+          const qmGrandTotal = statementWithItems.items.reduce((sum, item) => {
+            const edited = editedOCRItems.get(item.id);
+            return sum + (edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0));
+          }, 0);
+
+          const qmResult = await transactionStatementService.confirmQuantityMatch(
+            {
+              statementId: statement.id,
+              items: qmItems,
+              actual_received_date: statementWithItems.extracted_data?.actual_received_date,
+              confirmed_grand_total: qmGrandTotal
+            },
+            effectiveConfirmerName
+          );
+
+          if (qmResult.success) {
+            if (qmResult.updatedStatement) {
+              setStatementWithItems(prev => (prev ? { ...prev, ...qmResult.updatedStatement } : prev));
+            }
+            toast.success(qmResult.finalized ? '거래명세서가 확정되었습니다.' : '수량일치 자동 완료');
+            onConfirm();
+          }
+        } catch (_) {
+          // 자동 수량일치 실패는 무시
+        }
+      })();
+    }
+  }, [statementWithItems, isOpen, loading, saving, itemMatches, isQuantityMatchConfirmed, isStatementConfirmed]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      autoQuantityMatchTriggeredRef.current = false;
+    }
+  }, [isOpen]);
 
   // 거부
   const handleReject = async () => {
