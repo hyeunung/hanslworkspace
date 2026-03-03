@@ -781,6 +781,94 @@ export type Database = {
           },
         ]
       }
+      vehicle_requests: {
+        Row: {
+          id: number
+          requester_id: string | null
+          use_department: string
+          purpose: string
+          vehicle_info: string
+          route: string
+          driver_id: string | null
+          companions: { id: string; name: string }[] | null
+          passenger_count: number
+          start_at: string
+          end_at: string
+          duration_hours: number | null
+          notes: string | null
+          approval_status: string
+          approved_by: string | null
+          approved_at: string | null
+          rejection_reason: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: never
+          requester_id?: string | null
+          use_department: string
+          purpose: string
+          vehicle_info: string
+          route: string
+          driver_id?: string | null
+          companions?: { id: string; name: string }[] | null
+          passenger_count?: number
+          start_at: string
+          end_at: string
+          duration_hours?: never
+          notes?: string | null
+          approval_status?: string
+          approved_by?: string | null
+          approved_at?: string | null
+          rejection_reason?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: never
+          requester_id?: string | null
+          use_department?: string
+          purpose?: string
+          vehicle_info?: string
+          route?: string
+          driver_id?: string | null
+          companions?: { id: string; name: string }[] | null
+          passenger_count?: number
+          start_at?: string
+          end_at?: string
+          duration_hours?: never
+          notes?: string | null
+          approval_status?: string
+          approved_by?: string | null
+          approved_at?: string | null
+          rejection_reason?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vehicle_requests_requester_id_fkey"
+            columns: ["requester_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_requests_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_requests_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_preferences: {
         Row: {
           period_end: string | null
