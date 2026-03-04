@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -25,7 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Car, RefreshCw, AlertTriangle, Check, X, Calendar as CalendarIcon } from "lucide-react";
+import { Plus, Car, RefreshCw, AlertTriangle, Check, X, Calendar as CalendarIcon, Trash2 } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
@@ -261,6 +262,14 @@ export default function VehicleTab() {
     return roles.some((r: string) => VEHICLE_APPROVER_ROLES.includes(r));
   }, [currentUser?.purchase_role]);
 
+  const isAppAdmin = useMemo(() => {
+    if (!currentUser?.purchase_role) return false;
+    const roles = Array.isArray(currentUser.purchase_role)
+      ? currentUser.purchase_role
+      : (currentUser.purchase_role as unknown as string).split(",").map((r: string) => r.trim());
+    return roles.includes("app_admin");
+  }, [currentUser?.purchase_role]);
+
   const loadRequests = useCallback(async () => {
     try {
       setLoading(true);
@@ -280,6 +289,18 @@ export default function VehicleTab() {
       setLoading(false);
     }
   }, [supabase]);
+
+  const handleDeleteRequest = useCallback(async (id: number) => {
+    if (!confirm("이 배차 요청을 삭제하시겠습니까?")) return;
+    try {
+      const { error } = await supabase.from("vehicle_requests").delete().eq("id", id);
+      if (error) throw error;
+      toast.success("삭제되었습니다.");
+      loadRequests();
+    } catch {
+      toast.error("삭제에 실패했습니다.");
+    }
+  }, [supabase, loadRequests]);
 
   const loadEmployees = useCallback(async () => {
     try {
@@ -638,6 +659,9 @@ export default function VehicleTab() {
                     <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">
                       특이사항
                     </th>
+                    {isAppAdmin && (
+                      <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[40px]"></th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -720,6 +744,16 @@ export default function VehicleTab() {
                       <td className="px-2 py-1.5 card-title truncate max-w-[100px]">
                         {req.notes || "-"}
                       </td>
+                      {isAppAdmin && (
+                        <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            className="text-gray-300 hover:text-red-500 transition-colors"
+                            onClick={() => handleDeleteRequest(req.id)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

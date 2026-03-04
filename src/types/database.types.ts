@@ -869,6 +869,131 @@ export type Database = {
           },
         ]
       }
+      card_usages: {
+        Row: {
+          id: number
+          requester_id: string | null
+          card_number: string
+          usage_category: string
+          usage_date_start: string
+          usage_date_end: string | null
+          description: string | null
+          approval_status: string
+          approved_by: string | null
+          approved_at: string | null
+          rejection_reason: string | null
+          card_returned: boolean
+          card_returned_at: string | null
+          card_returned_by: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: never
+          requester_id?: string | null
+          card_number: string
+          usage_category: string
+          usage_date_start: string
+          usage_date_end: string | null
+          description?: string | null
+          approval_status?: string
+          approved_by?: string | null
+          approved_at?: string | null
+          rejection_reason?: string | null
+          card_returned?: boolean
+          card_returned_at?: string | null
+          card_returned_by?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: never
+          requester_id?: string | null
+          card_number?: string
+          usage_category?: string
+          usage_date?: string
+          description?: string | null
+          approval_status?: string
+          approved_by?: string | null
+          approved_at?: string | null
+          rejection_reason?: string | null
+          card_returned?: boolean
+          card_returned_at?: string | null
+          card_returned_by?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_usages_requester_id_fkey"
+            columns: ["requester_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_usages_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_usages_card_returned_by_fkey"
+            columns: ["card_returned_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      card_usage_receipts: {
+        Row: {
+          id: number
+          card_usage_id: number
+          receipt_url: string
+          merchant_name: string
+          item_name: string
+          quantity: number
+          unit_price: number | null
+          total_amount: number
+          remark: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: never
+          card_usage_id: number
+          receipt_url: string
+          merchant_name: string
+          item_name: string
+          quantity?: number
+          unit_price?: number | null
+          total_amount: number
+          remark?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: never
+          card_usage_id?: number
+          receipt_url?: string
+          merchant_name?: string
+          item_name?: string
+          quantity?: number
+          unit_price?: number | null
+          total_amount?: number
+          remark?: string | null
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "card_usage_receipts_card_usage_id_fkey"
+            columns: ["card_usage_id"]
+            isOneToOne: false
+            referencedRelation: "card_usages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_preferences: {
         Row: {
           period_end: string | null
