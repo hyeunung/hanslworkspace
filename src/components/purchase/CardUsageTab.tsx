@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Plus, CreditCard, RefreshCw, Check, X, Upload, Trash2, Calendar as CalendarIcon } from "lucide-react";
+import { CreditCard, RefreshCw, Check, X, Upload, Trash2, Calendar as CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
@@ -55,6 +55,8 @@ const CARD_NAME_WIDTH = "50px";
 interface CardUsage {
   id: number;
   requester_id: string | null;
+  business_trip_id?: number | null;
+  auto_created_by_trip?: boolean;
   card_number: string;
   usage_category: string;
   usage_date_start: string;
@@ -70,6 +72,7 @@ interface CardUsage {
   created_at: string | null;
   updated_at: string | null;
   requester?: { name: string; department: string | null } | null;
+  business_trip?: { trip_code: string } | null;
   receipts?: CardUsageReceipt[];
 }
 
@@ -94,6 +97,56 @@ interface Employee {
   email: string | null;
   purchase_role?: string[] | null;
 }
+
+interface CardUsageTabProps {
+  mode?: "list" | "create";
+}
+
+const MAX_KRW_AMOUNT = 1_000_000_000;
+
+const formatKrwInput = (value: string, max = MAX_KRW_AMOUNT) => {
+  const digits = value.replace(/[^0-9]/g, "");
+  if (!digits) return "";
+  const clamped = Math.min(Number(digits), max);
+  return clamped.toLocaleString("ko-KR");
+};
+
+const parseNumericInput = (value: string) => {
+  const n = Number((value || "").replace(/,/g, "").trim());
+  return Number.isFinite(n) ? n : 0;
+};
+
+const parseReceiptStorageInfo = (receiptUrl: string) => {
+  if (!receiptUrl) {
+    return { bucket: "card-receipts", path: "", managedByTrip: false };
+  }
+
+  if (receiptUrl.startsWith("business-trip-receipts/")) {
+    return {
+      bucket: "business-trip-receipts",
+      path: receiptUrl.replace("business-trip-receipts/", ""),
+      managedByTrip: true,
+    };
+  }
+
+  if (receiptUrl.startsWith("card-receipts/")) {
+    return {
+      bucket: "card-receipts",
+      path: receiptUrl.replace("card-receipts/", ""),
+      managedByTrip: false,
+    };
+  }
+
+  if (receiptUrl.includes("card-receipts/")) {
+    return {
+      bucket: "card-receipts",
+      path: receiptUrl.split("card-receipts/").pop() || "",
+      managedByTrip: false,
+    };
+  }
+
+  return { bucket: "card-receipts", path: receiptUrl, managedByTrip: false };
+};
 
 const reactSelectStyles = {
   control: (base: Record<string, unknown>) => ({
@@ -126,10 +179,10 @@ const reactSelectStyles = {
     ...base,
     fontSize: "0.75rem",
     padding: "6px 10px",
-    backgroundColor: state.isSelected ? "#3b82f6" : state.isFocused ? "#eff6ff" : "#fff",
-    color: state.isSelected ? "#fff" : "#111827",
+    backgroundColor: state.isSelected ? "#d1d5db" : state.isFocused ? "#f3f4f6" : "#fff",
+    color: "#111827",
     cursor: "pointer",
-    "&:active": { backgroundColor: "#dbeafe" },
+    "&:active": { backgroundColor: "#d1d5db" },
   }),
   menu: (base: Record<string, unknown>) => ({
     ...base,
@@ -147,8 +200,9 @@ const reactSelectStyles = {
   }),
 };
 
-export default function CardUsageTab() {
+export default function CardUsageTab({ mode = "list" }: CardUsageTabProps) {
   const supabase = createClient();
+  const isCreateMode = mode === "create";
 
   const [usages, setUsages] = useState<CardUsage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -222,7 +276,7 @@ export default function CardUsageTab() {
       setLoading(true);
       const { data, error } = await supabase
         .from("card_usages")
-        .select("*, requester:employees!card_usages_requester_id_fkey(name, department)")
+        .select("*, requester:employees!card_usages_requester_id_fkey(name, department), business_trip:business_trips!card_usages_business_trip_id_fkey(trip_code)")
         .order("created_at", { ascending: false });
       if (error) throw error;
 
@@ -316,10 +370,11 @@ export default function CardUsageTab() {
     setFormDescription("");
   }, []);
 
-  const openNewRequest = useCallback(() => {
-    resetForm();
-    setIsModalOpen(true);
-  }, [resetForm]);
+  useEffect(() => {
+    if (isCreateMode) {
+      resetForm();
+    }
+  }, [isCreateMode, resetForm]);
 
   const handleSubmit = useCallback(async () => {
     const startDate = formDateRange?.from;
@@ -345,7 +400,11 @@ export default function CardUsageTab() {
       });
       if (error) throw error;
       toast.success("카드사용 요청이 등록되었습니다.");
-      setIsModalOpen(false);
+      if (isCreateMode) {
+        resetForm();
+      } else {
+        setIsModalOpen(false);
+      }
       loadUsages();
     } catch (err) {
       logger.error("카드사용 요청 실패", err);
@@ -353,7 +412,7 @@ export default function CardUsageTab() {
     } finally {
       setSubmitting(false);
     }
-  }, [formCard, formCategory, formCategoryCustom, formDateRange, formDescription, currentUser, supabase, loadUsages]);
+  }, [formCard, formCategory, formCategoryCustom, formDateRange, formDescription, currentUser, supabase, loadUsages, isCreateMode, resetForm]);
 
   const handleApprove = useCallback(async (id: number) => {
     try {
@@ -452,9 +511,9 @@ export default function CardUsageTab() {
         receipt_url: storagePath,
         merchant_name: receiptMerchant.trim(),
         item_name: receiptItemName.trim(),
-        quantity: parseFloat(receiptQuantity) || 1,
-        unit_price: receiptUnitPrice.trim() ? parseFloat(receiptUnitPrice) : null,
-        total_amount: parseFloat(receiptTotalAmount) || 0,
+        quantity: parseNumericInput(receiptQuantity) || 1,
+        unit_price: receiptUnitPrice.trim() ? Math.min(parseNumericInput(receiptUnitPrice), MAX_KRW_AMOUNT) : null,
+        total_amount: Math.min(parseNumericInput(receiptTotalAmount) || 0, MAX_KRW_AMOUNT),
         remark: receiptRemark.trim() || null,
       });
       if (insertError) throw insertError;
@@ -479,11 +538,9 @@ export default function CardUsageTab() {
 
   const handleDeleteReceipt = useCallback(async (receiptId: number, receiptUrl: string) => {
     try {
-      const path = receiptUrl.includes("card-receipts/")
-        ? receiptUrl.split("card-receipts/").pop()
-        : null;
-      if (path) {
-        await supabase.storage.from("card-receipts").remove([path]);
+      const storageInfo = parseReceiptStorageInfo(receiptUrl);
+      if (storageInfo.path && !storageInfo.managedByTrip) {
+        await supabase.storage.from(storageInfo.bucket).remove([storageInfo.path]);
       }
       await supabase.from("card_usage_receipts").delete().eq("id", receiptId);
       toast.success("영수증이 삭제되었습니다.");
@@ -508,7 +565,7 @@ export default function CardUsageTab() {
     const labels: Record<string, string> = {
       pending: "승인대기",
       approved: "승인완료",
-      settled: "정산완료",
+      settled: "반납완료",
       returned: "카드반납",
       rejected: "반려",
     };
@@ -544,31 +601,175 @@ export default function CardUsageTab() {
     <div className="w-full space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
+        {!isCreateMode && (
         <div>
           <h1 className="page-title">카드사용 관리</h1>
           <p className="page-subtitle" style={{ marginTop: "-2px", marginBottom: "-4px" }}>
             Card Usage Management
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={() => loadUsages()}
-            variant="outline"
-            className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-          >
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
-            새로고침
-          </Button>
-          <Button
-            onClick={openNewRequest}
-            className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
-          >
-            <Plus className="w-3.5 h-3.5 mr-1.5" />
-            카드사용 요청
-          </Button>
-        </div>
+        )}
+        {!isCreateMode && (
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => loadUsages()}
+              variant="outline"
+              className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+            >
+              <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+              새로고침
+            </Button>
+          </div>
+        )}
       </div>
 
+      {isCreateMode && (
+        <div className="doc-form">
+          <div className="doc-form-header">
+            <h1>법인카드 사용신청서</h1>
+            <div className="doc-subtitle">Corporate Card Usage Request</div>
+          </div>
+
+          <div className="doc-form-body">
+            <div className="doc-form-row">
+              <div className="doc-form-cell">
+                <div className="doc-form-cell-label">법인카드 <span className="required">*</span></div>
+                <div className="doc-select-container">
+                  <ReactSelect
+                    options={COMPANY_CARDS.map((c) => ({
+                      ...c,
+                      isDisabled: unavailableCards.has(c.value),
+                    }))}
+                    value={formCard}
+                    onChange={(v) => setFormCard(v as typeof COMPANY_CARDS[0])}
+                    formatOptionLabel={(option) => {
+                      const card = COMPANY_CARDS.find((c) => c.value === option.value);
+                      if (!card) return option.label;
+                      const disabled = unavailableCards.has(card.value);
+                      return (
+                        <div className="flex items-center text-[11px]" style={{ pointerEvents: "none" }}>
+                          <span className={`font-medium ${disabled ? "text-gray-400" : "text-gray-900"}`} style={{ width: CARD_NAME_WIDTH, flexShrink: 0 }}>
+                            {card.label}
+                          </span>
+                          <span className="text-gray-300 mx-1.5">|</span>
+                          <span className={disabled ? "text-gray-400" : "text-gray-500"}>{card.number}</span>
+                          {disabled && <span className="ml-1 text-[9px] text-red-400">(사용중)</span>}
+                        </div>
+                      );
+                    }}
+                    placeholder="선택"
+                    isSearchable={false}
+                    styles={reactSelectStyles}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                    menuShouldBlockScroll={false}
+                  />
+                </div>
+              </div>
+              <div className="doc-form-cell">
+                <div className="doc-form-cell-label">사용용도 <span className="required">*</span></div>
+                <div className="doc-select-container">
+                  <ReactSelect
+                    options={USAGE_CATEGORIES}
+                    value={USAGE_CATEGORIES.find((c) => c.value === formCategory) || null}
+                    onChange={(v) => {
+                      setFormCategory(v?.value || "");
+                      if (v?.value !== "기타") setFormCategoryCustom("");
+                    }}
+                    placeholder="선택"
+                    isSearchable={false}
+                    styles={reactSelectStyles}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                    menuShouldBlockScroll={false}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {formCategory === "기타" && (
+              <div className="doc-form-row">
+                <div className="doc-form-cell">
+                  <div className="doc-form-cell-label">용도 직접입력 <span className="required">*</span></div>
+                  <Input
+                    value={formCategoryCustom}
+                    onChange={(e) => setFormCategoryCustom(e.target.value)}
+                    placeholder="사용용도를 입력하세요"
+                    className="doc-form-input"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="doc-form-row">
+              <div className="doc-form-cell">
+                <div className="doc-form-cell-label">사용예정일 <span className="required">*</span></div>
+                <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button type="button" variant="ghost" className="doc-date-trigger">
+                      <CalendarIcon className="mr-1.5 h-3.5 w-3.5 text-gray-400" />
+                      {formDateRange?.from ? (
+                        formDateRange.to && formDateRange.to.getTime() !== formDateRange.from.getTime() ? (
+                          <span>{format(formDateRange.from, "yyyy-MM-dd")} ~ {format(formDateRange.to, "yyyy-MM-dd")}</span>
+                        ) : (
+                          <span>{format(formDateRange.from, "yyyy-MM-dd")}</span>
+                        )
+                      ) : (
+                        <span className="text-gray-300">날짜를 선택하세요</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 border-gray-200 shadow-lg" align="start" side="bottom" sideOffset={8}>
+                    <div className="bg-white business-radius-card p-3">
+                      <div className="mb-2 px-1">
+                        <div className="modal-label text-gray-600 text-center">1회 클릭: 당일 / 2회 클릭: 기간 선택</div>
+                      </div>
+                      <Calendar
+                        mode="range"
+                        selected={formDateRange}
+                        onSelect={(range) => setFormDateRange(range)}
+                        locale={ko}
+                        className="compact-calendar"
+                        fromDate={new Date("2020-01-01")}
+                        toDate={new Date("2030-12-31")}
+                        defaultMonth={new Date()}
+                        modifiers={{ today: new Date() }}
+                        modifiersClassNames={{
+                          today: "bg-blue-500 text-white font-semibold cursor-pointer hover:bg-blue-600 rounded-md",
+                        }}
+                      />
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+
+            <div className="doc-form-row" style={{ borderBottom: "none" }}>
+              <div className="doc-form-cell">
+                <div className="doc-form-cell-label">비고(프로젝트/내용) <span className="required">*</span></div>
+                <Textarea
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                  placeholder="프로젝트명 또는 사용 내용을 입력하세요"
+                  className="doc-form-textarea"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="doc-form-footer">
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting || !formCard || !formCategory || !formDateRange?.from || !formDescription.trim() || (formCategory === "기타" && !formCategoryCustom.trim())}
+              className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
+            >
+              {submitting ? "요청 중..." : "카드사용 요청"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {!isCreateMode && (
+      <>
       {/* Card Status Panel */}
       <div className="grid grid-cols-4 gap-2">
         {COMPANY_CARDS.map((card) => {
@@ -622,7 +823,7 @@ export default function CardUsageTab() {
             </div>
           ) : (
             <div className="overflow-x-auto overflow-y-auto max-h-[70vh] border rounded-lg">
-              <table className="w-full min-w-[900px] border-collapse">
+              <table className="w-full min-w-[980px] border-collapse">
                 <thead
                   className="sticky top-0 z-30 bg-gray-50"
                   style={{ boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)" }}
@@ -630,6 +831,7 @@ export default function CardUsageTab() {
                   <tr>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[72px]">상태</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[58px]">신청일</th>
+                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[102px]">출장코드</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[90px]">카드</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[76px]">요청자</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[90px]">사용용도</th>
@@ -683,7 +885,7 @@ export default function CardUsageTab() {
                             <Popover>
                               <PopoverTrigger asChild>
                                 <button className="badge-stats bg-green-500 text-white cursor-pointer hover:bg-green-600">
-                                  정산완료
+                                  반납완료
                                 </button>
                               </PopoverTrigger>
                               <PopoverContent className="w-auto p-2" side="right" align="start">
@@ -701,6 +903,9 @@ export default function CardUsageTab() {
                         </td>
                         <td className="px-3 py-1.5 card-date whitespace-nowrap">
                           {u.created_at ? format(new Date(u.created_at), "MM/dd") : "-"}
+                        </td>
+                        <td className="px-3 py-1.5 card-title whitespace-nowrap">
+                          {u.business_trip?.trip_code || "-"}
                         </td>
                         <td className="px-3 py-1.5 card-title whitespace-nowrap">
                           {u.card_number?.split(" ")[0] || "-"}
@@ -759,8 +964,11 @@ export default function CardUsageTab() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* New Request Modal */}
+      {!isCreateMode && (
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="sm:max-w-[520px] p-0">
           <DialogHeader className="px-5 pt-4 pb-3 border-b border-gray-100" style={{ gap: 0 }}>
@@ -924,6 +1132,7 @@ export default function CardUsageTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Receipt Upload Modal */}
       <Dialog open={!!receiptModalUsage} onOpenChange={(open) => !open && setReceiptModalUsage(null)}>
@@ -984,14 +1193,15 @@ export default function CardUsageTab() {
               <div>
                 <Label className="modal-label mb-1.5 block text-[11px]">수량</Label>
                 <Input
-                  type="number"
+                  type="text"
                   value={receiptQuantity}
                   onChange={(e) => {
-                    const qty = e.target.value;
+                    const qty = e.target.value.replace(/[^0-9]/g, "");
                     setReceiptQuantity(qty);
                     if (receiptUnitPrice.trim()) {
-                      const calc = (parseFloat(qty) || 0) * (parseFloat(receiptUnitPrice) || 0);
-                      setReceiptTotalAmount(calc > 0 ? String(calc) : "");
+                      const calc = (parseNumericInput(qty) || 0) * (parseNumericInput(receiptUnitPrice) || 0);
+                      const clamped = Math.min(calc, MAX_KRW_AMOUNT);
+                      setReceiptTotalAmount(clamped > 0 ? clamped.toLocaleString("ko-KR") : "");
                     }
                   }}
                   placeholder="1"
@@ -1000,35 +1210,42 @@ export default function CardUsageTab() {
               </div>
               <div>
                 <Label className="modal-label mb-1.5 block text-[11px]">단가</Label>
-                <Input
-                  type="number"
-                  value={receiptUnitPrice}
-                  onChange={(e) => {
-                    const price = e.target.value;
-                    setReceiptUnitPrice(price);
-                    if (price.trim()) {
-                      const calc = (parseFloat(receiptQuantity) || 1) * (parseFloat(price) || 0);
-                      setReceiptTotalAmount(calc > 0 ? String(calc) : "");
-                    }
-                  }}
-                  placeholder="공란 가능"
-                  className="h-[28px] text-xs business-radius-input"
-                />
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="text"
+                    value={receiptUnitPrice}
+                    onChange={(e) => {
+                      const price = formatKrwInput(e.target.value);
+                      setReceiptUnitPrice(price);
+                      if (price.trim()) {
+                        const calc = (parseNumericInput(receiptQuantity) || 1) * (parseNumericInput(price) || 0);
+                        const clamped = Math.min(calc, MAX_KRW_AMOUNT);
+                        setReceiptTotalAmount(clamped > 0 ? clamped.toLocaleString("ko-KR") : "");
+                      }
+                    }}
+                    placeholder="최대 1,000,000,000"
+                    className="h-[28px] text-xs business-radius-input text-right w-[140px]"
+                  />
+                  <span className="text-[11px] text-gray-500 whitespace-nowrap">원</span>
+                </div>
               </div>
               <div>
                 <Label className="modal-label mb-1.5 block text-[11px]">
                   합계<span className="text-red-500 ml-0.5">*</span>
                 </Label>
-                <Input
-                  type="number"
-                  value={receiptTotalAmount}
-                  onChange={(e) => {
-                    setReceiptTotalAmount(e.target.value);
-                    setReceiptUnitPrice("");
-                  }}
-                  placeholder="입력"
-                  className="h-[28px] text-xs business-radius-input"
-                />
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="text"
+                    value={receiptTotalAmount}
+                    onChange={(e) => {
+                      setReceiptTotalAmount(formatKrwInput(e.target.value));
+                      setReceiptUnitPrice("");
+                    }}
+                    placeholder="최대 1,000,000,000"
+                    className="h-[28px] text-xs business-radius-input text-right w-[140px]"
+                  />
+                  <span className="text-[11px] text-gray-500 whitespace-nowrap">원</span>
+                </div>
               </div>
             </div>
 
@@ -1085,6 +1302,10 @@ export default function CardUsageTab() {
                 <div>
                   <span className="modal-label block">법인카드</span>
                   <span className="modal-value">{detailUsage.card_number}</span>
+                </div>
+                <div>
+                  <span className="modal-label block">출장코드</span>
+                  <span className="modal-value">{detailUsage.business_trip?.trip_code || "-"}</span>
                 </div>
                 <div>
                   <span className="modal-label block">요청자</span>
@@ -1158,12 +1379,11 @@ export default function CardUsageTab() {
                             className="border-t border-gray-100 hover:bg-blue-50 cursor-pointer"
                             onClick={async () => {
                               if (!r.receipt_url) return;
-                              const path = r.receipt_url.includes("card-receipts/")
-                                ? r.receipt_url.split("card-receipts/").pop()!
-                                : r.receipt_url;
+                              const storageInfo = parseReceiptStorageInfo(r.receipt_url);
+                              if (!storageInfo.path) return;
                               const { data } = await supabase.storage
-                                .from("card-receipts")
-                                .createSignedUrl(path, 3600);
+                                .from(storageInfo.bucket)
+                                .createSignedUrl(storageInfo.path, 3600);
                               if (data?.signedUrl) {
                                 setReceiptImageUrl(data.signedUrl);
                               } else {

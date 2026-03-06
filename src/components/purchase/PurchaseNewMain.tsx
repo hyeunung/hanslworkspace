@@ -16,6 +16,9 @@ import ReactSelect from 'react-select';
 import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon } from 'lucide-react';
+import CardUsageTab from "@/components/purchase/CardUsageTab";
+import BusinessTripTab from "@/components/purchase/BusinessTripTab";
+import VehicleTab from "@/components/purchase/VehicleTab";
 
 interface EmployeeOption {
   value: string;
@@ -1059,6 +1062,7 @@ export default function PurchaseNewMain() {
   };
 
   const paymentCategory = watch('payment_category');
+  const selectedTemplate = watch('po_template_type');
 
   return (
     <form 
@@ -1532,8 +1536,8 @@ export default function PurchaseNewMain() {
           )}
         </div>
 
-        {/* Professional Items Section - 템플릿 선택 후에만 표시 */}
-        {watch('po_template_type') && (
+        {/* 발주/구매 템플릿 전용 입력 영역 */}
+        {selectedTemplate === '발주/구매' && (
         <div className="w-full lg:w-3/4 space-y-4">
 
           {/* 테이블 형태의 품목 리스트 */}
@@ -1921,12 +1925,30 @@ export default function PurchaseNewMain() {
               ) : (
                 <>
                   <Save className="w-4 h-4 mr-2" />
-                  {{'발주/구매': '발주요청', '카드사용': '카드사용요청', '출장': '출장요청', '차량': '차량요청'}[watch('po_template_type')] || '요청'}
+                  발주요청
                 </>
               )}
             </Button>
           </div>
         </div>
+        )}
+
+        {selectedTemplate === '카드사용' && (
+          <div className="w-full lg:w-3/4">
+            <CardUsageTab mode="create" />
+          </div>
+        )}
+
+        {selectedTemplate === '출장' && (
+          <div className="w-full lg:w-3/4">
+            <BusinessTripTab mode="create" />
+          </div>
+        )}
+
+        {selectedTemplate === '차량' && (
+          <div className="w-full lg:w-3/4">
+            <VehicleTab mode="create" />
+          </div>
         )}
       </div>
 

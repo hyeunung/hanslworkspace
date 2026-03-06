@@ -26,7 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Car, RefreshCw, AlertTriangle, Check, X, Calendar as CalendarIcon, Trash2 } from "lucide-react";
+import { Car, RefreshCw, AlertTriangle, Check, X, Calendar as CalendarIcon, Trash2 } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
@@ -72,6 +72,10 @@ interface Employee {
   position: string | null;
   email: string | null;
   purchase_role?: string[] | null;
+}
+
+interface VehicleTabProps {
+  mode?: "list" | "create";
 }
 
 const COMPANY_VEHICLES = [
@@ -137,11 +141,11 @@ const reactSelectStyles = {
     ...base,
     fontSize: "0.75rem",
     padding: "6px 10px",
-    backgroundColor: state.isSelected ? "#3b82f6" : state.isFocused ? "#eff6ff" : "#fff",
-    color: state.isSelected ? "#fff" : "#111827",
+    backgroundColor: state.isSelected ? "#d1d5db" : state.isFocused ? "#f3f4f6" : "#fff",
+    color: "#111827",
     cursor: "pointer",
     "&:active": {
-      backgroundColor: "#dbeafe",
+      backgroundColor: "#d1d5db",
     },
   }),
   menu: (base: Record<string, unknown>) => ({
@@ -160,18 +164,6 @@ const reactSelectStyles = {
   }),
 };
 
-function formatDateTimeKR(dateStr: string | null): string {
-  if (!dateStr) return "-";
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return "-";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const h = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  return `${y}-${m}-${day} ${h}:${min}`;
-}
-
 function formatDuration(hours: number | null): string {
   if (hours == null || hours < 0) return "-";
   const h = Math.floor(hours);
@@ -181,8 +173,9 @@ function formatDuration(hours: number | null): string {
   return `${h}시간 ${m}분`;
 }
 
-export default function VehicleTab() {
+export default function VehicleTab({ mode = "list" }: VehicleTabProps) {
   const supabase = createClient();
+  const isCreateMode = mode === "create";
 
   const [requests, setRequests] = useState<VehicleRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -413,10 +406,11 @@ export default function VehicleTab() {
     setFormNotes("");
   }, [currentUser]);
 
-  const openNewRequest = useCallback(() => {
-    resetForm();
-    setIsModalOpen(true);
-  }, [resetForm]);
+  useEffect(() => {
+    if (isCreateMode) {
+      resetForm();
+    }
+  }, [isCreateMode, resetForm]);
 
   const handleSubmit = useCallback(async () => {
     if (!formDepartment || !formPurpose || !formVehicle || !formRoute || !formDriverId) {
@@ -451,7 +445,11 @@ export default function VehicleTab() {
       if (error) throw error;
 
       toast.success("차량 배차 요청이 등록되었습니다.");
-      setIsModalOpen(false);
+      if (isCreateMode) {
+        resetForm();
+      } else {
+        setIsModalOpen(false);
+      }
       loadRequests();
     } catch (err) {
       logger.error("차량 요청 등록 실패", err);
@@ -473,6 +471,8 @@ export default function VehicleTab() {
     currentUser,
     supabase,
     loadRequests,
+    isCreateMode,
+    resetForm,
   ]);
 
   const handleApprove = useCallback(
@@ -548,6 +548,7 @@ export default function VehicleTab() {
       {/* Header */}
       <div className="mb-4">
         <div className="flex items-center justify-between">
+          {!isCreateMode && (
           <div>
             <h1 className="page-title">차량 관리</h1>
             <p
@@ -557,25 +558,292 @@ export default function VehicleTab() {
               Vehicle Management
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={() => loadRequests()}
-              variant="outline"
-              className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </Button>
-            <Button
-              onClick={openNewRequest}
-              className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
-            >
-              <Plus className="w-4 h-4 mr-1" />
-              배차요청
-            </Button>
-          </div>
+          )}
+          {!isCreateMode && (
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => loadRequests()}
+                variant="outline"
+                className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
+      {isCreateMode && (
+        <div className="doc-form">
+          <div className="doc-form-header">
+            <h1>배 차 요 청 서</h1>
+            <div className="doc-subtitle">Vehicle Request Form</div>
+          </div>
+
+          <div className="doc-form-body">
+            <div className="doc-form-row">
+              <div className="doc-form-cell">
+                <div className="doc-form-cell-label">사용부서 <span className="required">*</span></div>
+                <div className="doc-select-container">
+                  <ReactSelect
+                    options={departmentOptions}
+                    value={formDepartment ? { value: formDepartment, label: formDepartment } : null}
+                    onChange={(opt) => setFormDepartment((opt as { value: string } | null)?.value || "")}
+                    placeholder="부서 선택"
+                    isSearchable
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                    menuShouldBlockScroll={false}
+                    styles={reactSelectStyles}
+                    noOptionsMessage={() => "없음"}
+                  />
+                </div>
+              </div>
+              <div className="doc-form-cell">
+                <div className="doc-form-cell-label">운행차량 <span className="required">*</span></div>
+                <div className="doc-select-container">
+                  <ReactSelect
+                    options={COMPANY_VEHICLES}
+                    value={formVehicle ? COMPANY_VEHICLES.find((v) => v.value === formVehicle) || null : null}
+                    onChange={(opt) => setFormVehicle((opt as { value: string } | null)?.value || null)}
+                    placeholder="차량 선택"
+                    isSearchable
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                    menuShouldBlockScroll={false}
+                    styles={reactSelectStyles}
+                    noOptionsMessage={() => "없음"}
+                    formatOptionLabel={formatVehicleOption}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="doc-form-row" style={{ flexWrap: "wrap" }}>
+              <div className="doc-form-cell" style={{ flex: "1 1 30%" }}>
+                <div className="doc-form-cell-label">운전자 <span className="required">*</span></div>
+                <div className="doc-select-container">
+                  <ReactSelect
+                    options={employeeOptions}
+                    value={formDriverId ? employeeOptions.find((o) => o.value === formDriverId) || null : null}
+                    onChange={(opt) => setFormDriverId((opt as { value: string } | null)?.value || null)}
+                    placeholder="선택"
+                    isSearchable
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                    menuShouldBlockScroll={false}
+                    styles={reactSelectStyles}
+                    noOptionsMessage={() => "없음"}
+                    filterOption={(option, inputValue) => option.label.toLowerCase().includes(inputValue.toLowerCase())}
+                    formatOptionLabel={(option, { context }) => {
+                      if (context === "value") {
+                        const name = (option as { label: string }).label.replace(/\s*\(.*\)$/, "");
+                        return <span className="text-[11px]">{name}</span>;
+                      }
+                      return <span className="text-[11px]">{(option as { label: string }).label}</span>;
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="doc-form-cell" style={{ flex: "1 1 30%" }}>
+                <div className="doc-form-cell-label">동승자</div>
+                <div className="doc-select-container">
+                  <ReactSelect
+                    options={employeeOptions.filter(
+                      (o) => o.value !== formDriverId && !formCompanions.some((c) => c.id === o.value)
+                    )}
+                    value={null}
+                    onChange={(opt) => {
+                      const selected = opt as { value: string; label: string } | null;
+                      if (!selected) return;
+                      const emp = employees.find((e) => e.id === selected.value);
+                      if (emp) {
+                        setFormCompanions((prev) => [...prev, { id: emp.id, name: emp.name || "" }]);
+                      }
+                    }}
+                    placeholder="추가"
+                    isSearchable
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                    menuShouldBlockScroll={false}
+                    styles={reactSelectStyles}
+                    noOptionsMessage={() => "없음"}
+                    filterOption={(option, inputValue) => option.label.toLowerCase().includes(inputValue.toLowerCase())}
+                  />
+                </div>
+              </div>
+              <div className="doc-form-cell" style={{ flex: "0 0 80px" }}>
+                <div className="doc-form-cell-label">탑승인원</div>
+                <div className="doc-form-static justify-center">{passengerCount}명</div>
+              </div>
+              {formCompanions.length > 0 && (
+                <div className="flex flex-wrap gap-1 w-full pt-1">
+                  {formCompanions.map((c) => (
+                    <span
+                      key={c.id}
+                      className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded"
+                    >
+                      {c.name}
+                      <button
+                        type="button"
+                        onClick={() => setFormCompanions((prev) => prev.filter((p) => p.id !== c.id))}
+                        className="text-blue-400 hover:text-blue-600 ml-0.5"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="doc-form-row">
+              <div className="doc-form-cell">
+                <div className="doc-form-cell-label">운행지 <span className="required">*</span></div>
+                <Input
+                  value={formRoute}
+                  onChange={(e) => setFormRoute(e.target.value)}
+                  placeholder="입력"
+                  className="doc-form-input"
+                />
+              </div>
+              <div className="doc-form-cell">
+                <div className="doc-form-cell-label flex items-center gap-1">
+                  운행 날짜 및 시간 <span className="required">*</span>
+                  {isTimeReversed ? (
+                    <span className="text-red-500 text-[9px] font-medium">역행</span>
+                  ) : calculatedDuration != null && calculatedDuration > 0 ? (
+                    <span className="text-blue-600 text-[9px] font-medium">{formatDuration(calculatedDuration)}</span>
+                  ) : null}
+                </div>
+                <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className={`doc-date-trigger ${isTimeReversed ? "!border-b-red-400" : ""}`}
+                    >
+                      <CalendarIcon className={`mr-1.5 h-3.5 w-3.5 flex-shrink-0 ${isTimeReversed ? "text-red-400" : "text-gray-400"}`} />
+                      {startDate ? (
+                        endDate && endDate.getTime() !== startDate.getTime() ? (
+                          <span className="truncate">{format(startDate, "MM/dd")} {formStartTime} ~ {format(endDate, "MM/dd")} {formEndTime}</span>
+                        ) : (
+                          <span className="truncate">{format(startDate, "yyyy-MM-dd")} {formStartTime} ~ {formEndTime}</span>
+                        )
+                      ) : (
+                        <span className="text-gray-300">선택</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0 border-gray-200 shadow-lg" align="start" side="bottom" sideOffset={8}>
+                    <div className="bg-white business-radius-card p-3">
+                      <div className="mb-2 px-1">
+                        <div className="modal-label text-gray-600 text-center">날짜를 선택하세요 (1회: 당일, 2회: 기간)</div>
+                      </div>
+                      <Calendar
+                        mode="range"
+                        selected={formDateRange}
+                        onSelect={(range) => setFormDateRange(range)}
+                        locale={ko}
+                        className="compact-calendar"
+                        fromDate={new Date("2020-01-01")}
+                        toDate={new Date("2030-12-31")}
+                        defaultMonth={new Date()}
+                        modifiers={{ today: new Date() }}
+                        modifiersClassNames={{
+                          today:
+                            "bg-blue-500 text-white font-semibold cursor-pointer hover:bg-blue-600 rounded-md",
+                        }}
+                      />
+                      <div className="border-t border-gray-100 mt-2 pt-3 px-1">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="modal-label mb-1 block">시작 시간</Label>
+                            <ReactSelect
+                              options={TIME_OPTIONS}
+                              value={TIME_OPTIONS.find((o) => o.value === formStartTime) || null}
+                              onChange={(opt) => setFormStartTime((opt as { value: string } | null)?.value || "09:00")}
+                              placeholder="시간"
+                              isSearchable={false}
+                              menuPlacement="auto"
+                              styles={reactSelectStyles}
+                            />
+                          </div>
+                          <div>
+                            <Label className="modal-label mb-1 block">종료 시간</Label>
+                            <ReactSelect
+                              options={TIME_OPTIONS}
+                              value={TIME_OPTIONS.find((o) => o.value === formEndTime) || null}
+                              onChange={(opt) => setFormEndTime((opt as { value: string } | null)?.value || "18:00")}
+                              placeholder="시간"
+                              isSearchable={false}
+                              menuPlacement="auto"
+                              styles={reactSelectStyles}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      {isTimeReversed && (
+                        <div className="mt-2 px-1">
+                          <p className="card-description text-red-500 font-medium">종료 일시가 시작 일시보다 빠릅니다. 시간을 다시 선택해주세요.</p>
+                        </div>
+                      )}
+                      <div className="border-t border-gray-100 mt-3 pt-2 flex justify-end">
+                        <Button
+                          type="button"
+                          className="button-base bg-blue-500 hover:bg-blue-600 text-white"
+                          onClick={() => setDatePopoverOpen(false)}
+                          disabled={!startDate || isTimeReversed}
+                        >
+                          확인
+                        </Button>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+
+            <div className="doc-form-row">
+              <div className="doc-form-cell">
+                <div className="doc-form-cell-label">사용목적 <span className="required">*</span></div>
+                <Input
+                  value={formPurpose}
+                  onChange={(e) => setFormPurpose(e.target.value)}
+                  placeholder="거래처 미팅, 현장 출장 등"
+                  className="doc-form-input"
+                />
+              </div>
+            </div>
+
+            <div className="doc-form-row" style={{ borderBottom: "none" }}>
+              <div className="doc-form-cell">
+                <div className="doc-form-cell-label">특이사항 (메모)</div>
+                <Textarea
+                  value={formNotes}
+                  onChange={(e) => setFormNotes(e.target.value)}
+                  placeholder="특이사항이 있으면 입력해주세요"
+                  className="doc-form-textarea"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="doc-form-notice">
+            <pre className="whitespace-pre-wrap font-sans leading-relaxed">{VEHICLE_NOTICE}</pre>
+          </div>
+
+          <div className="doc-form-footer">
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={submitting || isTimeReversed}
+              className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
+            >
+              {submitting ? "등록 중..." : "배차요청"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {!isCreateMode && (
+      <>
       {/* 법인차량 실시간 현황 */}
       <div className="mb-4 grid grid-cols-6 gap-2">
         {COMPANY_VEHICLES.map((v) => {
@@ -762,8 +1030,11 @@ export default function VehicleTab() {
           )}
         </CardContent>
       </Card>
+      </>
+      )}
 
       {/* 배차 요청 모달 */}
+      {!isCreateMode && (
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto p-0 gap-0">
           <DialogHeader className="gap-0 py-3">
@@ -1048,6 +1319,7 @@ export default function VehicleTab() {
           </div>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* 반려 사유 입력 모달 */}
       <AlertDialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>

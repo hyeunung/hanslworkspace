@@ -75,6 +75,7 @@ import PurchaseDetailModal from "@/components/purchase/PurchaseDetailModal";
 interface EmployeeOption {
   id: string;
   name: string;
+  email: string;
 }
 
 export default function TransactionStatementMain() {
@@ -155,11 +156,11 @@ export default function TransactionStatementMain() {
     const loadEmployees = async () => {
       const { data, error } = await supabase
         .from('employees')
-        .select('id, name')
+        .select('id, name, email')
         .order('name');
       
       if (!error && data) {
-        setEmployees(data.map((e: { id: string; name: string }) => ({ id: e.id, name: e.name })));
+        setEmployees(data.map((e: { id: string; name: string; email: string }) => ({ id: e.id, name: e.name, email: e.email })));
       }
     };
     
@@ -177,7 +178,8 @@ export default function TransactionStatementMain() {
       .from('transaction_statements')
       .update({ 
         uploaded_by: newUploaderId,
-        uploaded_by_name: selectedEmployee.name
+        uploaded_by_name: selectedEmployee.name,
+        uploaded_by_email: selectedEmployee.email
       })
       .eq('id', statementId);
     
@@ -187,7 +189,8 @@ export default function TransactionStatementMain() {
           .from('transaction_statements')
           .update({
             uploaded_by: null,
-            uploaded_by_name: selectedEmployee.name
+            uploaded_by_name: selectedEmployee.name,
+            uploaded_by_email: selectedEmployee.email
           })
           .eq('id', statementId);
         if (fallbackError) {
@@ -196,7 +199,7 @@ export default function TransactionStatementMain() {
         }
         setStatements(prev => prev.map(s => 
           s.id === statementId 
-            ? { ...s, uploaded_by: undefined, uploaded_by_name: selectedEmployee.name }
+            ? { ...s, uploaded_by: undefined, uploaded_by_name: selectedEmployee.name, uploaded_by_email: selectedEmployee.email }
             : s
         ));
         setEditingUploaderId(null);
@@ -209,7 +212,7 @@ export default function TransactionStatementMain() {
     // 로컬 상태 업데이트
     setStatements(prev => prev.map(s => 
       s.id === statementId 
-        ? { ...s, uploaded_by: newUploaderId, uploaded_by_name: selectedEmployee.name }
+        ? { ...s, uploaded_by: newUploaderId, uploaded_by_name: selectedEmployee.name, uploaded_by_email: selectedEmployee.email }
         : s
     ));
     setEditingUploaderId(null);
@@ -342,8 +345,13 @@ export default function TransactionStatementMain() {
               
               const statusChanged = newStatus !== oldStatus;
               const amountChanged = newGrandTotal !== oldGrandTotal || newTotalAmount !== oldTotalAmount;
+              const confirmChanged =
+                payload.new?.quantity_match_confirmed_at !== payload.old?.quantity_match_confirmed_at ||
+                payload.new?.manager_confirmed_at !== payload.old?.manager_confirmed_at ||
+                payload.new?.all_quantities_matched !== payload.old?.all_quantities_matched;
 
-              if (statusChanged || amountChanged) {
+
+              if (statusChanged || amountChanged || confirmChanged) {
                 loadStatements();
 
                 if (
@@ -932,10 +940,24 @@ export default function TransactionStatementMain() {
                             : renderStatusBadge(statement.status, statement.extraction_error, statement.statement_mode, statement)}
                         </td>
                         <td className="px-3 py-2.5 text-center">
+                          {/* #region agent log */}
+                          {(() => {
+                            const isEligible = statement.status === 'extracted' || statement.status === 'confirmed';
+                            const hasQtyCheck = !!statement.quantity_match_confirmed_at || !!statement.all_quantities_matched;
+                            fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'qty-branch-check',hypothesisId:'H2-H3',location:'TransactionStatementMain.tsx:qtyColumn:renderBranch',message:'qty column render branch decision',data:{id:statement.id,status:statement.status,isEligible,qtyConfirmedAt:statement.quantity_match_confirmed_at??null,allQtyMatched:statement.all_quantities_matched??null,hasQtyCheck},timestamp:Date.now()})}).catch(()=>{});
+                            return null;
+                          })()}
+                          {/* #endregion */}
                           {(statement.status === 'extracted' || statement.status === 'confirmed') ? (
                             <div className="flex items-center justify-center gap-1 text-[11px] font-medium">
-                              <span className={statement.quantity_match_confirmed_at ? 'text-green-600' : 'text-gray-400'}>
-                                수량{statement.quantity_match_confirmed_at ? '✓' : ''}
+                              <span className={
+                                statement.quantity_match_confirmed_at 
+                                  ? 'text-green-600' 
+                                  : statement.all_quantities_matched 
+                                    ? 'text-blue-500' 
+                                    : 'text-gray-400'
+                              }>
+                                수량{statement.quantity_match_confirmed_at ? '✓' : statement.all_quantities_matched ? '✓' : ''}
                               </span>
                               <span className="text-gray-300">|</span>
                               <span className={statement.manager_confirmed_at ? 'text-green-600' : 'text-gray-400'}>

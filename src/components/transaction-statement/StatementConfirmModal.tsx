@@ -36,6 +36,7 @@ import { normalizeOrderNumber, extractLineNumberFromPO } from "@/types/transacti
 import { logger } from "@/lib/logger";
 import StatementImageViewer from "./StatementImageViewer";
 import PurchaseDetailModal from "@/components/purchase/PurchaseDetailModal";
+import { UTK_AUTHORIZED_ROLES } from "@/constants/columnSettings";
 
 interface StatementConfirmModalProps {
   isOpen: boolean;
@@ -217,12 +218,12 @@ export default function StatementConfirmModal({
 }: StatementConfirmModalProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [savingAction, setSavingAction] = useState<'confirm' | 'quantity-match' | 'reject' | null>(null);
+  const [savingAction, setSavingAction] = useState<'confirm' | 'quantity-match' | 'reject' | 'utk' | null>(null);
   const [statementWithItems, setStatementWithItems] = useState<TransactionStatementWithItems | null>(null);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
   const [confirmerName, setConfirmerName] = useState("");
   const dialogDebugId = "statement-confirm-dialog";
-  const { currentUserRoles, currentUserId, currentUserName } = useAuth();
+  const { currentUserRoles, currentUserId, currentUserName, currentUserEmail } = useAuth();
   const supabase = createClient();
   
   // 선택된 발주/수주번호 (Case 1: 전체 적용용)
@@ -258,6 +259,9 @@ export default function StatementConfirmModal({
   // 디바운스 타이머 (OCR 수정 자동 저장용)
   const editDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
+  // 금액/단가 필드 포커스 상태 (포커스 중에는 raw 숫자, blur 시 포맷팅)
+  const [focusedAmountField, setFocusedAmountField] = useState<string | null>(null);
+  
   // 매칭 상세 정보 팝업
   const [matchDetailPopup, setMatchDetailPopup] = useState<{
     isOpen: boolean;
@@ -270,6 +274,13 @@ export default function StatementConfirmModal({
     reasons: string[];
   } | null>(null);
   const [purchaseCurrencyMap, setPurchaseCurrencyMap] = useState<Map<number, string>>(new Map());
+  const [isUtkDropdownOpen, setIsUtkDropdownOpen] = useState(false);
+  const [utkPurchaseStates, setUtkPurchaseStates] = useState<Map<number, {
+    isChecked: boolean;
+    purchaseOrderNumber?: string;
+    salesOrderNumber?: string;
+  }>>(new Map());
+  const [utkProcessingPurchaseId, setUtkProcessingPurchaseId] = useState<number | null>(null);
 
   const isReceiptMode =
     (statementWithItems?.statement_mode ?? statement.statement_mode) === "receipt";
@@ -2805,13 +2816,141 @@ export default function StatementConfirmModal({
   }, [statementWithItems, itemMatches, isSamePONumber, selectedPONumber, itemPONumbers, getSystemItemsForPO]);
 
   const effectiveConfirmerName = confirmerName || currentUserName || '알수없음';
+  const uploaderEmail = statementWithItems?.uploaded_by_email ?? statement.uploaded_by_email;
   const uploaderId = statementWithItems?.uploaded_by ?? statement.uploaded_by;
   const isAppAdmin = currentUserRoles.includes('app_admin');
   const isLeadBuyer = currentUserRoles.includes('lead buyer');
-  const isUploader = Boolean(currentUserId && uploaderId && currentUserId === uploaderId);
+  const isUploader = Boolean(
+    (currentUserEmail && uploaderEmail && currentUserEmail === uploaderEmail) ||
+    (currentUserId && uploaderId && currentUserId === uploaderId)
+  );
   const isManagerConfirmed = Boolean(statementWithItems?.manager_confirmed_at);
   const isQuantityMatchConfirmed = Boolean(statementWithItems?.quantity_match_confirmed_at);
   const isStatementConfirmed = statementWithItems?.status === 'confirmed';
+  const canUtkCheck = currentUserRoles.some((role) => UTK_AUTHORIZED_ROLES.includes(role));
+
+  const utkTargetPurchases = useMemo(() => {
+    if (!statementWithItems) return [] as Array<{ purchaseId: number; orderNumber: string }>;
+
+    const targetMap = new Map<number, string>();
+    const addTarget = (purchaseId?: number | null, orderNumber?: string | null) => {
+      if (!purchaseId) return;
+      if (!targetMap.has(purchaseId)) {
+        targetMap.set(purchaseId, orderNumber || '');
+      }
+    };
+
+    if (isSamePONumber) {
+      const selectedPurchaseId = selectedPONumber ? getPurchaseIdByNumber(selectedPONumber) : undefined;
+      addTarget(selectedPurchaseId, selectedPONumber);
+
+      if (targetMap.size === 0) {
+        const firstMatchedItem = statementWithItems.items.find((item) => {
+          const matched = itemMatches.get(item.id);
+          return Boolean(matched?.purchase_id || item.matched_purchase_id);
+        });
+        if (firstMatchedItem) {
+          const matched = itemMatches.get(firstMatchedItem.id);
+          addTarget(
+            matched?.purchase_id ?? firstMatchedItem.matched_purchase_id,
+            selectedPONumber ||
+              matched?.purchase_order_number ||
+              matched?.sales_order_number ||
+              firstMatchedItem.matched_purchase?.purchase_order_number ||
+              firstMatchedItem.matched_purchase?.sales_order_number ||
+              ''
+          );
+        }
+      }
+    } else {
+      statementWithItems.items.forEach((item) => {
+        const matched = itemMatches.get(item.id);
+        const itemOrderNumber = itemPONumbers.get(item.id) || (item.extracted_po_number ? normalizeOrderNumber(item.extracted_po_number) : '');
+        const purchaseIdFromPO = itemOrderNumber ? getPurchaseIdByNumber(itemOrderNumber) : undefined;
+        addTarget(
+          matched?.purchase_id ?? purchaseIdFromPO ?? item.matched_purchase_id,
+          itemOrderNumber ||
+            matched?.purchase_order_number ||
+            matched?.sales_order_number ||
+            item.matched_purchase?.purchase_order_number ||
+            item.matched_purchase?.sales_order_number ||
+            ''
+        );
+      });
+    }
+
+    return Array.from(targetMap.entries()).map(([purchaseId, orderNumber]) => ({
+      purchaseId,
+      orderNumber
+    }));
+  }, [
+    statementWithItems,
+    isSamePONumber,
+    selectedPONumber,
+    itemMatches,
+    itemPONumbers,
+    getPurchaseIdByNumber
+  ]);
+
+  const isMultiUtkTarget = utkTargetPurchases.length > 1;
+
+  const getUtkDisplayNumber = useCallback((purchaseId: number, fallbackOrderNumber?: string) => {
+    const state = utkPurchaseStates.get(purchaseId);
+    return (
+      state?.purchaseOrderNumber ||
+      state?.salesOrderNumber ||
+      fallbackOrderNumber ||
+      `ID:${purchaseId}`
+    );
+  }, [utkPurchaseStates]);
+
+  const refreshUtkPurchaseStates = useCallback(async () => {
+    if (utkTargetPurchases.length === 0) {
+      setUtkPurchaseStates(new Map());
+      return;
+    }
+
+    const targetIds = utkTargetPurchases.map((target) => target.purchaseId);
+    const { data, error } = await supabase
+      .from('purchase_requests')
+      .select('id, purchase_order_number, sales_order_number, is_utk_checked')
+      .in('id', targetIds);
+
+    if (error) {
+      logger.error('UTK 대상 상태 조회 실패', { error, statementId: statement.id, targetIds });
+      return;
+    }
+
+    const rowMap = new Map<number, any>((data || []).map((row: any) => [row.id, row]));
+    const nextMap = new Map<number, {
+      isChecked: boolean;
+      purchaseOrderNumber?: string;
+      salesOrderNumber?: string;
+    }>();
+
+    utkTargetPurchases.forEach((target) => {
+      const row = rowMap.get(target.purchaseId);
+      nextMap.set(target.purchaseId, {
+        isChecked: Boolean(row?.is_utk_checked),
+        purchaseOrderNumber: row?.purchase_order_number || undefined,
+        salesOrderNumber: row?.sales_order_number || undefined
+      });
+    });
+
+    setUtkPurchaseStates(nextMap);
+  }, [supabase, statement.id, utkTargetPurchases]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsUtkDropdownOpen(false);
+      setUtkProcessingPurchaseId(null);
+      setUtkPurchaseStates(new Map());
+      return;
+    }
+    if (!isMultiUtkTarget) {
+      setIsUtkDropdownOpen(false);
+    }
+  }, [isOpen, isMultiUtkTarget, statement.id]);
   
   // 권한 체크: app_admin은 모든 작업 가능
   const canConfirm = isLeadBuyer || isAppAdmin;
@@ -2820,8 +2959,115 @@ export default function StatementConfirmModal({
   // 입고수량 모드에서는 확정 버튼 비활성화 (lead_buyer 승인 불필요)
   const isConfirmDisabled = saving || !statementWithItems || !canConfirm || isManagerConfirmed || isStatementConfirmed || isReceiptMode;
   const isQuantityMatchDisabled = saving || !statementWithItems || !canQuantityMatch || isQuantityMatchConfirmed || isStatementConfirmed;
+  const isUtkDisabled = saving || !statementWithItems || !canUtkCheck || utkTargetPurchases.length === 0;
   const confirmButtonLabel = isManagerConfirmed || isStatementConfirmed ? '확정 완료' : '확정';
   const quantityMatchButtonLabel = isQuantityMatchConfirmed || isStatementConfirmed ? (isReceiptMode ? '완료' : '수량일치 완료') : '수량일치';
+  const utkButtonLabel = isMultiUtkTarget ? `UTK 개별(${utkTargetPurchases.length})` : 'UTK 확인';
+
+  // 거래명세서에서 UTK 확인 처리
+  // - 단일 발주: 버튼 클릭 즉시 처리
+  // - 다중 발주: 버튼 클릭 시 드롭다운에서 건별 처리
+  const handleUtkCheckSingle = async (target: { purchaseId: number; orderNumber: string }, skipConfirm = false) => {
+    if (!statementWithItems) return;
+    if (!canUtkCheck) return;
+
+    const fallbackNumber = target.orderNumber || `ID:${target.purchaseId}`;
+    const displayNumber = getUtkDisplayNumber(target.purchaseId, fallbackNumber);
+    const currentState = utkPurchaseStates.get(target.purchaseId);
+
+    if (currentState?.isChecked) {
+      toast.info(`${displayNumber}는 이미 UTK 확인 완료 상태입니다.`);
+      return;
+    }
+
+    if (!skipConfirm) {
+      const confirmMessage = `발주번호: ${displayNumber}\n\nUTK 확인 처리하시겠습니까?`;
+      if (!window.confirm(confirmMessage)) return;
+    }
+
+    try {
+      setSaving(true);
+      setSavingAction('utk');
+      setUtkProcessingPurchaseId(target.purchaseId);
+
+      const { data: purchaseRow, error: fetchError } = await supabase
+        .from('purchase_requests')
+        .select('id, purchase_order_number, sales_order_number, is_utk_checked')
+        .eq('id', target.purchaseId)
+        .single();
+
+      if (fetchError || !purchaseRow) {
+        logger.error('UTK 단건 대상 조회 실패', { error: fetchError, purchaseId: target.purchaseId, statementId: statement.id });
+        toast.error('UTK 처리 대상 조회에 실패했습니다.');
+        return;
+      }
+
+      const resolvedNumber = purchaseRow.purchase_order_number || purchaseRow.sales_order_number || fallbackNumber;
+      if (purchaseRow.is_utk_checked) {
+        setUtkPurchaseStates((prev) => {
+          const next = new Map(prev);
+          next.set(target.purchaseId, {
+            isChecked: true,
+            purchaseOrderNumber: purchaseRow.purchase_order_number || undefined,
+            salesOrderNumber: purchaseRow.sales_order_number || undefined
+          });
+          return next;
+        });
+        toast.info(`${resolvedNumber}는 이미 UTK 확인 완료 상태입니다.`);
+        return;
+      }
+
+      const { error: updateError } = await supabase
+        .from('purchase_requests')
+        .update({ is_utk_checked: true })
+        .eq('id', target.purchaseId);
+
+      if (updateError) {
+        logger.error('UTK 단건 확인 처리 실패', { error: updateError, purchaseId: target.purchaseId, statementId: statement.id });
+        toast.error('UTK 확인 처리에 실패했습니다.');
+        return;
+      }
+
+      setUtkPurchaseStates((prev) => {
+        const next = new Map(prev);
+        next.set(target.purchaseId, {
+          isChecked: true,
+          purchaseOrderNumber: purchaseRow.purchase_order_number || undefined,
+          salesOrderNumber: purchaseRow.sales_order_number || undefined
+        });
+        return next;
+      });
+      toast.success(`${resolvedNumber} UTK 확인이 완료되었습니다.`);
+    } catch (error) {
+      logger.error('거래명세서 모달 UTK 단건 처리 중 오류', error, { statementId: statement.id, purchaseId: target.purchaseId });
+      toast.error('UTK 확인 처리 중 오류가 발생했습니다.');
+    } finally {
+      setSaving(false);
+      setSavingAction(null);
+      setUtkProcessingPurchaseId(null);
+    }
+  };
+
+  const handleUtkCheck = async () => {
+    if (!statementWithItems) return;
+    if (!canUtkCheck) return;
+
+    if (utkTargetPurchases.length === 0) {
+      toast.error('UTK 처리 대상 발주를 찾지 못했습니다.');
+      return;
+    }
+
+    if (!isMultiUtkTarget) {
+      await handleUtkCheckSingle(utkTargetPurchases[0]);
+      return;
+    }
+
+    const nextOpen = !isUtkDropdownOpen;
+    setIsUtkDropdownOpen(nextOpen);
+    if (nextOpen) {
+      await refreshUtkPurchaseStates();
+    }
+  };
 
   // 확정
   const handleConfirm = async () => {
@@ -4314,9 +4560,49 @@ export default function StatementConfirmModal({
                             )}
                           </td>
                           <td className="p-1 text-right">
-                            <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>
-                              {matchedSystem?.quantity ?? '-'} / {matchedSystem?.received_quantity ?? '-'}
-                            </span>
+                            {(() => {
+                              let effSys = matchedSystem;
+                              if (!effSys) {
+                                const poNum = isSamePONumber
+                                  ? selectedPONumber
+                                  : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
+                                if (poNum) {
+                                  const sysItems = getSystemItemsForPO(poNum);
+                                  let bestScore = 0;
+                                  sysItems.forEach(si => {
+                                    const sc = calculateItemSimilarity(
+                                      (getOCRItemValue(ocrItem, 'item_name') as string) || '',
+                                      si.item_name, si.specification
+                                    );
+                                    if (sc > bestScore) { bestScore = sc; effSys = si; }
+                                  });
+                                  if (bestScore < 40) effSys = null;
+                                }
+                              }
+                              const ocrQtyRaw = getOCRItemValue(ocrItem, 'quantity');
+                              const ocrQty = typeof ocrQtyRaw === 'number'
+                                ? ocrQtyRaw
+                                : (ocrQtyRaw !== '' && ocrQtyRaw != null ? Number(ocrQtyRaw) : undefined);
+                              const sysQty = effSys?.quantity;
+                              const matched = isQuantityMatched(ocrQty, sysQty);
+                              const level = getQuantityMatchLevel(ocrQty, sysQty);
+                              return (
+                                <div className="flex items-center justify-end gap-0.5">
+                                  <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>
+                                    {effSys?.quantity ?? '-'} / {effSys?.received_quantity ?? '-'}
+                                  </span>
+                                  {effSys && (
+                                    <span className={`text-[9px] flex-shrink-0 ${
+                                      matched ? 'text-green-500' :
+                                      level === 'partial' ? 'text-yellow-500' :
+                                      'text-red-400'
+                                    }`}>
+                                      {matched ? '✓' : level === 'partial' ? '~' : '✗'}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </td>
                           {/* 입고수량 모드에서는 단가/합계 숨김 */}
                           {!isReceiptMode && (
@@ -4376,18 +4662,57 @@ export default function StatementConfirmModal({
                             </div>
                           </td>
                           <td className="p-1 text-right w-16">
-                            <input
-                              type="number"
-                              value={getOCRItemValue(ocrItem, 'quantity') as number}
-                              onChange={(e) => handleEditOCRItem(ocrItem.id, 'quantity', e.target.value ? Number(e.target.value) : 0)}
-                              className={`w-14 px-1 h-5 !text-[10px] !font-medium text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
-                                isOCRItemEdited(ocrItem, 'quantity') 
-                                  ? 'border-orange-400 bg-orange-50' 
-                                  : 'border-gray-200 bg-white'
-                              }`}
-                              style={{ fontSize: '11px', fontWeight: 500 }}
-                              title={isOCRItemEdited(ocrItem, 'quantity') ? `원본: ${ocrItem.extracted_quantity}` : undefined}
-                            />
+                            <div className="flex items-center justify-end gap-0.5">
+                              {(() => {
+                                let effectiveSystem = matchedSystem;
+                                if (!effectiveSystem) {
+                                  const poNum = isSamePONumber
+                                    ? selectedPONumber
+                                    : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
+                                  if (poNum) {
+                                    const sysItems = getSystemItemsForPO(poNum);
+                                    let bestScore = 0;
+                                    sysItems.forEach(si => {
+                                      const sc = calculateItemSimilarity(
+                                        (getOCRItemValue(ocrItem, 'item_name') as string) || '',
+                                        si.item_name, si.specification
+                                      );
+                                      if (sc > bestScore) { bestScore = sc; effectiveSystem = si; }
+                                    });
+                                    if (bestScore < 40) effectiveSystem = null;
+                                  }
+                                }
+                                if (!effectiveSystem) return null;
+                                const ocrQtyRaw = getOCRItemValue(ocrItem, 'quantity');
+                                const ocrQty = typeof ocrQtyRaw === 'number'
+                                  ? ocrQtyRaw
+                                  : (ocrQtyRaw !== '' && ocrQtyRaw != null ? Number(ocrQtyRaw) : undefined);
+                                const sysQty = effectiveSystem.quantity;
+                                const matched = isQuantityMatched(ocrQty, sysQty);
+                                const level = getQuantityMatchLevel(ocrQty, sysQty);
+                                return (
+                                  <span className={`text-[9px] flex-shrink-0 ${
+                                    matched ? 'text-green-500' :
+                                    level === 'partial' ? 'text-yellow-500' :
+                                    'text-red-400'
+                                  }`} title={`시스템: ${sysQty ?? '-'}, OCR: ${ocrQty ?? '-'}`}>
+                                    {matched ? '✓' : level === 'partial' ? '~' : '✗'}
+                                  </span>
+                                );
+                              })()}
+                              <input
+                                type="number"
+                                value={getOCRItemValue(ocrItem, 'quantity') ?? ''}
+                                onChange={(e) => handleEditOCRItem(ocrItem.id, 'quantity', e.target.value ? Number(e.target.value) : 0)}
+                                className={`w-14 px-1 h-5 !text-[10px] !font-medium text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                                  isOCRItemEdited(ocrItem, 'quantity') 
+                                    ? 'border-orange-400 bg-orange-50' 
+                                    : 'border-gray-200 bg-white'
+                                }`}
+                                style={{ fontSize: '11px', fontWeight: 500 }}
+                                title={isOCRItemEdited(ocrItem, 'quantity') ? `원본: ${ocrItem.extracted_quantity}` : undefined}
+                              />
+                            </div>
                           </td>
                           {/* 입고수량 모드에서는 단가/합계 셀 숨김 */}
                           {!isReceiptMode && (
@@ -4395,11 +4720,15 @@ export default function StatementConfirmModal({
                               <td className="p-1 text-right w-20">
                                 <input
                                   type="text"
-                                  value={formatAmount(getOCRItemValue(ocrItem, 'unit_price') as number)}
+                                  value={focusedAmountField === `${ocrItem.id}-unit_price`
+                                    ? String(getOCRItemValue(ocrItem, 'unit_price') ?? '')
+                                    : formatAmount(getOCRItemValue(ocrItem, 'unit_price') as number)}
                                   onChange={(e) => {
                                     const num = Number(e.target.value.replace(/[^0-9.-]/g, ''));
                                     handleEditOCRItem(ocrItem.id, 'unit_price', isNaN(num) ? 0 : num);
                                   }}
+                                  onFocus={() => setFocusedAmountField(`${ocrItem.id}-unit_price`)}
+                                  onBlur={() => setFocusedAmountField(null)}
                                   className={`w-16 px-1 h-5 !text-[10px] !font-medium text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                     isOCRItemEdited(ocrItem, 'unit_price') 
                                       ? 'border-orange-400 bg-orange-50' 
@@ -4412,11 +4741,15 @@ export default function StatementConfirmModal({
                               <td className="p-1 text-right w-24">
                                 <input
                                   type="text"
-                                  value={formatAmount(getOCRItemValue(ocrItem, 'amount') as number)}
+                                  value={focusedAmountField === `${ocrItem.id}-amount`
+                                    ? String(getOCRItemValue(ocrItem, 'amount') ?? '')
+                                    : formatAmount(getOCRItemValue(ocrItem, 'amount') as number)}
                                   onChange={(e) => {
                                     const num = Number(e.target.value.replace(/[^0-9.-]/g, ''));
                                     handleEditOCRItem(ocrItem.id, 'amount', isNaN(num) ? 0 : num);
                                   }}
+                                  onFocus={() => setFocusedAmountField(`${ocrItem.id}-amount`)}
+                                  onBlur={() => setFocusedAmountField(null)}
                                   className={`w-20 px-1 h-5 !text-[10px] !font-bold text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                     isOCRItemEdited(ocrItem, 'amount') 
                                       ? 'border-orange-400 bg-orange-50' 
@@ -4529,6 +4862,82 @@ export default function StatementConfirmModal({
             >
               닫기
             </Button>
+            <div className="relative">
+              <Button
+                variant="outline"
+                onClick={handleUtkCheck}
+                disabled={isUtkDisabled}
+                title={!canUtkCheck ? 'UTK 확인 권한이 없습니다.' : utkTargetPurchases.length === 0 ? '매칭된 발주가 없습니다.' : isMultiUtkTarget ? '클릭해서 건별 UTK 처리' : undefined}
+                className={`button-base h-8 text-[11px] ${
+                  isUtkDisabled
+                    ? 'border border-gray-300 bg-white text-gray-400'
+                    : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {savingAction === 'utk' && !isMultiUtkTarget ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                    처리 중...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                    {utkButtonLabel}
+                  </>
+                )}
+              </Button>
+
+              {isMultiUtkTarget && isUtkDropdownOpen && (
+                <div className="absolute bottom-full right-0 mb-1 w-72 business-radius-card border border-gray-200 bg-white shadow-lg p-2 z-[70]">
+                  <div className="modal-label text-gray-600 mb-1">UTK 개별 처리</div>
+                  <div className="max-h-56 overflow-y-auto space-y-1">
+                    {utkTargetPurchases.map((target) => {
+                      const state = utkPurchaseStates.get(target.purchaseId);
+                      const isChecked = state?.isChecked === true;
+                      const isRowSaving = savingAction === 'utk' && utkProcessingPurchaseId === target.purchaseId;
+                      const displayNumber = getUtkDisplayNumber(target.purchaseId, target.orderNumber);
+
+                      return (
+                        <div
+                          key={target.purchaseId}
+                          className="flex items-center justify-between gap-2 px-2 py-1 border border-gray-100 business-radius-small"
+                        >
+                          <span className="card-subtitle text-gray-700 truncate">{displayNumber}</span>
+                          <Button
+                            variant="outline"
+                            onClick={() => handleUtkCheckSingle(target, true)}
+                            disabled={saving || isChecked}
+                            className={`button-base h-7 text-[10px] ${
+                              isChecked
+                                ? 'border border-gray-300 bg-white text-gray-400'
+                                : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            {isRowSaving ? (
+                              <>
+                                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                처리중
+                              </>
+                            ) : (
+                              isChecked ? '완료' : '확인'
+                            )}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex justify-end mt-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsUtkDropdownOpen(false)}
+                      className="button-base h-7 text-[10px]"
+                    >
+                      닫기
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
             <Button
               onClick={handleQuantityMatch}
               disabled={isQuantityMatchDisabled}

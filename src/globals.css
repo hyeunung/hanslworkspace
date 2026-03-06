@@ -864,6 +864,232 @@ td.vendor-dynamic-column {
   @apply w-12 h-8 text-xs font-normal;
 }
 
+/* ================================================================
+   서류 양식(Document Form) 스타일 시스템
+   - 종이 신청서 느낌의 밑줄 기반 입력 UI
+   - 카드사용, 출장, 차량 요청서에 사용
+   ================================================================ */
+
+.doc-form {
+  @apply bg-white mx-auto;
+  max-width: 595px;
+  min-height: 842px;
+  border: 1.5px solid #c0c0c0;
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+.doc-form-header {
+  @apply text-center py-6;
+  border-bottom: 2px solid #333;
+}
+
+.doc-form-header h1 {
+  @apply text-[17px] font-bold text-gray-900;
+  letter-spacing: 0.2em;
+}
+
+.doc-form-header .doc-subtitle {
+  @apply text-[9px] text-gray-400 mt-1;
+  letter-spacing: 0.08em;
+}
+
+.doc-form-body {
+  @apply px-8 py-6 flex-1;
+}
+
+/* 행 단위 - 하단 구분선은 row에만, 요소 밑줄 없음 */
+.doc-form-row {
+  @apply flex items-stretch border-b border-gray-200;
+  padding: 8px 0 2px 0;
+  gap: 24px;
+}
+
+.doc-form-row:last-child {
+  border-bottom: none;
+}
+
+/* 행 안의 셀 */
+.doc-form-cell {
+  @apply flex-1 min-w-0 flex flex-col justify-between;
+}
+
+.doc-form-cell-label {
+  @apply text-[10px] font-semibold text-gray-500 block;
+  letter-spacing: 0.03em;
+  margin-bottom: 2px;
+}
+
+.doc-form-cell-label .required {
+  @apply text-red-500 ml-0.5;
+}
+
+/* 인풋 - border 없음, 행 구분선이 대신함 */
+.doc-form-input {
+  @apply w-full bg-transparent text-[11px] text-gray-900 outline-none;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 4px 0 2px 0 !important;
+  height: 24px !important;
+  box-shadow: none !important;
+}
+
+.doc-form-input:focus {
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.doc-form-input::placeholder {
+  @apply text-gray-300;
+  font-size: 11px;
+}
+
+/* 메모/텍스트영역 - 사각형 박스 */
+.doc-form-textarea {
+  @apply w-full bg-transparent text-[11px] text-gray-900 outline-none resize-y;
+  border: 1px solid #d1d5db !important;
+  border-radius: 4px !important;
+  padding: 8px !important;
+  min-height: 64px;
+  box-shadow: none !important;
+  transition: border-color 0.2s;
+}
+
+.doc-form-textarea:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.doc-form-textarea::placeholder {
+  @apply text-gray-300;
+  font-size: 11px;
+}
+
+/* 읽기 전용 정적 값 */
+.doc-form-static {
+  @apply text-[11px] text-gray-700;
+  padding: 4px 0 2px 0;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+
+/* 하단 */
+.doc-form-footer {
+  @apply px-8 py-4 flex justify-end;
+  border-top: 1px solid #c0c0c0;
+}
+
+/* 주의사항 */
+.doc-form-notice {
+  @apply mx-8 mb-4 p-3 bg-gray-50 text-[10px] text-gray-500 leading-relaxed;
+  border-left: 2px solid #d1d5db;
+}
+
+/* ReactSelect 서류 양식용 - border 없음, 높이 24px 통일 */
+.doc-select-container [class*="-control"] {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  min-height: 24px !important;
+  height: 24px !important;
+  padding: 0 !important;
+}
+
+.doc-select-container [class*="-control"]:hover {
+  border: none !important;
+}
+
+.doc-select-container [class*="-control"]:focus-within {
+  border: none !important;
+}
+
+.doc-select-container [class*="-valueContainer"] {
+  padding: 0 !important;
+  height: 24px !important;
+}
+
+.doc-select-container [class*="-singleValue"] {
+  font-size: 11px !important;
+  margin: 0 !important;
+  color: #111827 !important;
+}
+
+.doc-select-container [class*="-placeholder"] {
+  font-size: 11px !important;
+  margin: 0 !important;
+  color: #d1d5db !important;
+}
+
+.doc-select-container [class*="-indicatorSeparator"] {
+  display: none !important;
+}
+
+.doc-select-container [class*="-indicatorContainer"] {
+  padding: 0 2px !important;
+  color: #9ca3af !important;
+}
+
+.doc-select-container [class*="-indicatorContainer"] svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.doc-select-container [class*="-input"] {
+  font-size: 11px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* multi-select 높이 자동 */
+.doc-select-container [class*="-control"]:has([class*="-multiValue"]) {
+  height: auto !important;
+  min-height: 24px !important;
+}
+
+/* 드롭다운 메뉴 옵션 호버/선택 색상 - 회색 계열 */
+.doc-select-container [class*="-option"] {
+  font-size: 11px !important;
+}
+
+.doc-select-container [class*="-option"]:hover {
+  background-color: #f3f4f6 !important;
+  color: #111827 !important;
+}
+
+.doc-select-container [class*="-option"][class*="isFocused"] {
+  background-color: #f3f4f6 !important;
+  color: #111827 !important;
+}
+
+.doc-select-container [class*="-option"][class*="isSelected"] {
+  background-color: #d1d5db !important;
+  color: #111827 !important;
+}
+
+/* 날짜 선택 버튼 - border 없음, 높이 24px 통일 */
+.doc-date-trigger {
+  @apply w-full bg-transparent text-[11px] text-gray-900 text-left justify-start font-normal;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 4px 0 2px 0 !important;
+  height: 24px !important;
+}
+
+.doc-date-trigger:hover {
+  background: transparent !important;
+}
+
+.doc-date-trigger:focus {
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
 /* Remove number input spin buttons */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {

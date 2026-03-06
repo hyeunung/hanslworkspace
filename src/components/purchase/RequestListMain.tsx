@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import PurchaseListMain from "@/components/purchase/PurchaseListMain";
 import CardUsageTab from "@/components/purchase/CardUsageTab";
 import BusinessTripTab from "@/components/purchase/BusinessTripTab";
 import VehicleTab from "@/components/purchase/VehicleTab";
+import { useSearchParams } from "react-router-dom";
 
 interface RequestListMainProps {
   showEmailButton?: boolean;
@@ -18,7 +19,30 @@ const TEMPLATE_TABS: { key: TemplateTabKey; label: string }[] = [
 ];
 
 export default function RequestListMain({ showEmailButton = true }: RequestListMainProps) {
-  const [activeTemplateTab, setActiveTemplateTab] = useState<TemplateTabKey>("발주/구매");
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const parseTab = (tab: string | null): TemplateTabKey => {
+    if (tab === "카드사용" || tab === "출장" || tab === "차량" || tab === "발주/구매") {
+      return tab;
+    }
+    return "발주/구매";
+  };
+
+  const [activeTemplateTab, setActiveTemplateTab] = useState<TemplateTabKey>(() =>
+    parseTab(searchParams.get("tab"))
+  );
+
+  useEffect(() => {
+    const tabFromQuery = parseTab(searchParams.get("tab"));
+    if (tabFromQuery !== activeTemplateTab) {
+      setActiveTemplateTab(tabFromQuery);
+    }
+  }, [activeTemplateTab, searchParams]);
+
+  const handleTabChange = (tab: TemplateTabKey) => {
+    setActiveTemplateTab(tab);
+    setSearchParams({ tab });
+  };
 
   return (
     <div className="w-full">
@@ -26,7 +50,7 @@ export default function RequestListMain({ showEmailButton = true }: RequestListM
         {TEMPLATE_TABS.map((tab) => (
           <button
             key={tab.key}
-            onClick={() => setActiveTemplateTab(tab.key)}
+            onClick={() => handleTabChange(tab.key)}
             className={`pb-2 text-xs font-medium transition-colors relative ${
               activeTemplateTab === tab.key ? "text-hansl-600" : "text-gray-400 hover:text-gray-600"
             }`}

@@ -17,8 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Clock, CheckCircle, ArrowRight, X, Package, Truck, ShoppingCart, Download, Search, MessageCircle, Trash2 } from 'lucide-react'
-import { downloadPurchaseOrderExcel } from '@/utils/excelDownload'
+import { Clock, CheckCircle, ArrowRight, X, Package, Truck, ShoppingCart, Search, MessageCircle, Trash2, Car, CreditCard } from 'lucide-react'
 
 // 모든 카드에서 사용하는 모달 (activeTab에 따라 다른 내용 표시)
 import PurchaseDetailModal from '@/components/purchase/PurchaseDetailModal'
@@ -30,6 +29,26 @@ import { useNavigate } from 'react-router-dom'
 import { logger } from '@/lib/logger'
 import { supportService, type SupportInquiry } from '@/services/supportService'
 import { format } from 'date-fns'
+
+const DASHBOARD_VEHICLES = [
+  { label: "PALISADE", plate: "259누 8222" },
+  { label: "STARIA", plate: "715루 7024" },
+  { label: "GV80", plate: "330조 1022" },
+  { label: "G90", plate: "322모 3801" },
+  { label: "F150 Raptor", plate: "8381" },
+  { label: "PORTER", plate: "93부 0351" },
+]
+
+const DASHBOARD_CARDS = [
+  { label: "공용1", number: "8967", value: "공용1 8967" },
+  { label: "원자재", number: "4963", value: "원자재 4963" },
+  { label: "출장용", number: "5914", value: "출장용 5914" },
+  { label: "공용2", number: "9976", value: "공용2 9976" },
+]
+
+const VEHICLE_FIXED_STATUS: Record<string, { status: "away"; driver: string; destination: string }> = {
+  "PORTER": { status: "away", driver: "", destination: "청송 출장중" },
+}
 
 export default function DashboardMain() {
   const navigate = useNavigate()
@@ -45,11 +64,14 @@ export default function DashboardMain() {
   const [loading, setLoading] = useState(!hasValidCache) // 캐시가 있으면 로딩 스킵
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [currentUserRoles, setCurrentUserRoles] = useState<string[]>([])
-  const [undownloadedOrders, setUndownloadedOrders] = useState<any[]>([])
-  const [downloadingIds, setDownloadingIds] = useState<Set<string>>(new Set())
   // 최종 승인 후 잠시 재등장하는 깜빡임 방지용(서버 응답 지연 대비)
   const [dismissedApprovalIds, setDismissedApprovalIds] = useState<Set<string>>(new Set())
   
+  // 차량/법인카드 현황
+  const [vehicleRequests, setVehicleRequests] = useState<any[]>([])
+  const [cardUsages, setCardUsages] = useState<any[]>([])
+  const [statusNow, setStatusNow] = useState(() => new Date())
+
   // 문의하기 관련 (app_admin용)
   const [inquiries, setInquiries] = useState<SupportInquiry[]>([])
   const [loadingInquiries, setLoadingInquiries] = useState(false)
@@ -72,11 +94,80 @@ export default function DashboardMain() {
   
   // 검색 상태
   const [searchTerms, setSearchTerms] = useState({
-    undownloaded: '',
     pending: '',
     purchase: '',
     delivery: ''
   })
+
+  // 차량/카드 현황 1분마다 갱신
+  useEffect(() => {
+    const timer = setInterval(() => setStatusNow(new Date()), 60_000)
+    return () => clearInterval(timer)
+  }, [])
+
+  // 차량/카드 현황 데이터 로딩
+  const loadStatusData = useCallback(async () => {
+    try {
+      const { data: vReqs } = await supabase
+        .from('vehicle_requests')
+        .select('*, requester:employees!vehicle_requests_requester_id_fkey(name), driver:employees!vehicle_requests_driver_id_fkey(name)')
+        .eq('approval_status', 'approved')
+      setVehicleRequests(vReqs || [])
+
+      const { data: cUsages } = await supabase
+        .from('card_usages')
+        .select('*, requester:employees!card_usages_requester_id_fkey(name)')
+        .in('approval_status', ['approved', 'settled'])
+        .eq('card_returned', false)
+      setCardUsages(cUsages || [])
+    } catch (err) {
+      logger.error('[DashboardMain] 차량/카드 현황 로딩 실패:', err)
+    }
+  }, [supabase])
+
+  useEffect(() => {
+    loadStatusData()
+  }, [loadStatusData])
+
+  const vehicleStatusMap = useMemo(() => {
+    const map: Record<string, { status: "standby" | "away"; driver: string; destination: string }> = {}
+    for (const v of DASHBOARD_VEHICLES) {
+      const fixed = VEHICLE_FIXED_STATUS[v.label]
+      if (fixed) { map[v.label] = fixed; continue }
+      const activeReq = vehicleRequests.find(
+        (r) =>
+          r.vehicle_info?.startsWith(v.label) &&
+          new Date(r.start_at) <= statusNow &&
+          new Date(r.end_at) >= statusNow
+      )
+      if (activeReq) {
+        map[v.label] = {
+          status: "away",
+          driver: activeReq.driver?.name || activeReq.requester?.name || "",
+          destination: activeReq.route || "",
+        }
+      } else {
+        map[v.label] = { status: "standby", driver: "", destination: "" }
+      }
+    }
+    return map
+  }, [vehicleRequests, statusNow])
+
+  const cardStatusMap = useMemo(() => {
+    const map: Record<string, { inUse: boolean; user: string; category: string }> = {}
+    for (const card of DASHBOARD_CARDS) {
+      const active = cardUsages.find(u => u.card_number === card.value)
+      if (active) {
+        map[card.value] = { inUse: true, user: active.requester?.name || "-", category: active.usage_category }
+      } else {
+        map[card.value] = { inUse: false, user: "", category: "" }
+      }
+    }
+    return map
+  }, [cardUsages])
+
+  const vehicleAwayCount = useMemo(() => DASHBOARD_VEHICLES.filter(v => vehicleStatusMap[v.label]?.status === "away").length, [vehicleStatusMap])
+  const cardInUseCount = useMemo(() => DASHBOARD_CARDS.filter(c => cardStatusMap[c.value]?.inUse).length, [cardStatusMap])
 
   const loadDashboardData = useCallback(async (showLoading = true, forceRefresh = false) => {
     if (!employee) {
@@ -119,26 +210,6 @@ export default function DashboardMain() {
       })
       setCurrentUserRoles(userRoles)
       
-      // lead buyer 또는 app_admin인 경우 미다운로드 항목 조회
-      if (userRoles.includes('lead buyer') || userRoles.includes('app_admin')) {
-        try {
-          const undownloaded = await dashboardService.getUndownloadedOrders(employee)
-          logger.info('[DashboardMain] 미다운로드 발주서 조회 결과:', { 
-            count: undownloaded.length,
-            userRoles,
-            employeeName: employee.name,
-            sampleItems: undownloaded.slice(0, 3).map(item => ({
-              purchase_order_number: item.purchase_order_number,
-              requester_name: item.requester_name,
-              vendor_name: item.vendor_name
-            }))
-          })
-          setUndownloadedOrders(undownloaded)
-        } catch (undownloadedError) {
-          logger.error('[DashboardMain] 미다운로드 발주서 조회 실패:', undownloadedError)
-          toast.error('미다운로드 발주서를 불러오는데 실패했습니다.')
-        }
-      }
     } catch (error) {
       logger.error('[DashboardMain] Failed to load dashboard data:', error)
       toast.error('대시보드 데이터를 불러오는데 실패했습니다.')
@@ -387,9 +458,6 @@ export default function DashboardMain() {
         }
       })
 
-      // 미다운로드 목록 등 다른 카드에서도 즉시 제거
-      setUndownloadedOrders((prev) => prev.filter(item => String(item.id) !== String(purchaseIdForDelete)))
-
       // 캐시 무효화 후 강제 새로고침
       dashboardService.invalidateCache()
       loadDashboardData(false, true)
@@ -504,7 +572,6 @@ export default function DashboardMain() {
   }, [])
 
   // 필터링된 결과 메모이제이션 (입력할 때마다 재계산 방지)
-  const filteredUndownloaded = useMemo(() => filterItems(undownloadedOrders, searchTerms.undownloaded), [undownloadedOrders, searchTerms.undownloaded, filterItems])
   const filteredPending = useMemo(() => filterItems(data?.pendingApprovals || [], searchTerms.pending), [data?.pendingApprovals, searchTerms.pending, filterItems])
   const filteredPurchase = useMemo(() => filterItems(data?.myPurchaseStatus?.waitingPurchase || [], searchTerms.purchase), [data?.myPurchaseStatus?.waitingPurchase, searchTerms.purchase, filterItems])
   const filteredDelivery = useMemo(() => filterItems(data?.myPurchaseStatus?.waitingDelivery || [], searchTerms.delivery), [data?.myPurchaseStatus?.waitingDelivery, searchTerms.delivery, filterItems])
@@ -536,38 +603,6 @@ export default function DashboardMain() {
     }
   }, [loading, deliveryWarningCount, deliveryPurchases.length])
 
-  const handleDownloadExcel = async (purchase: any) => {
-    try {
-      setDownloadingIds(prev => new Set(prev).add(purchase.id))
-      
-      // UI 블로킹 방지를 위해 다음 틱으로 지연
-      await new Promise(resolve => setTimeout(resolve, 0))
-      
-      // 관리탭과 동일한 Excel 다운로드 함수 호출
-      await downloadPurchaseOrderExcel(
-        {
-          id: purchase.id,
-          purchase_order_number: purchase.purchase_order_number,
-          vendor_name: purchase.vendor_name,
-          vendor_id: purchase.vendor_id,
-          contact_id: purchase.contact_id
-        },
-        currentUserRoles,
-        () => {
-          // 성공 콜백: UI에서 다운로드 완료된 항목 제거
-          setUndownloadedOrders(prev => prev.filter(item => item.id !== purchase.id))
-        }
-      )
-    } catch (error) {
-      logger.error('Excel 다운로드 중 오류 발생', error)
-    } finally {
-      setDownloadingIds(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(purchase.id)
-        return newSet
-      })
-    }
-  }
 
   const getStepColor = (step: string) => {
     switch (step) {
@@ -999,110 +1034,97 @@ export default function DashboardMain() {
               </CardContent>
           </Card>
 
-          {/* 4. Lead Buyer / App Admin - 미다운로드 발주서 */}
-          {(currentUserRoles.includes('lead buyer') || currentUserRoles.includes('app_admin')) && (
-            <Card className="w-full col-span-1 row-span-2 border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-              <CardHeader className="h-12 px-4 bg-gray-50 border-b flex items-center">
-                <CardTitle className="section-title flex items-center justify-between w-full">
-                  <div className="flex items-center gap-2">
-                    <Download className="w-4 h-4 text-orange-600" />
-                    <span>미다운로드 발주서</span>
-                  </div>
-                  <span className="badge-stats bg-gray-200 text-gray-700">
-                    {undownloadedOrders.length}
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-4">
-                <div className="space-y-3">
-                  {/* 검색 입력 */}
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <Input
-                      placeholder="발주번호, 업체명, 품목으로 검색..."
-                      value={searchTerms.undownloaded}
-                      onChange={(e) => setSearchTerms(prev => ({ ...prev, undownloaded: e.target.value }))}
-                      className="pl-10 h-8 text-xs"
-                    />
-                  </div>
-                  
-                  {/* 항목 리스트 */}
-                  <div className="space-y-2 h-[36rem] overflow-y-auto">
-                    {filteredUndownloaded.length === 0 ? (
-                      <div className="text-center py-12 text-gray-400">
-                        <Download className="w-10 h-10 mx-auto mb-3 text-gray-300" />
-                        <p className="card-subtitle">미다운로드 발주서가 없습니다</p>
-                      </div>
-                    ) : (
-                      filteredUndownloaded.map((item, index) => {
-                        const items = item.purchase_request_items || []
-                        const firstItem = items[0] || {}
-                        const isAdvance = item.progress_type === '선진행'
-                      
-                      return (
-                        <div 
-                          key={`undownloaded-${item.id}`} 
-                          className={`border rounded-lg p-2 hover:shadow-sm transition-all cursor-pointer mb-2 ${
-                            isAdvance ? 'bg-red-50 border-red-200' : 'hover:bg-orange-50/30'
-                          }`}
-                          onClick={(e) => {
-                            // 버튼 클릭은 무시
-                            if ((e.target as HTMLElement).closest('button')) return
-                            openPurchaseModal(item, 'pending') // 미다운로드 발주서는 승인대기 탭과 동일
-                          }}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <span className="card-title">
-                                {item.purchase_order_number || `PO-${item.id.slice(0, 8)}`}
-                              </span>
-                              <span className="card-subtitle truncate">
-                                {item.vendor_name || '업체명 없음'}
-                              </span>
-                              <span className="card-description truncate">
-                                {firstItem.item_name || '품목'} 
-                                {items.length > 1 && (
-                                  <span className="text-gray-400"> 외 {items.length - 1}건</span>
-                                )}
-                              </span>
-                            </div>
-                            <Button
-                              className="button-base bg-gray-500 hover:bg-gray-600 text-white"
-                              onClick={async (e) => {
-                                e.stopPropagation()
-                                await handleDownloadExcel(item)
-                              }}
-                              disabled={downloadingIds.has(item.id)}
-                            >
-                              {downloadingIds.has(item.id) ? (
-                                <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                "다운로드"
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                      )
-                      })
-                    )}
-                    {filteredUndownloaded.length >= 100 && (
-                      <div className="text-center text-xs text-gray-500 mt-3 pb-2">
-                        표시된 항목: {filteredUndownloaded.length}개
-                        <br />
-                        더 많은 항목이 있을 수 있습니다. 검색으로 필터링하세요.
-                      </div>
-                    )}
-                    {filteredUndownloaded.length > 0 && (
-                      <div className="text-center text-xs text-gray-400 mt-2 pb-2">
-                        총 {filteredUndownloaded.length}개 미다운로드 발주서
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
+        </div>
+
+        {/* 차량 / 법인카드 현황 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-4">
+          {/* 차량 현황 */}
+          <Card className="border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/purchase/list?tab=차량')}>
+            <CardHeader className="h-12 px-4 bg-gray-50 border-b flex items-center">
+              <CardTitle className="section-title flex items-center justify-between w-full">
+                <div className="flex items-center gap-2">
+                  <Car className="w-3.5 h-3.5 text-gray-600" />
+                  <span>차량 현황</span>
+                </div>
+                <span className="badge-stats bg-gray-200 text-gray-700">
+                  {vehicleAwayCount > 0 ? `${vehicleAwayCount}대 출타중` : '전체 대기'}
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3">
+              <div className="grid grid-cols-3 gap-2">
+                {DASHBOARD_VEHICLES.map((v) => {
+                  const info = vehicleStatusMap[v.label]
+                  const isAway = info?.status === "away"
+                  return (
+                    <div
+                      key={v.label}
+                      className={`border business-radius-card px-3 py-2 ${isAway ? "border-orange-200 bg-orange-50/50" : "border-gray-100 bg-gray-50/50"}`}
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[10px] font-semibold text-gray-900">{v.label}</span>
+                        <span className={`badge-stats ${isAway ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-500"}`}>
+                          {isAway ? "출타중" : "대기중"}
+                        </span>
+                      </div>
+                      {isAway && info ? (
+                        <div>
+                          {info.driver && <p className="text-[9px] text-gray-600 truncate">{info.driver}</p>}
+                          <p className="text-[9px] text-gray-500 truncate">{info.destination}</p>
+                        </div>
+                      ) : (
+                        <p className="text-[9px] text-gray-400">배차 가능</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 법인카드 현황 */}
+          <Card className="border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/purchase/list?tab=카드사용')}>
+            <CardHeader className="h-12 px-4 bg-gray-50 border-b flex items-center">
+              <CardTitle className="section-title flex items-center justify-between w-full">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="w-3.5 h-3.5 text-gray-600" />
+                  <span>법인카드 현황</span>
+                </div>
+                <span className="badge-stats bg-gray-200 text-gray-700">
+                  {cardInUseCount > 0 ? `${cardInUseCount}장 사용중` : '전체 보관중'}
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3">
+              <div className="grid grid-cols-2 gap-2">
+                {DASHBOARD_CARDS.map((card) => {
+                  const status = cardStatusMap[card.value]
+                  return (
+                    <div
+                      key={card.value}
+                      className={`border business-radius-card px-3 py-2 ${status?.inUse ? "border-blue-200 bg-blue-50/50" : "border-gray-100 bg-gray-50/50"}`}
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[10px] font-semibold text-gray-900">
+                          {card.label}
+                          <span className="ml-1 text-[8px] font-normal text-gray-400">{card.number}</span>
+                        </span>
+                        <span className={`badge-stats ${status?.inUse ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-500"}`}>
+                          {status?.inUse ? "사용중" : "보관중"}
+                        </span>
+                      </div>
+                      {status?.inUse ? (
+                        <p className="text-[9px] text-blue-600 truncate">{status.user} · {status.category}</p>
+                      ) : (
+                        <p className="text-[9px] text-gray-400">사용 가능</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* 오늘의 요약 - 상단 통계에 통합 */}

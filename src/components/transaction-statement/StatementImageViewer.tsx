@@ -4,7 +4,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { X, ZoomIn, ZoomOut, RotateCw, Download } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 interface StatementImageViewerProps {
@@ -23,6 +23,7 @@ export default function StatementImageViewer({
 }: StatementImageViewerProps) {
   const [scale, setScale] = useState(1);
   const [rotation, setRotation] = useState(0);
+  const [autoRotated, setAutoRotated] = useState(false);
 
   const handleZoomIn = () => {
     setScale((prev) => Math.min(prev + 0.25, 3));
@@ -57,7 +58,27 @@ export default function StatementImageViewer({
   const handleClose = () => {
     setScale(1);
     setRotation(0);
+    setAutoRotated(false);
     onClose();
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      setScale(1);
+      setRotation(0);
+      setAutoRotated(false);
+    }
+  }, [isOpen, imageUrl]);
+
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    // 세로 문서가 가로로 저장된 경우 자동 보정
+    if (autoRotated) return;
+    const img = e.currentTarget;
+    const isLikelySideways = img.naturalWidth > img.naturalHeight * 1.15;
+    if (isLikelySideways) {
+      setRotation(90);
+    }
+    setAutoRotated(true);
   };
 
   if (!imageUrl) return null;
@@ -112,6 +133,7 @@ export default function StatementImageViewer({
           <img
             src={imageUrl}
             alt="거래명세서"
+            onLoad={handleImageLoad}
             className="max-w-full max-h-full object-contain transition-transform duration-200"
             style={{
               transform: `scale(${scale}) rotate(${rotation}deg)`,

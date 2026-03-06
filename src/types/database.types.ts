@@ -781,6 +781,369 @@ export type Database = {
           },
         ]
       }
+      business_trip_allowances: {
+        Row: {
+          business_trip_id: number
+          created_at: string
+          day_count: number
+          id: number
+          line_order: number
+          paid_amount: number | null
+          region: string
+          unit_amount: number
+          updated_at: string
+        }
+        Insert: {
+          business_trip_id: number
+          created_at?: string
+          day_count?: number
+          id?: never
+          line_order?: number
+          paid_amount?: number | null
+          region: string
+          unit_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          business_trip_id?: number
+          created_at?: string
+          day_count?: number
+          id?: never
+          line_order?: number
+          paid_amount?: number | null
+          region?: string
+          unit_amount?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_trip_allowances_business_trip_id_fkey"
+            columns: ["business_trip_id"]
+            isOneToOne: false
+            referencedRelation: "business_trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_trip_expense_receipts: {
+        Row: {
+          business_trip_expense_id: number
+          created_at: string
+          id: number
+          receipt_url: string
+        }
+        Insert: {
+          business_trip_expense_id: number
+          created_at?: string
+          id?: never
+          receipt_url: string
+        }
+        Update: {
+          business_trip_expense_id?: number
+          created_at?: string
+          id?: never
+          receipt_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_trip_expense_receipts_business_trip_expense_id_fkey"
+            columns: ["business_trip_expense_id"]
+            isOneToOne: false
+            referencedRelation: "business_trip_expenses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_trip_expenses: {
+        Row: {
+          amount: number
+          business_trip_id: number
+          category_detail: string | null
+          companion_note: string | null
+          created_at: string
+          currency: string
+          expense_date: string
+          expense_purpose: string | null
+          expense_type: string
+          id: number
+          line_order: number
+          linked_card_usage_id: number | null
+          remark: string | null
+          updated_at: string
+          vendor_name: string
+        }
+        Insert: {
+          amount?: number
+          business_trip_id: number
+          category_detail?: string | null
+          companion_note?: string | null
+          created_at?: string
+          currency?: string
+          expense_date: string
+          expense_purpose?: string | null
+          expense_type: string
+          id?: never
+          line_order?: number
+          linked_card_usage_id?: number | null
+          remark?: string | null
+          updated_at?: string
+          vendor_name: string
+        }
+        Update: {
+          amount?: number
+          business_trip_id?: number
+          category_detail?: string | null
+          companion_note?: string | null
+          created_at?: string
+          currency?: string
+          expense_date?: string
+          expense_purpose?: string | null
+          expense_type?: string
+          id?: never
+          line_order?: number
+          linked_card_usage_id?: number | null
+          remark?: string | null
+          updated_at?: string
+          vendor_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_trip_expenses_business_trip_id_fkey"
+            columns: ["business_trip_id"]
+            isOneToOne: false
+            referencedRelation: "business_trips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_trip_expenses_linked_card_usage_id_fkey"
+            columns: ["linked_card_usage_id"]
+            isOneToOne: false
+            referencedRelation: "card_usages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_trip_mileages: {
+        Row: {
+          business_trip_id: number
+          created_at: string
+          description: string | null
+          destination: string
+          distance_km: number
+          id: number
+          line_order: number
+          mileage_amount: number | null
+          mileage_unit_amount: number
+          origin: string
+          travel_date: string
+          updated_at: string
+        }
+        Insert: {
+          business_trip_id: number
+          created_at?: string
+          description?: string | null
+          destination: string
+          distance_km?: number
+          id?: never
+          line_order?: number
+          mileage_amount?: number | null
+          mileage_unit_amount?: number
+          origin: string
+          travel_date: string
+          updated_at?: string
+        }
+        Update: {
+          business_trip_id?: number
+          created_at?: string
+          description?: string | null
+          destination?: string
+          distance_km?: number
+          id?: never
+          line_order?: number
+          mileage_amount?: number | null
+          mileage_unit_amount?: number
+          origin?: string
+          travel_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_trip_mileages_business_trip_id_fkey"
+            columns: ["business_trip_id"]
+            isOneToOne: false
+            referencedRelation: "business_trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_trip_tasks: {
+        Row: {
+          business_trip_id: number
+          created_at: string
+          id: number
+          line_order: number
+          updated_at: string
+          work_content: string
+          work_date: string
+          work_place: string
+        }
+        Insert: {
+          business_trip_id: number
+          created_at?: string
+          id?: never
+          line_order?: number
+          updated_at?: string
+          work_content: string
+          work_date: string
+          work_place: string
+        }
+        Update: {
+          business_trip_id?: number
+          created_at?: string
+          id?: never
+          line_order?: number
+          updated_at?: string
+          work_content?: string
+          work_date?: string
+          work_place?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_trip_tasks_business_trip_id_fkey"
+            columns: ["business_trip_id"]
+            isOneToOne: false
+            referencedRelation: "business_trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      business_trips: {
+        Row: {
+          approval_status: string
+          approved_at: string | null
+          approved_by: string | null
+          companions: Json
+          created_at: string
+          expected_total_amount: number
+          id: number
+          precheck_note: string | null
+          project_name: string | null
+          rejection_reason: string | null
+          request_corporate_card: boolean
+          request_department: string
+          requested_card_number: string | null
+          requester_id: string | null
+          settlement_approved_at: string | null
+          settlement_approved_by: string | null
+          settlement_rejection_reason: string | null
+          settlement_status: string
+          settlement_submitted_at: string | null
+          trip_code: string
+          trip_destination: string
+          trip_end_date: string
+          trip_purpose: string
+          trip_start_date: string
+          updated_at: string
+        }
+        Insert: {
+          approval_status?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          companions?: Json
+          created_at?: string
+          expected_total_amount?: number
+          id?: never
+          precheck_note?: string | null
+          project_name?: string | null
+          rejection_reason?: string | null
+          request_corporate_card?: boolean
+          request_department: string
+          requested_card_number?: string | null
+          requester_id?: string | null
+          settlement_approved_at?: string | null
+          settlement_approved_by?: string | null
+          settlement_rejection_reason?: string | null
+          settlement_status?: string
+          settlement_submitted_at?: string | null
+          trip_code?: string
+          trip_destination: string
+          trip_end_date: string
+          trip_purpose: string
+          trip_start_date: string
+          updated_at?: string
+        }
+        Update: {
+          approval_status?: string
+          approved_at?: string | null
+          approved_by?: string | null
+          companions?: Json
+          created_at?: string
+          expected_total_amount?: number
+          id?: never
+          precheck_note?: string | null
+          project_name?: string | null
+          rejection_reason?: string | null
+          request_corporate_card?: boolean
+          request_department?: string
+          requested_card_number?: string | null
+          requester_id?: string | null
+          settlement_approved_at?: string | null
+          settlement_approved_by?: string | null
+          settlement_rejection_reason?: string | null
+          settlement_status?: string
+          settlement_submitted_at?: string | null
+          trip_code?: string
+          trip_destination?: string
+          trip_end_date?: string
+          trip_purpose?: string
+          trip_start_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_trips_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_trips_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "v_is_app_admin"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "business_trips_requester_id_fkey"
+            columns: ["requester_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_trips_requester_id_fkey"
+            columns: ["requester_id"]
+            isOneToOne: false
+            referencedRelation: "v_is_app_admin"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "business_trips_settlement_approved_by_fkey"
+            columns: ["settlement_approved_by"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_trips_settlement_approved_by_fkey"
+            columns: ["settlement_approved_by"]
+            isOneToOne: false
+            referencedRelation: "v_is_app_admin"
+            referencedColumns: ["employee_id"]
+          },
+        ]
+      }
       vehicle_requests: {
         Row: {
           id: number
@@ -871,66 +1234,66 @@ export type Database = {
       }
       card_usages: {
         Row: {
-          id: number
-          requester_id: string | null
-          card_number: string
-          usage_category: string
-          usage_date_start: string
-          usage_date_end: string | null
-          description: string | null
           approval_status: string
-          approved_by: string | null
           approved_at: string | null
-          rejection_reason: string | null
+          approved_by: string | null
+          auto_created_by_trip: boolean
+          business_trip_id: number | null
+          card_number: string
           card_returned: boolean
           card_returned_at: string | null
           card_returned_by: string | null
           created_at: string | null
+          description: string | null
+          id: number
+          rejection_reason: string | null
+          requester_id: string | null
           updated_at: string | null
+          usage_category: string
+          usage_date_end: string | null
+          usage_date_start: string
         }
         Insert: {
-          id?: never
-          requester_id?: string | null
-          card_number: string
-          usage_category: string
-          usage_date_start: string
-          usage_date_end: string | null
-          description?: string | null
           approval_status?: string
-          approved_by?: string | null
           approved_at?: string | null
-          rejection_reason?: string | null
+          approved_by?: string | null
+          auto_created_by_trip?: boolean
+          business_trip_id?: number | null
+          card_number: string
           card_returned?: boolean
           card_returned_at?: string | null
           card_returned_by?: string | null
           created_at?: string | null
+          description?: string | null
+          id?: never
+          rejection_reason?: string | null
+          requester_id?: string | null
           updated_at?: string | null
+          usage_category: string
+          usage_date_end?: string | null
+          usage_date_start: string
         }
         Update: {
-          id?: never
-          requester_id?: string | null
-          card_number?: string
-          usage_category?: string
-          usage_date?: string
-          description?: string | null
           approval_status?: string
-          approved_by?: string | null
           approved_at?: string | null
-          rejection_reason?: string | null
+          approved_by?: string | null
+          auto_created_by_trip?: boolean
+          business_trip_id?: number | null
+          card_number?: string
           card_returned?: boolean
           card_returned_at?: string | null
           card_returned_by?: string | null
           created_at?: string | null
+          description?: string | null
+          id?: never
+          rejection_reason?: string | null
+          requester_id?: string | null
           updated_at?: string | null
+          usage_category?: string
+          usage_date_end?: string | null
+          usage_date_start?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "card_usages_requester_id_fkey"
-            columns: ["requester_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "card_usages_approved_by_fkey"
             columns: ["approved_by"]
@@ -939,11 +1302,46 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "card_usages_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "v_is_app_admin"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "card_usages_business_trip_id_fkey"
+            columns: ["business_trip_id"]
+            isOneToOne: false
+            referencedRelation: "business_trips"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "card_usages_card_returned_by_fkey"
             columns: ["card_returned_by"]
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_usages_card_returned_by_fkey"
+            columns: ["card_returned_by"]
+            isOneToOne: false
+            referencedRelation: "v_is_app_admin"
+            referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "card_usages_requester_id_fkey"
+            columns: ["requester_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "card_usages_requester_id_fkey"
+            columns: ["requester_id"]
+            isOneToOne: false
+            referencedRelation: "v_is_app_admin"
+            referencedColumns: ["employee_id"]
           },
         ]
       }

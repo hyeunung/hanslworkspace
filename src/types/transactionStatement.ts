@@ -29,6 +29,7 @@ export interface TransactionStatement {
   uploaded_at: string;
   uploaded_by?: string;
   uploaded_by_name?: string;
+  uploaded_by_email?: string;
   status: TransactionStatementStatus;
   statement_mode?: StatementMode;
   po_scope?: 'single' | 'multi';
@@ -66,6 +67,8 @@ export interface TransactionStatement {
     purchase_order_number: string;
     sales_order_number?: string;
   }>;
+  // 목록 조회 시 계산된 수량 일치 여부 (OCR수량 == 시스템수량, 전 품목)
+  all_quantities_matched?: boolean;
 }
 
 // 거래명세서 품목 타입

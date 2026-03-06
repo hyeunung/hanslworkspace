@@ -31,6 +31,46 @@ class TransactionStatementService {
     this.supabase = createClient();
   }
 
+  private async getExifOrientation(file: File): Promise<number | null> {
+    if (!file.type.startsWith('image/jpeg')) return null;
+    try {
+      const buffer = await file.arrayBuffer();
+      const view = new DataView(buffer);
+      if (view.getUint16(0, false) !== 0xffd8) return null;
+      let offset = 2;
+      const length = view.byteLength;
+      while (offset < length) {
+        const marker = view.getUint16(offset, false);
+        offset += 2;
+        if (marker === 0xffe1) {
+          const segmentLength = view.getUint16(offset, false);
+          offset += 2;
+          if (view.getUint32(offset, false) !== 0x45786966) return null; // "Exif"
+          const tiffOffset = offset + 6;
+          const little = view.getUint16(tiffOffset, false) === 0x4949;
+          const firstIfd = view.getUint32(tiffOffset + 4, little);
+          let ifdOffset = tiffOffset + firstIfd;
+          const entries = view.getUint16(ifdOffset, little);
+          ifdOffset += 2;
+          for (let i = 0; i < entries; i++) {
+            const entryOffset = ifdOffset + i * 12;
+            const tag = view.getUint16(entryOffset, little);
+            if (tag === 0x0112) {
+              return view.getUint16(entryOffset + 8, little);
+            }
+          }
+          return null;
+        }
+        if ((marker & 0xff00) !== 0xff00) break;
+        const segmentLength = view.getUint16(offset, false);
+        offset += segmentLength;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   private async prepareOcrImage(file: File): Promise<File> {
     if (!file.type.startsWith('image/')) return file;
 
@@ -38,19 +78,40 @@ class TransactionStatementService {
     const quality = 0.85;
 
     try {
-      // EXIF 회전 정보를 자동 적용하여 올바른 방향으로 변환
-      const bitmap = await createImageBitmap(file);
+      const orientation = await this.getExifOrientation(file);
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'none' as ImageOrientation });
       const maxDim = Math.max(bitmap.width, bitmap.height);
       const scale = maxDim > maxDimension ? maxDimension / maxDim : 1;
       const targetWidth = Math.round(bitmap.width * scale);
       const targetHeight = Math.round(bitmap.height * scale);
 
       const canvas = document.createElement('canvas');
-      canvas.width = targetWidth;
-      canvas.height = targetHeight;
+      const isRotated90 = orientation === 6 || orientation === 8;
+      canvas.width = isRotated90 ? targetHeight : targetWidth;
+      canvas.height = isRotated90 ? targetWidth : targetHeight;
       const ctx = canvas.getContext('2d');
       if (!ctx) return file;
-      ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+
+      switch (orientation) {
+        case 3:
+          ctx.translate(canvas.width, canvas.height);
+          ctx.rotate(Math.PI);
+          ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+          break;
+        case 6:
+          ctx.translate(canvas.width, 0);
+          ctx.rotate(Math.PI / 2);
+          ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+          break;
+        case 8:
+          ctx.translate(0, canvas.height);
+          ctx.rotate(-Math.PI / 2);
+          ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+          break;
+        default:
+          ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+          break;
+      }
 
       const blob = await new Promise<Blob | null>((resolve) =>
         canvas.toBlob(resolve, 'image/jpeg', quality)
@@ -116,6 +177,7 @@ class TransactionStatementService {
           file_name: file.name,
           uploaded_by: user?.id,
           uploaded_by_name: uploaderName,
+          uploaded_by_email: user?.email,
           status: 'queued',
           queued_at: new Date().toISOString(),
           po_scope: poScope,
@@ -200,9 +262,10 @@ class TransactionStatementService {
           file_name: file.name,
           uploaded_by: user?.id,
           uploaded_by_name: uploaderName,
+          uploaded_by_email: user?.email,
           status: 'queued',
           queued_at: new Date().toISOString(),
-          statement_mode: 'receipt', // 입고수량 모드로 설정
+          statement_mode: 'receipt',
           po_scope: poScope,
           extracted_data: actualReceiptDateIso
             ? { actual_received_date: actualReceiptDateIso }
@@ -283,6 +346,7 @@ class TransactionStatementService {
           file_name: file.name,
           uploaded_by: user?.id,
           uploaded_by_name: uploaderName,
+          uploaded_by_email: user?.email,
           status: 'processing',
           processing_started_at: new Date().toISOString(),
           statement_mode: 'monthly',
@@ -629,12 +693,12 @@ class TransactionStatementService {
     offset?: number;
   }): Promise<{ success: boolean; data?: TransactionStatement[]; count?: number; error?: string }> {
     try {
-      // items에서 매칭된 purchase_id들도 함께 조회
+      // items에서 매칭된 purchase_id + 캐시된 매칭후보 데이터도 함께 조회
       let query = this.supabase
         .from('transaction_statements')
         .select(`
           *,
-          items:transaction_statement_items(matched_purchase_id)
+          items:transaction_statement_items(matched_purchase_id,matched_item_id,extracted_quantity,confirmed_quantity,match_candidates_data)
         `, { count: 'exact' })
         .order('statement_date', { ascending: false, nullsFirst: false })
         .order('uploaded_at', { ascending: false });
@@ -667,12 +731,17 @@ class TransactionStatementService {
 
       if (error) throw error;
 
-      // 고유한 purchase_id들 추출
+      // 고유한 purchase_id들 추출 (items에서)
       const allPurchaseIds = new Set<number>();
       (data || []).forEach((statement: any) => {
         statement.items?.forEach((item: any) => {
           if (item.matched_purchase_id) {
             allPurchaseIds.add(item.matched_purchase_id);
+          }
+          const candidates = item.match_candidates_data;
+          if (Array.isArray(candidates) && candidates.length > 0) {
+            const best = candidates.reduce((a: any, b: any) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
+            if (best?.purchase_id) allPurchaseIds.add(best.purchase_id);
           }
         });
       });
@@ -684,7 +753,6 @@ class TransactionStatementService {
           .from('purchase_requests')
           .select('id, purchase_order_number, sales_order_number')
           .in('id', Array.from(allPurchaseIds));
-        
         purchases?.forEach((p: any) => {
           purchaseInfoMap.set(p.id, {
             purchase_order_number: p.purchase_order_number,
@@ -693,12 +761,18 @@ class TransactionStatementService {
         });
       }
 
-      // 각 거래명세서에 매칭된 발주 목록 추가
+      // 각 거래명세서에 매칭된 발주 목록 + 수량 일치 플래그 추가
       const statementsWithPurchases = (data || []).map((statement: any) => {
+        const stmtItems: any[] = statement.items || [];
+
+        // purchase_id 수집 (matchedPurchases용)
         const purchaseIds = new Set<number>();
-        statement.items?.forEach((item: any) => {
-          if (item.matched_purchase_id) {
-            purchaseIds.add(item.matched_purchase_id);
+        stmtItems.forEach((item: any) => {
+          if (item.matched_purchase_id) purchaseIds.add(item.matched_purchase_id);
+          const candidates = item.match_candidates_data;
+          if (Array.isArray(candidates) && candidates.length > 0) {
+            const best = candidates.reduce((a: any, b: any) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
+            if (best?.purchase_id) purchaseIds.add(best.purchase_id);
           }
         });
 
@@ -711,11 +785,85 @@ class TransactionStatementService {
           };
         });
 
+        // 수량 일치: DB에 저장된 값을 우선 사용, 없으면 match_candidates_data 기반 계산
+        let all_quantities_matched = statement.all_quantities_matched === true;
+        const hasCandidates = stmtItems.some((i: any) => Array.isArray(i.match_candidates_data) && i.match_candidates_data.length > 0);
+
+        if (!all_quantities_matched && stmtItems.length > 0 && (statement.status === 'extracted' || statement.status === 'confirmed')) {
+          if (hasCandidates) {
+            all_quantities_matched = stmtItems.every((item: any) => {
+              const ocrRaw = item.confirmed_quantity ?? item.extracted_quantity;
+              if (ocrRaw == null) return false;
+              const ocrQty = Number(ocrRaw);
+              if (!Number.isFinite(ocrQty)) return false;
+              const candidates = item.match_candidates_data;
+              if (!Array.isArray(candidates) || candidates.length === 0) return false;
+
+              // 우선순위: 사용자가 선택한 매칭 -> 해당 발주 within best score -> 전체 best score
+              let selected: any | null = null;
+              if (item.matched_item_id) {
+                selected = candidates.find((c: any) => c.item_id === item.matched_item_id) || null;
+              }
+              if (!selected && item.matched_purchase_id) {
+                const inPurchase = candidates.filter((c: any) => c.purchase_id === item.matched_purchase_id);
+                if (inPurchase.length > 0) {
+                  selected = inPurchase.reduce((a: any, b: any) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), inPurchase[0]);
+                }
+              }
+              if (!selected) {
+                selected = candidates.reduce((a: any, b: any) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
+              }
+
+              const sysQty = Number(selected?.quantity);
+              if (!Number.isFinite(sysQty)) return false;
+              return sysQty === ocrQty;
+            });
+          }
+        }
+
+        // #region agent log
+        if (statement.status === 'extracted' || statement.status === 'confirmed') {
+          const sample = stmtItems.slice(0, 4).map((item: any) => {
+            const candidates = item.match_candidates_data;
+            let selected: any | null = null;
+            if (Array.isArray(candidates) && candidates.length > 0) {
+              if (item.matched_item_id) {
+                selected = candidates.find((c: any) => c.item_id === item.matched_item_id) || null;
+              }
+              if (!selected && item.matched_purchase_id) {
+                const inPurchase = candidates.filter((c: any) => c.purchase_id === item.matched_purchase_id);
+                if (inPurchase.length > 0) {
+                  selected = inPurchase.reduce((a: any, b: any) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), inPurchase[0]);
+                }
+              }
+              if (!selected) {
+                selected = candidates.reduce((a: any, b: any) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
+              }
+            }
+            return {
+              extracted: item.extracted_quantity ?? null,
+              confirmed: item.confirmed_quantity ?? null,
+              matchedItemId: item.matched_item_id ?? null,
+              matchedPurchaseId: item.matched_purchase_id ?? null,
+              selectedSystem: selected?.quantity ?? null
+            };
+          });
+          const confirmedDiffCount = stmtItems.filter((item: any) =>
+            item.confirmed_quantity != null &&
+            item.extracted_quantity != null &&
+            item.confirmed_quantity !== item.extracted_quantity
+          ).length;
+          fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'qty-branch-check',hypothesisId:'H1-H4',location:'transactionStatementService.ts:getStatements:qtySource',message:'list qty source and db flags',data:{stmtId:statement.id,status:statement.status,qtyConfirmed:!!statement.quantity_match_confirmed_at,dbAllMatched:statement.all_quantities_matched===true,calcAllMatched:all_quantities_matched,hasCandidates,confirmedDiffCount,sample},timestamp:Date.now()})}).catch(()=>{});
+        }
+        // #endregion
+
+
         const { items, ...rest } = statement;
         return {
           ...rest,
-          matched_purchase_id: matchedPurchases[0]?.purchase_id || null, // 호환성 유지
-          matched_purchases: matchedPurchases
+          matched_purchase_id: matchedPurchases[0]?.purchase_id || null,
+          matched_purchases: matchedPurchases,
+          all_quantities_matched
         };
       });
 
@@ -844,6 +992,34 @@ class TransactionStatementService {
           };
         })
       );
+
+      // 수량일치 여부 계산: 각 OCR item의 best candidate 수량과 비교하여 DB에 저장
+      if (statement.status === 'extracted' || statement.status === 'confirmed') {
+        let allMatched = false;
+        if (itemsWithMatch.length > 0) {
+          allMatched = itemsWithMatch.every(item => {
+            const ocrRaw = item.confirmed_quantity ?? item.extracted_quantity;
+            if (ocrRaw == null) return false;
+            const ocrQty = Number(ocrRaw);
+            if (!Number.isFinite(ocrQty)) return false;
+            // match_candidates에서 최고 점수 후보의 수량과 비교
+            const candidates = item.match_candidates || [];
+            if (candidates.length === 0) return false;
+            const best = candidates.reduce((a, b) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
+            const sysQty = Number(best.quantity);
+            if (!Number.isFinite(sysQty)) return false;
+            return sysQty === ocrQty;
+          });
+        }
+        // DB에 비동기 저장 (UI 응답 지연 없음)
+        if (allMatched !== (statement.all_quantities_matched ?? false)) {
+          this.supabase
+            .from('transaction_statements')
+            .update({ all_quantities_matched: allMatched })
+            .eq('id', statementId)
+            .then(() => {});
+        }
+      }
 
       return {
         success: true,
@@ -1811,7 +1987,8 @@ class TransactionStatementService {
       const qmUpdateData: Record<string, unknown> = {
         quantity_match_confirmed_at: confirmedAt,
         quantity_match_confirmed_by: user?.id,
-        quantity_match_confirmed_by_name: confirmerName || null
+        quantity_match_confirmed_by_name: confirmerName || null,
+        all_quantities_matched: true
       };
       if (request.confirmed_grand_total !== undefined) {
         qmUpdateData.grand_total = request.confirmed_grand_total;
@@ -1825,6 +2002,20 @@ class TransactionStatementService {
         .single();
 
       if (stmtError) throw stmtError;
+
+      // 수량일치 시 각 품목의 매칭 정보도 DB에 저장 (목록에서 수량 일치 판정에 필요)
+      for (const item of request.items) {
+        const itemUpdate: Record<string, unknown> = {};
+        if (item.matched_purchase_id !== undefined) itemUpdate.matched_purchase_id = item.matched_purchase_id ?? null;
+        if (item.matched_item_id !== undefined) itemUpdate.matched_item_id = item.matched_item_id ?? null;
+        if (item.confirmed_quantity !== undefined) itemUpdate.confirmed_quantity = item.confirmed_quantity;
+        if (Object.keys(itemUpdate).length > 0) {
+          await this.supabase
+            .from('transaction_statement_items')
+            .update(itemUpdate)
+            .eq('id', item.itemId);
+        }
+      }
 
       // 수량일치 시점에 실입고 정보 즉시 반영
       if (request.actual_received_date) {
