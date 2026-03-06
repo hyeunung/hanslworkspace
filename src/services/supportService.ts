@@ -432,29 +432,31 @@ class SupportService {
 
 
   // 내가 요청한 발주 목록 조회 (수정/삭제 요청용)
-  async getMyPurchaseRequests(startDate?: string, endDate?: string) {
+  async getMyPurchaseRequests(startDate?: string, endDate?: string, requesterName?: string) {
     try {
       const { data: { user }, error: authError } = await this.supabase.auth.getUser()
       if (authError || !user) return { success: false, data: [], error: '로그인이 필요합니다.' }
 
-      const { data: employee } = await this.supabase
-        .from('employees')
-        .select('name')
-        .eq('email', user.email)
-        .single()
+      let targetName = requesterName
+      if (!targetName) {
+        const { data: employee } = await this.supabase
+          .from('employees')
+          .select('name')
+          .eq('email', user.email)
+          .single()
 
-      if (!employee) {
-        return { success: false, data: [], error: '사용자 정보를 찾을 수 없습니다.' }
+        if (!employee) {
+          return { success: false, data: [], error: '사용자 정보를 찾을 수 없습니다.' }
+        }
+        targetName = employee.name
       }
 
       let query = this.supabase
         .from('purchase_requests')
         .select('id,purchase_order_number,vendor_name,request_date,created_at,requester_name,middle_manager_status,final_manager_status,delivery_request_date,revised_delivery_request_date,purchase_request_items(id,line_number,item_name,specification,quantity,unit_price_value,amount_value)')
-        .eq('requester_name', employee.name)
-        // 승인대기 항목은 request_date가 비어있는 경우가 있어 created_at 기준으로 정렬/필터링
+        .eq('requester_name', targetName)
         .order('created_at', { ascending: false })
 
-      // 날짜 필터 적용
       if (startDate) {
         query = query.gte('created_at', `${startDate}T00:00:00`)
       }
@@ -469,6 +471,34 @@ class SupportService {
       return { success: true, data: data || [] }
     } catch (e) {
       return { success: false, data: [], error: e instanceof Error ? e.message : '발주요청 조회 실패' }
+    }
+  }
+
+  async getEmployeeNames(): Promise<{ success: boolean; data: { name: string }[]; currentUserName?: string; error?: string }> {
+    try {
+      const { data: { user }, error: authError } = await this.supabase.auth.getUser()
+      if (authError || !user) return { success: false, data: [], error: '로그인이 필요합니다.' }
+
+      const { data: employees, error } = await this.supabase
+        .from('employees')
+        .select('name')
+        .order('name')
+
+      if (error) throw error
+
+      const { data: currentEmployee } = await this.supabase
+        .from('employees')
+        .select('name')
+        .eq('email', user.email)
+        .single()
+
+      return {
+        success: true,
+        data: employees || [],
+        currentUserName: currentEmployee?.name
+      }
+    } catch (e) {
+      return { success: false, data: [], error: e instanceof Error ? e.message : '직원 목록 조회 실패' }
     }
   }
 

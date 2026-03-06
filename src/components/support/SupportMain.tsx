@@ -88,6 +88,11 @@ export default function SupportMain() {
   const [quantityChangeRows, setQuantityChangeRows] = useState<QuantityChangeRow[]>([])
   const [priceChangeRows, setPriceChangeRows] = useState<PriceChangeRow[]>([])
   const purchaseLinkedInquiryTypes = ['modify', 'delete', 'delivery_date_change', 'quantity_change', 'price_change']
+
+  // 직원 선택 관련 (발주번호 조회 시 본인 외 다른 직원 선택 가능)
+  const [employeeNames, setEmployeeNames] = useState<string[]>([])
+  const [selectedEmployeeName, setSelectedEmployeeName] = useState<string>('')
+  const [currentUserName, setCurrentUserName] = useState<string>('')
   const purchaseSelectLabel = inquiryType === 'delete' ? '삭제할 발주요청 선택' : '발주요청 선택'
   const messageLabel = inquiryType === 'delete' ? '삭제 사유' : '내용'
 
@@ -236,6 +241,17 @@ export default function SupportMain() {
       // 권한 확인 후 바로 목록 로드
       loadInquiriesWithRole(adminStatus)
     }
+
+    // 직원 목록 로드 (발주번호 선택 시 직원 선택 드롭다운용)
+    const empResult = await supportService.getEmployeeNames()
+    if (empResult.success) {
+      const names = empResult.data.map(e => e.name).filter(Boolean)
+      setEmployeeNames(names)
+      if (empResult.currentUserName) {
+        setCurrentUserName(empResult.currentUserName)
+        setSelectedEmployeeName(empResult.currentUserName)
+      }
+    }
   }
   
   // 역할에 따라 문의 목록 로드 (내부 함수)
@@ -366,7 +382,15 @@ export default function SupportMain() {
     if (!showPurchaseSelect) return
     if (!dateRange?.from || !dateRange?.to) return
     searchPurchaseRequests()
-  }, [showPurchaseSelect, dateRange?.from, dateRange?.to])
+  }, [showPurchaseSelect, dateRange?.from, dateRange?.to, selectedEmployeeName])
+
+  // 직원 선택 변경 시 기존 발주 선택 초기화
+  useEffect(() => {
+    setSelectedPurchase(null)
+    setRequestedDeliveryDate(undefined)
+    setQuantityChangeRows([])
+    setPriceChangeRows([])
+  }, [selectedEmployeeName])
 
   // 발주요청 검색
   const searchPurchaseRequests = async () => {
@@ -375,7 +399,7 @@ export default function SupportMain() {
     const startDate = dateRange?.from ? dateRange.from.toISOString().split('T')[0] : undefined
     const endDate = dateRange?.to ? dateRange.to.toISOString().split('T')[0] : undefined
     
-    const result = await supportService.getMyPurchaseRequests(startDate, endDate)
+    const result = await supportService.getMyPurchaseRequests(startDate, endDate, selectedEmployeeName || undefined)
     
     if (result.success) {
       setPurchaseRequests(result.data)
@@ -395,6 +419,11 @@ export default function SupportMain() {
       setDateRange({ from, to: today })
     }
   }, [dateRange])
+
+  const employeeNameOptions = employeeNames.map(name => ({
+    value: name,
+    label: name === currentUserName ? `${name} (본인)` : name
+  }))
 
   const purchaseOptions = [...purchaseRequests]
     .sort((a, b) => {
@@ -1609,6 +1638,19 @@ ${itemsText}`;
                       </div>
                     ) : (
                       <>
+                        <div>
+                          <label className="modal-label text-gray-600 mb-2 block">직원 선택</label>
+                          <ReactSelect
+                            value={employeeNameOptions.find(o => o.value === selectedEmployeeName) || null}
+                            onChange={(option) => setSelectedEmployeeName((option as any)?.value || '')}
+                            options={employeeNameOptions}
+                            placeholder="직원 선택"
+                            isSearchable
+                            styles={getCompactSelectStyles(180, 200)}
+                            menuPortalTarget={document.body}
+                          />
+                        </div>
+
                         <div>
                           <label className="modal-label text-gray-600 mb-2 block">기간 선택</label>
                           <DateRangePicker
