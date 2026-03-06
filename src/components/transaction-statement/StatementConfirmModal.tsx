@@ -189,6 +189,57 @@ function calculateItemSimilarity(ocrName: string, systemItemName: string, system
   return Math.max(itemNameScore, specScore * 0.3);
 }
 
+function normalizeItemNameForMatch(value: string | undefined | null): string {
+  return (value || '')
+    .toLowerCase()
+    .replace(/[^0-9a-zA-Z가-힣]/g, '');
+}
+
+function getItemNameMatchResult(
+  ocrName: string,
+  systemItemName?: string,
+  systemSpec?: string
+): { level: 'exact' | 'partial' | 'mismatch'; similarity: number; matchedTarget: string } {
+  const normalizedOCR = normalizeItemNameForMatch(ocrName);
+  const targets = [systemItemName || '', systemSpec || '']
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (!normalizedOCR || targets.length === 0) {
+    return { level: 'mismatch', similarity: 0, matchedTarget: '' };
+  }
+
+  let bestSimilarity = 0;
+  let bestTarget = targets[0];
+
+  targets.forEach((target) => {
+    const normalizedTarget = normalizeItemNameForMatch(target);
+    if (!normalizedTarget) return;
+
+    let similarity = 0;
+    if (normalizedOCR === normalizedTarget) {
+      similarity = 100;
+    } else if (normalizedOCR.includes(normalizedTarget) || normalizedTarget.includes(normalizedOCR)) {
+      similarity = 85;
+    } else {
+      similarity = calculateStringSimilarity(ocrName, target);
+    }
+
+    if (similarity > bestSimilarity) {
+      bestSimilarity = similarity;
+      bestTarget = target;
+    }
+  });
+
+  if (bestSimilarity >= 95) {
+    return { level: 'exact', similarity: bestSimilarity, matchedTarget: bestTarget };
+  }
+  if (bestSimilarity >= 60) {
+    return { level: 'partial', similarity: bestSimilarity, matchedTarget: bestTarget };
+  }
+  return { level: 'mismatch', similarity: bestSimilarity, matchedTarget: bestTarget };
+}
+
 // 수량 일치 여부 확인 (정확히 일치하면 true)
 function isQuantityMatched(ocrQuantity: number | undefined | null, systemQuantity: number | undefined | null): boolean {
   if (ocrQuantity === undefined || ocrQuantity === null) return false;
@@ -4294,6 +4345,52 @@ export default function StatementConfirmModal({
                       const systemDisplayLineNumber = displayLineByItemId.get(ocrItem.id) ?? (ocrLineSeqByItemId.get(ocrItem.id) ?? rowIndex + 1);
                       const systemDisplayLineLabel = systemDisplayLineNumber !== null ? `${systemDisplayLineNumber}.` : '-';
                       const ocrDisplayLineLabel = systemDisplayLineLabel;
+                      const ocrItemNameValue = ((getOCRItemValue(ocrItem, 'item_name') as string) || '').trim();
+                      let effectiveSystemForNameMatch: SystemPurchaseItem | null = matchedSystem || null;
+                      if (!effectiveSystemForNameMatch) {
+                        const poNumForNameMatch = isSamePONumber
+                          ? selectedPONumber
+                          : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
+                        if (poNumForNameMatch) {
+                          const sysItemsForNameMatch = getSystemItemsForPO(poNumForNameMatch);
+                          let bestScoreForNameMatch = 0;
+                          sysItemsForNameMatch.forEach(si => {
+                            const sc = calculateItemSimilarity(
+                              ocrItemNameValue,
+                              si.item_name,
+                              si.specification
+                            );
+                            if (sc > bestScoreForNameMatch) { bestScoreForNameMatch = sc; effectiveSystemForNameMatch = si; }
+                          });
+                          if (bestScoreForNameMatch < 40) effectiveSystemForNameMatch = null;
+                        }
+                      }
+                      const itemNameMatchResult = effectiveSystemForNameMatch
+                        ? getItemNameMatchResult(
+                          ocrItemNameValue,
+                          effectiveSystemForNameMatch.item_name || '',
+                          effectiveSystemForNameMatch.specification
+                        )
+                        : null;
+                      const itemNameMatchLevel: 'exact' | 'partial' | 'mismatch' =
+                        !effectiveSystemForNameMatch || itemNameMatchResult === null
+                          ? 'mismatch'
+                          : itemNameMatchResult.level;
+                      const itemNameMatchColorClass =
+                        itemNameMatchLevel === 'exact'
+                          ? 'text-green-500'
+                          : itemNameMatchLevel === 'partial'
+                            ? 'text-yellow-500'
+                            : 'text-red-400';
+                      const itemNameMatchSymbol =
+                        itemNameMatchLevel === 'exact'
+                          ? '✓'
+                          : itemNameMatchLevel === 'partial'
+                            ? '~'
+                            : '✗';
+                      const itemNameMatchTooltip = effectiveSystemForNameMatch && itemNameMatchResult !== null
+                        ? `비교기준: ${itemNameMatchResult.matchedTarget || '-'}, 시스템명: ${effectiveSystemForNameMatch.item_name || '-'}, OCR: ${ocrItemNameValue || '-'}, 유사도: ${itemNameMatchResult.similarity.toFixed(0)}%`
+                        : undefined;
                       if (rowIndex === 0) {
                         const logKey = `${ocrItem.id}|${isSamePONumber ? 'same' : 'multi'}|${activePONumber}|${systemCandidates.length}`;
                         if (systemCandidateLogKeyRef.current !== logKey) {
@@ -4355,6 +4452,7 @@ export default function StatementConfirmModal({
                                         left: dropdownPosition.left
                                       }}
                                       onClick={(e) => e.stopPropagation()}
+                                      onWheel={handleGlobalPODropdownWheel}
                                     >
                                       <div className="p-2 border-b border-gray-100">
                                         <div className="relative">
@@ -4478,6 +4576,14 @@ export default function StatementConfirmModal({
                                     <span>{getSystemItemLabel(matchedSystem, false, ocrItem.extracted_item_name || undefined) || '수동 선택'}</span>
                                     <ChevronDown className="w-3 h-3 flex-shrink-0" />
                                   </button>
+                                  {effectiveSystemForNameMatch && (
+                                    <span
+                                      className={`text-[9px] flex-shrink-0 ${itemNameMatchColorClass}`}
+                                      title={itemNameMatchTooltip}
+                                    >
+                                      {itemNameMatchSymbol}
+                                    </span>
+                                  )}
                                   {matchedSystem && (
                                     <button
                                       onClick={() => handleSelectSystemItem(ocrItem.id, null)}
@@ -4501,6 +4607,7 @@ export default function StatementConfirmModal({
                                         left: dropdownPosition.left
                                       }}
                                       onClick={(e) => e.stopPropagation()}
+                                      onWheel={handleGlobalPODropdownWheel}
                                     >
                                       {orderedSystemCandidates.map(({ candidate, score }, cidx) => {
                                         return (
@@ -4553,6 +4660,14 @@ export default function StatementConfirmModal({
                                     <span>{getSystemItemLabel(matchedSystem, false, ocrItem.extracted_item_name || undefined) || '수동 선택'}</span>
                                     <ChevronDown className="w-3 h-3 flex-shrink-0" />
                                   </button>
+                                  {effectiveSystemForNameMatch && (
+                                    <span
+                                      className={`text-[9px] flex-shrink-0 ${itemNameMatchColorClass}`}
+                                      title={itemNameMatchTooltip}
+                                    >
+                                      {itemNameMatchSymbol}
+                                    </span>
+                                  )}
                                   {matchedSystem && (
                                     <button
                                       onClick={() => handleSelectSystemItem(ocrItem.id, null)}
@@ -4576,6 +4691,7 @@ export default function StatementConfirmModal({
                                         left: dropdownPosition.left
                                       }}
                                       onClick={(e) => e.stopPropagation()}
+                                      onWheel={handleGlobalPODropdownWheel}
                                     >
                                       {(() => {
                                         const allItems = getSystemItemsForPO(activePONumber);
@@ -4726,6 +4842,14 @@ export default function StatementConfirmModal({
                               <span className="modal-label min-w-[18px] text-right">
                                 {ocrDisplayLineLabel}
                               </span>
+                              {effectiveSystemForNameMatch && (
+                                <span
+                                  className={`text-[9px] flex-shrink-0 ${itemNameMatchColorClass}`}
+                                  title={itemNameMatchTooltip}
+                                >
+                                  {itemNameMatchSymbol}
+                                </span>
+                              )}
                               <input
                                 type="text"
                                 value={getOCRItemValue(ocrItem, 'item_name') as string}
