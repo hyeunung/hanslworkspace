@@ -1072,7 +1072,12 @@ function clampColor(value: number): number {
 }
 
 async function preprocessImage(image: Image): Promise<PreprocessResult | null> {
-  const processed = image
+  let processed = image
+
+  if (processed.width > processed.height) {
+    processed = processed.rotate(90)
+  }
+
   processed.saturation(0, true)
   applyContrast(processed, 30)
 

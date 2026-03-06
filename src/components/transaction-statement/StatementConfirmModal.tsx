@@ -700,7 +700,6 @@ export default function StatementConfirmModal({
         // 초기 발주번호 설정 및 자동 매칭
         const initialPONumbers = new Map<string, string>();
         const initialMatches = new Map<string, SystemPurchaseItem | null>();
-
         result.data.items.forEach(item => {
           // 추출된 발주번호 설정 (시스템 형식으로 정규화)
           let poNumber = '';
@@ -740,7 +739,7 @@ export default function StatementConfirmModal({
             const itemsForPO = poNumber ? getSystemItemsForPOLocal(poNumber) : [];
 
             // 0. 발주번호 + 라인넘버가 있으면 해당 라인을 직접 매칭
-            const ocrLineNum = extractLineNumberFromPO(item.extracted_po_number || '');
+            const ocrLineNum = extractLineNumberFromPO(item.extracted_po_number || '') ?? item.line_number ?? null;
             if (ocrLineNum !== null && poNumber) {
               const lineMatchCandidate = item.match_candidates?.find(c =>
                 (c.purchase_order_number === poNumber || c.sales_order_number === poNumber) &&
@@ -805,7 +804,7 @@ export default function StatementConfirmModal({
                 const recommendedPOItems = getSystemItemsForPOLocal(recommendedPO);
                 let bestItem: SystemPurchaseItem | null = null;
                 let bestItemScore = -1;
-                const recommendedLineNum = extractLineNumberFromPO(item.extracted_po_number || '');
+                const recommendedLineNum = extractLineNumberFromPO(item.extracted_po_number || '') ?? item.line_number ?? null;
                 if (recommendedLineNum !== null) {
                   const directLineMatch = recommendedPOItems.find((systemItem) => systemItem.line_number === recommendedLineNum);
                   if (directLineMatch) {
@@ -840,7 +839,7 @@ export default function StatementConfirmModal({
           const itemPO = initialPONumbers.get(item.id);
           if (itemPO && !initialMatches.get(item.id)) {
             const itemsForPO = getSystemItemsForPOLocal(itemPO);
-            const itemLineNum = extractLineNumberFromPO(item.extracted_po_number || '');
+            const itemLineNum = extractLineNumberFromPO(item.extracted_po_number || '') ?? item.line_number ?? null;
             if (itemLineNum !== null && itemsForPO.length > 0) {
               const directLineMatch = itemsForPO.find((systemItem) => systemItem.line_number === itemLineNum);
               if (directLineMatch) {
@@ -869,7 +868,6 @@ export default function StatementConfirmModal({
           }
         });
 
-        const initialMatchedValues = Array.from(initialMatches.values()).filter(Boolean) as SystemPurchaseItem[];
         setItemPONumbers(initialPONumbers);
         setItemMatches(initialMatches);
         
@@ -998,13 +996,13 @@ export default function StatementConfirmModal({
 
     statementWithItems.items.forEach(ocrItem => {
       const currentMatch = itemMatches.get(ocrItem.id);
-      
+
       // 현재 적용해야 할 발주번호
       const poNumber = isSamePONumber 
         ? selectedPONumber 
         : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
       
-      const rOcrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '');
+      const rOcrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '') ?? ocrItem.line_number ?? null;
       const isCurrentSamePO = !poNumber || currentMatch?.purchase_order_number === poNumber || currentMatch?.sales_order_number === poNumber;
       const isCurrentSameLine = rOcrLineNum === null || currentMatch?.line_number == null || currentMatch.line_number === rOcrLineNum;
 
@@ -2219,7 +2217,7 @@ export default function StatementConfirmModal({
         // 2) 없으면 같은 발주의 품목명 유사도 매칭
         let bestMatch: SystemPurchaseItem | null = null;
         let bestScore = -1;
-        const ocrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '');
+        const ocrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '') ?? ocrItem.line_number ?? null;
         if (ocrLineNum !== null) {
           const directLineMatch = systemItems.find((sysItem) => sysItem.line_number === ocrLineNum);
           if (directLineMatch) {
@@ -2505,6 +2503,10 @@ export default function StatementConfirmModal({
       .eq('id', statement.id)
       .then(() => {});
 
+    if (options?.silent) {
+      return;
+    }
+
     if (shouldNotify) {
       toast.success(`거래처가 "${vendorName}"(으)로 변경되었습니다. 발주 후보를 다시 검색합니다.`);
     }
@@ -2641,7 +2643,7 @@ export default function StatementConfirmModal({
           
           let bestMatch: SystemPurchaseItem | null = null;
           let bestScore = -1;
-          const ocrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '');
+          const ocrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '') ?? ocrItem.line_number ?? null;
           if (ocrLineNum !== null) {
             const directLineMatch = systemItems.find((sysItem) => sysItem.line_number === ocrLineNum);
             if (directLineMatch) {
@@ -2723,7 +2725,7 @@ export default function StatementConfirmModal({
       ) || [];
       
       // 1. 발주번호+라인넘버가 있으면 해당 라인을 직접 매칭
-      const ocrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '');
+      const ocrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '') ?? ocrItem.line_number ?? null;
       if (ocrLineNum !== null) {
         const lineCandidate = matchingCandidates.find((candidate) => candidate.line_number === ocrLineNum);
         bestMatch =
