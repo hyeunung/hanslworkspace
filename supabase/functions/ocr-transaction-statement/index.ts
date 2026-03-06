@@ -536,6 +536,15 @@ serve(async (req) => {
         vendorMatchSource = 'po_infer'
       }
     }
+    try {
+      normalizedItems = await applyTrailingOneQuantityCorrection(
+        supabase,
+        normalizedItems,
+        correctionResult
+      )
+    } catch (_) {
+      // 수량 보정 실패 시 기존 OCR 결과 유지
+    }
 
     // 9. DB에 결과 저장 (에러 체크 추가)
     const { data: existingStatement } = await supabase
@@ -1319,6 +1328,9 @@ ${scopeHint ? `⚠️ **발주/수주 범위 힌트:** ${scopeHint}` : ''}
 - **헤더를 무시하고 순서로만 추측하지 마세요!**
 - **행의 수량 칸이 비어있으면 이전 행 수량을 복사하지 마세요.**
 - 수량 칸이 비어있는 행은 quantity를 null로 반환하세요. (빈칸/하이픈/미기재 포함)
+- **테이블 구분선(|), 세로 경계선, 인접 칼럼의 숫자를 수량에 포함하지 마세요.**
+- 수량이 10인데 101처럼 보이면, 오른쪽 칼럼 숫자가 붙은 오인식인지 이미지 셀 경계를 다시 확인하세요.
+- 수량은 반드시 해당 행의 **수량 칸 내부 텍스트만** 사용하고, 옆 칼럼 숫자가 이어 붙지 않았는지 재검증하세요.
 
 ⚠️ **단가가 비어있을 수 있음:**
 - 단가(UNIT PRICE)가 비어있거나 "-"일 수 있습니다. 이 경우 0 또는 null로 처리
@@ -1351,9 +1363,10 @@ ${scopeHint ? `⚠️ **발주/수주 범위 힌트:** ${scopeHint}` : ''}
 확신도(confidence)는 글씨가 불명확하거나 추측이 필요한 경우 "low", 보통이면 "med", 명확하면 "high"로 표시하세요.
 
 ${visionText ? `
-⚠️ **OCR 텍스트 우선 참조 - 거래처명 추출 시 매우 중요:**
-아래는 Google Vision OCR이 읽은 텍스트입니다. 이미지와 다르게 보이면 **OCR 텍스트를 신뢰**하세요.
-특히 거래처명(vendor_name)은 OCR 텍스트에서 먼저 찾아주세요.
+⚠️ **OCR 텍스트 참조 규칙:**
+- 아래 OCR 텍스트는 **거래처명(vendor_name) 식별**에 우선 활용하세요.
+- 단, 수량/단가/금액/세액 같은 **숫자 필드**는 OCR 텍스트보다 **이미지의 실제 표 셀**을 우선 신뢰하세요.
+- 숫자 값이 OCR 텍스트와 이미지에서 충돌하면 이미지의 셀 위치 기준 값을 선택하세요.
 ---
 ${visionText.substring(0, 3000)}
 ---` : ''}
@@ -1981,6 +1994,7 @@ type OrderCorrectionResult = {
   items: ExtractedItem[];
   inferredVendorName?: string;
   systemLineNumbers?: Map<number, number>;
+  matchedPurchaseId?: number;
 };
 
 async function correctOrderNumbersByDb(
@@ -2022,7 +2036,8 @@ async function correctOrderNumbersByDb(
     return {
       items,
       inferredVendorName: vendorName,
-      systemLineNumbers: systemLineMap
+      systemLineNumbers: systemLineMap,
+      matchedPurchaseId: purchaseId
     };
   }
 
@@ -2132,7 +2147,61 @@ async function correctOrderNumbersByDb(
   const inferredVendorName = (bestCandidate.vendor as { vendor_name?: string } | null)?.vendor_name;
   const systemLineMap = matchSystemLineNumbersFromCandidate(items, bestCandidate.items || []);
 
-  return { items: correctedItems, inferredVendorName, systemLineNumbers: systemLineMap };
+  return { items: correctedItems, inferredVendorName, systemLineNumbers: systemLineMap, matchedPurchaseId: bestCandidate.id };
+}
+
+async function applyTrailingOneQuantityCorrection(
+  supabase: any,
+  items: ExtractedItem[],
+  correctionResult: OrderCorrectionResult
+): Promise<ExtractedItem[]> {
+  const purchaseId = correctionResult.matchedPurchaseId
+  if (!purchaseId || !items.length) return items
+
+  const { data: systemItems } = await supabase
+    .from('purchase_request_items')
+    .select('line_number, quantity')
+    .eq('purchase_request_id', purchaseId)
+
+  if (!systemItems || systemItems.length === 0) return items
+
+  const quantityByLine = new Map<number, number>()
+  systemItems.forEach((item: any) => {
+    const line = Number(item.line_number)
+    const quantity = Number(item.quantity)
+    if (Number.isFinite(line) && Number.isFinite(quantity)) {
+      quantityByLine.set(line, quantity)
+    }
+  })
+
+  if (quantityByLine.size === 0) return items
+
+  let hasChanges = false
+  const correctedItems = items.map((item, index) => {
+    const ocrLineNumber = item.line_number || index + 1
+    const mappedLineNumber = correctionResult.systemLineNumbers?.get(ocrLineNumber) ?? ocrLineNumber
+    const systemQuantity = quantityByLine.get(mappedLineNumber)
+    if (systemQuantity === undefined) return item
+
+    const ocrQuantity = Number(item.quantity)
+    if (!Number.isFinite(ocrQuantity) || !Number.isInteger(ocrQuantity)) return item
+    if (ocrQuantity === systemQuantity) return item
+
+    const ocrQuantityText = String(ocrQuantity)
+    if (ocrQuantityText.length <= 1 || !ocrQuantityText.endsWith('1')) return item
+
+    const trimmedQuantity = Number(ocrQuantityText.slice(0, -1))
+    if (!Number.isFinite(trimmedQuantity) || trimmedQuantity <= 0) return item
+    if (trimmedQuantity !== systemQuantity) return item
+
+    hasChanges = true
+    return {
+      ...item,
+      quantity: trimmedQuantity
+    }
+  })
+
+  return hasChanges ? correctedItems : items
 }
 
 async function matchSystemLineNumbers(

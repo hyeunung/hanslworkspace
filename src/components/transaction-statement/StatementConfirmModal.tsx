@@ -63,6 +63,25 @@ interface SystemPurchaseItem {
   vendor_name?: string;
 }
 
+const MIN_AUTO_MATCH_SCORE = 40;
+
+function mapCandidateToSystemItem(candidate: MatchCandidate): SystemPurchaseItem {
+  return {
+    purchase_id: candidate.purchase_id,
+    item_id: candidate.item_id,
+    line_number: candidate.line_number,
+    purchase_order_number: candidate.purchase_order_number || '',
+    sales_order_number: candidate.sales_order_number,
+    item_name: candidate.item_name,
+    specification: candidate.specification,
+    quantity: candidate.quantity,
+    received_quantity: candidate.received_quantity,
+    unit_price: candidate.unit_price,
+    amount: (candidate as any).amount,
+    vendor_name: candidate.vendor_name
+  };
+}
+
 // Levenshtein 거리 계산 함수
 function levenshteinDistance(str1: string, str2: string): number {
   const s1 = str1.toLowerCase().replace(/\s+/g, '');
@@ -518,37 +537,176 @@ export default function StatementConfirmModal({
         }
 
         setStatementWithItems(result.data);
+
+        // 라인넘버 직접 매칭을 위해 발주 품목 전체를 선로딩한다.
+        // (match_candidates 상위 n개 제한으로 라인 품목이 누락되는 문제 방지)
+        const hydratedPoItemsMap = new Map<string, SystemPurchaseItem[]>();
+        const registerPoItems = (orderNumber: string | null | undefined, items: SystemPurchaseItem[]) => {
+          if (!orderNumber || items.length === 0) return;
+          const normalized = normalizeOrderNumber(orderNumber);
+          const deduped = items.filter((item, index, self) =>
+            index === self.findIndex((target) => target.item_id === item.item_id)
+          );
+          const sorted = [...deduped].sort((a, b) => (a.line_number ?? a.item_id ?? 0) - (b.line_number ?? b.item_id ?? 0));
+          hydratedPoItemsMap.set(normalized, sorted);
+          hydratedPoItemsMap.set(orderNumber, sorted);
+        };
+
+        const candidatePurchaseIds = new Set<number>();
+        result.data.items.forEach((item) => {
+          if (item.matched_purchase_id) {
+            candidatePurchaseIds.add(item.matched_purchase_id);
+          }
+          item.match_candidates?.forEach((candidate) => {
+            if (candidate.purchase_id) {
+              candidatePurchaseIds.add(candidate.purchase_id);
+            }
+          });
+        });
+
+        if (candidatePurchaseIds.size > 0) {
+          const { data: purchaseRows } = await supabase
+            .from('purchase_requests')
+            .select(`
+              id,
+              purchase_order_number,
+              sales_order_number,
+              vendor:vendors(vendor_name),
+              items:purchase_request_items(
+                id,
+                line_number,
+                item_name,
+                specification,
+                quantity,
+                received_quantity,
+                unit_price_value,
+                amount_value
+              )
+            `)
+            .in('id', Array.from(candidatePurchaseIds));
+
+          if (purchaseRows && purchaseRows.length > 0) {
+            purchaseRows.forEach((purchase: any) => {
+              const vendorName = (purchase.vendor as { vendor_name?: string } | null)?.vendor_name || '';
+              const mappedItems: SystemPurchaseItem[] = (purchase.items || []).map((item: any) => ({
+                purchase_id: purchase.id,
+                item_id: item.id,
+                line_number: item.line_number,
+                purchase_order_number: purchase.purchase_order_number || '',
+                sales_order_number: purchase.sales_order_number,
+                item_name: item.item_name || '',
+                specification: item.specification,
+                quantity: item.quantity,
+                received_quantity: item.received_quantity,
+                unit_price: item.unit_price_value,
+                amount: item.amount_value,
+                vendor_name: vendorName
+              }));
+              registerPoItems(purchase.purchase_order_number, mappedItems);
+              registerPoItems(purchase.sales_order_number, mappedItems);
+            });
+          }
+        }
+
+        const extractedOrderNumbers = Array.from(new Set(
+          result.data.items
+            .map((item) => item.extracted_po_number ? normalizeOrderNumber(item.extracted_po_number) : '')
+            .filter(Boolean)
+        ));
+
+        if (extractedOrderNumbers.length > 0) {
+          await Promise.all(
+            extractedOrderNumbers.map(async (orderNumber) => {
+              if (hydratedPoItemsMap.has(orderNumber)) return;
+              const { data: purchaseRowsByNumber } = await supabase
+                .from('purchase_requests')
+                .select(`
+                  id,
+                  purchase_order_number,
+                  sales_order_number,
+                  vendor:vendors(vendor_name),
+                  items:purchase_request_items(
+                    id,
+                    line_number,
+                    item_name,
+                    specification,
+                    quantity,
+                    received_quantity,
+                    unit_price_value,
+                    amount_value
+                  )
+                `)
+                .or(`purchase_order_number.eq.${orderNumber},sales_order_number.eq.${orderNumber}`)
+                .limit(1);
+
+              const purchase = purchaseRowsByNumber?.[0];
+              if (!purchase) return;
+
+              const vendorName = (purchase.vendor as { vendor_name?: string } | null)?.vendor_name || '';
+              const mappedItems: SystemPurchaseItem[] = (purchase.items || []).map((item: any) => ({
+                purchase_id: purchase.id,
+                item_id: item.id,
+                line_number: item.line_number,
+                purchase_order_number: purchase.purchase_order_number || '',
+                sales_order_number: purchase.sales_order_number,
+                item_name: item.item_name || '',
+                specification: item.specification,
+                quantity: item.quantity,
+                received_quantity: item.received_quantity,
+                unit_price: item.unit_price_value,
+                amount: item.amount_value,
+                vendor_name: vendorName
+              }));
+              registerPoItems(purchase.purchase_order_number, mappedItems);
+              registerPoItems(purchase.sales_order_number, mappedItems);
+            })
+          );
+        }
+
+        if (hydratedPoItemsMap.size > 0) {
+          setPoItemsMap((prev) => {
+            const next = new Map(prev);
+            hydratedPoItemsMap.forEach((items, key) => {
+              next.set(key, items);
+            });
+            return next;
+          });
+        }
+
+        const getSystemItemsForPOLocal = (poNumber: string): SystemPurchaseItem[] => {
+          if (!poNumber) return [];
+          const normalized = normalizeOrderNumber(poNumber);
+          const mapped = hydratedPoItemsMap.get(normalized) || hydratedPoItemsMap.get(poNumber) || [];
+          if (mapped.length > 0) return mapped;
+
+          const fallbackItems: SystemPurchaseItem[] = [];
+          (result.data?.items || []).forEach((item) => {
+            item.match_candidates?.forEach((candidate) => {
+              if (
+                normalizeOrderNumber(candidate.purchase_order_number || '') === normalized ||
+                normalizeOrderNumber(candidate.sales_order_number || '') === normalized
+              ) {
+                fallbackItems.push(mapCandidateToSystemItem(candidate));
+              }
+            });
+          });
+
+          const deduped = fallbackItems.filter((item, index, self) =>
+            index === self.findIndex((target) => target.item_id === item.item_id)
+          );
+          return [...deduped].sort((a, b) => (a.line_number ?? a.item_id ?? 0) - (b.line_number ?? b.item_id ?? 0));
+        };
         
         // 초기 발주번호 설정 및 자동 매칭
         const initialPONumbers = new Map<string, string>();
         const initialMatches = new Map<string, SystemPurchaseItem | null>();
-
-        // 라인넘버 유효성 판단: 같은 발주번호 내에서 라인넘버가 다양하면 유효
-        const poLineNumbers = new Map<string, Set<number>>();
-        result.data.items.forEach(item => {
-          if (!item.extracted_po_number) return;
-          const po = normalizeOrderNumber(item.extracted_po_number);
-          const lineNum = extractLineNumberFromPO(item.extracted_po_number);
-          if (po && lineNum !== null) {
-            const existing = poLineNumbers.get(po) || new Set();
-            existing.add(lineNum);
-            poLineNumbers.set(po, existing);
-          }
-        });
-        const validLineNumberPOs = new Set<string>();
-        poLineNumbers.forEach((lineNums, po) => {
-          if (lineNums.size > 1) validLineNumberPOs.add(po);
-        });
 
         result.data.items.forEach(item => {
           // 추출된 발주번호 설정 (시스템 형식으로 정규화)
           let poNumber = '';
           if (item.extracted_po_number) {
             poNumber = normalizeOrderNumber(item.extracted_po_number);
-            const hasCandidateMatch = item.match_candidates?.some(c =>
-              c.purchase_order_number === poNumber || c.sales_order_number === poNumber
-            );
-            if (hasCandidateMatch) {
+            if (poNumber) {
               initialPONumbers.set(item.id, poNumber);
             }
           }
@@ -579,88 +737,53 @@ export default function StatementConfirmModal({
             let bestMatch: SystemPurchaseItem | null = null;
             let bestScore = -1;
 
-            // 0. 라인넘버 기반 매칭 우선 시도
+            const itemsForPO = poNumber ? getSystemItemsForPOLocal(poNumber) : [];
+
+            // 0. 발주번호 + 라인넘버가 있으면 해당 라인을 직접 매칭
             const ocrLineNum = extractLineNumberFromPO(item.extracted_po_number || '');
-            if (ocrLineNum !== null && poNumber && validLineNumberPOs.has(poNumber)) {
+            if (ocrLineNum !== null && poNumber) {
               const lineMatchCandidate = item.match_candidates?.find(c =>
                 (c.purchase_order_number === poNumber || c.sales_order_number === poNumber) &&
                 c.line_number === ocrLineNum
               );
-              if (lineMatchCandidate) {
-                bestMatch = {
-                  purchase_id: lineMatchCandidate.purchase_id,
-                  item_id: lineMatchCandidate.item_id,
-                  line_number: lineMatchCandidate.line_number,
-                  purchase_order_number: lineMatchCandidate.purchase_order_number || '',
-                  sales_order_number: lineMatchCandidate.sales_order_number,
-                  item_name: lineMatchCandidate.item_name,
-                  specification: lineMatchCandidate.specification,
-                  quantity: lineMatchCandidate.quantity,
-                  received_quantity: lineMatchCandidate.received_quantity,
-                  unit_price: lineMatchCandidate.unit_price,
-                  amount: (lineMatchCandidate as any).amount,
-                  vendor_name: lineMatchCandidate.vendor_name
-                };
+              const directLineMatch =
+                itemsForPO.find((systemItem) => systemItem.line_number === ocrLineNum) ||
+                (lineMatchCandidate ? mapCandidateToSystemItem(lineMatchCandidate) : null);
+
+              if (directLineMatch) {
+                bestMatch = directLineMatch;
                 bestScore = 100;
               }
             }
             
-            // 1. 라인넘버로 못 찾으면 해당 발주번호와 일치하는 후보에서 유사도 검색
-            if (!bestMatch) {
-              const matchingCandidates = item.match_candidates?.filter(c => 
-                c.purchase_order_number === poNumber || c.sales_order_number === poNumber
-              ) || [];
+            // 1. 라인넘버로 못 찾으면 같은 발주번호 내에서만 유사도 매칭
+            if (!bestMatch && poNumber) {
+              const matchingCandidates: SystemPurchaseItem[] = itemsForPO.length > 0
+                ? itemsForPO
+                : (item.match_candidates?.filter(c =>
+                    c.purchase_order_number === poNumber || c.sales_order_number === poNumber
+                  ) || []).map(mapCandidateToSystemItem);
               
-              for (const c of matchingCandidates) {
-                const score = calculateItemSimilarity(item.extracted_item_name || '', c.item_name, c.specification);
-                if (score > bestScore && score >= 40) {
+              for (const candidate of matchingCandidates) {
+                const score = calculateItemSimilarity(
+                  item.extracted_item_name || '',
+                  candidate.item_name,
+                  candidate.specification
+                );
+                if (score > bestScore && score >= MIN_AUTO_MATCH_SCORE) {
                   bestScore = score;
-                  bestMatch = {
-                    purchase_id: c.purchase_id,
-                    item_id: c.item_id,
-                    line_number: c.line_number,
-                    purchase_order_number: c.purchase_order_number || '',
-                    sales_order_number: c.sales_order_number,
-                    item_name: c.item_name,
-                    specification: c.specification,
-                    quantity: c.quantity,
-                    received_quantity: c.received_quantity,
-                    unit_price: c.unit_price,
-                    amount: (c as any).amount,
-                    vendor_name: c.vendor_name
-                  };
+                  bestMatch = candidate;
                 }
               }
             }
             
-            // 2. 발주번호로 못 찾으면 모든 후보에서 최고 유사도로 검색 (fallback)
-            if (!bestMatch && item.match_candidates && item.match_candidates.length > 0) {
-              for (const c of item.match_candidates) {
-                const score = calculateItemSimilarity(item.extracted_item_name || '', c.item_name, c.specification);
-                if (score > bestScore && score >= 40) { // 최소 40점 이상 (더 엄격)
+            // 2. 발주번호가 없는 경우에만 보수적으로 fallback
+            if (!bestMatch && !poNumber && item.match_candidates && item.match_candidates.length > 0) {
+              for (const candidate of item.match_candidates) {
+                const score = calculateItemSimilarity(item.extracted_item_name || '', candidate.item_name, candidate.specification);
+                if (score > bestScore && score >= 60) {
                   bestScore = score;
-                  bestMatch = {
-                    purchase_id: c.purchase_id,
-                    item_id: c.item_id,
-                    line_number: c.line_number,
-                    purchase_order_number: c.purchase_order_number || '',
-                    sales_order_number: c.sales_order_number,
-                    item_name: c.item_name,
-                    specification: c.specification,
-                    quantity: c.quantity,
-                    received_quantity: c.received_quantity,
-                    unit_price: c.unit_price,
-                    amount: (c as any).amount,
-                    vendor_name: c.vendor_name
-                  };
-                }
-              }
-              
-              // fallback으로 찾았으면 발주번호도 시스템 것으로 업데이트 (OCR 오류 수정)
-              if (bestMatch) {
-                const matchedPO = bestMatch.purchase_order_number || bestMatch.sales_order_number || '';
-                if (matchedPO) {
-                  initialPONumbers.set(item.id, matchedPO);
+                  bestMatch = mapCandidateToSystemItem(candidate);
                 }
               }
             }
@@ -679,26 +802,25 @@ export default function StatementConfirmModal({
                 const candidatesForPO = item.match_candidates.filter(c =>
                   c.purchase_order_number === recommendedPO || c.sales_order_number === recommendedPO
                 );
+                const recommendedPOItems = getSystemItemsForPOLocal(recommendedPO);
                 let bestItem: SystemPurchaseItem | null = null;
                 let bestItemScore = -1;
-                for (const c of candidatesForPO) {
-                  const score = calculateItemSimilarity(item.extracted_item_name || '', c.item_name, c.specification);
-                  if (score > bestItemScore) {
+                const recommendedLineNum = extractLineNumberFromPO(item.extracted_po_number || '');
+                if (recommendedLineNum !== null) {
+                  const directLineMatch = recommendedPOItems.find((systemItem) => systemItem.line_number === recommendedLineNum);
+                  if (directLineMatch) {
+                    bestItem = directLineMatch;
+                    bestItemScore = 100;
+                  }
+                }
+                const candidateItems: SystemPurchaseItem[] = recommendedPOItems.length > 0
+                  ? recommendedPOItems
+                  : candidatesForPO.map(mapCandidateToSystemItem);
+                for (const candidateItem of candidateItems) {
+                  const score = calculateItemSimilarity(item.extracted_item_name || '', candidateItem.item_name, candidateItem.specification);
+                  if (score > bestItemScore && score >= MIN_AUTO_MATCH_SCORE) {
                     bestItemScore = score;
-                    bestItem = {
-                      purchase_id: c.purchase_id,
-                      item_id: c.item_id,
-                      line_number: c.line_number,
-                      purchase_order_number: c.purchase_order_number || '',
-                      sales_order_number: c.sales_order_number,
-                      item_name: c.item_name,
-                      specification: c.specification,
-                      quantity: c.quantity,
-                      received_quantity: c.received_quantity,
-                      unit_price: c.unit_price,
-                      amount: (c as any).amount,
-                      vendor_name: c.vendor_name
-                    };
+                    bestItem = candidateItem;
                   }
                 }
                 if (bestItem) {
@@ -717,30 +839,29 @@ export default function StatementConfirmModal({
         result.data.items.forEach(item => {
           const itemPO = initialPONumbers.get(item.id);
           if (itemPO && !initialMatches.get(item.id)) {
-            const candidates = item.match_candidates?.filter(c =>
-              c.purchase_order_number === itemPO || c.sales_order_number === itemPO
-            ) || [];
+            const itemsForPO = getSystemItemsForPOLocal(itemPO);
+            const itemLineNum = extractLineNumberFromPO(item.extracted_po_number || '');
+            if (itemLineNum !== null && itemsForPO.length > 0) {
+              const directLineMatch = itemsForPO.find((systemItem) => systemItem.line_number === itemLineNum);
+              if (directLineMatch) {
+                initialMatches.set(item.id, directLineMatch);
+                return;
+              }
+            }
+
+            const candidates: SystemPurchaseItem[] = itemsForPO.length > 0
+              ? itemsForPO
+              : (item.match_candidates?.filter(c =>
+                  c.purchase_order_number === itemPO || c.sales_order_number === itemPO
+                ) || []).map(mapCandidateToSystemItem);
             if (candidates.length > 0) {
               let best: SystemPurchaseItem | null = null;
               let bestScore = -1;
-              for (const c of candidates) {
-                const score = calculateItemSimilarity(item.extracted_item_name || '', c.item_name, c.specification);
-                if (score > bestScore) {
+              for (const candidate of candidates) {
+                const score = calculateItemSimilarity(item.extracted_item_name || '', candidate.item_name, candidate.specification);
+                if (score > bestScore && score >= MIN_AUTO_MATCH_SCORE) {
                   bestScore = score;
-                  best = {
-                    purchase_id: c.purchase_id,
-                    item_id: c.item_id,
-                    line_number: c.line_number,
-                    purchase_order_number: c.purchase_order_number || '',
-                    sales_order_number: c.sales_order_number,
-                    item_name: c.item_name,
-                    specification: c.specification,
-                    quantity: c.quantity,
-                    received_quantity: c.received_quantity,
-                    unit_price: c.unit_price,
-                    amount: (c as any).amount,
-                    vendor_name: c.vendor_name
-                  };
+                  best = candidate;
                 }
               }
               if (best) initialMatches.set(item.id, best);
@@ -875,21 +996,6 @@ export default function StatementConfirmModal({
     let hasMatchChanges = false;
     let hasPOChanges = false;
 
-    // 라인넘버 유효성 판단
-    const rPoLineNumbers = new Map<string, Set<number>>();
-    statementWithItems.items.forEach(oi => {
-      if (!oi.extracted_po_number) return;
-      const po = normalizeOrderNumber(oi.extracted_po_number);
-      const ln = extractLineNumberFromPO(oi.extracted_po_number);
-      if (po && ln !== null) {
-        const s = rPoLineNumbers.get(po) || new Set();
-        s.add(ln);
-        rPoLineNumbers.set(po, s);
-      }
-    });
-    const rValidLineNumberPOs = new Set<string>();
-    rPoLineNumbers.forEach((lns, po) => { if (lns.size >= 1) rValidLineNumberPOs.add(po); });
-    
     statementWithItems.items.forEach(ocrItem => {
       const currentMatch = itemMatches.get(ocrItem.id);
       
@@ -898,12 +1004,12 @@ export default function StatementConfirmModal({
         ? selectedPONumber 
         : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
       
-      // 현재 매칭이 있고 (발주번호가 일치하거나, 월말결제 등 DB에서 직접 매칭된 경우) 유지
-      if (currentMatch && (
-        currentMatch.purchase_order_number === poNumber || 
-        currentMatch.sales_order_number === poNumber ||
-        currentMatch.purchase_id
-      )) {
+      const rOcrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '');
+      const isCurrentSamePO = !poNumber || currentMatch?.purchase_order_number === poNumber || currentMatch?.sales_order_number === poNumber;
+      const isCurrentSameLine = rOcrLineNum === null || currentMatch?.line_number == null || currentMatch.line_number === rOcrLineNum;
+
+      // 현재 매칭이 발주/라인 기준으로 여전히 유효하면 유지
+      if (currentMatch && isCurrentSamePO && isCurrentSameLine) {
         newMatches.set(ocrItem.id, currentMatch);
         return;
       }
@@ -911,83 +1017,47 @@ export default function StatementConfirmModal({
       // 새로운 매칭 찾기
       let bestMatch: SystemPurchaseItem | null = null;
       let bestScore = -1;
+      const systemItemsForPO = poNumber ? getSystemItemsForPO(poNumber) : [];
 
-      // 0. 라인넘버 기반 매칭 우선 시도
-      const rOcrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '');
-      if (rOcrLineNum !== null && poNumber && rValidLineNumberPOs.has(poNumber)) {
+      // 0. 발주번호 + 라인넘버가 있으면 해당 라인을 직접 매칭
+      if (rOcrLineNum !== null && poNumber) {
         const lineMatchC = ocrItem.match_candidates?.find(c =>
           (c.purchase_order_number === poNumber || c.sales_order_number === poNumber) &&
           c.line_number === rOcrLineNum
         );
-        if (lineMatchC) {
-          bestMatch = {
-            purchase_id: lineMatchC.purchase_id,
-            item_id: lineMatchC.item_id,
-            line_number: lineMatchC.line_number,
-            purchase_order_number: lineMatchC.purchase_order_number || '',
-            sales_order_number: lineMatchC.sales_order_number,
-            item_name: lineMatchC.item_name,
-            specification: lineMatchC.specification,
-            quantity: lineMatchC.quantity,
-            received_quantity: lineMatchC.received_quantity,
-            unit_price: lineMatchC.unit_price,
-            amount: (lineMatchC as any).amount,
-            vendor_name: lineMatchC.vendor_name
-          };
+        const directLineMatch =
+          systemItemsForPO.find((systemItem) => systemItem.line_number === rOcrLineNum) ||
+          (lineMatchC ? mapCandidateToSystemItem(lineMatchC) : null);
+        if (directLineMatch) {
+          bestMatch = directLineMatch;
           bestScore = 100;
         }
       }
       
-      // 1. 라인넘버로 못 찾으면 해당 발주번호 후보에서 유사도 검색
-      if (!bestMatch) {
-        const matchingCandidates = poNumber 
-          ? ocrItem.match_candidates?.filter(c => 
+      // 1. 라인넘버로 못 찾으면 같은 발주번호 내에서만 유사도 매칭
+      if (!bestMatch && poNumber) {
+        const matchingCandidates: SystemPurchaseItem[] = systemItemsForPO.length > 0
+          ? systemItemsForPO
+          : (ocrItem.match_candidates?.filter(c =>
               c.purchase_order_number === poNumber || c.sales_order_number === poNumber
-            ) || []
-          : [];
+            ) || []).map(mapCandidateToSystemItem);
         
-        for (const c of matchingCandidates) {
-          const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', c.item_name, c.specification);
-          if (score > bestScore && score >= 40) {
+        for (const candidate of matchingCandidates) {
+          const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', candidate.item_name, candidate.specification);
+          if (score > bestScore && score >= MIN_AUTO_MATCH_SCORE) {
             bestScore = score;
-            bestMatch = {
-              purchase_id: c.purchase_id,
-              item_id: c.item_id,
-              line_number: c.line_number,
-              purchase_order_number: c.purchase_order_number || '',
-              sales_order_number: c.sales_order_number,
-              item_name: c.item_name,
-              specification: c.specification,
-              quantity: c.quantity,
-              received_quantity: c.received_quantity,
-              unit_price: c.unit_price,
-              amount: (c as any).amount,
-              vendor_name: c.vendor_name
-            };
+            bestMatch = candidate;
           }
         }
       }
       
-      // 2. 못 찾으면 전체 후보에서 검색 (fallback)
-      if (!bestMatch && ocrItem.match_candidates) {
-        for (const c of ocrItem.match_candidates) {
-          const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', c.item_name, c.specification);
-          if (score > bestScore && score >= 40) {
+      // 2. 발주번호가 없을 때만 fallback
+      if (!bestMatch && !poNumber && ocrItem.match_candidates) {
+        for (const candidate of ocrItem.match_candidates) {
+          const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', candidate.item_name, candidate.specification);
+          if (score > bestScore && score >= 60) {
             bestScore = score;
-            bestMatch = {
-              purchase_id: c.purchase_id,
-              item_id: c.item_id,
-              line_number: c.line_number,
-              purchase_order_number: c.purchase_order_number || '',
-              sales_order_number: c.sales_order_number,
-              item_name: c.item_name,
-              specification: c.specification,
-              quantity: c.quantity,
-              received_quantity: c.received_quantity,
-              unit_price: c.unit_price,
-              amount: (c as any).amount,
-              vendor_name: c.vendor_name
-            };
+            bestMatch = mapCandidateToSystemItem(candidate);
           }
         }
       }
@@ -1425,7 +1495,8 @@ export default function StatementConfirmModal({
   // 특정 발주번호에 해당하는 시스템 품목들
   const getSystemItemsForPO = useCallback((poNumber: string): SystemPurchaseItem[] => {
     if (!statementWithItems || !poNumber) return [];
-    const mappedItems = poItemsMap.get(poNumber) || [];
+    const normalizedPO = normalizeOrderNumber(poNumber);
+    const mappedItems = poItemsMap.get(normalizedPO) || poItemsMap.get(poNumber) || [];
     if (mappedItems.length > 0) {
       const deduped = mappedItems.filter((item, index, self) => 
         index === self.findIndex(t => t.item_id === item.item_id)
@@ -1437,8 +1508,8 @@ export default function StatementConfirmModal({
     
     statementWithItems.items.forEach(item => {
       item.match_candidates?.forEach(candidate => {
-        if (candidate.purchase_order_number === poNumber || 
-            candidate.sales_order_number === poNumber) {
+        if (normalizeOrderNumber(candidate.purchase_order_number || '') === normalizedPO || 
+            normalizeOrderNumber(candidate.sales_order_number || '') === normalizedPO) {
           items.push({
             purchase_id: candidate.purchase_id,
             item_id: candidate.item_id,
@@ -2144,17 +2215,28 @@ export default function StatementConfirmModal({
       const newMatches = new Map<string, SystemPurchaseItem | null>();
 
       statementWithItems.items.forEach(ocrItem => {
-        // 가장 유사한 시스템 품목 찾기 (item_name과 specification 교차 비교)
+        // 1) 발주번호+라인넘버가 있으면 라인 직접 매칭
+        // 2) 없으면 같은 발주의 품목명 유사도 매칭
         let bestMatch: SystemPurchaseItem | null = null;
-        let bestScore = 0;
-
-        systemItems.forEach(sysItem => {
-          const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', sysItem.item_name, sysItem.specification);
-          if (score > bestScore && score >= 40) { // 최소 40점 이상
-            bestScore = score;
-            bestMatch = sysItem;
+        let bestScore = -1;
+        const ocrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '');
+        if (ocrLineNum !== null) {
+          const directLineMatch = systemItems.find((sysItem) => sysItem.line_number === ocrLineNum);
+          if (directLineMatch) {
+            bestMatch = directLineMatch;
+            bestScore = 100;
           }
-        });
+        }
+
+        if (!bestMatch) {
+          systemItems.forEach((sysItem) => {
+            const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', sysItem.item_name, sysItem.specification);
+            if (score > bestScore && score >= MIN_AUTO_MATCH_SCORE) {
+              bestScore = score;
+              bestMatch = sysItem;
+            }
+          });
+        }
 
         newMatches.set(ocrItem.id, bestMatch);
       });
@@ -2558,15 +2640,25 @@ export default function StatementConfirmModal({
           }
           
           let bestMatch: SystemPurchaseItem | null = null;
-          let bestScore = 0;
-          
-          systemItems.forEach(sysItem => {
-            const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', sysItem.item_name, sysItem.specification);
-            if (score > bestScore && score >= 30) {
-              bestScore = score;
-              bestMatch = sysItem;
+          let bestScore = -1;
+          const ocrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '');
+          if (ocrLineNum !== null) {
+            const directLineMatch = systemItems.find((sysItem) => sysItem.line_number === ocrLineNum);
+            if (directLineMatch) {
+              bestMatch = directLineMatch;
+              bestScore = 100;
             }
-          });
+          }
+
+          if (!bestMatch) {
+            systemItems.forEach((sysItem) => {
+              const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', sysItem.item_name, sysItem.specification);
+              if (score > bestScore && score >= MIN_AUTO_MATCH_SCORE) {
+                bestScore = score;
+                bestMatch = sysItem;
+              }
+            });
+          }
           
           newMatches.set(ocrItem.id, bestMatch);
         });
@@ -2623,46 +2715,35 @@ export default function StatementConfirmModal({
     const ocrItem = statementWithItems?.items.find(i => i.id === ocrItemId);
     
     if (ocrItem) {
-      // 1. match_candidates에서 해당 발주번호 후보 찾기
+      let bestMatch: SystemPurchaseItem | null = null;
+      let bestScore = -1;
+      const systemItems = getSystemItemsForPO(poNumber);
       const matchingCandidates = ocrItem.match_candidates?.filter(c => 
         c.purchase_order_number === poNumber || c.sales_order_number === poNumber
       ) || [];
       
-      let bestMatch: SystemPurchaseItem | null = null;
-      let bestScore = -1;
-      
-      if (matchingCandidates.length > 0) {
-        // match_candidates에서 가장 유사한 것 선택
-        matchingCandidates.forEach(c => {
-          const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', c.item_name, c.specification);
-          if (score > bestScore) {
-            bestScore = score;
-            bestMatch = {
-              purchase_id: c.purchase_id,
-              item_id: c.item_id,
-              line_number: c.line_number,
-              purchase_order_number: c.purchase_order_number || '',
-              sales_order_number: c.sales_order_number,
-              item_name: c.item_name,
-              specification: c.specification,
-              quantity: c.quantity,
-              received_quantity: c.received_quantity,
-              unit_price: c.unit_price,
-              amount: (c as any).amount,
-              vendor_name: c.vendor_name
-            };
-          }
-        });
+      // 1. 발주번호+라인넘버가 있으면 해당 라인을 직접 매칭
+      const ocrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '');
+      if (ocrLineNum !== null) {
+        const lineCandidate = matchingCandidates.find((candidate) => candidate.line_number === ocrLineNum);
+        bestMatch =
+          systemItems.find((sysItem) => sysItem.line_number === ocrLineNum) ||
+          (lineCandidate ? mapCandidateToSystemItem(lineCandidate) : null);
+        if (bestMatch) {
+          bestScore = 100;
+        }
       }
       
-      // 2. match_candidates에서 못 찾으면 getSystemItemsForPO로 직접 검색
+      // 2. 직접 라인 매칭이 없으면 같은 발주번호 내에서 유사도 매칭
       if (!bestMatch) {
-        const systemItems = getSystemItemsForPO(poNumber);
-        systemItems.forEach(sysItem => {
-          const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', sysItem.item_name, sysItem.specification);
-          if (score > bestScore) {
+        const candidatesForPO: SystemPurchaseItem[] = systemItems.length > 0
+          ? systemItems
+          : matchingCandidates.map(mapCandidateToSystemItem);
+        candidatesForPO.forEach((candidate) => {
+          const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', candidate.item_name, candidate.specification);
+          if (score > bestScore && score >= MIN_AUTO_MATCH_SCORE) {
             bestScore = score;
-            bestMatch = sysItem;
+            bestMatch = candidate;
           }
         });
       }
@@ -4180,20 +4261,7 @@ export default function StatementConfirmModal({
                             candidate.purchase_order_number === activePONumber ||
                             candidate.sales_order_number === activePONumber
                           )
-                          .map((candidate): SystemPurchaseItem => ({
-                            purchase_id: candidate.purchase_id,
-                            item_id: candidate.item_id,
-                            line_number: candidate.line_number,
-                            purchase_order_number: candidate.purchase_order_number || '',
-                            sales_order_number: candidate.sales_order_number,
-                            item_name: candidate.item_name || '품목명 없음',
-                            specification: candidate.specification,
-                            quantity: candidate.quantity,
-                            received_quantity: candidate.received_quantity,
-                            unit_price: candidate.unit_price,
-                            amount: (candidate as any).amount,
-                            vendor_name: candidate.vendor_name
-                          }))
+                          .map(mapCandidateToSystemItem)
                         : [];
                       // 매칭된 시스템 품목이 있으면 후보에 추가 (월말결제 등에서 후보가 비어있어도 표시)
                       let displaySystemCandidates = systemCandidates.length > 0 ? systemCandidates : fallbackCandidates;
@@ -4210,8 +4278,16 @@ export default function StatementConfirmModal({
                             candidate.specification,
                             candidate.quantity
                           )
-                        }))
-                        .sort((a, b) => b.score - a.score);
+                        }));
+                      const orderedSystemCandidates = [...scoredSystemCandidates].sort((a, b) => {
+                        if (matchedSystem) {
+                          return b.score - a.score;
+                        }
+                        const aLine = a.candidate.line_number ?? Number.MAX_SAFE_INTEGER;
+                        const bLine = b.candidate.line_number ?? Number.MAX_SAFE_INTEGER;
+                        if (aLine !== bLine) return aLine - bLine;
+                        return b.score - a.score;
+                      });
                       const systemDisplayLineNumber = displayLineByItemId.get(ocrItem.id) ?? (ocrLineSeqByItemId.get(ocrItem.id) ?? rowIndex + 1);
                       const systemDisplayLineLabel = systemDisplayLineNumber !== null ? `${systemDisplayLineNumber}.` : '-';
                       const ocrDisplayLineLabel = systemDisplayLineLabel;
@@ -4396,7 +4472,7 @@ export default function StatementConfirmModal({
                                     className="inline-flex items-center gap-1 px-1.5 h-5 text-[10px] font-normal bg-white border border-gray-300 business-radius hover:bg-gray-50 text-gray-700 whitespace-nowrap"
                                     style={{ fontSize: '11px' }}
                                   >
-                                    <span>{getSystemItemLabel(matchedSystem, false, ocrItem.extracted_item_name || undefined) || '선택'}</span>
+                                    <span>{getSystemItemLabel(matchedSystem, false, ocrItem.extracted_item_name || undefined) || '수동 선택'}</span>
                                     <ChevronDown className="w-3 h-3 flex-shrink-0" />
                                   </button>
                                   {matchedSystem && (
@@ -4423,7 +4499,7 @@ export default function StatementConfirmModal({
                                       }}
                                       onClick={(e) => e.stopPropagation()}
                                     >
-                                      {scoredSystemCandidates.map(({ candidate, score }, cidx) => {
+                                      {orderedSystemCandidates.map(({ candidate, score }, cidx) => {
                                         return (
                                           <div
                                             key={cidx}
