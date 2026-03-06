@@ -93,6 +93,8 @@ export default function SupportMain() {
   const [employeeNames, setEmployeeNames] = useState<string[]>([])
   const [selectedEmployeeName, setSelectedEmployeeName] = useState<string>('')
   const [currentUserName, setCurrentUserName] = useState<string>('')
+  const [deleteType, setDeleteType] = useState<'all' | 'items'>('all')
+  const [deleteItemIds, setDeleteItemIds] = useState<string[]>([])
   const purchaseSelectLabel = inquiryType === 'delete' ? '삭제할 발주요청 선택' : '발주요청 선택'
   const messageLabel = inquiryType === 'delete' ? '삭제 사유' : '내용'
 
@@ -309,6 +311,8 @@ export default function SupportMain() {
     setRequestedDeliveryDate(undefined)
     setQuantityChangeRows([])
     setPriceChangeRows([])
+    setDeleteType('all')
+    setDeleteItemIds([])
   }, [inquiryType])
 
   // ✅ URL 파라미터 기반 진입 처리: /support?type=delivery_date_change&purchaseId=123&source=delivery-warning&returnTo=...
@@ -563,7 +567,8 @@ export default function SupportMain() {
       fontSize: '11px',
       borderRadius: '8px',
       borderColor: '#e5e7eb',
-      boxShadow: 'none'
+      boxShadow: 'none',
+      flexWrap: 'nowrap' as const
     }),
     container: (base: any) => ({
       ...base,
@@ -572,7 +577,9 @@ export default function SupportMain() {
     }),
     valueContainer: (base: any) => ({
       ...base,
-      padding: '0 8px'
+      padding: '0 8px',
+      overflow: 'hidden',
+      flexWrap: 'nowrap' as const
     }),
     input: (base: any) => ({
       ...base,
@@ -582,7 +589,11 @@ export default function SupportMain() {
     }),
     indicatorsContainer: (base: any) => ({
       ...base,
-      height: '28px'
+      height: '28px',
+      flexShrink: 0
+    }),
+    indicatorSeparator: () => ({
+      display: 'none'
     }),
     option: (base: any) => ({
       ...base,
@@ -594,14 +605,16 @@ export default function SupportMain() {
     placeholder: (base: any) => ({
       ...base,
       fontSize: '11px',
-      color: '#9ca3af'
+      color: '#9ca3af',
+      whiteSpace: 'nowrap'
     }),
     singleValue: (base: any) => ({
       ...base,
       fontSize: '11px',
-      overflow: 'visible',
-      textOverflow: 'clip',
-      maxWidth: 'none'
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      maxWidth: 'calc(100% - 8px)'
     }),
     menu: (base: any) => ({
       ...base,
@@ -872,7 +885,29 @@ export default function SupportMain() {
     }
 
     if (inquiryType === 'delete') {
-      inquiryPayload = { reason: message.trim() }
+      if (deleteType === 'items') {
+        if (deleteItemIds.length === 0) {
+          toast.error('삭제할 품목을 선택해주세요.')
+          setLoading(false)
+          return
+        }
+        const deleteItemsPayload = deleteItemIds.map(itemId => {
+          const targetItem = selectedPurchaseItems.find((item: any) => String(item.id) === itemId)
+          return {
+            item_id: itemId,
+            line_number: targetItem?.line_number ?? null,
+            item_name: targetItem?.item_name ?? '',
+            specification: targetItem?.specification ?? null,
+          }
+        })
+        inquiryPayload = { reason: message.trim(), delete_type: 'items' as const, delete_items: deleteItemsPayload }
+        summaryLines.push(`[품목별 삭제] ${deleteItemsPayload.map(i =>
+          `${i.line_number ?? '-'}번 ${i.item_name} (${i.specification || '-'})`
+        ).join(', ')}`)
+      } else {
+        inquiryPayload = { reason: message.trim(), delete_type: 'all' as const }
+        summaryLines.push('[발주 전체 삭제]')
+      }
     }
     
     if (selectedPurchase) {
@@ -1510,11 +1545,33 @@ ${itemsText}`;
     }
 
     if (inquiry.inquiry_type === 'delete') {
-      if (!payload.reason) return null
+      if (!payload.reason && !payload.delete_type) return null
+      const isItemDelete = payload.delete_type === 'items'
+      const deleteItems = Array.isArray(payload.delete_items) ? payload.delete_items : []
       return (
         <div>
-          <span className="modal-value text-gray-700">삭제 사유:</span>
-          <p className="text-gray-600 mt-1 whitespace-pre-wrap">{payload.reason}</p>
+          <div className="flex items-center gap-2">
+            <span className="modal-value text-gray-700">삭제 유형:</span>
+            <span className={`badge-stats ${isItemDelete ? 'bg-orange-100 text-orange-800' : 'bg-red-100 text-red-800'}`}>
+              {isItemDelete ? '품목별 삭제' : '전체 삭제'}
+            </span>
+          </div>
+          {isItemDelete && deleteItems.length > 0 && (
+            <div className="mt-1 text-gray-600 space-y-0.5">
+              <span className="modal-label text-gray-500">삭제 대상 품목:</span>
+              {deleteItems.map((item: any, index: number) => (
+                <div key={`${item.item_id}-${index}`} className="pl-2 card-description">
+                  {item.line_number ?? '-'}번 {item.item_name} ({item.specification || '-'})
+                </div>
+              ))}
+            </div>
+          )}
+          {payload.reason && (
+            <div className="mt-1">
+              <span className="modal-value text-gray-700">삭제 사유:</span>
+              <p className="text-gray-600 mt-0.5 whitespace-pre-wrap">{payload.reason}</p>
+            </div>
+          )}
         </div>
       )
     }
@@ -1659,7 +1716,7 @@ ${itemsText}`;
                             placeholder="발주요청 기간을 선택하세요"
                             className="inline-grid w-fit"
                             style={{ width: `${dateRangeWidthEm}em`, maxWidth: '100%' }}
-                            triggerClassName="button-base w-fit justify-start border border-gray-300 bg-white text-gray-700 business-radius-input"
+                            triggerClassName="button-base w-fit justify-start border border-gray-300 bg-white text-gray-700 business-radius-input !h-[28px] !py-0"
                           />
                         </div>
 
@@ -1928,6 +1985,95 @@ ${itemsText}`;
                       <Plus className="w-3.5 h-3.5 mr-1" />
                       품목 추가
                     </button>
+                  </div>
+                )}
+
+                {inquiryType === 'delete' && selectedPurchase && (
+                  <div className="space-y-3 p-4 bg-gray-50 business-radius-card border border-gray-200">
+                    <div className="modal-section-title text-gray-900">삭제 유형 선택</div>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => { setDeleteType('all'); setDeleteItemIds([]) }}
+                        className={`button-base border ${deleteType === 'all'
+                          ? 'border-red-400 bg-red-50 text-red-700'
+                          : 'border-gray-300 bg-white text-gray-600'}`}
+                      >
+                        발주 전체 삭제
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteType('items')}
+                        className={`button-base border ${deleteType === 'items'
+                          ? 'border-red-400 bg-red-50 text-red-700'
+                          : 'border-gray-300 bg-white text-gray-600'}`}
+                      >
+                        품목별 삭제
+                      </button>
+                    </div>
+
+                    {deleteType === 'items' && selectedPurchaseItems.length > 0 && (
+                      <div className="space-y-1.5 mt-2">
+                        <div className="modal-label text-gray-600">삭제할 품목 선택</div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (deleteItemIds.length === selectedPurchaseItems.length) {
+                                setDeleteItemIds([])
+                              } else {
+                                setDeleteItemIds(selectedPurchaseItems.map((item: any) => String(item.id)))
+                              }
+                            }}
+                            className="button-base border border-gray-300 bg-white text-gray-600"
+                          >
+                            {deleteItemIds.length === selectedPurchaseItems.length ? '전체 해제' : '전체 선택'}
+                          </button>
+                          {deleteItemIds.length > 0 && (
+                            <span className="badge-text text-red-600">{deleteItemIds.length}개 선택됨</span>
+                          )}
+                        </div>
+                        {selectedPurchaseItems.map((item: any, index: number) => {
+                          const itemId = String(item.id)
+                          const isChecked = deleteItemIds.includes(itemId)
+                          return (
+                            <label
+                              key={itemId}
+                              className={`flex items-center gap-2 px-3 py-2 border business-radius-card cursor-pointer transition-colors ${
+                                isChecked
+                                  ? 'border-red-300 bg-red-50'
+                                  : 'border-gray-200 bg-white hover:bg-gray-50'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {
+                                  setDeleteItemIds(prev =>
+                                    isChecked
+                                      ? prev.filter(id => id !== itemId)
+                                      : [...prev, itemId]
+                                  )
+                                }}
+                                className="w-3.5 h-3.5 accent-red-500"
+                              />
+                              <span className="card-description text-gray-400">{item.line_number ?? index + 1}.</span>
+                              <span className="card-description">{item.item_name}</span>
+                              {item.specification && (
+                                <span className="card-description text-gray-500">({item.specification})</span>
+                              )}
+                              <span className="card-description text-gray-500">- {item.quantity}개</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {deleteType === 'all' && (
+                      <div className="badge-text text-red-500 bg-red-50 border border-red-200 business-radius-card px-3 py-2">
+                        발주요청과 모든 품목이 함께 삭제됩니다.
+                      </div>
+                    )}
                   </div>
                 )}
 

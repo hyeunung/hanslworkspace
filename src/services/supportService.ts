@@ -49,6 +49,13 @@ export type SupportInquiryPayload =
     }
   | {
       reason?: string
+      delete_type?: 'all' | 'items'
+      delete_items?: {
+        item_id: string
+        line_number?: number | null
+        item_name: string
+        specification?: string | null
+      }[]
     }
 
 export interface SupportInquiry {
