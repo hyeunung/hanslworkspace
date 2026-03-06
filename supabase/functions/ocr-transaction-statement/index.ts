@@ -2155,43 +2155,131 @@ async function applyTrailingOneQuantityCorrection(
   items: ExtractedItem[],
   correctionResult: OrderCorrectionResult
 ): Promise<ExtractedItem[]> {
-  const purchaseId = correctionResult.matchedPurchaseId
-  if (!purchaseId || !items.length) return items
-
-  const { data: systemItems } = await supabase
-    .from('purchase_request_items')
-    .select('line_number, quantity')
-    .eq('purchase_request_id', purchaseId)
-
-  if (!systemItems || systemItems.length === 0) return items
+  if (!items.length) return items
 
   const quantityByLine = new Map<number, number>()
-  systemItems.forEach((item: any) => {
-    const line = Number(item.line_number)
-    const quantity = Number(item.quantity)
-    if (Number.isFinite(line) && Number.isFinite(quantity)) {
-      quantityByLine.set(line, quantity)
-    }
-  })
+  const dominantPurchaseId = correctionResult.matchedPurchaseId
+  if (dominantPurchaseId) {
+    const { data: dominantSystemItems } = await supabase
+      .from('purchase_request_items')
+      .select('line_number, quantity')
+      .eq('purchase_request_id', dominantPurchaseId)
 
-  if (quantityByLine.size === 0) return items
+    ;(dominantSystemItems || []).forEach((row: any) => {
+      const line = Number(row.line_number)
+      const quantity = Number(row.quantity)
+      if (Number.isFinite(line) && Number.isFinite(quantity)) {
+        quantityByLine.set(line, quantity)
+      }
+    })
+  }
+
+  // 다중 발주 문서에서도 보정이 동작하도록 품목별 발주번호 기준 시스템 품목을 준비한다.
+  const normalizedOrderNumbers = Array.from(new Set(
+    items
+      .map((item) => normalizeOrderToken(item.po_number || ''))
+      .filter((value): value is string => Boolean(value))
+  ))
+
+  const systemItemsByOrderNumber = new Map<string, Array<{ line_number?: number; item_name: string; specification?: string; quantity?: number }>>()
+  if (normalizedOrderNumbers.length > 0) {
+    const purchaseRowsRaw = await Promise.all(
+      normalizedOrderNumbers.map(async (orderNumber) => {
+        const { data } = await supabase
+          .from('purchase_requests')
+          .select('id, purchase_order_number, sales_order_number')
+          .or(`purchase_order_number.eq.${orderNumber},sales_order_number.eq.${orderNumber}`)
+          .limit(1)
+        return data?.[0] || null
+      })
+    )
+
+    const purchaseRows = purchaseRowsRaw.filter((row): row is { id: number; purchase_order_number?: string; sales_order_number?: string } => Boolean(row?.id))
+    if (purchaseRows.length > 0) {
+      const purchaseIds = Array.from(new Set(purchaseRows.map((row) => row.id)))
+      const { data: purchaseItems } = await supabase
+        .from('purchase_request_items')
+        .select('purchase_request_id, line_number, item_name, specification, quantity')
+        .in('purchase_request_id', purchaseIds)
+
+      const itemsByPurchaseId = new Map<number, Array<{ line_number?: number; item_name: string; specification?: string; quantity?: number }>>()
+      ;(purchaseItems || []).forEach((row: any) => {
+        if (!row?.purchase_request_id) return
+        const key = Number(row.purchase_request_id)
+        const list = itemsByPurchaseId.get(key) || []
+        list.push({
+          line_number: row.line_number,
+          item_name: row.item_name || '',
+          specification: row.specification || '',
+          quantity: row.quantity
+        })
+        itemsByPurchaseId.set(key, list)
+      })
+
+      purchaseRows.forEach((row) => {
+        const mappedItems = itemsByPurchaseId.get(row.id) || []
+        if (mappedItems.length === 0) return
+        const poKey = row.purchase_order_number ? normalizeOrderToken(row.purchase_order_number) : null
+        const soKey = row.sales_order_number ? normalizeOrderToken(row.sales_order_number) : null
+        if (poKey) systemItemsByOrderNumber.set(poKey, mappedItems)
+        if (soKey) systemItemsByOrderNumber.set(soKey, mappedItems)
+      })
+    }
+  }
 
   let hasChanges = false
   const correctedItems = items.map((item, index) => {
-    const ocrLineNumber = item.line_number || index + 1
-    const mappedLineNumber = correctionResult.systemLineNumbers?.get(ocrLineNumber) ?? ocrLineNumber
-    const systemQuantity = quantityByLine.get(mappedLineNumber)
-    if (systemQuantity === undefined) return item
-
     const ocrQuantity = Number(item.quantity)
     if (!Number.isFinite(ocrQuantity) || !Number.isInteger(ocrQuantity)) return item
-    if (ocrQuantity === systemQuantity) return item
 
     const ocrQuantityText = String(ocrQuantity)
     if (ocrQuantityText.length <= 1 || !ocrQuantityText.endsWith('1')) return item
 
     const trimmedQuantity = Number(ocrQuantityText.slice(0, -1))
     if (!Number.isFinite(trimmedQuantity) || trimmedQuantity <= 0) return item
+
+    let systemQuantity: number | undefined = undefined
+
+    // 1차: 기존 방식(대표 발주 + 라인맵)
+    if (quantityByLine.size > 0) {
+      const ocrLineNumber = item.line_number || index + 1
+      const mappedLineNumber = correctionResult.systemLineNumbers?.get(ocrLineNumber) ?? ocrLineNumber
+      const dominantLineQuantity = quantityByLine.get(mappedLineNumber)
+      if (dominantLineQuantity !== undefined) {
+        systemQuantity = dominantLineQuantity
+      }
+    }
+
+    // 2차: 품목별 발주번호 기준으로 가장 유사한 시스템 품목 수량을 선택
+    if (systemQuantity === undefined || systemQuantity !== trimmedQuantity) {
+      const normalizedOrder = normalizeOrderToken(item.po_number || '')
+      const candidateSystemItems = normalizedOrder ? (systemItemsByOrderNumber.get(normalizedOrder) || []) : []
+      if (candidateSystemItems.length > 0) {
+        const ocrName = normalizeItemText(item.item_name || '')
+        let bestScore = -1
+        let bestQuantity: number | undefined = undefined
+
+        candidateSystemItems.forEach((sysItem) => {
+          const sysQty = Number(sysItem.quantity)
+          if (!Number.isFinite(sysQty)) return
+          const nameScore = calculateNameSimilarity(ocrName, normalizeItemText(sysItem.item_name || ''))
+          const specScore = sysItem.specification
+            ? calculateNameSimilarity(ocrName, normalizeItemText(sysItem.specification || ''))
+            : 0
+          const score = Math.max(nameScore, specScore)
+          if (score > bestScore) {
+            bestScore = score
+            bestQuantity = sysQty
+          }
+        })
+
+        if (bestQuantity !== undefined && bestScore >= 40) {
+          systemQuantity = bestQuantity
+        }
+      }
+    }
+
+    if (systemQuantity === undefined) return item
     if (trimmedQuantity !== systemQuantity) return item
 
     hasChanges = true
