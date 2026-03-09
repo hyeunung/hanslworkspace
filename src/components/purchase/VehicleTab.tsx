@@ -199,6 +199,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
   const [datePopoverOpen, setDatePopoverOpen] = useState(false);
   const [formNotes, setFormNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [successDialogOpen, setSuccessDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectTargetId, setRejectTargetId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -414,6 +415,8 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
     }
   }, [isCreateMode, resetForm]);
 
+  const vehicleButtonDisabled = submitting || isTimeReversed || !formDepartment || !formPurpose || !formVehicle || !formRoute || !formDriverId || !combinedStart || !combinedEnd;
+
   const handleSubmit = useCallback(async () => {
     if (!formDepartment || !formPurpose || !formVehicle || !formRoute || !formDriverId) {
       toast.error("필수 항목을 모두 입력해주세요.");
@@ -446,7 +449,6 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
 
       if (error) throw error;
 
-      toast.success("차량 배차 요청이 등록되었습니다.");
       if (isCreateMode) {
         resetForm();
       } else {
@@ -454,6 +456,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
       }
       loadRequests();
       onBadgeRefresh?.();
+      setSuccessDialogOpen(true);
     } catch (err) {
       logger.error("차량 요청 등록 실패", err);
       toast.error("등록에 실패했습니다. 다시 시도해주세요.");
@@ -838,7 +841,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
             <Button
               type="button"
               onClick={handleSubmit}
-              disabled={submitting || isTimeReversed}
+              disabled={vehicleButtonDisabled}
               className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
             >
               {submitting ? "등록 중..." : "배차요청"}
@@ -1315,7 +1318,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
               </Button>
               <Button
                 onClick={handleSubmit}
-                disabled={submitting || isTimeReversed}
+                disabled={vehicleButtonDisabled}
                 className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
               >
                 {submitting ? "등록 중..." : "배차요청"}
@@ -1352,6 +1355,25 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
               className="button-base bg-red-500 hover:bg-red-600 text-white"
             >
               반려
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
+        <AlertDialogContent className="sm:max-w-[360px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="modal-title">신청 완료</AlertDialogTitle>
+            <AlertDialogDescription className="text-[12px] text-gray-600">
+              차량 배차 신청이 정상적으로 완료되었습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => setSuccessDialogOpen(false)}
+              className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
+            >
+              확인
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

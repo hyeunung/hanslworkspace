@@ -210,6 +210,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
   const [currentUser, setCurrentUser] = useState<Employee | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [successDialogOpen, setSuccessDialogOpen] = useState(false);
 
   // New request form
   const [formCard, setFormCard] = useState<typeof COMPANY_CARDS[0] | null>(null);
@@ -401,7 +402,6 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
         description: formDescription.trim() || null,
       });
       if (error) throw error;
-      toast.success("카드사용 요청이 등록되었습니다.");
       if (isCreateMode) {
         resetForm();
       } else {
@@ -409,6 +409,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
       }
       loadUsages();
       onBadgeRefresh?.();
+      setSuccessDialogOpen(true);
     } catch (err) {
       logger.error("카드사용 요청 실패", err);
       toast.error("요청 등록에 실패했습니다.");
@@ -1481,6 +1482,25 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
               className="button-base bg-red-500 hover:bg-red-600 text-white"
             >
               반려
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
+        <AlertDialogContent className="sm:max-w-[360px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="modal-title">신청 완료</AlertDialogTitle>
+            <AlertDialogDescription className="text-[12px] text-gray-600">
+              카드사용 신청이 정상적으로 완료되었습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => setSuccessDialogOpen(false)}
+              className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
+            >
+              확인
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

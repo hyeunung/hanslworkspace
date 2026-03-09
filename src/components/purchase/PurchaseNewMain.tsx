@@ -10,6 +10,15 @@ import { markCacheStaleAndNotify, invalidatePurchaseMemoryCache } from '@/stores
 import { loadAllPurchaseData } from '@/services/purchaseDataLoader';
 import { useForm as useFormRH, useFieldArray } from "react-hook-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { FormValues, FormItem } from "@/types/purchase";
 import { toast } from "sonner";
 import ReactSelect from 'react-select';
@@ -153,6 +162,7 @@ export default function PurchaseNewMain() {
   const [currency, setCurrency] = useState("KRW");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [successDialogOpen, setSuccessDialogOpen] = useState(false);
   const [inputValues, setInputValues] = useState<{[key: string]: string}>({});
   const [isContactDialogOpen, setIsContactDialogOpen] = useState(false);
   const [contactsForEdit, setContactsForEdit] = useState<{ id?: number; contact_name: string; contact_email: string; contact_phone: string; position: string; isNew?: boolean }[]>([]);
@@ -883,8 +893,8 @@ export default function PurchaseNewMain() {
       setError("");
       setLoading(false);
       
-      // 3. 성공 메시지 표시
-      toast.success("발주요청서가 성공적으로 생성되었습니다.");
+      // 3. 성공 팝업 표시
+      setSuccessDialogOpen(true);
       
       // 4. 메모리 캐시 무효화 및 즉시 새로고침 시도 (탭 이동 전 최신화)
       invalidatePurchaseMemoryCache() // 캐시 무효화로 다음 로드 시 새로고침
@@ -2042,6 +2052,25 @@ export default function PurchaseNewMain() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
+        <AlertDialogContent className="sm:max-w-[360px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="modal-title">신청 완료</AlertDialogTitle>
+            <AlertDialogDescription className="text-[12px] text-gray-600">
+              발주요청서가 정상적으로 생성되었습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => setSuccessDialogOpen(false)}
+              className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
+            >
+              확인
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </form>
   );
 }

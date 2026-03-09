@@ -398,6 +398,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
   // 신규 출장 신청 모달
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [requestSubmitting, setRequestSubmitting] = useState(false);
+  const [successDialogOpen, setSuccessDialogOpen] = useState(false);
   const [formDepartment, setFormDepartment] = useState("");
   const [formProjectName, setFormProjectName] = useState("");
   const [formPurpose, setFormPurpose] = useState("");
@@ -687,10 +688,12 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     }
   }, [isCreateMode, resetRequestForm]);
 
+  const tripButtonDisabled = requestSubmitting || !formDepartment || !formProjectName.trim() || !formPurpose.trim() || !formDestination.trim() || !formDateRange?.from || (formTransportType === "company_vehicle" && !formTransportDetail) || (formTransportType === "public_transport" && !formTransportDetail) || (formTransportType === "other" && !formTransportDetail.trim());
+
   const handleCreateTrip = useCallback(async () => {
     const startDate = formDateRange?.from;
     const endDate = formDateRange?.to ?? formDateRange?.from;
-    if (!formDepartment || !formPurpose.trim() || !formDestination.trim() || !startDate || !endDate) {
+    if (!formDepartment || !formProjectName.trim() || !formPurpose.trim() || !formDestination.trim() || !startDate || !endDate) {
       toast.error("필수 항목을 입력해주세요.");
       return;
     }
@@ -736,7 +739,6 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
         precheck_note: formPrecheckNote.trim() || null,
       });
       if (error) throw error;
-      toast.success("출장 승인 요청이 등록되었습니다.");
       if (isCreateMode) {
         resetRequestForm();
       } else {
@@ -744,6 +746,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
       }
       loadTrips();
       onBadgeRefresh?.();
+      setSuccessDialogOpen(true);
     } catch (err) {
       logger.error("출장 요청 등록 실패", err);
       toast.error("출장 요청 등록에 실패했습니다.");
@@ -1587,11 +1590,11 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                 </div>
               </div>
               <div className="doc-form-cell">
-                <div className="doc-form-cell-label">Project</div>
+                <div className="doc-form-cell-label">출장지/Project <span className="required">*</span></div>
                 <Input
                   value={formProjectName}
                   onChange={(e) => setFormProjectName(e.target.value)}
-                  placeholder="프로젝트명"
+                  placeholder="출장업체 또는 Project 명 입력"
                   className="doc-form-input"
                 />
               </div>
@@ -1599,11 +1602,11 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
 
             <div className="doc-form-row">
               <div className="doc-form-cell">
-                <div className="doc-form-cell-label">출장지 <span className="required">*</span></div>
+                <div className="doc-form-cell-label">출장지역 <span className="required">*</span></div>
                 <Input
                   value={formDestination}
                   onChange={(e) => setFormDestination(e.target.value)}
-                  placeholder="출장지 입력"
+                  placeholder="지역명 입력"
                   className="doc-form-input"
                 />
               </div>
@@ -1802,7 +1805,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
             <Button
               type="button"
               onClick={handleCreateTrip}
-              disabled={requestSubmitting}
+              disabled={tripButtonDisabled}
               className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
             >
               {requestSubmitting ? "요청 중..." : "출장승인요청"}
@@ -2038,11 +2041,11 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                 />
               </div>
               <div>
-                <Label className="modal-label mb-1.5 block text-[11px]">Project</Label>
+                <Label className="modal-label mb-1.5 block text-[11px]">출장지/Project<span className="text-red-500 ml-0.5">*</span></Label>
                 <Input
                   value={formProjectName}
                   onChange={(e) => setFormProjectName(e.target.value)}
-                  placeholder="프로젝트명"
+                  placeholder="출장업체 또는 Project 명 입력"
                   className="h-[28px] text-xs bg-white border-[#d2d2d7] business-radius-input"
                 />
               </div>
@@ -2050,11 +2053,11 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <Label className="modal-label mb-1.5 block text-[11px]">출장지<span className="text-red-500 ml-0.5">*</span></Label>
+                <Label className="modal-label mb-1.5 block text-[11px]">출장지역<span className="text-red-500 ml-0.5">*</span></Label>
                 <Input
                   value={formDestination}
                   onChange={(e) => setFormDestination(e.target.value)}
-                  placeholder="출장지 입력"
+                  placeholder="지역명 입력"
                   className="h-[28px] text-xs bg-white border-[#d2d2d7] business-radius-input"
                 />
               </div>
@@ -2248,7 +2251,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
               </Button>
               <Button
                 onClick={handleCreateTrip}
-                disabled={requestSubmitting}
+                disabled={tripButtonDisabled}
                 className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
               >
                 {requestSubmitting ? "요청 중..." : "출장승인요청"}
@@ -2968,6 +2971,25 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
               className="button-base bg-green-500 hover:bg-green-600 text-white"
             >
               확인 및 승인
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={successDialogOpen} onOpenChange={setSuccessDialogOpen}>
+        <AlertDialogContent className="sm:max-w-[360px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="modal-title">신청 완료</AlertDialogTitle>
+            <AlertDialogDescription className="text-[12px] text-gray-600">
+              출장 신청이 정상적으로 완료되었습니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => setSuccessDialogOpen(false)}
+              className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
+            >
+              확인
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
