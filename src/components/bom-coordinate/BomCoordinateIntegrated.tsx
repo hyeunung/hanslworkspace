@@ -617,6 +617,9 @@ export default function BomCoordinateIntegrated() {
 
   const handleSaveBOM = async (items: BOMItem[]) => {
     if (!processedResult?.cadDrawingId) return;
+    if (isSaving) return;
+
+    setIsSaving(true);
 
     // processedResult.isEditMode를 사용 (stale closure 문제 방지)
     const isEditMode = processedResult.isEditMode === true;
@@ -897,6 +900,8 @@ export default function BomCoordinateIntegrated() {
     } catch (error: any) {
       console.error('Save error:', error);
       toast.error(`저장에 실패했습니다: ${error.message}`);
+    } finally {
+      setIsSaving(false);
     }
   };
 

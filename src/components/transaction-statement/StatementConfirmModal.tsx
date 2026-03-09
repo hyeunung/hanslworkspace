@@ -1631,9 +1631,30 @@ export default function StatementConfirmModal({
       : '';
     if (normalizedSelected && candidateSet.has(normalizedSelected)) return normalizedSelected;
     if (extractedInDb) return extractedInDb;
+    if (normalizedSelected && !candidateSet.has(normalizedSelected)) {
+    }
     if (normalizedSelected) return normalizedSelected;
     return normalizedExtracted || '';
   }, [getPOCandidatesForItem, itemPONumbers]);
+
+  const getDisplayPOForMultiScope = useCallback((item: TransactionStatementItemWithMatch): string => {
+    const normalizedExtracted = item.extracted_po_number
+      ? normalizeOrderNumber(item.extracted_po_number)
+      : '';
+    const candidates = getPOCandidatesForItem(item.id);
+    const candidateSet = new Set(candidates.map(candidate => normalizeOrderNumber(candidate)));
+    const selected = itemPONumbers.get(item.id);
+    const normalizedSelected = selected ? normalizeOrderNumber(selected) : '';
+    const extractedInDb = normalizedExtracted && candidateSet.has(normalizedExtracted)
+      ? normalizedExtracted
+      : '';
+    if (normalizedSelected && !candidateSet.has(normalizedSelected)) {
+    }
+    if (normalizedSelected && candidateSet.has(normalizedSelected)) return normalizedSelected;
+    if (extractedInDb) return extractedInDb;
+    // 다중발주에서는 시스템 후보에 없는 OCR/선택 번호는 빈칸 처리
+    return '';
+  }, [getPOCandidatesForItem, itemPONumbers, getSystemItemsForPO]);
 
   const ocrLineSeqByItemId = useMemo(() => {
     const seqMap = new Map<string, number>();
@@ -2752,7 +2773,7 @@ export default function StatementConfirmModal({
   };
 
   // 발주번호 선택 시 (Case 2: 개별 품목용)
-  const handleSelectItemPO = (ocrItemId: string, poNumber: string) => {
+  const handleSelectItemPO = async (ocrItemId: string, poNumber: string) => {
     setItemPONumbers(prev => {
       const newMap = new Map(prev);
       newMap.set(ocrItemId, poNumber);
@@ -2766,11 +2787,12 @@ export default function StatementConfirmModal({
     });
     
     const ocrItem = statementWithItems?.items.find(i => i.id === ocrItemId);
-    
-    if (ocrItem) {
+
+    const resolveBestMatchFromItems = (itemsForPO: SystemPurchaseItem[]): SystemPurchaseItem | null => {
+      if (!ocrItem) return null;
       let bestMatch: SystemPurchaseItem | null = null;
       let bestScore = -1;
-      const systemItems = getSystemItemsForPO(poNumber);
+      const systemItems = itemsForPO;
       const matchingCandidates = ocrItem.match_candidates?.filter(c => 
         c.purchase_order_number === poNumber || c.sales_order_number === poNumber
       ) || [];
@@ -2805,14 +2827,121 @@ export default function StatementConfirmModal({
       const finalMatch = bestMatch as SystemPurchaseItem | null;
       const matchedName = finalMatch?.item_name || '없음';
       console.log(`🔄 발주번호 선택: ${poNumber} → 매칭: ${matchedName} (점수: ${bestScore})`);
-      
+      return bestMatch;
+    };
+
+    if (ocrItem) {
+      let systemItems = getSystemItemsForPO(poNumber);
+
+      try {
+        const normalizedPO = normalizeOrderNumber(poNumber);
+        const { data: purchaseData } = await supabase
+          .from('purchase_requests')
+          .select(`
+            id,
+            purchase_order_number,
+            sales_order_number,
+            vendor:vendors(vendor_name),
+            purchase_request_items (
+              id,
+              line_number,
+              item_name,
+              specification,
+              quantity,
+              received_quantity,
+              unit_price_value,
+              amount_value
+            )
+          `)
+          .or(`purchase_order_number.eq.${normalizedPO},sales_order_number.eq.${normalizedPO}`)
+          .limit(1);
+
+        if (purchaseData && purchaseData.length > 0) {
+          const purchase = purchaseData[0];
+          const vendorName = (purchase.vendor as { vendor_name?: string } | null)?.vendor_name || '';
+          const fetchedItems: SystemPurchaseItem[] = (purchase.purchase_request_items || []).map((item: any) => ({
+            purchase_id: purchase.id,
+            item_id: item.id,
+            line_number: item.line_number,
+            purchase_order_number: purchase.purchase_order_number || '',
+            sales_order_number: purchase.sales_order_number,
+            item_name: item.item_name || '',
+            specification: item.specification,
+            quantity: item.quantity,
+            received_quantity: item.received_quantity,
+            unit_price: item.unit_price_value,
+            amount: item.amount_value,
+            vendor_name: vendorName
+          }));
+
+          try {
+            const { data: deleteInquiries } = await supabase
+              .from('support_inquires')
+              .select('status, inquiry_payload')
+              .eq('purchase_request_id', purchase.id)
+              .eq('inquiry_type', 'delete');
+
+            const pendingDeleteItemIds = new Set<number>();
+            (deleteInquiries || []).forEach((inq: any) => {
+              if (!inq || !['open', 'in_progress'].includes(inq.status)) return;
+              const payload = inq.inquiry_payload || {};
+              const deleteItems = Array.isArray(payload.delete_items) ? payload.delete_items : [];
+              deleteItems.forEach((it: any) => {
+                const id = Number(it?.item_id);
+                if (!Number.isNaN(id) && id > 0) pendingDeleteItemIds.add(id);
+              });
+            });
+
+            const overlapCount = fetchedItems.filter(item => pendingDeleteItemIds.has(item.item_id)).length;
+
+            const allDeleteItemIds = new Set<number>();
+            const overlapByStatus: Record<string, number> = {};
+            (deleteInquiries || []).forEach((inq: any) => {
+              const statusKey = String(inq?.status || 'unknown');
+              if (overlapByStatus[statusKey] === undefined) {
+                overlapByStatus[statusKey] = 0;
+              }
+              const payload = inq?.inquiry_payload || {};
+              const deleteItems = Array.isArray(payload.delete_items) ? payload.delete_items : [];
+              const idsForInquiry: number[] = [];
+              deleteItems.forEach((it: any) => {
+                const id = Number(it?.item_id);
+                if (!Number.isNaN(id) && id > 0) {
+                  allDeleteItemIds.add(id);
+                  idsForInquiry.push(id);
+                }
+              });
+              const overlapForInquiry = fetchedItems.filter(item => idsForInquiry.includes(item.item_id)).length;
+              overlapByStatus[statusKey] += overlapForInquiry;
+            });
+            const totalDeleteOverlap = fetchedItems.filter(item => allDeleteItemIds.has(item.item_id)).length;
+          } catch {
+            // no-op
+          }
+
+          setPoItemsMap(prev => {
+            const next = new Map(prev);
+            next.set(normalizedPO, fetchedItems);
+            if (purchase.purchase_order_number) {
+              next.set(purchase.purchase_order_number, fetchedItems);
+            }
+            if (purchase.sales_order_number) {
+              next.set(purchase.sales_order_number, fetchedItems);
+            }
+            return next;
+          });
+          systemItems = fetchedItems;
+        }
+      } catch {
+        // no-op (fallback to existing cached items + candidate-based matching below)
+      }
+
+      const bestMatch = resolveBestMatchFromItems(systemItems);
       setItemMatches(prev => {
         const newMap = new Map(prev);
         newMap.set(ocrItemId, bestMatch);
         return newMap;
       });
-      
-      // 즉시 DB 저장 (매칭 + 발주번호)
       persistMatchChange(ocrItemId, bestMatch);
       persistSingleOCRItem(ocrItemId, 'po_number', poNumber);
     }
@@ -3827,15 +3956,21 @@ export default function StatementConfirmModal({
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
+      <Dialog open={isOpen} onOpenChange={onClose} modal={openDropdowns.size === 0}>
         <DialogContent 
           maxWidth="max-w-[85vw] sm:max-w-[85vw]"
           className="max-h-[90vh] overflow-hidden flex flex-col business-radius-modal" 
           data-debug={dialogDebugId}
           showCloseButton={false}
+          onPointerDownOutside={(e) => {
+          }}
+          onFocusOutside={(e) => {
+          }}
           onInteractOutside={(e) => {
+            const target = e.target as HTMLElement | null;
+            const isDropdownInteraction = Boolean(target?.closest('[data-ts-dropdown-panel="true"]'));
             // 드롭다운이 열려있을 때는 외부 클릭으로 모달 닫기 방지
-            if (openDropdowns.size > 0) {
+            if (openDropdowns.size > 0 && !isDropdownInteraction) {
               e.preventDefault();
             }
           }}
@@ -4254,23 +4389,7 @@ export default function StatementConfirmModal({
                   </thead>
                   <tbody>
                     {statementWithItems.items.map((ocrItem, rowIndex) => {
-                      const getDisplayPOForItem = (item: TransactionStatementItemWithMatch) => {
-                        const normalizedExtracted = item.extracted_po_number
-                          ? normalizeOrderNumber(item.extracted_po_number)
-                          : undefined;
-                        const candidates = getPOCandidatesForItem(item.id);
-                        const candidateSet = new Set(candidates.map(candidate => normalizeOrderNumber(candidate)));
-                        const selected = itemPONumbers.get(item.id);
-                        const normalizedSelected = selected ? normalizeOrderNumber(selected) : '';
-                        const extractedInDb = normalizedExtracted && candidateSet.has(normalizedExtracted)
-                          ? normalizedExtracted
-                          : '';
-                        if (normalizedSelected && candidateSet.has(normalizedSelected)) return normalizedSelected;
-                        if (extractedInDb) return extractedInDb;
-                        // 월말결제 등: 후보에 없어도 매칭된 발주번호가 있으면 그대로 표시
-                        if (normalizedSelected) return normalizedSelected;
-                        return '';
-                      };
+                      const getDisplayPOForItem = (item: TransactionStatementItemWithMatch) => getDisplayPOForMultiScope(item);
                       const matchedSystem = itemMatches.get(ocrItem.id);
                       const matchStatus = getMatchStatus(ocrItem);
                       // OCR 추출 번호를 시스템 형식으로 정규화 (예: _01 → _001, -1 → -01)
@@ -4285,9 +4404,11 @@ export default function StatementConfirmModal({
                       const extractedInDb = normalizedExtractedPO && candidateSet.has(normalizedExtractedPO)
                         ? normalizedExtractedPO
                         : '';
+                      if (!isSamePONumber && normalizedSelectedPO && !candidateSet.has(normalizedSelectedPO) && !extractedInDb) {
+                      }
                       const itemPO = normalizedSelectedPO && candidateSet.has(normalizedSelectedPO)
                         ? normalizedSelectedPO
-                        : extractedInDb || (normalizedSelectedPO || '');
+                        : extractedInDb || '';
                       if (rowIndex < 5) {
                       }
                       // 매칭된 발주번호를 맨 앞에 추가 (추천 표시용)
@@ -4443,13 +4564,21 @@ export default function StatementConfirmModal({
                                   <>
                                     <div
                                       className="fixed inset-0 z-[9998]"
-                                      onClick={() => toggleDropdown(`po-${ocrItem.id}`)}
+                                      onClick={() => {
+                                        toggleDropdown(`po-${ocrItem.id}`);
+                                      }}
                                     />
                                     <div
+                                      data-ts-dropdown-panel="true"
                                       className="fixed z-[9999] pointer-events-auto bg-white border border-gray-200 rounded-lg shadow-xl w-[280px] max-h-[360px] overflow-y-auto"
                                       style={{
                                         top: dropdownPosition.top,
                                         left: dropdownPosition.left
+                                      }}
+                                      ref={(el) => {
+                                        if (!el) return;
+                                      }}
+                                      onMouseDown={() => {
                                       }}
                                       onClick={(e) => e.stopPropagation()}
                                       onWheel={handleGlobalPODropdownWheel}
@@ -4460,6 +4589,12 @@ export default function StatementConfirmModal({
                                             type="text"
                                             value={itemSearchValue}
                                             onChange={(e) => handleItemPOSearch(ocrItem.id, e.target.value)}
+                                            onMouseDown={() => {
+                                            }}
+                                            onFocus={() => {
+                                            }}
+                                            onBlur={(e) => {
+                                            }}
                                             placeholder="발주/수주번호 검색..."
                                             className="w-full h-6 px-2 pr-6 text-[10px] bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-hansl-400"
                                           />
@@ -4484,7 +4619,9 @@ export default function StatementConfirmModal({
                                               <div
                                                 key={po.id}
                                                 className="px-2 py-1.5 hover:bg-gray-50 cursor-pointer text-[11px]"
-                                                onClick={() => handleSelectItemPO(ocrItem.id, selectedNumber)}
+                                                onClick={() => {
+                                                  handleSelectItemPO(ocrItem.id, selectedNumber);
+                                                }}
                                               >
                                                 <div className="flex items-center justify-between gap-2">
                                                   <div className="font-medium text-gray-900">
@@ -4601,6 +4738,7 @@ export default function StatementConfirmModal({
                                       onClick={() => toggleDropdown(`item-${ocrItem.id}`)}
                                     />
                                     <div
+                                      data-ts-dropdown-panel="true"
                                       className="fixed z-[9999] pointer-events-auto bg-white border border-gray-200 rounded-lg shadow-xl w-[280px] max-h-[360px] overflow-y-auto"
                                       style={{
                                         top: dropdownPosition.top,
@@ -4685,6 +4823,7 @@ export default function StatementConfirmModal({
                                       onClick={() => toggleDropdown(`item-${ocrItem.id}`)}
                                     />
                                     <div
+                                      data-ts-dropdown-panel="true"
                                       className="fixed z-[9999] pointer-events-auto bg-white border border-gray-200 rounded-lg shadow-xl w-[280px] max-h-[360px] overflow-y-auto"
                                       style={{
                                         top: dropdownPosition.top,
@@ -5460,7 +5599,7 @@ export default function StatementConfirmModal({
         onClose={() => setIsImageViewerOpen(false)}
       />
 
-      {/* 발주번호 선택 드롭다운 (Portal로 document.body에 렌더링하여 Dialog 이벤트 차단 우회) */}
+      {/* 발주번호 선택 드롭다운 */}
       {openDropdowns.has('global-po') && createPortal(
         <>
           {/* 오버레이 */}
@@ -5471,6 +5610,7 @@ export default function StatementConfirmModal({
           />
           {/* 드롭다운 */}
           <div 
+            data-ts-dropdown-panel="true"
             className="fixed z-[9999] pointer-events-auto bg-white border border-gray-200 rounded-lg shadow-xl min-w-[280px] max-h-[350px] overflow-y-auto"
             style={{
               top: dropdownPosition.top,

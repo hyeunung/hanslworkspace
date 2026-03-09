@@ -3,16 +3,34 @@ import { createClient } from "@/lib/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Filter, Receipt, Printer, Download, Calendar, Plus, Trash2, Images } from "lucide-react";
+import { Search, Filter, Receipt, Printer, Download, Calendar, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import ReceiptDetailModal from "./ReceiptDetailModal";
 import MobileReceiptCard from "./MobileReceiptCard";
 import ReceiptUploadModal from "./ReceiptUploadModal";
 import { useReceiptPermissions } from "@/hooks/useReceiptPermissions";
 import type { ReceiptItem, ReceiptGroup } from "@/types/receipt";
-import { formatDate, formatFileSize } from "@/utils/helpers";
+import { formatDate, formatDateISO } from "@/utils/helpers";
 import { extractStoragePathFromUrl } from "@/utils/receipt";
 import { logger } from "@/lib/logger";
+
+function formatKrw(value?: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "-";
+  return `₩${Math.round(value).toLocaleString("ko-KR")}`;
+}
+
+function formatPaymentDate(value?: string | null): string {
+  if (!value) return "-";
+  const dateOnly = value.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return "-";
+  return dateOnly.slice(2).replace(/-/g, ".");
+}
+
+function formatUploadDate(value?: string | null): string {
+  const isoDate = formatDateISO(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return "-";
+  return isoDate.slice(2).replace(/-/g, ".");
+}
 
 function buildGroups(receipts: ReceiptItem[]): ReceiptGroup[] {
   const groupMap = new Map<string, ReceiptItem[]>();
@@ -29,12 +47,10 @@ function buildGroups(receipts: ReceiptItem[]): ReceiptGroup[] {
   }
 
   const groups: ReceiptGroup[] = [];
-
   for (const [gid, items] of groupMap) {
     items.sort((a, b) => new Date(a.uploaded_at).getTime() - new Date(b.uploaded_at).getTime());
     groups.push({ group_id: gid, receipts: items, primary: items[0], count: items.length });
   }
-
   for (const s of singles) {
     groups.push({ group_id: null, receipts: [s], primary: s, count: 1 });
   }
@@ -132,6 +148,8 @@ export default function ReceiptsMain() {
   const [selectedGroupReceipts, setSelectedGroupReceipts] = useState<ReceiptItem[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [olderPage, setOlderPage] = useState(1);
+  const OLDER_PAGE_SIZE = 20;
 
   const supabase = createClient();
   const { permissions, loading: permissionsLoading } = useReceiptPermissions();
@@ -169,7 +187,80 @@ export default function ReceiptsMain() {
 
       if (error) throw error;
 
-      setReceipts(data || []);
+      const baseReceipts = data || [];
+      if (baseReceipts.length === 0) {
+        setReceipts([]);
+        return;
+      }
+
+      const receiptIds = baseReceipts.map((receipt) => receipt.id);
+      const { data: ocrJobs, error: ocrError } = await supabase
+        .from('receipt_ocr_jobs')
+        .select(`
+          source_receipt_id,
+          status,
+          created_at,
+          receipt_ocr_results (
+            merchant_name,
+            item_name,
+            payment_date,
+            quantity,
+            unit_price,
+            total_amount
+          )
+        `)
+        .in('source_receipt_id', receiptIds)
+        .order('created_at', { ascending: false });
+
+      if (ocrError) {
+        logger.warn('영수증 OCR 결과 조회 실패', { ocrError });
+        setReceipts(baseReceipts);
+        return;
+      }
+
+      const ocrByReceiptId = new Map<string, {
+        status?: 'pending' | 'queued' | 'processing' | 'succeeded' | 'failed';
+        merchantName?: string | null;
+        itemName?: string | null;
+        paymentDate?: string | null;
+        quantity?: number | null;
+        unitPrice?: number | null;
+        totalAmount?: number | null;
+      }>();
+
+      (ocrJobs || []).forEach((job: any) => {
+        const sourceId = String(job.source_receipt_id || '');
+        if (!sourceId || ocrByReceiptId.has(sourceId)) return;
+        const result = Array.isArray(job.receipt_ocr_results)
+          ? job.receipt_ocr_results[0]
+          : job.receipt_ocr_results;
+        ocrByReceiptId.set(sourceId, {
+          status: job.status,
+          merchantName: result?.merchant_name ?? null,
+          itemName: result?.item_name ?? null,
+          paymentDate: result?.payment_date ?? null,
+          quantity: result?.quantity ?? null,
+          unitPrice: result?.unit_price ?? null,
+          totalAmount: result?.total_amount ?? null,
+        });
+      });
+
+      const mergedReceipts = baseReceipts.map((receipt) => {
+        const ocr = ocrByReceiptId.get(String(receipt.id));
+        if (!ocr) return receipt;
+        return {
+          ...receipt,
+          ocr_status: ocr.status,
+          ocr_merchant_name: ocr.merchantName,
+          ocr_item_name: ocr.itemName,
+          ocr_payment_date: ocr.paymentDate,
+          ocr_quantity: ocr.quantity,
+          ocr_unit_price: ocr.unitPrice,
+          ocr_total_amount: ocr.totalAmount,
+        };
+      });
+
+      setReceipts(mergedReceipts);
     } catch (error) {
       toast.error('영수증 데이터를 불러오는데 실패했습니다.');
     } finally {
@@ -185,6 +276,7 @@ export default function ReceiptsMain() {
       filtered = filtered.filter(receipt => 
         receipt.file_name.toLowerCase().includes(searchLower) ||
         receipt.memo?.toLowerCase().includes(searchLower) ||
+        (receipt.ocr_payment_date || "").includes(searchTerm) ||
         formatDate(receipt.uploaded_at).includes(searchTerm) ||
         receipt.uploaded_at.includes(searchTerm)
       );
@@ -201,7 +293,30 @@ export default function ReceiptsMain() {
     return filtered;
   }, [receipts, searchTerm, dateFilter]);
 
-  const groups = useMemo(() => buildGroups(filteredReceipts), [filteredReceipts]);
+  const groupedReceipts = useMemo(() => buildGroups(filteredReceipts), [filteredReceipts]);
+
+  const recentWeekGroups = useMemo(() => {
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    return groupedReceipts.filter((g) => new Date(g.primary.uploaded_at) >= weekAgo);
+  }, [groupedReceipts]);
+
+  const olderGroups = useMemo(() => {
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    return groupedReceipts.filter((g) => new Date(g.primary.uploaded_at) < weekAgo);
+  }, [groupedReceipts]);
+
+  const olderTotalPages = Math.max(1, Math.ceil(olderGroups.length / OLDER_PAGE_SIZE));
+  const pagedOlderGroups = useMemo(() => {
+    const start = (olderPage - 1) * OLDER_PAGE_SIZE;
+    return olderGroups.slice(start, start + OLDER_PAGE_SIZE);
+  }, [olderGroups, olderPage]);
+
+  const visibleGroups = useMemo(
+    () => [...recentWeekGroups, ...pagedOlderGroups],
+    [recentWeekGroups, pagedOlderGroups]
+  );
 
   useEffect(() => {
     if (!permissionsLoading) {
@@ -209,13 +324,23 @@ export default function ReceiptsMain() {
     }
   }, [loadReceipts, permissionsLoading]);
 
+  useEffect(() => {
+    if (olderPage > olderTotalPages) {
+      setOlderPage(olderTotalPages);
+    }
+  }, [olderPage, olderTotalPages]);
+
+  useEffect(() => {
+    setOlderPage(1);
+  }, [searchTerm, dateFilter]);
+
   const handleViewReceipt = (group: ReceiptGroup) => {
     setSelectedReceipt(group.primary);
     setSelectedGroupReceipts(group.receipts);
     setIsModalOpen(true);
   };
 
-  const markGroupAsPrinted = useCallback(async (receiptIds: string[]) => {
+  const markGroupAsPrinted = useCallback(async (receiptIds: Array<string | number>) => {
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError || !user) {
@@ -271,15 +396,15 @@ export default function ReceiptsMain() {
 
   const handlePrintGroup = (group: ReceiptGroup) => {
     const imageUrls = group.receipts
-      .filter(r => r.receipt_image_url)
-      .map(r => r.receipt_image_url);
+      .filter((r) => r.receipt_image_url)
+      .map((r) => r.receipt_image_url);
 
     if (imageUrls.length === 0) {
       toast.error('영수증 이미지가 없습니다.');
       return;
     }
 
-    const receiptIds = group.receipts.map(r => r.id);
+    const receiptIds = group.receipts.map((r) => r.id);
     printReceiptImages(imageUrls, () => markGroupAsPrinted(receiptIds));
   };
 
@@ -336,12 +461,10 @@ export default function ReceiptsMain() {
     try {
       for (const receipt of group.receipts) {
         const filePath = extractStoragePathFromUrl(receipt.receipt_image_url);
-        
         if (filePath) {
           const { error: storageError } = await supabase.storage
             .from('receipt-images')
             .remove([filePath]);
-
           if (storageError) {
             logger.warn('Storage 파일 삭제 실패', { storageError, filePath });
           }
@@ -362,8 +485,6 @@ export default function ReceiptsMain() {
     }
   }, [permissions.canDelete, loadReceipts]);
 
-  const isGroupPrinted = (group: ReceiptGroup) => group.receipts.every(r => r.is_printed);
-
   return (
     <div className="w-full">
       {/* Header */}
@@ -383,7 +504,7 @@ export default function ReceiptsMain() {
             영수증 업로드
           </Button>
           <span className="badge-stats bg-gray-100 text-gray-600 modal-subtitle">
-            총 {groups.length}건
+            총 {filteredReceipts.length}건
           </span>
         </div>
       </div>
@@ -451,7 +572,7 @@ export default function ReceiptsMain() {
               <h3 className="modal-section-title mb-2">접근 권한 없음</h3>
               <p className="card-subtitle">영수증 관리에 접근할 권한이 없습니다.</p>
             </div>
-          ) : groups.length === 0 ? (
+          ) : visibleGroups.length === 0 ? (
             <div className="text-center py-12">
               <Receipt className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h3 className="modal-section-title mb-2">영수증이 없습니다</h3>
@@ -461,34 +582,39 @@ export default function ReceiptsMain() {
             <>
               {/* 데스크톱 테이블 뷰 */}
               <div className="hidden md:block overflow-x-auto">
-                <table className="w-full min-w-fit">
+                <table className="w-full min-w-[1400px] table-fixed">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-center header-title text-gray-600 uppercase tracking-wider">인쇄완료</th>
-                    <th className="px-4 py-3 text-center header-title text-gray-600 uppercase tracking-wider">업로드일</th>
-                    <th className="px-4 py-3 text-left header-title text-gray-600 uppercase tracking-wider">메모</th>
+                    <th className="w-[104px] px-5 py-3 text-center header-title text-gray-600 uppercase tracking-wider">인쇄완료</th>
+                    <th className="w-[104px] px-5 py-3 text-center header-title text-gray-600 uppercase tracking-wider">업로드일</th>
+                    <th className="w-[118px] px-5 py-3 text-center header-title text-gray-600 uppercase tracking-wider">결제일</th>
+                    <th className="w-[188px] px-5 py-3 text-left header-title text-gray-600 uppercase tracking-wider">거래처</th>
+                    <th className="w-[240px] px-5 py-3 text-left header-title text-gray-600 uppercase tracking-wider">품명</th>
+                    <th className="w-[90px] px-5 py-3 text-right header-title text-gray-600 uppercase tracking-wider">수량</th>
+                    <th className="w-[140px] px-5 py-3 text-right header-title text-gray-600 uppercase tracking-wider">단가</th>
+                    <th className="w-[150px] px-5 py-3 text-right header-title text-gray-600 uppercase tracking-wider">합계</th>
+                    <th className="px-5 py-3 text-left header-title text-gray-600 uppercase tracking-wider">메모</th>
                     {permissions.canViewUploaderInfo && (
-                      <th className="px-4 py-3 text-left header-title text-gray-600 uppercase tracking-wider">등록인</th>
+                      <th className="w-[110px] px-5 py-3 text-left header-title text-gray-600 uppercase tracking-wider">등록인</th>
                     )}
-                    <th className="px-4 py-3 text-center header-title text-gray-600 uppercase tracking-wider">크기</th>
-                    <th className="px-4 py-3 text-center header-title text-gray-600 uppercase tracking-wider">액션</th>
+                    <th className="w-[100px] px-5 py-3 text-center header-title text-gray-600 uppercase tracking-wider">액션</th>
                     {permissions.canDelete && (
-                      <th className="px-4 py-3 text-center header-title text-gray-600 uppercase tracking-wider">삭제</th>
+                      <th className="w-[64px] px-5 py-3 text-center header-title text-gray-600 uppercase tracking-wider">삭제</th>
                     )}
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {groups.map((group) => {
+                  {visibleGroups.map((group) => {
                     const r = group.primary;
-                    const printed = isGroupPrinted(group);
-                    const totalSize = group.receipts.reduce((acc, cur) => acc + (cur.file_size || 0), 0);
+                    const printed = group.receipts.every((item) => !!item.is_printed);
+                    const lineItems = [...group.receipts];
                     return (
                       <tr 
-                        key={group.group_id || r.id} 
+                        key={group.group_id || String(r.id)} 
                         className="hover:bg-gray-50 transition-colors cursor-pointer"
                         onClick={() => handleViewReceipt(group)}
                       >
-                        <td className="px-4 py-3 modal-subtitle text-center">
+                        <td className="px-5 py-3 modal-subtitle text-center whitespace-nowrap">
                           {printed ? (
                             <span className="badge-stats bg-green-100 text-green-700">
                               ✓ 완료
@@ -499,29 +625,79 @@ export default function ReceiptsMain() {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3 modal-subtitle text-center text-gray-600">
-                          {formatDate(r.uploaded_at)}
+                        <td className="px-5 py-3 modal-subtitle text-center text-gray-600 whitespace-nowrap">
+                          {formatUploadDate(r.uploaded_at)}
                         </td>
-                        <td className="px-4 py-3 modal-subtitle text-gray-900">
-                          <div className="flex items-center gap-1.5">
-                            {r.memo || '-'}
+                        <td className="px-5 py-3 modal-subtitle text-center text-gray-700 whitespace-nowrap">
+                          <div className="space-y-1">
+                            {lineItems.map((item) => (
+                              <div key={`payment-date-${item.id}`} className="leading-5">
+                                {formatPaymentDate(item.ocr_payment_date)}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 modal-subtitle text-gray-700 truncate">
+                          <div className="space-y-1">
+                            {lineItems.map((item) => (
+                              <div key={`merchant-${item.id}`} className="leading-5 truncate">
+                                {item.ocr_merchant_name || "-"}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 modal-subtitle text-gray-700 truncate">
+                          <div className="space-y-1">
+                            {lineItems.map((item) => (
+                              <div key={`item-${item.id}`} className="leading-5 truncate">
+                                {item.ocr_item_name || "-"}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 modal-subtitle text-right text-gray-900 whitespace-nowrap">
+                          <div className="space-y-1">
+                            {lineItems.map((item) => (
+                              <div key={`qty-${item.id}`} className="leading-5">
+                                {item.ocr_quantity != null ? item.ocr_quantity.toLocaleString("ko-KR") : "-"}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 modal-subtitle text-right text-gray-900 whitespace-nowrap">
+                          <div className="space-y-1">
+                            {lineItems.map((item) => (
+                              <div key={`unit-${item.id}`} className="leading-5">
+                                {formatKrw(item.ocr_unit_price)}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 modal-subtitle text-right text-gray-900 whitespace-nowrap">
+                          <div className="space-y-1">
+                            {lineItems.map((item) => (
+                              <div key={`total-${item.id}`} className="leading-5">
+                                {item.ocr_total_amount != null ? formatKrw(item.ocr_total_amount) : "-"}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 modal-subtitle text-gray-900">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="truncate">{r.memo || "-"}</span>
                             {group.count > 1 && (
-                              <span className="inline-flex items-center gap-0.5 badge-stats bg-blue-100 text-blue-700">
-                                <Images className="w-3 h-3" />
+                              <span className="inline-flex items-center gap-0.5 badge-stats bg-blue-100 text-blue-700 shrink-0">
                                 {group.count}장
                               </span>
                             )}
                           </div>
                         </td>
                         {permissions.canViewUploaderInfo && (
-                          <td className="px-4 py-3 modal-subtitle text-gray-600">
+                          <td className="px-5 py-3 modal-subtitle text-gray-600 truncate">
                             {r.uploaded_by_name || r.uploaded_by}
                           </td>
                         )}
-                        <td className="px-4 py-3 modal-subtitle text-center text-gray-600">
-                          {formatFileSize(totalSize)}
-                        </td>
-                        <td className="px-4 py-3 modal-subtitle text-center">
+                        <td className="px-5 py-3 modal-subtitle text-center">
                           <div className="flex items-center justify-center gap-1">
                             <Button
                               size="sm"
@@ -550,7 +726,7 @@ export default function ReceiptsMain() {
                           </div>
                         </td>
                         {permissions.canDelete && (
-                          <td className="px-4 py-3 modal-subtitle text-center">
+                          <td className="px-5 py-3 modal-subtitle text-center">
                             <Button
                               size="sm"
                               variant="ghost"
@@ -574,9 +750,9 @@ export default function ReceiptsMain() {
 
               {/* 모바일 카드 뷰 */}
               <div className="md:hidden space-y-3 p-4">
-                {groups.map((group) => (
+                {visibleGroups.map((group) => (
                   <MobileReceiptCard
-                    key={group.group_id || group.primary.id}
+                    key={group.group_id || String(group.primary.id)}
                     receipt={group.primary}
                     groupCount={group.count}
                     onView={() => handleViewReceipt(group)}
@@ -586,6 +762,38 @@ export default function ReceiptsMain() {
                   />
                 ))}
               </div>
+
+              {/* 이전(7일 이전) 영수증 페이지네이션 */}
+              {olderGroups.length > 0 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50">
+                  <div className="card-subtitle text-gray-600">
+                    최근 7일: {recentWeekGroups.length}건 · 이전 영수증: {olderGroups.length}건
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                      disabled={olderPage <= 1}
+                      onClick={() => setOlderPage((p) => Math.max(1, p - 1))}
+                    >
+                      이전
+                    </Button>
+                    <span className="badge-stats bg-white text-gray-700">
+                      {olderPage} / {olderTotalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                      disabled={olderPage >= olderTotalPages}
+                      onClick={() => setOlderPage((p) => Math.min(olderTotalPages, p + 1))}
+                    >
+                      다음
+                    </Button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </CardContent>

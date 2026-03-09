@@ -43,6 +43,35 @@ const COMPANY_CARDS = [
   { label: "원자재", number: "4963", value: "원자재 4963" },
 ];
 
+const COMPANY_VEHICLES = [
+  { label: "PALISADE", plate: "259누 8222", value: "PALISADE 259누 8222" },
+  { label: "STARIA", plate: "715루 7024", value: "STARIA 715루 7024" },
+  { label: "GV80", plate: "330조 1022", value: "GV80 330조 1022" },
+  { label: "G90", plate: "322모 3801", value: "G90 322모 3801" },
+  { label: "F150 Raptor", plate: "8381", value: "F150 Raptor 8381" },
+  { label: "PORTER", plate: "93부 0351", value: "PORTER 93부 0351" },
+];
+
+const VEHICLE_FIXED_STATUS: Record<string, { status: "away" }> = {
+  PORTER: { status: "away" },
+};
+
+const TRIP_TRANSPORT_OPTIONS = [
+  { value: "company_vehicle", label: "회사차량" },
+  { value: "public_transport", label: "대중교통" },
+  { value: "airplane", label: "비행기" },
+  { value: "ktx_srt", label: "KTX/SRT" },
+  { value: "other", label: "기타" },
+];
+
+const TRIP_TRANSPORT_LABEL_MAP: Record<string, string> = {
+  company_vehicle: "회사차량",
+  public_transport: "대중교통",
+  airplane: "비행기",
+  ktx_srt: "KTX/SRT",
+  other: "기타",
+};
+
 const EXPENSE_TYPE_OPTIONS = [
   { value: "corporate_card", label: "법인카드" },
   { value: "personal_card", label: "개인카드" },
@@ -127,6 +156,21 @@ interface CardUsageLink {
   card_returned: boolean;
 }
 
+interface VehicleUsageLink {
+  id: number;
+  business_trip_id: number | null;
+  vehicle_info: string;
+  approval_status: string;
+}
+
+interface VehicleScheduleRow {
+  id: number;
+  vehicle_info: string;
+  approval_status: string;
+  start_at: string;
+  end_at: string;
+}
+
 interface BusinessTrip {
   id: number;
   trip_code: string;
@@ -138,6 +182,8 @@ interface BusinessTrip {
   trip_start_date: string;
   trip_end_date: string;
   companions: { id: string; name: string }[] | null;
+  transport_type: "company_vehicle" | "public_transport" | "airplane" | "ktx_srt" | "other";
+  requested_vehicle_info: string | null;
   request_corporate_card: boolean;
   requested_card_number: string | null;
   expected_total_amount: number;
@@ -155,6 +201,7 @@ interface BusinessTrip {
   updated_at: string;
   requester?: { name: string; department: string | null } | null;
   linkedCard?: CardUsageLink | null;
+  linkedVehicle?: VehicleUsageLink | null;
 }
 
 interface BusinessTripExpense {
@@ -343,9 +390,12 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
   const [formDateRange, setFormDateRange] = useState<DateRange | undefined>(undefined);
   const [datePopoverOpen, setDatePopoverOpen] = useState(false);
   const [formCompanions, setFormCompanions] = useState<CompanionOption[]>([]);
+  const [formTransportType, setFormTransportType] = useState<BusinessTrip["transport_type"]>("public_transport");
+  const [formCompanyVehicle, setFormCompanyVehicle] = useState<string | null>(null);
   const [formCardNumber, setFormCardNumber] = useState<string | null>(null);
   const [formExpectedAmount, setFormExpectedAmount] = useState("");
   const [formPrecheckNote, setFormPrecheckNote] = useState("");
+  const [vehicleSchedules, setVehicleSchedules] = useState<VehicleScheduleRow[]>([]);
 
   // 반려 다이얼로그 (사전승인/정산 공용)
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -416,27 +466,88 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
     return Array.from(depts).sort().map((d) => ({ value: d, label: d }));
   }, [employees]);
 
+  const selectedTripRange = useMemo(() => {
+    if (!formDateRange?.from) return null;
+    const from = new Date(formDateRange.from);
+    const to = formDateRange.to ? new Date(formDateRange.to) : new Date(formDateRange.from);
+    from.setHours(0, 0, 0, 0);
+    to.setHours(23, 59, 59, 999);
+    return { from, to };
+  }, [formDateRange?.from, formDateRange?.to]);
+
+  const availableCompanyVehicles = useMemo(() => {
+    const fallback = new Date();
+    const windowStart = selectedTripRange?.from || fallback;
+    const windowEnd = selectedTripRange?.to || fallback;
+
+    return COMPANY_VEHICLES.filter((vehicle) => {
+      if (VEHICLE_FIXED_STATUS[vehicle.label]?.status === "away") return false;
+
+      const hasOverlappingApprovedRequest = vehicleSchedules.some((req) => {
+        if (req.approval_status !== "approved") return false;
+        if (!req.vehicle_info?.startsWith(vehicle.label)) return false;
+        const reqStart = new Date(req.start_at);
+        const reqEnd = new Date(req.end_at);
+        if (Number.isNaN(reqStart.getTime()) || Number.isNaN(reqEnd.getTime())) return false;
+        return reqStart <= windowEnd && reqEnd >= windowStart;
+      });
+
+      return !hasOverlappingApprovedRequest;
+    });
+  }, [selectedTripRange, vehicleSchedules]);
+
+  useEffect(() => {
+    if (formTransportType !== "company_vehicle" && formCompanyVehicle) {
+      setFormCompanyVehicle(null);
+      return;
+    }
+    if (
+      formTransportType === "company_vehicle" &&
+      formCompanyVehicle &&
+      !availableCompanyVehicles.some((v) => v.value === formCompanyVehicle)
+    ) {
+      setFormCompanyVehicle(null);
+    }
+  }, [availableCompanyVehicles, formCompanyVehicle, formTransportType]);
+
   const loadTrips = useCallback(async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("business_trips")
-        .select("*, requester:employees!business_trips_requester_id_fkey(name, department)")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
+      const [{ data: tripData, error: tripError }, { data: scheduleData, error: scheduleError }] = await Promise.all([
+        supabase
+          .from("business_trips")
+          .select("*, requester:employees!business_trips_requester_id_fkey(name, department)")
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("vehicle_requests")
+          .select("id, vehicle_info, approval_status, start_at, end_at")
+          .in("approval_status", ["approved", "pending"]),
+      ]);
+      if (tripError) throw tripError;
+      if (scheduleError) throw scheduleError;
 
-      const baseTrips = ((data || []) as BusinessTrip[]);
+      setVehicleSchedules((scheduleData || []) as VehicleScheduleRow[]);
+
+      const baseTrips = ((tripData || []) as BusinessTrip[]);
       if (baseTrips.length === 0) {
         setTrips([]);
         return;
       }
 
       const tripIds = baseTrips.map((t) => t.id);
-      const { data: cardLinks, error: linkError } = await supabase
-        .from("card_usages")
-        .select("id, business_trip_id, card_number, approval_status, card_returned")
-        .in("business_trip_id", tripIds);
-      if (linkError) throw linkError;
+      const [{ data: cardLinks, error: cardError }, { data: vehicleLinks, error: vehicleError }] = await Promise.all([
+        supabase
+          .from("card_usages")
+          .select("id, business_trip_id, card_number, approval_status, card_returned")
+          .in("business_trip_id", tripIds),
+        supabase
+          .from("vehicle_requests")
+          .select("id, business_trip_id, vehicle_info, approval_status")
+          .in("business_trip_id", tripIds)
+          .order("created_at", { ascending: false }),
+      ]);
+      if (cardError) throw cardError;
+      if (vehicleError) throw vehicleError;
 
       const cardMap = new Map<number, CardUsageLink>();
       ((cardLinks || []) as CardUsageLink[]).forEach((c) => {
@@ -445,10 +556,18 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
         }
       });
 
+      const vehicleMap = new Map<number, VehicleUsageLink>();
+      ((vehicleLinks || []) as VehicleUsageLink[]).forEach((v) => {
+        if (v.business_trip_id && !vehicleMap.has(v.business_trip_id)) {
+          vehicleMap.set(v.business_trip_id, v as VehicleUsageLink);
+        }
+      });
+
       setTrips(
         baseTrips.map((t) => ({
           ...t,
           linkedCard: cardMap.get(t.id) || null,
+          linkedVehicle: vehicleMap.get(t.id) || null,
         }))
       );
     } catch (err) {
@@ -515,6 +634,10 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
     () => trips.filter((t) => Boolean(t.requested_card_number?.trim()) || Boolean(t.linkedCard)).length,
     [trips]
   );
+  const vehicleRequestedCount = useMemo(
+    () => trips.filter((t) => t.transport_type === "company_vehicle" || Boolean(t.linkedVehicle)).length,
+    [trips]
+  );
   const tripInProgressCount = useMemo(
     () => trips.filter((t) => t.approval_status === "approved" && ["draft", "submitted", "rejected"].includes(t.settlement_status)).length,
     [trips]
@@ -527,6 +650,8 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
     setFormDestination("");
     setFormDateRange(undefined);
     setFormCompanions([]);
+    setFormTransportType("public_transport");
+    setFormCompanyVehicle(null);
     setFormCardNumber(null);
     setFormExpectedAmount("");
     setFormPrecheckNote("");
@@ -543,6 +668,10 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
     const endDate = formDateRange?.to ?? formDateRange?.from;
     if (!formDepartment || !formPurpose.trim() || !formDestination.trim() || !startDate || !endDate) {
       toast.error("필수 항목을 입력해주세요.");
+      return;
+    }
+    if (formTransportType === "company_vehicle" && !formCompanyVehicle) {
+      toast.error("회사차량 이용 시 차량을 선택해주세요.");
       return;
     }
 
@@ -564,6 +693,8 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
         trip_start_date: format(startDate, "yyyy-MM-dd"),
         trip_end_date: format(endDate, "yyyy-MM-dd"),
         companions: selectedCompanions,
+        transport_type: formTransportType,
+        requested_vehicle_info: formTransportType === "company_vehicle" ? formCompanyVehicle : null,
         request_corporate_card: Boolean(formCardNumber),
         requested_card_number: formCardNumber,
         expected_total_amount: toNumber(formExpectedAmount),
@@ -587,6 +718,7 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
     currentUser?.id,
     employees,
     formCardNumber,
+    formCompanyVehicle,
     formCompanions,
     formDateRange,
     formDepartment,
@@ -595,6 +727,7 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
     formPrecheckNote,
     formProjectName,
     formPurpose,
+    formTransportType,
     loadTrips,
     isCreateMode,
     resetRequestForm,
@@ -626,13 +759,21 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
         })
         .eq("id", tripId);
       if (error) throw error;
-      toast.success("출장 요청이 승인되었습니다.");
+      const targetTrip = trips.find((t) => t.id === tripId);
+      const shouldCreateVehicleRequest =
+        targetTrip?.transport_type === "company_vehicle" &&
+        Boolean(targetTrip?.requested_vehicle_info?.trim());
+      toast.success(
+        shouldCreateVehicleRequest
+          ? "출장 요청이 승인되었습니다. 차량요청이 등록되어 HR/App Admin 승인 대기 상태입니다."
+          : "출장 요청이 승인되었습니다."
+      );
       loadTrips();
     } catch (err) {
       logger.error("출장 승인 실패", err);
       toast.error("승인 처리에 실패했습니다.");
     }
-  }, [currentUser?.id, loadTrips, supabase]);
+  }, [currentUser?.id, loadTrips, supabase, trips]);
 
   const openRejectDialog = useCallback((tripId: number, mode: "approval" | "settlement") => {
     setRejectTargetTripId(tripId);
@@ -1327,6 +1468,23 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
     return map[trip.linkedCard.approval_status] || trip.linkedCard.approval_status;
   };
 
+  const getTransportLabel = (trip: BusinessTrip) => {
+    return TRIP_TRANSPORT_LABEL_MAP[trip.transport_type] || "기타";
+  };
+
+  const getVehicleStatusText = (trip: BusinessTrip) => {
+    if (trip.transport_type !== "company_vehicle") return "-";
+    if (trip.approval_status !== "approved") return "출장 승인 후 요청";
+    if (!trip.linkedVehicle) return "요청생성대기";
+
+    const map: Record<string, string> = {
+      pending: "승인대기",
+      approved: "배차승인",
+      rejected: "반려",
+    };
+    return map[trip.linkedVehicle.approval_status] || trip.linkedVehicle.approval_status;
+  };
+
   return (
     <div className="w-full">
       <div className="mb-4">
@@ -1475,6 +1633,57 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
 
             <div className="doc-form-row">
               <div className="doc-form-cell">
+                <div className="doc-form-cell-label">이동수단 <span className="required">*</span></div>
+                <div className="doc-select-container">
+                  <ReactSelect
+                    options={TRIP_TRANSPORT_OPTIONS}
+                    value={TRIP_TRANSPORT_OPTIONS.find((o) => o.value === formTransportType) || null}
+                    onChange={(opt) => setFormTransportType(((opt as { value: string } | null)?.value || "public_transport") as BusinessTrip["transport_type"])}
+                    placeholder="선택"
+                    isSearchable={false}
+                    styles={reactSelectStyles}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                    menuShouldBlockScroll={false}
+                  />
+                </div>
+              </div>
+              <div className="doc-form-cell">
+                <div className="doc-form-cell-label">회사차량 선택 {formTransportType === "company_vehicle" && <span className="required">*</span>}</div>
+                <div className="doc-select-container">
+                  <ReactSelect
+                    options={availableCompanyVehicles}
+                    value={formCompanyVehicle ? availableCompanyVehicles.find((v) => v.value === formCompanyVehicle) || null : null}
+                    onChange={(opt) => setFormCompanyVehicle((opt as { value: string } | null)?.value || null)}
+                    placeholder={
+                      formTransportType === "company_vehicle"
+                        ? availableCompanyVehicles.length > 0
+                          ? "차량 선택"
+                          : "선택 가능한 회사차량 없음"
+                        : "회사차량 선택 시 활성화"
+                    }
+                    isSearchable
+                    isDisabled={formTransportType !== "company_vehicle"}
+                    styles={reactSelectStyles}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                    menuShouldBlockScroll={false}
+                    noOptionsMessage={() => "없음"}
+                    formatOptionLabel={(option) => (
+                      <div className="flex items-center text-xs">
+                        <span className="font-medium text-gray-900">{(option as { label: string }).label}</span>
+                        <span className="text-gray-300 mx-1.5">|</span>
+                        <span className="text-gray-500">{(option as { plate?: string }).plate || ""}</span>
+                      </div>
+                    )}
+                  />
+                </div>
+                {formTransportType === "company_vehicle" && availableCompanyVehicles.length === 0 && (
+                  <p className="card-description text-red-500 mt-1">현재 선택 가능한 회사차량이 없습니다.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="doc-form-row">
+              <div className="doc-form-cell">
                 <div className="doc-form-cell-label">출장카드 선택</div>
                 <div className="doc-select-container">
                   <ReactSelect
@@ -1529,7 +1738,7 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
       {!isCreateMode && (
       <>
       {/* 요약 */}
-      <div className="mb-4 grid grid-cols-4 gap-2">
+      <div className="mb-4 grid grid-cols-5 gap-2">
         <div className="border business-radius-card px-3 py-2.5 border-gray-200 bg-white">
           <p className="modal-label text-gray-500">승인대기</p>
           <p className="modal-value-large text-orange-600">{pendingApprovalCount}</p>
@@ -1545,6 +1754,10 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
         <div className="border business-radius-card px-3 py-2.5 border-gray-200 bg-white">
           <p className="modal-label text-gray-500">출장카드 선택</p>
           <p className="modal-value-large text-emerald-600">{cardRequestedCount}</p>
+        </div>
+        <div className="border business-radius-card px-3 py-2.5 border-gray-200 bg-white">
+          <p className="modal-label text-gray-500">회사차량 신청</p>
+          <p className="modal-value-large text-indigo-600">{vehicleRequestedCount}</p>
         </div>
       </div>
 
@@ -1564,7 +1777,7 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
             </div>
           ) : (
             <div className="overflow-x-auto overflow-y-auto max-h-[70vh] border rounded-lg">
-              <table className="w-full min-w-[1220px] border-collapse">
+              <table className="w-full min-w-[1320px] border-collapse">
                 <thead
                   className="sticky top-0 z-30 bg-gray-50"
                   style={{ boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)" }}
@@ -1577,6 +1790,7 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[76px]">요청자</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[125px]">출장지</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[90px]">카드신청</th>
+                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[126px]">이동수단</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-right w-[88px]">예상비용</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[98px]">정산상태</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">출장목적</th>
@@ -1650,6 +1864,18 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
                             </div>
                           ) : (
                             <span className="card-description">미신청</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 whitespace-nowrap">
+                          {trip.transport_type === "company_vehicle" ? (
+                            <div>
+                              <div className="card-title">
+                                {trip.requested_vehicle_info?.split(" ")[0] || trip.linkedVehicle?.vehicle_info?.split(" ")[0] || "회사차량"}
+                              </div>
+                              <div className="card-description">{getVehicleStatusText(trip)}</div>
+                            </div>
+                          ) : (
+                            <span className="card-description">{getTransportLabel(trip)}</span>
                           )}
                         </td>
                         <td className="px-3 py-1.5 card-title whitespace-nowrap text-right">
@@ -1821,6 +2047,53 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
                 menuShouldBlockScroll={false}
                 noOptionsMessage={() => "없음"}
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="col-span-1">
+                <Label className="modal-label mb-1.5 block text-[11px]">이동수단<span className="text-red-500 ml-0.5">*</span></Label>
+                <ReactSelect
+                  options={TRIP_TRANSPORT_OPTIONS}
+                  value={TRIP_TRANSPORT_OPTIONS.find((o) => o.value === formTransportType) || null}
+                  onChange={(opt) => setFormTransportType(((opt as { value: string } | null)?.value || "public_transport") as BusinessTrip["transport_type"])}
+                  placeholder="선택"
+                  isSearchable={false}
+                  styles={reactSelectStyles}
+                  menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                  menuShouldBlockScroll={false}
+                />
+              </div>
+              <div className="col-span-1">
+                <Label className="modal-label mb-1.5 block text-[11px]">회사차량 선택{formTransportType === "company_vehicle" && <span className="text-red-500 ml-0.5">*</span>}</Label>
+                <ReactSelect
+                  options={availableCompanyVehicles}
+                  value={formCompanyVehicle ? availableCompanyVehicles.find((v) => v.value === formCompanyVehicle) || null : null}
+                  onChange={(opt) => setFormCompanyVehicle((opt as { value: string } | null)?.value || null)}
+                  placeholder={
+                    formTransportType === "company_vehicle"
+                      ? availableCompanyVehicles.length > 0
+                        ? "차량 선택"
+                        : "선택 가능한 회사차량 없음"
+                      : "회사차량 선택 시 활성화"
+                  }
+                  isSearchable
+                  isDisabled={formTransportType !== "company_vehicle"}
+                  styles={reactSelectStyles}
+                  menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                  menuShouldBlockScroll={false}
+                  noOptionsMessage={() => "없음"}
+                  formatOptionLabel={(option) => (
+                    <div className="flex items-center text-xs">
+                      <span className="font-medium text-gray-900">{(option as { label: string }).label}</span>
+                      <span className="text-gray-300 mx-1.5">|</span>
+                      <span className="text-gray-500">{(option as { plate?: string }).plate || ""}</span>
+                    </div>
+                  )}
+                />
+                {formTransportType === "company_vehicle" && availableCompanyVehicles.length === 0 && (
+                  <p className="card-description text-red-500 mt-1">현재 선택 가능한 회사차량이 없습니다.</p>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2">

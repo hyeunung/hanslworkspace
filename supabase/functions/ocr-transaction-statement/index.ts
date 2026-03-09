@@ -365,6 +365,9 @@ serve(async (req) => {
       openaiApiKey,
       poScope
     )
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'ocr-row-debug',hypothesisId:'A',location:'ocr-transaction-statement/index.ts:afterExtractWithGPT4o',message:'raw gpt extraction rows',data:{statementId,itemCount:Array.isArray(extractionResult?.items)?extractionResult.items.length:0,items:(extractionResult?.items||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:it?.item_name??null,spec:it?.specification??null,qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null,po:it?.po_number??null}))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     perfDebug.gpt_extract_ms = Date.now() - gptExtractStartAt
     // #region agent log
     fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H2',location:'ocr-transaction-statement/index.ts:afterExtractWithGPT4o',message:'gpt extracted po snapshot',data:{statementId,itemCount:Array.isArray(extractionResult?.items)?extractionResult.items.length:0,gptItemPoSample:(Array.isArray(extractionResult?.items)?extractionResult.items:[]).slice(0,30).map((item,idx)=>({line:item?.line_number??idx+1,po_number:item?.po_number??null,spec:(item?.specification||'').slice(0,60),item_name:(item?.item_name||'').slice(0,40)}))},timestamp:Date.now()})}).catch(()=>{});
@@ -419,6 +422,9 @@ serve(async (req) => {
       visionText,
       extraOrderNumbers
     )
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'ocr-row-debug',hypothesisId:'B',location:'ocr-transaction-statement/index.ts:afterNormalizePoNumbers',message:'after po normalization rows',data:{statementId,items:(normalizedItems||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:it?.item_name??null,qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null,po:it?.po_number??null}))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     // #region agent log
     fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H4',location:'ocr-transaction-statement/index.ts:afterNormalizePoNumbers',message:'po normalization result snapshot',data:{statementId,normalizedUniquePONumbers:Array.from(new Set(normalizedItems.map((item)=>item.po_number).filter((value)=>!!value))).slice(0,20),itemPoDiffSample:normalizedItems.slice(0,20).map((item,idx)=>({line:item.line_number??idx+1,gptRawPo:extractionResult.items?.[idx]?.po_number??null,normalizedPo:item.po_number??null,spec:(item.specification||'').slice(0,50)}))},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
@@ -529,6 +535,9 @@ serve(async (req) => {
       validatedVendorId
     )
     normalizedItems = correctionResult.items
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'ocr-row-debug',hypothesisId:'C',location:'ocr-transaction-statement/index.ts:afterCorrectOrderNumbersByDb',message:'after db correction rows',data:{statementId,matchedPurchaseId:correctionResult?.matchedPurchaseId??null,items:(normalizedItems||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:it?.item_name??null,qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null,po:it?.po_number??null}))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     perfDebug.correction_ms = Date.now() - correctionStartAt
     if (correctionResult.inferredVendorName) {
       if (!validatedVendorName || validatedVendorName !== correctionResult.inferredVendorName) {
@@ -542,6 +551,9 @@ serve(async (req) => {
         normalizedItems,
         correctionResult
       )
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'ocr-row-debug',hypothesisId:'D',location:'ocr-transaction-statement/index.ts:afterTrailingOneCorrection',message:'after trailing-one quantity correction rows',data:{statementId,items:(normalizedItems||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:it?.item_name??null,qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null,po:it?.po_number??null}))},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
     } catch (_) {
       // 수량 보정 실패 시 기존 OCR 결과 유지
     }

@@ -13,6 +13,8 @@ import { Upload, X, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { useReceiptPermissions } from "@/hooks/useReceiptPermissions";
+import { receiptOcrService } from "@/services/receiptOcrService";
+import { logger } from "@/lib/logger";
 
 interface ReceiptUploadModalProps {
   isOpen: boolean;
@@ -139,7 +141,7 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
           .from('receipt-images')
           .getPublicUrl(filePath);
 
-        const { error: dbError } = await supabase
+        const { data: insertedReceipt, error: dbError } = await supabase
           .from('purchase_receipts')
           .insert({
             receipt_image_url: publicUrl,
@@ -150,13 +152,33 @@ export default function ReceiptUploadModal({ isOpen, onClose, onSuccess }: Recei
             memo: memo || null,
             uploaded_at: new Date().toISOString(),
             group_id: groupId,
-          });
+          })
+          .select('id')
+          .single();
 
         if (dbError) throw dbError;
+
+        // 독립 영수증 OCR 엔진 비동기 요청 (업로드 자체는 블로킹하지 않음)
+        if (insertedReceipt?.id) {
+          const createJobResult = await receiptOcrService.createJob({
+            imageUrl: publicUrl,
+            sourceReceiptId: insertedReceipt.id,
+            requestedBy: user.email || undefined,
+            requestedByName: userName || undefined,
+          });
+          if (createJobResult.success && createJobResult.jobId) {
+            const triggerResult = await receiptOcrService.trigger(createJobResult.jobId);
+            if (!triggerResult.success) {
+              logger.warn('영수증 OCR 트리거 실패', { receiptId: insertedReceipt.id, error: triggerResult.error });
+            }
+          } else {
+            logger.warn('영수증 OCR 작업 생성 실패', { receiptId: insertedReceipt.id, error: createJobResult.error });
+          }
+        }
       }
 
       const countText = files.length > 1 ? `${files.length}장이` : '영수증이';
-      toast.success(`${countText} 성공적으로 업로드되었습니다.`);
+      toast.success(`${countText} 성공적으로 업로드되었습니다. OCR 자동기입을 처리 중입니다.`);
       handleClose();
       onSuccess();
     } catch (error) {

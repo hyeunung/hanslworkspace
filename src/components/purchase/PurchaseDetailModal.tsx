@@ -2750,7 +2750,7 @@ ${itemsText}`
       }
 
       // 새 아이템 추가 후 라인넘버 순서대로 정렬
-      return [...base, newItem]
+      const nextItems = [...base, newItem]
         .sort((a, b) => {
           const lineA = a.line_number || 999999
           const lineB = b.line_number || 999999
@@ -2761,6 +2761,8 @@ ${itemsText}`
           line_number: idx + 1,
           stableKey: item.stableKey ?? makeStableKey(item, idx)
         }))
+
+      return nextItems
     })
   }
 

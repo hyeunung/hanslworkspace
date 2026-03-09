@@ -360,7 +360,8 @@ export const filterBySearchTerm = (
         item.manufacturer,
         item.model,
         item.specification,
-        item.spec // 하위 호환성을 위해 유지
+        item.spec, // 하위 호환성을 위해 유지
+        item.remark
       ]
       
       return itemFields.some(field => 

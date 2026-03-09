@@ -2020,6 +2020,8 @@ class TransactionStatementService {
       // 수량일치 시점에 실입고 정보 즉시 반영
       if (request.actual_received_date) {
         const receiptByName = confirmerName || '알수없음';
+        const updatedPurchaseIds = new Set<number>();
+
         for (const item of request.items) {
           if (!item.matched_item_id || item.confirmed_quantity === undefined || item.confirmed_quantity === null) {
             continue;
@@ -2027,9 +2029,13 @@ class TransactionStatementService {
 
           const { data: existingItem } = await this.supabase
             .from('purchase_request_items')
-            .select('receipt_history')
+            .select('receipt_history, purchase_request_id')
             .eq('id', item.matched_item_id)
             .single();
+
+          if (existingItem?.purchase_request_id) {
+            updatedPurchaseIds.add(existingItem.purchase_request_id);
+          }
 
           const existingHistory = Array.isArray(existingItem?.receipt_history)
             ? (existingItem?.receipt_history as Array<{ seq: number; qty: number; date: string; by: string }>)
@@ -2059,6 +2065,25 @@ class TransactionStatementService {
 
           if (purchaseError) {
             logger.warn('Failed to update purchase item:', purchaseError);
+          }
+        }
+
+        // 품목 입고 후 발주서 헤더(purchase_requests)의 is_received 동기화
+        for (const purchaseId of updatedPurchaseIds) {
+          const { data: allItems } = await this.supabase
+            .from('purchase_request_items')
+            .select('is_received')
+            .eq('purchase_request_id', purchaseId);
+
+          const allReceived = allItems && allItems.length > 0 && allItems.every(i => i.is_received === true);
+          if (allReceived) {
+            await this.supabase
+              .from('purchase_requests')
+              .update({
+                is_received: true,
+                received_at: new Date().toISOString()
+              })
+              .eq('id', purchaseId);
           }
         }
       }

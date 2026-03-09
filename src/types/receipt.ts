@@ -1,5 +1,5 @@
 export interface ReceiptItem {
-  id: string;
+  id: string | number;
   receipt_image_url: string;
   file_name: string;
   file_size: number;
@@ -15,6 +15,13 @@ export interface ReceiptItem {
   printed_by?: string;
   printed_by_name?: string;
   group_id?: string | null;
+  ocr_status?: 'pending' | 'queued' | 'processing' | 'succeeded' | 'failed';
+  ocr_merchant_name?: string | null;
+  ocr_item_name?: string | null;
+  ocr_payment_date?: string | null;
+  ocr_quantity?: number | null;
+  ocr_unit_price?: number | null;
+  ocr_total_amount?: number | null;
 }
 
 export interface ReceiptGroup {

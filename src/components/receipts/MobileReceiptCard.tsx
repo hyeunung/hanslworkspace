@@ -2,7 +2,18 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Printer, Download, Calendar, User, FileText, Trash2, Images } from "lucide-react";
 import type { ReceiptItem } from "@/types/receipt";
-import { formatDate, formatFileSize } from "@/utils/helpers";
+import { formatDateISO } from "@/utils/helpers";
+
+function formatPaymentDate(value?: string | null): string {
+  if (!value) return "-";
+  const dateOnly = value.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(dateOnly) ? dateOnly.slice(2).replace(/-/g, ".") : "-";
+}
+
+function formatUploadDate(value?: string | null): string {
+  const isoDate = formatDateISO(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(isoDate) ? isoDate.slice(2).replace(/-/g, ".") : "-";
+}
 
 interface MobileReceiptCardProps {
   receipt: ReceiptItem;
@@ -39,7 +50,7 @@ export default function MobileReceiptCard({ receipt, groupCount = 1, onView, onP
             </div>
             <div className="flex items-center gap-1 badge-text text-gray-500">
               <Calendar className="w-3 h-3" />
-              <span>{formatDate(receipt.uploaded_at)}</span>
+              <span>{formatUploadDate(receipt.uploaded_at)}</span>
             </div>
           </div>
 
@@ -58,13 +69,34 @@ export default function MobileReceiptCard({ receipt, groupCount = 1, onView, onP
             </div>
           )}
 
+          {/* OCR 추출 정보 */}
+          <div className="space-y-1">
+            <div className="card-subtitle text-gray-700">
+              거래처: {receipt.ocr_merchant_name || "-"}
+            </div>
+            <div className="card-subtitle text-gray-700">
+              품명: {receipt.ocr_item_name || "-"}
+            </div>
+            <div className="card-subtitle text-gray-700">
+              결제일: {formatPaymentDate(receipt.ocr_payment_date)}
+            </div>
+            <div className="card-subtitle text-gray-700">
+              수량: {receipt.ocr_quantity != null ? receipt.ocr_quantity.toLocaleString("ko-KR") : "-"}
+            </div>
+            <div className="card-subtitle text-gray-700">
+              단가: {receipt.ocr_unit_price != null ? `₩${receipt.ocr_unit_price.toLocaleString("ko-KR")}` : "-"}
+            </div>
+            <div className="card-title text-gray-900">
+              합계: {receipt.ocr_total_amount != null ? `₩${receipt.ocr_total_amount.toLocaleString("ko-KR")}` : "-"}
+            </div>
+          </div>
+
           {/* 업로드 정보 */}
-          <div className="flex items-center justify-between card-subtitle">
+          <div className="flex items-center card-subtitle">
             <div className="flex items-center gap-1 text-gray-600">
               <User className="w-3 h-3" />
               <span>{receipt.uploaded_by_name || receipt.uploaded_by}</span>
             </div>
-            <span className="text-gray-500">{formatFileSize(receipt.file_size)}</span>
           </div>
 
           {/* 액션 버튼 */}
