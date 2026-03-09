@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "version": 55,
+  "verify_jwt": true,
+  "checks": {
+    "runId": true,
+    "beforeFetch": true,
+    "afterParse": true,
+    "afterNormalize": true,
+    "beforeDbUpdate": true,
+    "buildMarker": true
+  },
+  "error": null
+}

@@ -80,7 +80,11 @@ serve(async (req) => {
     const imageBuffer = await downloadImage(imageUrl);
     const base64Image = arrayBufferToBase64(imageBuffer);
     const extracted = await extractReceiptWithGPT4o(base64Image, openaiApiKey);
-    const normalizedPaymentDate = normalizePaymentDate(extracted.payment_date);
+    let normalizedPaymentDate = normalizePaymentDate(extracted.payment_date);
+    if (!normalizedPaymentDate) {
+      const fallbackPaymentDate = await extractPaymentDateOnlyWithGPT4o(base64Image, openaiApiKey);
+      normalizedPaymentDate = normalizePaymentDate(fallbackPaymentDate);
+    }
     const normalizedQuantity = normalizeAmount(extracted.quantity);
     const normalizedUnitPrice = normalizeAmount(extracted.unit_price);
     const normalizedAmount = normalizeAmount(extracted.total_amount);
@@ -198,6 +202,8 @@ async function extractReceiptWithGPT4o(base64Image: string, apiKey: string): Pro
 규칙:
 - JSON 외 텍스트 금지
 - payment_date는 반드시 YYYY-MM-DD 형식 (예: 2026-03-09)
+- payment_date는 "결제일/승인일/승인일시/결제일시/거래일시"에서 찾을 수 있다.
+- 날짜+시간(예: 2026/03/04 21:30:21)이 보이면 날짜만 사용해 YYYY-MM-DD로 변환한다.
 - quantity, unit_price, total_amount는 숫자만 (통화기호/쉼표 제거)
 - 값을 못 찾으면 null 허용`;
 
@@ -235,6 +241,58 @@ async function extractReceiptWithGPT4o(base64Image: string, apiKey: string): Pro
   return JSON.parse(content);
 }
 
+async function extractPaymentDateOnlyWithGPT4o(base64Image: string, apiKey: string): Promise<string | null> {
+  const prompt = `영수증 이미지에서 결제일(payment_date)만 찾아 JSON으로 반환하세요.
+
+반환 형식:
+{ "payment_date": "YYYY-MM-DD" } 또는 { "payment_date": null }
+
+규칙:
+- JSON 외 텍스트 금지
+- 우선적으로 "승인일시/승인일/결제일시/결제일/거래일시"를 찾는다
+- 날짜+시간(예: 2026/03/04 21:30:21)이면 날짜만 사용한다
+- YY-MM-DD 또는 YY/MM/DD는 20YY-MM-DD로 보정한다`;
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: "You extract only payment date from receipt images. Return JSON only.",
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: `data:image/png;base64,${base64Image}`, detail: "high" } },
+          ],
+        },
+      ],
+      temperature: 0,
+      max_tokens: 200,
+      response_format: { type: "json_object" },
+    }),
+  });
+
+  const result = await response.json();
+  if (result.error) return null;
+  const content = result.choices?.[0]?.message?.content;
+  if (!content) return null;
+
+  try {
+    const parsed = JSON.parse(content);
+    return typeof parsed?.payment_date === "string" ? parsed.payment_date : null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeAmount(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -249,14 +307,20 @@ function normalizePaymentDate(value: unknown): string | null {
   const raw = value.trim();
   if (!raw) return null;
 
-  const normalized = raw.replace(/[./년월]/g, "-").replace(/[일]/g, "").replace(/\s+/g, "");
-  const match = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const normalized = raw
+    .replace(/[년월]/g, "-")
+    .replace(/[일]/g, "")
+    .replace(/[./]/g, "-");
+
+  // datetime 문자열에서도 날짜 부분(YYYY-MM-DD 또는 YY-MM-DD)을 우선 추출
+  const match = normalized.match(/(\d{2,4})-(\d{1,2})-(\d{1,2})/);
   if (!match) return null;
 
-  const year = Number(match[1]);
+  let year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
   if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  if (year < 100) year += 2000;
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
 
   return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;

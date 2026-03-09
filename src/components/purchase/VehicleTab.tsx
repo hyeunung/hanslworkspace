@@ -76,6 +76,7 @@ interface Employee {
 
 interface VehicleTabProps {
   mode?: "list" | "create";
+  onBadgeRefresh?: () => void;
 }
 
 const COMPANY_VEHICLES = [
@@ -173,7 +174,7 @@ function formatDuration(hours: number | null): string {
   return `${h}시간 ${m}분`;
 }
 
-export default function VehicleTab({ mode = "list" }: VehicleTabProps) {
+export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTabProps) {
   const supabase = createClient();
   const isCreateMode = mode === "create";
 
@@ -290,6 +291,7 @@ export default function VehicleTab({ mode = "list" }: VehicleTabProps) {
       if (error) throw error;
       toast.success("삭제되었습니다.");
       loadRequests();
+      onBadgeRefresh?.();
     } catch {
       toast.error("삭제에 실패했습니다.");
     }
@@ -451,6 +453,7 @@ export default function VehicleTab({ mode = "list" }: VehicleTabProps) {
         setIsModalOpen(false);
       }
       loadRequests();
+      onBadgeRefresh?.();
     } catch (err) {
       logger.error("차량 요청 등록 실패", err);
       toast.error("등록에 실패했습니다. 다시 시도해주세요.");
@@ -490,6 +493,7 @@ export default function VehicleTab({ mode = "list" }: VehicleTabProps) {
         if (error) throw error;
         toast.success("배차 요청이 승인되었습니다.");
         loadRequests();
+        onBadgeRefresh?.();
       } catch (err) {
         logger.error("배차 승인 실패", err);
         toast.error("승인 처리에 실패했습니다.");
@@ -521,6 +525,7 @@ export default function VehicleTab({ mode = "list" }: VehicleTabProps) {
       setRejectTargetId(null);
       setRejectReason("");
       loadRequests();
+      onBadgeRefresh?.();
     } catch (err) {
       logger.error("배차 반려 실패", err);
       toast.error("반려 처리에 실패했습니다.");

@@ -243,10 +243,12 @@ export default function TransactionStatementMain() {
           ? Math.round((Date.now() - new Date(processingStartedAt).getTime()) / 60000)
           : null;
         const staleProcessingSuspected = processingAgeMinutes !== null && processingAgeMinutes >= 6;
-        const processingIds = (result.data || [])
+        const rows = result.data || [];
+        const terminalStatuses: TransactionStatementStatus[] = ['extracted', 'failed', 'confirmed', 'rejected'];
+        const processingIds = rows
           .filter((item) => item.status === 'processing')
           .map((item) => item.id);
-        const staleProcessingIds = (result.data || [])
+        const staleProcessingIds = rows
           .filter((item) => {
             if (item.status !== 'processing') return false;
             if (!item.processing_started_at) return false;
@@ -255,6 +257,18 @@ export default function TransactionStatementMain() {
             return Date.now() - startedAt >= 6 * 60 * 1000;
           })
           .map((item) => item.id);
+        const terminalIds = new Set(
+          rows
+            .filter((item) => terminalStatuses.includes(item.status))
+            .map((item) => item.id)
+        );
+        if (terminalIds.size > 0) {
+          for (const id of Array.from(optimisticReextractIdsRef.current)) {
+            if (terminalIds.has(id)) {
+              optimisticReextractIdsRef.current.delete(id);
+            }
+          }
+        }
         const mergedExtractingIds = new Set([
           ...processingIds,
           ...Array.from(optimisticReextractIdsRef.current),
@@ -338,6 +352,7 @@ export default function TransactionStatementMain() {
             if (payload.eventType === 'UPDATE') {
               const newStatus = payload.new?.status;
               const oldStatus = payload.old?.status;
+              const changedId = payload.new?.id;
               const newGrandTotal = payload.new?.grand_total;
               const oldGrandTotal = payload.old?.grand_total;
               const newTotalAmount = payload.new?.total_amount;
@@ -350,6 +365,15 @@ export default function TransactionStatementMain() {
                 payload.new?.manager_confirmed_at !== payload.old?.manager_confirmed_at ||
                 payload.new?.all_quantities_matched !== payload.old?.all_quantities_matched;
 
+              if (statusChanged && changedId && ['extracted', 'failed', 'confirmed', 'rejected'].includes(newStatus)) {
+                optimisticReextractIdsRef.current.delete(changedId);
+                setExtractingIds(prev => {
+                  if (!prev.has(changedId)) return prev;
+                  const next = new Set(prev);
+                  next.delete(changedId);
+                  return next;
+                });
+              }
 
               if (statusChanged || amountChanged || confirmChanged) {
                 loadStatements();
@@ -674,6 +698,7 @@ export default function TransactionStatementMain() {
   // 재추출 종료: 처리중 표시 해제 후 서버 상태 동기화
   const handleReextractFinishFromModal = (statementId: string) => {
     optimisticReextractIdsRef.current.delete(statementId);
+    reextractTraceIdRef.current = null;
     // #region agent log
     fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H13',location:'TransactionStatementMain.tsx:handleReextractFinishFromModal',message:'optimistic extracting state removed at reextract finish',data:{statementId,optimisticIdsAfterDelete:Array.from(optimisticReextractIdsRef.current)},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
@@ -1043,13 +1068,14 @@ export default function TransactionStatementMain() {
                         </td>
                         <td className="px-3 py-2.5 text-center">
                           <div className="flex items-center justify-center gap-1">
-                {statement.status === 'failed' && (
+                {['pending', 'queued', 'failed'].includes(statement.status) && (
                               <Button
                                 type="button"
                                 onClick={(e) => handleStartExtraction(e, statement)}
+                                disabled={extractingIds.has(statement.id)}
                                 className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
                               >
-                                {statement.status === 'failed' ? '재시도' : '추출 시작'}
+                                {statement.status === 'failed' ? '재시도' : statement.status === 'queued' ? '다시 실행' : '추출 시작'}
                               </Button>
                             )}
                             <button
@@ -1116,13 +1142,14 @@ export default function TransactionStatementMain() {
                       </p>
                     )}
                     <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-gray-100">
-                  {statement.status === 'failed' && (
+                  {['pending', 'queued', 'failed'].includes(statement.status) && (
                         <Button
                           type="button"
                           onClick={(e) => handleStartExtraction(e, statement)}
+                          disabled={extractingIds.has(statement.id)}
                           className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
                         >
-                          {statement.status === 'failed' ? '재시도' : '추출 시작'}
+                          {statement.status === 'failed' ? '재시도' : statement.status === 'queued' ? '다시 실행' : '추출 시작'}
                         </Button>
                       )}
                       <button

@@ -10,12 +10,16 @@ ALTER TABLE business_trips
 ALTER TABLE business_trips
   DROP CONSTRAINT IF EXISTS business_trips_transport_type_check;
 
+UPDATE business_trips
+SET transport_type = 'public_transport'
+WHERE transport_type IN ('airplane', 'ktx_srt');
+
 ALTER TABLE business_trips
   ADD CONSTRAINT business_trips_transport_type_check
-  CHECK (transport_type IN ('company_vehicle', 'public_transport', 'airplane', 'ktx_srt', 'other'));
+  CHECK (transport_type IN ('company_vehicle', 'public_transport', 'private_car', 'other'));
 
-COMMENT ON COLUMN business_trips.transport_type IS '이동수단(company_vehicle/public_transport/airplane/ktx_srt/other)';
-COMMENT ON COLUMN business_trips.requested_vehicle_info IS '회사차량 선택 시 차량 정보(예: PALISADE 259누 8222)';
+COMMENT ON COLUMN business_trips.transport_type IS '이동수단(company_vehicle/public_transport/private_car/other)';
+COMMENT ON COLUMN business_trips.requested_vehicle_info IS '이동수단 상세(회사차량: 차량정보, 대중교통: bus/train_ktx_srt/airplane/taxi, 기타: 직접입력)';
 
 -- 2) vehicle_requests <- business_trips 연동 컬럼 추가
 ALTER TABLE vehicle_requests

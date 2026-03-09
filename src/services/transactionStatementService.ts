@@ -460,70 +460,24 @@ class TransactionStatementService {
       } catch (_) {
         // ignore snapshot errors
       }
-      // 재추출 시 완전 초기화: items 삭제 + 상태를 pending으로 리셋 (처음 추출과 동일한 경로 사용)
-      if (resetBeforeExtract) {
-        const { data: existingStmt } = await this.supabase
-          .from('transaction_statements')
-          .select('extracted_data, po_scope')
-          .eq('id', statementId)
-          .single();
-        const preservedActualReceivedDate = (existingStmt?.extracted_data as any)?.actual_received_date || null;
-        const preservedPoScope = (existingStmt as any)?.po_scope || null;
-
-        await this.supabase
-          .from('transaction_statement_items')
-          .delete()
-          .eq('statement_id', statementId);
-
-        await this.supabase
-          .from('transaction_statements')
-          .update({
-            status: 'pending',
-            statement_date: null,
-            vendor_name: null,
-            total_amount: null,
-            tax_amount: null,
-            grand_total: null,
-            extraction_error: null,
-            reset_before_extract: false,
-            retry_count: 0,
-            next_retry_at: null,
-            last_error_at: null,
-            locked_by: null,
-            processing_started_at: null,
-            processing_finished_at: null,
-            confirmed_at: null,
-            confirmed_by: null,
-            confirmed_by_name: null,
-            manager_confirmed_at: null,
-            manager_confirmed_by: null,
-            manager_confirmed_by_name: null,
-            quantity_match_confirmed_at: null,
-            quantity_match_confirmed_by: null,
-            quantity_match_confirmed_by_name: null,
-            extracted_data: preservedActualReceivedDate
-              ? { actual_received_date: preservedActualReceivedDate }
-              : null,
-            po_scope: preservedPoScope
-          })
-          .eq('id', statementId);
-
-        preRowStatus = 'pending';
-        preRowLocked = false;
-        preRowNextRetryAt = null;
-        preRowProcessingStartedAt = null;
-      }
-
       // Edge Function 호출 (재추출이든 첫 추출이든 동일한 경로)
       const { data, error } = await this.supabase.functions.invoke('ocr-transaction-statement', {
         body: {
           statementId,
           imageUrl,
-          mode: 'process_specific'
+          mode: 'process_specific',
+          reset_before_extract: resetBeforeExtract
         }
       });
+      const edgeRowCounts =
+        (data as any)?.debug_row_counts ||
+        (data as any)?.result?.debug_row_counts ||
+        null;
       // #region agent log
       fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H7',location:'transactionStatementService.ts:extractStatementData:afterInvoke',message:'frontend received ocr edge response',data:{statementId,hasError:Boolean(error),errorMessage:(error as any)?.message||null,responseQueued:!!(data as any)?.queued,responseSuccess:!!(data as any)?.success,responseStatus:(data as any)?.status||null,responseReason:(data as any)?.reason||null,responseDebug:(data as any)?.debug||null,responseDebugPerf:(data as any)?.debug_perf_ms||null,responseDebugKeys:(data as any)?.debug?Object.keys((data as any).debug):[],responseKeys:data&&typeof data==='object'?Object.keys(data as any):[]},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'row-count-trace',hypothesisId:'H1-H3',location:'transactionStatementService.ts:extractStatementData:afterInvoke',message:'edge response row counts snapshot',data:{statementId,responseQueued:!!(data as any)?.queued,responseSuccess:!!(data as any)?.success,responseItemCount:Array.isArray((data as any)?.result?.items)?(data as any).result.items.length:0,edgeRowCounts},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
       // #region agent log
       fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H8',location:'transactionStatementService.ts:extractStatementData:invokePayloadSnapshot',message:'edge payload po numbers snapshot',data:{statementId,responseDebugPerf:(data as any)?.debug_perf_ms||((data as any)?.result?.debug_perf_ms)||null,responseUniquePONumbers:Array.from(new Set((((data as any)?.result?.items||[]) as any[]).map((it)=>it?.po_number).filter((v)=>!!v))).slice(0,20),responseItemSample:((((data as any)?.result?.items||[]) as any[]).slice(0,20)).map((it,idx)=>({line:it?.line_number??idx+1,po_number:it?.po_number??null,spec:(it?.specification||'').slice(0,60),item_name:(it?.item_name||'').slice(0,40)})),responseItemCount:Array.isArray((data as any)?.result?.items)?(data as any).result.items.length:0},timestamp:Date.now()})}).catch(()=>{});
@@ -580,6 +534,9 @@ class TransactionStatementService {
       const result = await this.getStatementWithItems(statementId);
       // #region agent log
       fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H9',location:'transactionStatementService.ts:extractStatementData:afterGetStatementWithItems',message:'db-loaded item po numbers snapshot',data:{statementId,dbLoadSuccess:result.success,dbLoadItemCount:result?.data?.items?.length||0,dbLoadUniquePONumbers:Array.from(new Set((result?.data?.items||[]).map((it)=>it?.extracted_po_number).filter((v)=>!!v))).slice(0,20),dbLoadItemSample:(result?.data?.items||[]).slice(0,20).map((it,idx)=>({line:it?.line_number??idx+1,extracted_po_number:it?.extracted_po_number??null,item_name:(it?.extracted_item_name||'').slice(0,40),spec:(it?.extracted_specification||'').slice(0,60)}))},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'row-count-trace',hypothesisId:'H4',location:'transactionStatementService.ts:extractStatementData:afterGetStatementWithItems',message:'db row count after extraction',data:{statementId,dbLoadSuccess:result.success,dbLoadItemCount:result?.data?.items?.length||0,edgeRowCounts},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
       // #region agent log
       fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H14',location:'transactionStatementService.ts:extractStatementData:successReturn',message:'extract api completed with full data',data:{statementId,elapsedMs:Date.now()-requestStartAt,itemCount:result?.data?.items?.length||0},timestamp:Date.now()})}).catch(()=>{});

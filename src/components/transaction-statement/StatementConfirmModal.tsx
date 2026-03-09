@@ -307,9 +307,17 @@ export default function StatementConfirmModal({
   
   // 드롭다운 열림 상태
   const [openDropdowns, setOpenDropdowns] = useState<Set<string>>(new Set());
+  const isDialogModal = true;
   
   // 드롭다운 위치 (fixed position용)
-  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; maxHeight: number }>({ top: 0, left: 0, maxHeight: 360 });
+
+  // #region agent log
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'dropdown-debug',hypothesisId:'H1',location:'StatementConfirmModal.tsx:dropdownStateEffect',message:'dialog modal prop and dropdown state snapshot',data:{statementId:statement?.id||null,isOpen,openDropdownCount:openDropdowns.size,modalProp:isDialogModal},timestamp:Date.now()})}).catch(()=>{});
+  }, [isOpen, openDropdowns, statement?.id, isDialogModal]);
+  // #endregion
   
   // 발주 상세 모달 상태
   const [isPurchaseDetailModalOpen, setIsPurchaseDetailModalOpen] = useState(false);
@@ -3695,6 +3703,26 @@ export default function StatementConfirmModal({
     return label;
   };
 
+  const getSystemItemNameSpecLabel = (item?: SystemPurchaseItem | null, showLineNumber = true) => {
+    if (!item) return '';
+    const name = item.item_name?.trim() || '';
+    const spec = item.specification?.trim() || '';
+    let label = '';
+
+    if (name && spec) {
+      label = `${name} (${spec})`;
+    } else if (name) {
+      label = name;
+    } else if (spec) {
+      label = spec;
+    } else {
+      label = `품목 #${item.item_id}`;
+    }
+
+    if (showLineNumber && item.line_number != null) return `${item.line_number}. ${label}`;
+    return label;
+  };
+
   const handleOpenOriginalImage = () => {
     const imageUrl = statementWithItems?.image_url || statement.image_url;
     if (!imageUrl) return;
@@ -3911,29 +3939,58 @@ export default function StatementConfirmModal({
   };
 
   const getDropdownWidth = (key: string) => (key === 'global-po' ? 320 : 280);
+  const getDropdownMaxHeight = (key: string) => (key === 'global-po' ? 350 : 360);
 
   const toggleDropdown = (key: string, event?: React.MouseEvent<HTMLElement>) => {
     if (event) {
       const rect = event.currentTarget.getBoundingClientRect();
       const dropdownWidth = getDropdownWidth(key);
+      const dropdownMaxHeight = getDropdownMaxHeight(key);
       const viewportPadding = 8;
+      const gap = 4;
       const maxLeft = Math.max(viewportPadding, window.innerWidth - dropdownWidth - viewportPadding);
       const nextLeft = Math.min(Math.max(rect.left, viewportPadding), maxLeft);
+      const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - viewportPadding - gap);
+      const spaceAbove = Math.max(0, rect.top - viewportPadding - gap);
+      const shouldOpenUpward =
+        spaceBelow < Math.min(dropdownMaxHeight, 220) && spaceAbove > spaceBelow;
+      const availableSpace = shouldOpenUpward ? spaceAbove : spaceBelow;
+      const nextMaxHeight = Math.max(
+        120,
+        Math.min(dropdownMaxHeight, availableSpace || dropdownMaxHeight)
+      );
+      let nextTop = shouldOpenUpward
+        ? rect.top - nextMaxHeight - gap
+        : rect.bottom + gap;
+      nextTop = Math.min(
+        Math.max(nextTop, viewportPadding),
+        Math.max(viewportPadding, window.innerHeight - nextMaxHeight - viewportPadding)
+      );
+      const projectedBottom = nextTop + nextMaxHeight;
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'post-fix',hypothesisId:'H2',location:'StatementConfirmModal.tsx:toggleDropdown:positionCalc',message:'dropdown position and viewport fit calculation',data:{statementId:statement?.id||null,key,rectBottom:rect.bottom,rectTop:rect.top,nextTop,nextLeft,dropdownWidth,dropdownMaxHeight,nextMaxHeight,spaceBelow,spaceAbove,shouldOpenUpward,projectedBottom,windowInnerHeight:window.innerHeight,isProjectedOverflowBottom:projectedBottom>window.innerHeight},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
 
       setDropdownPosition({
-        top: rect.bottom + 4,
-        left: nextLeft
+        top: nextTop,
+        left: nextLeft,
+        maxHeight: nextMaxHeight
       });
     }
     
     setOpenDropdowns(prev => {
       const newSet = new Set(prev);
+      let action: 'open' | 'close' = 'open';
       if (newSet.has(key)) {
         newSet.delete(key);
+        action = 'close';
       } else {
         newSet.clear(); // 다른 드롭다운 닫기
         newSet.add(key);
       }
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'dropdown-debug',hypothesisId:'H1',location:'StatementConfirmModal.tsx:toggleDropdown:setOpenDropdowns',message:'dropdown open/close state transition',data:{statementId:statement?.id||null,key,action,prevSize:prev.size,nextSize:newSet.size,nextKeys:Array.from(newSet)},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       return newSet;
     });
   };
@@ -3943,6 +4000,11 @@ export default function StatementConfirmModal({
     const beforeScrollTop = el.scrollTop;
     const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
     const nextScrollTop = Math.min(maxScrollTop, Math.max(0, beforeScrollTop + event.deltaY));
+    const atTop = beforeScrollTop <= 0;
+    const atBottom = beforeScrollTop >= maxScrollTop;
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'dropdown-debug',hypothesisId:'H3',location:'StatementConfirmModal.tsx:handleGlobalPODropdownWheel',message:'dropdown wheel handling snapshot',data:{statementId:statement?.id||null,deltaY:event.deltaY,beforeScrollTop,maxScrollTop,nextScrollTop,atTop,atBottom,clientHeight:el.clientHeight,scrollHeight:el.scrollHeight},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     event.preventDefault();
     event.stopPropagation();
@@ -3956,7 +4018,7 @@ export default function StatementConfirmModal({
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose} modal={openDropdowns.size === 0}>
+      <Dialog open={isOpen} onOpenChange={onClose} modal={isDialogModal}>
         <DialogContent 
           maxWidth="max-w-[85vw] sm:max-w-[85vw]"
           className="max-h-[90vh] overflow-hidden flex flex-col business-radius-modal" 
@@ -3971,6 +4033,9 @@ export default function StatementConfirmModal({
             const isDropdownInteraction = Boolean(target?.closest('[data-ts-dropdown-panel="true"]'));
             // 드롭다운이 열려있을 때는 외부 클릭으로 모달 닫기 방지
             if (openDropdowns.size > 0 && !isDropdownInteraction) {
+              // #region agent log
+              fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'dropdown-debug',hypothesisId:'H4',location:'StatementConfirmModal.tsx:onInteractOutside',message:'interact outside prevented while dropdown open',data:{statementId:statement?.id||null,openDropdownCount:openDropdowns.size,isDropdownInteraction},timestamp:Date.now()})}).catch(()=>{});
+              // #endregion
               e.preventDefault();
             }
           }}
@@ -4351,7 +4416,7 @@ export default function StatementConfirmModal({
                       {!isSamePONumber && (
                         <th className="p-1 text-left whitespace-nowrap modal-label">발주/수주번호</th>
                       )}
-                      <th className="p-1 text-left modal-label">품목명</th>
+                      <th className="p-1 text-left modal-label">품목명(규격)</th>
                       <th className="p-1 text-right modal-label">수량</th>
                       {/* 입고수량 모드에서는 단가/합계 숨김 */}
                       {!isReceiptMode && (
@@ -4573,7 +4638,8 @@ export default function StatementConfirmModal({
                                       className="fixed z-[9999] pointer-events-auto bg-white border border-gray-200 rounded-lg shadow-xl w-[280px] max-h-[360px] overflow-y-auto"
                                       style={{
                                         top: dropdownPosition.top,
-                                        left: dropdownPosition.left
+                                        left: dropdownPosition.left,
+                                        maxHeight: dropdownPosition.maxHeight
                                       }}
                                       ref={(el) => {
                                         if (!el) return;
@@ -4710,7 +4776,11 @@ export default function StatementConfirmModal({
                                     className="inline-flex items-center gap-1 px-1.5 h-5 text-[10px] font-normal bg-white border border-gray-300 business-radius hover:bg-gray-50 text-gray-700 whitespace-nowrap"
                                     style={{ fontSize: '11px' }}
                                   >
-                                    <span>{getSystemItemLabel(matchedSystem, false, ocrItem.extracted_item_name || undefined) || '수동 선택'}</span>
+                                    <span>
+                                      {(isSamePONumber
+                                        ? getSystemItemNameSpecLabel(matchedSystem, false)
+                                        : getSystemItemLabel(matchedSystem, false, ocrItem.extracted_item_name || undefined)) || '수동 선택'}
+                                    </span>
                                     <ChevronDown className="w-3 h-3 flex-shrink-0" />
                                   </button>
                                   {effectiveSystemForNameMatch && (
@@ -4742,7 +4812,8 @@ export default function StatementConfirmModal({
                                       className="fixed z-[9999] pointer-events-auto bg-white border border-gray-200 rounded-lg shadow-xl w-[280px] max-h-[360px] overflow-y-auto"
                                       style={{
                                         top: dropdownPosition.top,
-                                        left: dropdownPosition.left
+                                        left: dropdownPosition.left,
+                                        maxHeight: dropdownPosition.maxHeight
                                       }}
                                       onClick={(e) => e.stopPropagation()}
                                       onWheel={handleGlobalPODropdownWheel}
@@ -4762,7 +4833,11 @@ export default function StatementConfirmModal({
                                             className="px-2 py-1.5 hover:bg-gray-100 cursor-pointer"
                                           >
                                             <div className="flex items-center justify-between">
-                                              <p className="text-[11px] font-normal text-gray-900" style={{ fontSize: '11px' }}>{getSystemItemLabel(candidate, true, ocrItem.extracted_item_name || undefined)}</p>
+                                              <p className="text-[11px] font-normal text-gray-900" style={{ fontSize: '11px' }}>
+                                                {isSamePONumber
+                                                  ? getSystemItemNameSpecLabel(candidate, true)
+                                                  : getSystemItemLabel(candidate, true, ocrItem.extracted_item_name || undefined)}
+                                              </p>
                                               <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                                                 score >= 80 ? 'bg-green-100 text-green-700' :
                                                 score >= 50 ? 'bg-yellow-100 text-yellow-700' :
@@ -4795,7 +4870,11 @@ export default function StatementConfirmModal({
                                     className="inline-flex items-center gap-1 px-1.5 h-5 text-[10px] font-normal bg-white border border-orange-300 business-radius hover:bg-orange-50 text-orange-600 whitespace-nowrap"
                                     style={{ fontSize: '11px' }}
                                   >
-                                    <span>{getSystemItemLabel(matchedSystem, false, ocrItem.extracted_item_name || undefined) || '수동 선택'}</span>
+                                    <span>
+                                      {(isSamePONumber
+                                        ? getSystemItemNameSpecLabel(matchedSystem, false)
+                                        : getSystemItemLabel(matchedSystem, false, ocrItem.extracted_item_name || undefined)) || '수동 선택'}
+                                    </span>
                                     <ChevronDown className="w-3 h-3 flex-shrink-0" />
                                   </button>
                                   {effectiveSystemForNameMatch && (
@@ -4827,7 +4906,8 @@ export default function StatementConfirmModal({
                                       className="fixed z-[9999] pointer-events-auto bg-white border border-gray-200 rounded-lg shadow-xl w-[280px] max-h-[360px] overflow-y-auto"
                                       style={{
                                         top: dropdownPosition.top,
-                                        left: dropdownPosition.left
+                                        left: dropdownPosition.left,
+                                        maxHeight: dropdownPosition.maxHeight
                                       }}
                                       onClick={(e) => e.stopPropagation()}
                                       onWheel={handleGlobalPODropdownWheel}
@@ -4867,7 +4947,11 @@ export default function StatementConfirmModal({
                                               className="px-2 py-1.5 hover:bg-gray-100 cursor-pointer"
                                             >
                                               <div className="flex items-center justify-between">
-                                                <p className="text-[11px] font-normal text-gray-900" style={{ fontSize: '11px' }}>{getSystemItemLabel(candidate, true, ocrItem.extracted_item_name || undefined)}</p>
+                                                <p className="text-[11px] font-normal text-gray-900" style={{ fontSize: '11px' }}>
+                                                  {isSamePONumber
+                                                    ? getSystemItemNameSpecLabel(candidate, true)
+                                                    : getSystemItemLabel(candidate, true, ocrItem.extracted_item_name || undefined)}
+                                                </p>
                                                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                                                   score >= 80 ? 'bg-green-100 text-green-700' :
                                                   score >= 50 ? 'bg-yellow-100 text-yellow-700' :
@@ -5615,6 +5699,7 @@ export default function StatementConfirmModal({
             style={{
               top: dropdownPosition.top,
               left: dropdownPosition.left,
+              maxHeight: dropdownPosition.maxHeight,
               pointerEvents: 'auto'
             }}
             onClick={(e) => e.stopPropagation()}

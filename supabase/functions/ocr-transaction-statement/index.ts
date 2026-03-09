@@ -85,6 +85,7 @@ type ImageTile = {
 };
 
 let invalidPoTokenLogCount = 0
+let blankItemDebugLogCount = 0
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -120,8 +121,31 @@ serve(async (req) => {
       normalize_and_infer_ms: 0,
       correction_ms: 0,
       used_unified_po_assist: false,
-      used_assist_numbers: false
+      used_assist_numbers: false,
+      used_vision_row_fallback: false,
+      used_vision_text_row_candidates: false,
+      used_vision_row_heuristic_backfill: false,
+      processed_width: null,
+      processed_height: null,
+      tile_count: 0,
+      vision_word_count: 0
     }
+    const rowCountTrace: Record<string, number> = {
+      gpt_raw: 0,
+      vision_row_candidates_words: 0,
+      vision_row_candidates_text: 0,
+      vision_row_candidates: 0,
+      vision_row_candidates_refined: 0,
+      vision_row_fallback: 0,
+      vision_row_heuristic_backfill: 0,
+      after_vision_row_fallback: 0,
+      after_fill_missing_name: 0,
+      after_remove_ghost_rows: 0,
+      after_normalize_po: 0,
+      after_correction: 0,
+      before_insert: 0
+    }
+    let selectedRowCandidateSample: VisionRowCandidate[] = []
     const requestStartedAt = Date.now()
     statementId = requestData.statementId || null
     let imageUrl = requestData.imageUrl || null
@@ -248,6 +272,7 @@ serve(async (req) => {
       await supabase
         .from('transaction_statements')
         .update({
+          status: 'processing',
           statement_date: null,
           vendor_name: null,
           total_amount: null,
@@ -258,8 +283,6 @@ serve(async (req) => {
           retry_count: 0,
           next_retry_at: null,
           last_error_at: null,
-          locked_by: null,
-          processing_started_at: null,
           processing_finished_at: null,
           confirmed_at: null,
           confirmed_by: null,
@@ -295,6 +318,9 @@ serve(async (req) => {
           decodedImage = preprocessed.image
         }
         tileImages = await buildImageTiles(decodedImage)
+        perfDebug.processed_width = decodedImage.width
+        perfDebug.processed_height = decodedImage.height
+        perfDebug.tile_count = tileImages.length
       }
     } catch (_) {
       decodedImage = null
@@ -340,6 +366,7 @@ serve(async (req) => {
       }
     }
     perfDebug.google_vision_ms = Date.now() - googleVisionStartAt
+    perfDebug.vision_word_count = visionWords.length
 
     // 4. GPT-4o 비전으로 구조화 추출
     currentStage = 'gpt_extract'
@@ -361,10 +388,64 @@ serve(async (req) => {
     // #endregion
     const extractionResult = await extractWithGPT4o(
       base64Image,
+      tileImages.map((tile) => tile.base64),
       visionText,
       openaiApiKey,
       poScope
     )
+    rowCountTrace.gpt_raw = Array.isArray(extractionResult?.items) ? extractionResult.items.length : 0
+    const visionWordRowCandidates = extractCandidateItemRowsFromVisionWords(visionWords)
+    const visionTextRowCandidates = extractCandidateItemRowsFromVisionText(visionText)
+    rowCountTrace.vision_row_candidates_words = visionWordRowCandidates.length
+    rowCountTrace.vision_row_candidates_text = visionTextRowCandidates.length
+    const selectedSourceCandidates =
+      visionTextRowCandidates.length > visionWordRowCandidates.length
+        ? visionTextRowCandidates
+        : visionWordRowCandidates
+    const selectedRowCandidates = refineVisionRowCandidates(selectedSourceCandidates)
+    selectedRowCandidateSample = selectedRowCandidates.slice(0, 20)
+    rowCountTrace.vision_row_candidates = selectedSourceCandidates.length
+    rowCountTrace.vision_row_candidates_refined = selectedRowCandidates.length
+    perfDebug.used_vision_text_row_candidates = visionTextRowCandidates.length > visionWordRowCandidates.length
+    if (
+      selectedRowCandidates.length >= rowCountTrace.gpt_raw + 1 &&
+      selectedRowCandidates.length <= 30
+    ) {
+      try {
+        let fallbackItems = await extractItemsFromVisionRowsWithGPT4o(selectedRowCandidates, openaiApiKey)
+        rowCountTrace.vision_row_fallback = fallbackItems.length
+        if (fallbackItems.length < selectedRowCandidates.length) {
+          const backfilled = applyVisionRowHeuristicBackfill(fallbackItems, selectedRowCandidates)
+          fallbackItems = backfilled.items
+          rowCountTrace.vision_row_heuristic_backfill = backfilled.addedCount
+          if (backfilled.addedCount > 0) {
+            perfDebug.used_vision_row_heuristic_backfill = true
+          }
+        }
+        if (fallbackItems.length >= rowCountTrace.gpt_raw + 1) {
+          extractionResult.items = fallbackItems
+          perfDebug.used_vision_row_fallback = true
+        }
+      } catch (e) {
+        console.warn('Vision row fallback extraction failed, keeping primary extraction:', e)
+      }
+    }
+    rowCountTrace.after_vision_row_fallback = Array.isArray(extractionResult?.items) ? extractionResult.items.length : 0
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'row-count-trace',hypothesisId:'H1-H3',location:'ocr-transaction-statement/index.ts:vision-row-fallback',message:'vision row fallback decision',data:{statementId,gptRawCount:rowCountTrace.gpt_raw,visionRowCandidateCount:rowCountTrace.vision_row_candidates,visionRowCandidateRefinedCount:rowCountTrace.vision_row_candidates_refined,visionRowCandidateWords:rowCountTrace.vision_row_candidates_words,visionRowCandidateText:rowCountTrace.vision_row_candidates_text,usedVisionTextRowCandidates:perfDebug.used_vision_text_row_candidates,visionRowFallbackCount:rowCountTrace.vision_row_fallback,visionRowHeuristicBackfillCount:rowCountTrace.vision_row_heuristic_backfill,usedVisionRowHeuristicBackfill:perfDebug.used_vision_row_heuristic_backfill,afterVisionRowFallback:rowCountTrace.after_vision_row_fallback,usedVisionRowFallback:perfDebug.used_vision_row_fallback},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    const missingBeforeFill = (extractionResult.items || []).filter((it) => !(it?.item_name || '').trim()).length
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'blank-item-debug',hypothesisId:'H1',location:'ocr-transaction-statement/index.ts:extract:post-gpt',message:'raw gpt items before fillMissingItemNames',data:{statementId,itemCount:Array.isArray(extractionResult?.items)?extractionResult.items.length:0,missingBeforeFill,sample:(extractionResult?.items||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:(it?.item_name||'').trim().slice(0,24),spec:!!(it?.specification||'').trim(),qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null}))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    extractionResult.items = fillMissingItemNames(extractionResult.items)
+    rowCountTrace.after_fill_missing_name = Array.isArray(extractionResult?.items) ? extractionResult.items.length : 0
+    rowCountTrace.after_remove_ghost_rows = rowCountTrace.after_fill_missing_name
+    extractionResult.items.forEach((item, idx) => { item.line_number = idx + 1 })
+    const missingAfterFill = (extractionResult.items || []).filter((it) => !(it?.item_name || '').trim()).length
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'blank-item-debug',hypothesisId:'H2',location:'ocr-transaction-statement/index.ts:extract:after-fill',message:'items after fillMissingItemNames',data:{statementId,itemCount:Array.isArray(extractionResult?.items)?extractionResult.items.length:0,missingAfterFill,sample:(extractionResult?.items||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:(it?.item_name||'').trim().slice(0,24),qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null,confidence:it?.confidence??null}))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     // #region agent log
     fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'ocr-row-debug',hypothesisId:'A',location:'ocr-transaction-statement/index.ts:afterExtractWithGPT4o',message:'raw gpt extraction rows',data:{statementId,itemCount:Array.isArray(extractionResult?.items)?extractionResult.items.length:0,items:(extractionResult?.items||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:it?.item_name??null,spec:it?.specification??null,qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null,po:it?.po_number??null}))},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
@@ -422,6 +503,10 @@ serve(async (req) => {
       visionText,
       extraOrderNumbers
     )
+    rowCountTrace.after_normalize_po = normalizedItems.length
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'blank-item-debug',hypothesisId:'H3',location:'ocr-transaction-statement/index.ts:normalizePoNumbers:after',message:'items after normalizePoNumbers',data:{statementId,itemCount:normalizedItems.length,missingNameCount:normalizedItems.filter((it)=>!(it?.item_name||'').trim()).length,sample:normalizedItems.slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:(it?.item_name||'').trim().slice(0,24),po:it?.po_number??null,qty:it?.quantity??null,amount:it?.amount??null}))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     // #region agent log
     fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'ocr-row-debug',hypothesisId:'B',location:'ocr-transaction-statement/index.ts:afterNormalizePoNumbers',message:'after po normalization rows',data:{statementId,items:(normalizedItems||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:it?.item_name??null,qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null,po:it?.po_number??null}))},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
@@ -557,6 +642,8 @@ serve(async (req) => {
     } catch (_) {
       // 수량 보정 실패 시 기존 OCR 결과 유지
     }
+    rowCountTrace.after_correction = normalizedItems.length
+    rowCountTrace.before_insert = normalizedItems.length
 
     // 9. DB에 결과 저장 (에러 체크 추가)
     const { data: existingStatement } = await supabase
@@ -586,6 +673,13 @@ serve(async (req) => {
           ...(preservedActualReceivedDate ? { actual_received_date: preservedActualReceivedDate } : {}),
           items: normalizedItems,
           raw_vision_text: visionText,
+          debug_row_counts: rowCountTrace,
+          debug_image: {
+            processed_width: perfDebug.processed_width,
+            processed_height: perfDebug.processed_height,
+            tile_count: perfDebug.tile_count
+          },
+          debug_row_candidate_sample: selectedRowCandidateSample,
           // 학습용: 원본 OCR 추출 거래처명과 검증 결과
           ocr_vendor_name: extractionResult.vendor_name, // GPT가 추출한 원본
           vendor_validated: !!validatedVendorName, // 검증 성공 여부
@@ -646,6 +740,9 @@ serve(async (req) => {
       const { error: itemsError } = await supabase
         .from('transaction_statement_items')
         .insert(itemsToInsert)
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'blank-item-debug',hypothesisId:'H4',location:'ocr-transaction-statement/index.ts:db_insert_items:before-check-error',message:'final items payload summary before insert error check',data:{statementId,payloadCount:itemsToInsert.length,missingExtractedItemNameCount:itemsToInsert.filter((it)=>!(it?.extracted_item_name||'').trim()).length,sample:itemsToInsert.slice(0,12).map((it:any)=>({line:it?.line_number??null,name:(it?.extracted_item_name||'').trim().slice(0,24),qty:it?.extracted_quantity??null,amount:it?.extracted_amount??null,po:it?.extracted_po_number??null}))},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
 
       if (itemsError) {
         console.error('Failed to insert items:', itemsError)
@@ -673,6 +770,8 @@ serve(async (req) => {
         status: 'extracted',
         vendor_name: validatedVendorName || null, // 검증된 거래처명 포함
         vendor_match_source: vendorMatchSource, // 매칭 방법
+        debug_row_counts: rowCountTrace,
+        debug_row_candidate_sample: selectedRowCandidateSample,
         debug_perf_ms: {
           ...perfDebug,
           total_ms: Date.now() - requestStartedAt
@@ -680,6 +779,8 @@ serve(async (req) => {
         result: {
           ...extractionResult,
           vendor_name: validatedVendorName || null, // DB에 없으면 vendor_name 비움
+          debug_row_counts: rowCountTrace,
+          debug_row_candidate_sample: selectedRowCandidateSample,
           debug_perf_ms: {
             ...perfDebug,
             total_ms: Date.now() - requestStartedAt
@@ -1105,15 +1206,25 @@ async function preprocessImage(image: Image): Promise<PreprocessResult | null> {
     processed.scale(scaleFactor, Image.RESIZE_NEAREST_NEIGHBOR)
   }
 
+  // 저해상도 입력에서는 표 행 텍스트가 너무 작아져 GPT가 행 자체를 누락할 수 있음.
+  // 과도한 확대는 왜곡을 유발하므로 2배까지만 업스케일한다.
+  const minDimAfterDownscale = Math.max(processed.width, processed.height)
+  const targetMinDim = 1700
+  if (minDimAfterDownscale < targetMinDim) {
+    const upscaleFactor = Math.min(2, targetMinDim / minDimAfterDownscale)
+    if (upscaleFactor > 1.05) {
+      processed.scale(upscaleFactor, Image.RESIZE_NEAREST_NEIGHBOR)
+    }
+  }
+
   const base64 = await encodeImageToBase64(processed)
   return { image: processed, base64 }
 }
 
 async function buildImageTiles(image: Image): Promise<ImageTile[]> {
   const tiles: ImageTile[] = []
-  const maxDim = Math.max(image.width, image.height)
-  if (image.width < 1200 || image.height < 1200) return tiles
-  if (maxDim > 2200) return tiles
+  const minDim = Math.min(image.width, image.height)
+  if (minDim < 700) return tiles
 
   const rows = 2
   const cols = 2
@@ -1295,6 +1406,7 @@ function pemToDer(pem: string): ArrayBuffer {
 
 async function extractWithGPT4o(
   base64Image: string, 
+  tileImages: string[],
   visionText: string, 
   apiKey: string,
   poScope: 'single' | 'multi' | null
@@ -1379,6 +1491,41 @@ ${scopeHint ? `⚠️ **발주/수주 범위 힌트:** ${scopeHint}` : ''}
 금액이 비어있거나 "-" 또는 "W" 만 있으면 0으로 처리하세요.
 확신도(confidence)는 글씨가 불명확하거나 추측이 필요한 경우 "low", 보통이면 "med", 명확하면 "high"로 표시하세요.
 
+⚠️ **행 생략 금지 규칙 (매우 중요 - 최우선 규칙!):**
+
+**[STEP 1] 추출 전 반드시 먼저 표의 행 수를 세세요:**
+- 이미지의 표에서 합계/소계 행을 제외한 **데이터 행의 총 개수**를 먼저 세세요.
+- 세로줄(|)과 가로줄(─)로 구분된 각 셀 행을 하나씩 세세요.
+- 품목명이 빈칸이어도 그 행에 규격/수량/금액 값이 있으면 데이터 행으로 카운트합니다.
+- 이 개수를 기억하고, 추출할 items 배열의 길이가 이 개수와 정확히 일치해야 합니다.
+
+**[STEP 2] 모든 행을 빠짐없이 추출하세요:**
+- 품목명(품명) 칸이 **빈칸**이어도, 해당 행에 규격/수량/단가/금액 중 하나라도 값이 있으면 **반드시 별도의 item으로 포함**하세요.
+- 빈 품목명인 행의 item_name은 빈 문자열("")로 두세요. 위 행의 품목명을 복사하거나 합치지 마세요.
+- 같은 품목명이 여러 행에 걸쳐 있고 중간 행의 품목명이 빈칸인 경우: 각 행을 **개별 item**으로 추출하세요. 절대 합산하지 마세요.
+
+**[STEP 3] 검증하세요:**
+- 최종 items 배열의 길이가 STEP 1에서 센 데이터 행 수와 같은지 확인하세요.
+- 다르면 누락된 행이 있는 것이므로 다시 확인하세요.
+
+⚠️ **빈 품목명 예시 (이런 표가 있다면):**
+| 번호 | 품명 | 규격 | 수량 | 금액 |
+|------|------|------|------|------|
+| 1    | ABC  | 100  | 5    | 50000|
+| 2    |      | 200  | 3    | 30000|
+| 3    |      | 300  | 2    | 20000|
+| 4    | DEF  | 400  | 1    | 10000|
+
+→ 올바른 추출 (4개 - 표 데이터 행 수와 일치):
+  {"line_number":1,"item_name":"ABC","specification":"100","quantity":5,"amount":50000}
+  {"line_number":2,"item_name":"","specification":"200","quantity":3,"amount":30000}
+  {"line_number":3,"item_name":"","specification":"300","quantity":2,"amount":20000}
+  {"line_number":4,"item_name":"DEF","specification":"400","quantity":1,"amount":10000}
+
+→ 잘못된 추출 (2개만 - 행을 합치거나 생략하면 안됩니다!):
+  {"line_number":1,"item_name":"ABC","specification":"100","quantity":10,"amount":100000}
+  {"line_number":2,"item_name":"DEF","specification":"400","quantity":1,"amount":10000}
+
 ${visionText ? `
 ⚠️ **OCR 텍스트 참조 규칙:**
 - 아래 OCR 텍스트는 **거래처명(vendor_name) 식별**에 우선 활용하세요.
@@ -1388,7 +1535,28 @@ ${visionText ? `
 ${visionText.substring(0, 3000)}
 ---` : ''}
 
+⚠️ 제공된 이미지는 [원본 전체 + 확대 타일] 순서입니다. 행 단위 판독은 확대 타일을 우선 참고하세요.
+
 JSON 형식으로만 응답하세요.`
+
+  const imageInputs: any[] = [
+    {
+      type: 'image_url',
+      image_url: {
+        url: `data:image/png;base64,${base64Image}`,
+        detail: 'high'
+      }
+    }
+  ]
+  tileImages.slice(0, 4).forEach((tile) => {
+    imageInputs.push({
+      type: 'image_url',
+      image_url: {
+        url: `data:image/png;base64,${tile}`,
+        detail: 'high'
+      }
+    })
+  })
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -1407,13 +1575,7 @@ JSON 형식으로만 응답하세요.`
           role: 'user', 
           content: [
             { type: 'text', text: prompt },
-            { 
-              type: 'image_url', 
-              image_url: { 
-                url: `data:image/png;base64,${base64Image}`,
-                detail: 'high'
-              } 
-            }
+            ...imageInputs
           ]
         }
       ],
@@ -1434,8 +1596,429 @@ JSON 형식으로만 응답하세요.`
     throw new Error('No content in GPT-4o response')
   }
 
+  // #region agent log (DEBUG: GPT-RAW)
+  try { const _p = JSON.parse(content); const _items = Array.isArray(_p?.items) ? _p.items : []; fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'blank-item-debug',hypothesisId:'GPT-RAW',location:'ocr-transaction-statement/index.ts:extractWithGPT4o:raw-content',message:'GPT raw response items',data:{totalItems:_items.length,allItems:_items.map((it:any,i:number)=>({line:it?.line_number??i+1,name:it?.item_name??'<missing>',spec:(it?.specification||'').slice(0,30),qty:it?.quantity,amount:it?.amount}))},timestamp:Date.now()})}).catch(()=>{}); } catch(_e) {}
+  // #endregion
+
   const parsed = JSON.parse(content)
   return parsed
+}
+
+type VisionRowCandidate = {
+  line_number: number
+  row_text: string
+}
+
+type VisionRowLogicalItem = {
+  line_number?: number
+  source_lines?: number[]
+  item_name?: string
+  specification?: string
+  spec?: string
+  quantity?: number | string | null
+  unit_price?: number | string | null
+  amount?: number | string | null
+  tax_amount?: number | string | null
+  po_number?: string
+  remark?: string
+  confidence?: string | number | boolean | null
+}
+
+function isMostlyNumericRow(text: string): boolean {
+  const cleaned = text.replace(/\s+/g, '')
+  if (!cleaned) return false
+  const hasLetters = /[A-Za-z가-힣]/.test(cleaned)
+  if (hasLetters) return false
+  const numericTokens = cleaned.match(/-?\d[\d,]*/g) || []
+  return numericTokens.length > 0
+}
+
+function normalizeVisionRowCandidates(candidates: VisionRowCandidate[]): VisionRowCandidate[] {
+  if (candidates.length <= 1) {
+    return candidates.map((item, idx) => ({ line_number: idx + 1, row_text: item.row_text }))
+  }
+
+  const normalized: VisionRowCandidate[] = []
+  for (let i = 0; i < candidates.length; i += 1) {
+    const currentText = candidates[i].row_text
+    const next = candidates[i + 1]
+    const currentNumericTokenCount = extractNumericTokens(currentText).length
+    const nextNumericTokenCount = next ? extractNumericTokens(next.row_text).length : 0
+    if (
+      next &&
+      isMostlyNumericRow(currentText) &&
+      isMostlyNumericRow(next.row_text) &&
+      currentNumericTokenCount <= 2 &&
+      nextNumericTokenCount <= 2
+    ) {
+      normalized.push({
+        line_number: normalized.length + 1,
+        row_text: `${currentText} ${next.row_text}`.replace(/\s+/g, ' ').trim()
+      })
+      i += 1
+      continue
+    }
+
+    normalized.push({
+      line_number: normalized.length + 1,
+      row_text: currentText
+    })
+  }
+
+  return normalized
+}
+
+function extractNumericTokens(text: string): string[] {
+  return text.match(/-?\d[\d,]*/g) || []
+}
+
+function refineVisionRowCandidates(candidates: VisionRowCandidate[]): VisionRowCandidate[] {
+  if (!candidates.length) return []
+  const base = normalizeVisionRowCandidates(candidates)
+  const refinedRows: string[] = []
+
+  for (let i = 0; i < base.length; i += 1) {
+    const current = (base[i].row_text || '').replace(/\s+/g, ' ').trim()
+    if (!current) continue
+    const next = i + 1 < base.length ? (base[i + 1].row_text || '').replace(/\s+/g, ' ').trim() : ''
+    const currentHasLetters = /[A-Za-z가-힣]/.test(current)
+    const currentHasDigits = /\d/.test(current)
+    const nextHasDigits = /\d/.test(next)
+    const currentNumberCount = extractNumericTokens(current).length
+    const nextNumberCount = extractNumericTokens(next).length
+
+    // 품목명이 단독 줄로 분리되고 다음 줄에 수치가 붙는 경우 병합
+    if (
+      next &&
+      currentHasLetters &&
+      nextHasDigits &&
+      (
+        !currentHasDigits ||
+        (currentHasDigits && currentNumberCount === 1 && nextNumberCount >= 2)
+      )
+    ) {
+      refinedRows.push(`${current} ${next}`.replace(/\s+/g, ' ').trim())
+      i += 1
+      continue
+    }
+
+    // 숫자 전용 줄에 두 행이 합쳐진 경우(예: "680 18 44,800 300 4 10,000") 분할
+    if (!currentHasLetters) {
+      const tokens = extractNumericTokens(current)
+      if (tokens.length >= 6 && tokens.length % 3 === 0) {
+        for (let j = 0; j < tokens.length; j += 3) {
+          refinedRows.push(tokens.slice(j, j + 3).join(' '))
+        }
+        continue
+      }
+    }
+
+    refinedRows.push(current)
+  }
+
+  return refinedRows.map((row_text, index) => ({
+    line_number: index + 1,
+    row_text
+  }))
+}
+
+function parseCandidateRowHeuristic(row: VisionRowCandidate, lineNumber: number): ExtractedItem {
+  const rawText = (row.row_text || '').replace(/\s+/g, ' ').trim()
+  const numericTokens = extractNumericTokens(rawText)
+  const parsedNumbers = numericTokens
+    .map((token) => Number(token.replace(/,/g, '')))
+    .filter((value) => Number.isFinite(value))
+
+  const amount = parsedNumbers.length >= 1 ? parsedNumbers[parsedNumbers.length - 1] : 0
+  const quantity = parsedNumbers.length >= 2 ? parsedNumbers[parsedNumbers.length - 2] : null
+  const unitPrice = parsedNumbers.length >= 3 ? parsedNumbers[parsedNumbers.length - 3] : 0
+  const itemName = rawText.replace(/-?\d[\d,]*/g, ' ').replace(/\s+/g, ' ').trim()
+
+  return {
+    line_number: lineNumber,
+    item_name: itemName,
+    specification: '',
+    quantity,
+    unit_price: unitPrice > 0 ? unitPrice : 0,
+    amount: amount > 0 ? amount : 0,
+    confidence: 'low'
+  }
+}
+
+function applyVisionRowHeuristicBackfill(
+  parsedItems: ExtractedItem[],
+  rowCandidates: VisionRowCandidate[]
+): { items: ExtractedItem[]; addedCount: number } {
+  if (!rowCandidates.length) return { items: parsedItems, addedCount: 0 }
+  const byLine = new Map<number, ExtractedItem>()
+  parsedItems.forEach((item, idx) => {
+    const lineNumber = Number.isFinite(Number(item?.line_number)) ? Number(item.line_number) : idx + 1
+    if (!byLine.has(lineNumber)) {
+      byLine.set(lineNumber, { ...item, line_number: lineNumber })
+    }
+  })
+
+  const merged: ExtractedItem[] = []
+  let addedCount = 0
+  rowCandidates.forEach((row, idx) => {
+    const lineNumber = Number.isFinite(Number(row.line_number)) ? Number(row.line_number) : idx + 1
+    const existing = byLine.get(lineNumber)
+    if (existing) {
+      merged.push({ ...existing, line_number: lineNumber })
+      return
+    }
+    merged.push(parseCandidateRowHeuristic(row, lineNumber))
+    addedCount += 1
+  })
+
+  return { items: merged, addedCount }
+}
+
+function extractCandidateItemRowsFromVisionWords(visionWords: VisionWord[]): VisionRowCandidate[] {
+  if (!Array.isArray(visionWords) || visionWords.length === 0) return []
+
+  const rows = groupWordsIntoRows(visionWords)
+  if (!rows.length) return []
+
+  const headerKeywords = ['품명', '품목', '규격', '수량', '단가', '금액', 'QTY', 'AMOUNT', 'UNIT', 'SPEC']
+  const totalPattern = /(합계|총액|공급가액|세액|부가세|TOTAL|SUM|VAT)/i
+
+  const headerIndex = rows.findIndex((row) => {
+    const text = (row.text || '').trim()
+    if (!text) return false
+    const hitCount = headerKeywords.reduce((count, keyword) => {
+      return count + (new RegExp(keyword, 'i').test(text) ? 1 : 0)
+    }, 0)
+    return hitCount >= 2
+  })
+
+  const startIndex = headerIndex >= 0 ? headerIndex + 1 : 0
+  let endIndex = rows.length
+  for (let i = startIndex; i < rows.length; i += 1) {
+    const text = (rows[i].text || '').trim()
+    if (totalPattern.test(text)) {
+      endIndex = i
+      break
+    }
+  }
+
+  const candidates: VisionRowCandidate[] = []
+  for (let i = startIndex; i < endIndex; i += 1) {
+    const text = (rows[i].text || '').replace(/\s+/g, ' ').trim()
+    if (!text) continue
+    if (totalPattern.test(text)) continue
+    const numericTokens = text.match(/-?\d[\d,]*/g) || []
+    const hasLetters = /[A-Za-z가-힣]/.test(text)
+    if (numericTokens.length >= 2 || (numericTokens.length >= 1 && hasLetters)) {
+      candidates.push({
+        line_number: candidates.length + 1,
+        row_text: text
+      })
+    }
+  }
+
+  return candidates
+}
+
+function extractCandidateItemRowsFromVisionText(visionText: string): VisionRowCandidate[] {
+  if (!visionText || visionText.trim().length < 20) return []
+
+  const lines = visionText
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+
+  if (!lines.length) return []
+
+  const headerPattern = /(품\s*목|품명|규격|수량|단가|금\s*액|비\s*고|QTY|AMOUNT|SPEC|UNIT)/i
+  const footerPattern = /(발주자|인수자|입금|카드|현불|계산서|전화|TEL|총계|VAT|공급가액|세액)/i
+  const headerIndex = lines.findIndex((line) => headerPattern.test(line))
+  const startIndex = headerIndex >= 0 ? headerIndex + 1 : 0
+
+  const candidates: string[] = []
+  let current = ''
+  let currentHasLetters = false
+
+  const flushCurrent = () => {
+    if (!current) return
+    const normalized = current.replace(/\s+/g, ' ').trim()
+    if (!normalized) {
+      current = ''
+      currentHasLetters = false
+      return
+    }
+    if (footerPattern.test(normalized)) {
+      current = ''
+      currentHasLetters = false
+      return
+    }
+    const hasDigits = /\d/.test(normalized)
+    if (hasDigits) {
+      candidates.push(normalized)
+    }
+    current = ''
+    currentHasLetters = false
+  }
+
+  for (let i = startIndex; i < lines.length; i += 1) {
+    const line = lines[i]
+    if (!line) continue
+    if (footerPattern.test(line) && candidates.length >= 3) break
+    if (headerPattern.test(line)) continue
+
+    const hasLetters = /[A-Za-z가-힣]/.test(line)
+    const hasDigits = /\d/.test(line)
+    if (!hasLetters && !hasDigits) continue
+
+    if (!current) {
+      current = line
+      currentHasLetters = hasLetters
+    } else if (hasLetters && currentHasLetters) {
+      // 새 품목명으로 보이는 행 시작
+      flushCurrent()
+      current = line
+      currentHasLetters = true
+    } else if (hasLetters && !currentHasLetters) {
+      // 숫자 전용 행 뒤에 품목명 등장: 이전 숫자 행은 별도 행으로 확정
+      flushCurrent()
+      current = line
+      currentHasLetters = true
+    } else {
+      current = `${current} ${line}`.trim()
+    }
+
+    const numberTokens = line.match(/-?\d[\d,]*/g) || []
+    const maxNumeric = numberTokens.reduce((max, token) => {
+      const value = Number(token.replace(/,/g, ''))
+      return Number.isFinite(value) ? Math.max(max, value) : max
+    }, 0)
+    const amountLike = line.includes(',') || maxNumeric >= 10000
+    if (amountLike) {
+      flushCurrent()
+    }
+  }
+
+  flushCurrent()
+
+  return normalizeVisionRowCandidates(candidates
+    .filter((row) => !footerPattern.test(row))
+    .slice(0, 40)
+    .map((row, index) => ({
+      line_number: index + 1,
+      row_text: row
+    })))
+}
+
+async function extractItemsFromVisionRowsWithGPT4o(
+  rowCandidates: VisionRowCandidate[],
+  apiKey: string
+): Promise<ExtractedItem[]> {
+  if (!rowCandidates.length) return []
+
+  const prompt = `아래는 Google Vision OCR에서 추출한 거래명세서 행 목록입니다.
+중요: 이 목록은 한 품목이 여러 줄로 깨져 있을 수 있습니다.
+
+목표:
+- 입력 행들을 분석해 "논리적 품목행(items)"으로 재구성하세요.
+- 숫자만 있는 단독 줄(예: 183,200)은 인접한 품목행의 amount/보조값일 가능성이 높습니다.
+- 인접 행만 병합하세요. 멀리 떨어진 행 병합 금지.
+
+반드시 지킬 규칙:
+- 원본 정보 손실 없이 최대한 많은 품목을 복원하세요.
+- item_name이 실제로 비어있는 행은 item_name을 ""로 두세요.
+- items는 입력 행 수보다 같거나 적을 수 있지만, 기존 GPT 결과(7행)보다는 많아야 합니다.
+- 합계/총계/입금/서명 같은 푸터성 행은 제외하세요.
+- 각 item에 source_lines(사용한 입력 line_number 배열)을 포함하세요.
+- JSON 형식으로만 응답하세요.
+
+응답 형식:
+{
+  "items": [
+    {
+      "line_number": 1,
+      "source_lines": [1,2],
+      "item_name": "...",
+      "specification": "...",
+      "quantity": 0,
+      "unit_price": 0,
+      "amount": 0,
+      "tax_amount": null,
+      "po_number": "",
+      "remark": "",
+      "confidence": "low|med|high"
+    }
+  ]
+}
+
+입력 행(JSON):
+${JSON.stringify(rowCandidates)}
+`
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: 'You extract transaction statement rows from provided OCR row strings. Output valid JSON only.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0,
+      max_tokens: 2200,
+      response_format: { type: 'json_object' }
+    })
+  })
+
+  const result = await response.json()
+  if (result.error) {
+    throw new Error(`GPT-4o row fallback error: ${result.error.message}`)
+  }
+
+  const content = result.choices?.[0]?.message?.content
+  if (!content) {
+    throw new Error('No content in GPT-4o row fallback response')
+  }
+
+  const parsed = JSON.parse(content)
+  const parsedItems: VisionRowLogicalItem[] = Array.isArray(parsed?.items) ? parsed.items : []
+  if (!parsedItems.length) return []
+
+  return parsedItems.map((raw, idx) => {
+    const quantity = toFiniteNumber(raw?.quantity)
+    const unitPrice = toFiniteNumber(raw?.unit_price)
+    const amount = toFiniteNumber(raw?.amount)
+    const taxAmount = toFiniteNumber(raw?.tax_amount)
+    const poNumber = typeof raw?.po_number === 'string' ? raw.po_number.trim() : ''
+    const remark = typeof raw?.remark === 'string' ? raw.remark.trim() : ''
+    const specification =
+      typeof raw?.specification === 'string'
+        ? raw.specification.trim()
+        : typeof raw?.spec === 'string'
+        ? raw.spec.trim()
+        : ''
+
+    return {
+      line_number: Number.isFinite(Number(raw?.line_number)) ? Number(raw?.line_number) : idx + 1,
+      item_name: typeof raw?.item_name === 'string' ? raw.item_name.trim() : '',
+      specification,
+      quantity,
+      unit_price: unitPrice ?? 0,
+      amount: amount ?? 0,
+      tax_amount: taxAmount ?? undefined,
+      po_number: poNumber || undefined,
+      remark: remark || undefined,
+      confidence: normalizeItemConfidence(raw?.confidence)
+    }
+  })
 }
 
 type PoMapping = {
@@ -1824,6 +2407,70 @@ function normalizeItemQuantity(quantity: unknown): number {
   }
 
   return 1
+}
+
+function fillMissingItemNames(items: ExtractedItem[]): ExtractedItem[] {
+  if (!Array.isArray(items) || items.length === 0) return []
+
+  let lastKnownItemName = ''
+
+  return items.map((item) => {
+    const currentName = typeof item.item_name === 'string' ? item.item_name.trim() : ''
+    if (currentName) {
+      lastKnownItemName = currentName
+      return { ...item, item_name: currentName }
+    }
+
+    const canInherit = lastKnownItemName.length >= 2 && hasRowDataWithoutItemName(item)
+    if (blankItemDebugLogCount < 20) {
+      blankItemDebugLogCount += 1
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'blank-item-debug',hypothesisId:'H2',location:'ocr-transaction-statement/index.ts:fillMissingItemNames:blank-row',message:'blank item_name row decision',data:{lineNumber:item?.line_number??null,lastKnownItemName:lastKnownItemName.slice(0,24),canInherit,hasRowData:hasRowDataWithoutItemName(item),spec:typeof item?.specification==='string'?item.specification.trim().slice(0,24):'',qty:item?.quantity??null,unit:item?.unit_price??null,amount:item?.amount??null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+    }
+    if (!canInherit) {
+      return item
+    }
+
+    const normalizedConfidence = normalizeItemConfidence(item.confidence)
+    const inheritedConfidence: 'low' | 'med' | 'high' =
+      normalizedConfidence === 'high' ? 'med' : 'low'
+
+    return {
+      ...item,
+      item_name: lastKnownItemName,
+      confidence: inheritedConfidence
+    }
+  })
+}
+
+function hasRowDataWithoutItemName(item: ExtractedItem): boolean {
+  const specification = typeof item.specification === 'string' ? item.specification.trim() : ''
+  const remark = typeof item.remark === 'string' ? item.remark.trim() : ''
+  const quantity = toFiniteNumber(item.quantity)
+  const unitPrice = toFiniteNumber(item.unit_price)
+  const amount = toFiniteNumber(item.amount)
+  const taxAmount = toFiniteNumber(item.tax_amount)
+
+  return Boolean(
+    specification ||
+    remark ||
+    quantity !== null ||
+    unitPrice !== null ||
+    amount !== null ||
+    taxAmount !== null
+  )
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const cleaned = value.trim().replace(/[^0-9.-]/g, '')
+    if (!cleaned) return null
+    const parsed = Number(cleaned)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
 }
 
 function normalizeOrderToken(candidate?: string): string | null {

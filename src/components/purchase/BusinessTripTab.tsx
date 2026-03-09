@@ -59,17 +59,31 @@ const VEHICLE_FIXED_STATUS: Record<string, { status: "away" }> = {
 const TRIP_TRANSPORT_OPTIONS = [
   { value: "company_vehicle", label: "회사차량" },
   { value: "public_transport", label: "대중교통" },
-  { value: "airplane", label: "비행기" },
-  { value: "ktx_srt", label: "KTX/SRT" },
+  { value: "private_car", label: "자차" },
   { value: "other", label: "기타" },
 ];
+
+const PUBLIC_TRANSPORT_OPTIONS = [
+  { value: "bus", label: "버스" },
+  { value: "train_ktx_srt", label: "기차(KTX/SRT)" },
+  { value: "airplane", label: "비행기" },
+  { value: "taxi", label: "택시" },
+];
+
+const PUBLIC_TRANSPORT_LABEL_MAP: Record<string, string> = {
+  bus: "버스",
+  train_ktx_srt: "기차(KTX/SRT)",
+  airplane: "비행기",
+  taxi: "택시",
+};
 
 const TRIP_TRANSPORT_LABEL_MAP: Record<string, string> = {
   company_vehicle: "회사차량",
   public_transport: "대중교통",
+  private_car: "자차",
+  other: "기타",
   airplane: "비행기",
   ktx_srt: "KTX/SRT",
-  other: "기타",
 };
 
 const EXPENSE_TYPE_OPTIONS = [
@@ -182,7 +196,7 @@ interface BusinessTrip {
   trip_start_date: string;
   trip_end_date: string;
   companions: { id: string; name: string }[] | null;
-  transport_type: "company_vehicle" | "public_transport" | "airplane" | "ktx_srt" | "other";
+  transport_type: "company_vehicle" | "public_transport" | "private_car" | "other";
   requested_vehicle_info: string | null;
   request_corporate_card: boolean;
   requested_card_number: string | null;
@@ -290,6 +304,7 @@ interface AllowanceFormRow {
 
 interface BusinessTripTabProps {
   mode?: "list" | "create";
+  onBadgeRefresh?: () => void;
 }
 
 const newKey = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -371,7 +386,7 @@ const formatDateRangeLabel = (from?: Date, to?: Date) => {
   return format(from, "yyyy-MM-dd");
 };
 
-export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps) {
+export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: BusinessTripTabProps) {
   const supabase = createClient();
   const isCreateMode = mode === "create";
 
@@ -391,7 +406,7 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
   const [datePopoverOpen, setDatePopoverOpen] = useState(false);
   const [formCompanions, setFormCompanions] = useState<CompanionOption[]>([]);
   const [formTransportType, setFormTransportType] = useState<BusinessTrip["transport_type"]>("public_transport");
-  const [formCompanyVehicle, setFormCompanyVehicle] = useState<string | null>(null);
+  const [formTransportDetail, setFormTransportDetail] = useState<string>("");
   const [formCardNumber, setFormCardNumber] = useState<string | null>(null);
   const [formExpectedAmount, setFormExpectedAmount] = useState("");
   const [formPrecheckNote, setFormPrecheckNote] = useState("");
@@ -497,18 +512,27 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
   }, [selectedTripRange, vehicleSchedules]);
 
   useEffect(() => {
-    if (formTransportType !== "company_vehicle" && formCompanyVehicle) {
-      setFormCompanyVehicle(null);
+    if (formTransportType === "company_vehicle") {
+      if (
+        formTransportDetail &&
+        !availableCompanyVehicles.some((v) => v.value === formTransportDetail)
+      ) {
+        setFormTransportDetail("");
+      }
       return;
     }
-    if (
-      formTransportType === "company_vehicle" &&
-      formCompanyVehicle &&
-      !availableCompanyVehicles.some((v) => v.value === formCompanyVehicle)
-    ) {
-      setFormCompanyVehicle(null);
+
+    if (formTransportType === "private_car") {
+      if (formTransportDetail) setFormTransportDetail("");
+      return;
     }
-  }, [availableCompanyVehicles, formCompanyVehicle, formTransportType]);
+
+    if (formTransportType === "public_transport") {
+      if (formTransportDetail && !PUBLIC_TRANSPORT_OPTIONS.some((o) => o.value === formTransportDetail)) {
+        setFormTransportDetail("");
+      }
+    }
+  }, [availableCompanyVehicles, formTransportDetail, formTransportType]);
 
   const loadTrips = useCallback(async () => {
     try {
@@ -651,7 +675,7 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
     setFormDateRange(undefined);
     setFormCompanions([]);
     setFormTransportType("public_transport");
-    setFormCompanyVehicle(null);
+    setFormTransportDetail("");
     setFormCardNumber(null);
     setFormExpectedAmount("");
     setFormPrecheckNote("");
@@ -670,8 +694,16 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
       toast.error("필수 항목을 입력해주세요.");
       return;
     }
-    if (formTransportType === "company_vehicle" && !formCompanyVehicle) {
+    if (formTransportType === "company_vehicle" && !formTransportDetail) {
       toast.error("회사차량 이용 시 차량을 선택해주세요.");
+      return;
+    }
+    if (formTransportType === "public_transport" && !formTransportDetail) {
+      toast.error("대중교통 이용 시 상세 수단을 선택해주세요.");
+      return;
+    }
+    if (formTransportType === "other" && !formTransportDetail.trim()) {
+      toast.error("기타 이동수단 내용을 입력해주세요.");
       return;
     }
 
@@ -694,7 +726,10 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
         trip_end_date: format(endDate, "yyyy-MM-dd"),
         companions: selectedCompanions,
         transport_type: formTransportType,
-        requested_vehicle_info: formTransportType === "company_vehicle" ? formCompanyVehicle : null,
+        requested_vehicle_info:
+          formTransportType === "private_car"
+            ? null
+            : (formTransportType === "other" ? formTransportDetail.trim() : formTransportDetail) || null,
         request_corporate_card: Boolean(formCardNumber),
         requested_card_number: formCardNumber,
         expected_total_amount: toNumber(formExpectedAmount),
@@ -708,6 +743,7 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
         setIsRequestModalOpen(false);
       }
       loadTrips();
+      onBadgeRefresh?.();
     } catch (err) {
       logger.error("출장 요청 등록 실패", err);
       toast.error("출장 요청 등록에 실패했습니다.");
@@ -718,7 +754,7 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
     currentUser?.id,
     employees,
     formCardNumber,
-    formCompanyVehicle,
+    formTransportDetail,
     formCompanions,
     formDateRange,
     formDepartment,
@@ -741,6 +777,7 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
       if (error) throw error;
       toast.success("출장 요청이 삭제되었습니다.");
       loadTrips();
+      onBadgeRefresh?.();
     } catch (err) {
       logger.error("출장 요청 삭제 실패", err);
       toast.error("출장 요청 삭제에 실패했습니다.");
@@ -769,6 +806,7 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
           : "출장 요청이 승인되었습니다."
       );
       loadTrips();
+      onBadgeRefresh?.();
     } catch (err) {
       logger.error("출장 승인 실패", err);
       toast.error("승인 처리에 실패했습니다.");
@@ -818,6 +856,7 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
       setRejectTargetTripId(null);
       setRejectReason("");
       loadTrips();
+      onBadgeRefresh?.();
     } catch (err) {
       logger.error("반려 처리 실패", err);
       toast.error("반려 처리에 실패했습니다.");
@@ -863,11 +902,12 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
       setSettlementTrip(null);
       setSettlementViewOnly(false);
       loadTrips();
+      onBadgeRefresh?.();
     } catch (err) {
       logger.error("정산 승인 실패", err);
       toast.error("정산 승인에 실패했습니다.");
     }
-  }, [currentUser?.id, loadTrips, settlementApproveTargetId, supabase, trips]);
+  }, [currentUser?.id, loadTrips, onBadgeRefresh, settlementApproveTargetId, supabase, trips]);
 
   const getTripDateRange = useCallback((trip?: BusinessTrip | null): string[] => {
     if (!trip?.trip_start_date || !trip?.trip_end_date) return [];
@@ -1414,6 +1454,7 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
       );
       closeSettlementModal();
       loadTrips();
+      onBadgeRefresh?.();
     } catch (err) {
       logger.error("정산 저장 실패", err);
       toast.error("정산 저장에 실패했습니다.");
@@ -1470,6 +1511,15 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
 
   const getTransportLabel = (trip: BusinessTrip) => {
     return TRIP_TRANSPORT_LABEL_MAP[trip.transport_type] || "기타";
+  };
+
+  const getTransportDetailText = (trip: BusinessTrip) => {
+    const detail = trip.requested_vehicle_info?.trim() || "";
+    if (!detail) return "";
+    if (trip.transport_type === "public_transport") {
+      return PUBLIC_TRANSPORT_LABEL_MAP[detail] || detail;
+    }
+    return detail;
   };
 
   const getVehicleStatusText = (trip: BusinessTrip) => {
@@ -1648,36 +1698,62 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
                 </div>
               </div>
               <div className="doc-form-cell">
-                <div className="doc-form-cell-label">회사차량 선택 {formTransportType === "company_vehicle" && <span className="required">*</span>}</div>
-                <div className="doc-select-container">
-                  <ReactSelect
-                    options={availableCompanyVehicles}
-                    value={formCompanyVehicle ? availableCompanyVehicles.find((v) => v.value === formCompanyVehicle) || null : null}
-                    onChange={(opt) => setFormCompanyVehicle((opt as { value: string } | null)?.value || null)}
-                    placeholder={
-                      formTransportType === "company_vehicle"
-                        ? availableCompanyVehicles.length > 0
-                          ? "차량 선택"
-                          : "선택 가능한 회사차량 없음"
-                        : "회사차량 선택 시 활성화"
-                    }
-                    isSearchable
-                    isDisabled={formTransportType !== "company_vehicle"}
-                    styles={reactSelectStyles}
-                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
-                    menuShouldBlockScroll={false}
-                    noOptionsMessage={() => "없음"}
-                    formatOptionLabel={(option) => (
-                      <div className="flex items-center text-xs">
-                        <span className="font-medium text-gray-900">{(option as { label: string }).label}</span>
-                        <span className="text-gray-300 mx-1.5">|</span>
-                        <span className="text-gray-500">{(option as { plate?: string }).plate || ""}</span>
-                      </div>
-                    )}
-                  />
+                <div className="doc-form-cell-label">
+                  상세 선택
+                  {(formTransportType === "company_vehicle" || formTransportType === "public_transport" || formTransportType === "other") && (
+                    <span className="required"> *</span>
+                  )}
                 </div>
-                {formTransportType === "company_vehicle" && availableCompanyVehicles.length === 0 && (
-                  <p className="card-description text-red-500 mt-1">현재 선택 가능한 회사차량이 없습니다.</p>
+                {formTransportType === "company_vehicle" && (
+                  <div className="doc-select-container">
+                    <ReactSelect
+                      options={availableCompanyVehicles}
+                      value={formTransportDetail ? availableCompanyVehicles.find((v) => v.value === formTransportDetail) || null : null}
+                      onChange={(opt) => setFormTransportDetail((opt as { value: string } | null)?.value || "")}
+                      placeholder={availableCompanyVehicles.length > 0 ? "회사차량 선택" : "선택 가능한 회사차량 없음"}
+                      isSearchable
+                      styles={reactSelectStyles}
+                      menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                      menuShouldBlockScroll={false}
+                      noOptionsMessage={() => "없음"}
+                      formatOptionLabel={(option) => (
+                        <div className="flex items-center text-xs">
+                          <span className="font-medium text-gray-900">{(option as { label: string }).label}</span>
+                          <span className="text-gray-300 mx-1.5">|</span>
+                          <span className="text-gray-500">{(option as { plate?: string }).plate || ""}</span>
+                        </div>
+                      )}
+                    />
+                    {availableCompanyVehicles.length === 0 && (
+                      <p className="card-description text-red-500 mt-1">현재 선택 가능한 회사차량이 없습니다.</p>
+                    )}
+                  </div>
+                )}
+                {formTransportType === "public_transport" && (
+                  <div className="doc-select-container">
+                    <ReactSelect
+                      options={PUBLIC_TRANSPORT_OPTIONS}
+                      value={PUBLIC_TRANSPORT_OPTIONS.find((o) => o.value === formTransportDetail) || null}
+                      onChange={(opt) => setFormTransportDetail((opt as { value: string } | null)?.value || "")}
+                      placeholder="대중교통 선택"
+                      isSearchable={false}
+                      styles={reactSelectStyles}
+                      menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                      menuShouldBlockScroll={false}
+                    />
+                  </div>
+                )}
+                {formTransportType === "private_car" && (
+                  <Input value="선택 없음" disabled className="doc-form-input text-gray-400" />
+                )}
+                {formTransportType === "other" && (
+                  <Input
+                    value={formTransportDetail}
+                    onChange={(e) => setFormTransportDetail(e.target.value)}
+                    placeholder="기타 이동수단 입력"
+                    className="doc-form-input"
+                    maxLength={30}
+                  />
                 )}
               </div>
             </div>
@@ -1875,7 +1951,10 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
                               <div className="card-description">{getVehicleStatusText(trip)}</div>
                             </div>
                           ) : (
-                            <span className="card-description">{getTransportLabel(trip)}</span>
+                            <div>
+                              <div className="card-title">{getTransportLabel(trip)}</div>
+                              <div className="card-description">{getTransportDetailText(trip) || "-"}</div>
+                            </div>
                           )}
                         </td>
                         <td className="px-3 py-1.5 card-title whitespace-nowrap text-right">
@@ -2064,34 +2143,60 @@ export default function BusinessTripTab({ mode = "list" }: BusinessTripTabProps)
                 />
               </div>
               <div className="col-span-1">
-                <Label className="modal-label mb-1.5 block text-[11px]">회사차량 선택{formTransportType === "company_vehicle" && <span className="text-red-500 ml-0.5">*</span>}</Label>
-                <ReactSelect
-                  options={availableCompanyVehicles}
-                  value={formCompanyVehicle ? availableCompanyVehicles.find((v) => v.value === formCompanyVehicle) || null : null}
-                  onChange={(opt) => setFormCompanyVehicle((opt as { value: string } | null)?.value || null)}
-                  placeholder={
-                    formTransportType === "company_vehicle"
-                      ? availableCompanyVehicles.length > 0
-                        ? "차량 선택"
-                        : "선택 가능한 회사차량 없음"
-                      : "회사차량 선택 시 활성화"
-                  }
-                  isSearchable
-                  isDisabled={formTransportType !== "company_vehicle"}
-                  styles={reactSelectStyles}
-                  menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
-                  menuShouldBlockScroll={false}
-                  noOptionsMessage={() => "없음"}
-                  formatOptionLabel={(option) => (
-                    <div className="flex items-center text-xs">
-                      <span className="font-medium text-gray-900">{(option as { label: string }).label}</span>
-                      <span className="text-gray-300 mx-1.5">|</span>
-                      <span className="text-gray-500">{(option as { plate?: string }).plate || ""}</span>
-                    </div>
+                <Label className="modal-label mb-1.5 block text-[11px]">
+                  상세 선택
+                  {(formTransportType === "company_vehicle" || formTransportType === "public_transport" || formTransportType === "other") && (
+                    <span className="text-red-500 ml-0.5">*</span>
                   )}
-                />
-                {formTransportType === "company_vehicle" && availableCompanyVehicles.length === 0 && (
-                  <p className="card-description text-red-500 mt-1">현재 선택 가능한 회사차량이 없습니다.</p>
+                </Label>
+                {formTransportType === "company_vehicle" && (
+                  <>
+                    <ReactSelect
+                      options={availableCompanyVehicles}
+                      value={formTransportDetail ? availableCompanyVehicles.find((v) => v.value === formTransportDetail) || null : null}
+                      onChange={(opt) => setFormTransportDetail((opt as { value: string } | null)?.value || "")}
+                      placeholder={availableCompanyVehicles.length > 0 ? "회사차량 선택" : "선택 가능한 회사차량 없음"}
+                      isSearchable
+                      styles={reactSelectStyles}
+                      menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                      menuShouldBlockScroll={false}
+                      noOptionsMessage={() => "없음"}
+                      formatOptionLabel={(option) => (
+                        <div className="flex items-center text-xs">
+                          <span className="font-medium text-gray-900">{(option as { label: string }).label}</span>
+                          <span className="text-gray-300 mx-1.5">|</span>
+                          <span className="text-gray-500">{(option as { plate?: string }).plate || ""}</span>
+                        </div>
+                      )}
+                    />
+                    {availableCompanyVehicles.length === 0 && (
+                      <p className="card-description text-red-500 mt-1">현재 선택 가능한 회사차량이 없습니다.</p>
+                    )}
+                  </>
+                )}
+                {formTransportType === "public_transport" && (
+                  <ReactSelect
+                    options={PUBLIC_TRANSPORT_OPTIONS}
+                    value={PUBLIC_TRANSPORT_OPTIONS.find((o) => o.value === formTransportDetail) || null}
+                    onChange={(opt) => setFormTransportDetail((opt as { value: string } | null)?.value || "")}
+                    placeholder="대중교통 선택"
+                    isSearchable={false}
+                    styles={reactSelectStyles}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                    menuShouldBlockScroll={false}
+                  />
+                )}
+                {formTransportType === "private_car" && (
+                  <Input value="선택 없음" disabled className="h-[28px] text-xs bg-white border-[#d2d2d7] business-radius-input text-gray-400" />
+                )}
+                {formTransportType === "other" && (
+                  <Input
+                    value={formTransportDetail}
+                    onChange={(e) => setFormTransportDetail(e.target.value)}
+                    placeholder="기타 이동수단 입력"
+                    className="h-[28px] text-xs bg-white border-[#d2d2d7] business-radius-input"
+                    maxLength={30}
+                  />
                 )}
               </div>
             </div>

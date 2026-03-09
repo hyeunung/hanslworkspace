@@ -100,6 +100,7 @@ interface Employee {
 
 interface CardUsageTabProps {
   mode?: "list" | "create";
+  onBadgeRefresh?: () => void;
 }
 
 const MAX_KRW_AMOUNT = 1_000_000_000;
@@ -200,7 +201,7 @@ const reactSelectStyles = {
   }),
 };
 
-export default function CardUsageTab({ mode = "list" }: CardUsageTabProps) {
+export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsageTabProps) {
   const supabase = createClient();
   const isCreateMode = mode === "create";
 
@@ -318,6 +319,7 @@ export default function CardUsageTab({ mode = "list" }: CardUsageTabProps) {
       if (error) throw error;
       toast.success("삭제되었습니다.");
       loadUsages();
+      onBadgeRefresh?.();
     } catch {
       toast.error("삭제에 실패했습니다.");
     }
@@ -406,6 +408,7 @@ export default function CardUsageTab({ mode = "list" }: CardUsageTabProps) {
         setIsModalOpen(false);
       }
       loadUsages();
+      onBadgeRefresh?.();
     } catch (err) {
       logger.error("카드사용 요청 실패", err);
       toast.error("요청 등록에 실패했습니다.");
@@ -427,10 +430,11 @@ export default function CardUsageTab({ mode = "list" }: CardUsageTabProps) {
       if (error) throw error;
       toast.success("승인 처리되었습니다.");
       loadUsages();
+      onBadgeRefresh?.();
     } catch {
       toast.error("승인 처리에 실패했습니다.");
     }
-  }, [supabase, currentUser, loadUsages]);
+  }, [supabase, currentUser, loadUsages, onBadgeRefresh]);
 
   const openRejectDialog = useCallback((id: number) => {
     setRejectTargetId(id);
@@ -453,10 +457,11 @@ export default function CardUsageTab({ mode = "list" }: CardUsageTabProps) {
       toast.success("반려 처리되었습니다.");
       setRejectTargetId(null);
       loadUsages();
+      onBadgeRefresh?.();
     } catch {
       toast.error("반려 처리에 실패했습니다.");
     }
-  }, [supabase, currentUser, rejectTargetId, rejectReason, loadUsages]);
+  }, [supabase, currentUser, rejectTargetId, rejectReason, loadUsages, onBadgeRefresh]);
 
   const handleCardReturn = useCallback(async (id: number) => {
     try {
@@ -472,6 +477,7 @@ export default function CardUsageTab({ mode = "list" }: CardUsageTabProps) {
       if (error) throw error;
       toast.success("카드 반납 처리되었습니다.");
       loadUsages();
+      onBadgeRefresh?.();
     } catch {
       toast.error("카드 반납 처리에 실패했습니다.");
     }
