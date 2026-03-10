@@ -4002,7 +4002,7 @@ export default function StatementConfirmModal({
       <Dialog
         open={isOpen}
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && !isPurchaseDetailModalOpen) {
             handleCloseWithSave();
           }
         }}
@@ -4014,6 +4014,7 @@ export default function StatementConfirmModal({
           data-debug={dialogDebugId}
           showCloseButton={false}
           onPointerDownOutside={(e) => {
+            if (isPurchaseDetailModalOpen) { e.preventDefault(); return; }
             const target = e.target as HTMLElement | null;
             const isDropdownInteraction = Boolean(target?.closest('[data-ts-dropdown-panel="true"]'));
             if (isDropdownInteraction || openDropdowns.size > 0) {
@@ -4021,6 +4022,7 @@ export default function StatementConfirmModal({
             }
           }}
           onFocusOutside={(e) => {
+            if (isPurchaseDetailModalOpen) { e.preventDefault(); return; }
             const target = e.target as HTMLElement | null;
             const isDropdownInteraction = Boolean(target?.closest('[data-ts-dropdown-panel="true"]'));
             if (isDropdownInteraction || openDropdowns.size > 0) {
@@ -4028,13 +4030,13 @@ export default function StatementConfirmModal({
             }
           }}
           onInteractOutside={(e) => {
+            if (isPurchaseDetailModalOpen) { e.preventDefault(); return; }
             const target = e.target as HTMLElement | null;
             const isDropdownInteraction = Boolean(target?.closest('[data-ts-dropdown-panel="true"]'));
             if (isDropdownInteraction) {
               e.preventDefault();
               return;
             }
-            // 드롭다운이 열려있을 때는 외부 클릭으로 모달 닫기 방지
             if (openDropdowns.size > 0) {
               e.preventDefault();
             }
