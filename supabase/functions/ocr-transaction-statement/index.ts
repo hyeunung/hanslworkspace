@@ -229,7 +229,7 @@ serve(async (req) => {
         await supabase
           .from('transaction_statements')
           .update(queueUpdate)
-          .in('status', ['pending', 'queued', 'failed'])
+          .in('status', ['pending', 'queued', 'failed', 'extracted', 'confirmed', 'rejected'])
           .eq('id', statementId)
         return new Response(
           JSON.stringify({
@@ -389,6 +389,9 @@ serve(async (req) => {
       poScope
     )
     rowCountTrace.gpt_raw = Array.isArray(extractionResult?.items) ? extractionResult.items.length : 0
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H1',location:'ocr-transaction-statement/index.ts:afterExtractWithGPT4o',message:'initial gpt po read snapshot',data:{statementId,itemCount:rowCountTrace.gpt_raw,gptPoSample:(extractionResult.items||[]).slice(0,20).map((it:any,idx:number)=>({line:it?.line_number??idx+1,po:it?.po_number??null,spec:(it?.specification||'').slice(0,60),name:(it?.item_name||'').slice(0,40)})),visionTextPoCandidates:extractOrderNumbersFromText(visionText).slice(0,20)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     const visionWordRowCandidates = extractCandidateItemRowsFromVisionWords(visionWords)
     const visionTextRowCandidates = extractCandidateItemRowsFromVisionText(visionText)
     rowCountTrace.vision_row_candidates_words = visionWordRowCandidates.length
@@ -402,10 +405,10 @@ serve(async (req) => {
     rowCountTrace.vision_row_candidates = selectedSourceCandidates.length
     rowCountTrace.vision_row_candidates_refined = selectedRowCandidates.length
     perfDebug.used_vision_text_row_candidates = visionTextRowCandidates.length > visionWordRowCandidates.length
-    if (
+    const rowFallbackGatePassed =
       selectedRowCandidates.length >= rowCountTrace.gpt_raw + 1 &&
       selectedRowCandidates.length <= 30
-    ) {
+    if (rowFallbackGatePassed) {
       try {
         let fallbackItems = await extractItemsFromVisionRowsWithGPT4o(selectedRowCandidates, openaiApiKey)
         rowCountTrace.vision_row_fallback = fallbackItems.length
@@ -426,6 +429,9 @@ serve(async (req) => {
       }
     }
     rowCountTrace.after_vision_row_fallback = Array.isArray(extractionResult?.items) ? extractionResult.items.length : 0
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H1',location:'ocr-transaction-statement/index.ts:visionRowFallback:gateAndResult',message:'vision-row fallback gate and result',data:{statementId,gptRawCount:rowCountTrace.gpt_raw,selectedRowCandidatesCount:selectedRowCandidates.length,rowFallbackGatePassed,visionRowFallbackCount:rowCountTrace.vision_row_fallback,afterVisionRowFallback:rowCountTrace.after_vision_row_fallback,usedVisionRowFallback:perfDebug.used_vision_row_fallback},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     // #region agent log
     fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'row-count-trace',hypothesisId:'H1-H3',location:'ocr-transaction-statement/index.ts:vision-row-fallback',message:'vision row fallback decision',data:{statementId,gptRawCount:rowCountTrace.gpt_raw,visionRowCandidateCount:rowCountTrace.vision_row_candidates,visionRowCandidateRefinedCount:rowCountTrace.vision_row_candidates_refined,visionRowCandidateWords:rowCountTrace.vision_row_candidates_words,visionRowCandidateText:rowCountTrace.vision_row_candidates_text,usedVisionTextRowCandidates:perfDebug.used_vision_text_row_candidates,visionRowFallbackCount:rowCountTrace.vision_row_fallback,visionRowHeuristicBackfillCount:rowCountTrace.vision_row_heuristic_backfill,usedVisionRowHeuristicBackfill:perfDebug.used_vision_row_heuristic_backfill,afterVisionRowFallback:rowCountTrace.after_vision_row_fallback,usedVisionRowFallback:perfDebug.used_vision_row_fallback},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
@@ -453,6 +459,11 @@ serve(async (req) => {
     let extraOrderNumbers: string[] = []
     const hasRetryOrderPassFn = typeof shouldRetryOrderNumberPass === 'function'
     const shouldUseAssistNumbers = hasRetryOrderPassFn && shouldRetryOrderNumberPass(extractionResult.items)
+    const lowConfidenceCount = (extractionResult.items || []).filter((item) => item?.confidence === 'low').length
+    const missingPoCount = (extractionResult.items || []).filter((item) => !item?.po_number).length
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H2',location:'ocr-transaction-statement/index.ts:poAssist:gateDecision',message:'assist-number gate decision',data:{statementId,itemCount:(extractionResult.items||[]).length,lowConfidenceCount,missingPoCount,shouldUseAssistNumbers},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     let usedUnifiedPoAssist = false
 
     try {
@@ -469,6 +480,9 @@ serve(async (req) => {
         extraOrderNumbers = poAssistResult.numbers
       }
       usedUnifiedPoAssist = true
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H2',location:'ocr-transaction-statement/index.ts:poAssist:result',message:'po assist extraction result snapshot',data:{statementId,mappingCount:poAssistResult.mappings.length,rangeCount:poAssistResult.ranges.length,numbersSample:poAssistResult.numbers.slice(0,20),assistNumbersApplied:shouldUseAssistNumbers?poAssistResult.numbers.slice(0,20):[]},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
     } catch (e) {
       console.warn('Unified PO assist extraction failed, falling back to legacy pass:', e)
       if (shouldUseAssistNumbers) {
@@ -495,6 +509,9 @@ serve(async (req) => {
       visionText,
       extraOrderNumbers
     )
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H3',location:'ocr-transaction-statement/index.ts:afterNormalizePoNumbers',message:'po values after normalizePoNumbers',data:{statementId,extraOrderNumbersSample:extraOrderNumbers.slice(0,20),normalizedUniquePONumbers:Array.from(new Set((normalizedItems||[]).map((it:any)=>it?.po_number).filter(Boolean))).slice(0,20),normalizedPoSample:(normalizedItems||[]).slice(0,20).map((it:any,idx:number)=>({line:it?.line_number??idx+1,po:it?.po_number??null,spec:(it?.specification||'').slice(0,60)}))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     rowCountTrace.after_normalize_po = normalizedItems.length
     // #region agent log
     fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'blank-item-debug',hypothesisId:'H3',location:'ocr-transaction-statement/index.ts:normalizePoNumbers:after',message:'items after normalizePoNumbers',data:{statementId,itemCount:normalizedItems.length,missingNameCount:normalizedItems.filter((it)=>!(it?.item_name||'').trim()).length,sample:normalizedItems.slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:(it?.item_name||'').trim().slice(0,24),po:it?.po_number??null,qty:it?.quantity??null,amount:it?.amount??null}))},timestamp:Date.now()})}).catch(()=>{});
@@ -503,9 +520,16 @@ serve(async (req) => {
     fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'ocr-row-debug',hypothesisId:'B',location:'ocr-transaction-statement/index.ts:afterNormalizePoNumbers',message:'after po normalization rows',data:{statementId,items:(normalizedItems||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:it?.item_name??null,qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null,po:it?.po_number??null}))},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
     // 6-1. 손글씨 괄호/연결선 기반 PO 매핑 (품목별 보강)
+    let poMappingChangedCount = 0
     if (usedUnifiedPoAssist) {
       if (bracketMappings.length > 0) {
+        const beforePo = normalizedItems.map((item) => item.po_number ?? null)
         normalizedItems = applyPoMappings(normalizedItems, bracketMappings)
+        poMappingChangedCount = normalizedItems.reduce((acc, item, idx) => {
+          const prev = beforePo[idx]
+          const next = item.po_number ?? null
+          return acc + (prev !== next ? 1 : 0)
+        }, 0)
       }
     } else {
       try {
@@ -516,12 +540,21 @@ serve(async (req) => {
           openaiApiKey
         )
         if (bracketMappings.length > 0) {
+          const beforePo = normalizedItems.map((item) => item.po_number ?? null)
           normalizedItems = applyPoMappings(normalizedItems, bracketMappings)
+          poMappingChangedCount = normalizedItems.reduce((acc, item, idx) => {
+            const prev = beforePo[idx]
+            const next = item.po_number ?? null
+            return acc + (prev !== next ? 1 : 0)
+          }, 0)
         }
       } catch (e) {
         console.warn('Failed to extract PO mappings from brackets:', e)
       }
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H4',location:'ocr-transaction-statement/index.ts:afterApplyPoMappings',message:'po mapping overwrite effect',data:{statementId,usedUnifiedPoAssist,bracketMappingCount:bracketMappings.length,poMappingChangedCount,uniquePONumbersAfterMapping:Array.from(new Set((normalizedItems||[]).map((it:any)=>it?.po_number).filter(Boolean))).slice(0,20)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     // 6-2. 손글씨 좌측 번호/구간 추론 (품목별 보강)
     if (!usedUnifiedPoAssist) {
@@ -546,66 +579,35 @@ serve(async (req) => {
     })
     perfDebug.normalize_and_infer_ms = Date.now() - normalizeStartAt
 
-    // 7. 거래처명 검증 - vendors 테이블에 반드시 존재해야 함
-    currentStage = 'vendor_match'
+    // 7. 거래처 힌트 수집 (발주번호 기반 교차검증용)
+    currentStage = 'vendor_hint'
     let validatedVendorName: string | undefined = undefined
     let validatedVendorId: number | undefined = undefined
     let vendorMatchSource: 'gpt_extract' | 'text_scan' | 'po_infer' | 'not_found' = 'not_found'
-    
-    // 7-1. GPT가 추출한 거래처명으로 먼저 시도 (한글명)
-    if (extractionResult.vendor_name) {
-      const vendorResult = await validateAndMatchVendor(
-        supabase, 
-        extractionResult.vendor_name
-      )
-      
-      if (vendorResult.matched) {
-        console.log(`✅ 거래처 매칭 성공 (GPT 추출 한글): "${extractionResult.vendor_name}" → "${vendorResult.vendor_name}" (${vendorResult.similarity}%)`)
-        validatedVendorName = vendorResult.vendor_name
-        validatedVendorId = vendorResult.vendor_id
-        vendorMatchSource = 'gpt_extract'
-      }
-    }
-    
-    // 7-1-2. 한글명 매칭 실패 시 영문명으로 재시도
-    if (!validatedVendorName && extractionResult.vendor_name_english) {
-      const vendorResultEng = await validateAndMatchVendor(
-        supabase, 
-        extractionResult.vendor_name_english
-      )
-      
-      if (vendorResultEng.matched) {
-        console.log(`✅ 거래처 매칭 성공 (GPT 추출 영문): "${extractionResult.vendor_name_english}" → "${vendorResultEng.vendor_name}" (${vendorResultEng.similarity}%)`)
-        validatedVendorName = vendorResultEng.vendor_name
-        validatedVendorId = vendorResultEng.vendor_id
-        vendorMatchSource = 'gpt_extract'
-      }
-    }
-    
-    // 7-2. GPT 추출 실패 또는 거래처 못찾음 → 전체 텍스트에서 vendors 테이블 대조
-    if (!validatedVendorName && visionText) {
-      console.log('📝 거래처 못찾음 - 전체 OCR 텍스트에서 vendors 테이블 대조 시작...')
-      const vendorFromText = await findVendorInText(supabase, visionText)
-      
-      if (vendorFromText.matched) {
-        console.log(`✅ 거래처 매칭 성공 (텍스트 스캔): "${vendorFromText.matched_text}" → "${vendorFromText.vendor_name}" (${vendorFromText.similarity}%)`)
-        validatedVendorName = vendorFromText.vendor_name
-        validatedVendorId = vendorFromText.vendor_id
-        vendorMatchSource = 'text_scan'
-      }
-    }
-    
-    // 7-3. 그래도 못찾으면 경고
-    if (!validatedVendorName) {
-      console.warn(`⚠️ 거래처를 찾을 수 없음 - 수동 확인 필요`)
+    const vendorNameHints = new Set<string>()
+    if (extractionResult.vendor_name) vendorNameHints.add(extractionResult.vendor_name)
+    if (extractionResult.vendor_name_english) vendorNameHints.add(extractionResult.vendor_name_english)
+    let vendorFromTextHint: {
+      matched: boolean;
+      vendor_name?: string;
+      vendor_id?: number;
+      matched_text?: string;
+      similarity: number;
+    } | null = null
+    if (visionText) {
+      vendorFromTextHint = await findVendorInText(supabase, visionText)
+      if (vendorFromTextHint.matched_text) vendorNameHints.add(vendorFromTextHint.matched_text)
+      if (vendorFromTextHint.vendor_name) vendorNameHints.add(vendorFromTextHint.vendor_name)
     }
 
-    // 8. 발주/수주번호 오인식 보정 (거래처/품목/수량 기준)
+    // 8. 발주/수주번호 오인식 보정 (거래처 힌트와 교차검증)
     const correctionStartAt = Date.now()
     const correctionResult = await correctOrderNumbersByDb(
       supabase,
       normalizedItems,
-      validatedVendorId
+      {
+        vendorNameHints: Array.from(vendorNameHints)
+      }
     )
     normalizedItems = correctionResult.items
     // #region agent log
@@ -613,10 +615,61 @@ serve(async (req) => {
     // #endregion
     perfDebug.correction_ms = Date.now() - correctionStartAt
     if (correctionResult.inferredVendorName) {
-      if (!validatedVendorName || validatedVendorName !== correctionResult.inferredVendorName) {
-        validatedVendorName = correctionResult.inferredVendorName
-        vendorMatchSource = 'po_infer'
+      validatedVendorName = correctionResult.inferredVendorName
+      validatedVendorId = correctionResult.inferredVendorId
+      vendorMatchSource = 'po_infer'
+    }
+
+    // 8-1. 발주번호에서 거래처 확정 실패 시에만 OCR 거래처명 fallback
+    if (!validatedVendorName) {
+      currentStage = 'vendor_match_fallback'
+
+      // 8-1-a. GPT가 추출한 거래처명으로 시도 (한글명)
+      if (extractionResult.vendor_name) {
+        const vendorResult = await validateAndMatchVendor(
+          supabase,
+          extractionResult.vendor_name
+        )
+
+        if (vendorResult.matched) {
+          console.log(`✅ 거래처 매칭 성공 (GPT 추출 한글): "${extractionResult.vendor_name}" → "${vendorResult.vendor_name}" (${vendorResult.similarity}%)`)
+          validatedVendorName = vendorResult.vendor_name
+          validatedVendorId = vendorResult.vendor_id
+          vendorMatchSource = 'gpt_extract'
+        }
       }
+
+      // 8-1-b. 한글명 실패 시 영문명 재시도
+      if (!validatedVendorName && extractionResult.vendor_name_english) {
+        const vendorResultEng = await validateAndMatchVendor(
+          supabase,
+          extractionResult.vendor_name_english
+        )
+
+        if (vendorResultEng.matched) {
+          console.log(`✅ 거래처 매칭 성공 (GPT 추출 영문): "${extractionResult.vendor_name_english}" → "${vendorResultEng.vendor_name}" (${vendorResultEng.similarity}%)`)
+          validatedVendorName = vendorResultEng.vendor_name
+          validatedVendorId = vendorResultEng.vendor_id
+          vendorMatchSource = 'gpt_extract'
+        }
+      }
+
+      // 8-1-c. 텍스트 스캔 결과를 최종 fallback으로 사용
+      if (!validatedVendorName && !vendorFromTextHint && visionText) {
+        console.log('📝 거래처 fallback - 전체 OCR 텍스트에서 vendors 테이블 대조 시작...')
+        vendorFromTextHint = await findVendorInText(supabase, visionText)
+      }
+      if (!validatedVendorName && vendorFromTextHint?.matched) {
+        console.log(`✅ 거래처 매칭 성공 (텍스트 스캔): "${vendorFromTextHint.matched_text}" → "${vendorFromTextHint.vendor_name}" (${vendorFromTextHint.similarity}%)`)
+        validatedVendorName = vendorFromTextHint.vendor_name
+        validatedVendorId = vendorFromTextHint.vendor_id
+        vendorMatchSource = 'text_scan'
+      }
+    }
+
+    // 8-2. 그래도 못찾으면 경고
+    if (!validatedVendorName) {
+      console.warn(`⚠️ 거래처를 찾을 수 없음 - 수동 확인 필요`)
     }
     try {
       normalizedItems = await applyTrailingOneQuantityCorrection(
@@ -698,13 +751,9 @@ serve(async (req) => {
       const itemsToInsert = normalizedItems.map((item, idx) => {
         const ocrLineNumber = item.line_number || idx + 1
         const inferredInfo = inferredPoMap.get(ocrLineNumber)
-        // GPT 원본 po_number (라인넘버 포함, 예: F20260210_003-14)
-        const rawGptPo = extractionResult.items[idx]?.po_number || ''
-        const rawPoUpper = rawGptPo.toUpperCase().replace(/\s+/g, '').replace(/[^\w_-]/g, '')
-        // 라인넘버가 포함된 원본을 저장하되, 패턴에 맞으면 원본 유지, 아니면 정규화된 값 사용
-        const hasLineSuffix = /^F\d{8}[_-]\d{1,3}[-_]\d{1,3}$/.test(rawPoUpper) ||
-          /^HS\d{6}[-_]\d{1,2}[-_]\d{1,3}$/.test(rawPoUpper)
-        const poToStore = hasLineSuffix ? rawPoUpper : (item.po_number || null)
+        // DB에는 항상 라인 suffix가 제거된 정규화 번호만 저장한다.
+        const normalizedPo = normalizeOrderToken(item.po_number)
+        const poToStore = normalizedPo || item.po_number || null
 
         return {
           statement_id: statementId,
@@ -2466,6 +2515,29 @@ function normalizeOrderToken(candidate?: string): string | null {
 
   const cleaned = normalizeOrderCandidate(candidate)
 
+  // OCR 분절 오인식 보정:
+  // 예) F20260306-00306-001 (중간 "00306"은 깨진 조각으로 보고 마지막 3자리 시퀀스를 신뢰)
+  const poSplitNoiseMatch = cleaned.match(/^(F\d{8})[_-](\d{4,6})[-_](\d{3})$/)
+  if (poSplitNoiseMatch) {
+    const normalized = normalizePO(`${poSplitNoiseMatch[1]}_${poSplitNoiseMatch[3]}`)
+    if (!hasValidPoDate(normalized)) {
+      return null
+    }
+    return normalized
+  }
+
+  // OCR이 구분자를 일부 잃어버린 경우:
+  // 예) F20260306-00306001 -> trailing 3자리(001)를 시퀀스로 간주
+  const poSplitNoiseNoDelimiterMatch = cleaned.match(/^(F\d{8})[_-](\d{7,9})$/)
+  if (poSplitNoiseNoDelimiterMatch) {
+    const trailingSeq = poSplitNoiseNoDelimiterMatch[2].slice(-3)
+    const normalized = normalizePO(`${poSplitNoiseNoDelimiterMatch[1]}_${trailingSeq}`)
+    if (!hasValidPoDate(normalized)) {
+      return null
+    }
+    return normalized
+  }
+
   // 예: F20260122_007-01 (뒤 -01은 라인 번호로 보고 본 발주번호만 사용)
   const poWithLineMatch = cleaned.match(/^(F\d{8})[_-](\d{1,3})[-_](\d{1,3})$/)
   if (poWithLineMatch) {
@@ -2505,7 +2577,8 @@ function extractOrderNumbersFromText(text?: string): string[] {
   if (!text) return []
 
   const cleaned = text.toUpperCase().replace(/\s+/g, '')
-  const poCandidates = cleaned.match(/F[0-9A-Z]{8}[_-][0-9A-Z]{1,3}(?:[-_][0-9A-Z]{1,3})?/g) || []
+  // 첫 시퀀스를 최대 6자리까지 허용해 OCR 분절(00306-001) 케이스를 normalizeOrderToken에서 복원한다.
+  const poCandidates = cleaned.match(/F[0-9A-Z]{8}[_-][0-9A-Z]{1,6}(?:[-_][0-9A-Z]{1,3})?/g) || []
   const soCandidates = cleaned.match(/H[5S][0-9A-Z]{6}[-_][0-9A-Z]{1,2}(?:[-_][0-9A-Z]{1,3})?/g) || []
   const numbers: string[] = []
 
@@ -2601,16 +2674,30 @@ function normalizePoNumbers(
 type OrderCorrectionResult = {
   items: ExtractedItem[];
   inferredVendorName?: string;
+  inferredVendorId?: number;
   systemLineNumbers?: Map<number, number>;
   matchedPurchaseId?: number;
+};
+
+type OrderCorrectionHints = {
+  preferredVendorId?: number;
+  vendorNameHints?: string[];
 };
 
 async function correctOrderNumbersByDb(
   supabase: any,
   items: ExtractedItem[],
-  vendorId?: number
+  hints: OrderCorrectionHints = {}
 ): Promise<OrderCorrectionResult> {
   if (!items.length) return { items };
+  const preferredVendorId = hints.preferredVendorId;
+  const vendorNameHints = Array.from(
+    new Set(
+      (hints.vendorNameHints || [])
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+    )
+  );
 
   const numberCounts = new Map<string, number>();
   items.forEach(item => {
@@ -2627,33 +2714,58 @@ async function correctOrderNumbersByDb(
   if (!isPO && !isSO) return { items };
 
   const hasInvalidPoDate = isPO && !hasValidPoDate(mostCommon);
+  const vendorHintAcceptThreshold = 45;
+  let exactMatchRejectedByVendorHint = false;
+  // #region agent log
+  fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H5',location:'ocr-transaction-statement/index.ts:correctOrderNumbersByDb:entry',message:'db correction entry state',data:{itemCount:items.length,mostCommon,isPO,isSO,hasInvalidPoDate,vendorNameHintsSample:vendorNameHints.slice(0,10)},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   const { data: exactMatch } = await supabase
     .from('purchase_requests')
-    .select('id, vendor:vendors(vendor_name)')
+    .select('id, vendor_id, vendor:vendors(vendor_name)')
     .or(`purchase_order_number.eq.${mostCommon},sales_order_number.eq.${mostCommon}`)
     .limit(1);
 
   if (exactMatch && exactMatch.length > 0) {
     const vendorName = (exactMatch[0].vendor as { vendor_name?: string } | null)?.vendor_name;
-    const purchaseId = exactMatch[0].id;
-    const systemLineMap = await matchSystemLineNumbers(supabase, items, purchaseId);
-    return {
-      items,
-      inferredVendorName: vendorName,
-      systemLineNumbers: systemLineMap,
-      matchedPurchaseId: purchaseId
-    };
+    const vendorHintScore = calculateVendorHintSimilarity(vendorName, vendorNameHints);
+    const isPreferredVendorMatch =
+      preferredVendorId !== undefined &&
+      Number(exactMatch[0].vendor_id) === preferredVendorId;
+    const shouldTrustExact =
+      vendorHintScore === null ||
+      vendorHintScore >= vendorHintAcceptThreshold ||
+      isPreferredVendorMatch;
+
+    if (!shouldTrustExact) {
+      exactMatchRejectedByVendorHint = true;
+    } else {
+      const purchaseId = exactMatch[0].id;
+      const systemLineMap = await matchSystemLineNumbers(supabase, items, purchaseId);
+      const inferredVendorId =
+        exactMatch[0].vendor_id !== undefined && exactMatch[0].vendor_id !== null
+          ? Number(exactMatch[0].vendor_id)
+          : undefined;
+      return {
+        items,
+        inferredVendorName: vendorName,
+        inferredVendorId,
+        systemLineNumbers: systemLineMap,
+        matchedPurchaseId: purchaseId
+      };
+    }
   }
 
-  const useFallbackSuffix = hasInvalidPoDate;
+  const useFallbackSuffix = hasInvalidPoDate || exactMatchRejectedByVendorHint;
   const candidateLimit = useFallbackSuffix ? 120 : 30;
   const acceptanceThreshold = useFallbackSuffix ? 55 : 65;
+  const minimumBaseScore = Math.max(50, acceptanceThreshold - 10);
 
   let query = supabase
     .from('purchase_requests')
     .select(`
       id,
+      vendor_id,
       purchase_order_number,
       sales_order_number,
       vendor:vendors(vendor_name),
@@ -2682,12 +2794,11 @@ async function correctOrderNumbersByDb(
       : query.ilike('sales_order_number', `${prefix}%`);
   }
 
-  if (vendorId) {
-    query = query.eq('vendor_id', vendorId);
-  }
-
   const { data: candidates } = await query;
   if (!candidates || candidates.length === 0) {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H5',location:'ocr-transaction-statement/index.ts:correctOrderNumbersByDb:noCandidates',message:'db correction no candidates',data:{mostCommon,useFallbackSuffix,candidateLimit,acceptanceThreshold},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     return { items };
   }
 
@@ -2698,6 +2809,7 @@ async function correctOrderNumbersByDb(
 
   let bestCandidate: any = null;
   let bestScore = 0;
+  let bestBaseScore = 0;
 
   for (const candidate of candidates) {
     const systemItems = (candidate.items || []).map((it: any) => ({
@@ -2709,13 +2821,25 @@ async function correctOrderNumbersByDb(
     const { score, matchedCount } = calculateOrderSimilarity(cleanedItems, systemItems);
     if (matchedCount === 0) continue;
 
-    if (score > bestScore) {
-      bestScore = score;
+    const candidateVendorName = (candidate.vendor as { vendor_name?: string } | null)?.vendor_name;
+    const vendorHintScore = calculateVendorHintSimilarity(candidateVendorName, vendorNameHints);
+    const vendorHintBonus =
+      vendorHintScore === null ? 0 : Math.max(0, Math.round((vendorHintScore - 60) * 0.25));
+    const preferredVendorBonus =
+      preferredVendorId !== undefined && Number(candidate.vendor_id) === preferredVendorId ? 8 : 0;
+    const totalScore = score + vendorHintBonus + preferredVendorBonus;
+
+    if (totalScore > bestScore) {
+      bestScore = totalScore;
+      bestBaseScore = score;
       bestCandidate = candidate;
     }
   }
 
-  if (!bestCandidate || bestScore < acceptanceThreshold) {
+  if (!bestCandidate || bestScore < acceptanceThreshold || bestBaseScore < minimumBaseScore) {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H5',location:'ocr-transaction-statement/index.ts:correctOrderNumbersByDb:belowThreshold',message:'db correction rejected by score',data:{mostCommon,candidateCount:candidates.length,bestScore,bestBaseScore,acceptanceThreshold,minimumBaseScore,bestCandidateNumber:bestCandidate?.purchase_order_number||bestCandidate?.sales_order_number||null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     return { items };
   }
 
@@ -2726,6 +2850,9 @@ async function correctOrderNumbersByDb(
   if (!correctedNumber) {
     return { items };
   }
+  // #region agent log
+  fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H5',location:'ocr-transaction-statement/index.ts:correctOrderNumbersByDb:accepted',message:'db correction accepted candidate',data:{mostCommon,correctedNumber,bestScore,bestBaseScore,acceptanceThreshold,minimumBaseScore,bestCandidateId:bestCandidate?.id||null},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   const applySelectively = useFallbackSuffix;
   const correctedItems = items.map(item => {
@@ -2744,9 +2871,19 @@ async function correctOrderNumbersByDb(
   });
 
   const inferredVendorName = (bestCandidate.vendor as { vendor_name?: string } | null)?.vendor_name;
+  const inferredVendorId =
+    bestCandidate.vendor_id !== undefined && bestCandidate.vendor_id !== null
+      ? Number(bestCandidate.vendor_id)
+      : undefined;
   const systemLineMap = matchSystemLineNumbersFromCandidate(items, bestCandidate.items || []);
 
-  return { items: correctedItems, inferredVendorName, systemLineNumbers: systemLineMap, matchedPurchaseId: bestCandidate.id };
+  return {
+    items: correctedItems,
+    inferredVendorName,
+    inferredVendorId,
+    systemLineNumbers: systemLineMap,
+    matchedPurchaseId: bestCandidate.id
+  };
 }
 
 async function applyTrailingOneQuantityCorrection(
@@ -2959,6 +3096,34 @@ function normalizeItemText(value: string): string {
     .replace(/\s+/g, '')
     .replace(/[^a-z0-9가-힣]/g, '')
     .trim();
+}
+
+function normalizeVendorText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\(주\)|주식회사|㈜|co\.?|ltd\.?|inc\.?|corp\.?|company|컴퍼니/gi, '')
+    .replace(/\s+/g, '')
+    .replace(/[^a-z0-9가-힣]/g, '')
+    .trim();
+}
+
+function calculateVendorHintSimilarity(vendorName: string | undefined, vendorNameHints: string[]): number | null {
+  if (!vendorName || vendorNameHints.length === 0) return null;
+
+  const normalizedVendor = normalizeVendorText(vendorName);
+  if (!normalizedVendor) return null;
+
+  let best = 0;
+  for (const hint of vendorNameHints) {
+    const normalizedHint = normalizeVendorText(hint);
+    if (!normalizedHint) continue;
+    const score = calculateNameSimilarity(normalizedVendor, normalizedHint);
+    if (score > best) {
+      best = score;
+    }
+  }
+
+  return best;
 }
 
 function normalizeMappedNumber(value?: string): string {

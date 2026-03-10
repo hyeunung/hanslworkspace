@@ -329,6 +329,7 @@ export default function StatementConfirmModal({
   
   // 디바운스 타이머 (OCR 수정 자동 저장용)
   const editDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isClosingWithSaveRef = useRef(false);
   
   // 금액/단가 필드 포커스 상태 (포커스 중에는 raw 숫자, blur 시 포맷팅)
   const [focusedAmountField, setFocusedAmountField] = useState<string | null>(null);
@@ -1838,7 +1839,7 @@ export default function StatementConfirmModal({
   };
 
   // 수동 수정값을 DB에 일괄 반영 (확정/수량일치 시 호출)
-  const persistEditedOCRItems = async () => {
+  const persistEditedOCRItems = useCallback(async () => {
     if (!statementWithItems || editedOCRItems.size === 0) return;
 
     const updates = Array.from(editedOCRItems.entries())
@@ -1898,7 +1899,34 @@ export default function StatementConfirmModal({
       });
       return { ...prev, items: updatedItems, grand_total: newGrandTotal, total_amount: newGrandTotal };
     });
-  };
+  }, [statementWithItems, editedOCRItems, supabase]);
+
+  const handleCloseWithSave = useCallback(() => {
+    if (isClosingWithSaveRef.current) return;
+    isClosingWithSaveRef.current = true;
+
+    const close = () => {
+      isClosingWithSaveRef.current = false;
+      onClose();
+    };
+
+    const run = async () => {
+      if (editDebounceTimerRef.current) {
+        clearTimeout(editDebounceTimerRef.current);
+        editDebounceTimerRef.current = null;
+      }
+      if (editedOCRItems.size > 0) {
+        await persistEditedOCRItems();
+      }
+    };
+
+    run()
+      .catch((error) => {
+        logger.warn('모달 닫기 전 OCR 수정 저장 실패:', error);
+        toast.error('수정값 저장에 실패했습니다.');
+      })
+      .finally(close);
+  }, [editedOCRItems.size, onClose, persistEditedOCRItems]);
 
   // OCR 품목의 현재 값 가져오기 (수정된 값 우선)
   function getOCRItemValue(
@@ -3971,7 +3999,15 @@ export default function StatementConfirmModal({
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose} modal={isDialogModal}>
+      <Dialog
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCloseWithSave();
+          }
+        }}
+        modal={isDialogModal}
+      >
         <DialogContent 
           maxWidth="max-w-[85vw] sm:max-w-[85vw]"
           className="max-h-[90vh] overflow-hidden flex flex-col business-radius-modal" 
@@ -5248,7 +5284,7 @@ export default function StatementConfirmModal({
             </Button>
             <Button
               variant="outline"
-              onClick={onClose}
+              onClick={handleCloseWithSave}
               disabled={saving}
               className="button-base h-8 text-[11px]"
             >
