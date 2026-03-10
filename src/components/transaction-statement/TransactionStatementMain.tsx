@@ -274,9 +274,6 @@ export default function TransactionStatementMain() {
           ...Array.from(optimisticReextractIdsRef.current),
         ]);
         setExtractingIds(mergedExtractingIds);
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H11',location:'TransactionStatementMain.tsx:loadStatements:extractingMerge',message:'processing ids merged with optimistic ids',data:{trackedId:trackedId||null,trackedRowStatus:trackedRow?.status||null,trackedRowQueuedAt:trackedRow?.queued_at||null,trackedRowProcessingStartedAt:trackedRow?.processing_started_at||null,trackedRowProcessingFinishedAt:trackedRow?.processing_finished_at||null,trackedRowNextRetryAt:trackedRow?.next_retry_at||null,statusCounts:(result.data||[]).reduce((acc,item)=>{const key=item.status||'unknown';acc[key]=(acc[key]||0)+1;return acc;},{} as Record<string,number>),processingIds,optimisticIds:Array.from(optimisticReextractIdsRef.current),mergedExtractingIds:Array.from(mergedExtractingIds),staleProcessingIds,processingAgeMinutes},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (staleProcessingIds.length > 0) {
           transactionStatementService.kickQueue()
             .then(() => {
@@ -685,9 +682,6 @@ export default function TransactionStatementMain() {
   const handleReextractStartFromModal = (statementId: string) => {
     reextractTraceIdRef.current = statementId;
     optimisticReextractIdsRef.current.add(statementId);
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H12',location:'TransactionStatementMain.tsx:handleReextractStartFromModal',message:'optimistic extracting state added at reextract start',data:{statementId,optimisticIdsAfterAdd:Array.from(optimisticReextractIdsRef.current)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     setExtractingIds(prev => {
       const next = new Set(prev);
       next.add(statementId);
@@ -699,9 +693,6 @@ export default function TransactionStatementMain() {
   const handleReextractFinishFromModal = (statementId: string) => {
     optimisticReextractIdsRef.current.delete(statementId);
     reextractTraceIdRef.current = null;
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H13',location:'TransactionStatementMain.tsx:handleReextractFinishFromModal',message:'optimistic extracting state removed at reextract finish',data:{statementId,optimisticIdsAfterDelete:Array.from(optimisticReextractIdsRef.current)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     setExtractingIds(prev => {
       const next = new Set(prev);
       next.delete(statementId);

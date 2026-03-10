@@ -84,7 +84,6 @@ type ImageTile = {
   offsetY: number;
 };
 
-let invalidPoTokenLogCount = 0
 let blankItemDebugLogCount = 0
 
 serve(async (req) => {
@@ -382,10 +381,6 @@ serve(async (req) => {
         .single()
       poScope = (scopeRow as any)?.po_scope || null
     }
-    const preGptVisionOrderCandidates = extractOrderNumbersFromText(visionText).slice(0, 40)
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H1',location:'ocr-transaction-statement/index.ts:beforeExtractWithGPT4o',message:'vision text order candidates before gpt',data:{statementId,visionTextLength:visionText?.length||0,preGptVisionOrderCandidates},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     const extractionResult = await extractWithGPT4o(
       base64Image,
       tileImages.map((tile) => tile.base64),
@@ -450,9 +445,6 @@ serve(async (req) => {
     fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'ocr-row-debug',hypothesisId:'A',location:'ocr-transaction-statement/index.ts:afterExtractWithGPT4o',message:'raw gpt extraction rows',data:{statementId,itemCount:Array.isArray(extractionResult?.items)?extractionResult.items.length:0,items:(extractionResult?.items||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:it?.item_name??null,spec:it?.specification??null,qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null,po:it?.po_number??null}))},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
     perfDebug.gpt_extract_ms = Date.now() - gptExtractStartAt
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H2',location:'ocr-transaction-statement/index.ts:afterExtractWithGPT4o',message:'gpt extracted po snapshot',data:{statementId,itemCount:Array.isArray(extractionResult?.items)?extractionResult.items.length:0,gptItemPoSample:(Array.isArray(extractionResult?.items)?extractionResult.items:[]).slice(0,30).map((item,idx)=>({line:item?.line_number??idx+1,po_number:item?.po_number??null,spec:(item?.specification||'').slice(0,60),item_name:(item?.item_name||'').slice(0,40)}))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     // 5. 보조 손글씨 추출 단일 패스 (괄호 매핑 + 여백 구간 + 번호 목록)
     const poAssistStartAt = Date.now()
@@ -510,10 +502,6 @@ serve(async (req) => {
     // #region agent log
     fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'ocr-row-debug',hypothesisId:'B',location:'ocr-transaction-statement/index.ts:afterNormalizePoNumbers',message:'after po normalization rows',data:{statementId,items:(normalizedItems||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:it?.item_name??null,qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null,po:it?.po_number??null}))},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H4',location:'ocr-transaction-statement/index.ts:afterNormalizePoNumbers',message:'po normalization result snapshot',data:{statementId,normalizedUniquePONumbers:Array.from(new Set(normalizedItems.map((item)=>item.po_number).filter((value)=>!!value))).slice(0,20),itemPoDiffSample:normalizedItems.slice(0,20).map((item,idx)=>({line:item.line_number??idx+1,gptRawPo:extractionResult.items?.[idx]?.po_number??null,normalizedPo:item.po_number??null,spec:(item.specification||'').slice(0,50)}))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-
     // 6-1. 손글씨 괄호/연결선 기반 PO 매핑 (품목별 보강)
     if (usedUnifiedPoAssist) {
       if (bracketMappings.length > 0) {
@@ -2483,12 +2471,6 @@ function normalizeOrderToken(candidate?: string): string | null {
   if (poWithLineMatch) {
     const normalized = normalizePO(`${poWithLineMatch[1]}_${poWithLineMatch[2]}`)
     if (!hasValidPoDate(normalized)) {
-      if (invalidPoTokenLogCount < 30) {
-        invalidPoTokenLogCount += 1
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H3',location:'ocr-transaction-statement/index.ts:normalizeOrderToken:poWithLine',message:'reject invalid-date po token',data:{candidate,cleaned,normalized},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
-      }
       return null
     }
     return normalized
@@ -2499,12 +2481,6 @@ function normalizeOrderToken(candidate?: string): string | null {
   if (poOnlyMatch) {
     const normalized = normalizePO(`${poOnlyMatch[1]}_${poOnlyMatch[2]}`)
     if (!hasValidPoDate(normalized)) {
-      if (invalidPoTokenLogCount < 30) {
-        invalidPoTokenLogCount += 1
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H3',location:'ocr-transaction-statement/index.ts:normalizeOrderToken:poOnly',message:'reject invalid-date po token',data:{candidate,cleaned,normalized},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
-      }
       return null
     }
     return normalized
@@ -2578,29 +2554,15 @@ function normalizePoNumbers(
     })
   }
   const dominantDocumentNumber = pickDominantOrderNumber(allFoundNumbers)
-  // #region agent log
-  fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H4',location:'ocr-transaction-statement/index.ts:normalizePoNumbers:documentNumbers',message:'document-level order number candidates',data:{allFoundNumbersSample:allFoundNumbers.slice(0,60),allFoundCount:allFoundNumbers.length,dominantDocumentNumber},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-
-  const decisionSample: Array<{
-    line: number;
-    rawPo: string | null;
-    normalizedFromItem: string | null;
-    finalPo: string | null;
-    source: string;
-    specSnippet: string;
-  }> = []
 
   const normalizedItems = items.map((item, idx) => {
     let poNumber: string | undefined = undefined
-    let poSource = 'none'
     const rawPo = item.po_number
     const normalizedFromItem = rawPo
       ? normalizeOrderToken(rawPo.toUpperCase().replace(/\s+/g, '').replace(/[^\w_-]/g, ''))
       : null
     if (normalizedFromItem) {
       poNumber = normalizedFromItem
-      poSource = 'item_token'
     }
     if (!poNumber) {
       const extractedFromFields =
@@ -2609,37 +2571,22 @@ function normalizePoNumbers(
         extractPoFromSpecification(item.item_name)
       if (extractedFromFields) {
         poNumber = extractedFromFields
-        poSource = 'field_scan'
       }
     }
     if (!poNumber && dominantDocumentNumber) {
       poNumber = dominantDocumentNumber
-      poSource = 'dominant_document'
     }
     if (!poNumber && allFoundNumbers.length > 0) {
       const uniqueCount = new Set(allFoundNumbers).size
       if (uniqueCount === 1) {
         poNumber = allFoundNumbers[0]
-        poSource = 'single_document_number'
       } else if (allFoundNumbers.length === items.length && uniqueCount === items.length) {
         poNumber = allFoundNumbers[idx]
-        poSource = 'index_aligned_document_numbers'
       }
     }
 
     const normalizedConfidence = normalizeItemConfidence(item.confidence)
     const normalizedQuantity = normalizeItemQuantity((item as any)?.quantity)
-
-    if (decisionSample.length < 20) {
-      decisionSample.push({
-        line: item.line_number ?? idx + 1,
-        rawPo: rawPo ?? null,
-        normalizedFromItem,
-        finalPo: poNumber ?? null,
-        source: poSource,
-        specSnippet: (item.specification || '').slice(0, 60)
-      })
-    }
 
     return {
       ...item,
@@ -2648,9 +2595,6 @@ function normalizePoNumbers(
       quantity: normalizedQuantity
     }
   })
-  // #region agent log
-  fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H4',location:'ocr-transaction-statement/index.ts:normalizePoNumbers:itemDecisions',message:'item-level po assignment decisions',data:{decisionSample,normalizedUniquePONumbers:Array.from(new Set(normalizedItems.map((item)=>item.po_number).filter((value)=>!!value))).slice(0,20)},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return normalizedItems
 }
 
@@ -2689,9 +2633,6 @@ async function correctOrderNumbersByDb(
     .select('id, vendor:vendors(vendor_name)')
     .or(`purchase_order_number.eq.${mostCommon},sales_order_number.eq.${mostCommon}`)
     .limit(1);
-  // #region agent log
-  fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H5',location:'ocr-transaction-statement/index.ts:correctOrderNumbersByDb:exactMatchCheck',message:'db correction entry and exact-match result',data:{itemCount:items.length,mostCommon,isPO,isSO,hasInvalidPoDate,vendorId:vendorId??null,exactMatchCount:Array.isArray(exactMatch)?exactMatch.length:0},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
 
   if (exactMatch && exactMatch.length > 0) {
     const vendorName = (exactMatch[0].vendor as { vendor_name?: string } | null)?.vendor_name;
@@ -2747,9 +2688,6 @@ async function correctOrderNumbersByDb(
 
   const { data: candidates } = await query;
   if (!candidates || candidates.length === 0) {
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H5',location:'ocr-transaction-statement/index.ts:correctOrderNumbersByDb:noCandidates',message:'db correction skipped due to empty candidates',data:{mostCommon,useFallbackSuffix,candidateLimit,acceptanceThreshold,vendorId:vendorId??null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return { items };
   }
 
@@ -2776,9 +2714,6 @@ async function correctOrderNumbersByDb(
       bestCandidate = candidate;
     }
   }
-  // #region agent log
-  fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H5',location:'ocr-transaction-statement/index.ts:correctOrderNumbersByDb:scoringResult',message:'db correction scoring outcome',data:{mostCommon,useFallbackSuffix,candidateCount:candidates.length,acceptanceThreshold,bestScore,bestPurchaseOrderNumber:bestCandidate?.purchase_order_number||null,bestSalesOrderNumber:bestCandidate?.sales_order_number||null},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
 
   if (!bestCandidate || bestScore < acceptanceThreshold) {
     return { items };

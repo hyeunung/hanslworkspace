@@ -3,7 +3,7 @@
 import { useNavigate } from 'react-router-dom'
 import { createClient } from '@/lib/supabase/client'
 import { User, Menu, MessageCircle, FileText, FileCheck } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supportService } from '@/services/supportService'
 import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
 import { countPendingApprovalsForSidebarBadge } from '@/utils/purchaseFilters'
@@ -26,11 +26,14 @@ const getRoleDisplayName = (role: string) => {
   return roleMap[role] || role
 }
 
+const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "app_admin"]
+
 export default function Header({ user, onMenuClick }: HeaderProps) {
   const navigate = useNavigate()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
   const [pendingStatementCount, setPendingStatementCount] = useState(0)
+  const [otherPendingCount, setOtherPendingCount] = useState(0)
   const { allPurchases } = usePurchaseMemory()
 
   const roles = Array.isArray(user?.purchase_role)
@@ -38,10 +41,11 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
     : (user?.purchase_role ? [user.purchase_role] : [])
   const isAdmin = roles.includes('app_admin')
   const canSeeStatementBadge = roles.includes('app_admin') || roles.includes('lead buyer')
-  const pendingPurchaseCount = useMemo(
+  const purchaseOnlyCount = useMemo(
     () => countPendingApprovalsForSidebarBadge(allPurchases, user?.purchase_role),
     [allPurchases, user?.purchase_role]
   )
+  const pendingPurchaseCount = purchaseOnlyCount + otherPendingCount
 
   // app_admin: 상단 로고 옆에 미처리 문의(open+in_progress) 뱃지 표시
   useEffect(() => {
@@ -213,7 +217,47 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
       if (subscription) supabase.removeChannel(subscription)
     }
   }, [canSeeStatementBadge])
-  
+
+  const loadOtherPendingCounts = useCallback(async () => {
+    try {
+      const supabase = createClient()
+      const isCardVehicleApprover = roles.includes('app_admin') || roles.includes('hr')
+      const isTripApprover = roles.some((r: string) => TRIP_APPROVER_ROLES.includes(r))
+
+      const [cardRes, vehicleRes, tripRes, myTripRes] = await Promise.all([
+        isCardVehicleApprover
+          ? supabase.from('card_usages').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending')
+          : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
+        isCardVehicleApprover
+          ? supabase.from('vehicle_requests').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending')
+          : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
+        isTripApprover
+          ? supabase.from('business_trips').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending')
+          : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
+        supabase.from('business_trips').select('id', { count: 'exact', head: true })
+          .eq('requester_id', user?.id || '__no_user__')
+          .eq('approval_status', 'approved')
+          .in('settlement_status', ['draft', 'submitted', 'rejected']),
+      ])
+
+      const total =
+        (isCardVehicleApprover ? cardRes.count || 0 : 0) +
+        (isCardVehicleApprover ? vehicleRes.count || 0 : 0) +
+        (isTripApprover ? tripRes.count || 0 : 0) +
+        (myTripRes.count || 0)
+
+      setOtherPendingCount(total)
+    } catch {
+      // 배지 카운트 실패 시 무시
+    }
+  }, [roles, user?.id])
+
+  useEffect(() => {
+    loadOtherPendingCounts()
+    const timer = window.setInterval(loadOtherPendingCounts, 30000)
+    return () => window.clearInterval(timer)
+  }, [loadOtherPendingCounts])
+
   const handleLogout = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()

@@ -307,18 +307,11 @@ export default function StatementConfirmModal({
   
   // 드롭다운 열림 상태
   const [openDropdowns, setOpenDropdowns] = useState<Set<string>>(new Set());
-  const isDialogModal = true;
+  const isDialogModal = false;
   
   // 드롭다운 위치 (fixed position용)
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; left: number; maxHeight: number }>({ top: 0, left: 0, maxHeight: 360 });
 
-  // #region agent log
-  useEffect(() => {
-    if (!isOpen) return;
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'dropdown-debug',hypothesisId:'H1',location:'StatementConfirmModal.tsx:dropdownStateEffect',message:'dialog modal prop and dropdown state snapshot',data:{statementId:statement?.id||null,isOpen,openDropdownCount:openDropdowns.size,modalProp:isDialogModal},timestamp:Date.now()})}).catch(()=>{});
-  }, [isOpen, openDropdowns, statement?.id, isDialogModal]);
-  // #endregion
-  
   // 발주 상세 모달 상태
   const [isPurchaseDetailModalOpen, setIsPurchaseDetailModalOpen] = useState(false);
   const [selectedPurchaseIdForDetail, setSelectedPurchaseIdForDetail] = useState<number | null>(null);
@@ -934,9 +927,6 @@ export default function StatementConfirmModal({
         const firstPO = result.data.items.find(i => i.extracted_po_number)?.extracted_po_number;
         if (firstPO) {
           const normalizedFirstPO = normalizeOrderNumber(firstPO);
-          // #region agent log
-          fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H10',location:'StatementConfirmModal.tsx:loadData:firstPO',message:'selectedPONumber set from first extracted po',data:{statementId:statement.id,firstPO,normalizedFirstPO},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
           setSelectedPONumber(normalizedFirstPO);
         }
         
@@ -968,9 +958,6 @@ export default function StatementConfirmModal({
             if (setMatchResponse.data.bestMatch) {
               const bestPO = setMatchResponse.data.bestMatch.purchase_order_number || 
                             setMatchResponse.data.bestMatch.sales_order_number || '';
-              // #region agent log
-              fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H10',location:'StatementConfirmModal.tsx:loadData:setMatchBestPO',message:'selectedPONumber overridden by set-match bestPO',data:{statementId:statement.id,bestPO,bestMatchConfidence:setMatchResponse.data.bestMatch.confidence,bestMatchItemCount:setMatchResponse.data.bestMatch.matchedItemCount,totalItems:result.data.items.length},timestamp:Date.now()})}).catch(()=>{});
-              // #endregion
               setSelectedPONumber(bestPO);
               
               // 세트 매칭 결과로 품목들 자동 매칭
@@ -1521,9 +1508,6 @@ export default function StatementConfirmModal({
       const matchingPO = matchingCandidate.poNumber || matchingCandidate.salesOrderNumber || '';
       // 현재 선택된 것과 다르면 변경
       if (matchingPO && matchingPO !== selectedPONumber) {
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H10',location:'StatementConfirmModal.tsx:autoSelect:orderMatchCandidate',message:'selectedPONumber auto-switched by hasOrderNumberMatch candidate',data:{statementId:statement.id,previousSelectedPONumber:selectedPONumber,nextSelectedPONumber:matchingPO,candidateCount:allPONumberCandidates.length},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         console.log(`[자동 선택] 발주번호 일치 후보 "${matchingPO}"로 자동 선택`);
         setSelectedPONumber(matchingPO);
         return;
@@ -1540,9 +1524,6 @@ export default function StatementConfirmModal({
       const firstCandidate = allPONumberCandidates[0];
       const newPO = firstCandidate.poNumber || firstCandidate.salesOrderNumber || '';
       if (newPO) {
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H10',location:'StatementConfirmModal.tsx:autoSelect:firstCandidateFallback',message:'selectedPONumber auto-switched because current not in candidates',data:{statementId:statement.id,previousSelectedPONumber:selectedPONumber,nextSelectedPONumber:newPO,candidateCount:allPONumberCandidates.length},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         console.log(`[자동 수정] OCR 발주번호 "${selectedPONumber}"가 DB에 없음 → 추천 발주 "${newPO}"로 변경`);
         setSelectedPONumber(newPO);
       }
@@ -1813,9 +1794,6 @@ export default function StatementConfirmModal({
       };
     });
 
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'system-line-debug',hypothesisId:'H1',location:'StatementConfirmModal.tsx:systemLineNumberSnapshot',message:'system line number snapshot vs ui sequence',data:{statementId:statement.id,isSamePONumber,selectedPONumber:selectedPONumber||null,sample,legacyMismatchCount:sample.filter((it)=>it.legacyMismatch===true).length,resolvedFromPoMapCount:sample.filter((it)=>it.lineSource==='po-map').length,unresolvedCount:sample.filter((it)=>it.lineSource==='unresolved').length,duplicateDisplayLineCount:(() => {const lines=sample.map((it)=>it.displayedLineByMap).filter((v)=>typeof v==='number') as number[]; return lines.length - new Set(lines).size;})(),missingMatchedCount:sample.filter((it)=>it.matchedItemId===null).length},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
   }, [statementWithItems, isOpen, selectedPONumber, isSamePONumber, itemMatches, ocrLineSeqByItemId, displayLineByItemId, resolveItemPONumber, statement.id]);
 
   // 단일 OCR 품목 수정값 즉시 DB 저장
@@ -3768,9 +3746,6 @@ export default function StatementConfirmModal({
     }
 
     resetReextractState();
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H16',location:'StatementConfirmModal.tsx:handleReextract:start',message:'reextract initiated from confirm modal',data:{statementId:statement.id,imageUrlExists:Boolean(imageUrl)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     onReextractStart?.(statement.id);
     onClose();
     toast.loading('OCR 재추출 중... (약 10~30초 소요)', { id: `reextract-${statement.id}` });
@@ -3778,24 +3753,15 @@ export default function StatementConfirmModal({
     try {
       const result = await transactionStatementService.extractStatementData(statement.id, imageUrl, true);
       if (result.success) {
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H16',location:'StatementConfirmModal.tsx:handleReextract:serviceResult',message:'reextract service returned',data:{statementId:statement.id,success:result.success,queued:!!result.queued,status:result.status||null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (result.queued) {
           toast.info('재추출이 대기열에 등록되었습니다.', { id: `reextract-${statement.id}` });
         } else {
           toast.success('OCR 재추출이 완료되었습니다.', { id: `reextract-${statement.id}` });
         }
       } else {
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b9515'},body:JSON.stringify({sessionId:'5b9515',runId:'reextract-debug',hypothesisId:'H-modal',location:'StatementConfirmModal.tsx:handleReextract:failed',message:'reextract returned success=false',data:{statementId:statement.id,error:result.error||null,queued:!!result.queued,status:result.status||null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         toast.error(result.error || 'OCR 재추출에 실패했습니다.', { id: `reextract-${statement.id}` });
       }
     } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b9515'},body:JSON.stringify({sessionId:'5b9515',runId:'reextract-debug',hypothesisId:'H-modal-catch',location:'StatementConfirmModal.tsx:handleReextract:catch',message:'reextract threw exception',data:{statementId:statement.id,errorName:(error as any)?.name||null,errorMessage:(error as any)?.message||null},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       toast.error('OCR 재추출 중 오류가 발생했습니다.', { id: `reextract-${statement.id}` });
     } finally {
       onReextractFinish?.(statement.id);
@@ -3966,11 +3932,6 @@ export default function StatementConfirmModal({
         Math.max(nextTop, viewportPadding),
         Math.max(viewportPadding, window.innerHeight - nextMaxHeight - viewportPadding)
       );
-      const projectedBottom = nextTop + nextMaxHeight;
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'post-fix',hypothesisId:'H2',location:'StatementConfirmModal.tsx:toggleDropdown:positionCalc',message:'dropdown position and viewport fit calculation',data:{statementId:statement?.id||null,key,rectBottom:rect.bottom,rectTop:rect.top,nextTop,nextLeft,dropdownWidth,dropdownMaxHeight,nextMaxHeight,spaceBelow,spaceAbove,shouldOpenUpward,projectedBottom,windowInnerHeight:window.innerHeight,isProjectedOverflowBottom:projectedBottom>window.innerHeight},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-
       setDropdownPosition({
         top: nextTop,
         left: nextLeft,
@@ -3980,17 +3941,12 @@ export default function StatementConfirmModal({
     
     setOpenDropdowns(prev => {
       const newSet = new Set(prev);
-      let action: 'open' | 'close' = 'open';
       if (newSet.has(key)) {
         newSet.delete(key);
-        action = 'close';
       } else {
-        newSet.clear(); // 다른 드롭다운 닫기
+        newSet.clear();
         newSet.add(key);
       }
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'dropdown-debug',hypothesisId:'H1',location:'StatementConfirmModal.tsx:toggleDropdown:setOpenDropdowns',message:'dropdown open/close state transition',data:{statementId:statement?.id||null,key,action,prevSize:prev.size,nextSize:newSet.size,nextKeys:Array.from(newSet)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return newSet;
     });
   };
@@ -4002,9 +3958,6 @@ export default function StatementConfirmModal({
     const nextScrollTop = Math.min(maxScrollTop, Math.max(0, beforeScrollTop + event.deltaY));
     const atTop = beforeScrollTop <= 0;
     const atBottom = beforeScrollTop >= maxScrollTop;
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'dropdown-debug',hypothesisId:'H3',location:'StatementConfirmModal.tsx:handleGlobalPODropdownWheel',message:'dropdown wheel handling snapshot',data:{statementId:statement?.id||null,deltaY:event.deltaY,beforeScrollTop,maxScrollTop,nextScrollTop,atTop,atBottom,clientHeight:el.clientHeight,scrollHeight:el.scrollHeight},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     event.preventDefault();
     event.stopPropagation();
@@ -4025,17 +3978,28 @@ export default function StatementConfirmModal({
           data-debug={dialogDebugId}
           showCloseButton={false}
           onPointerDownOutside={(e) => {
+            const target = e.target as HTMLElement | null;
+            const isDropdownInteraction = Boolean(target?.closest('[data-ts-dropdown-panel="true"]'));
+            if (isDropdownInteraction || openDropdowns.size > 0) {
+              e.preventDefault();
+            }
           }}
           onFocusOutside={(e) => {
+            const target = e.target as HTMLElement | null;
+            const isDropdownInteraction = Boolean(target?.closest('[data-ts-dropdown-panel="true"]'));
+            if (isDropdownInteraction || openDropdowns.size > 0) {
+              e.preventDefault();
+            }
           }}
           onInteractOutside={(e) => {
             const target = e.target as HTMLElement | null;
             const isDropdownInteraction = Boolean(target?.closest('[data-ts-dropdown-panel="true"]'));
+            if (isDropdownInteraction) {
+              e.preventDefault();
+              return;
+            }
             // 드롭다운이 열려있을 때는 외부 클릭으로 모달 닫기 방지
-            if (openDropdowns.size > 0 && !isDropdownInteraction) {
-              // #region agent log
-              fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'dropdown-debug',hypothesisId:'H4',location:'StatementConfirmModal.tsx:onInteractOutside',message:'interact outside prevented while dropdown open',data:{statementId:statement?.id||null,openDropdownCount:openDropdowns.size,isDropdownInteraction},timestamp:Date.now()})}).catch(()=>{});
-              // #endregion
+            if (openDropdowns.size > 0) {
               e.preventDefault();
             }
           }}
@@ -4469,9 +4433,7 @@ export default function StatementConfirmModal({
                       const extractedInDb = normalizedExtractedPO && candidateSet.has(normalizedExtractedPO)
                         ? normalizedExtractedPO
                         : '';
-                      if (!isSamePONumber && normalizedSelectedPO && !candidateSet.has(normalizedSelectedPO) && !extractedInDb) {
-                      }
-                      const itemPO = normalizedSelectedPO && candidateSet.has(normalizedSelectedPO)
+                      const itemPO = normalizedSelectedPO
                         ? normalizedSelectedPO
                         : extractedInDb || '';
                       if (rowIndex < 5) {
@@ -4628,12 +4590,6 @@ export default function StatementConfirmModal({
                                 {openDropdowns.has(`po-${ocrItem.id}`) && createPortal(
                                   <>
                                     <div
-                                      className="fixed inset-0 z-[9998]"
-                                      onClick={() => {
-                                        toggleDropdown(`po-${ocrItem.id}`);
-                                      }}
-                                    />
-                                    <div
                                       data-ts-dropdown-panel="true"
                                       className="fixed z-[9999] pointer-events-auto bg-white border border-gray-200 rounded-lg shadow-xl w-[280px] max-h-[360px] overflow-y-auto"
                                       style={{
@@ -4644,8 +4600,8 @@ export default function StatementConfirmModal({
                                       ref={(el) => {
                                         if (!el) return;
                                       }}
-                                      onMouseDown={() => {
-                                      }}
+                                      onMouseDown={() => {}}
+                                      onMouseUp={(e) => e.stopPropagation()}
                                       onClick={(e) => e.stopPropagation()}
                                       onWheel={handleGlobalPODropdownWheel}
                                     >
@@ -4654,13 +4610,13 @@ export default function StatementConfirmModal({
                                           <input
                                             type="text"
                                             value={itemSearchValue}
-                                            onChange={(e) => handleItemPOSearch(ocrItem.id, e.target.value)}
-                                            onMouseDown={() => {
+                                            onChange={(e) => {
+                                              handleItemPOSearch(ocrItem.id, e.target.value);
                                             }}
-                                            onFocus={() => {
-                                            }}
-                                            onBlur={(e) => {
-                                            }}
+                                            onMouseDown={(e) => {}}
+                                            onFocus={() => {}}
+                                            onBlur={(e) => {}}
+                                            onKeyDown={(e) => {}}
                                             placeholder="발주/수주번호 검색..."
                                             className="w-full h-6 px-2 pr-6 text-[10px] bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-hansl-400"
                                           />
@@ -4685,6 +4641,10 @@ export default function StatementConfirmModal({
                                               <div
                                                 key={po.id}
                                                 className="px-2 py-1.5 hover:bg-gray-50 cursor-pointer text-[11px]"
+                                                onMouseDown={(e) => {
+                                                  e.preventDefault();
+                                                  e.stopPropagation();
+                                                }}
                                                 onClick={() => {
                                                   handleSelectItemPO(ocrItem.id, selectedNumber);
                                                 }}
@@ -4724,7 +4684,13 @@ export default function StatementConfirmModal({
                                             return (
                                               <div
                                                 key={`${po}-${idx}`}
-                                                onClick={() => handleSelectItemPO(ocrItem.id, po)}
+                                                onMouseDown={(e) => {
+                                                  e.preventDefault();
+                                                  e.stopPropagation();
+                                                }}
+                                                onClick={() => {
+                                                  handleSelectItemPO(ocrItem.id, po);
+                                                }}
                                                 className={`px-2 py-1.5 hover:bg-gray-100 cursor-pointer text-[11px] font-medium ${isPreferred ? 'bg-blue-50 text-blue-900 font-semibold' : isRecommended ? 'bg-green-50 text-green-900' : 'text-gray-700'}`}
                                                 style={{ fontSize: '11px' }}
                                               >

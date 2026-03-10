@@ -1,7 +1,7 @@
 
 import { Link } from 'react-router-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { 
   Home, 
   ShoppingCart, 
@@ -17,16 +17,30 @@ import {
 import { cn } from '@/lib/utils'
 import { supportService } from '@/services/supportService'
 import { createClient } from '@/lib/supabase/client'
+import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
+import { countPendingApprovalsForSidebarBadge } from '@/utils/purchaseFilters'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface NavigationProps {
   role?: string | string[]  // hanslwebapp과 동일하게 배열도 지원
 }
 
+const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "app_admin"]
+
 export default function Navigation({ role }: NavigationProps) {
   const location = useLocation()
   const pathname = location.pathname
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
-  
+  const [otherPendingCount, setOtherPendingCount] = useState(0)
+  const { allPurchases } = usePurchaseMemory()
+  const { employee } = useAuth()
+
+  const purchaseOnlyCount = useMemo(
+    () => countPendingApprovalsForSidebarBadge(allPurchases, role),
+    [allPurchases, role]
+  )
+  const totalRequestBadge = purchaseOnlyCount + otherPendingCount
+
   // role 배열 확인
   const roles = Array.isArray(role) ? role : (role ? [role] : [])
   const isAdmin = roles.includes('app_admin')
@@ -106,6 +120,46 @@ export default function Navigation({ role }: NavigationProps) {
     }
   }, [isAdmin])
 
+  const loadOtherPendingCounts = useCallback(async () => {
+    try {
+      const supabase = createClient()
+      const isCardVehicleApprover = roles.includes('app_admin') || roles.includes('hr')
+      const isTripApprover = roles.some((r: string) => TRIP_APPROVER_ROLES.includes(r))
+
+      const [cardRes, vehicleRes, tripRes, myTripRes] = await Promise.all([
+        isCardVehicleApprover
+          ? supabase.from('card_usages').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending')
+          : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
+        isCardVehicleApprover
+          ? supabase.from('vehicle_requests').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending')
+          : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
+        isTripApprover
+          ? supabase.from('business_trips').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending')
+          : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
+        supabase.from('business_trips').select('id', { count: 'exact', head: true })
+          .eq('requester_id', employee?.id || '__no_user__')
+          .eq('approval_status', 'approved')
+          .in('settlement_status', ['draft', 'submitted', 'rejected']),
+      ])
+
+      const total =
+        (isCardVehicleApprover ? cardRes.count || 0 : 0) +
+        (isCardVehicleApprover ? vehicleRes.count || 0 : 0) +
+        (isTripApprover ? tripRes.count || 0 : 0) +
+        (myTripRes.count || 0)
+
+      setOtherPendingCount(total)
+    } catch {
+      // 배지 카운트 실패 시 무시
+    }
+  }, [roles, employee?.id])
+
+  useEffect(() => {
+    loadOtherPendingCounts()
+    const timer = window.setInterval(loadOtherPendingCounts, 30000)
+    return () => window.clearInterval(timer)
+  }, [loadOtherPendingCounts])
+
   const menuItems = [
     {
       label: '대시보드',
@@ -123,7 +177,8 @@ export default function Navigation({ role }: NavigationProps) {
       label: '요청 목록',
       href: '/purchase/list',
       icon: FileText,
-      roles: ['all']
+      roles: ['all'],
+      badge: totalRequestBadge > 0 ? totalRequestBadge : undefined
     },
     {
       label: '거래명세서 확인',

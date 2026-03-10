@@ -7,6 +7,8 @@ import { useSearchParams } from "react-router-dom";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { logger } from "@/lib/logger";
+import { usePurchaseMemory } from "@/hooks/usePurchaseMemory";
+import { countPendingApprovalsForSidebarBadge } from "@/utils/purchaseFilters";
 
 interface RequestListMainProps {
   showEmailButton?: boolean;
@@ -30,6 +32,12 @@ export default function RequestListMain({ showEmailButton = true }: RequestListM
   const [searchParams, setSearchParams] = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
   const { employee, currentUserRoles } = useAuth();
+  const { allPurchases } = usePurchaseMemory();
+
+  const purchasePendingCount = useMemo(
+    () => countPendingApprovalsForSidebarBadge(allPurchases, employee?.purchase_role),
+    [allPurchases, employee?.purchase_role]
+  );
   const [badgeCounts, setBadgeCounts] = useState<BadgeCounts>({
     "발주/구매": 0,
     "카드사용": 0,
@@ -120,7 +128,7 @@ export default function RequestListMain({ showEmailButton = true }: RequestListM
       }
 
       const nextCounts: BadgeCounts = {
-        "발주/구매": 0,
+        "발주/구매": purchasePendingCount,
         "카드사용": isCardVehicleApprover ? cardPendingRes.count || 0 : 0,
         출장: approvableTripCount + (myTripUnsettledRes.count || 0),
         차량: isCardVehicleApprover ? vehiclePendingRes.count || 0 : 0,
@@ -130,7 +138,7 @@ export default function RequestListMain({ showEmailButton = true }: RequestListM
     } catch (error) {
       logger.error("RequestListMain 탭 배지 카운트 조회 실패", error);
     }
-  }, [currentUserRoles, employee, supabase]);
+  }, [currentUserRoles, employee, purchasePendingCount, supabase]);
 
   useEffect(() => {
     let mounted = true;

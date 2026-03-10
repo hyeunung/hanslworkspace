@@ -473,15 +473,6 @@ class TransactionStatementService {
         (data as any)?.debug_row_counts ||
         (data as any)?.result?.debug_row_counts ||
         null;
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H7',location:'transactionStatementService.ts:extractStatementData:afterInvoke',message:'frontend received ocr edge response',data:{statementId,hasError:Boolean(error),errorMessage:(error as any)?.message||null,responseQueued:!!(data as any)?.queued,responseSuccess:!!(data as any)?.success,responseStatus:(data as any)?.status||null,responseReason:(data as any)?.reason||null,responseDebug:(data as any)?.debug||null,responseDebugPerf:(data as any)?.debug_perf_ms||null,responseDebugKeys:(data as any)?.debug?Object.keys((data as any).debug):[],responseKeys:data&&typeof data==='object'?Object.keys(data as any):[]},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'row-count-trace',hypothesisId:'H1-H3',location:'transactionStatementService.ts:extractStatementData:afterInvoke',message:'edge response row counts snapshot',data:{statementId,responseQueued:!!(data as any)?.queued,responseSuccess:!!(data as any)?.success,responseItemCount:Array.isArray((data as any)?.result?.items)?(data as any).result.items.length:0,edgeRowCounts},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H8',location:'transactionStatementService.ts:extractStatementData:invokePayloadSnapshot',message:'edge payload po numbers snapshot',data:{statementId,responseDebugPerf:(data as any)?.debug_perf_ms||((data as any)?.result?.debug_perf_ms)||null,responseUniquePONumbers:Array.from(new Set((((data as any)?.result?.items||[]) as any[]).map((it)=>it?.po_number).filter((v)=>!!v))).slice(0,20),responseItemSample:((((data as any)?.result?.items||[]) as any[]).slice(0,20)).map((it,idx)=>({line:it?.line_number??idx+1,po_number:it?.po_number??null,spec:(it?.specification||'').slice(0,60),item_name:(it?.item_name||'').slice(0,40)})),responseItemCount:Array.isArray((data as any)?.result?.items)?(data as any).result.items.length:0},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (error) {
         const context = (error as any)?.context;
         invokeContextStatus = context?.status ?? null;
@@ -503,24 +494,12 @@ class TransactionStatementService {
       if (error) throw error;
 
       if (data?.queued) {
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H14',location:'transactionStatementService.ts:extractStatementData:queuedReturn',message:'extract api returned queued response',data:{statementId,elapsedMs:Date.now()-requestStartAt,responseReason:(data as any)?.reason||null,responseDebug:(data as any)?.debug||null},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'post-fix',hypothesisId:'H14',location:'transactionStatementService.ts:extractStatementData:queuedKickTrigger',message:'queued response triggers background kickQueue',data:{statementId},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         void this.kickQueue().then((kickResult) => {
-          // #region agent log
-          fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'post-fix',hypothesisId:'H14',location:'transactionStatementService.ts:extractStatementData:queuedKickResult',message:'background kickQueue result after queued response',data:{statementId,kickSuccess:kickResult.success,kickError:kickResult.error||null},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
         }).catch(() => {});
         return { success: true, queued: true, status: 'queued' };
       }
 
       if (!data?.success) {
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b9515'},body:JSON.stringify({sessionId:'5b9515',runId:'reextract-debug',hypothesisId:'H5',location:'transactionStatementService.ts:extractStatementData:dataNotSuccess',message:'edge function returned success=false',data:{statementId,resetBeforeExtract,dataError:data?.error||null,dataKeys:data?Object.keys(data):[],elapsedMs:Date.now()-requestStartAt},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         throw new Error(data.error || 'OCR 추출 실패');
       }
 
@@ -532,21 +511,9 @@ class TransactionStatementService {
 
       // 추출된 데이터 조회
       const result = await this.getStatementWithItems(statementId);
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H9',location:'transactionStatementService.ts:extractStatementData:afterGetStatementWithItems',message:'db-loaded item po numbers snapshot',data:{statementId,dbLoadSuccess:result.success,dbLoadItemCount:result?.data?.items?.length||0,dbLoadUniquePONumbers:Array.from(new Set((result?.data?.items||[]).map((it)=>it?.extracted_po_number).filter((v)=>!!v))).slice(0,20),dbLoadItemSample:(result?.data?.items||[]).slice(0,20).map((it,idx)=>({line:it?.line_number??idx+1,extracted_po_number:it?.extracted_po_number??null,item_name:(it?.extracted_item_name||'').slice(0,40),spec:(it?.extracted_specification||'').slice(0,60)}))},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'row-count-trace',hypothesisId:'H4',location:'transactionStatementService.ts:extractStatementData:afterGetStatementWithItems',message:'db row count after extraction',data:{statementId,dbLoadSuccess:result.success,dbLoadItemCount:result?.data?.items?.length||0,edgeRowCounts},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-read-debug',hypothesisId:'H14',location:'transactionStatementService.ts:extractStatementData:successReturn',message:'extract api completed with full data',data:{statementId,elapsedMs:Date.now()-requestStartAt,itemCount:result?.data?.items?.length||0},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return result;
     } catch (error) {
       console.error('[Service] Extract statement error:', error);
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b9515'},body:JSON.stringify({sessionId:'5b9515',runId:'reextract-debug',hypothesisId:'H4-H5',location:'transactionStatementService.ts:extractStatementData:catch',message:'extractStatementData threw error',data:{statementId,resetBeforeExtract,errorName:(error as any)?.name||null,errorMessage:(error as any)?.message||null,errorStack:((error as any)?.stack||'').slice(0,500),invokeContextStatus,invokeContextBody:invokeContextBody?.slice(0,500)||null,elapsedMs:Date.now()-requestStartAt},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       // 546 WORKER_LIMIT: 워커 리소스 부족 → 대기열로 전환하여 자동 재시도
       if (invokeContextStatus === 546) {
         try {
@@ -607,30 +574,17 @@ class TransactionStatementService {
     const now = Date.now();
     const minIntervalMs = 8000;
     if (now - this.lastKickQueueAt < minIntervalMs) {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'post-fix',hypothesisId:'H15',location:'transactionStatementService.ts:kickQueue:skippedByMinInterval',message:'kickQueue skipped by minInterval guard',data:{elapsedSinceLastKickMs:now-this.lastKickQueueAt,minIntervalMs},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return { success: true };
     }
 
     this.lastKickQueueAt = now;
-    const invokeStartAt = Date.now();
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'post-fix',hypothesisId:'H15',location:'transactionStatementService.ts:kickQueue:beforeInvoke',message:'kickQueue invoking process_next edge function',data:{lastKickQueueAt:this.lastKickQueueAt},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       const { error } = await this.supabase.functions.invoke('ocr-transaction-statement', {
         body: { mode: 'process_next' }
       });
       if (error) throw error;
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'post-fix',hypothesisId:'H15',location:'transactionStatementService.ts:kickQueue:success',message:'kickQueue process_next completed successfully',data:{elapsedMs:Date.now()-invokeStartAt},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return { success: true };
     } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'post-fix',hypothesisId:'H15',location:'transactionStatementService.ts:kickQueue:error',message:'kickQueue failed',data:{elapsedMs:Date.now()-invokeStartAt,errorMessage:error instanceof Error?error.message:String(error)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return {
         success: false,
         error: error instanceof Error ? error.message : '큐 처리를 시작하지 못했습니다.'
@@ -777,43 +731,6 @@ class TransactionStatementService {
             });
           }
         }
-
-        // #region agent log
-        if (statement.status === 'extracted' || statement.status === 'confirmed') {
-          const sample = stmtItems.slice(0, 4).map((item: any) => {
-            const candidates = item.match_candidates_data;
-            let selected: any | null = null;
-            if (Array.isArray(candidates) && candidates.length > 0) {
-              if (item.matched_item_id) {
-                selected = candidates.find((c: any) => c.item_id === item.matched_item_id) || null;
-              }
-              if (!selected && item.matched_purchase_id) {
-                const inPurchase = candidates.filter((c: any) => c.purchase_id === item.matched_purchase_id);
-                if (inPurchase.length > 0) {
-                  selected = inPurchase.reduce((a: any, b: any) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), inPurchase[0]);
-                }
-              }
-              if (!selected) {
-                selected = candidates.reduce((a: any, b: any) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
-              }
-            }
-            return {
-              extracted: item.extracted_quantity ?? null,
-              confirmed: item.confirmed_quantity ?? null,
-              matchedItemId: item.matched_item_id ?? null,
-              matchedPurchaseId: item.matched_purchase_id ?? null,
-              selectedSystem: selected?.quantity ?? null
-            };
-          });
-          const confirmedDiffCount = stmtItems.filter((item: any) =>
-            item.confirmed_quantity != null &&
-            item.extracted_quantity != null &&
-            item.confirmed_quantity !== item.extracted_quantity
-          ).length;
-          fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'qty-branch-check',hypothesisId:'H1-H4',location:'transactionStatementService.ts:getStatements:qtySource',message:'list qty source and db flags',data:{stmtId:statement.id,status:statement.status,qtyConfirmed:!!statement.quantity_match_confirmed_at,dbAllMatched:statement.all_quantities_matched===true,calcAllMatched:all_quantities_matched,hasCandidates,confirmedDiffCount,sample},timestamp:Date.now()})}).catch(()=>{});
-        }
-        // #endregion
-
 
         const { items, ...rest } = statement;
         return {

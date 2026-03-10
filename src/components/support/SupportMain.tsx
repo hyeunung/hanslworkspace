@@ -2401,7 +2401,7 @@ ${itemsText}`;
                                                 {m.created_at && ` · ${format(new Date(m.created_at), 'MM/dd HH:mm')}`}
                                               </div>
                                             )}
-                                            <div className="whitespace-pre-wrap card-description">{m.message}</div>
+                                            <div className={`whitespace-pre-wrap text-[10px] ${isMine ? 'text-white' : 'text-gray-800'}`} style={{ letterSpacing: '0.02em' }}>{m.message}</div>
                                             {m.attachments && m.attachments.length > 0 && (
                                               <div className="flex flex-wrap gap-2 mt-2">
                                                 {m.attachments.map((a, idx) => (
