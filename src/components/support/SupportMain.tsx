@@ -305,7 +305,9 @@ export default function SupportMain() {
       setShowPurchaseSelect(true)
     } else {
       setShowPurchaseSelect(false)
-      setSelectedPurchase(null)
+      if (!lockedPurchaseId) {
+        setSelectedPurchase(null)
+      }
     }
 
     setRequestedDeliveryDate(undefined)
@@ -342,11 +344,10 @@ export default function SupportMain() {
     }
   }, [location.search])
 
-  // ✅ 고정 purchaseId가 있으면 바로 상세를 불러와 자동 선택
+  // ✅ 고정 purchaseId가 있으면 바로 상세를 불러와 자동 선택 + 직원명/기간 자동 설정
   useEffect(() => {
     const run = async () => {
       if (!lockedPurchaseId) return
-      // inquiryType이 아직 설정되기 전이면 대기
       if (lockedInquiryType === 'delivery_date_change' && inquiryType !== 'delivery_date_change') return
 
       const result = await supportService.getPurchaseRequestDetail(String(lockedPurchaseId))
@@ -355,12 +356,21 @@ export default function SupportMain() {
         return
       }
 
-      setSelectedPurchase(result.data)
-      setPurchaseRequests([result.data])
-      // 날짜 입력들은 새로운 발주 선택에 맞춰 초기화
+      const purchase = result.data
+      setSelectedPurchase(purchase)
+      setPurchaseRequests([purchase])
       setRequestedDeliveryDate(undefined)
       setQuantityChangeRows([])
       setPriceChangeRows([])
+
+      if (purchase.requester_name) {
+        setSelectedEmployeeName(purchase.requester_name)
+      }
+      const purchaseDate = new Date(purchase.request_date || purchase.created_at)
+      const from = new Date(purchaseDate)
+      from.setMonth(from.getMonth() - 1)
+      const to = new Date()
+      setDateRange({ from, to })
     }
 
     run()
@@ -388,8 +398,9 @@ export default function SupportMain() {
     searchPurchaseRequests()
   }, [showPurchaseSelect, dateRange?.from, dateRange?.to, selectedEmployeeName])
 
-  // 직원 선택 변경 시 기존 발주 선택 초기화
+  // 직원 선택 변경 시 기존 발주 선택 초기화 (URL 파라미터 진입 시에는 skip)
   useEffect(() => {
+    if (lockedPurchaseId) return
     setSelectedPurchase(null)
     setRequestedDeliveryDate(undefined)
     setQuantityChangeRows([])
@@ -406,7 +417,11 @@ export default function SupportMain() {
     const result = await supportService.getMyPurchaseRequests(startDate, endDate, selectedEmployeeName || undefined)
     
     if (result.success) {
-      setPurchaseRequests(result.data)
+      let data = result.data
+      if (selectedPurchase && !data.some((p: any) => p.id === selectedPurchase.id)) {
+        data = [selectedPurchase, ...data]
+      }
+      setPurchaseRequests(data)
     } else {
       toast.error(result.error || '발주요청 조회 실패')
     }
@@ -1620,35 +1635,29 @@ ${itemsText}`;
                   <label className="block modal-label text-gray-700 mb-1">
                     문의 유형 <span className="text-red-500">*</span>
                   </label>
-                  {lockedInquiryType === 'delivery_date_change' ? (
-                    <div className="button-base business-radius-input border border-gray-300 bg-white text-gray-700 inline-flex items-center !h-7 !px-2.5 !text-[11px]">
-                      입고일 변경 요청
-                    </div>
-                  ) : (
-                    <Select value={inquiryType} onValueChange={setInquiryType}>
-                      <SelectTrigger
-                        size="sm"
-                        className="button-base business-radius-input border border-gray-300 bg-white text-gray-700 w-auto !h-7 !px-2.5 !text-[11px]"
-                        style={{ width: `${inquiryTypeControlWidthEm}em`, maxWidth: '100%' }}
-                      >
-                        <SelectValue placeholder={inquiryTypePlaceholder} />
-                      </SelectTrigger>
-                      <SelectContent
-                        className="text-[11px] business-radius-card"
-                        style={{ minWidth: `${inquiryTypeMenuWidthEm}em` }}
-                      >
-                        {inquiryTypeOptions.map((option) => (
-                          <SelectItem
-                            key={option.value}
-                            className="text-[11px] py-1.5"
-                            value={option.value}
-                          >
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
+                  <Select value={inquiryType} onValueChange={setInquiryType}>
+                    <SelectTrigger
+                      size="sm"
+                      className="button-base business-radius-input border border-gray-300 bg-white text-gray-700 w-auto !h-7 !px-2.5 !text-[11px]"
+                      style={{ width: `${inquiryTypeControlWidthEm}em`, maxWidth: '100%' }}
+                    >
+                      <SelectValue placeholder={inquiryTypePlaceholder} />
+                    </SelectTrigger>
+                    <SelectContent
+                      className="text-[11px] business-radius-card"
+                      style={{ minWidth: `${inquiryTypeMenuWidthEm}em` }}
+                    >
+                      {inquiryTypeOptions.map((option) => (
+                        <SelectItem
+                          key={option.value}
+                          className="text-[11px] py-1.5"
+                          value={option.value}
+                        >
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* 발주요청 선택 */}
@@ -1658,129 +1667,90 @@ ${itemsText}`;
                       {purchaseSelectLabel}
                     </div>
 
-                    {lockedInquiryType === 'delivery_date_change' && lockedPurchaseId ? (
-                      <div className="space-y-2">
-                        <div className="card-description text-gray-600">
-                          이 화면은 <span className="font-medium">입고일 변경 요청</span> 전용입니다.
+                    <div>
+                      <label className="modal-label text-gray-600 mb-2 block">직원 선택</label>
+                      <ReactSelect
+                        value={employeeNameOptions.find(o => o.value === selectedEmployeeName) || null}
+                        onChange={(option) => setSelectedEmployeeName((option as any)?.value || '')}
+                        options={employeeNameOptions}
+                        placeholder="직원 선택"
+                        isSearchable
+                        styles={getCompactSelectStyles(180, 200)}
+                        menuPortalTarget={document.body}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="modal-label text-gray-600 mb-2 block">기간 선택</label>
+                      <DateRangePicker
+                        date={dateRange}
+                        onDateChange={setDateRange}
+                        placeholder="발주요청 기간을 선택하세요"
+                        className="inline-grid w-fit"
+                        style={{ width: `${dateRangeWidthEm}em`, maxWidth: '100%' }}
+                        triggerClassName="button-base w-fit justify-start border border-gray-300 bg-white text-gray-700 business-radius-input !h-[28px] !py-0"
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="modal-label text-gray-600">
+                          발주요청 선택 (총 {purchaseRequests.length}건)
                         </div>
-                        {selectedPurchase ? (
-                          <div className="px-3 py-2 bg-white border border-gray-200 business-radius-card">
-                            <div className="flex items-center gap-2">
-                              <span className="card-title">{selectedPurchase.purchase_order_number || '(승인대기)'}</span>
-                              <span className="card-subtitle">{selectedPurchase.vendor_name}</span>
-                              <span className="card-date">
-                                {(selectedPurchase.request_date || selectedPurchase.created_at) &&
-                                  format(new Date(selectedPurchase.request_date || selectedPurchase.created_at), 'MM/dd')}
-                              </span>
-                            </div>
-                            {selectedPurchaseItems.length > 0 && (
-                              <div className="mt-2 space-y-1">
-                                <div className="modal-label text-gray-600">품목 상세</div>
-                                {selectedPurchaseItems.map((item: any, index: number) => (
-                                  <div key={item.id || index} className="flex items-center gap-2 pl-2">
-                                    <span className="card-description text-gray-400">{item.line_number ?? index + 1}.</span>
-                                    <span className="card-description">{item.item_name}</span>
-                                    {item.specification && (
-                                      <span className="card-description text-gray-500">({item.specification})</span>
-                                    )}
-                                    <span className="card-description text-gray-500">- {item.quantity}개</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="badge-text text-gray-500">발주 정보를 불러오는 중…</div>
+                        {searchingPurchase && (
+                          <span className="badge-text text-gray-400">조회 중…</span>
                         )}
                       </div>
-                    ) : (
-                      <>
-                        <div>
-                          <label className="modal-label text-gray-600 mb-2 block">직원 선택</label>
-                          <ReactSelect
-                            value={employeeNameOptions.find(o => o.value === selectedEmployeeName) || null}
-                            onChange={(option) => setSelectedEmployeeName((option as any)?.value || '')}
-                            options={employeeNameOptions}
-                            placeholder="직원 선택"
-                            isSearchable
-                            styles={getCompactSelectStyles(180, 200)}
-                            menuPortalTarget={document.body}
-                          />
+                      <ReactSelect
+                        value={purchaseOptions.find(option => option.value === String(selectedPurchase?.id)) || null}
+                        onChange={(option) => setSelectedPurchase((option as any)?.data || null)}
+                        options={purchaseOptions}
+                        placeholder="발주번호 선택/검색"
+                        isSearchable
+                        isLoading={searchingPurchase}
+                        noOptionsMessage={() => '일치하는 발주가 없습니다'}
+                        filterOption={(option, inputValue) => {
+                          const keyword = inputValue.toLowerCase()
+                          const label = option.label.toLowerCase()
+                          const searchText = option.data?.searchText || ''
+                          return label.includes(keyword) || searchText.includes(keyword)
+                        }}
+                        styles={getCompactSelectStyles(purchaseControlWidthPx, purchaseMenuWidthPx)}
+                      />
+                      {!searchingPurchase && purchaseRequests.length === 0 && (
+                        <div className="card-description text-gray-500">
+                          선택한 기간 내 발주요청이 없습니다.
                         </div>
+                      )}
 
-                        <div>
-                          <label className="modal-label text-gray-600 mb-2 block">기간 선택</label>
-                          <DateRangePicker
-                            date={dateRange}
-                            onDateChange={setDateRange}
-                            placeholder="발주요청 기간을 선택하세요"
-                            className="inline-grid w-fit"
-                            style={{ width: `${dateRangeWidthEm}em`, maxWidth: '100%' }}
-                            triggerClassName="button-base w-fit justify-start border border-gray-300 bg-white text-gray-700 business-radius-input !h-[28px] !py-0"
-                          />
-                        </div>
-
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <div className="modal-label text-gray-600">
-                              발주요청 선택 (총 {purchaseRequests.length}건)
-                            </div>
-                            {searchingPurchase && (
-                              <span className="badge-text text-gray-400">조회 중…</span>
-                            )}
+                      {selectedPurchase && (
+                        <div className="px-3 py-2 bg-white border border-gray-200 business-radius-card">
+                          <div className="flex items-center gap-2">
+                            <span className="card-title">{selectedPurchase.purchase_order_number || '(승인대기)'}</span>
+                            <span className="card-subtitle">{selectedPurchase.vendor_name}</span>
+                            <span className="card-date">
+                              {(selectedPurchase.request_date || selectedPurchase.created_at) &&
+                                format(new Date(selectedPurchase.request_date || selectedPurchase.created_at), 'MM/dd')}
+                            </span>
                           </div>
-                          <ReactSelect
-                            value={purchaseOptions.find(option => option.value === String(selectedPurchase?.id)) || null}
-                            onChange={(option) => setSelectedPurchase((option as any)?.data || null)}
-                            options={purchaseOptions}
-                            placeholder="발주번호 선택/검색"
-                            isSearchable
-                            isLoading={searchingPurchase}
-                            noOptionsMessage={() => '일치하는 발주가 없습니다'}
-                            filterOption={(option, inputValue) => {
-                              const keyword = inputValue.toLowerCase()
-                              const label = option.label.toLowerCase()
-                              const searchText = option.data?.searchText || ''
-                              return label.includes(keyword) || searchText.includes(keyword)
-                            }}
-                            styles={getCompactSelectStyles(purchaseControlWidthPx, purchaseMenuWidthPx)}
-                          />
-                          {!searchingPurchase && purchaseRequests.length === 0 && (
-                            <div className="card-description text-gray-500">
-                              선택한 기간 내 발주요청이 없습니다.
-                            </div>
-                          )}
-
-                          {selectedPurchase && (
-                            <div className="px-3 py-2 bg-white border border-gray-200 business-radius-card">
-                              <div className="flex items-center gap-2">
-                                <span className="card-title">{selectedPurchase.purchase_order_number || '(승인대기)'}</span>
-                                <span className="card-subtitle">{selectedPurchase.vendor_name}</span>
-                                <span className="card-date">
-                                  {(selectedPurchase.request_date || selectedPurchase.created_at) &&
-                                    format(new Date(selectedPurchase.request_date || selectedPurchase.created_at), 'MM/dd')}
-                                </span>
-                              </div>
-                              {selectedPurchaseItems.length > 0 && (
-                                <div className="mt-2 space-y-1">
-                                  <div className="modal-label text-gray-600">품목 상세</div>
-                                  {selectedPurchaseItems.map((item: any, index: number) => (
-                                    <div key={item.id || index} className="flex items-center gap-2 pl-2">
-                                      <span className="card-description text-gray-400">{item.line_number ?? index + 1}.</span>
-                                      <span className="card-description">{item.item_name}</span>
-                                      {item.specification && (
-                                        <span className="card-description text-gray-500">({item.specification})</span>
-                                      )}
-                                      <span className="card-description text-gray-500">- {item.quantity}개</span>
-                                    </div>
-                                  ))}
+                          {selectedPurchaseItems.length > 0 && (
+                            <div className="mt-2 space-y-1">
+                              <div className="modal-label text-gray-600">품목 상세</div>
+                              {selectedPurchaseItems.map((item: any, index: number) => (
+                                <div key={item.id || index} className="flex items-center gap-2 pl-2">
+                                  <span className="card-description text-gray-400">{item.line_number ?? index + 1}.</span>
+                                  <span className="card-description">{item.item_name}</span>
+                                  {item.specification && (
+                                    <span className="card-description text-gray-500">({item.specification})</span>
+                                  )}
+                                  <span className="card-description text-gray-500">- {item.quantity}개</span>
                                 </div>
-                              )}
+                              ))}
                             </div>
                           )}
                         </div>
-                      </>
-                    )}
+                      )}
+                    </div>
                   </div>
                 )}
 
