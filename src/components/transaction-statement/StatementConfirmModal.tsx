@@ -17,7 +17,8 @@ import {
   Check,
   ExternalLink,
   Search,
-  RefreshCw
+  RefreshCw,
+  Trash2
 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -64,6 +65,12 @@ interface SystemPurchaseItem {
 }
 
 const MIN_AUTO_MATCH_SCORE = 40;
+
+function getOCRLineHint(
+  item: Pick<TransactionStatementItemWithMatch, 'extracted_po_line_number' | 'extracted_po_number' | 'line_number'>
+): number | null {
+  return item.extracted_po_line_number ?? extractLineNumberFromPO(item.extracted_po_number || '') ?? item.line_number ?? null;
+}
 
 function mapCandidateToSystemItem(candidate: MatchCandidate): SystemPurchaseItem {
   return {
@@ -333,6 +340,10 @@ export default function StatementConfirmModal({
   
   // 금액/단가 필드 포커스 상태 (포커스 중에는 raw 숫자, blur 시 포맷팅)
   const [focusedAmountField, setFocusedAmountField] = useState<string | null>(null);
+
+  // 삭제된 행 추적 (OCR 품목 ID / 시스템 품목 item_id)
+  const [deletedOCRItemIds, setDeletedOCRItemIds] = useState<Set<string>>(new Set());
+  const [deletedSystemItemIds, setDeletedSystemItemIds] = useState<Set<number>>(new Set());
   
   // 매칭 상세 정보 팝업
   const [matchDetailPopup, setMatchDetailPopup] = useState<{
@@ -792,7 +803,7 @@ export default function StatementConfirmModal({
             const itemsForPO = poNumber ? getSystemItemsForPOLocal(poNumber) : [];
 
             // 0. 발주번호 + 라인넘버가 있으면 해당 라인을 직접 매칭
-            const ocrLineNum = extractLineNumberFromPO(item.extracted_po_number || '') ?? item.line_number ?? null;
+            const ocrLineNum = getOCRLineHint(item);
             if (ocrLineNum !== null && poNumber) {
               const lineMatchCandidate = item.match_candidates?.find(c =>
                 (c.purchase_order_number === poNumber || c.sales_order_number === poNumber) &&
@@ -857,7 +868,7 @@ export default function StatementConfirmModal({
                 const recommendedPOItems = getSystemItemsForPOLocal(recommendedPO);
                 let bestItem: SystemPurchaseItem | null = null;
                 let bestItemScore = -1;
-                const recommendedLineNum = extractLineNumberFromPO(item.extracted_po_number || '') ?? item.line_number ?? null;
+                const recommendedLineNum = getOCRLineHint(item);
                 if (recommendedLineNum !== null) {
                   const directLineMatch = recommendedPOItems.find((systemItem) => systemItem.line_number === recommendedLineNum);
                   if (directLineMatch) {
@@ -892,7 +903,7 @@ export default function StatementConfirmModal({
           const itemPO = initialPONumbers.get(item.id);
           if (itemPO && !initialMatches.get(item.id)) {
             const itemsForPO = getSystemItemsForPOLocal(itemPO);
-            const itemLineNum = extractLineNumberFromPO(item.extracted_po_number || '') ?? item.line_number ?? null;
+            const itemLineNum = getOCRLineHint(item);
             if (itemLineNum !== null && itemsForPO.length > 0) {
               const directLineMatch = itemsForPO.find((systemItem) => systemItem.line_number === itemLineNum);
               if (directLineMatch) {
@@ -1049,7 +1060,7 @@ export default function StatementConfirmModal({
         ? selectedPONumber 
         : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
       
-      const rOcrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '') ?? ocrItem.line_number ?? null;
+      const rOcrLineNum = getOCRLineHint(ocrItem);
       const isCurrentSamePO = !poNumber || currentMatch?.purchase_order_number === poNumber || currentMatch?.sales_order_number === poNumber;
       const isCurrentSameLine = rOcrLineNum === null || currentMatch?.line_number == null || currentMatch.line_number === rOcrLineNum;
 
@@ -1685,26 +1696,13 @@ export default function StatementConfirmModal({
     const perPOParsed = new Map<string, Array<{ itemId: string; line: number | null }>>();
     const perPOUsedLines = new Map<string, Set<number>>();
 
-    const extractRawLine = (raw?: string): { base: string; line: number | null } => {
-      if (!raw) return { base: '', line: null };
-      const cleaned = raw.toUpperCase().replace(/\s+/g, '').replace(/[^\w-]/g, '');
-      const poMatch = cleaned.match(/^(F\d{8}[_-]\d{1,3})[-_](\d{1,3})$/);
-      if (poMatch) {
-        return {
-          base: normalizeOrderNumber(poMatch[1]),
-          line: Number(poMatch[2]),
-        };
-      }
-      const soMatch = cleaned.match(/^(HS\d{6}[-_]\d{1,2})[-_](\d{1,3})$/);
-      if (soMatch) {
-        return {
-          base: normalizeOrderNumber(soMatch[1]),
-          line: Number(soMatch[2]),
-        };
-      }
+    const extractRawLine = (item: TransactionStatementItemWithMatch): { base: string; line: number | null } => {
+      const base = item.extracted_po_number
+        ? normalizeOrderNumber(item.extracted_po_number)
+        : '';
       return {
-        base: normalizeOrderNumber(cleaned),
-        line: null,
+        base,
+        line: getOCRLineHint(item),
       };
     };
 
@@ -1713,7 +1711,7 @@ export default function StatementConfirmModal({
         ? (selectedPONumber ? normalizeOrderNumber(selectedPONumber) : '')
         : resolveItemPONumber(item);
       const poKey = activePO || 'NO_PO';
-      const parsed = extractRawLine(item.extracted_po_number || undefined);
+      const parsed = extractRawLine(item);
       const list = perPOParsed.get(poKey) || [];
       const lineForPO = parsed.base && activePO && parsed.base === activePO ? parsed.line : null;
       list.push({ itemId: item.id, line: lineForPO });
@@ -1737,7 +1735,7 @@ export default function StatementConfirmModal({
       const used = perPOUsedLines.get(poKey) || new Set<number>();
       perPOUsedLines.set(poKey, used);
 
-      const parsed = extractRawLine(item.extracted_po_number || undefined);
+      const parsed = extractRawLine(item);
       const rawLine = parsed.base && activePO && parsed.base === activePO ? parsed.line : null;
       const useRawLine = poSuffixMeaningful.get(poKey) === true;
 
@@ -1799,17 +1797,32 @@ export default function StatementConfirmModal({
 
   // 단일 OCR 품목 수정값 즉시 DB 저장
   const persistSingleOCRItem = useCallback(async (itemId: string, field: keyof EditedOCRItem, value: string | number) => {
+    if (field === 'po_number') {
+      const poValue = String(value || '');
+      const { error } = await supabase
+        .from('transaction_statement_items')
+        .update({
+          extracted_po_number: poValue,
+          extracted_po_line_number: extractLineNumberFromPO(poValue),
+        })
+        .eq('id', itemId);
+
+      if (error) {
+        logger.warn('OCR 수정값 자동 저장 실패:', error);
+      }
+      return;
+    }
+
     const fieldMap: Record<string, string> = {
       item_name: 'extracted_item_name',
       quantity: 'extracted_quantity',
       unit_price: 'extracted_unit_price',
       amount: 'extracted_amount',
-      po_number: 'extracted_po_number',
     };
     const dbField = fieldMap[field];
     if (!dbField) return;
 
-    const dbValue = field === 'item_name' || field === 'po_number' ? value : Number(value);
+    const dbValue = field === 'item_name' ? value : Number(value);
     const { error } = await supabase
       .from('transaction_statement_items')
       .update({ [dbField]: dbValue })
@@ -1838,6 +1851,35 @@ export default function StatementConfirmModal({
     }, 500);
   };
 
+  const handleOCRItemBlur = useCallback((itemId: string, field: keyof EditedOCRItem) => {
+    if (!statementWithItems) return;
+    const edited = editedOCRItems.get(itemId);
+    if (!edited) return;
+    const ocrItem = statementWithItems.items.find(i => i.id === itemId);
+    if (!ocrItem) return;
+
+    const fieldMap: Record<string, { original: unknown; corrected: unknown; fieldType: OCRFieldType }> = {
+      item_name: { original: ocrItem.extracted_item_name, corrected: edited.item_name, fieldType: 'item_name' },
+      quantity: { original: ocrItem.extracted_quantity, corrected: edited.quantity, fieldType: 'quantity' },
+      unit_price: { original: ocrItem.extracted_unit_price, corrected: edited.unit_price, fieldType: 'unit_price' },
+      amount: { original: ocrItem.extracted_amount, corrected: edited.amount, fieldType: 'amount' },
+    };
+
+    const info = fieldMap[field];
+    if (!info || info.corrected === undefined) return;
+    const originalStr = String(info.original ?? '');
+    const correctedStr = String(info.corrected);
+    if (originalStr === correctedStr) return;
+
+    transactionStatementService.saveCorrection({
+      statement_id: statementWithItems.id,
+      statement_item_id: itemId,
+      original_text: originalStr,
+      corrected_text: correctedStr,
+      field_type: info.fieldType,
+    }).catch(() => {});
+  }, [statementWithItems, editedOCRItems]);
+
   // 수동 수정값을 DB에 일괄 반영 (확정/수량일치 시 호출)
   const persistEditedOCRItems = useCallback(async () => {
     if (!statementWithItems || editedOCRItems.size === 0) return;
@@ -1850,13 +1892,17 @@ export default function StatementConfirmModal({
           extracted_unit_price?: number;
           extracted_amount?: number;
           extracted_po_number?: string;
+          extracted_po_line_number?: number | null;
         } = {};
 
         if (edited.item_name !== undefined) updateData.extracted_item_name = edited.item_name;
         if (edited.quantity !== undefined) updateData.extracted_quantity = Number(edited.quantity);
         if (edited.unit_price !== undefined) updateData.extracted_unit_price = Number(edited.unit_price);
         if (edited.amount !== undefined) updateData.extracted_amount = Number(edited.amount);
-        if (edited.po_number !== undefined) updateData.extracted_po_number = edited.po_number;
+        if (edited.po_number !== undefined) {
+          updateData.extracted_po_number = edited.po_number;
+          updateData.extracted_po_line_number = extractLineNumberFromPO(edited.po_number);
+        }
 
         return Object.keys(updateData).length > 0 ? { itemId, updateData } : null;
       })
@@ -2303,7 +2349,7 @@ export default function StatementConfirmModal({
         // 2) 없으면 같은 발주의 품목명 유사도 매칭
         let bestMatch: SystemPurchaseItem | null = null;
         let bestScore = -1;
-        const ocrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '') ?? ocrItem.line_number ?? null;
+        const ocrLineNum = getOCRLineHint(ocrItem);
         if (ocrLineNum !== null) {
           const directLineMatch = systemItems.find((sysItem) => sysItem.line_number === ocrLineNum);
           if (directLineMatch) {
@@ -2729,7 +2775,7 @@ export default function StatementConfirmModal({
           
           let bestMatch: SystemPurchaseItem | null = null;
           let bestScore = -1;
-          const ocrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '') ?? ocrItem.line_number ?? null;
+          const ocrLineNum = getOCRLineHint(ocrItem);
           if (ocrLineNum !== null) {
             const directLineMatch = systemItems.find((sysItem) => sysItem.line_number === ocrLineNum);
             if (directLineMatch) {
@@ -2812,7 +2858,7 @@ export default function StatementConfirmModal({
       ) || [];
       
       // 1. 발주번호+라인넘버가 있으면 해당 라인을 직접 매칭
-      const ocrLineNum = extractLineNumberFromPO(ocrItem.extracted_po_number || '') ?? ocrItem.line_number ?? null;
+      const ocrLineNum = getOCRLineHint(ocrItem);
       if (ocrLineNum !== null) {
         const lineCandidate = matchingCandidates.find((candidate) => candidate.line_number === ocrLineNum);
         bestMatch =
@@ -3050,6 +3096,23 @@ export default function StatementConfirmModal({
     
     // 즉시 DB 저장
     persistMatchChange(ocrItemId, systemItem);
+
+    // 별칭 학습 즉시 저장
+    if (systemItem && statementWithItems) {
+      const ocrItem = statementWithItems.items.find(i => i.id === ocrItemId);
+      if (ocrItem) {
+        const ocrName = (ocrItem.extracted_item_name || '').trim();
+        const systemName = (systemItem.item_name || '').trim();
+        const systemSpec = (systemItem.specification || '').trim();
+        if (ocrName && systemName && ocrName.toLowerCase() !== systemName.toLowerCase() && ocrName.toLowerCase() !== systemSpec.toLowerCase()) {
+          transactionStatementService.saveItemNameAliases([{
+            system_item_name: systemName,
+            system_specification: systemSpec || undefined,
+            alias_name: ocrName,
+          }]).catch(() => {});
+        }
+      }
+    }
     
     setOpenDropdowns(prev => {
       const newSet = new Set(prev);
@@ -3999,6 +4062,10 @@ export default function StatementConfirmModal({
 
   return (
     <>
+      {/* modal=false이므로 오버레이를 수동으로 추가 */}
+      {isOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />
+      )}
       <Dialog
         open={isOpen}
         onOpenChange={(open) => {
@@ -4164,17 +4231,19 @@ export default function StatementConfirmModal({
                   <p className="modal-label">합계금액</p>
                   <p className="modal-value-large">
                     {formatAmount(
-                      statementWithItems.items.reduce((sum, item) => {
-                        const edited = editedOCRItems.get(item.id);
-                        const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
-                        return sum + amount;
-                      }, 0)
+                      statementWithItems.items
+                        .filter(item => !deletedOCRItemIds.has(item.id))
+                        .reduce((sum, item) => {
+                          const edited = editedOCRItems.get(item.id);
+                          const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
+                          return sum + amount;
+                        }, 0)
                     )}원
                   </p>
                 </div>
                 <div>
                   <p className="modal-label">품목 수</p>
-                  <p className="modal-value">{statementWithItems.items.length}건</p>
+                  <p className="modal-value">{statementWithItems.items.filter(item => !deletedOCRItemIds.has(item.id)).length}건</p>
                 </div>
               </div>
 
@@ -4184,7 +4253,7 @@ export default function StatementConfirmModal({
                   <thead className="bg-gray-100 sticky top-0 z-10">
                     <tr className="border-b border-gray-200">
                       {/* 좌측: 시스템 발주품목 헤더 */}
-                      <th colSpan={isReceiptMode ? (isSamePONumber ? 3 : 4) : (isSamePONumber ? 4 : 5)} className="border-r-2 border-gray-300 p-2 text-left w-[45%]">
+                      <th colSpan={isReceiptMode ? (isSamePONumber ? 4 : 5) : (isSamePONumber ? 5 : 6)} className="border-r-2 border-gray-300 p-2 text-left w-[45%]">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="modal-section-title text-gray-700">시스템 발주품목</span>
                           {isSamePONumber && allPONumberCandidates.length > 0 && (
@@ -4351,7 +4420,7 @@ export default function StatementConfirmModal({
                       </th>
                       
                       {/* 우측: OCR 추출 품목 헤더 */}
-                      <th colSpan={isReceiptMode ? (isSamePONumber ? 3 : 4) : (isSamePONumber ? 4 : 5)} className="p-2 text-left w-[45%]">
+                      <th colSpan={isReceiptMode ? (isSamePONumber ? 4 : 5) : (isSamePONumber ? 5 : 6)} className="p-2 text-left w-[45%]">
                         <div className="flex items-center gap-2">
                           <span className="modal-section-title text-gray-700">
                             OCR 추출 품목
@@ -4420,16 +4489,16 @@ export default function StatementConfirmModal({
                       )}
                       <th className="p-1 text-left modal-label">품목명(규격)</th>
                       <th className="p-1 text-right modal-label">수량</th>
-                      {/* 입고수량 모드에서는 단가/합계 숨김 */}
                       {!isReceiptMode && (
                         <>
                           <th className="p-1 text-right modal-label">단가</th>
-                          <th className="border-r-2 border-gray-300 p-1 text-right modal-label">합계</th>
+                          <th className="p-1 text-right modal-label">합계</th>
                         </>
                       )}
                       {isReceiptMode && (
-                        <th className="border-r-2 border-gray-300 p-1"></th>
+                        <th className="p-1"></th>
                       )}
+                      <th className="border-r-2 border-gray-300 p-1 w-6"></th>
                       
                       {/* 중앙 */}
                       <th className="border-r-2 border-gray-300 p-1 text-center bg-blue-50/30">
@@ -4439,7 +4508,6 @@ export default function StatementConfirmModal({
                       {/* 우측 컬럼 */}
                       <th className="p-1 text-left whitespace-nowrap modal-label">품목명</th>
                       <th className="p-1 text-right whitespace-nowrap w-16 modal-label">수량</th>
-                      {/* 입고수량 모드에서는 단가/합계 숨김 */}
                       {!isReceiptMode && (
                         <>
                           <th className="p-1 text-right whitespace-nowrap w-20 modal-label">단가</th>
@@ -4452,10 +4520,13 @@ export default function StatementConfirmModal({
                       {!isSamePONumber && (
                         <th className="p-1 text-left whitespace-nowrap modal-label">발주/수주번호</th>
                       )}
+                      <th className="p-1 w-6"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {statementWithItems.items.map((ocrItem, rowIndex) => {
+                    {(() => {
+                      const visibleItems = statementWithItems.items.filter(item => !deletedOCRItemIds.has(item.id));
+                      return visibleItems.map((ocrItem, rowIndex) => {
                       const getDisplayPOForItem = (item: TransactionStatementItemWithMatch) => getDisplayPOForMultiScope(item);
                       const matchedSystem = itemMatches.get(ocrItem.id);
                       const matchStatus = getMatchStatus(ocrItem);
@@ -4484,9 +4555,9 @@ export default function StatementConfirmModal({
                         : matchedPONumber
                           ? [matchedPONumber, ...rawOrderedPOs.filter(po => po !== matchedPONumber)]
                           : rawOrderedPOs;
-                      const nextItem = statementWithItems.items[rowIndex + 1];
+                      const nextItem = visibleItems[rowIndex + 1];
                       const nextItemPO = nextItem ? getDisplayPOForItem(nextItem) : '';
-                      const isGroupEnd = rowIndex < statementWithItems.items.length - 1 && itemPO !== nextItemPO;
+                      const isGroupEnd = rowIndex < visibleItems.length - 1 && itemPO !== nextItemPO;
                       const rowClassName = isGroupEnd
                         ? 'hover:bg-gray-50 border-b-2 border-gray-500'
                         : 'hover:bg-gray-50';
@@ -4504,8 +4575,9 @@ export default function StatementConfirmModal({
                           .map(mapCandidateToSystemItem)
                         : [];
                       // 매칭된 시스템 품목이 있으면 후보에 추가 (월말결제 등에서 후보가 비어있어도 표시)
-                      let displaySystemCandidates = systemCandidates.length > 0 ? systemCandidates : fallbackCandidates;
-                      if (displaySystemCandidates.length === 0 && matchedSystem) {
+                      let displaySystemCandidates = (systemCandidates.length > 0 ? systemCandidates : fallbackCandidates)
+                        .filter(item => !deletedSystemItemIds.has(item.item_id));
+                      if (displaySystemCandidates.length === 0 && matchedSystem && !deletedSystemItemIds.has(matchedSystem.item_id)) {
                         displaySystemCandidates = [matchedSystem];
                       }
                       const scoredSystemCandidates = displaySystemCandidates
@@ -4597,7 +4669,7 @@ export default function StatementConfirmModal({
                       const normalizedPairedOrderNumber = pairedOrderNumber
                         ? normalizeOrderNumber(pairedOrderNumber)
                         : '';
-                      const totalItemCount = statementWithItems.items.length;
+                      const totalItemCount = statementWithItems.items.filter(i => !deletedOCRItemIds.has(i.id)).length;
                       const extractedOrderNumbers = statementWithItems.items
                         .map(item => getOCRItemValue(item, 'po_number') as string)
                         .filter(Boolean)
@@ -5032,14 +5104,33 @@ export default function StatementConfirmModal({
                               <td className="p-1 text-right">
                                 <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem ? formatAmount(matchedSystem.unit_price) : '-'}</span>
                               </td>
-                              <td className="border-r-2 border-gray-300 p-1 text-right">
+                              <td className="p-1 text-right">
                                 <span className="text-[11px] font-bold text-gray-900" style={{ fontSize: '11px', fontWeight: 700 }}>{matchedSystem ? formatAmount(getSystemAmount(matchedSystem) ?? undefined) : '-'}</span>
                               </td>
                             </>
                           )}
                           {isReceiptMode && (
-                            <td className="border-r-2 border-gray-300 p-1"></td>
+                            <td className="p-1"></td>
                           )}
+                          {/* 시스템 품목 삭제 버튼 */}
+                          <td className="border-r-2 border-gray-300 p-0.5 text-center w-6">
+                            {matchedSystem && (
+                              <button
+                                onClick={() => {
+                                  setDeletedSystemItemIds(prev => {
+                                    const next = new Set(prev);
+                                    next.add(matchedSystem.item_id);
+                                    return next;
+                                  });
+                                  handleSelectSystemItem(ocrItem.id, null);
+                                }}
+                                className="text-gray-300 hover:text-red-500 transition-colors"
+                                title="시스템 품목 삭제"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </td>
                           
                           {/* 중앙: 발주/수주 번호 일치 상태 (첫 행에만 rowSpan으로 세로 중앙 표시) */}
                           {isFirstRow && (
@@ -5081,6 +5172,7 @@ export default function StatementConfirmModal({
                                 type="text"
                                 value={getOCRItemValue(ocrItem, 'item_name') as string}
                                 onChange={(e) => handleEditOCRItem(ocrItem.id, 'item_name', e.target.value)}
+                                onBlur={() => handleOCRItemBlur(ocrItem.id, 'item_name')}
                                 className={`min-w-[180px] w-auto px-1 h-5 !text-[10px] !font-medium text-gray-900 border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                   isOCRItemEdited(ocrItem, 'item_name') 
                                     ? 'border-orange-400 bg-orange-50' 
@@ -5134,6 +5226,7 @@ export default function StatementConfirmModal({
                                 type="number"
                                 value={getOCRItemValue(ocrItem, 'quantity') ?? ''}
                                 onChange={(e) => handleEditOCRItem(ocrItem.id, 'quantity', e.target.value ? Number(e.target.value) : 0)}
+                                onBlur={() => handleOCRItemBlur(ocrItem.id, 'quantity')}
                                 className={`w-14 px-1 h-5 !text-[10px] !font-medium text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                   isOCRItemEdited(ocrItem, 'quantity') 
                                     ? 'border-orange-400 bg-orange-50' 
@@ -5158,7 +5251,7 @@ export default function StatementConfirmModal({
                                     handleEditOCRItem(ocrItem.id, 'unit_price', isNaN(num) ? 0 : num);
                                   }}
                                   onFocus={() => setFocusedAmountField(`${ocrItem.id}-unit_price`)}
-                                  onBlur={() => setFocusedAmountField(null)}
+                                  onBlur={() => { setFocusedAmountField(null); handleOCRItemBlur(ocrItem.id, 'unit_price'); }}
                                   className={`w-16 px-1 h-5 !text-[10px] !font-medium text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                     isOCRItemEdited(ocrItem, 'unit_price') 
                                       ? 'border-orange-400 bg-orange-50' 
@@ -5179,7 +5272,7 @@ export default function StatementConfirmModal({
                                     handleEditOCRItem(ocrItem.id, 'amount', isNaN(num) ? 0 : num);
                                   }}
                                   onFocus={() => setFocusedAmountField(`${ocrItem.id}-amount`)}
-                                  onBlur={() => setFocusedAmountField(null)}
+                                  onBlur={() => { setFocusedAmountField(null); handleOCRItemBlur(ocrItem.id, 'amount'); }}
                                   className={`w-20 px-1 h-5 !text-[10px] !font-bold text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                     isOCRItemEdited(ocrItem, 'amount') 
                                       ? 'border-orange-400 bg-orange-50' 
@@ -5228,25 +5321,42 @@ export default function StatementConfirmModal({
                               </div>
                             </td>
                           )}
+                          {/* OCR 품목 삭제 버튼 */}
+                          <td className="p-0.5 text-center w-6">
+                            <button
+                              onClick={() => {
+                                setDeletedOCRItemIds(prev => {
+                                  const next = new Set(prev);
+                                  next.add(ocrItem.id);
+                                  return next;
+                                });
+                              }}
+                              className="text-gray-300 hover:text-red-500 transition-colors"
+                              title="OCR 품목 삭제"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </td>
                         </tr>
                       );
-                    })}
+                    });
+                    })()}
                     
                     {/* 합계 행 - 입고수량 모드에서는 숨김 */}
                     {!isReceiptMode && (
                       <tr className="bg-gray-50 font-medium border-t border-gray-100">
-                        <td colSpan={isSamePONumber ? 3 : 4} className="p-1 text-right text-gray-600">
+                        <td colSpan={isSamePONumber ? 4 : 5} className="p-1 text-right text-gray-600">
                           시스템 합계
                         </td>
                         <td className="border-r-2 border-gray-300 p-1 text-right text-gray-900">
                         {`${getTotalsCurrencySymbol()}${formatAmount(
                           Array.from(itemMatches.values())
-                            .filter(Boolean)
+                            .filter((item): item is SystemPurchaseItem => !!item && !deletedSystemItemIds.has(item.item_id))
                             .reduce((sum, item) => sum + (getSystemAmount(item) || 0), 0)
                         )}`}
                         </td>
                         <td className="border-r-2 border-gray-300 p-1 bg-blue-50/50"></td>
-                        <td colSpan={isSamePONumber ? 3 : 4} className="p-1 text-right text-gray-600">
+                        <td colSpan={isSamePONumber ? 4 : 5} className="p-1 text-right text-gray-600">
                           OCR 합계
                           {editedOCRItems.size > 0 && (
                             <span className="ml-1 text-[9px] text-orange-600">(수정됨)</span>
@@ -5254,14 +5364,17 @@ export default function StatementConfirmModal({
                         </td>
                         <td className="p-1 text-right text-gray-900">
                         {`${getTotalsCurrencySymbol()}${formatAmount(
-                          statementWithItems.items.reduce((sum, item) => {
-                            const edited = editedOCRItems.get(item.id);
-                            const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
-                            return sum + amount;
-                          }, 0)
+                          statementWithItems.items
+                            .filter(item => !deletedOCRItemIds.has(item.id))
+                            .reduce((sum, item) => {
+                              const edited = editedOCRItems.get(item.id);
+                              const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
+                              return sum + amount;
+                            }, 0)
                         )}`}
                         </td>
                         {!isSamePONumber && <td className="p-1"></td>}
+                        <td className="p-1"></td>
                       </tr>
                     )}
                   </tbody>

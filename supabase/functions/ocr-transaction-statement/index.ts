@@ -1,1172 +1,730 @@
 // @ts-ignore - Deno runtime imports
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 // @ts-ignore - Deno runtime imports
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 // @ts-ignore - Deno runtime imports
-import { Image } from 'https://deno.land/x/imagescript@1.3.0/mod.ts'
+import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts"
 
 declare const Deno: {
   env: {
-    get(key: string): string | undefined;
-  };
-};
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    get(key: string): string | undefined
+  }
 }
 
-type OCRMode = 'process_specific' | 'process_next';
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+}
+
+type OCRMode = "process_specific" | "process_next"
 
 interface OCRRequest {
-  statementId?: string;
-  imageUrl?: string;
-  reset_before_extract?: boolean;
-  mode?: OCRMode;
+  statementId?: string
+  imageUrl?: string
+  reset_before_extract?: boolean
+  mode?: OCRMode
+  fast_mode?: boolean
 }
 
 interface ExtractedItem {
-  line_number: number;
-  item_name: string;
-  specification?: string;
-  quantity?: number | null;
-  unit_price: number;
-  amount: number;
-  tax_amount?: number;
-  po_number?: string;
-  remark?: string;
-  confidence: 'low' | 'med' | 'high';
+  line_number: number
+  item_name: string
+  specification?: string
+  quantity?: number | null
+  unit_price?: number | null
+  amount: number
+  tax_amount?: number | null
+  po_number?: string
+  po_line_number?: number
+  remark?: string
+  confidence: "low" | "med" | "high"
 }
 
 interface ExtractionResult {
-  statement_date?: string;
-  vendor_name?: string;
-  vendor_name_english?: string; // 한글 회사명의 영문 표기 추정
-  total_amount?: number;
-  tax_amount?: number;
-  grand_total?: number;
-  items: ExtractedItem[];
-  raw_text?: string;
+  statement_date?: string
+  vendor_name?: string
+  vendor_name_english?: string
+  total_amount?: number
+  tax_amount?: number
+  grand_total?: number
+  items: ExtractedItem[]
+  raw_text?: string
 }
 
-type VisionWord = {
-  text: string;
-  bbox: { x: number; y: number; w: number; h: number };
-};
+type ClaimOutcome =
+  | {
+      kind: "claimed"
+      statement: any
+      statementId: string
+      imageUrl: string
+    }
+  | {
+      kind: "queued"
+      response: Response
+    }
 
-type RowData = {
-  id: number;
-  text: string;
-  words: VisionWord[];
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
-  centerY: number;
-};
+type ImagePreparationResult = {
+  base64Image: string
+  tileImages: string[]
+  tableBodyImage: string | null
+  width: number | null
+  height: number | null
+  rotated: boolean
+  rotatedPngBytes: Uint8Array | null
+}
 
 type InferredPoInfo = {
-  inferred_po_number: string;
-  inferred_po_source: 'bracket' | 'handwriting_range' | 'margin_range' | 'per_item' | 'global';
-  inferred_po_confidence: number;
-  inferred_po_group_id?: string;
-};
+  inferred_po_number: string
+  inferred_po_source: "per_item" | "global"
+  inferred_po_confidence: number
+  inferred_po_group_id?: string
+}
 
-type PreprocessResult = {
-  image: Image;
-  base64: string;
-};
+type ParsedOrderToken = {
+  normalized: string
+  kind: "po" | "so"
+  lineNumber?: number
+}
 
-type ImageTile = {
-  base64: string;
-  offsetX: number;
-  offsetY: number;
-};
+type VendorResolution = {
+  vendorName?: string
+  vendorId?: number
+  source: "gpt_extract" | "text_scan" | "po_infer" | "not_found"
+}
 
-let blankItemDebugLogCount = 0
+type OrderCorrectionHints = {
+  preferredVendorId?: number
+  vendorNameHints?: string[]
+}
+
+type OrderCorrectionResult = {
+  items: ExtractedItem[]
+  inferredVendorName?: string
+  inferredVendorId?: number
+  matchedPurchaseId?: number
+}
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders })
   }
 
   let statementId: string | null = null
   let claimedStatement: any | null = null
-  let supabaseUrl = ''
-  let supabaseServiceKey = ''
-  let currentStage = 'init'
+  let supabaseUrl = ""
+  let supabaseServiceKey = ""
+  let currentStage = "init"
+  const startedAt = Date.now()
 
   try {
-    supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
-    const googleCredentials = Deno.env.get('GOOGLE_VISION_CREDENTIALS')
+    supabaseUrl = Deno.env.get("SUPABASE_URL") || ""
+    supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+    const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY") || ""
+    const anthropicModel = Deno.env.get("ANTHROPIC_MODEL") || "claude-sonnet-4-20250514"
 
-    if (!openaiApiKey) {
-      throw new Error('OPENAI_API_KEY is not set in environment variables')
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set")
+    }
+    if (!anthropicApiKey) {
+      throw new Error("ANTHROPIC_API_KEY is not set")
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     const requestData: OCRRequest = await req.json().catch(() => ({}))
-    const mode: OCRMode = requestData.mode || 'process_specific'
+    const mode: OCRMode = requestData.mode || "process_specific"
+    const fastMode = requestData.fast_mode === true
     const workerId = crypto.randomUUID()
-    const perfDebug: Record<string, number | boolean | null> = {
+    statementId = requestData.statementId || null
+    let imageUrl = requestData.imageUrl || null
+
+    const perfDebug: Record<string, number | string | null> = {
       total_ms: 0,
       download_preprocess_ms: 0,
-      google_vision_ms: 0,
-      gpt_extract_ms: 0,
-      po_assist_ms: 0,
-      normalize_and_infer_ms: 0,
-      correction_ms: 0,
-      used_unified_po_assist: false,
-      used_assist_numbers: false,
-      used_vision_row_fallback: false,
-      used_vision_text_row_candidates: false,
-      used_vision_row_heuristic_backfill: false,
+      claude_extract_ms: 0,
+      claude_refine_ms: 0,
+      normalize_and_correction_ms: 0,
       processed_width: null,
       processed_height: null,
       tile_count: 0,
-      vision_word_count: 0
+      model: anthropicModel,
+      fast_mode: fastMode ? 1 : 0,
     }
-    const rowCountTrace: Record<string, number> = {
-      gpt_raw: 0,
-      vision_row_candidates_words: 0,
-      vision_row_candidates_text: 0,
-      vision_row_candidates: 0,
-      vision_row_candidates_refined: 0,
-      vision_row_fallback: 0,
-      vision_row_heuristic_backfill: 0,
-      after_vision_row_fallback: 0,
-      after_fill_missing_name: 0,
-      after_remove_ghost_rows: 0,
-      after_normalize_po: 0,
-      after_correction: 0,
-      before_insert: 0
-    }
-    let selectedRowCandidateSample: VisionRowCandidate[] = []
-    const requestStartedAt = Date.now()
-    statementId = requestData.statementId || null
-    let imageUrl = requestData.imageUrl || null
-    // 오래된 processing 정리 (안전장치)
-    currentStage = 'cleanup_stale'
+
+    currentStage = "cleanup_stale"
     try {
-      await supabase.rpc('mark_stale_transaction_statements_failed', {
-        processing_timeout: '15 minutes'
+      await supabase.rpc("mark_stale_transaction_statements_failed", {
+        processing_timeout: "15 minutes",
       })
     } catch (_) {
-      // ignore cleanup errors
+      // stale cleanup failure should not block extraction
     }
 
-    currentStage = 'claim_statement'
-    if (mode === 'process_next') {
-      const { data, error } = await supabase.rpc('claim_next_transaction_statement', {
-        worker_id: workerId,
-        processing_timeout: '15 minutes'
-      })
-      if (error) throw error
-      const claimed = Array.isArray(data) ? data[0] : data
-      if (!claimed?.id) {
-        return new Response(
-          JSON.stringify({ success: true, skipped: true, reason: 'no_queue_or_processing_active' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-      claimedStatement = claimed
-      statementId = claimed.id
-      imageUrl = claimed.image_url
-    } else {
-      if (!statementId) {
-        throw new Error('statementId is required')
-      }
-      const { data, error } = await supabase.rpc('claim_transaction_statement', {
-        statement_id: statementId,
-        worker_id: workerId,
-        processing_timeout: '15 minutes'
-      })
-      if (error) throw error
-      const claimed = Array.isArray(data) ? data[0] : data
-      if (!claimed?.id) {
-        let rowStatus: string | null = null
-        let rowLockedBy: string | null = null
-        let rowNextRetryAt: string | null = null
-        let rowProcessingStartedAt: string | null = null
-        let activeProcessingCount: number | null = null
-        try {
-          const { data: row } = await supabase
-            .from('transaction_statements')
-            .select('status, locked_by, next_retry_at, processing_started_at')
-            .eq('id', statementId)
-            .maybeSingle()
-          rowStatus = (row as any)?.status ?? null
-          rowLockedBy = (row as any)?.locked_by ?? null
-          rowNextRetryAt = (row as any)?.next_retry_at ?? null
-          rowProcessingStartedAt = (row as any)?.processing_started_at ?? null
-          const { count } = await supabase
-            .from('transaction_statements')
-            .select('id', { count: 'exact', head: true })
-            .eq('status', 'processing')
-            .not('processing_started_at', 'is', null)
-          activeProcessingCount = typeof count === 'number' ? count : null
-        } catch (_) {
-          // ignore snapshot errors
-        }
-        const debugInfo = {
-          rowStatus,
-          rowLocked: Boolean(rowLockedBy),
-          rowNextRetryAt,
-          rowProcessingStartedAt,
-          activeProcessingCount
-        }
-        const queueUpdate: Record<string, any> = {
-          status: 'queued',
-          queued_at: new Date().toISOString(),
-          next_retry_at: new Date().toISOString()
-        }
-        if (requestData.reset_before_extract) {
-          queueUpdate.reset_before_extract = true
-        }
-        await supabase
-          .from('transaction_statements')
-          .update(queueUpdate)
-          .in('status', ['pending', 'queued', 'failed', 'extracted', 'confirmed', 'rejected'])
-          .eq('id', statementId)
-        return new Response(
-          JSON.stringify({
-            success: true,
-            queued: true,
-            status: 'queued',
-            statementId,
-            reason: 'claim_failed',
-            debug: debugInfo
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-      claimedStatement = claimed
-      statementId = claimed.id
-      imageUrl = claimed.image_url || imageUrl
-    }
-    if (!statementId || !imageUrl) {
-      throw new Error('Missing statementId or imageUrl')
-    }
-
-    console.log(`Processing transaction statement: ${statementId}`)
-
-    // 0. 초기화 (실입고일 + po_scope만 유지, 나머지 백지)
-    {
-      const { data: existingStatement } = await supabase
-        .from('transaction_statements')
-        .select('extracted_data')
-        .eq('id', statementId)
-        .single()
-
-      const preservedActualReceivedDate = (existingStatement?.extracted_data as any)?.actual_received_date
-
-      await supabase
-        .from('transaction_statement_items')
-        .delete()
-        .eq('statement_id', statementId)
-
-      await supabase
-        .from('transaction_statements')
-        .update({
-          status: 'processing',
-          statement_date: null,
-          vendor_name: null,
-          total_amount: null,
-          tax_amount: null,
-          grand_total: null,
-          extraction_error: null,
-          reset_before_extract: false,
-          retry_count: 0,
-          next_retry_at: null,
-          last_error_at: null,
-          processing_finished_at: null,
-          confirmed_at: null,
-          confirmed_by: null,
-          confirmed_by_name: null,
-          manager_confirmed_at: null,
-          manager_confirmed_by: null,
-          manager_confirmed_by_name: null,
-          quantity_match_confirmed_at: null,
-          quantity_match_confirmed_by: null,
-          quantity_match_confirmed_by_name: null,
-          extracted_data: preservedActualReceivedDate
-            ? { actual_received_date: preservedActualReceivedDate }
-            : null
-        })
-        .eq('id', statementId)
-    }
-
-    // 1. 이미지 다운로드
-    currentStage = 'download_image'
-    const downloadStartAt = Date.now()
-    const imageBuffer = await downloadImage(imageUrl)
-    let visionBase64 = ''
-    let tileImages: ImageTile[] = []
-    let decodedImage: Image | null = null
-
-    try {
-      currentStage = 'decode_preprocess'
-      decodedImage = await decodeImageFromBuffer(imageBuffer)
-      if (decodedImage) {
-        const preprocessed = await preprocessImage(decodedImage)
-        if (preprocessed) {
-          visionBase64 = preprocessed.base64
-          decodedImage = preprocessed.image
-        }
-        tileImages = await buildImageTiles(decodedImage)
-        perfDebug.processed_width = decodedImage.width
-        perfDebug.processed_height = decodedImage.height
-        perfDebug.tile_count = tileImages.length
-      }
-    } catch (_) {
-      decodedImage = null
-      tileImages = []
-    }
-
-    if (!visionBase64) {
-      visionBase64 = arrayBufferToBase64(imageBuffer)
-    }
-    const base64Image = visionBase64
-    perfDebug.download_preprocess_ms = Date.now() - downloadStartAt
-
-    // 3. Google Vision OCR 호출 (선택적 - credentials가 없으면 GPT-4o만 사용)
-    const googleVisionStartAt = Date.now()
-    let visionText = ''
-    let visionWords: VisionWord[] = []
-    if (googleCredentials) {
-      try {
-        currentStage = 'google_vision'
-        const visionResult = await callGoogleVision(visionBase64, googleCredentials)
-        visionText = visionResult.text
-        visionWords = visionResult.words
-
-        if (tileImages.length > 0) {
-          const tileResults = await Promise.allSettled(
-            tileImages.map((tile) => callGoogleVision(tile.base64, googleCredentials))
-          )
-          tileResults.forEach((result, index) => {
-            if (result.status !== 'fulfilled') return
-            const tile = tileImages[index]
-            if (result.value.text) {
-              visionText = [visionText, result.value.text].filter(Boolean).join('\n')
-            }
-            if (result.value.words.length > 0) {
-              visionWords = visionWords.concat(
-                offsetVisionWords(result.value.words, tile.offsetX, tile.offsetY)
-              )
-            }
-          })
-        }
-      } catch (e) {
-        console.warn('Google Vision failed, using GPT-4o only:', e)
-      }
-    }
-    perfDebug.google_vision_ms = Date.now() - googleVisionStartAt
-    perfDebug.vision_word_count = visionWords.length
-
-    // 4. GPT-4o 비전으로 구조화 추출
-    currentStage = 'gpt_extract'
-    const gptExtractStartAt = Date.now()
-    let poScope: 'single' | 'multi' | null = null
-    if (claimedStatement?.po_scope) {
-      poScope = claimedStatement.po_scope
-    } else {
-      const { data: scopeRow } = await supabase
-        .from('transaction_statements')
-        .select('po_scope')
-        .eq('id', statementId)
-        .single()
-      poScope = (scopeRow as any)?.po_scope || null
-    }
-    const extractionResult = await extractWithGPT4o(
-      base64Image,
-      tileImages.map((tile) => tile.base64),
-      visionText,
-      openaiApiKey,
-      poScope
+    currentStage = "claim_statement"
+    const claimOutcome = await claimStatementForProcessing(
+      supabase,
+      mode,
+      workerId,
+      requestData,
+      statementId
     )
-    rowCountTrace.gpt_raw = Array.isArray(extractionResult?.items) ? extractionResult.items.length : 0
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H1',location:'ocr-transaction-statement/index.ts:afterExtractWithGPT4o',message:'initial gpt po read snapshot',data:{statementId,itemCount:rowCountTrace.gpt_raw,gptPoSample:(extractionResult.items||[]).slice(0,20).map((it:any,idx:number)=>({line:it?.line_number??idx+1,po:it?.po_number??null,spec:(it?.specification||'').slice(0,60),name:(it?.item_name||'').slice(0,40)})),visionTextPoCandidates:extractOrderNumbersFromText(visionText).slice(0,20)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    const visionWordRowCandidates = extractCandidateItemRowsFromVisionWords(visionWords)
-    const visionTextRowCandidates = extractCandidateItemRowsFromVisionText(visionText)
-    rowCountTrace.vision_row_candidates_words = visionWordRowCandidates.length
-    rowCountTrace.vision_row_candidates_text = visionTextRowCandidates.length
-    const selectedSourceCandidates =
-      visionTextRowCandidates.length > visionWordRowCandidates.length
-        ? visionTextRowCandidates
-        : visionWordRowCandidates
-    const selectedRowCandidates = refineVisionRowCandidates(selectedSourceCandidates)
-    selectedRowCandidateSample = selectedRowCandidates.slice(0, 20)
-    rowCountTrace.vision_row_candidates = selectedSourceCandidates.length
-    rowCountTrace.vision_row_candidates_refined = selectedRowCandidates.length
-    perfDebug.used_vision_text_row_candidates = visionTextRowCandidates.length > visionWordRowCandidates.length
-    const rowFallbackGatePassed =
-      selectedRowCandidates.length >= rowCountTrace.gpt_raw + 1 &&
-      selectedRowCandidates.length <= 30
-    if (rowFallbackGatePassed) {
+
+    if (claimOutcome.kind === "queued") {
+      return claimOutcome.response
+    }
+
+    claimedStatement = claimOutcome.statement
+    statementId = claimOutcome.statementId
+    imageUrl = claimOutcome.imageUrl || imageUrl
+
+    if (!statementId || !imageUrl) {
+      throw new Error("Missing statementId or imageUrl")
+    }
+
+    currentStage = "reset_statement"
+    const resetResult = await resetStatementForProcessing(supabase, statementId)
+
+    currentStage = "download_image"
+    const downloadStartedAt = Date.now()
+    const imageBuffer = await downloadImage(imageUrl)
+    let preparedImage = await prepareImageInputs(imageBuffer)
+    perfDebug.download_preprocess_ms = Date.now() - downloadStartedAt
+    perfDebug.processed_width = preparedImage.width
+    perfDebug.processed_height = preparedImage.height
+    perfDebug.tile_count = preparedImage.tileImages.length
+
+    currentStage = "detect_orientation"
+    const orientationStartedAt = Date.now()
+    const rotationDegrees = await detectImageOrientation(preparedImage.base64Image, anthropicApiKey)
+    perfDebug.orientation_detect_ms = Date.now() - orientationStartedAt
+    perfDebug.rotation_degrees = rotationDegrees
+
+    if (rotationDegrees > 0) {
+      currentStage = "rotate_image"
       try {
-        let fallbackItems = await extractItemsFromVisionRowsWithGPT4o(selectedRowCandidates, openaiApiKey)
-        rowCountTrace.vision_row_fallback = fallbackItems.length
-        if (fallbackItems.length < selectedRowCandidates.length) {
-          const backfilled = applyVisionRowHeuristicBackfill(fallbackItems, selectedRowCandidates)
-          fallbackItems = backfilled.items
-          rowCountTrace.vision_row_heuristic_backfill = backfilled.addedCount
-          if (backfilled.addedCount > 0) {
-            perfDebug.used_vision_row_heuristic_backfill = true
+        const decodedImage = await decodeImageFromBuffer(imageBuffer)
+        if (decodedImage) {
+          const rotatedImage = decodedImage.rotate(rotationDegrees)
+          const rotatedPngBytes = await rotatedImage.encode(1)
+          const rotatedBase64 = uint8ArrayToBase64(rotatedPngBytes)
+          preparedImage = {
+            ...preparedImage,
+            base64Image: rotatedBase64,
+            width: rotatedImage.width,
+            height: rotatedImage.height,
+            rotated: true,
+            rotatedPngBytes,
+          }
+          perfDebug.processed_width = rotatedImage.width
+          perfDebug.processed_height = rotatedImage.height
+
+          currentStage = "upload_rotated_image"
+          try {
+            const storagePath = imageUrl.split("/receipt-images/")[1]?.split("?")[0]
+            if (storagePath) {
+              const decodedPath = decodeURIComponent(storagePath)
+              await supabase.storage
+                .from("receipt-images")
+                .update(decodedPath, rotatedPngBytes, {
+                  contentType: "image/png",
+                  upsert: true,
+                })
+            }
+          } catch (_) {
+            // 회전 이미지 저장 실패는 OCR 진행을 차단하지 않음
           }
         }
-        if (fallbackItems.length >= rowCountTrace.gpt_raw + 1) {
-          extractionResult.items = fallbackItems
-          perfDebug.used_vision_row_fallback = true
-        }
-      } catch (e) {
-        console.warn('Vision row fallback extraction failed, keeping primary extraction:', e)
-      }
-    }
-    rowCountTrace.after_vision_row_fallback = Array.isArray(extractionResult?.items) ? extractionResult.items.length : 0
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H1',location:'ocr-transaction-statement/index.ts:visionRowFallback:gateAndResult',message:'vision-row fallback gate and result',data:{statementId,gptRawCount:rowCountTrace.gpt_raw,selectedRowCandidatesCount:selectedRowCandidates.length,rowFallbackGatePassed,visionRowFallbackCount:rowCountTrace.vision_row_fallback,afterVisionRowFallback:rowCountTrace.after_vision_row_fallback,usedVisionRowFallback:perfDebug.used_vision_row_fallback},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'row-count-trace',hypothesisId:'H1-H3',location:'ocr-transaction-statement/index.ts:vision-row-fallback',message:'vision row fallback decision',data:{statementId,gptRawCount:rowCountTrace.gpt_raw,visionRowCandidateCount:rowCountTrace.vision_row_candidates,visionRowCandidateRefinedCount:rowCountTrace.vision_row_candidates_refined,visionRowCandidateWords:rowCountTrace.vision_row_candidates_words,visionRowCandidateText:rowCountTrace.vision_row_candidates_text,usedVisionTextRowCandidates:perfDebug.used_vision_text_row_candidates,visionRowFallbackCount:rowCountTrace.vision_row_fallback,visionRowHeuristicBackfillCount:rowCountTrace.vision_row_heuristic_backfill,usedVisionRowHeuristicBackfill:perfDebug.used_vision_row_heuristic_backfill,afterVisionRowFallback:rowCountTrace.after_vision_row_fallback,usedVisionRowFallback:perfDebug.used_vision_row_fallback},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    const missingBeforeFill = (extractionResult.items || []).filter((it) => !(it?.item_name || '').trim()).length
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'blank-item-debug',hypothesisId:'H1',location:'ocr-transaction-statement/index.ts:extract:post-gpt',message:'raw gpt items before fillMissingItemNames',data:{statementId,itemCount:Array.isArray(extractionResult?.items)?extractionResult.items.length:0,missingBeforeFill,sample:(extractionResult?.items||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:(it?.item_name||'').trim().slice(0,24),spec:!!(it?.specification||'').trim(),qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null}))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    extractionResult.items = fillMissingItemNames(extractionResult.items)
-    rowCountTrace.after_fill_missing_name = Array.isArray(extractionResult?.items) ? extractionResult.items.length : 0
-    rowCountTrace.after_remove_ghost_rows = rowCountTrace.after_fill_missing_name
-    extractionResult.items.forEach((item, idx) => { item.line_number = idx + 1 })
-    const missingAfterFill = (extractionResult.items || []).filter((it) => !(it?.item_name || '').trim()).length
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'blank-item-debug',hypothesisId:'H2',location:'ocr-transaction-statement/index.ts:extract:after-fill',message:'items after fillMissingItemNames',data:{statementId,itemCount:Array.isArray(extractionResult?.items)?extractionResult.items.length:0,missingAfterFill,sample:(extractionResult?.items||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:(it?.item_name||'').trim().slice(0,24),qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null,confidence:it?.confidence??null}))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'ocr-row-debug',hypothesisId:'A',location:'ocr-transaction-statement/index.ts:afterExtractWithGPT4o',message:'raw gpt extraction rows',data:{statementId,itemCount:Array.isArray(extractionResult?.items)?extractionResult.items.length:0,items:(extractionResult?.items||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:it?.item_name??null,spec:it?.specification??null,qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null,po:it?.po_number??null}))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    perfDebug.gpt_extract_ms = Date.now() - gptExtractStartAt
-
-    // 5. 보조 손글씨 추출 단일 패스 (괄호 매핑 + 여백 구간 + 번호 목록)
-    const poAssistStartAt = Date.now()
-    let bracketMappings: PoMapping[] = []
-    let rangeMappings: RangeMapping[] = []
-    let extraOrderNumbers: string[] = []
-    const hasRetryOrderPassFn = typeof shouldRetryOrderNumberPass === 'function'
-    const shouldUseAssistNumbers = hasRetryOrderPassFn && shouldRetryOrderNumberPass(extractionResult.items)
-    const lowConfidenceCount = (extractionResult.items || []).filter((item) => item?.confidence === 'low').length
-    const missingPoCount = (extractionResult.items || []).filter((item) => !item?.po_number).length
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H2',location:'ocr-transaction-statement/index.ts:poAssist:gateDecision',message:'assist-number gate decision',data:{statementId,itemCount:(extractionResult.items||[]).length,lowConfidenceCount,missingPoCount,shouldUseAssistNumbers},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    let usedUnifiedPoAssist = false
-
-    try {
-      currentStage = 'po_assist_extract'
-      const poAssistResult = await extractPoAssistDataWithGPT4o(
-        base64Image,
-        tileImages.map((tile) => tile.base64),
-        extractionResult.items,
-        openaiApiKey
-      )
-      bracketMappings = poAssistResult.mappings
-      rangeMappings = poAssistResult.ranges
-      if (shouldUseAssistNumbers) {
-        extraOrderNumbers = poAssistResult.numbers
-      }
-      usedUnifiedPoAssist = true
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H2',location:'ocr-transaction-statement/index.ts:poAssist:result',message:'po assist extraction result snapshot',data:{statementId,mappingCount:poAssistResult.mappings.length,rangeCount:poAssistResult.ranges.length,numbersSample:poAssistResult.numbers.slice(0,20),assistNumbersApplied:shouldUseAssistNumbers?poAssistResult.numbers.slice(0,20):[]},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-    } catch (e) {
-      console.warn('Unified PO assist extraction failed, falling back to legacy pass:', e)
-      if (shouldUseAssistNumbers) {
-        try {
-          currentStage = 'order_numbers_retry'
-          extraOrderNumbers = await extractOrderNumbersWithGPT4o(
-            base64Image,
-            tileImages.map((tile) => tile.base64),
-            openaiApiKey
-          )
-        } catch (_) {
-          extraOrderNumbers = []
-        }
-      }
-    }
-    perfDebug.po_assist_ms = Date.now() - poAssistStartAt
-    perfDebug.used_unified_po_assist = usedUnifiedPoAssist
-    perfDebug.used_assist_numbers = shouldUseAssistNumbers
-
-    // 6. 발주/수주번호 패턴 정규화 (OCR 텍스트도 함께 전달하여 빈 칸에 적힌 번호도 찾음)
-    const normalizeStartAt = Date.now()
-    let normalizedItems = normalizePoNumbers(
-      extractionResult.items,
-      visionText,
-      extraOrderNumbers
-    )
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H3',location:'ocr-transaction-statement/index.ts:afterNormalizePoNumbers',message:'po values after normalizePoNumbers',data:{statementId,extraOrderNumbersSample:extraOrderNumbers.slice(0,20),normalizedUniquePONumbers:Array.from(new Set((normalizedItems||[]).map((it:any)=>it?.po_number).filter(Boolean))).slice(0,20),normalizedPoSample:(normalizedItems||[]).slice(0,20).map((it:any,idx:number)=>({line:it?.line_number??idx+1,po:it?.po_number??null,spec:(it?.specification||'').slice(0,60)}))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    rowCountTrace.after_normalize_po = normalizedItems.length
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'blank-item-debug',hypothesisId:'H3',location:'ocr-transaction-statement/index.ts:normalizePoNumbers:after',message:'items after normalizePoNumbers',data:{statementId,itemCount:normalizedItems.length,missingNameCount:normalizedItems.filter((it)=>!(it?.item_name||'').trim()).length,sample:normalizedItems.slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:(it?.item_name||'').trim().slice(0,24),po:it?.po_number??null,qty:it?.quantity??null,amount:it?.amount??null}))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'ocr-row-debug',hypothesisId:'B',location:'ocr-transaction-statement/index.ts:afterNormalizePoNumbers',message:'after po normalization rows',data:{statementId,items:(normalizedItems||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:it?.item_name??null,qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null,po:it?.po_number??null}))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    // 6-1. 손글씨 괄호/연결선 기반 PO 매핑 (품목별 보강)
-    let poMappingChangedCount = 0
-    if (usedUnifiedPoAssist) {
-      if (bracketMappings.length > 0) {
-        const beforePo = normalizedItems.map((item) => item.po_number ?? null)
-        normalizedItems = applyPoMappings(normalizedItems, bracketMappings)
-        poMappingChangedCount = normalizedItems.reduce((acc, item, idx) => {
-          const prev = beforePo[idx]
-          const next = item.po_number ?? null
-          return acc + (prev !== next ? 1 : 0)
-        }, 0)
-      }
-    } else {
-      try {
-        currentStage = 'po_mapping_fallback'
-        bracketMappings = await extractPoMappingsWithGPT4o(
-          base64Image,
-          normalizedItems,
-          openaiApiKey
-        )
-        if (bracketMappings.length > 0) {
-          const beforePo = normalizedItems.map((item) => item.po_number ?? null)
-          normalizedItems = applyPoMappings(normalizedItems, bracketMappings)
-          poMappingChangedCount = normalizedItems.reduce((acc, item, idx) => {
-            const prev = beforePo[idx]
-            const next = item.po_number ?? null
-            return acc + (prev !== next ? 1 : 0)
-          }, 0)
-        }
-      } catch (e) {
-        console.warn('Failed to extract PO mappings from brackets:', e)
-      }
-    }
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H4',location:'ocr-transaction-statement/index.ts:afterApplyPoMappings',message:'po mapping overwrite effect',data:{statementId,usedUnifiedPoAssist,bracketMappingCount:bracketMappings.length,poMappingChangedCount,uniquePONumbersAfterMapping:Array.from(new Set((normalizedItems||[]).map((it:any)=>it?.po_number).filter(Boolean))).slice(0,20)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-
-    // 6-2. 손글씨 좌측 번호/구간 추론 (품목별 보강)
-    if (!usedUnifiedPoAssist) {
-      try {
-        currentStage = 'po_range_fallback'
-        rangeMappings = await extractPoRangesWithGPT4o(
-          base64Image,
-          normalizedItems,
-          openaiApiKey
-        )
-      } catch (e) {
-        console.warn('Failed to extract PO ranges from handwriting:', e)
+      } catch (_) {
+        // 회전 실패 시 원본 이미지로 진행
       }
     }
 
-    // 6-3. 좌측 번호/구간 추론 + 괄호 매핑 합의 (품목별 inferred 정보)
-    const inferredPoMap = buildInferredPoMap({
-      items: normalizedItems,
-      visionWords,
-      bracketMappings,
-      rangeMappings
+    currentStage = "claude_extract"
+    const claudeStartedAt = Date.now()
+    const rawExtraction = await extractWithClaudeSonnet({
+      base64Image: preparedImage.base64Image,
+      tileImages: preparedImage.tileImages,
+      apiKey: anthropicApiKey,
+      model: anthropicModel,
+      poScope: resetResult.poScope,
     })
-    perfDebug.normalize_and_infer_ms = Date.now() - normalizeStartAt
+    perfDebug.claude_extract_ms = Date.now() - claudeStartedAt
 
-    // 7. 거래처 힌트 수집 (발주번호 기반 교차검증용)
-    currentStage = 'vendor_hint'
-    let validatedVendorName: string | undefined = undefined
-    let validatedVendorId: number | undefined = undefined
-    let vendorMatchSource: 'gpt_extract' | 'text_scan' | 'po_infer' | 'not_found' = 'not_found'
-    const vendorNameHints = new Set<string>()
-    if (extractionResult.vendor_name) vendorNameHints.add(extractionResult.vendor_name)
-    if (extractionResult.vendor_name_english) vendorNameHints.add(extractionResult.vendor_name_english)
-    let vendorFromTextHint: {
-      matched: boolean;
-      vendor_name?: string;
-      vendor_id?: number;
-      matched_text?: string;
-      similarity: number;
-    } | null = null
-    if (visionText) {
-      vendorFromTextHint = await findVendorInText(supabase, visionText)
-      if (vendorFromTextHint.matched_text) vendorNameHints.add(vendorFromTextHint.matched_text)
-      if (vendorFromTextHint.vendor_name) vendorNameHints.add(vendorFromTextHint.vendor_name)
-    }
-
-    // 8. 발주/수주번호 오인식 보정 (거래처 힌트와 교차검증)
-    const correctionStartAt = Date.now()
-    const correctionResult = await correctOrderNumbersByDb(
-      supabase,
-      normalizedItems,
-      {
-        vendorNameHints: Array.from(vendorNameHints)
-      }
-    )
-    normalizedItems = correctionResult.items
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'ocr-row-debug',hypothesisId:'C',location:'ocr-transaction-statement/index.ts:afterCorrectOrderNumbersByDb',message:'after db correction rows',data:{statementId,matchedPurchaseId:correctionResult?.matchedPurchaseId??null,items:(normalizedItems||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:it?.item_name??null,qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null,po:it?.po_number??null}))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    perfDebug.correction_ms = Date.now() - correctionStartAt
-    if (correctionResult.inferredVendorName) {
-      validatedVendorName = correctionResult.inferredVendorName
-      validatedVendorId = correctionResult.inferredVendorId
-      vendorMatchSource = 'po_infer'
-    }
-
-    // 8-1. 발주번호에서 거래처 확정 실패 시에만 OCR 거래처명 fallback
-    if (!validatedVendorName) {
-      currentStage = 'vendor_match_fallback'
-
-      // 8-1-a. GPT가 추출한 거래처명으로 시도 (한글명)
-      if (extractionResult.vendor_name) {
-        const vendorResult = await validateAndMatchVendor(
-          supabase,
-          extractionResult.vendor_name
-        )
-
-        if (vendorResult.matched) {
-          console.log(`✅ 거래처 매칭 성공 (GPT 추출 한글): "${extractionResult.vendor_name}" → "${vendorResult.vendor_name}" (${vendorResult.similarity}%)`)
-          validatedVendorName = vendorResult.vendor_name
-          validatedVendorId = vendorResult.vendor_id
-          vendorMatchSource = 'gpt_extract'
+    let extractionResult = rawExtraction
+    if (!fastMode && preparedImage.tableBodyImage) {
+      currentStage = "claude_table_items"
+      try {
+        const tableItems = await extractItemsFromTableCropWithClaude({
+          tableBodyImage: preparedImage.tableBodyImage,
+          apiKey: anthropicApiKey,
+          model: anthropicModel,
+        })
+        const mergedCandidate: ExtractionResult = {
+          ...rawExtraction,
+          items: tableItems,
         }
+        if (scoreExtractionQuality(mergedCandidate.items) > scoreExtractionQuality(extractionResult.items)) {
+          extractionResult = mergedCandidate
       }
-
-      // 8-1-b. 한글명 실패 시 영문명 재시도
-      if (!validatedVendorName && extractionResult.vendor_name_english) {
-        const vendorResultEng = await validateAndMatchVendor(
-          supabase,
-          extractionResult.vendor_name_english
-        )
-
-        if (vendorResultEng.matched) {
-          console.log(`✅ 거래처 매칭 성공 (GPT 추출 영문): "${extractionResult.vendor_name_english}" → "${vendorResultEng.vendor_name}" (${vendorResultEng.similarity}%)`)
-          validatedVendorName = vendorResultEng.vendor_name
-          validatedVendorId = vendorResultEng.vendor_id
-          vendorMatchSource = 'gpt_extract'
-        }
-      }
-
-      // 8-1-c. 텍스트 스캔 결과를 최종 fallback으로 사용
-      if (!validatedVendorName && !vendorFromTextHint && visionText) {
-        console.log('📝 거래처 fallback - 전체 OCR 텍스트에서 vendors 테이블 대조 시작...')
-        vendorFromTextHint = await findVendorInText(supabase, visionText)
-      }
-      if (!validatedVendorName && vendorFromTextHint?.matched) {
-        console.log(`✅ 거래처 매칭 성공 (텍스트 스캔): "${vendorFromTextHint.matched_text}" → "${vendorFromTextHint.vendor_name}" (${vendorFromTextHint.similarity}%)`)
-        validatedVendorName = vendorFromTextHint.vendor_name
-        validatedVendorId = vendorFromTextHint.vendor_id
-        vendorMatchSource = 'text_scan'
-      }
-    }
-
-    // 8-2. 그래도 못찾으면 경고
-    if (!validatedVendorName) {
-      console.warn(`⚠️ 거래처를 찾을 수 없음 - 수동 확인 필요`)
-    }
-    try {
-      normalizedItems = await applyTrailingOneQuantityCorrection(
-        supabase,
-        normalizedItems,
-        correctionResult
-      )
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'ocr-row-debug',hypothesisId:'D',location:'ocr-transaction-statement/index.ts:afterTrailingOneCorrection',message:'after trailing-one quantity correction rows',data:{statementId,items:(normalizedItems||[]).slice(0,12).map((it:any,idx:number)=>({line:it?.line_number??idx+1,name:it?.item_name??null,qty:it?.quantity??null,unit:it?.unit_price??null,amount:it?.amount??null,po:it?.po_number??null}))},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
     } catch (_) {
-      // 수량 보정 실패 시 기존 OCR 결과 유지
+        extractionResult = rawExtraction
+      }
     }
-    rowCountTrace.after_correction = normalizedItems.length
-    rowCountTrace.before_insert = normalizedItems.length
 
-    // 9. DB에 결과 저장 (에러 체크 추가)
-    const { data: existingStatement } = await supabase
-      .from('transaction_statements')
-      .select('extracted_data')
-      .eq('id', statementId)
-      .single()
+    currentStage = "claude_refine"
+    const refineStartedAt = Date.now()
+    if (!fastMode) {
+      try {
+        const refinedExtraction = await refineExtractionWithClaudeSonnet({
+          base64Image: preparedImage.base64Image,
+          tileImages: preparedImage.tileImages,
+          apiKey: anthropicApiKey,
+          model: anthropicModel,
+          poScope: resetResult.poScope,
+          initialResult: rawExtraction,
+        })
 
-    const preservedActualReceivedDate = (existingStatement?.extracted_data as any)?.actual_received_date
+        const refinedScore = scoreExtractionQuality(refinedExtraction.items)
+        const baseScore = scoreExtractionQuality(rawExtraction.items)
+        extractionResult = refinedScore >= baseScore ? refinedExtraction : rawExtraction
+      } catch (_) {
+        extractionResult = rawExtraction
+      }
+    }
+    perfDebug.claude_refine_ms = Date.now() - refineStartedAt
 
-    currentStage = 'db_update'
-    const { data: updateData, error: updateError } = await supabase
-      .from('transaction_statements')
+    if (!fastMode && shouldRunTableBodyFallback(extractionResult.items)) {
+      currentStage = "claude_table_fallback"
+      try {
+        const tableFallback = await extractTableBodyFallbackWithClaude({
+          base64Image: preparedImage.base64Image,
+          tileImages: preparedImage.tileImages,
+          apiKey: anthropicApiKey,
+          model: anthropicModel,
+        })
+        const fallbackScore = scoreExtractionQuality(tableFallback.items)
+        const currentScore = scoreExtractionQuality(extractionResult.items)
+        if (fallbackScore > currentScore) {
+          extractionResult = tableFallback
+        }
+        } catch (_) {
+        // fallback failure should not block base extraction
+      }
+    }
+
+    if (shouldRecoverItemNames(extractionResult.items)) {
+      currentStage = "claude_recover_item_names"
+      try {
+        const recoveredNames = await recoverItemNamesWithClaude({
+          base64Image: preparedImage.base64Image,
+          tileImages: preparedImage.tileImages,
+          apiKey: anthropicApiKey,
+          model: anthropicModel,
+        })
+        if (recoveredNames.length > 0) {
+          extractionResult = {
+            ...extractionResult,
+            items: mergeRecoveredItemNames(extractionResult.items, recoveredNames),
+          }
+        }
+      } catch (_) {
+        // name recovery failure should not block extraction
+      }
+    }
+
+    currentStage = "normalize_output"
+    const normalizeStartedAt = Date.now()
+    const normalizedItems = normalizePoNumbers(extractionResult.items, extractionResult.raw_text, resetResult.poScope)
+    const vendorHints = collectVendorHints(extractionResult)
+    const correctionResult = await correctOrderNumbersByDb(supabase, normalizedItems, {
+      vendorNameHints: vendorHints,
+    })
+    const enrichedItems = await enrichItemsWithPurchaseLines(supabase, correctionResult.items)
+    const resolvedVendor = await resolveVendor(
+      supabase,
+      extractionResult,
+      correctionResult.inferredVendorName,
+      correctionResult.inferredVendorId
+    )
+    const vendorNameForPatterns = resolvedVendor.vendorName || extractionResult.vendor_name || ""
+    const charCorrectedItems = vendorNameForPatterns
+      ? await applyCharPatternCorrections(supabase, enrichedItems, vendorNameForPatterns)
+      : enrichedItems
+    const finalItems = charCorrectedItems
+    const inferredPoMap = buildInferredPoMap(finalItems)
+    perfDebug.normalize_and_correction_ms = Date.now() - normalizeStartedAt
+
+    const rowCountTrace = {
+      claude_raw: extractionResult.items.length,
+      after_normalize_po: finalItems.length,
+      after_correction: finalItems.length,
+      before_insert: finalItems.length,
+    }
+
+    currentStage = "db_update"
+    const extractedDataPayload: Record<string, unknown> = {
+      ...extractionResult,
+      ...(resetResult.preservedActualReceivedDate
+        ? { actual_received_date: resetResult.preservedActualReceivedDate }
+        : {}),
+      items: finalItems,
+      raw_vision_text: extractionResult.raw_text || "",
+      debug_row_counts: rowCountTrace,
+      debug_perf_ms: {
+        ...perfDebug,
+        total_ms: Date.now() - startedAt,
+      },
+      ocr_vendor_name: extractionResult.vendor_name || null,
+      vendor_validated: Boolean(resolvedVendor.vendorName),
+      vendor_match_source: resolvedVendor.source,
+      vendor_mismatch: !resolvedVendor.vendorName,
+    }
+
+    const { error: updateError } = await supabase
+      .from("transaction_statements")
       .update({
-        status: 'extracted',
+        status: "extracted",
         extraction_error: null,
         processing_finished_at: new Date().toISOString(),
         locked_by: null,
         reset_before_extract: false,
         statement_date: extractionResult.statement_date || null,
-        vendor_name: validatedVendorName || null, // 검증된 거래처명 사용
-        total_amount: extractionResult.total_amount || null,
-        tax_amount: extractionResult.tax_amount || null,
-        grand_total: extractionResult.grand_total || null,
-        extracted_data: {
-          ...extractionResult,
-          ...(preservedActualReceivedDate ? { actual_received_date: preservedActualReceivedDate } : {}),
-          items: normalizedItems,
-          raw_vision_text: visionText,
-          debug_row_counts: rowCountTrace,
-          debug_image: {
-            processed_width: perfDebug.processed_width,
-            processed_height: perfDebug.processed_height,
-            tile_count: perfDebug.tile_count
-          },
-          debug_row_candidate_sample: selectedRowCandidateSample,
-          // 학습용: 원본 OCR 추출 거래처명과 검증 결과
-          ocr_vendor_name: extractionResult.vendor_name, // GPT가 추출한 원본
-          vendor_validated: !!validatedVendorName, // 검증 성공 여부
-          vendor_match_source: vendorMatchSource, // 매칭 방법: gpt_extract, text_scan, not_found
-          vendor_mismatch: !validatedVendorName // 거래처 못찾음 여부
-        }
+        vendor_name: resolvedVendor.vendorName || null,
+        total_amount: extractionResult.total_amount ?? null,
+        tax_amount: extractionResult.tax_amount ?? null,
+        grand_total: extractionResult.grand_total ?? null,
+        extracted_data: extractedDataPayload,
       })
-      .eq('id', statementId)
-      .select()
-      .single()
+      .eq("id", statementId)
 
     if (updateError) {
-      console.error('Failed to update transaction_statements:', updateError)
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: `DB 업데이트 실패: ${updateError.message}. 거래명세서 레코드가 존재하지 않을 수 있습니다.` 
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      throw new Error(`DB update failed: ${updateError.message}`)
     }
 
-    console.log('✅ 거래명세서 업데이트 완료:', { id: statementId, vendor_name: validatedVendorName })
-
-    // 10. 추출된 품목들을 transaction_statement_items에 저장
-    if (normalizedItems.length > 0) {
-      currentStage = 'db_insert_items'
-      const itemsToInsert = normalizedItems.map((item, idx) => {
-        const ocrLineNumber = item.line_number || idx + 1
-        const inferredInfo = inferredPoMap.get(ocrLineNumber)
-        // DB에는 항상 라인 suffix가 제거된 정규화 번호만 저장한다.
-        const normalizedPo = normalizeOrderToken(item.po_number)
-        const poToStore = normalizedPo || item.po_number || null
+    currentStage = "db_insert_items"
+    if (finalItems.length > 0) {
+      const itemsToInsert = finalItems.map((item, idx) => {
+        const lineNumber = item.line_number || idx + 1
+        const inferredInfo = inferredPoMap.get(lineNumber)
+        const normalizedPo = normalizeOrderToken(item.po_number || "")
 
         return {
           statement_id: statementId,
-          line_number: ocrLineNumber,
-          extracted_item_name: item.item_name,
-          extracted_specification: item.specification,
-          extracted_quantity: item.quantity,
-          extracted_unit_price: item.unit_price,
-          extracted_amount: item.amount,
-          extracted_tax_amount: item.tax_amount,
-          extracted_po_number: poToStore,
-          extracted_remark: item.remark,
+          line_number: lineNumber,
+          extracted_item_name: item.item_name || "",
+          extracted_specification: item.specification || null,
+          extracted_quantity: item.quantity ?? null,
+          extracted_unit_price: item.unit_price ?? null,
+          extracted_amount: item.amount ?? 0,
+          extracted_tax_amount: item.tax_amount ?? null,
+          extracted_po_number: normalizedPo || null,
+          extracted_po_line_number: item.po_line_number ?? null,
+          extracted_remark: item.remark || null,
           match_confidence: normalizeItemConfidence(item.confidence),
           inferred_po_number: inferredInfo?.inferred_po_number || null,
           inferred_po_source: inferredInfo?.inferred_po_source || null,
           inferred_po_confidence: inferredInfo?.inferred_po_confidence ?? null,
-          inferred_po_group_id: inferredInfo?.inferred_po_group_id || null
+          inferred_po_group_id: inferredInfo?.inferred_po_group_id || null,
         }
       })
 
       const { error: itemsError } = await supabase
-        .from('transaction_statement_items')
+        .from("transaction_statement_items")
         .insert(itemsToInsert)
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'blank-item-debug',hypothesisId:'H4',location:'ocr-transaction-statement/index.ts:db_insert_items:before-check-error',message:'final items payload summary before insert error check',data:{statementId,payloadCount:itemsToInsert.length,missingExtractedItemNameCount:itemsToInsert.filter((it)=>!(it?.extracted_item_name||'').trim()).length,sample:itemsToInsert.slice(0,12).map((it:any)=>({line:it?.line_number??null,name:(it?.extracted_item_name||'').trim().slice(0,24),qty:it?.extracted_quantity??null,amount:it?.extracted_amount??null,po:it?.extracted_po_number??null}))},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
 
       if (itemsError) {
-        console.error('Failed to insert items:', itemsError)
-        throw new Error(`품목 저장 실패: ${itemsError.message}`)
+        throw new Error(`Items insert failed: ${itemsError.message}`)
       }
 
-      // 항목 합계로 grand_total/total_amount 동기화
-      const calculatedTotal = normalizedItems.reduce((sum, item) => sum + (item.amount || 0), 0)
+      const calculatedTotal = finalItems.reduce((sum, item) => sum + (item.amount || 0), 0)
       if (calculatedTotal > 0) {
         await supabase
-          .from('transaction_statements')
+          .from("transaction_statements")
           .update({ grand_total: calculatedTotal, total_amount: calculatedTotal })
-          .eq('id', statementId)
+          .eq("id", statementId)
       }
     }
 
-    if (statementId) {
       triggerNextQueuedProcessing(supabaseUrl, supabaseServiceKey)
-    }
 
     return new Response(
       JSON.stringify({
         success: true,
-        statementId: statementId,
-        status: 'extracted',
-        vendor_name: validatedVendorName || null, // 검증된 거래처명 포함
-        vendor_match_source: vendorMatchSource, // 매칭 방법
+        statementId,
+        status: "extracted",
+        vendor_name: resolvedVendor.vendorName || null,
+        vendor_match_source: resolvedVendor.source,
         debug_row_counts: rowCountTrace,
-        debug_row_candidate_sample: selectedRowCandidateSample,
         debug_perf_ms: {
           ...perfDebug,
-          total_ms: Date.now() - requestStartedAt
+          total_ms: Date.now() - startedAt,
         },
         result: {
           ...extractionResult,
-          vendor_name: validatedVendorName || null, // DB에 없으면 vendor_name 비움
+          vendor_name: resolvedVendor.vendorName || null,
+          items: finalItems,
           debug_row_counts: rowCountTrace,
-          debug_row_candidate_sample: selectedRowCandidateSample,
           debug_perf_ms: {
             ...perfDebug,
-            total_ms: Date.now() - requestStartedAt
+            total_ms: Date.now() - startedAt,
           },
-          items: normalizedItems
-        }
+        },
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )
-
   } catch (error: any) {
-    const errorMessage = `[stage:${currentStage}] ${error?.message || 'Unknown error'}`
-    console.error('Error processing transaction statement:', error)
+    const errorMessage = `[stage:${currentStage}] ${error?.message || "Unknown error"}`
 
-    // 에러 시 상태 업데이트
     try {
-      if (statementId) {
+      if (statementId && supabaseUrl && supabaseServiceKey) {
         const supabase = createClient(supabaseUrl, supabaseServiceKey)
         const retryCount = (claimedStatement?.retry_count ?? 0) + 1
         const delayMinutes = Math.min(30, Math.pow(2, Math.min(retryCount, 4)))
         const nextRetryAt = new Date(Date.now() + delayMinutes * 60 * 1000).toISOString()
+
         await supabase
-          .from('transaction_statements')
+          .from("transaction_statements")
           .update({ 
-            status: 'failed',
+            status: "failed",
             extraction_error: errorMessage,
             processing_finished_at: new Date().toISOString(),
             last_error_at: new Date().toISOString(),
             retry_count: retryCount,
             next_retry_at: nextRetryAt,
             locked_by: null,
-            reset_before_extract: false
+            reset_before_extract: false,
           })
-          .eq('id', statementId)
+          .eq("id", statementId)
       }
-    } catch (e) {
-      console.error('Failed to update error status:', e)
+    } catch (_) {
+      // ignore secondary failure
     }
 
-    if (statementId) {
+    if (supabaseUrl && supabaseServiceKey) {
       triggerNextQueuedProcessing(supabaseUrl, supabaseServiceKey)
     }
 
     return new Response(
       JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     )
   }
 })
 
+async function claimStatementForProcessing(
+  supabase: any,
+  mode: OCRMode,
+  workerId: string,
+  requestData: OCRRequest,
+  statementId: string | null
+): Promise<ClaimOutcome> {
+  if (mode === "process_next") {
+    const { data, error } = await supabase.rpc("claim_next_transaction_statement", {
+      worker_id: workerId,
+      processing_timeout: "15 minutes",
+    })
+
+    if (error) throw error
+    const claimed = Array.isArray(data) ? data[0] : data
+    if (!claimed?.id) {
+      return {
+        kind: "queued",
+        response: new Response(
+          JSON.stringify({ success: true, skipped: true, reason: "no_queue_or_processing_active" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        ),
+      }
+    }
+
+    return {
+      kind: "claimed",
+      statement: claimed,
+      statementId: claimed.id,
+      imageUrl: claimed.image_url,
+    }
+  }
+
+  if (!statementId) {
+    throw new Error("statementId is required")
+  }
+
+  const { data, error } = await supabase.rpc("claim_transaction_statement", {
+    statement_id: statementId,
+    worker_id: workerId,
+    processing_timeout: "15 minutes",
+  })
+  if (error) throw error
+
+  const claimed = Array.isArray(data) ? data[0] : data
+  if (!claimed?.id) {
+    const queueUpdate: Record<string, unknown> = {
+      status: "queued",
+      queued_at: new Date().toISOString(),
+      next_retry_at: new Date().toISOString(),
+    }
+    if (requestData.reset_before_extract) {
+      queueUpdate.reset_before_extract = true
+    }
+    await supabase
+      .from("transaction_statements")
+      .update(queueUpdate)
+      .in("status", ["pending", "queued", "failed", "extracted", "confirmed", "rejected"])
+      .eq("id", statementId)
+
+    return {
+      kind: "queued",
+      response: new Response(
+        JSON.stringify({
+          success: true,
+          queued: true,
+          status: "queued",
+          statementId,
+          reason: "claim_failed",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      ),
+    }
+  }
+
+  return {
+    kind: "claimed",
+    statement: claimed,
+    statementId: claimed.id,
+    imageUrl: claimed.image_url || requestData.imageUrl || "",
+  }
+}
+
+async function resetStatementForProcessing(
+  supabase: any,
+  statementId: string
+): Promise<{ poScope: "single" | "multi" | null; preservedActualReceivedDate: string | null }> {
+  const { data: existingStatement } = await supabase
+    .from("transaction_statements")
+    .select("extracted_data, po_scope")
+    .eq("id", statementId)
+    .single()
+
+  const preservedActualReceivedDate = (existingStatement?.extracted_data as any)?.actual_received_date || null
+  const poScope = (existingStatement?.po_scope as "single" | "multi" | null) || null
+
+  await supabase
+    .from("transaction_statement_items")
+    .delete()
+    .eq("statement_id", statementId)
+
+  const extractedData = preservedActualReceivedDate
+    ? { actual_received_date: preservedActualReceivedDate }
+    : null
+
+  await supabase
+    .from("transaction_statements")
+    .update({
+      status: "processing",
+      statement_date: null,
+      vendor_name: null,
+      total_amount: null,
+      tax_amount: null,
+      grand_total: null,
+      extraction_error: null,
+      reset_before_extract: false,
+      retry_count: 0,
+      next_retry_at: null,
+      last_error_at: null,
+      processing_finished_at: null,
+      confirmed_at: null,
+      confirmed_by: null,
+      confirmed_by_name: null,
+      manager_confirmed_at: null,
+      manager_confirmed_by: null,
+      manager_confirmed_by_name: null,
+      quantity_match_confirmed_at: null,
+      quantity_match_confirmed_by: null,
+      quantity_match_confirmed_by_name: null,
+      extracted_data: extractedData,
+    })
+    .eq("id", statementId)
+
+  return { poScope, preservedActualReceivedDate }
+}
+
 async function downloadImage(url: string): Promise<ArrayBuffer> {
   const response = await fetch(url)
-  if (!response.ok) throw new Error(`Failed to download image: ${response.statusText}`)
+  if (!response.ok) {
+    throw new Error(`Failed to download image: ${response.statusText}`)
+  }
   return await response.arrayBuffer()
 }
 
-function triggerNextQueuedProcessing(supabaseUrl: string, supabaseServiceKey: string) {
-  const functionUrl = `${supabaseUrl}/functions/v1/ocr-transaction-statement`
-  fetch(functionUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${supabaseServiceKey}`,
-      'apikey': supabaseServiceKey
-    },
-    body: JSON.stringify({ mode: 'process_next' })
-  }).catch(() => {})
+async function prepareImageInputs(buffer: ArrayBuffer): Promise<ImagePreparationResult> {
+  const rawBase64 = arrayBufferToBase64(buffer)
+  const decodedImage = await decodeImageFromBuffer(buffer)
+  const width = decodedImage?.width ?? null
+  const height = decodedImage?.height ?? null
+
+  return {
+    base64Image: rawBase64,
+    tileImages: [],
+    tableBodyImage: null,
+    width,
+    height,
+    rotated: false,
+    rotatedPngBytes: null,
+  }
 }
 
-/**
- * 거래처명 검증 - vendors 테이블에서 유사한 거래처 찾기
- * 거래명세서를 보낸 거래처는 반드시 DB에 존재해야 함
- */
-async function validateAndMatchVendor(
-  supabase: any,
-  extractedVendorName: string
-): Promise<{ matched: boolean; vendor_name?: string; vendor_id?: number; similarity: number }> {
-  if (!extractedVendorName) {
-    return { matched: false, similarity: 0 }
-  }
+async function detectImageOrientation(base64Image: string, apiKey: string): Promise<number> {
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 50,
+        temperature: 0,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: {
+                  type: "base64",
+                  media_type: "image/png",
+                  data: base64Image,
+                },
+              },
+              {
+                type: "text",
+                text: '이 문서 이미지를 정상적으로 읽으려면 시계 방향으로 몇 도 회전해야 합니까? 이미 정상이면 0. JSON만 응답: {"rotation": 0 또는 90 또는 180 또는 270}',
+              },
+            ],
+          },
+        ],
+      }),
+    })
 
-  // 1. vendors 테이블에서 모든 거래처 조회
-  const { data: vendors, error } = await supabase
-    .from('vendors')
-    .select('id, vendor_name')
-    .limit(500)
+    if (!response.ok) return 0
 
-  if (error || !vendors || vendors.length === 0) {
-    console.warn('Failed to fetch vendors or no vendors found:', error)
-    return { matched: false, similarity: 0 }
-  }
-
-  // 2. 각 거래처와 유사도 계산
-  let bestMatch: { vendor_id: number; vendor_name: string; similarity: number } | null = null
-
-  for (const vendor of vendors) {
-    const similarity = calculateVendorSimilarity(extractedVendorName, vendor.vendor_name)
-    
-    if (!bestMatch || similarity > bestMatch.similarity) {
-      bestMatch = {
-        vendor_id: vendor.id,
-        vendor_name: vendor.vendor_name,
-        similarity
-      }
-    }
-  }
-
-  // 3. 유사도 60% 이상이면 매칭 성공
-  if (bestMatch && bestMatch.similarity >= 60) {
-    return {
-      matched: true,
-      vendor_name: bestMatch.vendor_name,
-      vendor_id: bestMatch.vendor_id,
-      similarity: bestMatch.similarity
-    }
-  }
-
-  return { matched: false, similarity: bestMatch?.similarity || 0 }
-}
-
-/**
- * 전체 OCR 텍스트에서 vendors 테이블의 거래처를 찾기
- * 거래처명이 텍스트 어디에든 있으면 찾아냄
- */
-async function findVendorInText(
-  supabase: any,
-  fullText: string
-): Promise<{ matched: boolean; vendor_name?: string; vendor_id?: number; matched_text?: string; similarity: number }> {
-  if (!fullText) {
-    return { matched: false, similarity: 0 }
-  }
-
-  // 1. vendors 테이블에서 모든 거래처 조회
-  const { data: vendors, error } = await supabase
-    .from('vendors')
-    .select('id, vendor_name')
-    .limit(500)
-
-  if (error || !vendors || vendors.length === 0) {
-    console.warn('Failed to fetch vendors for text scan:', error)
-    return { matched: false, similarity: 0 }
-  }
-
-  // 2. 텍스트를 줄 단위로 분리하고 각 부분에서 거래처 찾기
-  const textLines = fullText.split(/[\n\r]+/).filter(line => line.trim().length > 0)
-  
-  let bestMatch: { 
-    vendor_id: number; 
-    vendor_name: string; 
-    matched_text: string;
-    similarity: number 
-  } | null = null
-
-  // 각 거래처에 대해 텍스트에서 검색
-  for (const vendor of vendors) {
-    const vendorName = vendor.vendor_name || ''
-    if (!vendorName) continue
-    
-    // 거래처명 정규화
-    const normalizedVendor = vendorName
-      .toLowerCase()
-      .replace(/\(주\)|주식회사|㈜|주\)|co\.|ltd\.|inc\.|corp\.|company|컴퍼니/gi, '')
-      .replace(/[^a-z0-9가-힣]/g, '')
+    const result = await response.json()
+    const text = (result?.content || [])
+      .filter((b: any) => b?.type === "text")
+      .map((b: any) => b?.text || "")
+      .join("")
       .trim()
-    
-    if (!normalizedVendor || normalizedVendor.length < 2) continue
 
-    // 각 텍스트 라인에서 거래처명 검색
-    for (const line of textLines) {
-      const normalizedLine = line
-        .toLowerCase()
-        .replace(/[^a-z0-9가-힣\s]/g, '')
-        .trim()
-      
-      // 거래처명이 라인에 포함되어 있는지 확인
-      if (normalizedLine.includes(normalizedVendor)) {
-        const similarity = 100 // 정확히 포함
-        if (!bestMatch || similarity > bestMatch.similarity) {
-          bestMatch = {
-            vendor_id: vendor.id,
-            vendor_name: vendor.vendor_name,
-            matched_text: line.trim(),
-            similarity
-          }
-        }
-        break // 이 거래처는 찾았으니 다음 거래처로
-      }
-      
-      // 거래처명이 라인에 부분적으로 포함되어 있는지 확인 (4글자 이상)
-      if (normalizedVendor.length >= 4) {
-        const partialVendor = normalizedVendor.substring(0, Math.min(normalizedVendor.length, 6))
-        if (normalizedLine.includes(partialVendor)) {
-          const similarity = calculateVendorSimilarity(line, vendorName)
-          if (similarity >= 70 && (!bestMatch || similarity > bestMatch.similarity)) {
-            bestMatch = {
-              vendor_id: vendor.id,
-              vendor_name: vendor.vendor_name,
-              matched_text: line.trim(),
-              similarity
-            }
-          }
-        }
-      }
-    }
+    const match = text.match(/"rotation"\s*:\s*(\d+)/)
+    if (!match) return 0
+
+    const degrees = Number(match[1])
+    if ([90, 180, 270].includes(degrees)) return degrees
+    return 0
+  } catch (_) {
+    return 0
   }
-
-  if (bestMatch && bestMatch.similarity >= 70) {
-    return {
-      matched: true,
-      vendor_name: bestMatch.vendor_name,
-      vendor_id: bestMatch.vendor_id,
-      matched_text: bestMatch.matched_text,
-      similarity: bestMatch.similarity
-    }
-  }
-
-  return { matched: false, similarity: bestMatch?.similarity || 0 }
-}
-
-/**
- * 거래처명 유사도 계산 (0-100)
- * - 회사 접두/접미어 제거 후 비교
- * - 영어 ↔ 한글 음역 지원
- */
-function calculateVendorSimilarity(vendor1: string, vendor2: string): number {
-  if (!vendor1 || !vendor2) return 0
-  
-  // 정규화: 회사 접두어/접미어 제거
-  const normalize = (name: string) => {
-    return name
-      .toLowerCase()
-      .replace(/\(주\)|주식회사|㈜|주\)|주|co\.|co,|ltd\.|ltd|inc\.|inc|corp\.|corp|company|컴퍼니/gi, '')
-      .replace(/[^a-z0-9가-힣]/g, '') // 특수문자, 공백 제거
-      .trim()
-  }
-
-  const n1 = normalize(vendor1)
-  const n2 = normalize(vendor2)
-
-  if (!n1 || !n2) return 0
-  if (n1 === n2) return 100
-
-  // 포함 관계
-  if (n1.includes(n2) || n2.includes(n1)) {
-    return 90
-  }
-
-  // 영어 ↔ 한글 음역 매핑 (기본적인 것만, AI가 영문명 추정하므로 최소화)
-  const translitMap: Record<string, string[]> = {
-    'yg': ['와이지', 'yg'],
-    '와이지': ['yg', '와이지'],
-    'tech': ['테크', '텍', 'tech'],
-    '테크': ['tech', '텍', '테크'],
-    '텍': ['tech', '테크', '텍'],
-    'high': ['하이', 'high'],
-    '하이': ['high', '하이'],
-    'korea': ['코리아', '한국', 'korea'],
-    '코리아': ['korea', '한국', '코리아'],
-    'electric': ['전기', '일렉트릭', 'electric'],
-    '전기': ['electric', '일렉트릭', '전기'],
-    'steel': ['스틸', '철강', 'steel'],
-    '스틸': ['steel', '철강', '스틸'],
-    'metal': ['메탈', '금속', 'metal'],
-    '메탈': ['metal', '금속', '메탈'],
-    'system': ['시스템', 'system'],
-    '시스템': ['system', '시스템'],
-    'soft': ['소프트', 'soft'],
-    '소프트': ['soft', '소프트'],
-    'net': ['넷', 'net'],
-    '넷': ['net', '넷'],
-    'global': ['글로벌', 'global'],
-    '글로벌': ['global', '글로벌'],
-    'trade': ['트레이드', '무역', 'trade'],
-    '트레이드': ['trade', '무역', '트레이드'],
-    'international': ['인터내셔널', 'international'],
-    '인터내셔널': ['international', '인터내셔널'],
-  }
-
-  // 음역 치환 후 비교
-  let n1Replaced = n1
-  let n2Replaced = n2
-  
-  for (const [key, values] of Object.entries(translitMap)) {
-    if (n1.includes(key)) {
-      for (const val of values) {
-        n1Replaced = n1Replaced.replace(key, val)
-        if (n1Replaced === n2 || n2.includes(n1Replaced) || n1Replaced.includes(n2)) {
-          return 85
-        }
-      }
-      n1Replaced = n1 // 리셋
-    }
-    if (n2.includes(key)) {
-      for (const val of values) {
-        n2Replaced = n2Replaced.replace(key, val)
-        if (n1 === n2Replaced || n1.includes(n2Replaced) || n2Replaced.includes(n1)) {
-          return 85
-        }
-      }
-      n2Replaced = n2 // 리셋
-    }
-  }
-
-  // Levenshtein 거리 기반 유사도
-  const maxLen = Math.max(n1.length, n2.length)
-  const distance = levenshteinDistance(n1, n2)
-  const similarity = ((maxLen - distance) / maxLen) * 100
-
-  return Math.round(similarity)
-}
-
-/**
- * Levenshtein 거리 계산
- */
-function levenshteinDistance(s1: string, s2: string): number {
-  const m = s1.length
-  const n = s2.length
-  const dp: number[][] = []
-  
-  for (let i = 0; i <= m; i++) {
-    dp[i] = [i]
-  }
-  for (let j = 0; j <= n; j++) {
-    dp[0][j] = j
-  }
-  
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      if (s1[i - 1] === s2[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1]
-      } else {
-        dp[i][j] = Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]) + 1
-      }
-    }
-  }
-  
-  return dp[m][n]
-}
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  return uint8ArrayToBase64(new Uint8Array(buffer))
-}
-
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let binary = ''
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i])
-  }
-  return btoa(binary)
 }
 
 async function decodeImageFromBuffer(buffer: ArrayBuffer): Promise<Image | null> {
@@ -1175,6 +733,18 @@ async function decodeImageFromBuffer(buffer: ArrayBuffer): Promise<Image | null>
   } catch (_) {
     return null
   }
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  return uint8ArrayToBase64(new Uint8Array(buffer))
+}
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = ""
+  for (let i = 0; i < bytes.byteLength; i += 1) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  return btoa(binary)
 }
 
 async function encodeImageToBase64(image: Image): Promise<string> {
@@ -1208,8 +778,7 @@ function applySharpen(image: Image): void {
         const bottom = data[((y + 1) * width + x) * 4 + c]
         const left = data[(y * width + (x - 1)) * 4 + c]
         const right = data[(y * width + (x + 1)) * 4 + c]
-        const value = (5 * center) - top - bottom - left - right
-        output[idx + c] = clampColor(value)
+        output[idx + c] = clampColor((5 * center) - top - bottom - left - right)
       }
     }
   }
@@ -1221,47 +790,37 @@ function clampColor(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value)))
 }
 
-async function preprocessImage(image: Image): Promise<PreprocessResult | null> {
-  let processed = image
-
-  if (processed.width > processed.height) {
-    processed = processed.rotate(90)
-  }
-
-  processed.saturation(0, true)
-  applyContrast(processed, 30)
-
-  const pixelCount = processed.width * processed.height
-  if (pixelCount <= 6_000_000) {
-    applySharpen(processed)
-  }
-
-  const maxDim = Math.max(processed.width, processed.height)
-  const targetMaxDim = 2200
-  if (maxDim > targetMaxDim) {
-    const scaleFactor = targetMaxDim / maxDim
-    processed.scale(scaleFactor, Image.RESIZE_NEAREST_NEIGHBOR)
-  }
-
-  // 저해상도 입력에서는 표 행 텍스트가 너무 작아져 GPT가 행 자체를 누락할 수 있음.
-  // 과도한 확대는 왜곡을 유발하므로 2배까지만 업스케일한다.
-  const minDimAfterDownscale = Math.max(processed.width, processed.height)
-  const targetMinDim = 1700
-  if (minDimAfterDownscale < targetMinDim) {
-    const upscaleFactor = Math.min(2, targetMinDim / minDimAfterDownscale)
-    if (upscaleFactor > 1.05) {
-      processed.scale(upscaleFactor, Image.RESIZE_NEAREST_NEIGHBOR)
-    }
-  }
-
-  const base64 = await encodeImageToBase64(processed)
-  return { image: processed, base64 }
-}
-
-async function buildImageTiles(image: Image): Promise<ImageTile[]> {
-  const tiles: ImageTile[] = []
+async function buildImageTiles(image: Image): Promise<string[]> {
   const minDim = Math.min(image.width, image.height)
-  if (minDim < 700) return tiles
+  if (minDim < 700) return []
+
+  const tiles: string[] = []
+
+  // 가로형 거래명세서는 헤더/품목표/우측 숫자열을 분리 타일링한다.
+  if (image.width > image.height * 1.1) {
+    const w = image.width
+    const h = image.height
+    const bodyY = Math.max(0, Math.floor(h * 0.28))
+    const bodyH = Math.max(220, Math.floor(h * 0.58))
+
+    const regions = [
+      { x: 0, y: 0, w, h: Math.max(180, Math.floor(h * 0.34)) }, // 상단 헤더
+      { x: 0, y: bodyY, w, h: Math.min(bodyH, h - bodyY) }, // 전체 품목표
+      { x: 0, y: bodyY, w: Math.floor(w * 0.58), h: Math.min(bodyH, h - bodyY) }, // 품명/규격
+      { x: Math.floor(w * 0.52), y: bodyY, w: Math.ceil(w * 0.48), h: Math.min(bodyH, h - bodyY) }, // 수량/단가/금액
+    ]
+
+    for (const region of regions) {
+      const x = Math.max(0, Math.min(w - 1, region.x))
+      const y = Math.max(0, Math.min(h - 1, region.y))
+      const width = Math.max(1, Math.min(region.w, w - x))
+      const height = Math.max(1, Math.min(region.h, h - y))
+      const tile = image.clone().crop(x, y, width, height)
+      tiles.push(await encodeImageToBase64(tile))
+    }
+
+    return tiles
+  }
 
   const rows = 2
   const cols = 2
@@ -1277,707 +836,79 @@ async function buildImageTiles(image: Image): Promise<ImageTile[]> {
       if (width <= 0 || height <= 0) continue
 
       const tile = image.clone().crop(offsetX, offsetY, width, height)
-      const base64 = await encodeImageToBase64(tile)
-      tiles.push({ base64, offsetX, offsetY })
+      tiles.push(await encodeImageToBase64(tile))
     }
   }
 
   return tiles
 }
 
-function offsetVisionWords(words: VisionWord[], offsetX: number, offsetY: number): VisionWord[] {
-  return words.map((word) => ({
-    ...word,
-    bbox: {
-      x: word.bbox.x + offsetX,
-      y: word.bbox.y + offsetY,
-      w: word.bbox.w,
-      h: word.bbox.h
-    }
-  }))
-}
-
-async function callGoogleVision(base64Image: string, credentials: string): Promise<{ text: string; words: VisionWord[] }> {
-  const credentialsJson = JSON.parse(credentials)
-  
-  // Google OAuth2 토큰 획득
-  const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: await createJWT(credentialsJson)
-    })
-  })
-
-  const tokenData = await tokenResponse.json()
-  if (!tokenData.access_token) {
-    throw new Error('Failed to get Google access token')
-  }
-
-  // Vision API 호출
-  const visionResponse = await fetch(
-    'https://vision.googleapis.com/v1/images:annotate',
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${tokenData.access_token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        requests: [{
-          image: { content: base64Image },
-          features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
-          imageContext: {
-            languageHints: ['ko', 'en']
-          }
-        }]
-      })
-    }
-  )
-
-  const visionResult = await visionResponse.json()
-  const annotation = visionResult.responses?.[0]?.fullTextAnnotation
-  const words = annotation ? extractVisionWords(annotation) : []
-
-  if (annotation?.text) {
-    return { text: annotation.text, words }
-  }
-
-  return { text: '', words }
-}
-
-function extractVisionWords(annotation: any): VisionWord[] {
-  const words: VisionWord[] = []
-  const pages = annotation?.pages || []
-
-  pages.forEach((page: any) => {
-    (page.blocks || []).forEach((block: any) => {
-      (block.paragraphs || []).forEach((paragraph: any) => {
-        (paragraph.words || []).forEach((word: any) => {
-          const symbols = word.symbols || []
-          const text = symbols.map((symbol: any) => symbol.text).join('')
-          const vertices = word.boundingBox?.vertices || []
-          if (!text || vertices.length === 0) return
-
-          const xs = vertices.map((v: any) => v.x ?? 0)
-          const ys = vertices.map((v: any) => v.y ?? 0)
-          const minX = Math.min(...xs)
-          const maxX = Math.max(...xs)
-          const minY = Math.min(...ys)
-          const maxY = Math.max(...ys)
-
-          words.push({
-            text,
-            bbox: {
-              x: minX,
-              y: minY,
-              w: Math.max(1, maxX - minX),
-              h: Math.max(1, maxY - minY)
-            }
-          })
-        })
-      })
-    })
-  })
-
-  return words
-}
-
-async function createJWT(credentials: any): Promise<string> {
-  const header = { alg: 'RS256', typ: 'JWT' }
-  const now = Math.floor(Date.now() / 1000)
-  const payload = {
-    iss: credentials.client_email,
-    scope: 'https://www.googleapis.com/auth/cloud-vision',
-    aud: 'https://oauth2.googleapis.com/token',
-    exp: now + 3600,
-    iat: now
-  }
-
-  const encoder = new TextEncoder()
-  const headerB64 = btoa(JSON.stringify(header))
-  const payloadB64 = btoa(JSON.stringify(payload))
-  const signatureInput = encoder.encode(`${headerB64}.${payloadB64}`)
-
-  // Import private key
-  const privateKeyPem = credentials.private_key
-  const privateKeyDer = pemToDer(privateKeyPem)
-  
-  const cryptoKey = await crypto.subtle.importKey(
-    'pkcs8',
-    privateKeyDer,
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    false,
-    ['sign']
-  )
-
-  const signature = await crypto.subtle.sign(
-    'RSASSA-PKCS1-v1_5',
-    cryptoKey,
-    signatureInput
-  )
-
-  const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signature)))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '')
-
-  return `${headerB64}.${payloadB64}.${signatureB64}`
-}
-
-function pemToDer(pem: string): ArrayBuffer {
-  const base64 = pem
-    .replace('-----BEGIN PRIVATE KEY-----', '')
-    .replace('-----END PRIVATE KEY-----', '')
-    .replace(/\s/g, '')
-  
-  const binary = atob(base64)
-  const buffer = new ArrayBuffer(binary.length)
-  const view = new Uint8Array(buffer)
-  for (let i = 0; i < binary.length; i++) {
-    view[i] = binary.charCodeAt(i)
-  }
-  return buffer
-}
-
-async function extractWithGPT4o(
-  base64Image: string, 
-  tileImages: string[],
-  visionText: string, 
-  apiKey: string,
-  poScope: 'single' | 'multi' | null
-): Promise<ExtractionResult> {
-  const scopeHint = poScope === 'single'
-    ? '이 거래명세서는 단일 발주/수주 건입니다. 발주/수주번호가 없을 수 있으며, 모든 품목은 동일한 발주/수주로 취급하세요.'
-    : poScope === 'multi'
-    ? '이 거래명세서는 다중 발주/수주 건입니다. 서로 다른 발주/수주번호가 존재할 수 있으니 각 품목별로 분리해 추출하세요.'
-    : ''
-  const prompt = `거래명세서 이미지입니다. 다음 정보를 JSON으로 추출해주세요.
-
-${scopeHint ? `⚠️ **발주/수주 범위 힌트:** ${scopeHint}` : ''}
-
-⚠️ **거래처(공급자) 식별 방법 - 매우 중요:**
-한국 거래명세서에는 두 회사 정보가 있습니다:
-- "귀중" 또는 "귀사" 옆에 있는 회사 = **받는 사람 (구매자)** → 이건 추출하지 마세요!
-- "공급자", "공급하는 자", "(인)", 또는 도장/직인이 있는 쪽 = **공급자 (판매자)** → 이것이 vendor_name입니다!
-거래명세서를 **보내온 회사**가 공급자입니다. "귀중" 옆에 있는 회사는 받는 회사이므로 vendor_name으로 사용하면 안됩니다.
-
-추출 대상:
-1. statement_date: 거래명세서 날짜 (YYYY-MM-DD 형식, "년/월/일" 또는 "2025년 12월 9일" 등을 변환)
-2. vendor_name: **공급자(판매자)** 상호/회사명 - 도장/직인/대표자명이 있는 쪽! 정확히 읽어주세요.
-3. vendor_name_english: 한글 회사명의 영문 표기 추정 (예: "엔에스테크" → "NS TECH", "삼성전자" → "Samsung Electronics")
-4. total_amount: 공급가액 합계 (숫자만)
-5. tax_amount: 세액 합계 (숫자만)
-6. grand_total: 총액/합계 (숫자만)
-7. items: 품목 배열
-
-⚠️ **한글 회사명 정확히 읽기 - 매우 중요:**
-- 비슷하게 생긴 글자 주의: 엔/플, 에/애, 스/즈, 테크/텍 등
-- 글자 하나하나 정확히 확인하고 읽어주세요
-- 확실하지 않으면 이미지를 다시 자세히 봐주세요
-
-⚠️ **칼럼 헤더를 반드시 먼저 읽고 데이터 추출 - 가장 중요:**
-1. 테이블의 **헤더 행**을 먼저 읽어서 각 칼럼이 무엇인지 파악하세요
-2. 헤더명은 업체마다 다를 수 있습니다:
-   - 품목명: "품명", "품목", "내역", "DESCRIPTION", "상품명" 등
-   - 규격: "규격", "SIZE", "사이즈", "치수", "SPEC" 등  
-   - 수량: "수량", "QTY", "수", "Q'TY", "QUANTITY" 등
-   - 단가: "단가", "UNIT PRICE", "가격", "단" 등
-   - 금액: "금액", "AMOUNT", "공급가액", "합계" 등
-3. **헤더명을 보고 각 열이 무엇인지 정확히 파악한 후** 데이터를 추출하세요!
-
-⚠️ **수량(QTY) 칼럼 정확히 찾기 - 절대 틀리면 안됨:**
-- 수량은 **헤더에 "수량" 또는 "QTY"**라고 적혀 있는 칼럼입니다
-- 수량 값은 항상 **순수한 정수** (1, 5, 10, 15, 100 등)
-- 규격 칼럼에 있는 숫자(예: 110, 200mm)를 수량으로 착각하지 마세요!
-- **헤더를 무시하고 순서로만 추측하지 마세요!**
-- **행의 수량 칸이 비어있으면 이전 행 수량을 복사하지 마세요.**
-- 수량 칸이 비어있는 행은 quantity를 null로 반환하세요. (빈칸/하이픈/미기재 포함)
-- **테이블 구분선(|), 세로 경계선, 인접 칼럼의 숫자를 수량에 포함하지 마세요.**
-- 수량이 10인데 101처럼 보이면, 오른쪽 칼럼 숫자가 붙은 오인식인지 이미지 셀 경계를 다시 확인하세요.
-- 수량은 반드시 해당 행의 **수량 칸 내부 텍스트만** 사용하고, 옆 칼럼 숫자가 이어 붙지 않았는지 재검증하세요.
-
-⚠️ **단가가 비어있을 수 있음:**
-- 단가(UNIT PRICE)가 비어있거나 "-"일 수 있습니다. 이 경우 0 또는 null로 처리
-- **주의:** 단가 칼럼이 비어있을 때, 금액(AMOUNT) 칼럼의 값을 단가에 절대 넣지 마세요!
-- 헤더에서 "단가/UNIT PRICE" 칼럼과 "금액/AMOUNT" 칼럼 위치를 먼저 확인하세요
-- 예시: 헤더가 [수량|단가|금액]이고 데이터가 [15|(빈칸)|150000]이면 → unit_price=null, amount=150000
-
-각 품목(item)에서 추출:
-- line_number: 순번
-- item_name: 품목명/품명
-- specification: 규격/SIZE (예: 197X, 100mm, 110x50 등) - 없으면 빈 문자열
-- quantity: 수량/QTY (정수, 주문 개수. 비어있으면 null)
-- unit_price: 단가/UNIT PRICE (숫자, 비어있으면 0 또는 null)
-- amount: 금액/공급가액/AMOUNT (숫자)
-- tax_amount: 세액 (숫자, 없으면 null)
-- po_number: 발주번호 또는 수주번호
-- remark: 비고 전체 내용
-- confidence: 추출 확신도 ("low", "med", "high")
-
-⚠️ 발주번호/수주번호 찾는 방법 (중요):
-- 발주번호 패턴: F + 날짜(YYYYMMDD) + _ + 숫자 (예: F20251010_001, F20251010_1) - 시스템은 항상 3자리(_001)
-- 수주번호 패턴: HS + 날짜(YYMMDD, 6자리) + - + 숫자 (예: HS251201-01, HS251201-1) - 시스템은 항상 2자리(-01)
-- 비고란뿐 아니라 빈 칸, 여백, 품목명 옆, 금액 옆 등 **문서 어디에든** 손글씨/필기체로 적혀있을 수 있음
-- 각 품목 행의 같은 줄에 있는 손글씨 번호를 해당 품목의 po_number로 매칭
-- 여러 품목에 같은 번호가 적혀있으면 모두 해당 번호를 기록
-- 번호가 흐리거나 불분명해도 패턴에 맞으면 최대한 읽어서 기록 (confidence: "low")
-
-손글씨/필기체로 적힌 번호도 최대한 읽어주세요.
-금액이 비어있거나 "-" 또는 "W" 만 있으면 0으로 처리하세요.
-확신도(confidence)는 글씨가 불명확하거나 추측이 필요한 경우 "low", 보통이면 "med", 명확하면 "high"로 표시하세요.
-
-⚠️ **행 생략 금지 규칙 (매우 중요 - 최우선 규칙!):**
-
-**[STEP 1] 추출 전 반드시 먼저 표의 행 수를 세세요:**
-- 이미지의 표에서 합계/소계 행을 제외한 **데이터 행의 총 개수**를 먼저 세세요.
-- 세로줄(|)과 가로줄(─)로 구분된 각 셀 행을 하나씩 세세요.
-- 품목명이 빈칸이어도 그 행에 규격/수량/금액 값이 있으면 데이터 행으로 카운트합니다.
-- 이 개수를 기억하고, 추출할 items 배열의 길이가 이 개수와 정확히 일치해야 합니다.
-
-**[STEP 2] 모든 행을 빠짐없이 추출하세요:**
-- 품목명(품명) 칸이 **빈칸**이어도, 해당 행에 규격/수량/단가/금액 중 하나라도 값이 있으면 **반드시 별도의 item으로 포함**하세요.
-- 빈 품목명인 행의 item_name은 빈 문자열("")로 두세요. 위 행의 품목명을 복사하거나 합치지 마세요.
-- 같은 품목명이 여러 행에 걸쳐 있고 중간 행의 품목명이 빈칸인 경우: 각 행을 **개별 item**으로 추출하세요. 절대 합산하지 마세요.
-
-**[STEP 3] 검증하세요:**
-- 최종 items 배열의 길이가 STEP 1에서 센 데이터 행 수와 같은지 확인하세요.
-- 다르면 누락된 행이 있는 것이므로 다시 확인하세요.
-
-⚠️ **빈 품목명 예시 (이런 표가 있다면):**
-| 번호 | 품명 | 규격 | 수량 | 금액 |
-|------|------|------|------|------|
-| 1    | ABC  | 100  | 5    | 50000|
-| 2    |      | 200  | 3    | 30000|
-| 3    |      | 300  | 2    | 20000|
-| 4    | DEF  | 400  | 1    | 10000|
-
-→ 올바른 추출 (4개 - 표 데이터 행 수와 일치):
-  {"line_number":1,"item_name":"ABC","specification":"100","quantity":5,"amount":50000}
-  {"line_number":2,"item_name":"","specification":"200","quantity":3,"amount":30000}
-  {"line_number":3,"item_name":"","specification":"300","quantity":2,"amount":20000}
-  {"line_number":4,"item_name":"DEF","specification":"400","quantity":1,"amount":10000}
-
-→ 잘못된 추출 (2개만 - 행을 합치거나 생략하면 안됩니다!):
-  {"line_number":1,"item_name":"ABC","specification":"100","quantity":10,"amount":100000}
-  {"line_number":2,"item_name":"DEF","specification":"400","quantity":1,"amount":10000}
-
-${visionText ? `
-⚠️ **OCR 텍스트 참조 규칙:**
-- 아래 OCR 텍스트는 **거래처명(vendor_name) 식별**에 우선 활용하세요.
-- 단, 수량/단가/금액/세액 같은 **숫자 필드**는 OCR 텍스트보다 **이미지의 실제 표 셀**을 우선 신뢰하세요.
-- 숫자 값이 OCR 텍스트와 이미지에서 충돌하면 이미지의 셀 위치 기준 값을 선택하세요.
----
-${visionText.substring(0, 3000)}
----` : ''}
-
-⚠️ 제공된 이미지는 [원본 전체 + 확대 타일] 순서입니다. 행 단위 판독은 확대 타일을 우선 참고하세요.
-
-JSON 형식으로만 응답하세요.`
-
-  const imageInputs: any[] = [
-    {
-      type: 'image_url',
-      image_url: {
-        url: `data:image/png;base64,${base64Image}`,
-        detail: 'high'
-      }
-    }
-  ]
-  tileImages.slice(0, 4).forEach((tile) => {
-    imageInputs.push({
-      type: 'image_url',
-      image_url: {
-        url: `data:image/png;base64,${tile}`,
-        detail: 'high'
-      }
-    })
-  })
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [
-        { 
-          role: 'system', 
-          content: 'You are an expert at extracting structured data from Korean transaction statements (거래명세서). Always respond with valid JSON only.' 
-        },
-        { 
-          role: 'user', 
-          content: [
-            { type: 'text', text: prompt },
-            ...imageInputs
-          ]
-        }
-      ],
-      temperature: 0.1,
-      max_tokens: 4000,
-      response_format: { type: 'json_object' }
-    })
-  })
-
-  const result = await response.json()
-  
-  if (result.error) {
-    throw new Error(`GPT-4o error: ${result.error.message}`)
-  }
-
-  const content = result.choices?.[0]?.message?.content
-  if (!content) {
-    throw new Error('No content in GPT-4o response')
-  }
-
-  // #region agent log (DEBUG: GPT-RAW)
-  try { const _p = JSON.parse(content); const _items = Array.isArray(_p?.items) ? _p.items : []; fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'blank-item-debug',hypothesisId:'GPT-RAW',location:'ocr-transaction-statement/index.ts:extractWithGPT4o:raw-content',message:'GPT raw response items',data:{totalItems:_items.length,allItems:_items.map((it:any,i:number)=>({line:it?.line_number??i+1,name:it?.item_name??'<missing>',spec:(it?.specification||'').slice(0,30),qty:it?.quantity,amount:it?.amount}))},timestamp:Date.now()})}).catch(()=>{}); } catch(_e) {}
-  // #endregion
-
-  const parsed = JSON.parse(content)
-  return parsed
-}
-
-type VisionRowCandidate = {
-  line_number: number
-  row_text: string
-}
-
-type VisionRowLogicalItem = {
-  line_number?: number
-  source_lines?: number[]
-  item_name?: string
-  specification?: string
-  spec?: string
-  quantity?: number | string | null
-  unit_price?: number | string | null
-  amount?: number | string | null
-  tax_amount?: number | string | null
-  po_number?: string
-  remark?: string
-  confidence?: string | number | boolean | null
-}
-
-function isMostlyNumericRow(text: string): boolean {
-  const cleaned = text.replace(/\s+/g, '')
-  if (!cleaned) return false
-  const hasLetters = /[A-Za-z가-힣]/.test(cleaned)
-  if (hasLetters) return false
-  const numericTokens = cleaned.match(/-?\d[\d,]*/g) || []
-  return numericTokens.length > 0
-}
-
-function normalizeVisionRowCandidates(candidates: VisionRowCandidate[]): VisionRowCandidate[] {
-  if (candidates.length <= 1) {
-    return candidates.map((item, idx) => ({ line_number: idx + 1, row_text: item.row_text }))
-  }
-
-  const normalized: VisionRowCandidate[] = []
-  for (let i = 0; i < candidates.length; i += 1) {
-    const currentText = candidates[i].row_text
-    const next = candidates[i + 1]
-    const currentNumericTokenCount = extractNumericTokens(currentText).length
-    const nextNumericTokenCount = next ? extractNumericTokens(next.row_text).length : 0
-    if (
-      next &&
-      isMostlyNumericRow(currentText) &&
-      isMostlyNumericRow(next.row_text) &&
-      currentNumericTokenCount <= 2 &&
-      nextNumericTokenCount <= 2
-    ) {
-      normalized.push({
-        line_number: normalized.length + 1,
-        row_text: `${currentText} ${next.row_text}`.replace(/\s+/g, ' ').trim()
-      })
-      i += 1
-      continue
-    }
-
-    normalized.push({
-      line_number: normalized.length + 1,
-      row_text: currentText
-    })
-  }
-
-  return normalized
-}
-
-function extractNumericTokens(text: string): string[] {
-  return text.match(/-?\d[\d,]*/g) || []
-}
-
-function refineVisionRowCandidates(candidates: VisionRowCandidate[]): VisionRowCandidate[] {
-  if (!candidates.length) return []
-  const base = normalizeVisionRowCandidates(candidates)
-  const refinedRows: string[] = []
-
-  for (let i = 0; i < base.length; i += 1) {
-    const current = (base[i].row_text || '').replace(/\s+/g, ' ').trim()
-    if (!current) continue
-    const next = i + 1 < base.length ? (base[i + 1].row_text || '').replace(/\s+/g, ' ').trim() : ''
-    const currentHasLetters = /[A-Za-z가-힣]/.test(current)
-    const currentHasDigits = /\d/.test(current)
-    const nextHasDigits = /\d/.test(next)
-    const currentNumberCount = extractNumericTokens(current).length
-    const nextNumberCount = extractNumericTokens(next).length
-
-    // 품목명이 단독 줄로 분리되고 다음 줄에 수치가 붙는 경우 병합
-    if (
-      next &&
-      currentHasLetters &&
-      nextHasDigits &&
-      (
-        !currentHasDigits ||
-        (currentHasDigits && currentNumberCount === 1 && nextNumberCount >= 2)
-      )
-    ) {
-      refinedRows.push(`${current} ${next}`.replace(/\s+/g, ' ').trim())
-      i += 1
-      continue
-    }
-
-    // 숫자 전용 줄에 두 행이 합쳐진 경우(예: "680 18 44,800 300 4 10,000") 분할
-    if (!currentHasLetters) {
-      const tokens = extractNumericTokens(current)
-      if (tokens.length >= 6 && tokens.length % 3 === 0) {
-        for (let j = 0; j < tokens.length; j += 3) {
-          refinedRows.push(tokens.slice(j, j + 3).join(' '))
-        }
-        continue
-      }
-    }
-
-    refinedRows.push(current)
-  }
-
-  return refinedRows.map((row_text, index) => ({
-    line_number: index + 1,
-    row_text
-  }))
-}
-
-function parseCandidateRowHeuristic(row: VisionRowCandidate, lineNumber: number): ExtractedItem {
-  const rawText = (row.row_text || '').replace(/\s+/g, ' ').trim()
-  const numericTokens = extractNumericTokens(rawText)
-  const parsedNumbers = numericTokens
-    .map((token) => Number(token.replace(/,/g, '')))
-    .filter((value) => Number.isFinite(value))
-
-  const amount = parsedNumbers.length >= 1 ? parsedNumbers[parsedNumbers.length - 1] : 0
-  const quantity = parsedNumbers.length >= 2 ? parsedNumbers[parsedNumbers.length - 2] : null
-  const unitPrice = parsedNumbers.length >= 3 ? parsedNumbers[parsedNumbers.length - 3] : 0
-  const itemName = rawText.replace(/-?\d[\d,]*/g, ' ').replace(/\s+/g, ' ').trim()
-
-  return {
-    line_number: lineNumber,
-    item_name: itemName,
-    specification: '',
-    quantity,
-    unit_price: unitPrice > 0 ? unitPrice : 0,
-    amount: amount > 0 ? amount : 0,
-    confidence: 'low'
-  }
-}
-
-function applyVisionRowHeuristicBackfill(
-  parsedItems: ExtractedItem[],
-  rowCandidates: VisionRowCandidate[]
-): { items: ExtractedItem[]; addedCount: number } {
-  if (!rowCandidates.length) return { items: parsedItems, addedCount: 0 }
-  const byLine = new Map<number, ExtractedItem>()
-  parsedItems.forEach((item, idx) => {
-    const lineNumber = Number.isFinite(Number(item?.line_number)) ? Number(item.line_number) : idx + 1
-    if (!byLine.has(lineNumber)) {
-      byLine.set(lineNumber, { ...item, line_number: lineNumber })
-    }
-  })
-
-  const merged: ExtractedItem[] = []
-  let addedCount = 0
-  rowCandidates.forEach((row, idx) => {
-    const lineNumber = Number.isFinite(Number(row.line_number)) ? Number(row.line_number) : idx + 1
-    const existing = byLine.get(lineNumber)
-    if (existing) {
-      merged.push({ ...existing, line_number: lineNumber })
-      return
-    }
-    merged.push(parseCandidateRowHeuristic(row, lineNumber))
-    addedCount += 1
-  })
-
-  return { items: merged, addedCount }
-}
-
-function extractCandidateItemRowsFromVisionWords(visionWords: VisionWord[]): VisionRowCandidate[] {
-  if (!Array.isArray(visionWords) || visionWords.length === 0) return []
-
-  const rows = groupWordsIntoRows(visionWords)
-  if (!rows.length) return []
-
-  const headerKeywords = ['품명', '품목', '규격', '수량', '단가', '금액', 'QTY', 'AMOUNT', 'UNIT', 'SPEC']
-  const totalPattern = /(합계|총액|공급가액|세액|부가세|TOTAL|SUM|VAT)/i
-
-  const headerIndex = rows.findIndex((row) => {
-    const text = (row.text || '').trim()
-    if (!text) return false
-    const hitCount = headerKeywords.reduce((count, keyword) => {
-      return count + (new RegExp(keyword, 'i').test(text) ? 1 : 0)
-    }, 0)
-    return hitCount >= 2
-  })
-
-  const startIndex = headerIndex >= 0 ? headerIndex + 1 : 0
-  let endIndex = rows.length
-  for (let i = startIndex; i < rows.length; i += 1) {
-    const text = (rows[i].text || '').trim()
-    if (totalPattern.test(text)) {
-      endIndex = i
-      break
-    }
-  }
-
-  const candidates: VisionRowCandidate[] = []
-  for (let i = startIndex; i < endIndex; i += 1) {
-    const text = (rows[i].text || '').replace(/\s+/g, ' ').trim()
-    if (!text) continue
-    if (totalPattern.test(text)) continue
-    const numericTokens = text.match(/-?\d[\d,]*/g) || []
-    const hasLetters = /[A-Za-z가-힣]/.test(text)
-    if (numericTokens.length >= 2 || (numericTokens.length >= 1 && hasLetters)) {
-      candidates.push({
-        line_number: candidates.length + 1,
-        row_text: text
-      })
-    }
-  }
-
-  return candidates
-}
-
-function extractCandidateItemRowsFromVisionText(visionText: string): VisionRowCandidate[] {
-  if (!visionText || visionText.trim().length < 20) return []
-
-  const lines = visionText
-    .split('\n')
-    .map((line) => line.replace(/\s+/g, ' ').trim())
-    .filter(Boolean)
-
-  if (!lines.length) return []
-
-  const headerPattern = /(품\s*목|품명|규격|수량|단가|금\s*액|비\s*고|QTY|AMOUNT|SPEC|UNIT)/i
-  const footerPattern = /(발주자|인수자|입금|카드|현불|계산서|전화|TEL|총계|VAT|공급가액|세액)/i
-  const headerIndex = lines.findIndex((line) => headerPattern.test(line))
-  const startIndex = headerIndex >= 0 ? headerIndex + 1 : 0
-
-  const candidates: string[] = []
-  let current = ''
-  let currentHasLetters = false
-
-  const flushCurrent = () => {
-    if (!current) return
-    const normalized = current.replace(/\s+/g, ' ').trim()
-    if (!normalized) {
-      current = ''
-      currentHasLetters = false
-      return
-    }
-    if (footerPattern.test(normalized)) {
-      current = ''
-      currentHasLetters = false
-      return
-    }
-    const hasDigits = /\d/.test(normalized)
-    if (hasDigits) {
-      candidates.push(normalized)
-    }
-    current = ''
-    currentHasLetters = false
-  }
-
-  for (let i = startIndex; i < lines.length; i += 1) {
-    const line = lines[i]
-    if (!line) continue
-    if (footerPattern.test(line) && candidates.length >= 3) break
-    if (headerPattern.test(line)) continue
-
-    const hasLetters = /[A-Za-z가-힣]/.test(line)
-    const hasDigits = /\d/.test(line)
-    if (!hasLetters && !hasDigits) continue
-
-    if (!current) {
-      current = line
-      currentHasLetters = hasLetters
-    } else if (hasLetters && currentHasLetters) {
-      // 새 품목명으로 보이는 행 시작
-      flushCurrent()
-      current = line
-      currentHasLetters = true
-    } else if (hasLetters && !currentHasLetters) {
-      // 숫자 전용 행 뒤에 품목명 등장: 이전 숫자 행은 별도 행으로 확정
-      flushCurrent()
-      current = line
-      currentHasLetters = true
-    } else {
-      current = `${current} ${line}`.trim()
-    }
-
-    const numberTokens = line.match(/-?\d[\d,]*/g) || []
-    const maxNumeric = numberTokens.reduce((max, token) => {
-      const value = Number(token.replace(/,/g, ''))
-      return Number.isFinite(value) ? Math.max(max, value) : max
-    }, 0)
-    const amountLike = line.includes(',') || maxNumeric >= 10000
-    if (amountLike) {
-      flushCurrent()
-    }
-  }
-
-  flushCurrent()
-
-  return normalizeVisionRowCandidates(candidates
-    .filter((row) => !footerPattern.test(row))
-    .slice(0, 40)
-    .map((row, index) => ({
-      line_number: index + 1,
-      row_text: row
-    })))
-}
-
-async function extractItemsFromVisionRowsWithGPT4o(
-  rowCandidates: VisionRowCandidate[],
+async function extractWithClaudeSonnet(params: {
+  base64Image: string
+  tileImages: string[]
   apiKey: string
-): Promise<ExtractedItem[]> {
-  if (!rowCandidates.length) return []
+  model: string
+  poScope: "single" | "multi" | null
+}): Promise<ExtractionResult> {
+  const { base64Image, tileImages, apiKey, model, poScope } = params
 
-  const prompt = `아래는 Google Vision OCR에서 추출한 거래명세서 행 목록입니다.
-중요: 이 목록은 한 품목이 여러 줄로 깨져 있을 수 있습니다.
+  const scopeHint = poScope === "single"
+    ? "이 거래명세서는 단일 발주/수주 건입니다. 발주/수주번호가 없더라도 같은 건으로 취급하세요."
+    : poScope === "multi"
+      ? "이 거래명세서는 다중 발주/수주 건입니다. 품목별로 번호를 분리하세요."
+      : ""
 
-목표:
-- 입력 행들을 분석해 "논리적 품목행(items)"으로 재구성하세요.
-- 숫자만 있는 단독 줄(예: 183,200)은 인접한 품목행의 amount/보조값일 가능성이 높습니다.
-- 인접 행만 병합하세요. 멀리 떨어진 행 병합 금지.
+  const prompt = `거래명세서 이미지를 보고 아래 스키마로 JSON만 반환하세요.
 
-반드시 지킬 규칙:
-- 원본 정보 손실 없이 최대한 많은 품목을 복원하세요.
-- item_name이 실제로 비어있는 행은 item_name을 ""로 두세요.
-- items는 입력 행 수보다 같거나 적을 수 있지만, 기존 GPT 결과(7행)보다는 많아야 합니다.
-- 합계/총계/입금/서명 같은 푸터성 행은 제외하세요.
-- 각 item에 source_lines(사용한 입력 line_number 배열)을 포함하세요.
-- JSON 형식으로만 응답하세요.
+${scopeHint ? `발주/수주 범위 힌트: ${scopeHint}` : ""}
 
-응답 형식:
+[거래처 식별 규칙]
+- "귀중/귀사/귀하/貴下" 옆 회사는 받는 회사이므로 vendor_name이 아님
+- "공급자/공급하는 자/(인)/도장" 쪽의 "상호" 회사명이 vendor_name
+- 성명/대표자 개인 이름은 vendor_name이 아님 (회사명/상호를 찾을 것)
+- raw_text에는 문서 상단의 거래처 정보(상호, 사업자번호, 주소 등)를 반드시 포함
+
+[핵심 추출 규칙]
+1) 헤더 행을 먼저 식별하고 칼럼 의미를 확정한 뒤 값 추출
+2) 이 문서는 여러 페이지 중 1페이지일 수 있음. 현재 페이지에 실제로 보이는 품목 행만 추출
+3) 하단 빈 여백/그림자/배경은 무시
+4) 수량은 수량 칸 내부 숫자만 사용 (옆 칼럼 숫자 붙임 금지)
+5) 단가가 비어있으면 null (금액 값을 단가로 이동 금지)
+6) 품목명이 빈 칸이어도 규격/수량/단가/금액 중 하나가 있으면 반드시 별도 행으로 포함
+7) 합계/소계/공급가액/부가세/합계금액/청구금액/인수자/입금/은행계좌 같은 푸터 행은 items에서 제외
+8) item_name에는 반드시 "품명" 칼럼 OCR 원문을 그대로 기록 (재작성/치환/추정 금지)
+9) 품명이 영문+숫자 코드여도 그대로 item_name에 기록 (진짜 공백행이 아니면 빈값 금지)
+10) item_name에 F... 또는 HS... 발주/수주번호 패턴을 넣지 말 것 (발견 시 품명 칼럼을 다시 읽어 교정)
+11) "규격" 칼럼 텍스트는 specification에 기록. 규격 칼럼의 발주/수주번호 패턴은 po_number/po_line_number로 별도 분리
+12) 계좌번호(예: 632-023543-01-017)는 specification/item_name 어디에도 넣지 말고 비품목 텍스트로 무시
+13) 단가의 소수점 표기를 유지 (예: 1.70, 23.00). 170/2300/1,700으로 스케일 변경 금지
+14) amount는 금액 셀에 인쇄된 숫자를 그대로 사용
+15) 각 행에서 quantity * unit_price가 amount와 크게 다르면(±5% 초과) 셀을 다시 읽어 교정
+16) 실제 품목 행 수를 임의로 늘리지 말고, 보이지 않는 값을 추측하지 말 것 (unreadable이면 빈 문자열/null + confidence=low)
+17) item_name에 "품명"/"품목"/"ITEM" 같은 헤더 라벨을 값으로 넣지 말 것
+18) 품명 칸이 비어있지만 규격/수량/금액이 있는 행은, 직전에 품명이 적힌 행의 품목명을 이어받아 item_name에 기록 (같은 품목의 규격/길이 변형)
+
+[발주/수주번호 규칙]
+- 발주번호: FYYYYMMDD_NNN (예: F20260209_003)
+- 수주번호: HSYYMMDD-NN (예: HS260209-01)
+- 문서에 suffix 라인번호가 함께 있으면 보존 가능 (예: F20260209_003-14)
+
+[응답 스키마]
 {
+  "statement_date": "YYYY-MM-DD 또는 null",
+  "vendor_name": "공급자명 또는 null",
+  "vendor_name_english": "영문 추정명 또는 null",
+  "total_amount": 숫자 또는 null,
+  "tax_amount": 숫자 또는 null,
+  "grand_total": 숫자 또는 null,
+  "raw_text": "문서 핵심 텍스트(선택, 현재 페이지 기준)",
   "items": [
     {
       "line_number": 1,
-      "source_lines": [1,2],
-      "item_name": "...",
-      "specification": "...",
-      "quantity": 0,
-      "unit_price": 0,
+      "item_name": "",
+      "specification": "",
+      "quantity": null,
+      "unit_price": null,
       "amount": 0,
       "tax_amount": null,
       "po_number": "",
@@ -1987,782 +918,1037 @@ async function extractItemsFromVisionRowsWithGPT4o(
   ]
 }
 
-입력 행(JSON):
-${JSON.stringify(rowCandidates)}
-`
+반드시 JSON만 응답하세요.`
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
+  const contentBlocks: any[] = [
+    { type: "text", text: prompt },
+    {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/jpeg",
+        data: base64Image,
+      },
+    },
+  ]
+
+  tileImages.slice(0, 4).forEach((tile) => {
+    contentBlocks.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/jpeg",
+        data: tile,
+      },
+    })
+  })
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: 'You extract transaction statement rows from provided OCR row strings. Output valid JSON only.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
+      model,
+      max_tokens: 4096,
       temperature: 0,
-      max_tokens: 2200,
-      response_format: { type: 'json_object' }
-    })
+      system:
+        "You are an expert at extracting structured data from Korean transaction statements. Return strict JSON only.",
+      messages: [
+        {
+          role: "user",
+          content: contentBlocks,
+        },
+      ],
+    }),
   })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "")
+    throw new Error(`Claude API request failed: ${response.status} ${body}`)
+  }
 
   const result = await response.json()
-  if (result.error) {
-    throw new Error(`GPT-4o row fallback error: ${result.error.message}`)
+  const textContent = (result?.content || [])
+    .filter((block: any) => block?.type === "text")
+    .map((block: any) => block?.text || "")
+    .join("\n")
+    .trim()
+
+  if (!textContent) {
+    throw new Error("No text content in Claude response")
   }
 
-  const content = result.choices?.[0]?.message?.content
-  if (!content) {
-    throw new Error('No content in GPT-4o row fallback response')
-  }
-
-  const parsed = JSON.parse(content)
-  const parsedItems: VisionRowLogicalItem[] = Array.isArray(parsed?.items) ? parsed.items : []
-  if (!parsedItems.length) return []
-
-  return parsedItems.map((raw, idx) => {
-    const quantity = toFiniteNumber(raw?.quantity)
-    const unitPrice = toFiniteNumber(raw?.unit_price)
-    const amount = toFiniteNumber(raw?.amount)
-    const taxAmount = toFiniteNumber(raw?.tax_amount)
-    const poNumber = typeof raw?.po_number === 'string' ? raw.po_number.trim() : ''
-    const remark = typeof raw?.remark === 'string' ? raw.remark.trim() : ''
-    const specification =
-      typeof raw?.specification === 'string'
-        ? raw.specification.trim()
-        : typeof raw?.spec === 'string'
-        ? raw.spec.trim()
-        : ''
-
-    return {
-      line_number: Number.isFinite(Number(raw?.line_number)) ? Number(raw?.line_number) : idx + 1,
-      item_name: typeof raw?.item_name === 'string' ? raw.item_name.trim() : '',
-      specification,
-      quantity,
-      unit_price: unitPrice ?? 0,
-      amount: amount ?? 0,
-      tax_amount: taxAmount ?? undefined,
-      po_number: poNumber || undefined,
-      remark: remark || undefined,
-      confidence: normalizeItemConfidence(raw?.confidence)
-    }
-  })
+  const parsed = parseStrictJson(textContent)
+  return normalizeExtractionResult(parsed)
 }
 
-type PoMapping = {
-  line_number?: number
-  start_line?: number
-  end_line?: number
-  item_name?: string
-  po_number?: string
-  confidence?: number
-}
-
-type RangeMapping = {
-  po_number?: string
-  start_line?: number
-  end_line?: number
-  confidence?: number
-}
-
-type PoAssistExtraction = {
-  mappings: PoMapping[]
-  ranges: RangeMapping[]
-  numbers: string[]
-}
-
-async function extractPoAssistDataWithGPT4o(
-  base64Image: string,
-  tileImages: string[],
-  items: ExtractedItem[],
+async function extractItemsFromTableCropWithClaude(params: {
+  tableBodyImage: string
   apiKey: string
-): Promise<PoAssistExtraction> {
-  const itemHints = items.map((item) => ({
-    line_number: item.line_number,
-    item_name: item.item_name
-  }))
+  model: string
+}): Promise<ExtractedItem[]> {
+  const { tableBodyImage, apiKey, model } = params
 
-  const prompt = `거래명세서 이미지에서 손글씨/필기체 발주번호/수주번호 보조 추출을 수행하세요.
-아래 3가지를 동시에 추출해야 합니다.
+  const prompt = `다음 이미지는 거래명세서의 품목 본문 테이블(품명/규격/수량/단가/금액) 영역만 잘라낸 것입니다.
 
-[1] 괄호/연결선 매핑 (mappings)
-- 손글씨로 적힌 번호(F########_### 또는 HS######-##)와 괄호/연결선이 가리키는 품목들을 묶어주세요.
-- 번호가 품목 옆이 아니라 두번째 줄에 적혀 있어도, 괄호/연결선이 위쪽 품목까지 이어지면 위쪽 행도 포함하세요.
-- line_number는 문서의 행 순서입니다. 여러 행 묶음은 start_line/end_line 범위로 반환해도 됩니다.
+[규칙]
+- 보이는 데이터 행만 추출
+- 품명은 item_name (OCR 원문 그대로), 규격은 specification
+- 수량/단가/금액 숫자를 셀 그대로 읽기
+- 소수점 단가 유지 (예: 1.70)
+- 규격의 FYYYYMMDD_XXX-YY / HSYYMMDD-NN-YY 패턴은 po_number/po_line_number로 분리
+- item_name에 F.../HS... 번호를 넣지 말 것
+- item_name이 "품명"/"품목"/"ITEM" 라벨이면 오인식으로 보고 실제 품명으로 교정
+- 합계/공급가액/부가세/합계금액/계좌번호/서명/인수자 행은 제외
 
-[2] 왼쪽 여백 구간 추론 (ranges)
-- 왼쪽 여백에 손글씨로 적힌 번호가 있고, 그 아래 여러 품목에 같은 번호가 적용되는 경우 line_number 범위를 추론하세요.
-- 번호가 중간에 바뀌면 여러 구간으로 나눠주세요.
-
-[3] 번호 목록 추출 (numbers)
-- 손글씨/필기체로 적힌 발주번호/수주번호를 번호 목록으로 추출하세요.
-- 번호 패턴만 반환: F########_### 또는 HS######-## 형태
-
-공통 규칙:
-- 확실하지 않으면 제외하세요.
-- 결과는 아래 JSON 형식만 반환:
+응답 JSON:
 {
-  "mappings":[{"start_line":1,"end_line":4,"po_number":"F... 또는 HS...","confidence":0~1},{"line_number":번호,"item_name":"품목명","po_number":"F... 또는 HS...","confidence":0~1}],
-  "ranges":[{"po_number":"F... 또는 HS...","start_line":1,"end_line":5,"confidence":0~1}],
-  "numbers":["F...","HS..."]
+  "items":[
+    {
+      "line_number":1,
+      "item_name":"",
+      "specification":"",
+      "quantity":null,
+      "unit_price":null,
+      "amount":0,
+      "tax_amount":null,
+      "po_number":"",
+      "remark":"",
+      "confidence":"low|med|high"
+    }
+  ]
 }
 
-item 목록:
-${JSON.stringify(itemHints)}
-`
+JSON만 반환하세요.`
 
-  const imageContents = [
-    { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}`, detail: 'high' } }
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 3072,
+      temperature: 0,
+      system: "Extract only table rows from this crop. Return strict JSON.",
+      messages: [
+        { 
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: "image/jpeg",
+                data: tableBodyImage,
+              },
+            },
+          ],
+        },
+      ],
+    }),
+  })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "")
+    throw new Error(`Claude table items request failed: ${response.status} ${body}`)
+  }
+
+  const result = await response.json()
+  const textContent = (result?.content || [])
+    .filter((block: any) => block?.type === "text")
+    .map((block: any) => block?.text || "")
+    .join("\n")
+    .trim()
+
+  if (!textContent) {
+    throw new Error("No text content in table items response")
+  }
+
+  const parsed = parseStrictJson(textContent)
+  const rows: any[] = Array.isArray(parsed?.items) ? parsed.items : []
+  return rows
+    .map((row, idx) => normalizeItemRecord(row, idx + 1))
+    .filter((row): row is ExtractedItem => Boolean(row))
+}
+
+async function recoverItemNamesWithClaude(params: {
+  base64Image: string
+  tileImages: string[]
+  apiKey: string
+  model: string
+}): Promise<string[]> {
+  const { base64Image, tileImages, apiKey, model } = params
+
+  const prompt = `거래명세서 이미지에서 품목표의 "품명" 칼럼 값만 추출하세요.
+
+[규칙]
+- 위에서 아래 순서대로 품명 원문만 반환
+- 헤더 라벨(품명/품목/규격/수량/단가/금액/비고/ITEM) 제외
+- 합계/공급가액/부가세/합계금액/계좌번호/서명/인수자 행 제외
+- 발주/수주번호(F.../HS...)만 있는 값은 제외
+- 빈 칸 행 제외
+
+응답 JSON:
+{
+  "item_names": ["...", "..."]
+}
+
+JSON만 반환하세요.`
+
+  const contentBlocks: any[] = [
+    { type: "text", text: prompt },
+    {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/jpeg",
+        data: base64Image,
+      },
+    },
   ]
 
-  tileImages.slice(0, 4).forEach((tile) => {
-    imageContents.push({
-      type: 'image_url',
-      image_url: { url: `data:image/png;base64,${tile}`, detail: 'high' }
+  tileImages.slice(0, 2).forEach((tile) => {
+    contentBlocks.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/jpeg",
+        data: tile,
+      },
     })
   })
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: 'You extract handwritten order-number assist data from Korean transaction statements. Return JSON only.' },
-        { role: 'user', content: [
-          { type: 'text', text: prompt },
-          ...imageContents
-        ] }
-      ],
-      temperature: 0.1,
-      max_tokens: 2200,
-      response_format: { type: 'json_object' }
-    })
+      model,
+      max_tokens: 2048,
+      temperature: 0,
+      system: "Extract only item_name column values. Return strict JSON.",
+      messages: [{ role: "user", content: contentBlocks }],
+    }),
   })
 
-  const result = await response.json()
-  if (result.error) {
-    throw new Error(`GPT-4o error (po assist): ${result.error.message}`)
+  if (!response.ok) {
+    const body = await response.text().catch(() => "")
+    throw new Error(`Claude item name recovery failed: ${response.status} ${body}`)
   }
-
-  const content = result.choices?.[0]?.message?.content
-  if (!content) {
-    return { mappings: [], ranges: [], numbers: [] }
-  }
-
-  const parsed = JSON.parse(content)
-  const mappings = Array.isArray(parsed.mappings) ? parsed.mappings : []
-  const ranges = Array.isArray(parsed.ranges) ? parsed.ranges : []
-  const numbersRaw: unknown[] = Array.isArray(parsed.numbers) ? parsed.numbers : []
-  const normalizedNumbers = numbersRaw
-    .map((value) => typeof value === 'string' ? normalizeMappedNumber(value) : '')
-    .filter((value): value is string => Boolean(value))
-  const numbers = Array.from(new Set<string>(normalizedNumbers))
-
-  return { mappings, ranges, numbers }
-}
-
-async function extractPoMappingsWithGPT4o(
-  base64Image: string,
-  items: ExtractedItem[],
-  apiKey: string
-): Promise<PoMapping[]> {
-  const itemHints = items.map((item) => ({
-    line_number: item.line_number,
-    item_name: item.item_name
-  }))
-
-  const prompt = `거래명세서 이미지에서 손글씨 괄호/연결선으로 표시된 "발주번호/수주번호 포함 관계"를 읽어,
-아래 item 목록에 대해 품목별 po_number를 매핑해주세요.
-
-규칙:
-1) 손글씨로 적힌 번호(F########_### 또는 HS######-##)와 괄호/연결선이 가리키는 품목들을 묶어주세요.
-2) 번호가 품목 옆이 아니라 두번째 줄에 적혀 있어도, 괄호/연결선이 위쪽 품목까지 이어지면 위쪽 행도 포함하세요.
-3) line_number는 문서의 행 순서입니다. 여러 행 묶음은 start_line/end_line 범위로 반환해도 됩니다.
-4) 매핑이 확실하지 않으면 제외하세요.
-5) 결과는 아래 JSON 형식만 반환:
-{"mappings":[{"start_line":1,"end_line":4,"po_number":"F... 또는 HS...","confidence":0~1},{"line_number":번호,"item_name":"품목명","po_number":"F... 또는 HS...","confidence":0~1}]}
-
-item 목록:
-${JSON.stringify(itemHints)}
-`
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: 'You extract handwritten bracket-to-item mappings.' },
-        { role: 'user', content: [
-          { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}`, detail: 'high' } }
-        ] }
-      ],
-      temperature: 0.1,
-      max_tokens: 1200,
-      response_format: { type: 'json_object' }
-    })
-  })
 
   const result = await response.json()
-  if (result.error) {
-    throw new Error(`GPT-4o error (mapping): ${result.error.message}`)
-  }
-  const content = result.choices?.[0]?.message?.content
-  if (!content) return []
-  const parsed = JSON.parse(content)
-  return Array.isArray(parsed.mappings) ? parsed.mappings : []
+  const textContent = (result?.content || [])
+    .filter((block: any) => block?.type === "text")
+    .map((block: any) => block?.text || "")
+    .join("\n")
+    .trim()
+
+  if (!textContent) return []
+
+  const parsed = parseStrictJson(textContent)
+  const names = Array.isArray(parsed?.item_names) ? parsed.item_names : []
+  return names
+    .map((value) => sanitizeText(value))
+    .filter((value) => (
+      Boolean(value) &&
+      !isHeaderLikeItemName(value) &&
+      !looksLikeOrderToken(value) &&
+      !looksLikeBankAccount(value)
+    ))
 }
 
-async function extractPoRangesWithGPT4o(
-  base64Image: string,
-  items: ExtractedItem[],
-  apiKey: string
-): Promise<RangeMapping[]> {
-  const itemHints = items.map((item) => ({
-    line_number: item.line_number,
-    item_name: item.item_name
-  }))
-
-  const prompt = `거래명세서 이미지에서 왼쪽 여백에 손글씨로 적힌 발주/수주번호가 있고,
-그 아래 여러 품목에 같은 번호가 적용되는 경우를 찾아 line_number 범위를 추론해주세요.
-
-규칙:
-1) 번호는 F########_### 또는 HS######-## 형식입니다.
-2) 번호가 중간에 바뀌면 여러 구간으로 나눠주세요.
-3) 확실하지 않으면 제외하세요.
-4) 결과는 아래 JSON 형식만 반환:
-{"ranges":[{"po_number":"F... 또는 HS...","start_line":1,"end_line":5,"confidence":0~1}]}
-
-item 목록:
-${JSON.stringify(itemHints)}
-`
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: 'You detect handwritten margin order numbers and their line ranges.' },
-        { role: 'user', content: [
-          { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}`, detail: 'high' } }
-        ] }
-      ],
-      temperature: 0.1,
-      max_tokens: 1200,
-      response_format: { type: 'json_object' }
-    })
-  })
-
-  const result = await response.json()
-  if (result.error) {
-    throw new Error(`GPT-4o error (range mapping): ${result.error.message}`)
-  }
-  const content = result.choices?.[0]?.message?.content
-  if (!content) return []
-  const parsed = JSON.parse(content)
-  return Array.isArray(parsed.ranges) ? parsed.ranges : []
-}
-
-function shouldRetryOrderNumberPass(items: ExtractedItem[]): boolean {
+function shouldRecoverItemNames(items: ExtractedItem[]): boolean {
   if (!items.length) return false
-  const lowConfidenceCount = items.filter((item) => item.confidence === 'low').length
-  const missingCount = items.filter((item) => !item.po_number).length
-  const lowConfidenceRatio = lowConfidenceCount / items.length
-  const missingRatio = missingCount / items.length
-  return missingRatio >= 0.4 || lowConfidenceRatio >= 0.4 || missingCount === items.length
+  const weakNameCount = items.filter((item) => (
+    !item.item_name ||
+    isHeaderLikeItemName(item.item_name) ||
+    looksLikeOrderToken(item.item_name)
+  )).length
+  return weakNameCount / items.length >= 0.35
 }
 
-async function extractOrderNumbersWithGPT4o(
-  base64Image: string,
-  tileImages: string[],
+function mergeRecoveredItemNames(items: ExtractedItem[], recoveredNames: string[]): ExtractedItem[] {
+  if (!items.length || !recoveredNames.length) return items
+
+  const usableNames = recoveredNames
+    .map((value) => sanitizeText(value))
+    .filter((value) => (
+      Boolean(value) &&
+      !isHeaderLikeItemName(value) &&
+      !looksLikeOrderToken(value) &&
+      !looksLikeBankAccount(value)
+    ))
+
+  if (!usableNames.length) return items
+
+  let cursor = 0
+  return items.map((item) => {
+    const needsName = !item.item_name || isHeaderLikeItemName(item.item_name) || looksLikeOrderToken(item.item_name)
+    if (!needsName) return item
+    if (cursor >= usableNames.length) return item
+
+    const nextName = usableNames[cursor]
+    cursor += 1
+    return { ...item, item_name: nextName }
+  })
+}
+
+async function refineExtractionWithClaudeSonnet(params: {
+  base64Image: string
+  tileImages: string[]
   apiKey: string
-): Promise<string[]> {
-  const prompt = `거래명세서 이미지에서 손글씨/필기체로 적힌 발주번호 또는 수주번호만 추출하세요.
+  model: string
+  poScope: "single" | "multi" | null
+  initialResult: ExtractionResult
+}): Promise<ExtractionResult> {
+  const { base64Image, tileImages, apiKey, model, poScope, initialResult } = params
 
-규칙:
-1) 번호 패턴만 반환: F########_### 또는 HS######-## 형태
-2) 불확실하면 제외하세요.
-3) 결과는 아래 JSON 형식만 반환:
-{"numbers":["F...","HS..."]}
-`
+  const scopeHint = poScope === "single"
+    ? "단일 발주/수주 페이지 가능성이 높으니 동일 기준으로 검증"
+    : poScope === "multi"
+      ? "다중 발주/수주 번호가 섞일 수 있으니 행별 분리 유지"
+      : "범위 미지정"
 
-  const imageContents = [
-    { type: 'image_url', image_url: { url: `data:image/png;base64,${base64Image}`, detail: 'high' } }
+  const prompt = `아래는 1차 추출 결과입니다. 이미지와 대조하여 오인식만 교정하세요.
+
+[중요 검증]
+- item_name은 반드시 품명 칼럼 OCR 원문 텍스트. 규격/계좌번호/발주번호를 item_name으로 넣지 말 것
+- item_name이 F.../HS... 패턴이면 오인식으로 간주하고 품명 칼럼을 다시 읽어 교정
+- item_name이 "품명"/"품목"/"ITEM" 라벨이면 오인식으로 간주하고 실제 품명으로 교정
+- specification은 규격 칼럼 텍스트
+- 규격 칼럼의 FYYYYMMDD_XXX-YY / HSYYMMDD-NN-YY는 po_number/po_line_number로만 처리
+- 계좌번호(예: 632-023543-01-017), 공급가액/부가세/합계금액 행은 items에서 제거
+- quantity/unit_price/amount는 각 칼럼 숫자를 그대로 사용
+- 단가 소수점 유지 (1.70을 170으로 바꾸지 말 것)
+- amount는 금액 칼럼 인쇄값 우선
+- 품목 실행 수 기준으로 교정하고, 비품목(푸터/계좌/서명) 행은 삭제 가능
+- po_number는 F.../HS... 패턴만
+
+현재 1차 결과(JSON):
+${JSON.stringify(initialResult)}
+
+동일 스키마 JSON만 반환하세요.`
+
+  const contentBlocks: any[] = [
+    { type: "text", text: prompt },
+    {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/jpeg",
+        data: base64Image,
+      },
+    },
+    {
+      type: "text",
+      text: `발주/수주 범위 힌트: ${scopeHint}`,
+    },
   ]
 
   tileImages.slice(0, 4).forEach((tile) => {
-    imageContents.push({
-      type: 'image_url',
-      image_url: { url: `data:image/png;base64,${tile}`, detail: 'high' }
+    contentBlocks.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/jpeg",
+        data: tile,
+      },
     })
   })
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [
-        { role: 'system', content: 'You only extract handwritten order numbers.' },
-        { role: 'user', content: [
-          { type: 'text', text: prompt },
-          ...imageContents
-        ] }
-      ],
-      temperature: 0.1,
-      max_tokens: 800,
-      response_format: { type: 'json_object' }
+      model,
+      max_tokens: 4096,
+      temperature: 0,
+      system: "You are validating OCR extraction quality. Return strict JSON only.",
+      messages: [{ role: "user", content: contentBlocks }],
+    }),
+  })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "")
+    throw new Error(`Claude refine request failed: ${response.status} ${body}`)
+  }
+
+  const result = await response.json()
+  const textContent = (result?.content || [])
+    .filter((block: any) => block?.type === "text")
+    .map((block: any) => block?.text || "")
+    .join("\n")
+    .trim()
+
+  if (!textContent) {
+    throw new Error("No text content in Claude refine response")
+  }
+
+  return normalizeExtractionResult(parseStrictJson(textContent))
+}
+
+function scoreExtractionQuality(items: ExtractedItem[]): number {
+  if (!items.length) return 0
+  let score = 0
+  for (const item of items) {
+    const hasName = Boolean(
+      item.item_name &&
+      !looksLikeOrderToken(item.item_name) &&
+      !isHeaderLikeItemName(item.item_name)
+    )
+    const hasAmount = item.amount > 0
+    const consistent = !isArithmeticMismatch(item.quantity ?? null, item.unit_price ?? null, item.amount)
+    const hasPoLine = Boolean(item.po_number && item.po_line_number)
+
+    score += hasName ? 3 : 0
+    score += hasAmount ? 2 : 0
+    score += consistent ? 2 : 0
+    score += hasPoLine ? 1 : 0
+  }
+
+  return (score / (items.length * 8)) * 100
+}
+
+function shouldRunTableBodyFallback(items: ExtractedItem[]): boolean {
+  if (!items.length) return true
+  const weakNameCount = items.filter((item) => (
+    !item.item_name ||
+    isHeaderLikeItemName(item.item_name) ||
+    looksLikeOrderToken(item.item_name)
+  )).length
+  const noPoCount = items.filter((item) => !item.po_number).length
+  const likelyFooterOnly = items.every((item) => {
+    const spec = item.specification || ""
+    return /^(\d{3,4}-\d{3,6}-\d{2}-\d{3}|[\d,.-]+)$/.test(spec)
+  })
+
+  return weakNameCount / items.length >= 0.5 || noPoCount === items.length || likelyFooterOnly
+}
+
+async function extractTableBodyFallbackWithClaude(params: {
+  base64Image: string
+  tileImages: string[]
+  apiKey: string
+  model: string
+}): Promise<ExtractionResult> {
+  const { base64Image, tileImages, apiKey, model } = params
+
+  const prompt = `거래명세서의 "품목 본문 테이블"만 추출하세요.
+
+[반드시 지킬 것]
+- 추출 대상은 헤더(품명/규격/수량/단가/금액) 아래부터 하단 합계행(공급가액/부가세/합계금액) 위까지
+- 공급가액/부가세/합계금액/인수자/기업은행 계좌번호는 절대 items에 넣지 말 것
+- 계좌번호(예: 632-023543-01-017) 같은 문자열은 specification으로도 사용 금지
+- 품명 칼럼 OCR 원문 텍스트를 item_name에 기록
+- item_name에 F.../HS... 패턴 금지 (해당 값은 po_number/po_line_number로만 처리)
+- item_name에 "품명"/"품목"/"ITEM" 라벨 금지 (실제 품명으로 교정)
+- 규격 칼럼의 FYYYYMMDD_XXX-YY / HSYYMMDD-NN-YY 패턴은 po_number/po_line_number로 추출
+- row를 임의 생성하지 말고 화면에 보이는 행만 추출
+
+JSON 스키마:
+{
+  "statement_date": "YYYY-MM-DD 또는 null",
+  "vendor_name": "string 또는 null",
+  "vendor_name_english": "string 또는 null",
+  "total_amount": number 또는 null,
+  "tax_amount": number 또는 null,
+  "grand_total": number 또는 null,
+  "raw_text": "string",
+  "items": [
+    {
+      "line_number": 1,
+      "item_name": "",
+      "specification": "",
+      "quantity": null,
+      "unit_price": null,
+      "amount": 0,
+      "tax_amount": null,
+      "po_number": "",
+      "remark": "",
+      "confidence": "low|med|high"
+    }
+  ]
+}
+
+JSON만 반환하세요.`
+
+  const contentBlocks: any[] = [
+    { type: "text", text: prompt },
+    {
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/jpeg",
+        data: base64Image,
+      },
+    },
+  ]
+
+  tileImages.slice(0, 4).forEach((tile) => {
+    contentBlocks.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/jpeg",
+        data: tile,
+      },
     })
   })
 
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 4096,
+      temperature: 0,
+      system: "You extract only table body rows from Korean statement images. Return strict JSON only.",
+      messages: [{ role: "user", content: contentBlocks }],
+    }),
+  })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "")
+    throw new Error(`Claude table fallback failed: ${response.status} ${body}`)
+  }
+
   const result = await response.json()
-  if (result.error) {
-    throw new Error(`GPT-4o error (numbers): ${result.error.message}`)
-  }
-  const content = result.choices?.[0]?.message?.content
-  if (!content) return []
-  const parsed = JSON.parse(content)
-  return Array.isArray(parsed.numbers) ? parsed.numbers : []
-}
+  const textContent = (result?.content || [])
+    .filter((block: any) => block?.type === "text")
+    .map((block: any) => block?.text || "")
+    .join("\n")
+    .trim()
 
-function normalizePO(num: string): string {
-  const match = num.toUpperCase().match(/^(F\d{8})_(\d{1,3})$/)
-  if (match) {
-    return `${match[1]}_${match[2].padStart(3, '0')}`
-  }
-  return num.toUpperCase()
-}
-
-/** Parse F-pattern PO (FYYYYMMDD_NNN) into datePart and seqPart. */
-function parsePoNumber(value: string): { datePart: string; seqPart: string } | null {
-  const m = value.match(/^F(\d{8})_(\d{3})$/)
-  if (!m) return null
-  return { datePart: m[1], seqPart: m[2] }
-}
-
-/** Check if 8-digit datePart is valid YYYYMMDD (MM 01-12, DD 01-31). */
-function isValidYyyyMmDd(datePart: string): boolean {
-  if (!/^\d{8}$/.test(datePart)) return false
-  const y = parseInt(datePart.slice(0, 4), 10)
-  const m = parseInt(datePart.slice(4, 6), 10)
-  const d = parseInt(datePart.slice(6, 8), 10)
-  if (m < 1 || m > 12) return false
-  if (d < 1 || d > 31) return false
-  const lastDay = new Date(y, m, 0).getDate()
-  return d <= lastDay
-}
-
-/** True if PO matches F pattern but date part is invalid (e.g. F20205120_005). */
-function hasValidPoDate(poNumber: string): boolean {
-  const parsed = parsePoNumber(poNumber)
-  if (!parsed) return true
-  return isValidYyyyMmDd(parsed.datePart)
-}
-
-function normalizeSO(num: string): string {
-  const match = num.toUpperCase().match(/^(HS\d{6})-(\d{1,2})$/)
-  if (match) {
-    return `${match[1]}-${match[2].padStart(2, '0')}`
-  }
-  return num.toUpperCase()
-}
-
-function normalizeItemConfidence(confidence: unknown): 'low' | 'med' | 'high' {
-  const fromNumeric = (raw: number): 'low' | 'med' | 'high' => {
-    if (!Number.isFinite(raw)) return 'med'
-    let value = raw
-
-    // 0~1 점수와 0~100 퍼센트 값을 모두 허용
-    if (value > 1 && value <= 100) {
-      value = value / 100
-    }
-
-    if (value >= 0.8) return 'high'
-    if (value >= 0.45) return 'med'
-    return 'low'
+  if (!textContent) {
+    throw new Error("No text content in table fallback response")
   }
 
-  if (typeof confidence === 'number') {
-    return fromNumeric(confidence)
+  return normalizeExtractionResult(parseStrictJson(textContent))
+}
+
+function parseStrictJson(content: string): any {
+  try {
+    return JSON.parse(content)
+  } catch (_) {
+    // Continue to relaxed extraction
   }
 
-  if (typeof confidence === 'string') {
-    const normalized = confidence.trim().toLowerCase()
-    if (normalized === 'high' || normalized === 'h') return 'high'
-    if (normalized === 'med' || normalized === 'medium' || normalized === 'm') return 'med'
-    if (normalized === 'low' || normalized === 'l') return 'low'
-
-    const numeric = Number(normalized.replace('%', ''))
-    if (!Number.isNaN(numeric)) {
-      return fromNumeric(numeric)
+  const fenced = content.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (fenced && fenced[1]) {
+    try {
+      return JSON.parse(fenced[1].trim())
+    } catch (_) {
+      // Continue to fallback
     }
   }
 
-  if (confidence === true) return 'high'
-  if (confidence === false) return 'low'
-
-  return 'med'
-}
-
-function normalizeItemQuantity(quantity: unknown): number {
-  if (typeof quantity === 'number' && Number.isFinite(quantity)) {
-    return quantity > 0 ? quantity : 1
-  }
-
-  if (typeof quantity === 'string') {
-    const cleaned = quantity.trim().replace(/[^0-9.-]/g, '')
-    if (!cleaned) return 1
-    const parsed = Number(cleaned)
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return parsed
+  const firstBrace = content.indexOf("{")
+  const lastBrace = content.lastIndexOf("}")
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    const sliced = content.slice(firstBrace, lastBrace + 1)
+    try {
+      return JSON.parse(sliced)
+    } catch (_) {
+      // Continue to throw
     }
   }
 
-  return 1
+  throw new Error("Failed to parse JSON from Claude response")
 }
 
-function fillMissingItemNames(items: ExtractedItem[]): ExtractedItem[] {
-  if (!Array.isArray(items) || items.length === 0) return []
+function normalizeExtractionResult(raw: any): ExtractionResult {
+  const rawItems: any[] = Array.isArray(raw?.items) ? raw.items : []
+  const normalizedItems = rawItems
+    .map((item, idx) => normalizeItemRecord(item, idx + 1))
+    .filter((item): item is ExtractedItem => Boolean(item))
 
-  let lastKnownItemName = ''
+  const itemsWithLineNumbers = normalizedItems.map((item, idx) => ({
+    ...item,
+    line_number: idx + 1,
+  }))
 
-  return items.map((item) => {
-    const currentName = typeof item.item_name === 'string' ? item.item_name.trim() : ''
-    if (currentName) {
-      lastKnownItemName = currentName
-      return { ...item, item_name: currentName }
-    }
+  const items = fillEmptyItemNames(itemsWithLineNumbers)
 
-    const canInherit = lastKnownItemName.length >= 2 && hasRowDataWithoutItemName(item)
-    if (blankItemDebugLogCount < 20) {
-      blankItemDebugLogCount += 1
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'27614b'},body:JSON.stringify({sessionId:'27614b',runId:'blank-item-debug',hypothesisId:'H2',location:'ocr-transaction-statement/index.ts:fillMissingItemNames:blank-row',message:'blank item_name row decision',data:{lineNumber:item?.line_number??null,lastKnownItemName:lastKnownItemName.slice(0,24),canInherit,hasRowData:hasRowDataWithoutItemName(item),spec:typeof item?.specification==='string'?item.specification.trim().slice(0,24):'',qty:item?.quantity??null,unit:item?.unit_price??null,amount:item?.amount??null},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-    }
-    if (!canInherit) {
+  const summedAmount = items.reduce((acc, item) => acc + (item.amount || 0), 0)
+  const summedTax = items.reduce((acc, item) => acc + (item.tax_amount || 0), 0)
+
+  const totalAmount = parseNullableAmount(raw?.total_amount) ?? (summedAmount > 0 ? summedAmount : undefined)
+  const taxAmount = parseNullableAmount(raw?.tax_amount) ?? (summedTax > 0 ? summedTax : undefined)
+  const grandTotal = parseNullableAmount(raw?.grand_total) ?? (
+    totalAmount !== undefined ? totalAmount + (taxAmount || 0) : undefined
+  )
+
+  return {
+    statement_date: normalizeDate(raw?.statement_date),
+    vendor_name: sanitizeText(raw?.vendor_name) || undefined,
+    vendor_name_english: sanitizeText(raw?.vendor_name_english) || undefined,
+    total_amount: totalAmount,
+    tax_amount: taxAmount,
+    grand_total: grandTotal,
+    items,
+    raw_text: sanitizeText(raw?.raw_text)?.slice(0, 12000) || undefined,
+  }
+}
+
+function fillEmptyItemNames(items: ExtractedItem[]): ExtractedItem[] {
+  if (items.length <= 1) return items
+  let lastKnownName = ""
+  const filled = items.map((item) => {
+    if (item.item_name && !isHeaderLikeItemName(item.item_name) && !looksLikeOrderToken(item.item_name)) {
+      lastKnownName = item.item_name
       return item
     }
+    if (!item.item_name && lastKnownName) {
+      return { ...item, item_name: lastKnownName }
+    }
+    return item
+  })
+  return mergeDuplicateItemNamesWithSpec(filled)
+}
 
-    const normalizedConfidence = normalizeItemConfidence(item.confidence)
-    const inheritedConfidence: 'low' | 'med' | 'high' =
-      normalizedConfidence === 'high' ? 'med' : 'low'
+function mergeDuplicateItemNamesWithSpec(items: ExtractedItem[]): ExtractedItem[] {
+  if (items.length <= 1) return items
+
+  const nameCounts = new Map<string, number>()
+  for (const item of items) {
+    if (!item.item_name) continue
+    nameCounts.set(item.item_name, (nameCounts.get(item.item_name) || 0) + 1)
+  }
+
+  return items.map((item) => {
+    if (!item.item_name) return item
+    const count = nameCounts.get(item.item_name) || 0
+    if (count <= 1) return item
+    if (!item.specification) return item
+
+    const spec = item.specification.trim()
+    if (!spec) return item
+    if (item.item_name.includes(spec)) return item
 
     return {
       ...item,
-      item_name: lastKnownItemName,
-      confidence: inheritedConfidence
+      item_name: `${item.item_name}-${spec}`,
     }
   })
 }
 
-function hasRowDataWithoutItemName(item: ExtractedItem): boolean {
-  const specification = typeof item.specification === 'string' ? item.specification.trim() : ''
-  const remark = typeof item.remark === 'string' ? item.remark.trim() : ''
-  const quantity = toFiniteNumber(item.quantity)
-  const unitPrice = toFiniteNumber(item.unit_price)
-  const amount = toFiniteNumber(item.amount)
-  const taxAmount = toFiniteNumber(item.tax_amount)
+function normalizeItemRecord(raw: any, fallbackLineNumber: number): ExtractedItem | null {
+  const rawItemName = sanitizeText(raw?.item_name)
+  const itemName = isHeaderLikeItemName(rawItemName) ? "" : rawItemName
+  const specification = sanitizeText(raw?.specification)
+  const quantity = parseNullableInteger(raw?.quantity)
+  const unitPrice = parseNullableAmount(raw?.unit_price)
+  let amount = parseNullableAmount(raw?.amount)
+  const taxAmount = parseNullableAmount(raw?.tax_amount)
+  const remark = sanitizeText(raw?.remark)
 
-  return Boolean(
-    specification ||
-    remark ||
+  const poFromFields = extractOrderNumber(
+    `${sanitizeText(raw?.po_number)} ${remark} ${itemName} ${specification}`
+  )
+  const parsedPo = poFromFields ? parseOrderToken(poFromFields) : null
+
+  if (amount === null) {
+    if (quantity !== null && unitPrice !== null) {
+      amount = quantity * unitPrice
+    } else {
+      amount = 0
+    }
+  }
+
+  const hasMeaningfulField =
+    Boolean(itemName) ||
+    Boolean(specification) ||
     quantity !== null ||
     unitPrice !== null ||
-    amount !== null ||
-    taxAmount !== null
-  )
+    amount !== 0 ||
+    Boolean(remark) ||
+    Boolean(parsedPo?.normalized)
+
+  if (!hasMeaningfulField) {
+    return null
+  }
+
+  if (isLikelyNonItemRow({
+    itemName,
+    specification,
+    remark,
+    quantity,
+    unitPrice,
+    amount,
+    poNumber: parsedPo?.normalized,
+  })) {
+    return null
+  }
+
+  const lineNumber = parseLineNumber(raw?.line_number) || fallbackLineNumber
+
+  return {
+    line_number: lineNumber,
+    item_name: itemName || "",
+    specification: specification || undefined,
+    quantity,
+    unit_price: unitPrice,
+    amount: amount || 0,
+    tax_amount: taxAmount,
+    po_number: parsedPo?.normalized,
+    po_line_number: parsedPo?.lineNumber,
+    remark: remark || undefined,
+    confidence: normalizeItemConfidence(raw?.confidence),
+  }
 }
 
-function toFiniteNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string') {
-    const cleaned = value.trim().replace(/[^0-9.-]/g, '')
-    if (!cleaned) return null
+function normalizeDate(value: unknown): string | undefined {
+  const text = sanitizeText(value)
+  if (!text) return undefined
+
+  const fullDate = text.match(/(\d{4})[.\-/년\s]+(\d{1,2})[.\-/월\s]+(\d{1,2})/)
+  if (fullDate) {
+    const [, y, m, d] = fullDate
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text
+  return undefined
+}
+
+function sanitizeText(value: unknown): string {
+  if (typeof value !== "string") return ""
+  return value.replace(/\s+/g, " ").trim()
+}
+
+function parseLineNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const parsed = Math.round(value)
+    return parsed > 0 ? parsed : null
+  }
+
+  if (typeof value === "string") {
+    const match = value.match(/\d+/)
+    if (!match) return null
+    const parsed = Number.parseInt(match[0], 10)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }
+
+  return null
+}
+
+function parseNullableInteger(value: unknown): number | null {
+  const parsed = parseNullableAmount(value)
+  if (parsed === null) return null
+  if (!Number.isFinite(parsed)) return null
+  return Math.round(parsed)
+}
+
+function parseNullableAmount(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null
+  }
+  if (typeof value === "string") {
+    const cleaned = value
+      .replace(/[,₩원$￦\s]/g, "")
+      .replace(/[^\d.\-]/g, "")
+      .trim()
+    if (!cleaned || cleaned === "-" || cleaned === ".") return null
     const parsed = Number(cleaned)
     return Number.isFinite(parsed) ? parsed : null
   }
   return null
 }
 
-function normalizeOrderToken(candidate?: string): string | null {
-  if (!candidate) return null
-
-  const cleaned = normalizeOrderCandidate(candidate)
-
-  // OCR 분절 오인식 보정:
-  // 예) F20260306-00306-001 (중간 "00306"은 깨진 조각으로 보고 마지막 3자리 시퀀스를 신뢰)
-  const poSplitNoiseMatch = cleaned.match(/^(F\d{8})[_-](\d{4,6})[-_](\d{3})$/)
-  if (poSplitNoiseMatch) {
-    const normalized = normalizePO(`${poSplitNoiseMatch[1]}_${poSplitNoiseMatch[3]}`)
-    if (!hasValidPoDate(normalized)) {
-      return null
-    }
-    return normalized
-  }
-
-  // OCR이 구분자를 일부 잃어버린 경우:
-  // 예) F20260306-00306001 -> trailing 3자리(001)를 시퀀스로 간주
-  const poSplitNoiseNoDelimiterMatch = cleaned.match(/^(F\d{8})[_-](\d{7,9})$/)
-  if (poSplitNoiseNoDelimiterMatch) {
-    const trailingSeq = poSplitNoiseNoDelimiterMatch[2].slice(-3)
-    const normalized = normalizePO(`${poSplitNoiseNoDelimiterMatch[1]}_${trailingSeq}`)
-    if (!hasValidPoDate(normalized)) {
-      return null
-    }
-    return normalized
-  }
-
-  // 예: F20260122_007-01 (뒤 -01은 라인 번호로 보고 본 발주번호만 사용)
-  const poWithLineMatch = cleaned.match(/^(F\d{8})[_-](\d{1,3})[-_](\d{1,3})$/)
-  if (poWithLineMatch) {
-    const normalized = normalizePO(`${poWithLineMatch[1]}_${poWithLineMatch[2]}`)
-    if (!hasValidPoDate(normalized)) {
-      return null
-    }
-    return normalized
-  }
-
-  // 예: F20260122_007 또는 F20260122-007
-  const poOnlyMatch = cleaned.match(/^(F\d{8})[_-](\d{1,3})$/)
-  if (poOnlyMatch) {
-    const normalized = normalizePO(`${poOnlyMatch[1]}_${poOnlyMatch[2]}`)
-    if (!hasValidPoDate(normalized)) {
-      return null
-    }
-    return normalized
-  }
-
-  // 예: HS251201-01-3 (뒤 -3은 라인 번호로 보고 본 수주번호만 사용)
-  const soWithLineMatch = cleaned.match(/^(HS\d{6})[-_](\d{1,2})[-_](\d{1,3})$/)
-  if (soWithLineMatch) {
-    return normalizeSO(`${soWithLineMatch[1]}-${soWithLineMatch[2]}`)
-  }
-
-  // 예: HS251201-01 또는 HS251201_01
-  const soOnlyMatch = cleaned.match(/^(HS\d{6})[-_](\d{1,2})$/)
-  if (soOnlyMatch) {
-    return normalizeSO(`${soOnlyMatch[1]}-${soOnlyMatch[2]}`)
-  }
-
-  return null
+function looksLikeBankAccount(value: string): boolean {
+  if (!value) return false
+  const compact = value.replace(/\s+/g, "")
+  if (!compact.includes("-")) return false
+  return /^(?:\d{2,4}-){2,5}\d{2,8}$/.test(compact) ||
+    /\d{2,4}-\d{3,6}-\d{2,6}-\d{2,8}/.test(compact)
 }
 
-function extractOrderNumbersFromText(text?: string): string[] {
-  if (!text) return []
-
-  const cleaned = text.toUpperCase().replace(/\s+/g, '')
-  // 첫 시퀀스를 최대 6자리까지 허용해 OCR 분절(00306-001) 케이스를 normalizeOrderToken에서 복원한다.
-  const poCandidates = cleaned.match(/F[0-9A-Z]{8}[_-][0-9A-Z]{1,6}(?:[-_][0-9A-Z]{1,3})?/g) || []
-  const soCandidates = cleaned.match(/H[5S][0-9A-Z]{6}[-_][0-9A-Z]{1,2}(?:[-_][0-9A-Z]{1,3})?/g) || []
-  const numbers: string[] = []
-
-  ;[...poCandidates, ...soCandidates].forEach((candidate) => {
-    const normalized = normalizeOrderToken(candidate)
-    if (normalized) numbers.push(normalized)
-  })
-
-  return numbers
+function hasFooterKeyword(value: string): boolean {
+  if (!value) return false
+  const compact = value.replace(/\s+/g, "")
+  return /(공급가액|부가세|합계금액|총합계|청구금액|합계|입금|계좌|예금주|인수자|기업은행|신한은행|국민은행|농협|우리은행|은행)/.test(compact)
 }
 
-function extractPoFromSpecification(specification?: string): string | undefined {
-  const numbers = extractOrderNumbersFromText(specification)
-  return numbers[0]
-}
+function isLikelyNonItemRow(params: {
+  itemName: string
+  specification: string
+  remark: string
+  quantity: number | null
+  unitPrice: number | null
+  amount: number
+  poNumber?: string
+}): boolean {
+  const { itemName, specification, remark, quantity, unitPrice, amount, poNumber } = params
+  const hasName = Boolean(itemName)
+  const hasOrderToken = Boolean(poNumber)
+  const hasQuantity = quantity !== null && quantity !== undefined
+  const hasUnitPrice = unitPrice !== null && unitPrice !== undefined
+  const combinedText = `${itemName} ${specification} ${remark}`.trim()
+  const hasFooterText = hasFooterKeyword(combinedText)
+  const hasBankAccountLikeText =
+    looksLikeBankAccount(itemName) || looksLikeBankAccount(specification) || looksLikeBankAccount(remark)
+  const hasTextSignal = /[A-Z가-힣]/i.test(`${specification}${remark}`)
 
-function pickDominantOrderNumber(numbers: string[]): string | null {
-  if (!numbers.length) return null
-  const counts = new Map<string, number>()
-  numbers.forEach((n) => counts.set(n, (counts.get(n) ?? 0) + 1))
-  let maxCount = 0
-  let dominant: string | null = null
-  counts.forEach((count, num) => {
-    if (count > maxCount) {
-      maxCount = count
-      dominant = num
-    }
-  })
-  return dominant
+  if (!hasName && !hasOrderToken && !specification && !remark) return true
+  if (!hasName && !hasOrderToken && hasFooterText) return true
+  if (!hasName && !hasOrderToken && hasBankAccountLikeText) return true
+  if (!hasName && !hasOrderToken && !hasQuantity && !hasUnitPrice && amount > 0 && !hasTextSignal) return true
+
+  return false
 }
 
 function normalizePoNumbers(
   items: ExtractedItem[],
-  rawVisionText?: string,
-  extraNumbers: string[] = []
+  rawText: string | undefined,
+  poScope: "single" | "multi" | null
 ): ExtractedItem[] {
-  // 전체 텍스트에서 모든 PO/SO 번호 추출 (빈 칸, 여백, 손글씨 영역 포함)
-  const allFoundNumbers: string[] = []
-  if (rawVisionText) {
-    allFoundNumbers.push(...extractOrderNumbersFromText(rawVisionText))
-  }
-  if (extraNumbers.length > 0) {
-    extraNumbers.forEach((value) => {
-      const normalized = normalizeMappedNumber(value)
-      if (normalized) allFoundNumbers.push(normalized)
-    })
-  }
-  const dominantDocumentNumber = pickDominantOrderNumber(allFoundNumbers)
+  if (items.length === 0) return []
 
-  const normalizedItems = items.map((item, idx) => {
-    let poNumber: string | undefined = undefined
-    const rawPo = item.po_number
-    const normalizedFromItem = rawPo
-      ? normalizeOrderToken(rawPo.toUpperCase().replace(/\s+/g, '').replace(/[^\w_-]/g, ''))
-      : null
-    if (normalizedFromItem) {
-      poNumber = normalizedFromItem
-    }
-    if (!poNumber) {
-      const extractedFromFields =
-        extractPoFromSpecification(item.specification) ||
-        extractPoFromSpecification(item.remark) ||
-        extractPoFromSpecification(item.item_name)
-      if (extractedFromFields) {
-        poNumber = extractedFromFields
-      }
-    }
-    if (!poNumber && dominantDocumentNumber) {
-      poNumber = dominantDocumentNumber
-    }
-    if (!poNumber && allFoundNumbers.length > 0) {
-      const uniqueCount = new Set(allFoundNumbers).size
-      if (uniqueCount === 1) {
-        poNumber = allFoundNumbers[0]
-      } else if (allFoundNumbers.length === items.length && uniqueCount === items.length) {
-        poNumber = allFoundNumbers[idx]
+  const textNumbers = extractOrderNumbersFromText(rawText || "")
+  const dominantNumber = pickDominantOrderNumber(textNumbers)
+
+  return items.map((item) => {
+    let parsed = item.po_number ? parseOrderToken(item.po_number) : null
+
+    if (!parsed) {
+      const fromFields = extractOrderNumber(
+        `${item.remark || ""} ${item.specification || ""} ${item.item_name || ""}`
+      )
+      if (fromFields) {
+        parsed = parseOrderToken(fromFields)
       }
     }
 
-    const normalizedConfidence = normalizeItemConfidence(item.confidence)
-    const normalizedQuantity = normalizeItemQuantity((item as any)?.quantity)
+    if (!parsed && poScope === "single" && dominantNumber) {
+      parsed = parseOrderToken(dominantNumber)
+    }
 
     return {
       ...item,
-      po_number: poNumber ?? undefined,
-      confidence: normalizedConfidence,
-      quantity: normalizedQuantity
+      po_number: parsed?.normalized || undefined,
+      po_line_number: parsed?.lineNumber ?? item.po_line_number,
+      confidence: normalizeItemConfidence(item.confidence),
     }
   })
-  return normalizedItems
 }
 
-type OrderCorrectionResult = {
-  items: ExtractedItem[];
-  inferredVendorName?: string;
-  inferredVendorId?: number;
-  systemLineNumbers?: Map<number, number>;
-  matchedPurchaseId?: number;
-};
+function extractOrderNumbersFromText(text: string): string[] {
+  if (!text) return []
+  const normalized = text.toUpperCase().replace(/\s+/g, "")
+  const matches = normalized.match(
+    /F\d{8}[_-]\d{1,3}(?:[-_]\d{1,3})?|HS\d{6}[-_]\d{1,2}(?:[-_]\d{1,3})?/g
+  )
+  if (!matches) return []
+  return matches
+    .map((token) => parseOrderToken(token)?.normalized || "")
+    .filter(Boolean)
+}
 
-type OrderCorrectionHints = {
-  preferredVendorId?: number;
-  vendorNameHints?: string[];
-};
+function extractOrderNumber(text: string): string | null {
+  if (!text) return null
+  const normalized = text.toUpperCase()
+  const match = normalized.match(
+    /(F\d{8}[_-]\d{1,3}(?:[-_]\d{1,3})?|HS\d{6}[-_]\d{1,2}(?:[-_]\d{1,3})?)/
+  )
+  return match ? match[1] : null
+}
+
+function parseOrderToken(value: string): ParsedOrderToken | null {
+  const cleaned = normalizeOrderCandidate(value)
+    if (!cleaned) return null
+
+  const poMatch = cleaned.match(/^(F\d{8})[_-](\d{1,3})(?:[-_](\d{1,3}))?$/)
+  if (poMatch) {
+    const lineNumber = poMatch[3] ? Number.parseInt(poMatch[3], 10) : undefined
+    return {
+      normalized: `${poMatch[1]}_${poMatch[2].padStart(3, "0")}`,
+      kind: "po",
+      lineNumber: Number.isFinite(lineNumber as number) ? lineNumber : undefined,
+    }
+  }
+
+  const soMatch = cleaned.match(/^(HS\d{6})[-_](\d{1,2})(?:[-_](\d{1,3}))?$/)
+  if (soMatch) {
+    const lineNumber = soMatch[3] ? Number.parseInt(soMatch[3], 10) : undefined
+    return {
+      normalized: `${soMatch[1]}-${soMatch[2].padStart(2, "0")}`,
+      kind: "so",
+      lineNumber: Number.isFinite(lineNumber as number) ? lineNumber : undefined,
+    }
+  }
+
+      return null
+}
+
+function normalizeOrderCandidate(value: string): string {
+  return value
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .replace(/[^\w-]/g, "")
+}
+
+function normalizeOrderToken(value: string): string {
+  const parsed = parseOrderToken(value)
+  return parsed?.normalized || ""
+}
+
+function pickDominantOrderNumber(numbers: string[]): string | null {
+  if (!numbers.length) return null
+  const counter = new Map<string, number>()
+  numbers.forEach((value) => {
+    counter.set(value, (counter.get(value) || 0) + 1)
+  })
+  const sorted = Array.from(counter.entries()).sort((a, b) => b[1] - a[1])
+  return sorted[0]?.[0] || null
+}
+
+function collectVendorHints(result: ExtractionResult): string[] {
+  const set = new Set<string>()
+  if (result.vendor_name) set.add(result.vendor_name)
+  if (result.vendor_name_english) set.add(result.vendor_name_english)
+  if (result.raw_text) {
+    const lines = result.raw_text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+    lines.slice(0, 30).forEach((line) => set.add(line))
+  }
+  return Array.from(set)
+}
+
+async function resolveVendor(
+  supabase: any,
+  extraction: ExtractionResult,
+  inferredVendorName?: string,
+  inferredVendorId?: number
+): Promise<VendorResolution> {
+  if (inferredVendorName) {
+    return {
+      vendorName: inferredVendorName,
+      vendorId: inferredVendorId,
+      source: "po_infer",
+    }
+  }
+
+  if (extraction.vendor_name) {
+    const matched = await validateAndMatchVendor(supabase, extraction.vendor_name)
+    if (matched.matched) {
+      return {
+        vendorName: matched.vendor_name,
+        vendorId: matched.vendor_id,
+        source: "gpt_extract",
+      }
+    }
+  }
+
+  if (extraction.vendor_name_english) {
+    const matched = await validateAndMatchVendor(supabase, extraction.vendor_name_english)
+    if (matched.matched) {
+      return {
+        vendorName: matched.vendor_name,
+        vendorId: matched.vendor_id,
+        source: "gpt_extract",
+      }
+    }
+  }
+
+  if (extraction.raw_text) {
+    const matchedFromText = await findVendorInText(supabase, extraction.raw_text)
+    if (matchedFromText.matched) {
+      return {
+        vendorName: matchedFromText.vendor_name,
+        vendorId: matchedFromText.vendor_id,
+        source: "text_scan",
+      }
+    }
+  }
+
+  return { source: "not_found" }
+}
+
+function buildInferredPoMap(items: ExtractedItem[]): Map<number, InferredPoInfo> {
+  const map = new Map<number, InferredPoInfo>()
+  const dominant = pickDominantOrderNumber(
+    items.map((item) => item.po_number || "").filter(Boolean)
+  )
+
+  items.forEach((item, index) => {
+    const lineNumber = item.line_number || index + 1
+    if (item.po_number) {
+      map.set(lineNumber, {
+        inferred_po_number: item.po_number,
+        inferred_po_source: "per_item",
+        inferred_po_confidence: confidenceToNumeric(item.confidence),
+        inferred_po_group_id: `per-item-${item.po_number}`,
+      })
+      return
+    }
+
+    if (dominant) {
+      map.set(lineNumber, {
+        inferred_po_number: dominant,
+        inferred_po_source: "global",
+        inferred_po_confidence: 0.45,
+        inferred_po_group_id: `global-${dominant}`,
+      })
+    }
+  })
+
+  return map
+}
+
+function confidenceToNumeric(value: unknown): number {
+  const normalized = normalizeItemConfidence(value)
+  if (normalized === "high") return 0.9
+  if (normalized === "med") return 0.65
+  return 0.4
+}
 
 async function correctOrderNumbersByDb(
   supabase: any,
   items: ExtractedItem[],
   hints: OrderCorrectionHints = {}
 ): Promise<OrderCorrectionResult> {
-  if (!items.length) return { items };
-  const preferredVendorId = hints.preferredVendorId;
+  if (!items.length) return { items }
+
   const vendorNameHints = Array.from(
     new Set(
       (hints.vendorNameHints || [])
         .map((value) => value.trim())
-        .filter((value) => value.length > 0)
+        .filter(Boolean)
     )
-  );
+  )
 
-  const numberCounts = new Map<string, number>();
-  items.forEach(item => {
-    if (item.po_number) {
-      numberCounts.set(item.po_number, (numberCounts.get(item.po_number) || 0) + 1);
-    }
-  });
+  const numberCounts = new Map<string, number>()
+  items.forEach((item) => {
+    if (!item.po_number) return
+    numberCounts.set(item.po_number, (numberCounts.get(item.po_number) || 0) + 1)
+  })
 
-  const mostCommon = Array.from(numberCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0];
-  if (!mostCommon) return { items };
+  const mostCommon = Array.from(numberCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0]
+  if (!mostCommon) return { items }
 
-  const isPO = /^F\d{8}_\d{3}$/.test(mostCommon);
-  const isSO = /^HS\d{6}-\d{2}$/.test(mostCommon);
-  if (!isPO && !isSO) return { items };
+  const isPO = /^F\d{8}_\d{3}$/.test(mostCommon)
+  const isSO = /^HS\d{6}-\d{2}$/.test(mostCommon)
+  if (!isPO && !isSO) return { items }
 
-  const hasInvalidPoDate = isPO && !hasValidPoDate(mostCommon);
-  const vendorHintAcceptThreshold = 45;
-  let exactMatchRejectedByVendorHint = false;
-  // #region agent log
-  fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H5',location:'ocr-transaction-statement/index.ts:correctOrderNumbersByDb:entry',message:'db correction entry state',data:{itemCount:items.length,mostCommon,isPO,isSO,hasInvalidPoDate,vendorNameHintsSample:vendorNameHints.slice(0,10)},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-
-  const { data: exactMatch } = await supabase
-    .from('purchase_requests')
-    .select('id, vendor_id, vendor:vendors(vendor_name)')
-    .or(`purchase_order_number.eq.${mostCommon},sales_order_number.eq.${mostCommon}`)
-    .limit(1);
-
-  if (exactMatch && exactMatch.length > 0) {
-    const vendorName = (exactMatch[0].vendor as { vendor_name?: string } | null)?.vendor_name;
-    const vendorHintScore = calculateVendorHintSimilarity(vendorName, vendorNameHints);
-    const isPreferredVendorMatch =
-      preferredVendorId !== undefined &&
-      Number(exactMatch[0].vendor_id) === preferredVendorId;
-    const shouldTrustExact =
-      vendorHintScore === null ||
-      vendorHintScore >= vendorHintAcceptThreshold ||
-      isPreferredVendorMatch;
-
-    if (!shouldTrustExact) {
-      exactMatchRejectedByVendorHint = true;
-    } else {
-      const purchaseId = exactMatch[0].id;
-      const systemLineMap = await matchSystemLineNumbers(supabase, items, purchaseId);
-      const inferredVendorId =
-        exactMatch[0].vendor_id !== undefined && exactMatch[0].vendor_id !== null
-          ? Number(exactMatch[0].vendor_id)
-          : undefined;
-      return {
-        items,
-        inferredVendorName: vendorName,
-        inferredVendorId,
-        systemLineNumbers: systemLineMap,
-        matchedPurchaseId: purchaseId
-      };
-    }
-  }
-
-  const useFallbackSuffix = hasInvalidPoDate || exactMatchRejectedByVendorHint;
-  const candidateLimit = useFallbackSuffix ? 120 : 30;
-  const acceptanceThreshold = useFallbackSuffix ? 55 : 65;
-  const minimumBaseScore = Math.max(50, acceptanceThreshold - 10);
-
-  let query = supabase
-    .from('purchase_requests')
+  const { data: exactCandidates } = await supabase
+    .from("purchase_requests")
     .select(`
       id,
       vendor_id,
@@ -2770,931 +1956,775 @@ async function correctOrderNumbersByDb(
       sales_order_number,
       vendor:vendors(vendor_name),
       items:purchase_request_items(
-        id,
         line_number,
         item_name,
         specification,
         quantity
       )
     `)
-    .limit(candidateLimit);
+    .or(`purchase_order_number.eq.${mostCommon},sales_order_number.eq.${mostCommon}`)
+    .limit(1)
 
-  if (useFallbackSuffix && isPO) {
-    const parsed = parsePoNumber(mostCommon);
+  if (exactCandidates && exactCandidates.length > 0) {
+    const exact = exactCandidates[0]
+    const vendorName = (exact.vendor as { vendor_name?: string } | null)?.vendor_name
+    const vendorHintScore = calculateVendorHintSimilarity(vendorName, vendorNameHints)
+    const shouldTrustExact =
+      vendorHintScore === null ||
+      vendorHintScore >= 45 ||
+      (hints.preferredVendorId !== undefined && Number(exact.vendor_id) === hints.preferredVendorId)
+
+    if (shouldTrustExact) {
+      const canonical = normalizeOrderToken(
+        isPO ? (exact.purchase_order_number || "") : (exact.sales_order_number || "")
+      ) || mostCommon
+
+      const corrected = items.map((item) => {
+        const shouldApply =
+          !item.po_number ||
+          item.po_number === mostCommon ||
+          (isPO && item.po_number && !hasValidPoDate(item.po_number))
+      return {
+          ...item,
+          po_number: shouldApply ? canonical : item.po_number,
+        }
+      })
+
+      return {
+        items: corrected,
+        inferredVendorName: vendorName,
+        inferredVendorId:
+          exact.vendor_id !== undefined && exact.vendor_id !== null
+            ? Number(exact.vendor_id)
+            : undefined,
+        matchedPurchaseId: exact.id,
+      }
+    }
+  }
+
+  const useFallbackSuffix = isPO && !hasValidPoDate(mostCommon)
+  const candidateLimit = useFallbackSuffix ? 120 : 40
+
+  let query = supabase
+    .from("purchase_requests")
+    .select(`
+      id,
+      vendor_id,
+      purchase_order_number,
+      sales_order_number,
+      vendor:vendors(vendor_name),
+      items:purchase_request_items(
+        line_number,
+        item_name,
+        specification,
+        quantity
+      )
+    `)
+    .limit(candidateLimit)
+
+  if (isPO) {
+    if (useFallbackSuffix) {
+      const parsed = parsePoNumber(mostCommon)
     if (parsed) {
-      query = query.ilike('purchase_order_number', `%_${parsed.seqPart}`);
+        query = query.ilike("purchase_order_number", `%_${parsed.seqPart}`)
     } else {
-      const prefix = mostCommon.slice(0, 9);
-      query = query.ilike('purchase_order_number', `${prefix}%`);
+        query = query.ilike("purchase_order_number", `${mostCommon.slice(0, 9)}%`)
     }
   } else {
-    const prefix = isPO ? mostCommon.slice(0, 9) : mostCommon.slice(0, 8);
-    query = isPO
-      ? query.ilike('purchase_order_number', `${prefix}%`)
-      : query.ilike('sales_order_number', `${prefix}%`);
+      query = query.ilike("purchase_order_number", `${mostCommon.slice(0, 9)}%`)
+    }
+  } else {
+    query = query.ilike("sales_order_number", `${mostCommon.slice(0, 8)}%`)
   }
 
-  const { data: candidates } = await query;
+  const { data: candidates } = await query
   if (!candidates || candidates.length === 0) {
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H5',location:'ocr-transaction-statement/index.ts:correctOrderNumbersByDb:noCandidates',message:'db correction no candidates',data:{mostCommon,useFallbackSuffix,candidateLimit,acceptanceThreshold},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    return { items };
+    return { items }
   }
 
-  const cleanedItems = items.map(item => ({
-    name: normalizeItemText(item.item_name || ''),
-    quantity: item.quantity || 0
-  }));
-
-  let bestCandidate: any = null;
-  let bestScore = 0;
-  let bestBaseScore = 0;
+  let bestCandidate: any = null
+  let bestTotalScore = 0
 
   for (const candidate of candidates) {
-    const systemItems = (candidate.items || []).map((it: any) => ({
-      name: normalizeItemText(it.item_name || ''),
-      spec: normalizeItemText(it.specification || ''),
-      quantity: it.quantity || 0
-    }));
+    const candidateNumber = normalizeOrderToken(
+      isPO ? (candidate.purchase_order_number || "") : (candidate.sales_order_number || "")
+    )
+    if (!candidateNumber) continue
 
-    const { score, matchedCount } = calculateOrderSimilarity(cleanedItems, systemItems);
-    if (matchedCount === 0) continue;
+    const orderScore = calculateOrderNumberSimilarity(mostCommon, candidateNumber)
+    const itemScore = calculateCandidateItemSimilarity(items, candidate.items || [])
+    const candidateVendorName = (candidate.vendor as { vendor_name?: string } | null)?.vendor_name
+    const vendorHintScore = calculateVendorHintSimilarity(candidateVendorName, vendorNameHints)
+    const vendorBonus = vendorHintScore === null ? 0 : Math.max(0, Math.round((vendorHintScore - 60) * 0.2))
+    const preferredBonus =
+      hints.preferredVendorId !== undefined && Number(candidate.vendor_id) === hints.preferredVendorId ? 8 : 0
 
-    const candidateVendorName = (candidate.vendor as { vendor_name?: string } | null)?.vendor_name;
-    const vendorHintScore = calculateVendorHintSimilarity(candidateVendorName, vendorNameHints);
-    const vendorHintBonus =
-      vendorHintScore === null ? 0 : Math.max(0, Math.round((vendorHintScore - 60) * 0.25));
-    const preferredVendorBonus =
-      preferredVendorId !== undefined && Number(candidate.vendor_id) === preferredVendorId ? 8 : 0;
-    const totalScore = score + vendorHintBonus + preferredVendorBonus;
-
-    if (totalScore > bestScore) {
-      bestScore = totalScore;
-      bestBaseScore = score;
-      bestCandidate = candidate;
+    const totalScore = Math.round(orderScore * 0.45 + itemScore * 0.45 + vendorBonus + preferredBonus)
+    if (totalScore > bestTotalScore) {
+      bestTotalScore = totalScore
+      bestCandidate = candidate
     }
   }
 
-  if (!bestCandidate || bestScore < acceptanceThreshold || bestBaseScore < minimumBaseScore) {
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H5',location:'ocr-transaction-statement/index.ts:correctOrderNumbersByDb:belowThreshold',message:'db correction rejected by score',data:{mostCommon,candidateCount:candidates.length,bestScore,bestBaseScore,acceptanceThreshold,minimumBaseScore,bestCandidateNumber:bestCandidate?.purchase_order_number||bestCandidate?.sales_order_number||null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    return { items };
+  if (!bestCandidate || bestTotalScore < 65) {
+    return { items }
   }
 
-  const correctedNumber = isPO
-    ? (bestCandidate.purchase_order_number || '')
-    : (bestCandidate.sales_order_number || '');
+  const correctedNumber = normalizeOrderToken(
+    isPO ? (bestCandidate.purchase_order_number || "") : (bestCandidate.sales_order_number || "")
+  )
+  if (!correctedNumber) return { items }
 
-  if (!correctedNumber) {
-    return { items };
-  }
-  // #region agent log
-  fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'9f46d9'},body:JSON.stringify({sessionId:'9f46d9',runId:'po-misread-debug',hypothesisId:'H5',location:'ocr-transaction-statement/index.ts:correctOrderNumbersByDb:accepted',message:'db correction accepted candidate',data:{mostCommon,correctedNumber,bestScore,bestBaseScore,acceptanceThreshold,minimumBaseScore,bestCandidateId:bestCandidate?.id||null},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-
-  const applySelectively = useFallbackSuffix;
-  const correctedItems = items.map(item => {
-    if (!applySelectively) {
-      return { ...item, po_number: correctedNumber };
-    }
-    const itemPo = item.po_number;
+  const correctedItems = items.map((item) => {
     const shouldApply =
-      !itemPo ||
-      itemPo === mostCommon ||
-      (parsePoNumber(itemPo) && !hasValidPoDate(itemPo));
+      !item.po_number ||
+      item.po_number === mostCommon ||
+      (isPO && item.po_number && !hasValidPoDate(item.po_number))
     return {
       ...item,
-      po_number: shouldApply ? correctedNumber : itemPo
-    };
-  });
-
-  const inferredVendorName = (bestCandidate.vendor as { vendor_name?: string } | null)?.vendor_name;
-  const inferredVendorId =
-    bestCandidate.vendor_id !== undefined && bestCandidate.vendor_id !== null
-      ? Number(bestCandidate.vendor_id)
-      : undefined;
-  const systemLineMap = matchSystemLineNumbersFromCandidate(items, bestCandidate.items || []);
+      po_number: shouldApply ? correctedNumber : item.po_number,
+    }
+  })
 
   return {
     items: correctedItems,
-    inferredVendorName,
-    inferredVendorId,
-    systemLineNumbers: systemLineMap,
-    matchedPurchaseId: bestCandidate.id
-  };
+    inferredVendorName: (bestCandidate.vendor as { vendor_name?: string } | null)?.vendor_name,
+    inferredVendorId:
+      bestCandidate.vendor_id !== undefined && bestCandidate.vendor_id !== null
+        ? Number(bestCandidate.vendor_id)
+        : undefined,
+    matchedPurchaseId: bestCandidate.id,
+  }
 }
 
-async function applyTrailingOneQuantityCorrection(
+async function enrichItemsWithPurchaseLines(
   supabase: any,
-  items: ExtractedItem[],
-  correctionResult: OrderCorrectionResult
+  items: ExtractedItem[]
 ): Promise<ExtractedItem[]> {
   if (!items.length) return items
 
-  const quantityByLine = new Map<number, number>()
-  const dominantPurchaseId = correctionResult.matchedPurchaseId
-  if (dominantPurchaseId) {
-    const { data: dominantSystemItems } = await supabase
-      .from('purchase_request_items')
-      .select('line_number, quantity')
-      .eq('purchase_request_id', dominantPurchaseId)
-
-    ;(dominantSystemItems || []).forEach((row: any) => {
-      const line = Number(row.line_number)
-      const quantity = Number(row.quantity)
-      if (Number.isFinite(line) && Number.isFinite(quantity)) {
-        quantityByLine.set(line, quantity)
-      }
-    })
-  }
-
-  // 다중 발주 문서에서도 보정이 동작하도록 품목별 발주번호 기준 시스템 품목을 준비한다.
-  const normalizedOrderNumbers = Array.from(new Set(
+  const poNumbers = Array.from(new Set(
     items
-      .map((item) => normalizeOrderToken(item.po_number || ''))
-      .filter((value): value is string => Boolean(value))
+      .map((item) => normalizeOrderToken(item.po_number || ""))
+      .filter(Boolean)
   ))
+  if (!poNumbers.length) return items
 
-  const systemItemsByOrderNumber = new Map<string, Array<{ line_number?: number; item_name: string; specification?: string; quantity?: number }>>()
-  if (normalizedOrderNumbers.length > 0) {
-    const purchaseRowsRaw = await Promise.all(
-      normalizedOrderNumbers.map(async (orderNumber) => {
+  const poOnly = poNumbers.filter((value) => value.startsWith("F"))
+  const soOnly = poNumbers.filter((value) => value.startsWith("HS"))
+  const requestRows: any[] = []
+
+  if (poOnly.length) {
         const { data } = await supabase
-          .from('purchase_requests')
-          .select('id, purchase_order_number, sales_order_number')
-          .or(`purchase_order_number.eq.${orderNumber},sales_order_number.eq.${orderNumber}`)
-          .limit(1)
-        return data?.[0] || null
-      })
-    )
+      .from("purchase_requests")
+      .select(`
+        id,
+        purchase_order_number,
+        sales_order_number,
+        items:purchase_request_items(
+          line_number,
+          item_name,
+          specification,
+          quantity,
+          unit_price_value,
+          amount_value
+        )
+      `)
+      .in("purchase_order_number", poOnly)
+      .limit(500)
+    if (Array.isArray(data)) requestRows.push(...data)
+  }
 
-    const purchaseRows = purchaseRowsRaw.filter((row): row is { id: number; purchase_order_number?: string; sales_order_number?: string } => Boolean(row?.id))
-    if (purchaseRows.length > 0) {
-      const purchaseIds = Array.from(new Set(purchaseRows.map((row) => row.id)))
-      const { data: purchaseItems } = await supabase
-        .from('purchase_request_items')
-        .select('purchase_request_id, line_number, item_name, specification, quantity')
-        .in('purchase_request_id', purchaseIds)
+  if (soOnly.length) {
+    const { data } = await supabase
+      .from("purchase_requests")
+      .select(`
+        id,
+        purchase_order_number,
+        sales_order_number,
+        items:purchase_request_items(
+          line_number,
+          item_name,
+          specification,
+          quantity,
+          unit_price_value,
+          amount_value
+        )
+      `)
+      .in("sales_order_number", soOnly)
+      .limit(500)
+    if (Array.isArray(data)) requestRows.push(...data)
+  }
 
-      const itemsByPurchaseId = new Map<number, Array<{ line_number?: number; item_name: string; specification?: string; quantity?: number }>>()
-      ;(purchaseItems || []).forEach((row: any) => {
-        if (!row?.purchase_request_id) return
-        const key = Number(row.purchase_request_id)
-        const list = itemsByPurchaseId.get(key) || []
-        list.push({
-          line_number: row.line_number,
-          item_name: row.item_name || '',
-          specification: row.specification || '',
-          quantity: row.quantity
-        })
-        itemsByPurchaseId.set(key, list)
-      })
+  if (!requestRows.length) return items
 
-      purchaseRows.forEach((row) => {
-        const mappedItems = itemsByPurchaseId.get(row.id) || []
-        if (mappedItems.length === 0) return
-        const poKey = row.purchase_order_number ? normalizeOrderToken(row.purchase_order_number) : null
-        const soKey = row.sales_order_number ? normalizeOrderToken(row.sales_order_number) : null
-        if (poKey) systemItemsByOrderNumber.set(poKey, mappedItems)
-        if (soKey) systemItemsByOrderNumber.set(soKey, mappedItems)
-      })
+  const lineMap = new Map<string, any>()
+  for (const request of requestRows) {
+    const poNumber = normalizeOrderToken(request?.purchase_order_number || request?.sales_order_number || "")
+    if (!poNumber) continue
+    const requestItems = Array.isArray(request?.items) ? request.items : []
+    for (const requestItem of requestItems) {
+      const line = toInteger(requestItem?.line_number)
+      if (line === null) continue
+      lineMap.set(`${poNumber}:${line}`, requestItem)
     }
   }
 
-  let hasChanges = false
-  const correctedItems = items.map((item, index) => {
-    const ocrQuantity = Number(item.quantity)
-    if (!Number.isFinite(ocrQuantity) || !Number.isInteger(ocrQuantity)) return item
+  const unresolvedLineCandidates = new Set<number>()
+  items.forEach((item) => {
+    if (item.po_number && item.po_line_number !== undefined && item.po_line_number !== null) return
+    const parsedLine = parseTrailingLineCandidate(item.specification || item.item_name || item.po_number || "")
+    if (parsedLine !== null) unresolvedLineCandidates.add(parsedLine)
+  })
 
-    const ocrQuantityText = String(ocrQuantity)
-    if (ocrQuantityText.length <= 1 || !ocrQuantityText.endsWith('1')) return item
+  let fallbackRows: any[] = []
+  if (unresolvedLineCandidates.size > 0) {
+    const { data } = await supabase
+      .from("purchase_request_items")
+      .select(`
+        line_number,
+        item_name,
+        specification,
+        quantity,
+        unit_price_value,
+        amount_value,
+        purchase_order_number
+      `)
+      .in("line_number", Array.from(unresolvedLineCandidates))
+      .limit(4000)
+    if (Array.isArray(data)) fallbackRows = data
+  }
 
-    const trimmedQuantity = Number(ocrQuantityText.slice(0, -1))
-    if (!Number.isFinite(trimmedQuantity) || trimmedQuantity <= 0) return item
+  return items.map((item) => {
+    if (!item.po_number || item.po_line_number === undefined || item.po_line_number === null) {
+      const parsedLine = parseTrailingLineCandidate(item.specification || item.item_name || item.po_number || "")
+      if (parsedLine === null || fallbackRows.length === 0) return item
 
-    let systemQuantity: number | undefined = undefined
-
-    // 1차: 기존 방식(대표 발주 + 라인맵)
-    if (quantityByLine.size > 0) {
-      const ocrLineNumber = item.line_number || index + 1
-      const mappedLineNumber = correctionResult.systemLineNumbers?.get(ocrLineNumber) ?? ocrLineNumber
-      const dominantLineQuantity = quantityByLine.get(mappedLineNumber)
-      if (dominantLineQuantity !== undefined) {
-        systemQuantity = dominantLineQuantity
-      }
-    }
-
-    // 2차: 품목별 발주번호 기준으로 가장 유사한 시스템 품목 수량을 선택
-    if (systemQuantity === undefined || systemQuantity !== trimmedQuantity) {
-      const normalizedOrder = normalizeOrderToken(item.po_number || '')
-      const candidateSystemItems = normalizedOrder ? (systemItemsByOrderNumber.get(normalizedOrder) || []) : []
-      if (candidateSystemItems.length > 0) {
-        const ocrName = normalizeItemText(item.item_name || '')
-        let bestScore = -1
-        let bestQuantity: number | undefined = undefined
-
-        candidateSystemItems.forEach((sysItem) => {
-          const sysQty = Number(sysItem.quantity)
-          if (!Number.isFinite(sysQty)) return
-          const nameScore = calculateNameSimilarity(ocrName, normalizeItemText(sysItem.item_name || ''))
-          const specScore = sysItem.specification
-            ? calculateNameSimilarity(ocrName, normalizeItemText(sysItem.specification || ''))
-            : 0
-          const score = Math.max(nameScore, specScore)
+      let bestRow: any | null = null
+      let bestScore = 0
+      for (const row of fallbackRows) {
+        if (toInteger(row?.line_number) !== parsedLine) continue
+        const qtyScore = numericClosenessScore(item.quantity, toInteger(row?.quantity), 40)
+        const priceScore = numericClosenessScore(item.unit_price, toNumber(row?.unit_price_value), 30)
+        const amountScore = numericClosenessScore(item.amount, toNumber(row?.amount_value), 30)
+        const nameScore = item.item_name
+          ? Math.round(calculateNameSimilarity(item.item_name, sanitizeText(row?.item_name || "")) * 0.2)
+          : 0
+        const score = qtyScore + priceScore + amountScore + nameScore
           if (score > bestScore) {
             bestScore = score
-            bestQuantity = sysQty
-          }
-        })
+          bestRow = row
+        }
+      }
 
-        if (bestQuantity !== undefined && bestScore >= 40) {
-          systemQuantity = bestQuantity
+      if (!bestRow || bestScore < 40) return item
+      const inferredPo = normalizeOrderToken(bestRow?.purchase_order_number || "")
+      if (!inferredPo) return item
+
+    return {
+      ...item,
+        po_number: inferredPo,
+        po_line_number: parsedLine,
+        quantity: item.quantity ?? toInteger(bestRow?.quantity),
+        unit_price: item.unit_price ?? toNumber(bestRow?.unit_price_value),
+        amount: item.amount > 0 ? item.amount : (toNumber(bestRow?.amount_value) || 0),
+      }
+    }
+
+    const key = `${normalizeOrderToken(item.po_number)}:${item.po_line_number}`
+    const source = lineMap.get(key)
+    if (!source) return item
+
+    const sourceQty = toInteger(source?.quantity)
+    const sourceUnitPrice = toNumber(source?.unit_price_value)
+    const sourceAmount = toNumber(source?.amount_value)
+
+    let nextQty = item.quantity ?? null
+    let nextUnitPrice = item.unit_price ?? null
+    let nextAmount = item.amount ?? 0
+
+    if (nextQty === null || nextQty <= 0 || isArithmeticMismatch(nextQty, nextUnitPrice, nextAmount)) {
+      if (sourceQty !== null) nextQty = sourceQty
+    }
+
+    if ((nextUnitPrice === null || nextUnitPrice <= 0) && sourceUnitPrice !== null) {
+      nextUnitPrice = sourceUnitPrice
+    }
+
+    if (nextAmount <= 0) {
+      if (sourceAmount !== null && sourceAmount > 0) nextAmount = sourceAmount
+      else if (nextQty !== null && nextUnitPrice !== null) nextAmount = nextQty * nextUnitPrice
+    } else if (nextQty !== null && nextUnitPrice !== null) {
+      const recomputedAmount = nextQty * nextUnitPrice
+      const recomputedDiff = Math.abs(recomputedAmount - nextAmount) / Math.max(1, recomputedAmount)
+      if (recomputedDiff > 0.01) {
+        if (sourceAmount !== null && sourceAmount > 0) {
+          nextAmount = sourceAmount
+        } else {
+          nextAmount = recomputedAmount
         }
       }
     }
 
-    if (systemQuantity === undefined) return item
-    if (trimmedQuantity !== systemQuantity) return item
-
-    hasChanges = true
     return {
       ...item,
-      quantity: trimmedQuantity
+      quantity: nextQty,
+      unit_price: nextUnitPrice,
+      amount: nextAmount,
     }
   })
-
-  return hasChanges ? correctedItems : items
 }
 
-async function matchSystemLineNumbers(
-  supabase: any,
-  ocrItems: ExtractedItem[],
-  purchaseRequestId: number
-): Promise<Map<number, number>> {
-  const { data: systemItems } = await supabase
-    .from('purchase_request_items')
-    .select('line_number, item_name, specification, quantity')
-    .eq('purchase_request_id', purchaseRequestId)
-    .order('line_number', { ascending: true });
+function calculateOrderNumberSimilarity(observed: string, candidate: string): number {
+  if (!observed || !candidate) return 0
+  if (observed === candidate) return 100
 
-  if (!systemItems || systemItems.length === 0) return new Map();
-  return matchSystemLineNumbersFromCandidate(ocrItems, systemItems);
+  const observedNorm = normalizeOrderToken(observed)
+  const candidateNorm = normalizeOrderToken(candidate)
+  if (!observedNorm || !candidateNorm) return 0
+  if (observedNorm === candidateNorm) return 95
+
+  if (observedNorm.startsWith("F") && candidateNorm.startsWith("F")) {
+    if (observedNorm.slice(0, 9) === candidateNorm.slice(0, 9)) return 84
+    const observedParsed = parsePoNumber(observedNorm)
+    const candidateParsed = parsePoNumber(candidateNorm)
+    if (observedParsed && candidateParsed && observedParsed.seqPart === candidateParsed.seqPart) {
+      return 72
+    }
+  }
+
+  if (observedNorm.startsWith("HS") && candidateNorm.startsWith("HS")) {
+    if (observedNorm.slice(0, 8) === candidateNorm.slice(0, 8)) return 82
+  }
+
+  return Math.round(calculateNameSimilarity(observedNorm, candidateNorm))
 }
 
-function matchSystemLineNumbersFromCandidate(
+function calculateCandidateItemSimilarity(
   ocrItems: ExtractedItem[],
-  systemItems: Array<{ line_number?: number; item_name: string; specification?: string; quantity?: number }>
-): Map<number, number> {
-  const result = new Map<number, number>();
-  const usedSystemIndices = new Set<number>();
+  systemItems: Array<{ item_name?: string; specification?: string; quantity?: number }>
+): number {
+  if (!ocrItems.length || !systemItems.length) return 0
 
-  for (let ocrIdx = 0; ocrIdx < ocrItems.length; ocrIdx++) {
-    const ocrItem = ocrItems[ocrIdx];
-    const ocrName = normalizeItemText(ocrItem.item_name || '');
-    const ocrLineNumber = ocrItem.line_number || ocrIdx + 1;
-    let bestScore = 0;
-    let bestSystemIdx = -1;
+  const used = new Set<number>()
+  let total = 0
+  let matched = 0
 
-    for (let sysIdx = 0; sysIdx < systemItems.length; sysIdx++) {
-      if (usedSystemIndices.has(sysIdx)) continue;
-      const sys = systemItems[sysIdx];
-      const sysName = normalizeItemText(sys.item_name || '');
-      const sysSpec = normalizeItemText(sys.specification || '');
+  const normalizedOcr = ocrItems.map((item) => ({
+    name: normalizeItemText(item.item_name || ""),
+    spec: normalizeItemText(item.specification || ""),
+    qty: item.quantity ?? null,
+  }))
 
-      const nameScore = calculateNameSimilarity(ocrName, sysName);
-      const specScore = sysSpec ? calculateNameSimilarity(ocrName, sysSpec) : 0;
-      let score = Math.max(nameScore, specScore);
+  for (const ocr of normalizedOcr) {
+    let bestScore = 0
+    let bestIdx = -1
 
-      if (ocrItem.quantity && sys.quantity) {
-        if (ocrItem.quantity === sys.quantity) score += 20;
-        else if (ocrItem.quantity <= sys.quantity) score += 10;
+    for (let idx = 0; idx < systemItems.length; idx += 1) {
+      if (used.has(idx)) continue
+      const sys = systemItems[idx]
+      const sysName = normalizeItemText(sys.item_name || "")
+      const sysSpec = normalizeItemText(sys.specification || "")
+
+      const nameScore = ocr.name ? calculateNameSimilarity(ocr.name, sysName) : 0
+      const specScore = ocr.name ? calculateNameSimilarity(ocr.name, sysSpec) : 0
+      const reverseSpecScore = ocr.spec ? calculateNameSimilarity(ocr.spec, sysSpec) : 0
+
+      let score = Math.max(nameScore, specScore, reverseSpecScore)
+      if (ocr.qty !== null && sys.quantity !== undefined && sys.quantity !== null) {
+        if (ocr.qty === sys.quantity) score = Math.min(100, score + 18)
+        else if (ocr.qty <= sys.quantity) score = Math.min(100, score + 8)
       }
 
       if (score > bestScore) {
-        bestScore = score;
-        bestSystemIdx = sysIdx;
+        bestScore = score
+        bestIdx = idx
       }
     }
 
-    if (bestScore >= 60 && bestSystemIdx >= 0) {
-      usedSystemIndices.add(bestSystemIdx);
-      const sysLineNumber = systemItems[bestSystemIdx].line_number;
-      if (sysLineNumber != null) {
-        result.set(ocrLineNumber, sysLineNumber);
+    if (bestScore >= 40 && bestIdx >= 0) {
+      used.add(bestIdx)
+      total += bestScore
+      matched += 1
+    }
+  }
+
+  if (matched === 0) return 0
+  const matchRatio = matched / ocrItems.length
+  const avgScore = total / matched
+  return Math.round(matchRatio * 55 + avgScore * 0.45)
+}
+
+async function validateAndMatchVendor(
+  supabase: any,
+  extractedVendorName: string
+): Promise<{ matched: boolean; vendor_name?: string; vendor_id?: number; similarity: number }> {
+  if (!extractedVendorName) {
+    return { matched: false, similarity: 0 }
+  }
+
+  const { data: vendors, error } = await supabase
+    .from("vendors")
+    .select("id, vendor_name")
+    .limit(500)
+
+  if (error || !vendors || vendors.length === 0) {
+    return { matched: false, similarity: 0 }
+  }
+
+  let bestMatch: { vendor_id: number; vendor_name: string; similarity: number } | null = null
+
+  for (const vendor of vendors) {
+    const similarity = calculateVendorSimilarity(extractedVendorName, vendor.vendor_name)
+    if (!bestMatch || similarity > bestMatch.similarity) {
+      bestMatch = {
+        vendor_id: vendor.id,
+        vendor_name: vendor.vendor_name,
+        similarity,
       }
     }
   }
 
-  return result;
+  if (bestMatch && bestMatch.similarity >= 60) {
+    return {
+      matched: true,
+      vendor_name: bestMatch.vendor_name,
+      vendor_id: bestMatch.vendor_id,
+      similarity: bestMatch.similarity,
+    }
+  }
+
+  return { matched: false, similarity: bestMatch?.similarity || 0 }
+}
+
+async function findVendorInText(
+  supabase: any,
+  fullText: string
+): Promise<{ matched: boolean; vendor_name?: string; vendor_id?: number; matched_text?: string; similarity: number }> {
+  if (!fullText) {
+    return { matched: false, similarity: 0 }
+  }
+
+  const { data: vendors, error } = await supabase
+    .from("vendors")
+    .select("id, vendor_name")
+    .limit(500)
+
+  if (error || !vendors || vendors.length === 0) {
+    return { matched: false, similarity: 0 }
+  }
+
+  const textLines = fullText.split(/[\n\r]+/).map((line) => line.trim()).filter(Boolean)
+  let bestMatch:
+    | {
+        vendor_id: number
+        vendor_name: string
+        matched_text: string
+        similarity: number
+      }
+    | null = null
+
+  for (const vendor of vendors) {
+    const normalizedVendor = normalizeVendorText(vendor.vendor_name || "")
+    if (!normalizedVendor || normalizedVendor.length < 2) continue
+
+    for (const line of textLines) {
+      const normalizedLine = normalizeVendorText(line)
+      if (!normalizedLine) continue
+
+      if (normalizedLine.includes(normalizedVendor)) {
+        if (!bestMatch || 100 > bestMatch.similarity) {
+          bestMatch = {
+            vendor_id: vendor.id,
+            vendor_name: vendor.vendor_name,
+            matched_text: line,
+            similarity: 100,
+          }
+        }
+        break
+      }
+
+      const similarity = calculateVendorSimilarity(line, vendor.vendor_name)
+      if (similarity >= 70 && (!bestMatch || similarity > bestMatch.similarity)) {
+        bestMatch = {
+          vendor_id: vendor.id,
+          vendor_name: vendor.vendor_name,
+          matched_text: line,
+          similarity,
+        }
+      }
+    }
+  }
+
+  if (bestMatch && bestMatch.similarity >= 70) {
+    return {
+      matched: true,
+      vendor_name: bestMatch.vendor_name,
+      vendor_id: bestMatch.vendor_id,
+      matched_text: bestMatch.matched_text,
+      similarity: bestMatch.similarity,
+    }
+  }
+
+  return { matched: false, similarity: bestMatch?.similarity || 0 }
 }
 
 function normalizeItemText(value: string): string {
   return value
     .toLowerCase()
-    .replace(/\s+/g, '')
-    .replace(/[^a-z0-9가-힣]/g, '')
-    .trim();
+    .replace(/\s+/g, "")
+    .replace(/[^a-z0-9가-힣]/g, "")
+    .trim()
 }
 
 function normalizeVendorText(value: string): string {
   return value
     .toLowerCase()
-    .replace(/\(주\)|주식회사|㈜|co\.?|ltd\.?|inc\.?|corp\.?|company|컴퍼니/gi, '')
-    .replace(/\s+/g, '')
-    .replace(/[^a-z0-9가-힣]/g, '')
-    .trim();
-}
-
-function calculateVendorHintSimilarity(vendorName: string | undefined, vendorNameHints: string[]): number | null {
-  if (!vendorName || vendorNameHints.length === 0) return null;
-
-  const normalizedVendor = normalizeVendorText(vendorName);
-  if (!normalizedVendor) return null;
-
-  let best = 0;
-  for (const hint of vendorNameHints) {
-    const normalizedHint = normalizeVendorText(hint);
-    if (!normalizedHint) continue;
-    const score = calculateNameSimilarity(normalizedVendor, normalizedHint);
-    if (score > best) {
-      best = score;
-    }
-  }
-
-  return best;
-}
-
-function normalizeMappedNumber(value?: string): string {
-  if (!value) return ''
-  const cleaned = normalizeOrderCandidate(value)
-  const tokenNormalized = normalizeOrderToken(cleaned)
-  if (tokenNormalized) return tokenNormalized
-  if (cleaned.startsWith('F')) {
-    const normalized = normalizePO(cleaned)
-    return hasValidPoDate(normalized) ? normalized : ''
-  }
-  if (cleaned.startsWith('HS')) return normalizeSO(cleaned)
-  return cleaned
-}
-
-function normalizeOrderCandidate(value: string): string {
-  const cleaned = value.toUpperCase().replace(/\s+/g, '').replace(/[^\w_-]/g, '')
-  if (cleaned.startsWith('H5')) {
-    return `HS${normalizeDigitConfusions(cleaned.slice(2))}`
-  }
-  if (cleaned.startsWith('HS')) {
-    return `HS${normalizeDigitConfusions(cleaned.slice(2))}`
-  }
-  if (cleaned.startsWith('F')) {
-    return `F${normalizeDigitConfusions(cleaned.slice(1))}`
-  }
-  return normalizeDigitConfusions(cleaned)
-}
-
-function normalizeDigitConfusions(value: string): string {
-  const replacements: Record<string, string> = {
-    O: '0',
-    I: '1',
-    L: '1',
-    S: '5',
-    B: '8',
-    Z: '2'
-  }
-  return value
-    .split('')
-    .map((char) => replacements[char] ?? char)
-    .join('')
-}
-
-function applyPoMappings(items: ExtractedItem[], mappings: PoMapping[]): ExtractedItem[] {
-  if (!mappings.length) return items
-
-  const byLine = new Map<number, PoMapping>()
-  const byName = new Map<string, PoMapping>()
-  const ranges: Array<{ start: number; end: number; po_number?: string; confidence?: number }> = []
-
-  mappings.forEach((m) => {
-    if (m.confidence !== undefined && m.confidence < 0.6) return
-    if (typeof m.start_line === 'number' && typeof m.end_line === 'number') {
-      if (m.start_line <= m.end_line) {
-        ranges.push({ start: m.start_line, end: m.end_line, po_number: m.po_number, confidence: m.confidence })
-      }
-      return
-    }
-    if (typeof m.line_number === 'number') {
-      byLine.set(m.line_number, m)
-      return
-    }
-    if (m.item_name) {
-      byName.set(normalizeItemText(m.item_name), m)
-    }
-  })
-
-  let keptExistingCount = 0
-  let appliedMappingCount = 0
-  let unresolvedCount = 0
-
-  const mappedItems = items.map((item, idx) => {
-    const existingNormalized = normalizeOrderToken(item.po_number)
-    // OCR 본문(규격/비고/품목명)에서 이미 추출된 품목별 번호가 있으면
-    // 괄호/연결선 매핑으로 덮어쓰지 않는다.
-    if (existingNormalized) {
-      keptExistingCount += 1
-      return { ...item, po_number: existingNormalized }
-    }
-
-    const lineNumber = item.line_number ?? idx + 1
-    const rangeMatches = ranges.filter(range => lineNumber >= range.start && lineNumber <= range.end)
-    let rangeMatch: { po_number?: string; confidence?: number } | undefined = undefined
-    if (rangeMatches.length > 0) {
-      rangeMatch = rangeMatches
-        .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0) || (a.end - a.start) - (b.end - b.start))[0]
-    }
-    const byLineMatch = byLine.get(lineNumber)
-    const byNameMatch = byName.get(normalizeItemText(item.item_name || ''))
-    const selected = rangeMatch || byLineMatch || byNameMatch
-    const mapped = normalizeMappedNumber(selected?.po_number)
-    if (!mapped) {
-      unresolvedCount += 1
-      return item
-    }
-    appliedMappingCount += 1
-    return { ...item, po_number: mapped }
-  })
-
-  return mappedItems
-}
-
-function buildInferredPoMap(params: {
-  items: ExtractedItem[];
-  visionWords: VisionWord[];
-  bracketMappings: PoMapping[];
-  rangeMappings: RangeMapping[];
-}): Map<number, InferredPoInfo> {
-  const { items, visionWords, bracketMappings, rangeMappings } = params
-  const inferredMap = new Map<number, InferredPoInfo>()
-
-  if (!items.length) return inferredMap
-
-  const itemsWithLine = items.map((item, idx) => ({
-    item,
-    lineNumber: item.line_number || idx + 1
-  }))
-
-  const rows = visionWords.length > 0 ? groupWordsIntoRows(visionWords) : []
-  const itemRowMap = rows.length > 0 ? mapItemsToRows(itemsWithLine, rows) : new Map<number, RowData>()
-  const marginMap = rows.length > 0 ? mapMarginNumbersToItems(itemRowMap, rows) : new Map<number, InferredPoInfo>()
-  const bracketMap = mapBracketMappingsToItems(itemsWithLine, bracketMappings)
-  const rangeMap = mapRangeMappingsToItems(itemsWithLine, rangeMappings)
-  const perItemMap = mapPerItemNumbers(itemsWithLine)
-  const globalNumber = getGlobalPoNumber(items)
-
-  itemsWithLine.forEach(({ lineNumber }) => {
-    if (bracketMap.has(lineNumber)) {
-      inferredMap.set(lineNumber, bracketMap.get(lineNumber)!)
-      return
-    }
-    if (rangeMap.has(lineNumber)) {
-      inferredMap.set(lineNumber, rangeMap.get(lineNumber)!)
-      return
-    }
-    if (marginMap.has(lineNumber)) {
-      inferredMap.set(lineNumber, marginMap.get(lineNumber)!)
-      return
-    }
-    if (perItemMap.has(lineNumber)) {
-      inferredMap.set(lineNumber, perItemMap.get(lineNumber)!)
-      return
-    }
-    if (globalNumber) {
-      inferredMap.set(lineNumber, {
-        inferred_po_number: globalNumber,
-        inferred_po_source: 'global',
-        inferred_po_confidence: 0.55,
-        inferred_po_group_id: `global-${globalNumber}`
-      })
-    }
-  })
-
-  return inferredMap
-}
-
-function groupWordsIntoRows(words: VisionWord[]): RowData[] {
-  if (!words.length) return []
-
-  const heights = words.map(word => word.bbox.h).filter(h => h > 0).sort((a, b) => a - b)
-  const medianHeight = heights.length
-    ? heights[Math.floor(heights.length / 2)]
-    : 10
-  const rowGap = Math.max(6, Math.round(medianHeight * 0.6))
-
-  const sorted = [...words].sort((a, b) => (a.bbox.y + a.bbox.h / 2) - (b.bbox.y + b.bbox.h / 2))
-  const rows: RowData[] = []
-
-  sorted.forEach(word => {
-    const centerY = word.bbox.y + word.bbox.h / 2
-    const row = rows.find(r => Math.abs(r.centerY - centerY) <= rowGap)
-    if (row) {
-      row.words.push(word)
-      row.centerY = (row.centerY * (row.words.length - 1) + centerY) / row.words.length
-      row.minX = Math.min(row.minX, word.bbox.x)
-      row.maxX = Math.max(row.maxX, word.bbox.x + word.bbox.w)
-      row.minY = Math.min(row.minY, word.bbox.y)
-      row.maxY = Math.max(row.maxY, word.bbox.y + word.bbox.h)
-      return
-    }
-
-    rows.push({
-      id: rows.length + 1,
-      text: '',
-      words: [word],
-      minX: word.bbox.x,
-      maxX: word.bbox.x + word.bbox.w,
-      minY: word.bbox.y,
-      maxY: word.bbox.y + word.bbox.h,
-      centerY
-    })
-  })
-
-  rows.forEach(row => {
-    row.words.sort((a, b) => a.bbox.x - b.bbox.x)
-    row.text = row.words.map(word => word.text).join(' ')
-  })
-
-  rows.sort((a, b) => a.centerY - b.centerY)
-  return rows
-}
-
-function mapItemsToRows(
-  itemsWithLine: Array<{ item: ExtractedItem; lineNumber: number }>,
-  rows: RowData[]
-): Map<number, RowData> {
-  const rowMap = new Map<number, RowData>()
-
-  itemsWithLine.forEach(({ item, lineNumber }, idx) => {
-    const itemName = (item.item_name || '').trim()
-    if (!itemName) return
-
-    let bestRow: RowData | null = null
-    let bestScore = 0
-
-    rows.forEach(row => {
-      const score = calculateRowMatchScore(itemName, row.text)
-      if (score > bestScore) {
-        bestScore = score
-        bestRow = row
-      }
-    })
-
-    if (bestRow && bestScore >= 35) {
-      rowMap.set(lineNumber, bestRow)
-      return
-    }
-
-    const fallbackRow = rows[idx]
-    if (fallbackRow) {
-      rowMap.set(lineNumber, fallbackRow)
-    }
-  })
-
-  return rowMap
-}
-
-function mapMarginNumbersToItems(
-  itemRowMap: Map<number, RowData>,
-  rows: RowData[]
-): Map<number, InferredPoInfo> {
-  const inferredMap = new Map<number, InferredPoInfo>()
-  if (!rows.length) return inferredMap
-
-  const allMinX = rows.map(row => row.minX)
-  const allMaxX = rows.map(row => row.maxX)
-  const minX = Math.min(...allMinX)
-  const maxX = Math.max(...allMaxX)
-  const leftLimit = minX + (maxX - minX) * 0.2
-
-  const marginNumbers = rows
-    .map(row => {
-      const leftWords = row.words.filter(word => word.bbox.x <= leftLimit + 2)
-      const combinedText = leftWords.map(word => word.text).join(' ')
-      const number = extractOrderNumber(combinedText)
-      return number ? { number, centerY: row.centerY, rowId: row.id } : null
-    })
-    .filter((value): value is { number: string; centerY: number; rowId: number } => !!value)
-    .sort((a, b) => a.centerY - b.centerY)
-
-  if (!marginNumbers.length) return inferredMap
-
-  itemRowMap.forEach((row, lineNumber) => {
-    const match = marginNumbers
-      .filter(candidate => candidate.centerY <= row.centerY)
-      .slice(-1)[0]
-    if (!match) return
-
-    inferredMap.set(lineNumber, {
-      inferred_po_number: match.number,
-      inferred_po_source: 'margin_range',
-      inferred_po_confidence: 0.7,
-      inferred_po_group_id: `margin-${match.rowId}`
-    })
-  })
-
-  return inferredMap
-}
-
-function mapBracketMappingsToItems(
-  itemsWithLine: Array<{ item: ExtractedItem; lineNumber: number }>,
-  mappings: PoMapping[]
-): Map<number, InferredPoInfo> {
-  const inferredMap = new Map<number, InferredPoInfo>()
-  if (!mappings.length) return inferredMap
-
-  const itemByLine = new Map<number, ExtractedItem>()
-  itemsWithLine.forEach(({ item, lineNumber }) => {
-    itemByLine.set(lineNumber, item)
-  })
-
-  mappings.forEach((mapping, index) => {
-    const mappedNumber = normalizeMappedNumber(mapping.po_number)
-    if (!mappedNumber) return
-    const confidence = Math.max(0.5, Math.min(0.95, mapping.confidence ?? 0.8))
-
-    if (typeof mapping.start_line === 'number' && typeof mapping.end_line === 'number') {
-      const startLine = mapping.start_line
-      const endLine = mapping.end_line
-      if (startLine <= endLine) {
-        const groupId = `bracket-range-${index + 1}-${mappedNumber}`
-        itemsWithLine.forEach(({ lineNumber }) => {
-          if (lineNumber >= startLine && lineNumber <= endLine && !inferredMap.has(lineNumber)) {
-            inferredMap.set(lineNumber, {
-              inferred_po_number: mappedNumber,
-              inferred_po_source: 'bracket',
-              inferred_po_confidence: confidence,
-              inferred_po_group_id: groupId
-            })
-          }
-        })
-      }
-      return
-    }
-
-    let lineNumber: number | undefined = undefined
-    if (typeof mapping.line_number === 'number') {
-      lineNumber = mapping.line_number
-    } else if (mapping.item_name) {
-      const bestMatch = findBestItemByName(itemsWithLine, mapping.item_name)
-      lineNumber = bestMatch?.lineNumber
-    }
-
-    if (!lineNumber) return
-
-    const groupId = `bracket-${mappedNumber}`
-    inferredMap.set(lineNumber, {
-      inferred_po_number: mappedNumber,
-      inferred_po_source: 'bracket',
-      inferred_po_confidence: confidence,
-      inferred_po_group_id: groupId
-    })
-
-    const previousLine = lineNumber - 1
-    const previousItem = itemByLine.get(previousLine)
-    if (
-      previousItem &&
-      !inferredMap.has(previousLine) &&
-      confidence >= 0.75 &&
-      (previousItem.item_name || '').trim().length >= 2
-    ) {
-      inferredMap.set(previousLine, {
-        inferred_po_number: mappedNumber,
-        inferred_po_source: 'bracket',
-        inferred_po_confidence: confidence,
-        inferred_po_group_id: groupId
-      })
-    }
-  })
-
-  return inferredMap
-}
-
-function mapRangeMappingsToItems(
-  itemsWithLine: Array<{ item: ExtractedItem; lineNumber: number }>,
-  mappings: RangeMapping[]
-): Map<number, InferredPoInfo> {
-  const inferredMap = new Map<number, InferredPoInfo>()
-  if (!mappings.length) return inferredMap
-
-  mappings.forEach((mapping, index) => {
-    const mappedNumber = normalizeMappedNumber(mapping.po_number)
-    if (!mappedNumber) return
-    const startLine = mapping.start_line
-    const endLine = mapping.end_line
-    if (!startLine || !endLine || startLine > endLine) return
-
-    const confidence = Math.max(0.5, Math.min(0.95, mapping.confidence ?? 0.75))
-    const groupId = `range-${index + 1}-${mappedNumber}`
-
-    itemsWithLine.forEach(({ lineNumber }) => {
-      if (lineNumber >= startLine && lineNumber <= endLine) {
-        inferredMap.set(lineNumber, {
-          inferred_po_number: mappedNumber,
-          inferred_po_source: 'handwriting_range',
-          inferred_po_confidence: confidence,
-          inferred_po_group_id: groupId
-        })
-      }
-    })
-  })
-
-  return inferredMap
-}
-
-function mapPerItemNumbers(
-  itemsWithLine: Array<{ item: ExtractedItem; lineNumber: number }>
-): Map<number, InferredPoInfo> {
-  const inferredMap = new Map<number, InferredPoInfo>()
-
-  itemsWithLine.forEach(({ item, lineNumber }) => {
-    const number = normalizeMappedNumber(item.po_number)
-    if (!number) return
-
-    const confidence = item.confidence === 'high'
-      ? 0.85
-      : item.confidence === 'med'
-        ? 0.7
-        : 0.55
-
-    inferredMap.set(lineNumber, {
-      inferred_po_number: number,
-      inferred_po_source: 'per_item',
-      inferred_po_confidence: confidence
-    })
-  })
-
-  return inferredMap
-}
-
-function getGlobalPoNumber(items: ExtractedItem[]): string | null {
-  const uniqueNumbers = Array.from(new Set(
-    items
-      .map(item => normalizeMappedNumber(item.po_number))
-      .filter((value): value is string => !!value)
-  ))
-
-  if (uniqueNumbers.length === 1) {
-    return uniqueNumbers[0]
-  }
-
-  return null
-}
-
-function normalizeText(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/\s+/g, '')
-    .replace(/[^a-z0-9가-힣]/g, '')
+    .replace(/\(주\)|주식회사|㈜|co\.?|ltd\.?|inc\.?|corp\.?|company|컴퍼니/gi, "")
+    .replace(/\s+/g, "")
+    .replace(/[^a-z0-9가-힣]/g, "")
     .trim()
 }
 
-function calculateRowMatchScore(itemName: string, rowText: string): number {
-  const normalizedItem = normalizeText(itemName)
-  const normalizedRow = normalizeText(rowText)
-  if (!normalizedItem || !normalizedRow) return 0
+function calculateVendorHintSimilarity(vendorName: string | undefined, hints: string[]): number | null {
+  if (!vendorName || hints.length === 0) return null
+  const normalizedVendor = normalizeVendorText(vendorName)
+  if (!normalizedVendor) return null
 
-  if (normalizedRow.includes(normalizedItem) || normalizedItem.includes(normalizedRow)) {
-    return 90
+  let best = 0
+  for (const hint of hints) {
+    const normalizedHint = normalizeVendorText(hint)
+    if (!normalizedHint) continue
+    const score = calculateNameSimilarity(normalizedVendor, normalizedHint)
+    if (score > best) best = score
   }
-
-  const itemTokens = tokenizeText(itemName)
-  const rowTokens = tokenizeText(rowText)
-  if (!itemTokens.length || !rowTokens.length) return 0
-
-  const commonCount = itemTokens.filter(token => rowTokens.includes(token)).length
-  const score = (commonCount / Math.max(itemTokens.length, rowTokens.length)) * 100
-  return Math.round(score)
+  return best
 }
 
-function tokenizeText(value: string): string[] {
-  return value
-    .toLowerCase()
-    .split(/[^a-z0-9가-힣]+/g)
-    .map(token => token.trim())
-    .filter(token => token.length >= 2)
+function calculateVendorSimilarity(vendor1: string, vendor2: string): number {
+  if (!vendor1 || !vendor2) return 0
+
+  const n1 = normalizeVendorText(vendor1)
+  const n2 = normalizeVendorText(vendor2)
+  if (!n1 || !n2) return 0
+  if (n1 === n2) return 100
+  if (n1.includes(n2) || n2.includes(n1)) return 90
+
+  return Math.round(calculateNameSimilarity(n1, n2))
 }
 
-function findBestItemByName(
-  itemsWithLine: Array<{ item: ExtractedItem; lineNumber: number }>,
-  query: string
-): { lineNumber: number } | null {
-  const normalizedQuery = normalizeText(query)
-  if (!normalizedQuery) return null
+function calculateNameSimilarity(name1: string, name2: string): number {
+  const s1 = normalizeItemText(name1)
+  const s2 = normalizeItemText(name2)
+  if (!s1 || !s2) return 0
+  if (s1 === s2) return 100
+  if (s1.includes(s2) || s2.includes(s1)) return 84
 
-  let bestLineNumber: number | null = null
-  let bestScore = -1
-  itemsWithLine.forEach(({ item, lineNumber }) => {
-    const name = normalizeText(item.item_name || '')
-    if (!name) return
+  const maxLen = Math.max(s1.length, s2.length)
+  const distance = levenshteinDistance(s1, s2)
+  return ((maxLen - distance) / maxLen) * 100
+}
 
-    let score = 0
-    if (name.includes(normalizedQuery) || normalizedQuery.includes(name)) {
-      score = 90
+function levenshteinDistance(a: string, b: string): number {
+  const m = a.length
+  const n = b.length
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
+
+  for (let i = 0; i <= m; i += 1) dp[i][0] = i
+  for (let j = 0; j <= n; j += 1) dp[0][j] = j
+
+  for (let i = 1; i <= m; i += 1) {
+    for (let j = 1; j <= n; j += 1) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1]
     } else {
-      const queryTokens = tokenizeText(query)
-      const nameTokens = tokenizeText(item.item_name || '')
-      const commonCount = queryTokens.filter(token => nameTokens.includes(token)).length
-      score = (commonCount / Math.max(queryTokens.length, nameTokens.length || 1)) * 100
+        dp[i][j] = Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]) + 1
+      }
     }
+  }
 
-    if (score > bestScore) {
-      bestScore = score
-      bestLineNumber = lineNumber
-    }
-  })
-
-  if (!bestLineNumber || bestScore < 35) return null
-  return { lineNumber: bestLineNumber }
+  return dp[m][n]
 }
 
-function extractOrderNumber(text: string): string | null {
-  if (!text) return null
-  const cleaned = text.toUpperCase().replace(/\s+/g, '').replace(/[^\w_-]/g, '')
+function parsePoNumber(value: string): { datePart: string; seqPart: string } | null {
+  const match = value.match(/^F(\d{8})_(\d{3})$/)
+  if (!match) return null
+  return { datePart: match[1], seqPart: match[2] }
+}
 
-  const poMatch = cleaned.match(/F[0-9A-Z]{8}[_-][0-9A-Z]{1,3}/)
-  if (poMatch) {
-    const normalized = normalizeOrderCandidate(poMatch[0]).replace('-', '_')
-    return normalizePO(normalized)
+function hasValidPoDate(poNumber: string): boolean {
+  const parsed = parsePoNumber(poNumber)
+  if (!parsed) return true
+  return isValidYyyyMmDd(parsed.datePart)
+}
+
+function isValidYyyyMmDd(datePart: string): boolean {
+  if (!/^\d{8}$/.test(datePart)) return false
+  const y = Number.parseInt(datePart.slice(0, 4), 10)
+  const m = Number.parseInt(datePart.slice(4, 6), 10)
+  const d = Number.parseInt(datePart.slice(6, 8), 10)
+  if (m < 1 || m > 12) return false
+  if (d < 1 || d > 31) return false
+  const lastDay = new Date(y, m, 0).getDate()
+  return d <= lastDay
+}
+
+function toInteger(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.round(value)
   }
-
-  const soMatch = cleaned.match(/H[5S][0-9A-Z]{6}[-_][0-9A-Z]{1,2}/)
-  if (soMatch) {
-    const normalized = normalizeOrderCandidate(soMatch[0]).replace('_', '-')
-    return normalizeSO(normalized)
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[^\d.-]/g, "")
+    if (!cleaned) return null
+    const parsed = Number(cleaned)
+    return Number.isFinite(parsed) ? Math.round(parsed) : null
   }
-
   return null
 }
 
-function calculateOrderSimilarity(
-  ocrItems: Array<{ name: string; quantity: number }>,
-  systemItems: Array<{ name: string; spec: string; quantity: number }>
-): { score: number; matchedCount: number } {
-  if (!ocrItems.length || !systemItems.length) {
-    return { score: 0, matchedCount: 0 };
+function toNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[,₩원$￦\s]/g, "").replace(/[^\d.-]/g, "")
+    if (!cleaned || cleaned === "-" || cleaned === ".") return null
+    const parsed = Number(cleaned)
+    return Number.isFinite(parsed) ? parsed : null
   }
-
-  const usedSystem = new Set<number>();
-  let totalScore = 0;
-  let matchedCount = 0;
-
-  for (const ocrItem of ocrItems) {
-    let best = 0;
-    let bestIndex = -1;
-
-    for (let i = 0; i < systemItems.length; i += 1) {
-      if (usedSystem.has(i)) continue;
-      const sys = systemItems[i];
-      const nameScore = calculateNameSimilarity(ocrItem.name, sys.name);
-      const specScore = sys.spec ? calculateNameSimilarity(ocrItem.name, sys.spec) : 0;
-      const baseScore = Math.max(nameScore, specScore);
-
-      let quantityBonus = 0;
-      if (ocrItem.quantity && sys.quantity) {
-        if (ocrItem.quantity === sys.quantity) {
-          quantityBonus = 20;
-        } else if (ocrItem.quantity <= sys.quantity) {
-          quantityBonus = 10;
-        }
-      }
-
-      const total = baseScore + quantityBonus;
-      if (total > best) {
-        best = total;
-        bestIndex = i;
-      }
-    }
-
-    if (best >= 60 && bestIndex >= 0) {
-      usedSystem.add(bestIndex);
-      totalScore += best;
-      matchedCount += 1;
-    }
-  }
-
-  const matchRatio = matchedCount / ocrItems.length;
-  const avgScore = matchedCount > 0 ? totalScore / matchedCount : 0;
-  const score = Math.round((matchRatio * 50) + (avgScore * 0.5));
-
-  return { score, matchedCount };
+  return null
 }
 
-function calculateNameSimilarity(a: string, b: string): number {
-  if (!a || !b) return 0;
-  if (a === b) return 100;
-  if (a.includes(b) || b.includes(a)) {
-    const ratio = Math.min(a.length, b.length) / Math.max(a.length, b.length);
-    return Math.round(80 + ratio * 20);
-  }
-  return 0;
+function parseTrailingLineCandidate(value: string): number | null {
+  if (!value) return null
+  const normalized = value.toUpperCase().replace(/\s+/g, "")
+  const match = normalized.match(/(?:[_-])(\d{1,2})$/)
+  if (!match) return null
+  const parsed = Number.parseInt(match[1], 10)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
+function numericClosenessScore(
+  observed: number | null | undefined,
+  candidate: number | null | undefined,
+  maxScore: number
+): number {
+  if (candidate === null || candidate === undefined) return 0
+  if (observed === null || observed === undefined) return Math.round(maxScore * 0.4)
+  if (!Number.isFinite(observed) || !Number.isFinite(candidate)) return 0
+
+  const diff = Math.abs(observed - candidate)
+  const base = Math.max(1, Math.abs(candidate))
+  const ratio = diff / base
+  if (ratio <= 0.01) return maxScore
+  if (ratio <= 0.05) return Math.round(maxScore * 0.8)
+  if (ratio <= 0.15) return Math.round(maxScore * 0.5)
+  if (ratio <= 0.3) return Math.round(maxScore * 0.25)
+  return 0
+}
+
+function isHeaderLikeItemName(value: string): boolean {
+  const normalized = value.replace(/\s+/g, "").toUpperCase()
+  if (!normalized) return false
+  if (/^품명\d*$/.test(normalized)) return true
+  return new Set([
+    "품명",
+    "품목",
+    "ITEM",
+    "ITEMNAME",
+    "NO",
+    "NO.",
+    "규격",
+    "수량",
+    "단가",
+    "금액",
+    "비고",
+  ]).has(normalized)
+}
+
+function looksLikeOrderToken(value: string): boolean {
+  const normalized = value.toUpperCase().replace(/\s+/g, "")
+  return /^F\d{8}[_-]\d{1,3}(?:[-_]\d{1,3})?$/.test(normalized) ||
+    /^HS\d{6}[-_]\d{1,2}(?:[-_]\d{1,3})?$/.test(normalized)
+}
+
+function isArithmeticMismatch(
+  quantity: number | null | undefined,
+  unitPrice: number | null | undefined,
+  amount: number | null | undefined
+): boolean {
+  if (quantity === null || quantity === undefined) return false
+  if (unitPrice === null || unitPrice === undefined) return false
+  if (amount === null || amount === undefined || amount <= 0) return false
+  const expected = quantity * unitPrice
+  const deltaRatio = Math.abs(expected - amount) / Math.max(1, amount)
+  return deltaRatio > 0.2
+}
+
+function normalizeItemConfidence(confidence: unknown): "low" | "med" | "high" {
+  const fromNumeric = (raw: number): "low" | "med" | "high" => {
+    if (!Number.isFinite(raw)) return "med"
+    let value = raw
+    if (value > 1 && value <= 100) value = value / 100
+    if (value >= 0.8) return "high"
+    if (value >= 0.45) return "med"
+    return "low"
+  }
+
+  if (typeof confidence === "number") return fromNumeric(confidence)
+
+  if (typeof confidence === "string") {
+    const normalized = confidence.trim().toLowerCase()
+    if (normalized === "high" || normalized === "h") return "high"
+    if (normalized === "med" || normalized === "medium" || normalized === "m") return "med"
+    if (normalized === "low" || normalized === "l") return "low"
+    const parsed = Number(normalized)
+    if (Number.isFinite(parsed)) return fromNumeric(parsed)
+  }
+
+  if (typeof confidence === "boolean") {
+    return confidence ? "high" : "low"
+  }
+
+  return "med"
+}
+
+async function applyCharPatternCorrections(
+  supabase: any,
+  items: ExtractedItem[],
+  vendorName: string
+): Promise<ExtractedItem[]> {
+  if (!items.length || !vendorName) return items
+
+  const { data: patterns } = await supabase
+    .from("ocr_char_patterns")
+    .select("wrong_char, correct_char, occurrence_count")
+    .eq("vendor_name", vendorName)
+    .gte("occurrence_count", 1)
+    .order("occurrence_count", { ascending: false })
+    .limit(50)
+
+  if (!Array.isArray(patterns) || patterns.length === 0) return items
+
+  return items.map((item) => {
+    if (!item.item_name) return item
+    let corrected = item.item_name
+    for (const pattern of patterns) {
+      if (!pattern.wrong_char || !pattern.correct_char) continue
+      corrected = corrected.split(pattern.wrong_char).join(pattern.correct_char)
+    }
+    if (corrected === item.item_name) return item
+    return { ...item, item_name: corrected }
+  })
+}
+
+function triggerNextQueuedProcessing(supabaseUrl: string, supabaseServiceKey: string): void {
+  const functionUrl = `${supabaseUrl}/functions/v1/ocr-transaction-statement`
+  fetch(functionUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${supabaseServiceKey}`,
+      apikey: supabaseServiceKey,
+    },
+    body: JSON.stringify({ mode: "process_next" }),
+  }).catch(() => {})
+}
