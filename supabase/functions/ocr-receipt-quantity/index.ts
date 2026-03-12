@@ -225,7 +225,17 @@ serve(async (req) => {
     // 1-1. 이미지 방향 감지 및 회전
     currentStage = 'detect_orientation'
     const rawBase64ForDetection = arrayBufferToBase64(imageBuffer)
-    const rotationDegrees = await detectImageOrientation(rawBase64ForDetection, openaiApiKey!)
+    let rotationDegrees = await detectImageOrientation(rawBase64ForDetection, openaiApiKey!)
+
+    // fallback: 방향 감지가 0을 반환했지만 이미지가 명확히 가로형이면 90도 회전
+    if (rotationDegrees === 0) {
+      try {
+        const tmpImg = await decodeImageFromBuffer(imageBuffer)
+        if (tmpImg && tmpImg.width > tmpImg.height * 1.1) {
+          rotationDegrees = 90
+        }
+      } catch (_) {}
+    }
     if (rotationDegrees > 0) {
       try {
         const tempImage = await decodeImageFromBuffer(imageBuffer)
@@ -636,7 +646,7 @@ async function detectImageOrientation(base64Image: string, apiKey: string): Prom
               },
               {
                 type: "text",
-                text: '이 문서 이미지를 정상적으로 읽으려면 시계 방향으로 몇 도 회전해야 합니까? 이미 정상이면 0. JSON만 응답: {"rotation": 0 또는 90 또는 180 또는 270}',
+                text: '이 이미지는 한국어 거래명세서입니다. 텍스트가 정상적으로 읽히는 방향인지 확인하세요. 글자가 옆으로 눕혀져 있거나 뒤집혀 있으면 시계 방향으로 몇 도 회전해야 정상이 되는지 판단하세요. 이미 정상이면 0. 반드시 JSON만 응답: {"rotation": 0 또는 90 또는 180 또는 270}',
               },
             ],
           },

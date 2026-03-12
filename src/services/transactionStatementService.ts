@@ -23,12 +23,51 @@ import type {
 import { normalizeOrderNumber } from "@/types/transactionStatement";
 import { dateToISOString } from "@/utils/helpers";
 
+type StatementFileType = 'image' | 'excel' | 'pdf';
+
 class TransactionStatementService {
   private supabase;
   private lastKickQueueAt = 0;
 
   constructor() {
     this.supabase = createClient();
+  }
+
+  private detectFileTypeFromTarget(target: string): StatementFileType | null {
+    if (!target) return null;
+    const normalized = target.toLowerCase();
+    if (/\.(xlsx?|xlsm|xlsb)(?:\?|$)/.test(normalized)) return 'excel';
+    if (/\.pdf(?:\?|$)/.test(normalized)) return 'pdf';
+    if (/\.(png|jpe?g|gif|webp|bmp|tiff?)(?:\?|$)/.test(normalized)) return 'image';
+    return null;
+  }
+
+  private resolveStatementFileType(
+    explicitType: StatementFileType | undefined,
+    fileName: string | null,
+    imageUrl: string,
+    extractedData: any
+  ): StatementFileType {
+    if (explicitType) return explicitType;
+
+    const hintedType = extractedData?.file_type;
+    if (hintedType === 'excel' || hintedType === 'pdf' || hintedType === 'image') {
+      return hintedType;
+    }
+
+    const fromFileName = this.detectFileTypeFromTarget(fileName || '');
+    if (fromFileName) return fromFileName;
+
+    const fromUrl = this.detectFileTypeFromTarget(imageUrl || '');
+    if (fromUrl) return fromUrl;
+
+    return 'image';
+  }
+
+  private getExtractorFunctionName(fileType: StatementFileType): 'ocr-transaction-statement' | 'parse-transaction-excel' | 'parse-transaction-pdf' {
+    if (fileType === 'excel') return 'parse-transaction-excel';
+    if (fileType === 'pdf') return 'parse-transaction-pdf';
+    return 'ocr-transaction-statement';
   }
 
   private async getExifOrientation(file: File): Promise<number | null> {
@@ -133,12 +172,13 @@ class TransactionStatementService {
     file: File,
     uploaderName: string,
     actualReceiptDate?: Date,
-    poScope?: 'single' | 'multi'
-  ): Promise<{ success: boolean; data?: { statementId: string; imageUrl: string }; error?: string }> {
+    poScope?: 'single' | 'multi',
+    fileType: StatementFileType = 'image'
+  ): Promise<{ success: boolean; data?: { statementId: string; imageUrl: string; fileType: StatementFileType }; error?: string }> {
     try {
-      const uploadFile = await this.prepareOcrImage(file);
+      const uploadFile = fileType === 'image' ? await this.prepareOcrImage(file) : file;
       // 고유 파일명 생성
-      const ext = uploadFile.name.split('.').pop()?.toLowerCase() || 'png';
+      const ext = uploadFile.name.split('.').pop()?.toLowerCase() || 'bin';
       const uuid = crypto.randomUUID();
       const fileName = `${uuid}.${ext}`;
       const storagePath = `Transaction Statement/${fileName}`;
@@ -148,7 +188,7 @@ class TransactionStatementService {
         .storage
         .from('receipt-images')
         .upload(storagePath, uploadFile, {
-          contentType: uploadFile.type,
+          contentType: uploadFile.type || 'application/octet-stream',
           upsert: false
         });
 
@@ -169,6 +209,10 @@ class TransactionStatementService {
       console.log('[Upload] DB 레코드 생성 시도:', { imageUrl, fileName: file.name, userId: user?.id, uploaderName });
       
       const actualReceiptDateIso = actualReceiptDate ? dateToISOString(actualReceiptDate) : null;
+      const extractedData: Record<string, unknown> = { file_type: fileType };
+      if (actualReceiptDateIso) {
+        extractedData.actual_received_date = actualReceiptDateIso;
+      }
 
       const { data: statement, error: dbError } = await this.supabase
         .from('transaction_statements')
@@ -181,9 +225,7 @@ class TransactionStatementService {
           status: 'queued',
           queued_at: new Date().toISOString(),
           po_scope: poScope,
-          extracted_data: actualReceiptDateIso
-            ? { actual_received_date: actualReceiptDateIso }
-            : null
+          extracted_data: extractedData
         })
         .select()
         .single();
@@ -200,7 +242,8 @@ class TransactionStatementService {
         success: true,
         data: {
           statementId: statement.id,
-          imageUrl
+          imageUrl,
+          fileType
         }
       };
     } catch (error) {
@@ -423,11 +466,13 @@ class TransactionStatementService {
   async extractStatementData(
     statementId: string,
     imageUrl: string,
-    resetBeforeExtract: boolean = false
+    resetBeforeExtract: boolean = false,
+    fileType?: StatementFileType
   ): Promise<{ success: boolean; data?: TransactionStatementWithItems; error?: string; queued?: boolean; status?: TransactionStatementStatus }> {
     const requestStartAt = Date.now();
     let invokeContextStatus: number | null = null;
     let invokeContextBody: string | null = null;
+    let resolvedFileType: StatementFileType = fileType || 'image';
     try {
       console.log('[Service] Calling Edge Function with:', { statementId, imageUrl });
 
@@ -438,16 +483,27 @@ class TransactionStatementService {
       let preRowNextRetryAt: string | null = null;
       let preRowProcessingStartedAt: string | null = null;
       let preProcessingCount: number | null = null;
+      let preRowFileName: string | null = null;
+      let preRowExtractedData: any = null;
       try {
         const { data: row } = await this.supabase
           .from('transaction_statements')
-          .select('status, locked_by, next_retry_at, processing_started_at')
+          .select('status, locked_by, next_retry_at, processing_started_at, file_name, extracted_data')
           .eq('id', statementId)
           .maybeSingle();
         preRowStatus = (row as any)?.status ?? null;
         preRowLocked = Boolean((row as any)?.locked_by);
         preRowNextRetryAt = (row as any)?.next_retry_at ?? null;
         preRowProcessingStartedAt = (row as any)?.processing_started_at ?? null;
+        preRowFileName = (row as any)?.file_name ?? null;
+        preRowExtractedData = (row as any)?.extracted_data ?? null;
+
+        resolvedFileType = this.resolveStatementFileType(
+          fileType,
+          preRowFileName,
+          imageUrl,
+          preRowExtractedData
+        );
 
         const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
         const { count } = await this.supabase
@@ -460,14 +516,24 @@ class TransactionStatementService {
       } catch (_) {
         // ignore snapshot errors
       }
-      // Edge Function 호출 (재추출이든 첫 추출이든 동일한 경로)
-      const { data, error } = await this.supabase.functions.invoke('ocr-transaction-statement', {
-        body: {
-          statementId,
-          imageUrl,
-          mode: 'process_specific',
-          reset_before_extract: resetBeforeExtract
-        }
+      const extractorFunctionName = this.getExtractorFunctionName(resolvedFileType);
+      const invokeBody = resolvedFileType === 'image'
+        ? {
+            statementId,
+            imageUrl,
+            mode: 'process_specific',
+            reset_before_extract: resetBeforeExtract
+          }
+        : {
+            statementId,
+            fileUrl: imageUrl,
+            mode: 'process_specific',
+            reset_before_extract: resetBeforeExtract
+          };
+
+      // Edge Function 호출 (파일 타입별 분기)
+      const { data, error } = await this.supabase.functions.invoke(extractorFunctionName, {
+        body: invokeBody
       });
       const edgeRowCounts =
         (data as any)?.debug_row_counts ||
@@ -489,18 +555,42 @@ class TransactionStatementService {
         }
       }
 
+      // 신규 파서 함수가 미배포된 환경에서는 기존 월말 파서로 자동 폴백
+      if (
+        error &&
+        invokeContextStatus === 404 &&
+        (resolvedFileType === 'excel' || resolvedFileType === 'pdf')
+      ) {
+        const { data: fallbackData, error: fallbackError } = await this.supabase.functions.invoke('parse-monthly-statement', {
+          body: {
+            statementId,
+            fileUrl: imageUrl,
+            fileType: resolvedFileType
+          }
+        });
+
+        if (!fallbackError && fallbackData?.success) {
+          const fallbackResult = await this.getStatementWithItems(statementId);
+          if (fallbackResult.success) {
+            return fallbackResult;
+          }
+        }
+      }
+
       console.log('[Service] Edge Function response:', { data, error });
 
       if (error) throw error;
 
       if (data?.queued) {
-        void this.kickQueue().then((kickResult) => {
-        }).catch(() => {});
+        if (resolvedFileType === 'image') {
+          void this.kickQueue().then(() => {
+          }).catch(() => {});
+        }
         return { success: true, queued: true, status: 'queued' };
       }
 
       if (!data?.success) {
-        throw new Error(data.error || 'OCR 추출 실패');
+        throw new Error(data.error || '데이터 추출 실패');
       }
 
       // 거래처명 확인 로그
@@ -515,7 +605,7 @@ class TransactionStatementService {
     } catch (error) {
       console.error('[Service] Extract statement error:', error);
       // 546 WORKER_LIMIT: 워커 리소스 부족 → 대기열로 전환하여 자동 재시도
-      if (invokeContextStatus === 546) {
+      if (invokeContextStatus === 546 && resolvedFileType === 'image') {
         try {
           const queueTimestamp = new Date().toISOString();
           await this.supabase
@@ -627,7 +717,7 @@ class TransactionStatementService {
       }
 
       if (filters?.search) {
-        query = query.or(`vendor_name.ilike.%${filters.search}%,file_name.ilike.%${filters.search}%`);
+        query = query.or(`statement_code.ilike.%${filters.search}%,vendor_name.ilike.%${filters.search}%,file_name.ilike.%${filters.search}%`);
       }
 
       if (filters?.limit) {
@@ -1949,7 +2039,7 @@ class TransactionStatementService {
             .select('is_received')
             .eq('purchase_request_id', purchaseId);
 
-          const allReceived = allItems && allItems.length > 0 && allItems.every(i => i.is_received === true);
+          const allReceived = allItems && allItems.length > 0 && allItems.every((i: { is_received: boolean | null }) => i.is_received === true);
           if (allReceived) {
             await this.supabase
               .from('purchase_requests')
@@ -2454,6 +2544,10 @@ class TransactionStatementService {
 
       if (error) throw error;
 
+      if (request.field_type === 'item_name' && request.statement_id && request.original_text && request.corrected_text) {
+        this.saveCharPatterns(request.statement_id, request.original_text, request.corrected_text).catch(() => {});
+      }
+
       return { success: true };
     } catch (error) {
       console.error('Save correction error:', error);
@@ -2461,6 +2555,61 @@ class TransactionStatementService {
         success: false,
         error: error instanceof Error ? error.message : '교정 데이터 저장 중 오류가 발생했습니다.'
       };
+    }
+  }
+
+  private async saveCharPatterns(statementId: string, original: string, corrected: string): Promise<void> {
+    if (original.length !== corrected.length) return;
+
+    const { data: stmt } = await this.supabase
+      .from('transaction_statements')
+      .select('vendor_name')
+      .eq('id', statementId)
+      .single();
+
+    const vendorName = stmt?.vendor_name;
+    if (!vendorName) return;
+
+    const patterns: Array<{ wrong: string; correct: string }> = [];
+    for (let i = 0; i < original.length; i++) {
+      if (original[i] !== corrected[i]) {
+        patterns.push({ wrong: original[i], correct: corrected[i] });
+      }
+    }
+
+    if (patterns.length === 0) return;
+
+    const unique = new Map<string, { wrong: string; correct: string }>();
+    for (const p of patterns) {
+      unique.set(`${p.wrong}→${p.correct}`, p);
+    }
+
+    for (const p of unique.values()) {
+      const { data: existing } = await this.supabase
+        .from('ocr_char_patterns')
+        .select('id, occurrence_count')
+        .eq('vendor_name', vendorName)
+        .eq('wrong_char', p.wrong)
+        .eq('correct_char', p.correct)
+        .single();
+
+      if (existing) {
+        await this.supabase
+          .from('ocr_char_patterns')
+          .update({
+            occurrence_count: (existing.occurrence_count || 1) + 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existing.id);
+      } else {
+        await this.supabase
+          .from('ocr_char_patterns')
+          .insert({
+            vendor_name: vendorName,
+            wrong_char: p.wrong,
+            correct_char: p.correct,
+          });
+      }
     }
   }
 

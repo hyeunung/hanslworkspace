@@ -72,6 +72,7 @@ type ImagePreparationResult = {
   height: number | null
   rotated: boolean
   rotatedPngBytes: Uint8Array | null
+  mediaType: "image/png" | "image/jpeg"
 }
 
 type InferredPoInfo = {
@@ -195,7 +196,12 @@ serve(async (req) => {
 
     currentStage = "detect_orientation"
     const orientationStartedAt = Date.now()
-    const rotationDegrees = await detectImageOrientation(preparedImage.base64Image, anthropicApiKey)
+    let rotationDegrees = await detectImageOrientation(preparedImage.base64Image, anthropicApiKey)
+
+    // fallback: 방향 감지가 0을 반환했지만 이미지가 명확히 가로형이면 90도 회전
+    if (rotationDegrees === 0 && preparedImage.width && preparedImage.height && preparedImage.width > preparedImage.height * 1.1) {
+      rotationDegrees = 90
+    }
     perfDebug.orientation_detect_ms = Date.now() - orientationStartedAt
     perfDebug.rotation_degrees = rotationDegrees
 
@@ -214,6 +220,7 @@ serve(async (req) => {
             height: rotatedImage.height,
             rotated: true,
             rotatedPngBytes,
+            mediaType: "image/png",
           }
           perfDebug.processed_width = rotatedImage.width
           perfDebug.processed_height = rotatedImage.height
@@ -247,6 +254,7 @@ serve(async (req) => {
       apiKey: anthropicApiKey,
       model: anthropicModel,
       poScope: resetResult.poScope,
+      mediaType: preparedImage.mediaType,
     })
     perfDebug.claude_extract_ms = Date.now() - claudeStartedAt
 
@@ -660,6 +668,9 @@ async function prepareImageInputs(buffer: ArrayBuffer): Promise<ImagePreparation
   const decodedImage = await decodeImageFromBuffer(buffer)
   const width = decodedImage?.width ?? null
   const height = decodedImage?.height ?? null
+  const bytes = new Uint8Array(buffer)
+  const isPng = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47
+  const mediaType: "image/png" | "image/jpeg" = isPng ? "image/png" : "image/jpeg"
 
   return {
     base64Image: rawBase64,
@@ -669,6 +680,7 @@ async function prepareImageInputs(buffer: ArrayBuffer): Promise<ImagePreparation
     height,
     rotated: false,
     rotatedPngBytes: null,
+    mediaType,
   }
 }
 
@@ -699,7 +711,7 @@ async function detectImageOrientation(base64Image: string, apiKey: string): Prom
               },
               {
                 type: "text",
-                text: '이 문서 이미지를 정상적으로 읽으려면 시계 방향으로 몇 도 회전해야 합니까? 이미 정상이면 0. JSON만 응답: {"rotation": 0 또는 90 또는 180 또는 270}',
+                text: '이 이미지는 한국어 거래명세서입니다. 텍스트가 정상적으로 읽히는 방향인지 확인하세요. 글자가 옆으로 눕혀져 있거나 뒤집혀 있으면 시계 방향으로 몇 도 회전해야 정상이 되는지 판단하세요. 이미 정상이면 0. 반드시 JSON만 응답: {"rotation": 0 또는 90 또는 180 또는 270}',
               },
             ],
           },
@@ -790,6 +802,10 @@ function clampColor(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value)))
 }
 
+function detectMediaType(base64: string): "image/png" | "image/jpeg" {
+  return base64.startsWith("iVBOR") ? "image/png" : "image/jpeg"
+}
+
 async function buildImageTiles(image: Image): Promise<string[]> {
   const minDim = Math.min(image.width, image.height)
   if (minDim < 700) return []
@@ -849,8 +865,9 @@ async function extractWithClaudeSonnet(params: {
   apiKey: string
   model: string
   poScope: "single" | "multi" | null
+  mediaType?: "image/png" | "image/jpeg"
 }): Promise<ExtractionResult> {
-  const { base64Image, tileImages, apiKey, model, poScope } = params
+  const { base64Image, tileImages, apiKey, model, poScope, mediaType = "image/jpeg" } = params
 
   const scopeHint = poScope === "single"
     ? "이 거래명세서는 단일 발주/수주 건입니다. 발주/수주번호가 없더라도 같은 건으로 취급하세요."
@@ -926,7 +943,7 @@ ${scopeHint ? `발주/수주 범위 힌트: ${scopeHint}` : ""}
       type: "image",
       source: {
         type: "base64",
-        media_type: "image/jpeg",
+        media_type: mediaType,
         data: base64Image,
       },
     },
@@ -937,7 +954,7 @@ ${scopeHint ? `발주/수주 범위 힌트: ${scopeHint}` : ""}
       type: "image",
       source: {
         type: "base64",
-        media_type: "image/jpeg",
+        media_type: "image/png",
         data: tile,
       },
     })
@@ -1045,7 +1062,7 @@ JSON만 반환하세요.`
               type: "image",
               source: {
                 type: "base64",
-                media_type: "image/jpeg",
+                media_type: detectMediaType(tableBodyImage),
                 data: tableBodyImage,
               },
             },
@@ -1108,7 +1125,7 @@ JSON만 반환하세요.`
       type: "image",
       source: {
         type: "base64",
-        media_type: "image/jpeg",
+        media_type: detectMediaType(base64Image),
         data: base64Image,
       },
     },
@@ -1119,7 +1136,7 @@ JSON만 반환하세요.`
       type: "image",
       source: {
         type: "base64",
-        media_type: "image/jpeg",
+        media_type: detectMediaType(tile),
         data: tile,
       },
     })
@@ -1245,7 +1262,7 @@ ${JSON.stringify(initialResult)}
       type: "image",
       source: {
         type: "base64",
-        media_type: "image/jpeg",
+        media_type: detectMediaType(base64Image),
         data: base64Image,
       },
     },
@@ -1260,7 +1277,7 @@ ${JSON.stringify(initialResult)}
       type: "image",
       source: {
         type: "base64",
-        media_type: "image/jpeg",
+        media_type: detectMediaType(tile),
         data: tile,
       },
     })
@@ -1392,7 +1409,7 @@ JSON만 반환하세요.`
       type: "image",
       source: {
         type: "base64",
-        media_type: "image/jpeg",
+        media_type: detectMediaType(base64Image),
         data: base64Image,
       },
     },
@@ -1403,7 +1420,7 @@ JSON만 반환하세요.`
       type: "image",
       source: {
         type: "base64",
-        media_type: "image/jpeg",
+        media_type: detectMediaType(tile),
         data: tile,
       },
     })

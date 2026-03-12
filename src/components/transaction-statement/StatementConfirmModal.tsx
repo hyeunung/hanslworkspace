@@ -1925,12 +1925,14 @@ export default function StatementConfirmModal({
       return;
     }
 
-    // 합계금액 부모 테이블에도 반영
-    const newGrandTotal = statementWithItems.items.reduce((sum, item) => {
-      const edited = editedOCRItems.get(item.id);
-      const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
-      return sum + amount;
-    }, 0);
+    // 합계금액 부모 테이블에도 반영 (삭제된 행 제외)
+    const newGrandTotal = statementWithItems.items
+      .filter(item => !deletedOCRItemIds.has(item.id))
+      .reduce((sum, item) => {
+        const edited = editedOCRItems.get(item.id);
+        const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
+        return sum + amount;
+      }, 0);
     await supabase
       .from('transaction_statements')
       .update({ grand_total: newGrandTotal, total_amount: newGrandTotal })
@@ -1945,7 +1947,40 @@ export default function StatementConfirmModal({
       });
       return { ...prev, items: updatedItems, grand_total: newGrandTotal, total_amount: newGrandTotal };
     });
-  }, [statementWithItems, editedOCRItems, supabase]);
+  }, [statementWithItems, editedOCRItems, deletedOCRItemIds, supabase]);
+
+  const persistDeletedOCRItems = useCallback(async () => {
+    if (!statementWithItems || deletedOCRItemIds.size === 0) return;
+
+    const idsToDelete = Array.from(deletedOCRItemIds);
+    const { error } = await supabase
+      .from('transaction_statement_items')
+      .delete()
+      .in('id', idsToDelete);
+
+    if (error) {
+      throw new Error(`삭제된 행 DB 반영 실패: ${error.message}`);
+    }
+
+    const remainingItems = statementWithItems.items.filter(item => !deletedOCRItemIds.has(item.id));
+    const newGrandTotal = remainingItems.reduce((sum, item) => {
+      const edited = editedOCRItems.get(item.id);
+      const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
+      return sum + amount;
+    }, 0);
+
+    await supabase
+      .from('transaction_statements')
+      .update({ grand_total: newGrandTotal, total_amount: newGrandTotal })
+      .eq('id', statementWithItems.id);
+
+    setStatementWithItems(prev => {
+      if (!prev) return prev;
+      return { ...prev, items: remainingItems, grand_total: newGrandTotal, total_amount: newGrandTotal };
+    });
+
+    setDeletedOCRItemIds(new Set());
+  }, [statementWithItems, deletedOCRItemIds, editedOCRItems, supabase]);
 
   const handleCloseWithSave = useCallback(() => {
     if (isClosingWithSaveRef.current) return;
@@ -1964,6 +1999,9 @@ export default function StatementConfirmModal({
       if (editedOCRItems.size > 0) {
         await persistEditedOCRItems();
       }
+      if (deletedOCRItemIds.size > 0) {
+        await persistDeletedOCRItems();
+      }
     };
 
     run()
@@ -1972,7 +2010,7 @@ export default function StatementConfirmModal({
         toast.error('수정값 저장에 실패했습니다.');
       })
       .finally(close);
-  }, [editedOCRItems.size, onClose, persistEditedOCRItems]);
+  }, [editedOCRItems.size, deletedOCRItemIds.size, onClose, persistEditedOCRItems, persistDeletedOCRItems]);
 
   // OCR 품목의 현재 값 가져오기 (수정된 값 우선)
   function getOCRItemValue(
@@ -3424,6 +3462,8 @@ export default function StatementConfirmModal({
       await saveItemNameAliasesFromMatches();
       // 1.2 수동 수정값 DB 반영 (모달 재오픈 시 유지)
       await persistEditedOCRItems();
+      // 1.3 삭제된 행 DB 반영
+      await persistDeletedOCRItems();
 
       // 1.5 거래일 수정 반영
       const normalizedOriginalDate = normalizeStatementDate(statementWithItems.statement_date);
@@ -3439,12 +3479,12 @@ export default function StatementConfirmModal({
         }
       }
 
-      // 2. 확정 데이터 생성 (수정된 값 우선 사용)
-      const confirmItems: ConfirmItemRequest[] = statementWithItems.items.map(item => {
+      // 2. 확정 데이터 생성 (수정된 값 우선 사용, 삭제된 행 제외)
+      const activeItems = statementWithItems.items.filter(item => !deletedOCRItemIds.has(item.id));
+      const confirmItems: ConfirmItemRequest[] = activeItems.map(item => {
         const matched = itemMatches.get(item.id);
         const edited = editedOCRItems.get(item.id);
         
-        // 수정된 값이 있으면 수정된 값 사용, 없으면 원본 사용
         const confirmedQuantity = edited?.quantity !== undefined 
           ? edited.quantity 
           : item.extracted_quantity;
@@ -3466,7 +3506,7 @@ export default function StatementConfirmModal({
         };
       });
 
-      const confirmedGrandTotal = statementWithItems.items.reduce((sum, item) => {
+      const confirmedGrandTotal = activeItems.reduce((sum, item) => {
         const edited = editedOCRItems.get(item.id);
         const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
         return sum + amount;
@@ -3490,14 +3530,14 @@ export default function StatementConfirmModal({
 
         // 확정 후 모든 매칭 품목에 received_quantity가 이미 있으면 자동 수량일치
         if (!result.finalized && statementWithItems) {
-          const allReceived = statementWithItems.items.every(ocrItem => {
+          const allReceived = activeItems.every(ocrItem => {
             const matched = itemMatches.get(ocrItem.id);
             return matched && matched.received_quantity != null && matched.received_quantity > 0;
           });
 
           if (allReceived) {
             try {
-              const qmItems: ConfirmItemRequest[] = statementWithItems.items.map(item => {
+              const qmItems: ConfirmItemRequest[] = activeItems.map(item => {
                 const matched = itemMatches.get(item.id);
                 const edited = editedOCRItems.get(item.id);
                 return {
@@ -3561,8 +3601,10 @@ export default function StatementConfirmModal({
       // 부품명 별칭 학습 (매칭 관계 저장)
       await saveItemNameAliasesFromMatches();
       await persistEditedOCRItems();
+      await persistDeletedOCRItems();
 
-      const confirmItems: ConfirmItemRequest[] = statementWithItems.items.map(item => {
+      const activeItems = statementWithItems.items.filter(item => !deletedOCRItemIds.has(item.id));
+      const confirmItems: ConfirmItemRequest[] = activeItems.map(item => {
         const matched = itemMatches.get(item.id);
         const edited = editedOCRItems.get(item.id);
 
@@ -3578,7 +3620,7 @@ export default function StatementConfirmModal({
         };
       });
 
-      const qmGrandTotal = statementWithItems.items.reduce((sum, item) => {
+      const qmGrandTotal = activeItems.reduce((sum, item) => {
         const edited = editedOCRItems.get(item.id);
         const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
         return sum + amount;
