@@ -12,7 +12,8 @@ import {
   FileCheck,
   Package,
   Receipt,
-  MessageCircle
+  MessageCircle,
+  FileEdit
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supportService } from '@/services/supportService'
@@ -211,6 +212,12 @@ export default function Navigation({ role }: NavigationProps) {
       roles: ['all']
     },
     {
+      label: '신청서 관리',
+      href: '/application',
+      icon: FileEdit,
+      roles: ['all']
+    },
+    {
       label: '문의하기',
       href: '/support',
       icon: MessageCircle,
@@ -240,36 +247,50 @@ export default function Navigation({ role }: NavigationProps) {
           const Icon = item.icon
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
           const badge = (item as any).badge
-          
-          return (
-            <li key={item.href}>
-              <Link
-                to={item.href}
-                className={cn(
-                  'flex items-center gap-3 px-4 py-3 rounded-lg transition-all',
-                  isActive
-                    ? 'bg-primary text-white'
-                    : 'text-gray-700 hover:bg-gray-100'
-                )}
-              >
-                <div className="relative">
-                  <Icon className="w-5 h-5" />
-                  {badge !== undefined && badge > 0 && (
-                    <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
-                      {badge > 99 ? '99+' : badge}
-                    </span>
-                  )}
-                </div>
-                <span className="header-title flex-1">{item.label}</span>
+          const openInNewTab = (item as any).openInNewTab
+          const linkClass = cn(
+            'flex items-center gap-3 px-4 py-3 rounded-lg transition-all',
+            isActive
+              ? 'bg-primary text-white'
+              : 'text-gray-700 hover:bg-gray-100'
+          )
+          const content = (
+            <>
+              <div className="relative">
+                <Icon className="w-5 h-5" />
                 {badge !== undefined && badge > 0 && (
-                  <span className={cn(
-                    "badge-stats",
-                    isActive ? "bg-white/20 text-white" : "bg-red-100 text-red-700"
-                  )}>
+                  <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
                     {badge > 99 ? '99+' : badge}
                   </span>
                 )}
-              </Link>
+              </div>
+              <span className="header-title flex-1">{item.label}</span>
+              {badge !== undefined && badge > 0 && (
+                <span className={cn(
+                  "badge-stats",
+                  isActive ? "bg-white/20 text-white" : "bg-red-100 text-red-700"
+                )}>
+                  {badge > 99 ? '99+' : badge}
+                </span>
+              )}
+            </>
+          )
+          return (
+            <li key={item.href}>
+              {openInNewTab ? (
+                <a
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={linkClass}
+                >
+                  {content}
+                </a>
+              ) : (
+                <Link to={item.href} className={linkClass}>
+                  {content}
+                </Link>
+              )}
             </li>
           )
         })}

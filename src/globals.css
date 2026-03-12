@@ -910,6 +910,11 @@ td.vendor-dynamic-column {
   border-bottom: none;
 }
 
+/* 마지막 행이어도 구분선 유지 (유료 개인 입력 등) */
+.doc-form-row.doc-form-row-always-border {
+  border-bottom: 1px solid #e5e7eb !important;
+}
+
 /* 행 안의 셀 */
 .doc-form-cell {
   @apply flex-1 min-w-0 flex flex-col justify-between;
@@ -919,6 +924,11 @@ td.vendor-dynamic-column {
   @apply text-[10px] font-semibold text-gray-500 block;
   letter-spacing: 0.03em;
   margin-bottom: 2px;
+}
+
+/* 자동 입력 필드(이름, 부서, 신청일) 라벨 - 더 진하게 */
+.doc-form-cell-label.doc-form-cell-label-title {
+  @apply font-bold text-gray-700;
 }
 
 .doc-form-cell-label .required {

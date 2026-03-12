@@ -13,6 +13,8 @@ const SupportMain = lazy(() => import('@/components/support/SupportMain'))
 const ReceiptsMain = lazy(() => import('@/components/receipts/ReceiptsMain'))
 const BomCoordinateMain = lazy(() => import('@/components/bom-coordinate/BomCoordinateIntegrated'))
 const TransactionStatementMain = lazy(() => import('@/components/transaction-statement/TransactionStatementMain'))
+const ApplicationListMain = lazy(() => import('@/components/application/ApplicationListMain'))
+const AiServiceApplicationForm = lazy(() => import('@/components/application/AiServiceApplicationForm'))
 const AuthConfirm = lazy(() => import('@/components/auth/AuthConfirm'))
 const ResetPassword = lazy(() => import('@/components/auth/ResetPassword'))
 
@@ -53,6 +55,8 @@ export default function AppRoutes() {
           <Route path="/employee" element={<EmployeeMain />} />
           <Route path="/receipts" element={<ReceiptsMain />} />
           <Route path="/support" element={<SupportMain />} />
+          <Route path="/application" element={<ApplicationListMain />} />
+          <Route path="/application/ai-service" element={<AiServiceApplicationForm />} />
           <Route path="/bom-coordinate" element={<BomCoordinateMain />} />
           <Route path="/transaction-statement" element={<TransactionStatementMain />} />
           

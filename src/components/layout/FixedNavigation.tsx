@@ -10,7 +10,8 @@ import {
   X,
   MessageCircle,
   Receipt,
-  Package
+  Package,
+  FileEdit
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -324,8 +325,27 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
               </ul>
             </div>
             
-            {/* 문의하기 버튼 - 하단 고정 */}
-            <div className="p-2 border-t border-gray-200">
+            {/* 신청서 관리 / 문의하기 버튼 - 하단 고정 */}
+            <div className="p-2 border-t border-gray-200 space-y-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link
+                    to="/application"
+                    className={cn(
+                      'flex items-center justify-center w-10 h-10 rounded-lg transition-colors',
+                      pathname === '/application' || pathname.startsWith('/application/')
+                        ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
+                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                    )}
+                  >
+                    <FileEdit className="w-4 h-4" />
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="ml-2 bg-white border border-gray-200 text-gray-900 shadow-md">
+                  <p className="modal-subtitle">신청서 관리</p>
+                </TooltipContent>
+              </Tooltip>
+              <div className="border-t border-gray-200 my-1" />
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Link
@@ -394,8 +414,22 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
               )
             })}
           </ul>
-          {/* 문의하기 버튼 - 하단 고정 */}
-          <div className="p-2 border-t border-gray-200">
+          {/* 신청서 관리 / 문의하기 버튼 - 하단 고정 */}
+          <div className="p-2 border-t border-gray-200 space-y-1">
+            <Link
+              to="/application"
+              onClick={onClose}
+              className={cn(
+                'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors',
+                pathname === '/application' || pathname.startsWith('/application/')
+                  ? 'bg-hansl-50 text-hansl-600 border-l-2 border-hansl-500'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+              )}
+            >
+              <FileEdit className="w-4 h-4" />
+              <span className="text-sm font-medium">신청서 관리</span>
+            </Link>
+            <div className="border-t border-gray-200 my-1" />
             <Link
               to="/support"
               onClick={onClose}
