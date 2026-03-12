@@ -33,6 +33,7 @@ export default function Navigation({ role }: NavigationProps) {
   const pathname = location.pathname
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
   const [otherPendingCount, setOtherPendingCount] = useState(0)
+  const [pendingApplicationCount, setPendingApplicationCount] = useState(0)
   const { allPurchases } = usePurchaseMemory()
   const { employee } = useAuth()
 
@@ -45,6 +46,7 @@ export default function Navigation({ role }: NavigationProps) {
   // role 배열 확인
   const roles = Array.isArray(role) ? role : (role ? [role] : [])
   const isAdmin = roles.includes('app_admin')
+  const isApplicationApprover = roles.includes('app_admin') || roles.includes('hr')
   
   // app_admin인 경우 미처리 문의 개수 조회
   useEffect(() => {
@@ -161,6 +163,34 @@ export default function Navigation({ role }: NavigationProps) {
     return () => window.clearInterval(timer)
   }, [loadOtherPendingCounts])
 
+  // hr, app_admin: 신청서 승인 대기 개수
+  useEffect(() => {
+    if (!isApplicationApprover) return
+    const supabase = createClient()
+    let cancelled = false
+
+    const loadPendingApplications = async () => {
+      const { count } = await supabase
+        .from('ai_service_applications')
+        .select('id', { count: 'exact', head: true })
+        .eq('approval_status', 'pending')
+      if (!cancelled && typeof count === 'number') {
+        setPendingApplicationCount(count)
+      }
+    }
+
+    loadPendingApplications()
+    const subscription = supabase
+      .channel('ai-service-applications-badge-nav')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ai_service_applications' }, loadPendingApplications)
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      supabase.removeChannel(subscription)
+    }
+  }, [isApplicationApprover])
+
   const menuItems = [
     {
       label: '대시보드',
@@ -215,7 +245,8 @@ export default function Navigation({ role }: NavigationProps) {
       label: '신청서 관리',
       href: '/application',
       icon: FileEdit,
-      roles: ['all']
+      roles: ['all'],
+      badge: isApplicationApprover && pendingApplicationCount > 0 ? pendingApplicationCount : undefined
     },
     {
       label: '문의하기',

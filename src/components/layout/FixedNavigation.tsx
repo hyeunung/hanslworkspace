@@ -42,9 +42,11 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
 
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
   const [pendingStatementCount, setPendingStatementCount] = useState(0)
+  const [pendingApplicationCount, setPendingApplicationCount] = useState(0)
 
   const roles = Array.isArray(role) ? role : (role ? [role] : [])
   const isAdmin = roles.includes('app_admin')
+  const isApplicationApprover = roles.includes('app_admin') || roles.includes('hr')
   const canSeeStatementBadge = roles.includes('app_admin') || roles.includes('lead buyer')
 
   // 관리자: 미처리(open+in_progress) 건수
@@ -204,6 +206,34 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
     return () => window.clearInterval(timer)
   }, [loadOtherPendingCounts])
 
+  // hr, app_admin: 신청서 승인 대기 개수
+  useEffect(() => {
+    if (!isApplicationApprover) return
+    const supabase = createClient()
+    let cancelled = false
+
+    const loadPendingApplications = async () => {
+      const { count } = await supabase
+        .from('ai_service_applications')
+        .select('id', { count: 'exact', head: true })
+        .eq('approval_status', 'pending')
+      if (!cancelled && typeof count === 'number') {
+        setPendingApplicationCount(count)
+      }
+    }
+
+    loadPendingApplications()
+    const subscription = supabase
+      .channel('ai-service-applications-badge')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ai_service_applications' }, loadPendingApplications)
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      supabase.removeChannel(subscription)
+    }
+  }, [isApplicationApprover])
+
   const menuItems = [
     {
       label: '대시보드',
@@ -338,7 +368,14 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
                         : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
                     )}
                   >
-                    <FileEdit className="w-4 h-4" />
+                    <div className="relative">
+                      <FileEdit className="w-4 h-4" />
+                      {isApplicationApprover && pendingApplicationCount > 0 && (
+                        <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                          {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
+                        </span>
+                      )}
+                    </div>
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent side="right" className="ml-2 bg-white border border-gray-200 text-gray-900 shadow-md">
@@ -426,8 +463,20 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
               )}
             >
-              <FileEdit className="w-4 h-4" />
+              <div className="relative">
+                <FileEdit className="w-4 h-4" />
+                {isApplicationApprover && pendingApplicationCount > 0 && (
+                  <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                    {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
+                  </span>
+                )}
+              </div>
               <span className="text-sm font-medium">신청서 관리</span>
+              {isApplicationApprover && pendingApplicationCount > 0 && (
+                <span className="ml-auto badge-stats bg-red-100 text-red-700">
+                  {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
+                </span>
+              )}
             </Link>
             <div className="border-t border-gray-200 my-1" />
             <Link

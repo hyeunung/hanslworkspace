@@ -255,7 +255,14 @@ export default function ApplicationListMain() {
                 activeTab === "approval" ? "text-hansl-600" : "text-gray-400 hover:text-gray-600"
               }`}
             >
-              승인 관리
+              <span className="inline-flex items-center gap-1.5">
+                <span>승인 관리</span>
+                {pendingApplications.length > 0 && (
+                  <span className="min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full leading-none">
+                    {pendingApplications.length > 99 ? '99+' : pendingApplications.length}
+                  </span>
+                )}
+              </span>
               {activeTab === "approval" && (
                 <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-hansl-600 rounded-full" />
               )}
