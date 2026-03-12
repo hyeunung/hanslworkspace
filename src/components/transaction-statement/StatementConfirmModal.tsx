@@ -860,7 +860,7 @@ export default function StatementConfirmModal({
                 initialPONumbers.set(item.id, recommendedPO);
               }
 
-              if (!bestMatch && recommendedPO) {
+              if (!bestMatch && recommendedPO && !poNumber) {
                 const candidatesForPO = item.match_candidates.filter(c =>
                   c.purchase_order_number === recommendedPO || c.sales_order_number === recommendedPO
                 );
