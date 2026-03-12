@@ -33,6 +33,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
   const [pendingStatementCount, setPendingStatementCount] = useState(0)
+  const [pendingApplicationCount, setPendingApplicationCount] = useState(0)
   const [otherPendingCount, setOtherPendingCount] = useState(0)
   const { allPurchases } = usePurchaseMemory()
 
