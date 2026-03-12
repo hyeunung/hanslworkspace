@@ -196,7 +196,7 @@ serve(async (req) => {
 
     currentStage = "detect_orientation"
     const orientationStartedAt = Date.now()
-    let rotationDegrees = await detectImageOrientation(preparedImage.base64Image, anthropicApiKey)
+    let rotationDegrees = await detectImageOrientation(preparedImage.base64Image, anthropicApiKey, preparedImage.mediaType)
 
     // fallback: 방향 감지가 0을 반환했지만 이미지가 명확히 가로형이면 90도 회전
     if (rotationDegrees === 0 && preparedImage.width && preparedImage.height && preparedImage.width > preparedImage.height * 1.1) {
@@ -684,7 +684,7 @@ async function prepareImageInputs(buffer: ArrayBuffer): Promise<ImagePreparation
   }
 }
 
-async function detectImageOrientation(base64Image: string, apiKey: string): Promise<number> {
+async function detectImageOrientation(base64Image: string, apiKey: string, mediaType: "image/png" | "image/jpeg" = "image/jpeg"): Promise<number> {
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -705,7 +705,7 @@ async function detectImageOrientation(base64Image: string, apiKey: string): Prom
                 type: "image",
                 source: {
                   type: "base64",
-                  media_type: "image/png",
+                  media_type: mediaType,
                   data: base64Image,
                 },
               },
