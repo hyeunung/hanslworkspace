@@ -2,7 +2,7 @@
 
 import { useNavigate } from 'react-router-dom'
 import { createClient } from '@/lib/supabase/client'
-import { User, Menu, MessageCircle, FileText, FileCheck } from 'lucide-react'
+import { User, Menu, MessageCircle, FileText, FileCheck, FileEdit } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supportService } from '@/services/supportService'
 import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
@@ -40,6 +40,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
     ? user.purchase_role
     : (user?.purchase_role ? [user.purchase_role] : [])
   const isAdmin = roles.includes('app_admin')
+  const isApplicationApprover = roles.includes('app_admin') || roles.includes('hr')
   const canSeeStatementBadge = roles.includes('app_admin') || roles.includes('lead buyer')
   const purchaseOnlyCount = useMemo(
     () => countPendingApprovalsForSidebarBadge(allPurchases, user?.purchase_role),
@@ -258,6 +259,34 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
     return () => window.clearInterval(timer)
   }, [loadOtherPendingCounts])
 
+  // hr, app_admin: 신청서 승인 대기 개수
+  useEffect(() => {
+    if (!isApplicationApprover) return
+    const supabase = createClient()
+    let cancelled = false
+
+    const loadPendingApplications = async () => {
+      const { count } = await supabase
+        .from('ai_service_applications')
+        .select('id', { count: 'exact', head: true })
+        .eq('approval_status', 'pending')
+      if (!cancelled && typeof count === 'number') {
+        setPendingApplicationCount(count)
+      }
+    }
+
+    loadPendingApplications()
+    const subscription = supabase
+      .channel('ai-service-applications-header-badge')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ai_service_applications' }, loadPendingApplications)
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      supabase.removeChannel(subscription)
+    }
+  }, [isApplicationApprover])
+
   const handleLogout = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
@@ -318,6 +347,20 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
               <FileCheck className="w-4 h-4 text-gray-500" />
               <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
                 {(pendingStatementCount > 99) ? '99+' : pendingStatementCount}
+              </span>
+            </button>
+          )}
+          {isApplicationApprover && pendingApplicationCount > 0 && (
+            <button
+              type="button"
+              onClick={() => navigate('/application?tab=approval')}
+              className="relative ml-2 inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-gray-50 transition-colors"
+              title="신청서 승인 대기 보기"
+              aria-label={`신청서 승인대기 알림 ${pendingApplicationCount}건`}
+            >
+              <FileEdit className="w-4 h-4 text-gray-500" />
+              <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
               </span>
             </button>
           )}
