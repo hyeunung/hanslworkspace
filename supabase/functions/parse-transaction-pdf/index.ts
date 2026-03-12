@@ -70,13 +70,13 @@ serve(async (req) => {
   try {
     supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
     supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY') || ''
+    const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') || ''
 
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
     }
-    if (!openaiApiKey) {
-      throw new Error('Missing OPENAI_API_KEY')
+    if (!anthropicApiKey) {
+      throw new Error('Missing ANTHROPIC_API_KEY')
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
@@ -113,15 +113,11 @@ serve(async (req) => {
     currentStage = 'download_file'
     const fileBuffer = await downloadFile(fileUrl)
 
-    currentStage = 'extract_pdf_text'
-    const rawExtractedText = extractTextFromPdfBuffer(fileBuffer)
-    if (!rawExtractedText || rawExtractedText.length < 30) {
-      throw new Error('PDF 텍스트 추출 결과가 비어있습니다')
-    }
-    const extractedText = removeSupplierCopySections(rawExtractedText)
+    currentStage = 'encode_pdf'
+    const pdfBase64 = arrayBufferToBase64(fileBuffer)
 
-    currentStage = 'gpt_structuring'
-    const parseResult = await extractWithGPT4o(extractedText, openaiApiKey, poScope)
+    currentStage = 'claude_extract'
+    const parseResult = await extractWithClaude(pdfBase64, anthropicApiKey, poScope)
 
     currentStage = 'match_items'
     const matchedItems = await matchItemsToSystem(supabase, parseResult.items)
@@ -144,7 +140,7 @@ serve(async (req) => {
       ...parseResult,
       parser: 'parse-transaction-pdf',
       file_type: 'pdf',
-      raw_text: extractedText.slice(0, 12000),
+      raw_text: sanitizeForJsonb(JSON.stringify(parseResult.items).slice(0, 12000)),
       items: parseResult.items,
     }
     if (preservedActualReceivedDate) {
@@ -294,115 +290,22 @@ async function downloadFile(url: string): Promise<ArrayBuffer> {
   return await response.arrayBuffer()
 }
 
-function extractTextFromPdfBuffer(buffer: ArrayBuffer): string {
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
-  const binaryText = new TextDecoder('latin1').decode(bytes)
-  const lines: string[] = []
-
-  const btEtRegex = /BT[\s\S]*?ET/g
-  const blocks = binaryText.match(btEtRegex) || []
-
-  for (const block of blocks) {
-    const literalTokens = block.match(/\((?:\\.|[^\\)])*\)\s*Tj/g) || []
-    for (const token of literalTokens) {
-      const literal = token.replace(/\s*Tj$/, '')
-      const decoded = decodePdfLiteralString(literal)
-      if (decoded) lines.push(decoded)
-    }
-
-    const arrayTokens = block.match(/\[(?:[\s\S]*?)\]\s*TJ/g) || []
-    for (const token of arrayTokens) {
-      const arrayLiteral = token.replace(/\]\s*TJ$/, ']')
-      const parts = arrayLiteral.match(/\((?:\\.|[^\\)])*\)/g) || []
-      const decodedParts = parts
-        .map((part) => decodePdfLiteralString(part))
-        .filter(Boolean)
-      if (decodedParts.length) {
-        lines.push(decodedParts.join(''))
-      }
-    }
-
-    const hexTokens = block.match(/<([0-9A-Fa-f\s]+)>\s*Tj/g) || []
-    for (const token of hexTokens) {
-      const hexBody = token.replace(/\s*Tj$/, '').replace(/[<>]/g, '').replace(/\s+/g, '')
-      const decoded = decodePdfHexString(hexBody)
-      if (decoded) lines.push(decoded)
-    }
+  let binary = ''
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i])
   }
-
-  if (!lines.length) {
-    const fallbackMatches = binaryText.match(/\((?:\\.|[^\\)])*\)/g) || []
-    for (const match of fallbackMatches) {
-      const decoded = decodePdfLiteralString(match)
-      if (decoded) lines.push(decoded)
-    }
-  }
-
-  const normalized = lines
-    .map((line) => line.replace(/\s+/g, ' ').trim())
-    .filter((line) => line.length > 1)
-    .join('\n')
-
-  return normalized.trim()
+  return btoa(binary)
 }
 
-function removeSupplierCopySections(text: string): string {
-  const lines = text.split('\n')
-  const result: string[] = []
-  let skip = false
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (/거래명세서\s*\(\s*공급자\s*\)/.test(trimmed) || /거래명세서\s*\(\s*공급\s*하는\s*자\s*\)/.test(trimmed)) {
-      skip = true
-      continue
-    }
-    if (skip && (/거래명세서\s*\(\s*공급받는\s*자?\s*\)/.test(trimmed) || /^--\s*\d+\s+of\s+\d+\s*--$/.test(trimmed))) {
-      skip = false
-    }
-    if (!skip) {
-      result.push(line)
-    }
-  }
-
-  return result.join('\n')
+function sanitizeForJsonb(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/\u0000/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ')
 }
 
-function decodePdfLiteralString(literal: string): string {
-  let content = literal
-  if (content.startsWith('(') && content.endsWith(')')) {
-    content = content.slice(1, -1)
-  }
-
-  content = content
-    .replace(/\\\(/g, '(')
-    .replace(/\\\)/g, ')')
-    .replace(/\\\\/g, '\\')
-    .replace(/\\r/g, ' ')
-    .replace(/\\n/g, ' ')
-    .replace(/\\t/g, ' ')
-    .replace(/\\b/g, ' ')
-    .replace(/\\f/g, ' ')
-    .replace(/\\\d{3}/g, '')
-
-  return content.trim()
-}
-
-function decodePdfHexString(hexText: string): string {
-  if (!hexText) return ''
-  let cleaned = hexText
-  if (cleaned.length % 2 !== 0) cleaned += '0'
-  const bytes: number[] = []
-  for (let i = 0; i < cleaned.length; i += 2) {
-    const byte = Number.parseInt(cleaned.slice(i, i + 2), 16)
-    if (Number.isFinite(byte)) bytes.push(byte)
-  }
-  if (!bytes.length) return ''
-  return new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(bytes)).trim()
-}
-
-async function extractWithGPT4o(
-  pdfText: string,
+async function extractWithClaude(
+  pdfBase64: string,
   apiKey: string,
   poScope: 'single' | 'multi' | null
 ): Promise<ParseResult> {
@@ -412,131 +315,116 @@ async function extractWithGPT4o(
       ? '이 거래명세서는 다중 발주/수주 건입니다. 품목별 번호를 분리해 추출하세요.'
       : ''
 
-  const prompt = `다음은 거래명세서 PDF에서 추출한 텍스트입니다.
-아래 규칙에 따라 JSON으로만 구조화하세요.
+  const prompt = `이 PDF는 한국어 거래명세서입니다. 아래 규칙에 따라 JSON으로만 구조화하세요.
 
 ${scopeHint ? `발주/수주 범위 힌트: ${scopeHint}` : ''}
 
 거래처(공급자) 식별 규칙:
-- "귀중", "귀사" 옆 회사는 받는 회사이므로 vendor_name이 아닙니다.
-- "공급자", "공급하는 자", "(인)", 도장/직인 쪽 회사가 vendor_name 입니다.
+- "공급받는자" 쪽 회사는 우리 회사이므로 vendor_name이 아닙니다.
+- "공급자" 쪽 회사가 vendor_name 입니다.
+
+중복 제거 규칙 (중요):
+- PDF에 "거래명세서(공급받는자)"와 "거래명세서(공급자)" 사본이 동일 내용으로 중복될 수 있음
+- "거래명세서(공급자)" 섹션의 품목은 무시하고, "거래명세서(공급받는자)" 섹션만 사용
+- 동일한 품목이 반복되면 한 번만 포함할 것
 
 추출 대상:
 1) statement_date (YYYY-MM-DD)
 2) vendor_name (공급자 회사명)
-3) vendor_name_english (영문 추정, 없으면 생략)
+3) vendor_name_english (영문 추정, 없으면 null)
 4) total_amount, tax_amount, grand_total (숫자만)
-5) items 배열
+5) items 배열 — 모든 페이지에서 연속 순번으로 통합
 
 items 각 항목:
-- line_number: 순번
-- item_name: 품목명/품명 (비어있으면 "")
-- specification: 규격 (없으면 "")
+- line_number: 전체 통합 순번 (1부터 시작)
+- item_name: 품목명/품명
+- specification: 규격
 - quantity: 수량 (비어있으면 null)
 - unit_price: 단가 (비어있으면 null)
-- amount: 금액 (비어있거나 "-"면 0)
+- amount: 금액 (비어있으면 0)
 - tax_amount: 세액 (없으면 null)
-- po_number: 발주/수주번호 (없으면 "")
+- po_number: 발주/수주번호 (F20260121_001-01 형식 또는 HS260201-01 형식)
 - remark: 비고
 - confidence: low|med|high
 
-헤더 인식 규칙:
-- 품목명: 품명/품목/내역/DESCRIPTION/상품명
-- 규격: 규격/SIZE/사이즈/치수/SPEC
-- 수량: 수량/QTY/Q'TY/QUANTITY
-- 단가: 단가/UNIT PRICE/가격
-- 금액: 금액/AMOUNT/공급가액/합계
+발주/수주번호에 라인 서픽스(예: F20260121_001-01)가 있으면 po_number에 전체를 포함하세요.
 
-수량 규칙:
-- 수량은 수량 칼럼 값만 사용
-- 수량이 비어있으면 null
-- 이전 행 수량을 복사하지 말 것
+행 생략 금지:
+- 모든 품목 행을 빠짐없이 추출
+- 합계/소계/서명 등 푸터 행은 제외
 
-단가 규칙:
-- 단가가 비어있으면 null
-- 금액 값을 단가로 옮기지 말 것
+반드시 JSON만 응답하세요.`
 
-발주/수주번호 규칙:
-- 발주번호: F + YYYYMMDD + _ + 숫자 (예: F20251010_001)
-- 수주번호: HS + YYMMDD + - + 숫자 (예: HS251201-01)
-- 패턴에 맞는 번호를 최대한 추출
-
-행 생략 금지 규칙:
-- 품목명이 비어 있어도 규격/수량/단가/금액 중 하나라도 있으면 별도 item으로 포함
-- 여러 행을 임의로 합치거나 생략하지 말 것
-- 합계/소계/서명/입금 등의 푸터 행은 제외
-
-중복 제거 규칙:
-- 거래명세서에 공급받는자/공급자 사본이 중복으로 포함될 수 있음
-- 동일한 품목이 반복되면 한 번만 포함할 것
-- "거래명세서(공급자)" 섹션의 데이터는 무시할 것
-
-JSON 응답 형식:
-{
-  "statement_date": "YYYY-MM-DD 또는 null",
-  "vendor_name": "공급자명 또는 null",
-  "vendor_name_english": "영문명 또는 null",
-  "total_amount": 숫자 또는 null,
-  "tax_amount": 숫자 또는 null,
-  "grand_total": 숫자 또는 null,
-  "items": [
-    {
-      "line_number": 1,
-      "item_name": "",
-      "specification": "",
-      "quantity": null,
-      "unit_price": null,
-      "amount": 0,
-      "tax_amount": null,
-      "po_number": "",
-      "remark": "",
-      "confidence": "med"
-    }
-  ]
-}
-
-PDF 텍스트:
----
-${pdfText.slice(0, 28000)}
----
-`
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      temperature: 0,
       messages: [
         {
-          role: 'system',
-          content: 'You extract structured transaction statement data from plain text. Always return valid JSON only.'
-        },
-        {
           role: 'user',
-          content: prompt
-        }
+          content: [
+            {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: pdfBase64,
+              },
+            },
+            {
+              type: 'text',
+              text: prompt,
+            },
+          ],
+        },
       ],
-      temperature: 0.1,
-      max_tokens: 8000,
-      response_format: { type: 'json_object' }
-    })
+    }),
   })
 
+  if (!response.ok) {
+    const body = await response.text().catch(() => '')
+    throw new Error(`Claude API error: ${response.status} ${body}`)
+  }
+
   const result = await response.json()
-  if (result.error) {
-    throw new Error(`GPT-4o error: ${result.error.message}`)
+  const textContent = (result?.content || [])
+    .filter((b: any) => b?.type === 'text')
+    .map((b: any) => b?.text || '')
+    .join('\n')
+    .trim()
+
+  if (!textContent) {
+    throw new Error('No content in Claude response')
   }
 
-  const content = result.choices?.[0]?.message?.content
-  if (!content) {
-    throw new Error('No content in GPT-4o response')
+  const parsed = parseStrictJson(textContent)
+  return normalizeParseResult(parsed, textContent)
+}
+
+function parseStrictJson(content: string): any {
+  try {
+    return JSON.parse(content)
+  } catch (_) {}
+
+  const fenced = content.match(/```(?:json)?\s*([\s\S]*?)```/i)
+  if (fenced?.[1]) {
+    try { return JSON.parse(fenced[1].trim()) } catch (_) {}
   }
 
-  const parsed = JSON.parse(content)
-  return normalizeParseResult(parsed, pdfText)
+  const first = content.indexOf('{')
+  const last = content.lastIndexOf('}')
+  if (first >= 0 && last > first) {
+    try { return JSON.parse(content.slice(first, last + 1)) } catch (_) {}
+  }
+
+  throw new Error('Failed to parse JSON from Claude response')
 }
 
 function normalizeParseResult(raw: any, rawText: string): ParseResult {
@@ -565,7 +453,7 @@ function normalizeParseResult(raw: any, rawText: string): ParseResult {
     tax_amount: taxAmount,
     grand_total: grandTotal,
     items,
-    raw_text: rawText.slice(0, 12000),
+    raw_text: sanitizeForJsonb(rawText.slice(0, 12000)),
     file_type: 'pdf',
   }
 }
