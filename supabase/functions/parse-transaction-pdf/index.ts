@@ -34,6 +34,7 @@ interface ParsedItem {
   amount: number;
   tax_amount?: number | null;
   po_number?: string;
+  po_line_number?: number;
   remark?: string;
   confidence: 'low' | 'med' | 'high';
 }
@@ -181,6 +182,7 @@ serve(async (req) => {
           extracted_amount: item.amount ?? 0,
           extracted_tax_amount: item.tax_amount ?? null,
           extracted_po_number: item.po_number || null,
+          extracted_po_line_number: item.po_line_number ?? null,
           extracted_remark: item.remark || null,
           match_confidence: item.confidence,
           matched_purchase_id: matched?.matchedPurchaseId || null,
@@ -477,7 +479,9 @@ function normalizeParsedItem(raw: any, fallbackLineNumber: number): ParsedItem {
   const remark = sanitizeText(raw?.remark)
 
   const poRaw = sanitizeText(raw?.po_number) || extractOrderNumber(`${remark} ${itemName} ${specification}`) || ''
-  const poNumber = poRaw ? normalizeOrderNumber(poRaw) : undefined
+  const parsed = poRaw ? parseOrderNumberWithLine(poRaw) : null
+  const poNumber = parsed?.base || undefined
+  const poLineNumber = parsed?.lineNumber ?? undefined
 
   const confidenceRaw = sanitizeText(raw?.confidence).toLowerCase()
   const confidence: 'low' | 'med' | 'high' =
@@ -494,6 +498,7 @@ function normalizeParsedItem(raw: any, fallbackLineNumber: number): ParsedItem {
     amount: amount || 0,
     tax_amount: taxAmount,
     po_number: poNumber,
+    po_line_number: poLineNumber,
     remark: remark || undefined,
     confidence,
   }
@@ -572,20 +577,50 @@ function extractOrderNumber(text: string): string | null {
   return null
 }
 
-function normalizeOrderNumber(input: string): string {
+function parseOrderNumberWithLine(input: string): { base: string; lineNumber: number | null } {
   const normalized = input.toUpperCase().replace(/\s+/g, '')
 
-  const poMatch = normalized.match(/^(F\d{8})[_-](\d{1,3})$/)
-  if (poMatch) {
-    return `${poMatch[1]}_${poMatch[2].padStart(3, '0')}`
+  // F20260121_001-07 → base=F20260121_001, lineNumber=7
+  const poWithLine = normalized.match(/^(F\d{8})[_-](\d{1,3})[-_](\d{1,3})$/)
+  if (poWithLine) {
+    return {
+      base: `${poWithLine[1]}_${poWithLine[2].padStart(3, '0')}`,
+      lineNumber: parseInt(poWithLine[3], 10),
+    }
   }
 
-  const soMatch = normalized.match(/^(HS\d{6})[-_](\d{1,2})$/)
-  if (soMatch) {
-    return `${soMatch[1]}-${soMatch[2].padStart(2, '0')}`
+  // F20260121_001 → base=F20260121_001, lineNumber=null
+  const poOnly = normalized.match(/^(F\d{8})[_-](\d{1,3})$/)
+  if (poOnly) {
+    return {
+      base: `${poOnly[1]}_${poOnly[2].padStart(3, '0')}`,
+      lineNumber: null,
+    }
   }
 
-  return normalized
+  // HS260109-03-01 → base=HS260109-03, lineNumber=1
+  const soWithLine = normalized.match(/^(HS\d{6})[-_](\d{1,2})[-_](\d{1,3})$/)
+  if (soWithLine) {
+    return {
+      base: `${soWithLine[1]}-${soWithLine[2].padStart(2, '0')}`,
+      lineNumber: parseInt(soWithLine[3], 10),
+    }
+  }
+
+  // HS260109-03 → base=HS260109-03, lineNumber=null
+  const soOnly = normalized.match(/^(HS\d{6})[-_](\d{1,2})$/)
+  if (soOnly) {
+    return {
+      base: `${soOnly[1]}-${soOnly[2].padStart(2, '0')}`,
+      lineNumber: null,
+    }
+  }
+
+  return { base: normalized, lineNumber: null }
+}
+
+function normalizeOrderNumber(input: string): string {
+  return parseOrderNumberWithLine(input).base
 }
 
 async function matchItemsToSystem(
