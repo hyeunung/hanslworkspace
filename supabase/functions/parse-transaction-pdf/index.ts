@@ -629,38 +629,67 @@ async function matchItemsToSystem(
 ): Promise<MatchResult[]> {
   const results: MatchResult[] = []
 
+  const poGroups = new Map<string, ParsedItem[]>()
   for (const item of items) {
-    const nameForSearch = sanitizeText(item.item_name || item.specification || '')
-      .replace(/\s*\(TOP\/BOT\)\s*/gi, '')
-      .replace(/\s*\(TOP\)\s*/gi, '')
-      .replace(/\s*\(BOT\)\s*/gi, '')
-      .replace(/\s*\[.*?\]\s*/g, '')
-      .trim()
+    if (item.po_number) {
+      const list = poGroups.get(item.po_number) || []
+      list.push(item)
+      poGroups.set(item.po_number, list)
+    }
+  }
 
-    if (!nameForSearch) continue
+  const purchaseCache = new Map<string, { purchaseId: number; vendorName: string; items: any[] } | null>()
 
-    const { data: specMatches } = await supabase
-      .from('purchase_request_items')
-      .select('id, item_name, specification, purchase_request_id, vendor_name')
-      .ilike('specification', `%${nameForSearch}%`)
-      .limit(10)
+  for (const [poNumber] of poGroups) {
+    if (purchaseCache.has(poNumber)) continue
+    const { data } = await supabase
+      .from('purchase_requests')
+      .select(`
+        id,
+        purchase_order_number,
+        sales_order_number,
+        vendor:vendors(vendor_name),
+        items:purchase_request_items(id, line_number, item_name, specification, quantity)
+      `)
+      .or(`purchase_order_number.eq.${poNumber},sales_order_number.eq.${poNumber}`)
+      .limit(1)
 
-    const { data: nameMatches } = await supabase
-      .from('purchase_request_items')
-      .select('id, item_name, specification, purchase_request_id, vendor_name')
-      .ilike('item_name', `%${nameForSearch}%`)
-      .limit(10)
+    const purchase = data?.[0]
+    if (purchase) {
+      purchaseCache.set(poNumber, {
+        purchaseId: purchase.id,
+        vendorName: (purchase.vendor as any)?.vendor_name || '',
+        items: purchase.items || [],
+      })
+    } else {
+      purchaseCache.set(poNumber, null)
+    }
+  }
 
-    const allMatches = [...(specMatches || []), ...(nameMatches || [])]
-    const uniqueMatches = [...new Map(allMatches.map((m: any) => [m.id, m])).values()]
-    if (!uniqueMatches.length) continue
+  for (const item of items) {
+    if (!item.po_number) continue
 
-    const bestMatch = uniqueMatches[0]
+    const purchase = purchaseCache.get(item.po_number)
+    if (!purchase) continue
+
+    if (item.po_line_number != null) {
+      const matched = purchase.items.find((i: any) => i.line_number === item.po_line_number)
+      if (matched) {
+        results.push({
+          lineNumber: item.line_number,
+          matchedPurchaseId: purchase.purchaseId,
+          matchedItemId: matched.id,
+          matchedVendorName: purchase.vendorName,
+        })
+        continue
+      }
+    }
+
     results.push({
       lineNumber: item.line_number,
-      matchedPurchaseId: bestMatch.purchase_request_id || null,
-      matchedItemId: bestMatch.id || null,
-      matchedVendorName: bestMatch.vendor_name || null,
+      matchedPurchaseId: purchase.purchaseId,
+      matchedItemId: null,
+      matchedVendorName: purchase.vendorName,
     })
   }
 
