@@ -4650,7 +4650,8 @@ export default function StatementConfirmModal({
                         if (aLine !== bLine) return aLine - bLine;
                         return b.score - a.score;
                       });
-                      const systemDisplayLineNumber = displayLineByItemId.get(ocrItem.id) ?? (ocrLineSeqByItemId.get(ocrItem.id) ?? rowIndex + 1);
+                      const poLineFromSuffix = extractLineNumberFromPO(ocrItem.extracted_po_number || '');
+                      const systemDisplayLineNumber = poLineFromSuffix ?? matchedSystem?.line_number ?? displayLineByItemId.get(ocrItem.id) ?? (ocrLineSeqByItemId.get(ocrItem.id) ?? rowIndex + 1);
                       const systemDisplayLineLabel = systemDisplayLineNumber !== null ? `${systemDisplayLineNumber}.` : '-';
                       const ocrDisplayLineLabel = ocrItem.line_number ? `${ocrItem.line_number}.` : systemDisplayLineLabel;
                       const ocrItemNameValue = ((getOCRItemValue(ocrItem, 'item_name') as string) || '').trim();
