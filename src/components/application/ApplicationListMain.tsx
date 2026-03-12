@@ -42,6 +42,8 @@ interface AiServiceApplication {
   monthly_cost: string | null;
   application_date: string;
   current_usage_status: string;
+  current_model?: string | null;
+  current_cost?: string | null;
   created_at: string;
   approval_status?: string;
   rejection_reason?: string | null;
@@ -117,7 +119,7 @@ export default function ApplicationListMain() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("ai_service_applications")
-        .select("id, service_name, plan_name, monthly_cost, application_date, current_usage_status, created_at, approval_status, rejection_reason, requester_name, requester_department")
+        .select("id, service_name, plan_name, monthly_cost, application_date, current_usage_status, current_model, current_cost, created_at, approval_status, rejection_reason, requester_name, requester_department")
         .eq("approval_status", "pending")
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -369,6 +371,8 @@ export default function ApplicationListMain() {
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[100px]">요금제</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[90px]">월 예상 비용</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[100px]">사용 현황</th>
+                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[110px]">사용 중인 모델</th>
+                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[90px]">현재 월 비용</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[120px]">액션</th>
                   </tr>
                 </thead>
@@ -383,6 +387,12 @@ export default function ApplicationListMain() {
                       <td className="px-2 py-1.5 card-subtitle truncate max-w-[90px]">{app.plan_name || "-"}</td>
                       <td className="px-2 py-1.5 card-subtitle truncate max-w-[80px]">{app.monthly_cost || "-"}</td>
                       <td className="px-2 py-1.5 card-subtitle whitespace-nowrap">{CURRENT_USAGE_LABELS[app.current_usage_status] || app.current_usage_status}</td>
+                      <td className="px-2 py-1.5 card-subtitle truncate max-w-[100px]">
+                        {app.current_usage_status === "paid_personal" ? (app.current_model || "-") : <span className="text-gray-300">-</span>}
+                      </td>
+                      <td className="px-2 py-1.5 card-subtitle truncate max-w-[80px]">
+                        {app.current_usage_status === "paid_personal" ? (app.current_cost || "-") : <span className="text-gray-300">-</span>}
+                      </td>
                       <td className="px-2 py-1.5 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5">
                           <Button
