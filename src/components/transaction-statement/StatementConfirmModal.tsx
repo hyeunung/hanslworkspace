@@ -35,7 +35,7 @@ import type {
 } from "@/types/transactionStatement";
 import { normalizeOrderNumber, extractLineNumberFromPO } from "@/types/transactionStatement";
 import { logger } from "@/lib/logger";
-import StatementImageViewer from "./StatementImageViewer";
+
 import PurchaseDetailModal from "@/components/purchase/PurchaseDetailModal";
 import { UTK_AUTHORIZED_ROLES } from "@/constants/columnSettings";
 
@@ -297,7 +297,6 @@ export default function StatementConfirmModal({
   const [saving, setSaving] = useState(false);
   const [savingAction, setSavingAction] = useState<'confirm' | 'quantity-match' | 'reject' | 'utk' | null>(null);
   const [statementWithItems, setStatementWithItems] = useState<TransactionStatementWithItems | null>(null);
-  const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
   const [confirmerName, setConfirmerName] = useState("");
   const dialogDebugId = "statement-confirm-dialog";
   const { currentUserRoles, currentUserId, currentUserName, currentUserEmail } = useAuth();
@@ -3835,14 +3834,23 @@ export default function StatementConfirmModal({
   };
 
   const handleOpenOriginalImage = () => {
-    const imageUrl = statementWithItems?.image_url || statement.image_url;
-    if (!imageUrl) return;
+    const fileUrl = statementWithItems?.image_url || statement.image_url;
+    if (!fileUrl) return;
 
-    const width = 1000;
-    const height = 800;
-    const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
-    const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
-    window.open(imageUrl, 'transaction-statement-image', `width=${width},height=${height},left=${left},top=${top}`);
+    const urlPath = fileUrl.split('?')[0].toLowerCase();
+    const isPdf = urlPath.endsWith('.pdf');
+    const isExcel = urlPath.endsWith('.xls') || urlPath.endsWith('.xlsx');
+
+    if (isExcel) {
+      const viewerUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(fileUrl)}`;
+      window.open(viewerUrl, '_blank');
+    } else {
+      const width = 1000;
+      const height = 800;
+      const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
+      const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
+      window.open(fileUrl, 'transaction-statement-viewer', `width=${width},height=${height},left=${left},top=${top}`);
+    }
   };
 
   const resetReextractState = () => {
@@ -4529,7 +4537,7 @@ export default function StatementConfirmModal({
                       {!isSamePONumber && (
                         <th className="p-1 text-left whitespace-nowrap modal-label">발주/수주번호</th>
                       )}
-                      <th className="p-1 text-left modal-label">품목명(규격)</th>
+                      <th className="p-1 text-left modal-label">품목명(규격) <span className="text-gray-400 font-normal">({statementWithItems.items.filter(i => !deletedOCRItemIds.has(i.id)).length}행)</span></th>
                       <th className="p-1 text-right modal-label">수량</th>
                       {!isReceiptMode && (
                         <>
@@ -4548,7 +4556,7 @@ export default function StatementConfirmModal({
                       </th>
                       
                       {/* 우측 컬럼 */}
-                      <th className="p-1 text-left whitespace-nowrap modal-label">품목명</th>
+                      <th className="p-1 text-left whitespace-nowrap modal-label">품목명 <span className="text-gray-400 font-normal">({statementWithItems.items.filter(i => !deletedOCRItemIds.has(i.id)).length}행)</span></th>
                       <th className="p-1 text-right whitespace-nowrap w-16 modal-label">수량</th>
                       {!isReceiptMode && (
                         <>
@@ -5835,12 +5843,7 @@ export default function StatementConfirmModal({
         </DialogContent>
       </Dialog>
 
-      {/* 이미지 뷰어 */}
-      <StatementImageViewer
-        isOpen={isImageViewerOpen}
-        imageUrl={statement.image_url}
-        onClose={() => setIsImageViewerOpen(false)}
-      />
+      
 
       {/* 발주번호 선택 드롭다운 */}
       {openDropdowns.has('global-po') && createPortal(

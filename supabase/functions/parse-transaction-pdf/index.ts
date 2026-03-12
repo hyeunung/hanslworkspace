@@ -336,7 +336,7 @@ ${scopeHint ? `발주/수주 범위 힌트: ${scopeHint}` : ''}
 5) items 배열 — 모든 페이지에서 연속 순번으로 통합
 
 items 각 항목:
-- line_number: 전체 통합 순번 (1부터 시작)
+- line_number: 거래명세서에 표기된 원본 순번 그대로 사용 (중간에 빠진 번호가 있을 수 있음, 임의로 재부여하지 말 것)
 - item_name: 품목명/품명
 - specification: 규격
 - quantity: 수량 (비어있으면 null)
