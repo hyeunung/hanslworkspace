@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, X, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Upload, X, Image as ImageIcon, Loader2, FileSpreadsheet, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import transactionStatementService from "@/services/transactionStatementService";
@@ -18,11 +18,21 @@ import { format } from "date-fns";
 interface StatementUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (statementId: string, imageUrl: string) => void;
+  onSuccess: (statementId: string, imageUrl: string, fileType: 'excel' | 'pdf' | 'image') => void;
+}
+
+const ACCEPTED_EXTENSIONS = ['.xls', '.xlsx', '.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp'];
+
+function getFileType(file: File): 'excel' | 'pdf' | 'image' {
+  const ext = file.name.split('.').pop()?.toLowerCase() || '';
+  if (['xls', 'xlsx'].includes(ext)) return 'excel';
+  if (ext === 'pdf') return 'pdf';
+  return 'image';
 }
 
 /**
- * 거래명세서 이미지 업로드 모달
+ * 거래명세서 업로드 모달
+ * 이미지 + 엑셀 + PDF 지원
  */
 export default function StatementUploadModal({
   isOpen,
@@ -67,34 +77,37 @@ export default function StatementUploadModal({
 
   // 파일 선택 처리
   const handleFileSelect = (selectedFile: File) => {
-    if (!selectedFile.type.startsWith('image/')) {
-      toast.error('이미지 파일만 업로드할 수 있습니다.');
+    const ext = '.' + (selectedFile.name.split('.').pop()?.toLowerCase() || '');
+    if (!ACCEPTED_EXTENSIONS.includes(ext)) {
+      toast.error('지원하지 않는 파일 형식입니다. (엑셀, PDF, 이미지)');
       return;
     }
 
-    if (selectedFile.size > 10 * 1024 * 1024) {
-      toast.error('파일 크기는 10MB 이하여야 합니다.');
+    if (selectedFile.size > 20 * 1024 * 1024) {
+      toast.error('파일 크기는 20MB 이하여야 합니다.');
       return;
     }
 
     setFile(selectedFile);
 
-    // EXIF 회전 적용된 미리보기 생성
-    createImageBitmap(selectedFile).then(bitmap => {
-      const canvas = document.createElement('canvas');
-      canvas.width = bitmap.width;
-      canvas.height = bitmap.height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(bitmap, 0, 0);
-        setPreview(canvas.toDataURL('image/jpeg', 0.8));
-      }
-    }).catch(() => {
-      // fallback: 원본 그대로
-      const reader = new FileReader();
-      reader.onloadend = () => setPreview(reader.result as string);
-      reader.readAsDataURL(selectedFile);
-    });
+    if (getFileType(selectedFile) === 'image') {
+      createImageBitmap(selectedFile).then(bitmap => {
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(bitmap, 0, 0);
+          setPreview(canvas.toDataURL('image/jpeg', 0.8));
+        }
+      }).catch(() => {
+        const reader = new FileReader();
+        reader.onloadend = () => setPreview(reader.result as string);
+        reader.readAsDataURL(selectedFile);
+      });
+    } else {
+      setPreview(null);
+    }
   };
 
   // 드래그앤드롭 처리
@@ -150,17 +163,19 @@ export default function StatementUploadModal({
 
     try {
       setUploading(true);
+      const fileType = getFileType(file);
 
       const result = await transactionStatementService.uploadStatement(
         file,
         uploaderName || '알 수 없음',
         actualReceiptDate,
-        poScope
+        poScope,
+        fileType
       );
 
       if (result.success && result.data) {
         toast.success('업로드가 완료되었습니다.');
-        onSuccess(result.data.statementId, result.data.imageUrl);
+        onSuccess(result.data.statementId, result.data.imageUrl, fileType);
         handleClose();
       } else {
         toast.error(result.error || '업로드에 실패했습니다.');
@@ -171,6 +186,8 @@ export default function StatementUploadModal({
       setUploading(false);
     }
   };
+
+  const fileType = file ? getFileType(file) : null;
 
   const handleClose = () => {
     if (uploading) return;
@@ -200,7 +217,7 @@ export default function StatementUploadModal({
           <div
             className={`
               border-2 border-dashed business-radius-card p-6 text-center cursor-pointer transition-colors
-              ${preview 
+              ${file 
                 ? 'border-hansl-300 bg-hansl-50' 
                 : 'border-gray-200 hover:border-hansl-300 hover:bg-gray-50'
               }
@@ -212,18 +229,33 @@ export default function StatementUploadModal({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept=".xls,.xlsx,.pdf,image/*"
               onChange={handleInputChange}
               className="hidden"
             />
 
-            {preview ? (
+            {file ? (
               <div className="relative">
-                <img
-                  src={preview}
-                  alt="미리보기"
-                  className="max-h-52 mx-auto business-radius-card shadow-sm"
-                />
+                {preview ? (
+                  <img
+                    src={preview}
+                    alt="미리보기"
+                    className="max-h-52 mx-auto business-radius-card shadow-sm"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    {fileType === 'excel' ? (
+                      <FileSpreadsheet className="w-12 h-12 text-emerald-500" />
+                    ) : fileType === 'pdf' ? (
+                      <FileText className="w-12 h-12 text-red-500" />
+                    ) : (
+                      <ImageIcon className="w-12 h-12 text-blue-500" />
+                    )}
+                    <span className="text-[11px] font-medium text-gray-700">
+                      {fileType === 'excel' ? '엑셀 파일' : fileType === 'pdf' ? 'PDF 파일' : '이미지 파일'}
+                    </span>
+                  </div>
+                )}
                 <button
                   className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
                   onClick={(e) => {
@@ -241,10 +273,10 @@ export default function StatementUploadModal({
               <>
                 <ImageIcon className="w-10 h-10 text-gray-300 mx-auto mb-3" />
                 <p className="text-[11px] text-gray-600 mb-1">
-                  거래명세서 이미지를 드래그하거나 클릭하여 선택하세요
+                  거래명세서 파일을 드래그하거나 클릭하여 선택하세요
                 </p>
                 <p className="text-[10px] text-gray-400">
-                  지원 형식: JPG, PNG, GIF, WEBP (최대 10MB)
+                  지원 형식: XLS, XLSX, PDF, JPG, PNG, GIF, WEBP (최대 20MB)
                 </p>
               </>
             )}
@@ -298,8 +330,7 @@ export default function StatementUploadModal({
           {/* 안내 문구 */}
           <div className="mt-4 p-3 bg-blue-50 business-radius-card border border-blue-100">
             <p className="text-[10px] text-blue-700 leading-relaxed">
-              💡 거래명세서를 촬영하거나 스캔한 이미지를 업로드하세요.
-              업로드 후 OCR로 품목, 수량, 금액, 발주번호 등을 자동으로 추출합니다.
+              거래명세서 이미지는 OCR로, 엑셀/PDF는 파일 파싱으로 품목/수량/금액/발주번호를 자동 추출합니다.
             </p>
           </div>
         </div>

@@ -25,6 +25,7 @@ interface OCRRequest {
   reset_before_extract?: boolean
   mode?: OCRMode
   fast_mode?: boolean
+  statement_mode?: "default" | "receipt"
 }
 
 interface ExtractedItem {
@@ -135,6 +136,7 @@ serve(async (req) => {
     const requestData: OCRRequest = await req.json().catch(() => ({}))
     const mode: OCRMode = requestData.mode || "process_specific"
     const fastMode = requestData.fast_mode === true
+    const statementMode = requestData.statement_mode || "default"
     const workerId = crypto.randomUUID()
     statementId = requestData.statementId || null
     let imageUrl = requestData.imageUrl || null
@@ -255,6 +257,7 @@ serve(async (req) => {
       model: anthropicModel,
       poScope: resetResult.poScope,
       mediaType: preparedImage.mediaType,
+      receiptMode: statementMode === "receipt",
     })
     perfDebug.claude_extract_ms = Date.now() - claudeStartedAt
 
@@ -866,8 +869,9 @@ async function extractWithClaudeSonnet(params: {
   model: string
   poScope: "single" | "multi" | null
   mediaType?: "image/png" | "image/jpeg"
+  receiptMode?: boolean
 }): Promise<ExtractionResult> {
-  const { base64Image, tileImages, apiKey, model, poScope, mediaType = "image/jpeg" } = params
+  const { base64Image, tileImages, apiKey, model, poScope, mediaType = "image/jpeg", receiptMode = false } = params
 
   const scopeHint = poScope === "single"
     ? "이 거래명세서는 단일 발주/수주 건입니다. 발주/수주번호가 없더라도 같은 건으로 취급하세요."
@@ -875,9 +879,13 @@ async function extractWithClaudeSonnet(params: {
       ? "이 거래명세서는 다중 발주/수주 건입니다. 품목별로 번호를 분리하세요."
       : ""
 
+  const receiptHint = receiptMode
+    ? `[입고수량 모드] 이 거래명세서는 입고수량 확인용입니다. 단가(unit_price), 금액(amount), 세액(tax_amount), 합계금액(total_amount, grand_total)은 모두 null로 설정하세요. 수량(quantity)과 품목명/규격/발주번호만 정확히 추출하세요.`
+    : ""
+
   const prompt = `거래명세서 이미지를 보고 아래 스키마로 JSON만 반환하세요.
 
-${scopeHint ? `발주/수주 범위 힌트: ${scopeHint}` : ""}
+${receiptHint ? `${receiptHint}\n` : ""}${scopeHint ? `발주/수주 범위 힌트: ${scopeHint}` : ""}
 
 [거래처 식별 규칙]
 - "귀중/귀사/귀하/貴下" 옆 회사는 받는 회사이므로 vendor_name이 아님

@@ -126,16 +126,21 @@ export default function TransactionStatementMain() {
   }>({ isOpen: false, statement: null, position: { top: 0, left: 0 } });
 
   // 탭별 필터링된 목록 및 카운트
-  // 확정된 건(confirmed)은 날짜순으로 맨 아래 배치
+  // 1순위: 확인필요(미확정) 위로, 확정(confirmed) 아래로
+  // 2순위: 각 그룹 내 statement_code 내림차순
   const { filteredStatements, defaultCount, receiptCount } = useMemo(() => {
-    const sortWithConfirmedLast = (items: TransactionStatement[]) => {
-      const nonConfirmed = items.filter(s => s.status !== 'confirmed');
-      const confirmed = items.filter(s => s.status === 'confirmed');
-      confirmed.sort((a, b) => {
-        const dateA = a.statement_date || a.uploaded_at || '';
-        const dateB = b.statement_date || b.uploaded_at || '';
-        return dateA.localeCompare(dateB);
-      });
+    const codeDescCompare = (a: TransactionStatement, b: TransactionStatement) => {
+      const codeA = a.statement_code || '';
+      const codeB = b.statement_code || '';
+      if (!codeA && !codeB) return 0;
+      if (!codeA) return 1;
+      if (!codeB) return -1;
+      return codeB.localeCompare(codeA, undefined, { numeric: true });
+    };
+
+    const sortByStatusThenCode = (items: TransactionStatement[]) => {
+      const nonConfirmed = items.filter(s => s.status !== 'confirmed').sort(codeDescCompare);
+      const confirmed = items.filter(s => s.status === 'confirmed').sort(codeDescCompare);
       return [...nonConfirmed, ...confirmed];
     };
 
@@ -143,7 +148,7 @@ export default function TransactionStatementMain() {
     const receiptItems = statements.filter(s => s.statement_mode === 'receipt');
     
     return {
-      filteredStatements: sortWithConfirmedLast(activeTab === 'default' ? defaultItems : receiptItems),
+      filteredStatements: sortByStatusThenCode(activeTab === 'default' ? defaultItems : receiptItems),
       defaultCount: defaultItems.length,
       receiptCount: receiptItems.length
     };
@@ -263,8 +268,9 @@ export default function TransactionStatementMain() {
             .map((item) => item.id)
         );
         if (terminalIds.size > 0) {
+          const activeReextractId = reextractTraceIdRef.current;
           for (const id of Array.from(optimisticReextractIdsRef.current)) {
-            if (terminalIds.has(id)) {
+            if (terminalIds.has(id) && id !== activeReextractId) {
               optimisticReextractIdsRef.current.delete(id);
             }
           }
@@ -519,9 +525,20 @@ export default function TransactionStatementMain() {
       statement.status === 'queued' ||
       statement.status === 'failed'
     ) {
-      // 그 외 - 이미지 뷰어 열기
-      setViewerImageUrl(statement.image_url);
-      setIsImageViewerOpen(true);
+      // 그 외 - 파일 뷰어 열기
+      const urlPath = statement.image_url.split('?')[0].toLowerCase();
+      const isExcel = urlPath.endsWith('.xls') || urlPath.endsWith('.xlsx');
+      if (isExcel) {
+        const width = 1000;
+        const height = 800;
+        const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
+        const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
+        const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(statement.image_url)}&embedded=true`;
+        window.open(viewerUrl, 'transaction-statement-viewer', `width=${width},height=${height},left=${left},top=${top}`);
+      } else {
+        setViewerImageUrl(statement.image_url);
+        setIsImageViewerOpen(true);
+      }
     }
   };
   
@@ -537,23 +554,30 @@ export default function TransactionStatementMain() {
     setPurchaseDropdown({ isOpen: false, statement: null, position: { top: 0, left: 0 } });
   };
 
-  // 이미지 뷰어 열기
+  // 파일 뷰어 열기 (이미지/PDF는 내장 뷰어, 엑셀은 Google Docs Viewer 새 창)
   const handleViewImage = (e: React.MouseEvent, imageUrl: string) => {
     e.stopPropagation();
-    setViewerImageUrl(imageUrl);
-    setIsImageViewerOpen(true);
+    const urlPath = imageUrl.split('?')[0].toLowerCase();
+    const isExcel = urlPath.endsWith('.xls') || urlPath.endsWith('.xlsx');
+
+    if (isExcel) {
+      const width = 1000;
+      const height = 800;
+      const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
+      const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
+      const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(imageUrl)}&embedded=true`;
+      window.open(viewerUrl, 'transaction-statement-viewer', `width=${width},height=${height},left=${left},top=${top}`);
+    } else {
+      setViewerImageUrl(imageUrl);
+      setIsImageViewerOpen(true);
+    }
   };
 
   // OCR 추출 시작
   const handleStartExtraction = async (e: React.MouseEvent, statement: TransactionStatement) => {
     e.stopPropagation();
-    console.log('[OCR] Button clicked, statement:', statement);
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'5b9515'},body:JSON.stringify({sessionId:'5b9515',runId:'reextract-debug',hypothesisId:'H-retry',location:'TransactionStatementMain.tsx:handleStartExtraction:entry',message:'retry/start extraction button pressed',data:{statementId:statement.id,status:statement.status,imageUrl:statement.image_url?.slice(0,100)||null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     const canExtract = ['pending', 'queued', 'failed'].includes(statement.status);
     if (!canExtract || extractingIds.has(statement.id)) {
-      console.log('[OCR] Status is not eligible or already extracting:', statement.status);
       toast.info('이미 처리 중이거나 완료된 건입니다.');
       return;
     }
@@ -562,14 +586,12 @@ export default function TransactionStatementMain() {
     setExtractingIds(prev => new Set(prev).add(statement.id));
 
     try {
-      console.log('[OCR] Starting extraction...');
       toast.loading('OCR 추출 중... (약 10~30초 소요)', { id: `extraction-${statement.id}` });
       
       const result = await transactionStatementService.extractStatementData(
         statement.id,
         statement.image_url
       );
-      console.log('[OCR] Result:', result);
 
       if (result.success) {
         if (result.queued) {
@@ -625,7 +647,7 @@ export default function TransactionStatementMain() {
   };
 
   // 업로드 성공 후 처리 - 자동으로 OCR 시작
-  const handleUploadSuccess = async (statementId: string, imageUrl: string) => {
+  const handleUploadSuccess = async (statementId: string, imageUrl: string, fileType?: 'excel' | 'pdf' | 'image') => {
     setIsUploadModalOpen(false);
     
     // 1. 업로드 직후 바로 목록 갱신 (목록에 즉시 표시)
@@ -636,9 +658,14 @@ export default function TransactionStatementMain() {
     
     // 3. OCR 추출 시작
     try {
-      toast.loading('OCR 추출 중... (약 10~30초 소요)', { id: `extraction-${statementId}` });
+      toast.loading('데이터 추출 중... (약 10~30초 소요)', { id: `extraction-${statementId}` });
       
-      const result = await transactionStatementService.extractStatementData(statementId, imageUrl);
+      const result = await transactionStatementService.extractStatementData(
+        statementId,
+        imageUrl,
+        false,
+        fileType
+      );
       
       if (result.success) {
         if (result.queued) {
@@ -782,7 +809,7 @@ export default function TransactionStatementMain() {
           <div className="relative min-w-[140px] max-w-[200px]">
             <Search className="absolute left-1.5 top-1/2 transform -translate-y-1/2 w-2.5 h-2.5 text-gray-400" />
             <Input
-              placeholder="거래처명, 파일명 검색..."
+              placeholder="코드, 거래처명, 파일명 검색..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="!h-auto !py-px !pr-1.5 !pl-5 !text-[11px] !min-h-[20px] business-radius-input border border-gray-300 bg-white text-gray-700"
@@ -913,6 +940,7 @@ export default function TransactionStatementMain() {
                 <table className="w-full min-w-fit">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
+                      <th className="w-[132px] px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">명세서코드</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">종류</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">상태</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">수량/금액</th>
@@ -937,6 +965,11 @@ export default function TransactionStatementMain() {
                         }`}
                         onClick={(e) => handleViewStatement(statement, e)}
                       >
+                        <td className="w-[132px] px-2 py-2.5 whitespace-nowrap">
+                          <span className="inline-flex items-center business-radius-badge bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700 tabular-nums">
+                            {statement.statement_code || '-'}
+                          </span>
+                        </td>
                         <td className="px-3 py-2.5">
                           <div className="flex items-center justify-center h-full">
                             <span className={`inline-flex items-center gap-1 business-radius-badge px-2 py-0.5 text-[10px] font-medium leading-tight ${
@@ -956,14 +989,6 @@ export default function TransactionStatementMain() {
                             : renderStatusBadge(statement.status, statement.extraction_error, statement.statement_mode, statement)}
                         </td>
                         <td className="px-3 py-2.5 text-center">
-                          {/* #region agent log */}
-                          {(() => {
-                            const isEligible = statement.status === 'extracted' || statement.status === 'confirmed';
-                            const hasQtyCheck = !!statement.quantity_match_confirmed_at || !!statement.all_quantities_matched;
-                            fetch('http://127.0.0.1:7244/ingest/d1bfd845-9c34-4c24-9ef7-fd981ce7dd8e',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7c87b6'},body:JSON.stringify({sessionId:'7c87b6',runId:'qty-branch-check',hypothesisId:'H2-H3',location:'TransactionStatementMain.tsx:qtyColumn:renderBranch',message:'qty column render branch decision',data:{id:statement.id,status:statement.status,isEligible,qtyConfirmedAt:statement.quantity_match_confirmed_at??null,allQtyMatched:statement.all_quantities_matched??null,hasQtyCheck},timestamp:Date.now()})}).catch(()=>{});
-                            return null;
-                          })()}
-                          {/* #endregion */}
                           {(statement.status === 'extracted' || statement.status === 'confirmed') ? (
                             <div className="flex items-center justify-center gap-1 text-[11px] font-medium">
                               <span className={
@@ -1103,6 +1128,14 @@ export default function TransactionStatementMain() {
                     }`}
                     onClick={(e) => handleViewStatement(statement, e)}
                   >
+                    <div className="flex items-start justify-between mb-1.5">
+                      <span className="inline-flex items-center business-radius-badge bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700 tabular-nums">
+                        {statement.statement_code || '-'}
+                      </span>
+                      <span className="text-[10px] text-gray-400">
+                        {formatDate(statement.uploaded_at)}
+                      </span>
+                    </div>
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-1.5">
                         <span className={`inline-flex items-center gap-1 business-radius-badge px-2 py-0.5 text-[10px] font-medium leading-tight ${
@@ -1118,9 +1151,6 @@ export default function TransactionStatementMain() {
                           ? renderStatusBadge('processing') 
                           : renderStatusBadge(statement.status, statement.extraction_error, statement.statement_mode, statement)}
                     </div>
-                      <span className="text-[10px] text-gray-400">
-                        {formatDate(statement.uploaded_at)}
-                      </span>
                     </div>
                     <div className="mb-2">
                       <p className="text-[11px] font-medium text-gray-900">

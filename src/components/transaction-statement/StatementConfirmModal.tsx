@@ -3841,14 +3841,15 @@ export default function StatementConfirmModal({
     const isPdf = urlPath.endsWith('.pdf');
     const isExcel = urlPath.endsWith('.xls') || urlPath.endsWith('.xlsx');
 
+    const width = 1000;
+    const height = 800;
+    const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
+    const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
+
     if (isExcel) {
-      const viewerUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(fileUrl)}`;
-      window.open(viewerUrl, '_blank');
+      const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(fileUrl)}&embedded=true`;
+      window.open(viewerUrl, 'transaction-statement-viewer', `width=${width},height=${height},left=${left},top=${top}`);
     } else {
-      const width = 1000;
-      const height = 800;
-      const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
-      const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
       window.open(fileUrl, 'transaction-statement-viewer', `width=${width},height=${height},left=${left},top=${top}`);
     }
   };

@@ -443,16 +443,14 @@ class TransactionStatementService {
     }
   }
 
-  /**
-   * 입고수량 추출 Edge Function 호출 (비동기)
-   */
   private async triggerReceiptQuantityExtraction(statementId: string, imageUrl: string) {
     try {
-      await this.supabase.functions.invoke('ocr-receipt-quantity', {
+      await this.supabase.functions.invoke('ocr-transaction-statement', {
         body: {
           statementId,
           imageUrl,
-          mode: 'process_specific'
+          mode: 'process_specific',
+          statement_mode: 'receipt'
         }
       });
     } catch (error) {

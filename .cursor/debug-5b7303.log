@@ -1,0 +1,1 @@
+{"sessionId":"5b7303","runId":"repro-7","hypothesisId":"H2-pointerDown","location":"StatementConfirmModal.tsx:onPointerDownOutside","message":"pointerDownOutside","data":{"isDropdownInteraction":false,"openDropdownCount":0,"targetTag":"DIV","willPrevent":false},"timestamp":1773104552674}

@@ -24,6 +24,7 @@ export type StatementMode = 'default' | 'receipt' | 'monthly';
 // 거래명세서 테이블 타입
 export interface TransactionStatement {
   id: string;
+  statement_code?: string;
   image_url: string;
   file_name?: string;
   uploaded_at: string;
@@ -83,6 +84,7 @@ export interface TransactionStatementItem {
   extracted_amount?: number;
   extracted_tax_amount?: number;
   extracted_po_number?: string;
+  extracted_po_line_number?: number;
   extracted_remark?: string;
 
   // 추론된 발주/수주번호 정보
@@ -144,6 +146,7 @@ export interface ExtractedItem {
   amount: number;
   tax_amount?: number;
   po_number?: string;
+  po_line_number?: number;
   remark?: string;
   confidence: MatchConfidence;
 }
