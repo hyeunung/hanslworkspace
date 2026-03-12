@@ -4652,7 +4652,7 @@ export default function StatementConfirmModal({
                       });
                       const systemDisplayLineNumber = displayLineByItemId.get(ocrItem.id) ?? (ocrLineSeqByItemId.get(ocrItem.id) ?? rowIndex + 1);
                       const systemDisplayLineLabel = systemDisplayLineNumber !== null ? `${systemDisplayLineNumber}.` : '-';
-                      const ocrDisplayLineLabel = systemDisplayLineLabel;
+                      const ocrDisplayLineLabel = ocrItem.line_number ? `${ocrItem.line_number}.` : systemDisplayLineLabel;
                       const ocrItemNameValue = ((getOCRItemValue(ocrItem, 'item_name') as string) || '').trim();
                       let effectiveSystemForNameMatch: SystemPurchaseItem | null = matchedSystem || null;
                       if (!effectiveSystemForNameMatch) {
