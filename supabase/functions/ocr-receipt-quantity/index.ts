@@ -217,10 +217,42 @@ serve(async (req) => {
 
     // 1. 이미지 다운로드
     currentStage = 'download_image'
-    const imageBuffer = await downloadImage(imageUrl)
+    let imageBuffer = await downloadImage(imageUrl)
     let visionBase64 = ''
     let tileImages: ImageTile[] = []
     let decodedImage: Image | null = null
+
+    // 1-1. 이미지 방향 감지 및 회전
+    currentStage = 'detect_orientation'
+    const rawBase64ForDetection = arrayBufferToBase64(imageBuffer)
+    const rotationDegrees = await detectImageOrientation(rawBase64ForDetection, openaiApiKey!)
+    if (rotationDegrees > 0) {
+      try {
+        const tempImage = await decodeImageFromBuffer(imageBuffer)
+        if (tempImage) {
+          const rotatedImage = tempImage.rotate(rotationDegrees)
+          const rotatedPngBytes = await rotatedImage.encode(1)
+          imageBuffer = rotatedPngBytes.buffer as ArrayBuffer
+
+          try {
+            const storagePath = imageUrl.split("/receipt-images/")[1]?.split("?")[0]
+            if (storagePath) {
+              const decodedPath = decodeURIComponent(storagePath)
+              await supabase.storage
+                .from("receipt-images")
+                .update(decodedPath, rotatedPngBytes, {
+                  contentType: "image/png",
+                  upsert: true,
+                })
+            }
+          } catch (_) {
+            // 회전 이미지 저장 실패는 OCR 진행을 차단하지 않음
+          }
+        }
+      } catch (_) {
+        // 회전 실패 시 원본으로 진행
+      }
+    }
 
     try {
       currentStage = 'decode_preprocess'
@@ -576,6 +608,55 @@ async function downloadImage(url: string): Promise<ArrayBuffer> {
   const response = await fetch(url)
   if (!response.ok) throw new Error(`Failed to download image: ${response.statusText}`)
   return await response.arrayBuffer()
+}
+
+async function detectImageOrientation(base64Image: string, apiKey: string): Promise<number> {
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        max_tokens: 50,
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:image/png;base64,${base64Image}`,
+                  detail: "low",
+                },
+              },
+              {
+                type: "text",
+                text: '이 문서 이미지를 정상적으로 읽으려면 시계 방향으로 몇 도 회전해야 합니까? 이미 정상이면 0. JSON만 응답: {"rotation": 0 또는 90 또는 180 또는 270}',
+              },
+            ],
+          },
+        ],
+      }),
+    })
+
+    if (!response.ok) return 0
+
+    const result = await response.json()
+    const text = result?.choices?.[0]?.message?.content || ""
+    const match = text.match(/"rotation"\s*:\s*(\d+)/)
+    if (!match) return 0
+
+    const degrees = Number(match[1])
+    if ([90, 180, 270].includes(degrees)) return degrees
+    return 0
+  } catch (_) {
+    return 0
+  }
 }
 
 function triggerNextQueuedProcessing(supabaseUrl: string, supabaseServiceKey: string) {
