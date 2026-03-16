@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
 import { Package, Upload, FileText, X, AlertCircle, Loader2, Download, Eye, Plus, Check, ChevronsUpDown, RotateCcw, Save, Link2, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -193,9 +194,9 @@ export default function BomCoordinateIntegrated() {
         savedAt: new Date().toISOString()
       };
       localStorage.setItem(getTempStorageKey(userId), JSON.stringify(tempData));
-      console.log('✅ 임시 데이터 저장됨');
+      logger.debug('✅ 임시 데이터 저장됨');
     } catch (error) {
-      console.error('임시 데이터 저장 실패:', error);
+      logger.error('임시 데이터 저장 실패:', error);
     }
   };
   
@@ -204,7 +205,7 @@ export default function BomCoordinateIntegrated() {
     try {
       // skipTempDataLoad 플래그가 설정되어 있으면 복원하지 않음
       if (skipTempDataLoad) {
-        console.log('⏭️ 새로 만들기로 인해 임시 데이터 복원 건너뜀');
+        logger.debug('⏭️ 새로 만들기로 인해 임시 데이터 복원 건너뜀');
         return;
       }
       
@@ -219,7 +220,7 @@ export default function BomCoordinateIntegrated() {
                        (metadata.boardName || metadata.productionManager || metadata.productionQuantity > 0) ||
                        fileInfo.bomFile || fileInfo.coordFile;
         if (hasData) {
-          console.log('⏭️ 현재 데이터가 있어 임시 데이터 복원 건너뜀');
+          logger.debug('⏭️ 현재 데이터가 있어 임시 데이터 복원 건너뜀');
           return;
         }
       }
@@ -231,7 +232,7 @@ export default function BomCoordinateIntegrated() {
       
       if (hoursDiff > 24) {
         localStorage.removeItem(getTempStorageKey(userId));
-        console.log('⏰ 24시간 지난 임시 데이터 삭제됨');
+        logger.debug('⏰ 24시간 지난 임시 데이터 삭제됨');
         return;
       }
       
@@ -254,9 +255,9 @@ export default function BomCoordinateIntegrated() {
       setMetadata(tempData.metadata);
       setProcessedResult(restoredResult);
       setViewMode('create');
-      console.log('✅ 임시 데이터 복원됨');
+      logger.debug('✅ 임시 데이터 복원됨');
     } catch (error) {
-      console.error('임시 데이터 불러오기 실패:', error);
+      logger.error('임시 데이터 불러오기 실패:', error);
     }
   };
   
@@ -266,10 +267,10 @@ export default function BomCoordinateIntegrated() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         localStorage.removeItem(getTempStorageKey(user.id));
-        console.log('🗑️ 임시 데이터 삭제됨');
+        logger.debug('🗑️ 임시 데이터 삭제됨');
       }
     } catch (error) {
-      console.error('임시 데이터 삭제 실패:', error);
+      logger.error('임시 데이터 삭제 실패:', error);
     }
   };
 
@@ -318,7 +319,7 @@ export default function BomCoordinateIntegrated() {
           }
         }
       } catch (error) {
-        console.error('Error loading data:', error);
+        logger.error('Error loading data:', error);
       }
     };
 
@@ -355,7 +356,7 @@ export default function BomCoordinateIntegrated() {
         
         setSavedBoards(boards || []);
       } catch (error) {
-        console.error('Error loading saved boards:', error);
+        logger.error('Error loading saved boards:', error);
         toast.error('저장된 BOM 목록을 불러오는데 실패했습니다.');
       } finally {
         setLoadingBoards(false);
@@ -442,12 +443,6 @@ export default function BomCoordinateIntegrated() {
       toast.error('보드 이름을 입력해주세요.');
       return;
     }
-
-    // 생산 담당자는 최종 저장 시 자동 배정되므로 validation 제거
-    // if (!metadata.productionManager || metadata.productionManager === 'none') {
-    //   toast.error('생산 담당자를 선택해주세요.');
-    //   return;
-    // }
 
     if (metadata.productionQuantity <= 0) {
       toast.error('생산 수량을 입력해주세요 (1 이상).');
@@ -555,7 +550,7 @@ export default function BomCoordinateIntegrated() {
       setUploadedFilePaths({ bomPath, ...(coordPath ? { coordPath } : {}) });
 
       // 2. v7 엔진으로 BOM/좌표 처리 (학습 데이터 기반)
-      console.log('Processing BOM with v7 engine...');
+      logger.debug('Processing BOM with v7 engine...');
       setLoadingText('학습 데이터 기반 분석 중...');
       
       // v7-generator로 처리
@@ -596,7 +591,7 @@ export default function BomCoordinateIntegrated() {
       setStep('preview');
 
     } catch (error: any) {
-      console.error('Processing error:', error);
+      logger.error('Processing error:', error);
       const msg = `처리 중 오류가 발생했습니다: ${error.message || error}`;
       setErrorMessage(msg);
       
@@ -655,12 +650,12 @@ export default function BomCoordinateIntegrated() {
           .select('id, status, production_manager');
 
         if (updateError) {
-          console.error('❌ 상태 업데이트 실패:', updateError);
+          logger.error('❌ 상태 업데이트 실패:', updateError);
           throw updateError;
         }
         // RLS로 UPDATE가 막히면 error 없이 0행 업데이트가 나올 수 있음 (이 경우가 현재 현상과 일치)
         if (!updatedRows || updatedRows.length === 0) {
-          console.error('❌ cad_drawings UPDATE가 0행 적용됨 (RLS 정책으로 차단 가능성 큼)', { cadDrawingId, saveStatus });
+          logger.error('❌ cad_drawings UPDATE가 0행 적용됨 (RLS 정책으로 차단 가능성 큼)', { cadDrawingId, saveStatus });
           toast.error('상태 업데이트가 차단되었습니다(RLS). 관리자에게 cad_drawings UPDATE 정책 추가가 필요합니다.');
           throw new Error('cad_drawings update blocked (0 rows updated)');
         }
@@ -679,7 +674,7 @@ export default function BomCoordinateIntegrated() {
           .replace(/_\d{6}$/, '');
         const saveBoardName = `${cleanBoardName}_${dateStr}_정리본`;
 
-        console.log('📝 검토 요청 모드: 새 보드 생성', { saveBoardName, saveStatus });
+        logger.debug('📝 검토 요청 모드: 새 보드 생성', { saveBoardName, saveStatus });
         // 항상 새로 생성 (날짜로 구분되므로)
           const { data: newBoard, error: boardError } = await supabase
             .from('cad_drawings')
@@ -700,7 +695,7 @@ export default function BomCoordinateIntegrated() {
           .select('id, status, production_manager, created_at')
           .eq('id', cadDrawingId)
           .single();
-        console.log('🔎 after insert readback (cad_drawings)', { afterInsertRow, afterInsertReadError });
+        logger.debug('🔎 after insert readback (cad_drawings)', { afterInsertRow, afterInsertReadError });
       } else if (!processedResult.cadDrawingId.startsWith('cad_')) {
         // 담당자 정보 업데이트 (기존 보드인 경우에만)
         const { error: updateExistingError } = await supabase
@@ -868,7 +863,7 @@ export default function BomCoordinateIntegrated() {
       }
 
     } catch (error: any) {
-      console.error('Save error:', error);
+      logger.error('Save error:', error);
       toast.error(`저장에 실패했습니다: ${error.message}`);
     } finally {
       setIsSaving(false);
@@ -1135,7 +1130,7 @@ export default function BomCoordinateIntegrated() {
       
       toast.success('엑셀 파일이 다운로드되었습니다.');
     } catch (error: any) {
-      console.error('Download error:', error);
+      logger.error('Download error:', error);
       toast.error(`다운로드 중 오류가 발생했습니다: ${error.message}`);
     }
   };
@@ -1215,8 +1210,8 @@ export default function BomCoordinateIntegrated() {
         productionQuantity: boardInfo.production_quantity || 0
       });
 
-      console.log('Loaded coordinates:', convertedCoords.length, 'items');
-      console.log('Sample coord:', convertedCoords[0]);
+      logger.debug('Loaded coordinates:', { count: convertedCoords.length });
+      logger.debug('Sample coord:', { coord: convertedCoords[0] });
       
       // 임시 데이터 삭제 (DB에서 새로 로드한 데이터를 사용하도록)
       await clearTempData();
@@ -1242,7 +1237,7 @@ export default function BomCoordinateIntegrated() {
       
       toast.success('데이터를 불러왔습니다. 검토 후 최종 저장해주세요.');
     } catch (error: any) {
-      console.error('Error loading pending board:', error);
+      logger.error('Error loading pending board:', error);
       toast.error(`데이터 로드 실패: ${error.message}`);
     } finally {
       setLoading(false);
@@ -1273,7 +1268,7 @@ export default function BomCoordinateIntegrated() {
         .eq('cad_drawing_id', boardId);
       
       if (bomItemsError) {
-        console.warn('bom_items 삭제 실패:', bomItemsError);
+        logger.warn('bom_items 삭제 실패:', { error: bomItemsError });
       }
 
       // part_placements 삭제
@@ -1283,7 +1278,7 @@ export default function BomCoordinateIntegrated() {
         .eq('cad_drawing_id', boardId);
       
       if (placementsError) {
-        console.warn('part_placements 삭제 실패:', placementsError);
+        logger.warn('part_placements 삭제 실패:', { error: placementsError });
       }
 
       // bom_raw_files에서 파일 경로 가져온 후 삭제
@@ -1310,7 +1305,7 @@ export default function BomCoordinateIntegrated() {
               }
             }
           } catch (storageError) {
-            console.warn('Storage 파일 삭제 실패:', storageError);
+            logger.warn('Storage 파일 삭제 실패:', { error: storageError });
           }
         }
       }
@@ -1322,7 +1317,7 @@ export default function BomCoordinateIntegrated() {
         .eq('cad_drawing_id', boardId);
       
       if (rawFilesError) {
-        console.warn('bom_raw_files 삭제 실패:', rawFilesError);
+        logger.warn('bom_raw_files 삭제 실패:', { error: rawFilesError });
       }
 
       // 2. 메인 cad_drawings 삭제
@@ -1338,7 +1333,7 @@ export default function BomCoordinateIntegrated() {
       
       toast.success(`"${boardName}" BOM이 삭제되었습니다.`);
     } catch (error: any) {
-      console.error('Delete error:', error);
+      logger.error('Delete error:', error);
       toast.error(`삭제 중 오류가 발생했습니다: ${error.message}`);
     } finally {
       setDeletingBoardId(null);

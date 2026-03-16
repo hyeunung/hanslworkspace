@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { logger } from "@/lib/logger";
 import {
   Dialog,
   DialogContent,
@@ -64,7 +65,7 @@ export default function StatementUploadModal({
         }
       }
     } catch (e) {
-      console.warn('Failed to load user name:', e);
+      logger.warn('Failed to load user name');
     }
   };
 

@@ -1,5 +1,6 @@
 // 공통 Excel 다운로드 유틸리티 - 관리탭과 대시보드에서 공유
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/logger'
 
 const supabase = createClient()
 import { generatePurchaseOrderExcelJS } from '@/utils/exceljs/generatePurchaseOrderExcel'
@@ -150,7 +151,7 @@ export const downloadPurchaseOrderExcel = async (
       // 플래그 업데이트 실패는 무시하고 계속 진행
     }
   } catch (error) {
-    console.error('❌ Excel 다운로드 실패:', error);
+    logger.error('Excel 다운로드 실패', error);
     toast.error('엑셀 다운로드에 실패했습니다.');
     throw error;
   }

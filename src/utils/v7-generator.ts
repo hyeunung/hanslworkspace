@@ -6,6 +6,7 @@
  */
 
 import * as XLSX from 'xlsx';
+import { logger } from '@/lib/logger';
 
 // ============================================================
 // 타입 정의
@@ -128,7 +129,7 @@ export async function loadLearningData(): Promise<LearningDataType> {
   }
 
   try {
-    console.log('📂 학습 데이터 로드 시작...');
+    logger.debug('📂 학습 데이터 로드 시작...');
     
     // 1. 정적 JSON 파일 로드
     const [
@@ -171,10 +172,10 @@ export async function loadLearningData(): Promise<LearningDataType> {
       manualInputRequired: MANUAL_INPUT_REQUIRED,
     };
 
-    console.log('✅ 학습 데이터 로드 완료');
+    logger.debug('✅ 학습 데이터 로드 완료');
     return learningDataCache;
   } catch (error) {
-    console.error('❌ 학습 데이터 로드 실패:', error);
+    logger.error('❌ 학습 데이터 로드 실패:', error);
     throw error;
   }
 }
@@ -360,7 +361,7 @@ async function parseBOMFile(file: File): Promise<ParsedBOMItem[]> {
   let refColumnFoundByKeyword = headerRow !== -1;
   
   if (headerRow === -1) {
-    console.warn('헤더를 찾을 수 없습니다. 데이터 패턴으로 REF 칼럼 탐색...');
+    logger.warn('헤더를 찾을 수 없습니다. 데이터 패턴으로 REF 칼럼 탐색...');
     headerRow = 0; // 첫 행부터 데이터로 간주
     refColumnFoundByKeyword = false;
   }
@@ -414,10 +415,10 @@ async function parseBOMFile(file: File): Promise<ParsedBOMItem[]> {
     const maxScore = Math.max(...colScores);
     if (maxScore >= 0.6) {
       const bestRefCol = colScores.indexOf(maxScore);
-      console.log(`📊 데이터 패턴 분석: 칼럼 ${bestRefCol}을(를) REF로 판별 (매칭률: ${(maxScore * 100).toFixed(1)}%)`);
+      logger.debug(`📊 데이터 패턴 분석: 칼럼 ${bestRefCol}을(를) REF로 판별 (매칭률: ${(maxScore * 100).toFixed(1)}%)`);
       colMap.ref = bestRefCol;
     } else {
-      console.warn('📊 데이터 패턴으로도 REF 칼럼을 찾지 못함. 기본값(1) 사용.');
+      logger.warn('📊 데이터 패턴으로도 REF 칼럼을 찾지 못함. 기본값(1) 사용.');
     }
   }
   
@@ -551,33 +552,33 @@ async function parseCoordinateFile(file: File): Promise<ParsedCoordItem[]> {
           headerFound = true;
           // 탭 또는 공백으로 분리
           const cols = trimmed.split(/\t|\s{2,}/).map(c => c.trim().replace(/"/g, ''));
-          console.log('📍 좌표 헤더 발견:', cols);
-          
+          logger.debug('📍 좌표 헤더 발견:', { cols });
+
           cols.forEach((col, idx) => {
             const colLower = col.toLowerCase();
             if (colLower.includes('ref') || colLower.includes('designator')) {
               colMap.ref = idx;
-              console.log(`  - Ref 컬럼: ${idx} (${col})`);
+              logger.debug(`  - Ref 컬럼: ${idx} (${col})`);
             }
             if (colLower.includes('locationx') || colLower === 'x' || (colLower === 'x' && idx === 1)) {
               colMap.x = idx;
-              console.log(`  - X 컬럼: ${idx} (${col})`);
+              logger.debug(`  - X 컬럼: ${idx} (${col})`);
             }
             if (colLower.includes('locationy') || colLower === 'y' || (colLower === 'y' && idx === 2)) {
               colMap.y = idx;
-              console.log(`  - Y 컬럼: ${idx} (${col})`);
+              logger.debug(`  - Y 컬럼: ${idx} (${col})`);
             }
             if (colLower.includes('rotation') || colLower.includes('angle') || colLower.includes('rot')) {
               colMap.rotation = idx;
-              console.log(`  - Rotation 컬럼: ${idx} (${col})`);
+              logger.debug(`  - Rotation 컬럼: ${idx} (${col})`);
             }
             if (colLower.includes('layer') || colLower.includes('side')) {
               colMap.layer = idx;
-              console.log(`  - Layer 컬럼: ${idx} (${col})`);
+              logger.debug(`  - Layer 컬럼: ${idx} (${col})`);
             }
           });
-          
-          console.log('📍 최종 컬럼 매핑:', colMap);
+
+          logger.debug('📍 최종 컬럼 매핑:', { colMap });
           continue;
         }
         continue;
@@ -606,9 +607,9 @@ async function parseCoordinateFile(file: File): Promise<ParsedCoordItem[]> {
       });
     }
     
-    console.log(`📍 파싱된 좌표: ${items.length}개`);
+    logger.debug(`📍 파싱된 좌표: ${items.length}개`);
     if (items.length > 0) {
-      console.log('📍 첫 번째 좌표 샘플:', items[0]);
+      logger.debug('📍 첫 번째 좌표 샘플:', { sample: items[0] });
     }
   } else {
     // 엑셀 파일 파싱
@@ -904,7 +905,7 @@ export async function processBOMAndCoordinates(
   coordFile: File | null,
   productionQuantity: number
 ): Promise<ProcessedResult> {
-  console.log('🚀 BOM/좌표 처리 시작...');
+  logger.debug('🚀 BOM/좌표 처리 시작...');
   
   // 1. 학습 데이터 로드
   const learningData = await loadLearningData();
@@ -922,8 +923,8 @@ export async function processBOMAndCoordinates(
     ref: coord.ref.toUpperCase(),
   }));
   
-  console.log(`📄 BOM 항목: ${parsedBOM.length}개`);
-  console.log(`📍 좌표 항목: ${normalizedCoord.length}개`);
+  logger.debug(`📄 BOM 항목: ${parsedBOM.length}개`);
+  logger.debug(`📍 좌표 항목: ${normalizedCoord.length}개`);
   
   // 3. Ref → 좌표 맵 생성
   const coordMap = new Map<string, ParsedCoordItem>();
@@ -1420,13 +1421,14 @@ export async function processBOMAndCoordinates(
   
   // 미삽 정렬 확인용 디버그 로그
   const misapItems = bomItems.filter(item => checkIsMisap(item.itemName, item.remark));
-  console.log('🔴 미삽 항목들:', misapItems.map(item => `${item.itemType} - ${item.itemName}`));
-  
-  console.log('✅ BOM/좌표 처리 완료');
-  console.log(`  - 총 항목: ${bomItems.length}`);
-  console.log(`  - 수동 확인 필요: ${manualRequiredCount}`);
-  console.log(`  - 새 부품: ${newPartCount}`);
-  console.log(`  - 미삽: ${misapCount}`);
+  logger.debug('🔴 미삽 항목들:', { misapItems: misapItems.map(item => `${item.itemType} - ${item.itemName}`) });
+
+  logger.debug('✅ BOM/좌표 처리 완료', {
+    totalItems: bomItems.length,
+    manualRequiredCount,
+    newPartCount,
+    misapCount,
+  });
   
   return {
     bomItems,
@@ -1457,12 +1459,12 @@ export function saveNewPartMapping(footprint: string, partName: string, itemType
     };
     
     localStorage.setItem(storageKey, JSON.stringify(existing));
-    console.log(`✅ 새 부품 저장: ${footprint} → ${partName} (${itemType})`);
+    logger.debug(`✅ 새 부품 저장: ${footprint} → ${partName} (${itemType})`);
     
     // 캐시 무효화
     learningDataCache = null;
   } catch (error) {
-    console.error('새 부품 저장 실패:', error);
+    logger.error('새 부품 저장 실패:', error);
   }
 }
 

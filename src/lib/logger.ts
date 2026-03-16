@@ -38,15 +38,8 @@ class Logger {
           break;
       }
     } else {
-      // 프로덕션에서는 경고와 에러만 로깅 (실제로는 외부 서비스로 전송)
-      // 임시 디버깅: 모든 레벨 출력
+      // 프로덕션에서는 경고와 에러만 로깅
       switch (level) {
-        case 'debug':
-          console.debug(`🔍 [${timestamp}] ${message}`, context || '');
-          break;
-        case 'info':
-          console.info(`ℹ️ [${timestamp}] ${message}`, context || '');
-          break;
         case 'warn':
           console.warn(`⚠️ [${timestamp}] ${message}`, context || '');
           break;

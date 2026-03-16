@@ -223,24 +223,34 @@ serve(async (req) => {
           }
           perfDebug.processed_width = rotatedImage.width
           perfDebug.processed_height = rotatedImage.height
+          perfDebug.rotation_applied = rotationDegrees
 
           currentStage = "upload_rotated_image"
           try {
             const storagePath = imageUrl.split("/receipt-images/")[1]?.split("?")[0]
             if (storagePath) {
               const decodedPath = decodeURIComponent(storagePath)
-              await supabase.storage
+              const { error: uploadErr } = await supabase.storage
                 .from("receipt-images")
-                .update(decodedPath, rotatedPngBytes, {
+                .upload(decodedPath, rotatedPngBytes, {
                   contentType: "image/png",
                   upsert: true,
                 })
+              if (uploadErr) {
+                perfDebug.rotation_save_error = uploadErr.message
+              } else {
+                perfDebug.rotation_saved = true
+              }
             }
-          } catch (_) {
-            // 회전 이미지 저장 실패는 OCR 진행을 차단하지 않음
+          } catch (saveErr: any) {
+            perfDebug.rotation_save_error = saveErr?.message ?? "unknown_save_error"
+            // 저장 실패해도 OCR은 메모리상 교정된 이미지로 계속 진행
           }
+        } else {
+          perfDebug.rotation_decode_failed = true
         }
-      } catch (_) {
+      } catch (rotateErr: any) {
+        perfDebug.rotation_error = rotateErr?.message ?? "unknown_rotation_error"
         // 회전 실패 시 원본 이미지로 진행
       }
     }

@@ -12,7 +12,6 @@ import DeliveryDateWarningModal, { useDeliveryWarningCount } from "@/components/
 
 import { Package, Info, AlertTriangle } from "lucide-react";
 import { downloadPurchaseOrderExcel } from '@/utils/excelDownload';
-import { dateToISOString } from '@/utils/helpers';
 
 // Lazy load modal for better performance
 const PurchaseItemsModal = lazy(() => import("@/components/purchase/PurchaseItemsModal"));
@@ -48,13 +47,8 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   const [isWarningModalOpen, setIsWarningModalOpen] = useState(false);
   const hasShownWarningRef = useRef(false);
   
-  // 🔍 디버깅: 컴포넌트 마운트/언마운트 추적
   useEffect(() => {
-    logger.info('🔍 [PurchaseListMain] 컴포넌트 마운트됨, hasShownWarning 리셋');
     hasShownWarningRef.current = false;
-    return () => {
-      logger.info('🔍 [PurchaseListMain] 컴포넌트 언마운트됨');
-    };
   }, []);
   
   // 고급 필터 상태 관리
@@ -180,76 +174,6 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
 
   // 입고 일정 경고 항목 수 계산 (본인 발주만)
   const deliveryWarningCount = useDeliveryWarningCount(visiblePurchases, currentUserName);
-  
-  // 🔍 디버깅: F20251226_003 항목이 왜 모달에 안 뜨는지 상세 분석
-  useEffect(() => {
-    if (!loading && visiblePurchases.length > 0) {
-      const targetPurchase = visiblePurchases.find(p => p.purchase_order_number === 'F20251226_003');
-      if (targetPurchase) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        
-        const deliveryDate = targetPurchase.delivery_request_date ? new Date(targetPurchase.delivery_request_date) : null;
-        const revisedDate = targetPurchase.revised_delivery_request_date ? new Date(targetPurchase.revised_delivery_request_date) : null;
-        
-        if (deliveryDate) deliveryDate.setHours(0, 0, 0, 0);
-        if (revisedDate) revisedDate.setHours(0, 0, 0, 0);
-        
-        const checks = {
-          check1_isReceived: !(targetPurchase.is_received || targetPurchase.delivery_status === 'completed'),
-          check2_approved: targetPurchase.middle_manager_status === 'approved' && targetPurchase.final_manager_status === 'approved',
-          check3_requesterMatch: !currentUserName || targetPurchase.requester_name === currentUserName,
-          check4_notRevisionRequested: targetPurchase.delivery_revision_requested !== true,
-          check5_dateOverdue: (revisedDate && revisedDate < today) || (deliveryDate && deliveryDate < today && !revisedDate)
-        };
-        
-        const allChecksPass = Object.values(checks).every(v => v === true);
-        
-        logger.info('🔍 [입고지연알림 상세 분석] F20251226_003', {
-          ...checks,
-          allChecksPass,
-          deliveryWarningCount,
-          hasShownWarning: hasShownWarningRef.current,
-          deliveryDate: deliveryDate ? dateToISOString(deliveryDate) : undefined,
-          revisedDate: revisedDate ? dateToISOString(revisedDate) : undefined,
-          today: today.toISOString(),
-          deliveryDateOverdue: deliveryDate ? deliveryDate < today : false,
-          revisedDateOverdue: revisedDate ? revisedDate < today : false
-        });
-      }
-    }
-  }, [loading, visiblePurchases, currentUserName, deliveryWarningCount]);
-  
-  // 🔍 디버깅: 경고 항목 상세 로그
-  useEffect(() => {
-    if (!loading && visiblePurchases.length > 0) {
-      const targetPurchase = visiblePurchases.find(p => p.purchase_order_number === 'F20251226_003');
-      if (targetPurchase) {
-        logger.info('🔍 [입고지연알림 디버깅] F20251226_003 항목 발견', {
-          purchase_order_number: targetPurchase.purchase_order_number,
-          requester_name: targetPurchase.requester_name,
-          currentUserName,
-          nameMatch: targetPurchase.requester_name === currentUserName,
-          is_received: targetPurchase.is_received,
-          delivery_status: targetPurchase.delivery_status,
-          middle_manager_status: targetPurchase.middle_manager_status,
-          final_manager_status: targetPurchase.final_manager_status,
-          delivery_revision_requested: targetPurchase.delivery_revision_requested,
-          delivery_request_date: targetPurchase.delivery_request_date,
-          revised_delivery_request_date: targetPurchase.revised_delivery_request_date,
-          deliveryWarningCount,
-          visiblePurchasesCount: visiblePurchases.length,
-          hasShownWarning: hasShownWarningRef.current,
-          loading
-        });
-      } else {
-        logger.warn('🔍 [입고지연알림 디버깅] F20251226_003 항목을 visiblePurchases에서 찾을 수 없음', {
-          visiblePurchasesCount: visiblePurchases.length,
-          purchaseOrderNumbers: visiblePurchases.slice(0, 5).map(p => p.purchase_order_number)
-        });
-      }
-    }
-  }, [loading, visiblePurchases, currentUserName, deliveryWarningCount]);
   
   // 로딩 완료 후 경고 모달 자동 표시 (마운트당 1회)
   useEffect(() => {

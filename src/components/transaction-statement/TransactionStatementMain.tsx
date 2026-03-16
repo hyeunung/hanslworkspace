@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { logger } from "@/lib/logger";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -350,7 +351,7 @@ export default function TransactionStatementMain() {
             table: 'transaction_statements'
           },
           (payload: any) => {
-            console.log('[Realtime] Statement changed:', payload);
+            logger.debug('[Realtime] Statement changed', { payload });
             // 상태가 변경되면 목록 갱신
             if (payload.eventType === 'UPDATE') {
               const newStatus = payload.new?.status;
@@ -594,11 +595,11 @@ export default function TransactionStatementMain() {
           setIsConfirmModalOpen(true);
         }
       } else {
-        console.error('[OCR] Failed:', result.error);
+        logger.error('[OCR] Failed', undefined, { error: result.error });
         toast.error(result.error || 'OCR 추출에 실패했습니다.', { id: `extraction-${statement.id}` });
       }
     } catch (error) {
-      console.error('[OCR] Error:', error);
+      logger.error('[OCR] Error', error);
       toast.error('OCR 추출 중 오류가 발생했습니다.', { id: `extraction-${statement.id}` });
     } finally {
       // 추출 완료 - ID 제거
@@ -686,6 +687,9 @@ export default function TransactionStatementMain() {
 
   // 확정 모달 닫기
   const handleConfirmModalClose = () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'TransactionStatementMain.tsx:689',message:'handleConfirmModalClose called',data:{isConfirmModalOpen,selectedStatementId:selectedStatement?.id},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     setIsConfirmModalOpen(false);
     setSelectedStatement(null);
     loadStatements();

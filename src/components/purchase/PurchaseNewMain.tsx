@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { logger } from '@/lib/logger';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -562,7 +563,7 @@ export default function PurchaseNewMain() {
       toast.success(`${rows.length}개 행 데이터를 붙여넣었습니다.`);
       
     } catch (error) {
-      console.error('Excel paste error:', error);
+      logger.error('Excel paste error:', error);
       toast.error('엑셀 데이터 붙여넣기 중 오류가 발생했습니다.');
     }
   };
@@ -605,7 +606,7 @@ export default function PurchaseNewMain() {
             toast.warning('해당 보드의 BOM 데이터가 없습니다.');
           }
         } catch (error) {
-          console.error('BOM load error:', error);
+          logger.error('BOM load error:', error);
           toast.error('BOM 데이터를 불러오는 중 오류가 발생했습니다.');
         }
       }
@@ -684,7 +685,7 @@ export default function PurchaseNewMain() {
       .order('purchase_order_number', { ascending: false });
     
     if (queryError) {
-      console.error('발주요청번호 조회 실패', queryError)
+      logger.error('발주요청번호 조회 실패', queryError)
       throw queryError
     }
     
@@ -852,7 +853,7 @@ export default function PurchaseNewMain() {
           const errorText = await notifyResponse.text();
         }
       } catch (notifyError) {
-        console.error('중간관리자 알림 발송 실패', notifyError)
+        logger.error('중간관리자 알림 발송 실패', notifyError)
       }
       
       // 1. 폼 초기화
@@ -901,7 +902,7 @@ export default function PurchaseNewMain() {
       try {
         await loadAllPurchaseData(String(currentEmployee.id))
       } catch (refreshError) {
-        console.error('새 발주 생성 후 데이터 새로고침 실패', refreshError)
+        logger.error('새 발주 생성 후 데이터 새로고침 실패', refreshError)
       } finally {
         markCacheStaleAndNotify() // 구독자에게 캐시 변경 알림 + lastFetch 무효화
       }
@@ -1013,7 +1014,7 @@ export default function PurchaseNewMain() {
               .eq('id', contact.id);
             
             if (updateError) {
-              console.error('담당자 업데이트 오류:', updateError);
+              logger.error('담당자 업데이트 오류:', updateError);
             }
           } else if (contact.isNew) {
             // 새로운 담당자 추가
@@ -1028,7 +1029,7 @@ export default function PurchaseNewMain() {
               });
             
             if (insertError) {
-              console.error('담당자 추가 오류:', insertError);
+              logger.error('담당자 추가 오류:', insertError);
               toast.error(`담당자 추가 실패: ${insertError.message}`);
             }
           }

@@ -20,6 +20,7 @@
 
 import ExcelJS from 'exceljs';
 import type { BOMItem, CoordinateItem } from './v7-generator';
+import { logger } from '@/lib/logger';
 
 // ============================================================
 // 타입 정의
@@ -53,10 +54,10 @@ export async function generateBOMExcelFromTemplate(
     
       const buffer = await response.arrayBuffer();
       await workbook.xlsx.load(buffer);
-    console.log('✅ 템플릿 로드 완료');
-    
+    logger.debug('템플릿 로드 완료');
+
   } catch (error) {
-    console.error('템플릿 로드 실패:', error);
+    logger.error('템플릿 로드 실패', error);
     throw new Error('템플릿 파일 로드에 실패했습니다.');
   }
 
@@ -287,7 +288,7 @@ function fillCoordinateSheet(
   // 시트 가져오기
   const sheet = workbook.getWorksheet(sheetName);
   if (!sheet) {
-    console.warn(`${sheetName} 시트를 찾을 수 없습니다.`);
+    logger.warn(`${sheetName} 시트를 찾을 수 없습니다.`);
     return;
   }
 
@@ -376,7 +377,7 @@ export async function downloadExcelBlob(blob: Blob, filename: string) {
         return;
       }
       // 다른 오류면 fallback으로 진행
-      console.warn('showSaveFilePicker 실패, fallback 사용:', err);
+      logger.warn('showSaveFilePicker 실패, fallback 사용');
     }
   }
   

@@ -884,12 +884,12 @@ const FastPurchaseTable = ({
 
     // 길이를 픽셀로 변환 (글자당 약 7px + 여백 20px)
     const calculatedWidth = Math.max(80, Math.min(200, maxLength * 7 + 20));
-    console.log('🔍 [FastPurchaseTable] 업체 칼럼 너비 계산:', { 
+    logger.debug('🔍 [FastPurchaseTable] 업체 칼럼 너비 계산:', {
       activeTab,
       maxLength,
       calculatedWidth,
       sampleSize,
-      firstVendor: sampledPurchases[0]?.vendor_name 
+      firstVendor: sampledPurchases[0]?.vendor_name
     });
     return calculatedWidth;
   }, [purchases, activeTab]);

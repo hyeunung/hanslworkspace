@@ -7,7 +7,6 @@ import { Progress } from '@/components/ui/progress';
 import { Purchase } from '@/types/purchase';
 import { toast } from 'sonner';
 import { addCacheListener, findPurchaseInMemory } from '@/stores/purchaseMemoryStore';
-import { dateToISOString } from '@/utils/helpers';
 import { logger } from '@/lib/logger';
 
 // 상세 모달 lazy load
@@ -460,41 +459,12 @@ export function useDeliveryWarningCount(purchases: Purchase[], currentUserName?:
     today.setHours(0, 0, 0, 0);
 
     let count = 0;
-    const debugItems: any[] = [];
 
     purchases.forEach(purchase => {
-      // F20251226_003 항목 디버깅
-      const isTarget = purchase.purchase_order_number === 'F20251226_003';
-      
-      if (purchase.is_received || purchase.delivery_status === 'completed') {
-        if (isTarget) debugItems.push({ step: '입고완료로 제외', purchase: purchase.purchase_order_number });
-        return;
-      }
-      if (purchase.middle_manager_status !== 'approved' || purchase.final_manager_status !== 'approved') {
-        if (isTarget) debugItems.push({ 
-          step: '승인 미완료로 제외', 
-          purchase: purchase.purchase_order_number,
-          middle: purchase.middle_manager_status,
-          final: purchase.final_manager_status
-        });
-        return;
-      }
-      if (currentUserName && purchase.requester_name !== currentUserName) {
-        if (isTarget) debugItems.push({ 
-          step: '본인 발주 아님으로 제외', 
-          purchase: purchase.purchase_order_number,
-          requester_name: purchase.requester_name,
-          currentUserName
-        });
-        return;
-      }
-      if (purchase.delivery_revision_requested === true) {
-        if (isTarget) debugItems.push({ 
-          step: '수정요청 완료로 제외', 
-          purchase: purchase.purchase_order_number 
-        });
-        return;
-      }
+      if (purchase.is_received || purchase.delivery_status === 'completed') return;
+      if (purchase.middle_manager_status !== 'approved' || purchase.final_manager_status !== 'approved') return;
+      if (currentUserName && purchase.requester_name !== currentUserName) return;
+      if (purchase.delivery_revision_requested === true) return;
 
       const deliveryDate = purchase.delivery_request_date ? new Date(purchase.delivery_request_date) : null;
       const revisedDate = purchase.revised_delivery_request_date ? new Date(purchase.revised_delivery_request_date) : null;
@@ -504,61 +474,14 @@ export function useDeliveryWarningCount(purchases: Purchase[], currentUserName?:
 
       if (revisedDate && revisedDate < today) {
         count++;
-        if (isTarget) debugItems.push({ 
-          step: '변경요청일 지연으로 포함', 
-          purchase: purchase.purchase_order_number,
-          revisedDate: dateToISOString(revisedDate),
-          today: today.toISOString()
-        });
         return;
       }
 
       if (deliveryDate && deliveryDate < today && !revisedDate) {
         count++;
-        if (isTarget) debugItems.push({ 
-          step: '입고요청일 지연으로 포함', 
-          purchase: purchase.purchase_order_number,
-          deliveryDate: dateToISOString(deliveryDate),
-          today: today.toISOString()
-        });
         return;
       }
-      
-      if (isTarget) {
-        debugItems.push({ 
-          step: '날짜 조건 불만족', 
-          purchase: purchase.purchase_order_number,
-          deliveryDate: deliveryDate ? dateToISOString(deliveryDate) : null,
-          revisedDate: revisedDate ? dateToISOString(revisedDate) : null,
-          today: today.toISOString()
-        });
-      }
     });
-
-    // 디버깅 로그 출력
-    if (debugItems.length > 0) {
-      console.log('🔍 [useDeliveryWarningCount] F20251226_003 디버깅:', debugItems);
-    }
-    
-    // F20251226_003 항목이 purchases에 있는지 확인
-    const targetPurchase = purchases.find(p => p.purchase_order_number === 'F20251226_003');
-    if (targetPurchase) {
-      console.log('🔍 [useDeliveryWarningCount] F20251226_003 항목 상세 정보:', {
-        purchase_order_number: targetPurchase.purchase_order_number,
-        requester_name: targetPurchase.requester_name,
-        currentUserName,
-        nameMatch: targetPurchase.requester_name === currentUserName,
-        is_received: targetPurchase.is_received,
-        delivery_status: targetPurchase.delivery_status,
-        middle_manager_status: targetPurchase.middle_manager_status,
-        final_manager_status: targetPurchase.final_manager_status,
-        delivery_revision_requested: targetPurchase.delivery_revision_requested,
-        delivery_request_date: targetPurchase.delivery_request_date,
-        revised_delivery_request_date: targetPurchase.revised_delivery_request_date,
-        today: today.toISOString(),
-        finalCount: count
-      });
-    }
 
     return count;
   }, [purchases, currentUserName]);

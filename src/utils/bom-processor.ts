@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { logger } from '@/lib/logger';
 
 interface ProcessedBOMResult {
   bomItems: any[];
@@ -91,7 +92,7 @@ Example Output:
                  }
              }
         } catch (e) {
-             console.warn('Frontend Coordinate Parse Error:', e);
+             logger.warn('Frontend Coordinate Parse Error:', e);
         }
 
         bomItems.push({
@@ -157,12 +158,12 @@ Example Output:
       return { bomItems: correctedBomItems, coordinates };
 
     } catch (e) {
-      console.error('TSV Parse Error:', e);
-      console.log('Raw Content:', content);
+      logger.error('TSV Parse Error:', e);
+      logger.debug('Raw Content:', { content });
       throw new Error('AI 응답을 처리하는데 실패했습니다.');
     }
   } catch (error) {
-    console.error('AI Processing Error:', error);
+    logger.error('AI Processing Error:', error);
     throw error;
   }
 }
@@ -212,7 +213,7 @@ async function readFileAsText(file: File): Promise<string> {
           
           resolve(rows.join('\n'));
         } catch (err) {
-          console.warn('Excel parsing failed, fallback to text', err);
+          logger.warn('Excel parsing failed, fallback to text', err);
           // 바이너리를 텍스트로 읽으면 깨지므로 에러 처리
           reject(new Error('엑셀 파일 파싱에 실패했습니다.'));
         }

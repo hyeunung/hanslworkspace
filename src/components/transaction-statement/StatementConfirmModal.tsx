@@ -302,6 +302,13 @@ export default function StatementConfirmModal({
   onReextractStart,
   onReextractFinish,
 }: StatementConfirmModalProps) {
+  // #region agent log
+  const renderCountRef = useRef(0);
+  renderCountRef.current += 1;
+  if (renderCountRef.current <= 30) {
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'StatementConfirmModal.tsx:304',message:'RENDER',data:{renderCount:renderCountRef.current,isOpen,statementId:statement?.id},timestamp:Date.now()})}).catch(()=>{});
+  }
+  // #endregion
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
@@ -576,6 +583,9 @@ export default function StatementConfirmModal({
 
   // 데이터 로드
   const loadData = useCallback(async () => {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'StatementConfirmModal.tsx:578',message:'loadData START',data:{statementId:statement.id},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     try {
       setLoading(true);
       
@@ -1045,6 +1055,9 @@ export default function StatementConfirmModal({
   }, [statement.id, supabase]);
 
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'StatementConfirmModal.tsx:1047',message:'loadData useEffect triggered',data:{isOpen,statementId:statement.id},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (isOpen && statement) {
       setManuallySelectedPO(false); // 모달 열릴 때 수동 선택 플래그 리셋
       loadData();
@@ -1532,7 +1545,7 @@ export default function StatementConfirmModal({
       const matchingPO = matchingCandidate.poNumber || matchingCandidate.salesOrderNumber || '';
       // 현재 선택된 것과 다르면 변경
       if (matchingPO && matchingPO !== selectedPONumber) {
-        console.log(`[자동 선택] 발주번호 일치 후보 "${matchingPO}"로 자동 선택`);
+        logger.debug(`[자동 선택] 발주번호 일치 후보 "${matchingPO}"로 자동 선택`);
         setSelectedPONumber(matchingPO);
         return;
       }
@@ -1548,7 +1561,7 @@ export default function StatementConfirmModal({
       const firstCandidate = allPONumberCandidates[0];
       const newPO = firstCandidate.poNumber || firstCandidate.salesOrderNumber || '';
       if (newPO) {
-        console.log(`[자동 수정] OCR 발주번호 "${selectedPONumber}"가 DB에 없음 → 추천 발주 "${newPO}"로 변경`);
+        logger.debug(`[자동 수정] OCR 발주번호 "${selectedPONumber}"가 DB에 없음 → 추천 발주 "${newPO}"로 변경`);
         setSelectedPONumber(newPO);
       }
     }
@@ -1995,11 +2008,17 @@ export default function StatementConfirmModal({
   }, [statementWithItems, deletedOCRItemIds, editedOCRItems, supabase]);
 
   const handleCloseWithSave = useCallback(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'StatementConfirmModal.tsx:1997',message:'handleCloseWithSave called',data:{isAlreadyClosing:isClosingWithSaveRef.current,editedSize:editedOCRItems.size,deletedSize:deletedOCRItemIds.size},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (isClosingWithSaveRef.current) return;
     isClosingWithSaveRef.current = true;
 
     const close = () => {
       isClosingWithSaveRef.current = false;
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'StatementConfirmModal.tsx:2001',message:'handleCloseWithSave calling onClose',data:{},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       onClose();
     };
 
@@ -2143,7 +2162,7 @@ export default function StatementConfirmModal({
     
     // 학습 데이터 저장
     if (corrections.length > 0) {
-      console.log(`📚 학습 데이터 저장: ${corrections.length}건의 수정사항`);
+      logger.debug(`📚 학습 데이터 저장: ${corrections.length}건의 수정사항`);
       for (const correction of corrections) {
         await transactionStatementService.saveCorrection(correction);
       }
@@ -2361,15 +2380,15 @@ export default function StatementConfirmModal({
               amount: item.amount_value,
               vendor_name: vendorName
             }));
-            console.log('[handleSelectGlobalPO] DB에서 품목 조회 성공:', systemItems.length);
+            logger.debug('[handleSelectGlobalPO] DB에서 품목 조회 성공:', { count: systemItems.length });
           }
         }
       } catch (error) {
-        console.error('[handleSelectGlobalPO] DB 조회 실패:', error);
+        logger.error('[handleSelectGlobalPO] DB 조회 실패:', error);
       }
     }
 
-    console.log('[handleSelectGlobalPO] poNumber:', poNumber, 'systemItems:', systemItems.length, 'vendor:', vendorName);
+    logger.debug('[handleSelectGlobalPO]', { poNumber, systemItemsCount: systemItems.length, vendor: vendorName });
 
     // poItemsMap에 품목 추가 (UI에서 후보 표시용)
     if (systemItems.length > 0) {
@@ -2479,7 +2498,7 @@ export default function StatementConfirmModal({
         name: vendor.vendor_name
       })));
     } catch (err) {
-      console.error('거래처 검색 오류:', err);
+      logger.error('거래처 검색 오류:', err);
       setVendorSearchResults([]);
     } finally {
       setVendorSearchLoading(false);
@@ -2519,7 +2538,7 @@ export default function StatementConfirmModal({
         vendorName: p.vendor?.vendor_name
       })));
     } catch (err) {
-      console.error('발주번호 검색 오류:', err);
+      logger.error('발주번호 검색 오류:', err);
       setPOSearchResults([]);
     } finally {
       setPOSearchLoading(false);
@@ -2663,7 +2682,7 @@ export default function StatementConfirmModal({
           
         }
       } catch (err) {
-        console.error('발주 품목 조회 오류:', err);
+        logger.error('발주 품목 조회 오류:', err);
       }
     }
   }, [statementWithItems, allPONumberCandidates, selectedPONumber, lookupPairedOrderNumber, handleEditOCRItem, supabase]);
@@ -2875,7 +2894,7 @@ export default function StatementConfirmModal({
       }
       
     } catch (err) {
-      console.error('거래처 발주 검색 오류:', err);
+      logger.error('거래처 발주 검색 오류:', err);
       toast.error('발주 후보 검색 중 오류가 발생했습니다.');
     }
   };
@@ -2934,7 +2953,7 @@ export default function StatementConfirmModal({
       // 타입 체크를 위해 final 변수 사용
       const finalMatch = bestMatch as SystemPurchaseItem | null;
       const matchedName = finalMatch?.item_name || '없음';
-      console.log(`🔄 발주번호 선택: ${poNumber} → 매칭: ${matchedName} (점수: ${bestScore})`);
+      logger.debug(`🔄 발주번호 선택: ${poNumber} → 매칭: ${matchedName} (점수: ${bestScore})`);
       return bestMatch;
     };
 
@@ -3659,6 +3678,57 @@ export default function StatementConfirmModal({
         if (result.updatedStatement) {
           setStatementWithItems(prev => (prev ? { ...prev, ...result.updatedStatement } : prev));
         }
+
+        // 수량일치 후 금액이 모두 채워져 있으면 이어서 금액확정 자동 처리
+        const allAmountsFilled = !result.finalized && activeItems.every(ocrItem => {
+          const edited = editedOCRItems.get(ocrItem.id);
+          const amount = edited?.amount !== undefined ? edited.amount : ocrItem.extracted_amount;
+          return amount != null && amount > 0;
+        });
+
+        if (allAmountsFilled) {
+          try {
+            const cfItems: ConfirmItemRequest[] = activeItems.map(item => {
+              const matched = itemMatches.get(item.id);
+              const edited = editedOCRItems.get(item.id);
+              return {
+                itemId: item.id,
+                matched_purchase_id: matched?.purchase_id,
+                matched_item_id: matched?.item_id,
+                confirmed_quantity: edited?.quantity !== undefined ? edited.quantity : (item.extracted_quantity ?? 1),
+                confirmed_unit_price: edited?.unit_price !== undefined ? edited.unit_price : item.extracted_unit_price,
+                confirmed_amount: edited?.amount !== undefined ? edited.amount : item.extracted_amount,
+              };
+            });
+            const cfGrandTotal = activeItems.reduce((sum, item) => {
+              const edited = editedOCRItems.get(item.id);
+              return sum + (edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0));
+            }, 0);
+
+            const cfResult = await transactionStatementService.confirmStatement(
+              {
+                statementId: statement.id,
+                items: cfItems,
+                actual_received_date: statementWithItems.extracted_data?.actual_received_date,
+                accounting_received_date: normalizeStatementDate(statementDateInput),
+                confirmed_grand_total: cfGrandTotal
+              },
+              effectiveConfirmerName
+            );
+
+            if (cfResult.success) {
+              if (cfResult.updatedStatement) {
+                setStatementWithItems(prev => (prev ? { ...prev, ...cfResult.updatedStatement } : prev));
+              }
+              toast.success('거래명세서가 확정되었습니다.');
+              onConfirm();
+              return;
+            }
+          } catch (_) {
+            // 자동 금액확정 실패 시 수량일치만 완료 상태로 진행
+          }
+        }
+
         if (result.finalized) {
           toast.success('거래명세서가 확정되었습니다.');
         } else {
@@ -3680,6 +3750,9 @@ export default function StatementConfirmModal({
   // 권한 무관하게 시스템이 자동 판단 (수동 입고가 이미 완료된 경우)
   const autoQuantityMatchTriggeredRef = useRef(false);
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'StatementConfirmModal.tsx:3733',message:'autoQuantityMatch useEffect',data:{isOpen,loading,saving,isQuantityMatchConfirmed,isStatementConfirmed,triggered:autoQuantityMatchTriggeredRef.current,matchSize:itemMatches.size,hasItems:!!statementWithItems},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     if (!statementWithItems || !isOpen || loading || saving) return;
     if (isQuantityMatchConfirmed || isStatementConfirmed) return;
     if (autoQuantityMatchTriggeredRef.current) return;
@@ -3695,7 +3768,6 @@ export default function StatementConfirmModal({
 
     if (allMatched) {
       autoQuantityMatchTriggeredRef.current = true;
-      // 권한 체크 없이 시스템 자동 처리
       (async () => {
         try {
           const qmItems: ConfirmItemRequest[] = statementWithItems.items.map(item => {
@@ -3728,6 +3800,58 @@ export default function StatementConfirmModal({
             if (qmResult.updatedStatement) {
               setStatementWithItems(prev => (prev ? { ...prev, ...qmResult.updatedStatement } : prev));
             }
+
+            // 수량일치 후 금액이 모두 있으면 이어서 금액확정 자동 처리
+            const activeItemsForConfirm = statementWithItems.items.filter(item => !deletedOCRItemIds.has(item.id));
+            const allAmounts = activeItemsForConfirm.every(ocrItem => {
+              const edited = editedOCRItems.get(ocrItem.id);
+              const amount = edited?.amount !== undefined ? edited.amount : ocrItem.extracted_amount;
+              return amount != null && amount > 0;
+            });
+
+            if (allAmounts && !qmResult.finalized) {
+              autoConfirmTriggeredRef.current = true;
+              try {
+                const cfItems: ConfirmItemRequest[] = activeItemsForConfirm.map(item => {
+                  const matched = itemMatches.get(item.id);
+                  const edited = editedOCRItems.get(item.id);
+                  return {
+                    itemId: item.id,
+                    matched_purchase_id: matched?.purchase_id,
+                    matched_item_id: matched?.item_id,
+                    confirmed_quantity: edited?.quantity !== undefined ? edited.quantity : (item.extracted_quantity ?? 1),
+                    confirmed_unit_price: edited?.unit_price !== undefined ? edited.unit_price : item.extracted_unit_price,
+                    confirmed_amount: edited?.amount !== undefined ? edited.amount : item.extracted_amount,
+                  };
+                });
+                const cfGrandTotal = activeItemsForConfirm.reduce((sum, item) => {
+                  const edited = editedOCRItems.get(item.id);
+                  return sum + (edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0));
+                }, 0);
+
+                const cfResult = await transactionStatementService.confirmStatement(
+                  {
+                    statementId: statement.id,
+                    items: cfItems,
+                    actual_received_date: statementWithItems.extracted_data?.actual_received_date,
+                    accounting_received_date: normalizeStatementDate(statementDateInput),
+                    confirmed_grand_total: cfGrandTotal
+                  },
+                  effectiveConfirmerName
+                );
+                if (cfResult.success) {
+                  if (cfResult.updatedStatement) {
+                    setStatementWithItems(prev => (prev ? { ...prev, ...cfResult.updatedStatement } : prev));
+                  }
+                  toast.success('거래명세서가 확정되었습니다.');
+                  onConfirm();
+                  return;
+                }
+              } catch (_) {
+                // 자동 금액확정 실패 시 수량일치만 완료 상태로 진행
+              }
+            }
+
             toast.success(qmResult.finalized ? '거래명세서가 확정되었습니다.' : '수량일치 자동 완료');
             onConfirm();
           }
@@ -3741,6 +3865,88 @@ export default function StatementConfirmModal({
   useEffect(() => {
     if (!isOpen) {
       autoQuantityMatchTriggeredRef.current = false;
+    }
+  }, [isOpen]);
+
+  // 자동 금액확정: 수량확인 완료 + 모든 품목에 금액이 있으면 자동 처리
+  const autoConfirmTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (!statementWithItems || !isOpen || loading || saving) return;
+    if (isManagerConfirmed || isStatementConfirmed) return;
+    if (!isQuantityMatchConfirmed) return;
+    if (autoConfirmTriggeredRef.current) return;
+    if (itemMatches.size === 0) return;
+
+    const activeItems = statementWithItems.items.filter(item => !deletedOCRItemIds.has(item.id));
+    if (activeItems.length === 0) return;
+
+    const allAmountsFilled = activeItems.every(ocrItem => {
+      const edited = editedOCRItems.get(ocrItem.id);
+      const amount = edited?.amount !== undefined ? edited.amount : ocrItem.extracted_amount;
+      return amount != null && amount > 0;
+    });
+
+    if (allAmountsFilled) {
+      autoConfirmTriggeredRef.current = true;
+      (async () => {
+        try {
+          setSaving(true);
+          setSavingAction('confirm');
+
+          await saveOCRCorrections();
+          await saveItemNameAliasesFromMatches();
+          await persistEditedOCRItems();
+          await persistDeletedOCRItems();
+
+          const confirmItems: ConfirmItemRequest[] = activeItems.map(item => {
+            const matched = itemMatches.get(item.id);
+            const edited = editedOCRItems.get(item.id);
+            return {
+              itemId: item.id,
+              matched_purchase_id: matched?.purchase_id,
+              matched_item_id: matched?.item_id,
+              confirmed_quantity: edited?.quantity !== undefined ? edited.quantity : (item.extracted_quantity ?? 1),
+              confirmed_unit_price: edited?.unit_price !== undefined ? edited.unit_price : item.extracted_unit_price,
+              confirmed_amount: edited?.amount !== undefined ? edited.amount : item.extracted_amount,
+            };
+          });
+
+          const confirmedGrandTotal = activeItems.reduce((sum, item) => {
+            const edited = editedOCRItems.get(item.id);
+            return sum + (edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0));
+          }, 0);
+
+          const result = await transactionStatementService.confirmStatement(
+            {
+              statementId: statement.id,
+              items: confirmItems,
+              actual_received_date: statementWithItems.extracted_data?.actual_received_date,
+              accounting_received_date: normalizeStatementDate(statementDateInput),
+              confirmed_grand_total: confirmedGrandTotal
+            },
+            effectiveConfirmerName
+          );
+
+          if (result.success) {
+            if (result.updatedStatement) {
+              setStatementWithItems(prev => (prev ? { ...prev, ...result.updatedStatement } : prev));
+            }
+            toast.success(result.finalized ? '거래명세서가 확정되었습니다.' : '금액확정 자동 완료');
+            onConfirm();
+          }
+        } catch (_) {
+          // 자동 금액확정 실패는 무시
+        } finally {
+          setSaving(false);
+          setSavingAction(null);
+        }
+      })();
+    }
+  }, [statementWithItems, isOpen, loading, saving, itemMatches, editedOCRItems, deletedOCRItemIds, isManagerConfirmed, isStatementConfirmed, isQuantityMatchConfirmed]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      autoConfirmTriggeredRef.current = false;
     }
   }, [isOpen]);
 
@@ -4132,6 +4338,9 @@ export default function StatementConfirmModal({
       <Dialog
         open={isOpen}
         onOpenChange={(open) => {
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'StatementConfirmModal.tsx:4318',message:'Dialog onOpenChange',data:{open,isOpen,isPurchaseDetailModalOpen,isImageViewerOpen,isClosing:isClosingWithSaveRef.current},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           if (!open && !isPurchaseDetailModalOpen && !isImageViewerOpen) {
             handleCloseWithSave();
           }

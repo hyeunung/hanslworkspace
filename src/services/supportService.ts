@@ -616,14 +616,14 @@ class SupportService {
         .select()
 
       if (itemsError) {
-        console.error('[deletePurchaseRequest] 품목 삭제 실패', {
+        logger.error('[deletePurchaseRequest] 품목 삭제 실패', itemsError, {
           requestId,
           error: itemsError
         })
         throw itemsError
       }
 
-      console.log('[deletePurchaseRequest] 품목 삭제 성공', {
+      logger.debug('[deletePurchaseRequest] 품목 삭제 성공', {
         requestId,
         deletedItemsCount: deletedItems?.length || 0
       })
@@ -636,7 +636,7 @@ class SupportService {
         .select()
 
       if (requestError) {
-        console.error('[deletePurchaseRequest] 발주요청 삭제 실패', {
+        logger.error('[deletePurchaseRequest] 발주요청 삭제 실패', requestError, {
           requestId,
           error: requestError,
           note: '품목은 이미 삭제되었지만 발주요청은 삭제되지 않았습니다.'
@@ -644,7 +644,7 @@ class SupportService {
         throw requestError
       }
 
-      console.log('[deletePurchaseRequest] 발주요청 삭제 성공', {
+      logger.debug('[deletePurchaseRequest] 발주요청 삭제 성공', {
         requestId,
         deletedRequest: deletedRequest?.[0]
       })
@@ -652,7 +652,7 @@ class SupportService {
       return { success: true }
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : '발주요청 삭제 실패'
-      console.error('[deletePurchaseRequest] 전체 삭제 실패', {
+      logger.error('[deletePurchaseRequest] 전체 삭제 실패', e instanceof Error ? e : undefined, {
         requestId,
         error: errorMessage
       })

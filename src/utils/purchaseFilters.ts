@@ -270,7 +270,7 @@ const checkFilterCondition = (fieldValue: any, condition: string, value: any): b
         const purchaseDate = new Date(fieldValue).toISOString().split('T')[0]
         return purchaseDate >= startDate && purchaseDate <= endDate
         } catch (error) {
-          console.error('날짜 범위 처리 오류:', error)
+          logger.error('날짜 범위 처리 오류', error)
           return false
         }
       }
@@ -287,7 +287,7 @@ const checkFilterCondition = (fieldValue: any, condition: string, value: any): b
           return purchaseMonth === value
           }
         } catch (error) {
-          console.error('월별 필터 처리 오류:', error)
+          logger.error('월별 필터 처리 오류', error)
           return false
         }
       }

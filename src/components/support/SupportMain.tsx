@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { logger } from '@/lib/logger'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -698,23 +699,14 @@ export default function SupportMain() {
   // 문의 제출
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SupportMain.tsx:handleSubmit:start',message:'submit_start',data:{inquiryType,messageLength:message.length,loading,uploadingImage,selectedPurchaseId:selectedPurchase?.id ?? null,showPurchaseSelect},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1'})}).catch(()=>{});
-    // #endregion
     
     if (!inquiryType || !message) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SupportMain.tsx:handleSubmit:validation',message:'missing_required',data:{inquiryType,hasMessage:!!message},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
       toast.error('모든 필드를 입력해주세요.')
       return
     }
     
     const requiresPurchase = purchaseLinkedInquiryTypes.includes(inquiryType)
     if (requiresPurchase && !selectedPurchase) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SupportMain.tsx:handleSubmit:validation',message:'missing_purchase',data:{inquiryType,requiresPurchase},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
       toast.error('발주요청을 선택해주세요.')
       return
     }
@@ -731,9 +723,6 @@ export default function SupportMain() {
 
     if (inquiryType === 'delivery_date_change') {
       if (!requestedDeliveryDate) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SupportMain.tsx:handleSubmit:validation',message:'missing_requested_delivery_date',data:{inquiryType},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
         toast.error('변경 입고일을 입력해주세요.')
         setLoading(false)
         return
@@ -754,9 +743,6 @@ export default function SupportMain() {
     if (inquiryType === 'quantity_change') {
       const activeRows = quantityChangeRows.filter(row => row.itemId || row.newQuantity.trim())
       if (activeRows.length === 0) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SupportMain.tsx:handleSubmit:validation',message:'missing_quantity_rows',data:{inquiryType,rows:quantityChangeRows.length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
         toast.error('수량 변경할 품목을 추가해주세요.')
         setLoading(false)
         return
@@ -765,18 +751,12 @@ export default function SupportMain() {
       const itemsPayload: QuantityChangePayloadItem[] = []
       for (const row of activeRows) {
         if (!row.itemId || !row.newQuantity.trim()) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SupportMain.tsx:handleSubmit:validation',message:'invalid_quantity_row',data:{itemId:row.itemId,hasQuantity:!!row.newQuantity.trim()},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
-          // #endregion
           toast.error('수량 변경 항목을 모두 입력해주세요.')
           setLoading(false)
           return
         }
         const newQuantity = Number(row.newQuantity)
         if (!Number.isFinite(newQuantity)) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SupportMain.tsx:handleSubmit:validation',message:'invalid_quantity_value',data:{value:row.newQuantity},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
-          // #endregion
           toast.error('변경 수량이 올바르지 않습니다.')
           setLoading(false)
           return
@@ -784,9 +764,6 @@ export default function SupportMain() {
 
         const targetItem = selectedPurchaseItems.find((item: any) => String(item.id) === row.itemId)
         if (!targetItem) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SupportMain.tsx:handleSubmit:validation',message:'missing_target_item',data:{itemId:row.itemId},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
-          // #endregion
           toast.error('선택한 품목을 찾을 수 없습니다.')
           setLoading(false)
           return
@@ -812,9 +789,6 @@ export default function SupportMain() {
     if (inquiryType === 'price_change') {
       const activeRows = priceChangeRows.filter(row => row.itemId || row.newValue.trim())
       if (activeRows.length === 0) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SupportMain.tsx:handleSubmit:validation',message:'missing_price_rows',data:{inquiryType,rows:priceChangeRows.length},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
         toast.error('단가/합계 금액 변경할 품목을 추가해주세요.')
         setLoading(false)
         return
@@ -823,18 +797,12 @@ export default function SupportMain() {
       const itemsPayload: PriceChangePayloadItem[] = []
       for (const row of activeRows) {
         if (!row.itemId || !row.newValue.trim()) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SupportMain.tsx:handleSubmit:validation',message:'invalid_price_row',data:{itemId:row.itemId,hasValue:!!row.newValue.trim(),changeType:row.changeType},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
-          // #endregion
           toast.error('단가/합계 금액 변경 항목을 모두 입력해주세요.')
           setLoading(false)
           return
         }
         const newValue = Number(row.newValue)
         if (!Number.isFinite(newValue)) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SupportMain.tsx:handleSubmit:validation',message:'invalid_price_value',data:{value:row.newValue,changeType:row.changeType},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
-          // #endregion
           toast.error('변경 값이 올바르지 않습니다.')
           setLoading(false)
           return
@@ -842,9 +810,6 @@ export default function SupportMain() {
 
         const targetItem = selectedPurchaseItems.find((item: any) => String(item.id) === row.itemId)
         if (!targetItem) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SupportMain.tsx:handleSubmit:validation',message:'missing_target_item_price',data:{itemId:row.itemId},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H2'})}).catch(()=>{});
-          // #endregion
           toast.error('선택한 품목을 찾을 수 없습니다.')
           setLoading(false)
           return
@@ -959,9 +924,6 @@ ${itemsText}`;
       attachments: attachments,
       inquiry_payload: inquiryPayload
     })
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SupportMain.tsx:handleSubmit:createInquiry',message:'submit_result',data:{success:result.success,error:result.error || null,inquiryId:result.inquiryId || null},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H3'})}).catch(()=>{});
-    // #endregion
 
     if (result.success) {
       // ✅ 입고 지연 알림 경로로 들어온 "입고일 변경 요청"은 차단 해제 플래그도 함께 올림
@@ -1392,12 +1354,12 @@ ${itemsText}`;
       // 🚀 메모리 캐시에서 즉시 삭제 (실시간 반영)
       const memoryUpdated = removePurchaseFromMemory(selectedInquiryDetail.id)
       if (!memoryUpdated) {
-        console.warn('[deletePurchaseRequest] 메모리 캐시에서 발주서 삭제 실패', { 
-          purchaseId: selectedInquiryDetail.id 
+        logger.warn('[deletePurchaseRequest] 메모리 캐시에서 발주서 삭제 실패', {
+          purchaseId: selectedInquiryDetail.id
         })
       } else {
-        console.info('✅ [deletePurchaseRequest] 메모리 캐시에서 발주서 삭제 성공', { 
-          purchaseId: selectedInquiryDetail.id 
+        logger.info('✅ [deletePurchaseRequest] 메모리 캐시에서 발주서 삭제 성공', {
+          purchaseId: selectedInquiryDetail.id
         })
       }
 
@@ -2137,9 +2099,6 @@ ${itemsText}`;
                     className="button-action-primary"
                     disabled={loading || uploadingImage}
                     onClick={() => {
-                      // #region agent log
-                      fetch('http://127.0.0.1:7242/ingest/b22edbac-a44c-4882-a88d-47f6cafc7628',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SupportMain.tsx:submitButton:onClick',message:'submit_click',data:{disabled:loading || uploadingImage},timestamp:Date.now(),sessionId:'debug-session',runId:'pre-fix',hypothesisId:'H1'})}).catch(()=>{});
-                      // #endregion
                     }}
                   >
                     {loading ? (

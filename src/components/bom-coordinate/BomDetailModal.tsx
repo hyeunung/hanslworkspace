@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { logger } from '@/lib/logger';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 // native table 태그 사용 (sticky header 지원을 위해)
@@ -132,7 +133,7 @@ export default function BomDetailModal({ boardId, isOpen, onClose }: BomDetailMo
         bottomCoordinates: bottomCoords,
       });
     } catch (error) {
-      console.error('Error loading board data:', error);
+      logger.error('Error loading board data', error);
       toast.error('데이터를 불러오는데 실패했습니다.');
     } finally {
       setLoading(false);
@@ -177,7 +178,7 @@ export default function BomDetailModal({ boardId, isOpen, onClose }: BomDetailMo
       await downloadExcelBlob(blob, fileName);
       toast.success('엑셀 파일이 다운로드되었습니다.');
     } catch (error) {
-      console.error('Excel download error:', error);
+      logger.error('Excel download error', error);
       toast.error('엑셀 다운로드에 실패했습니다.');
     } finally {
       setDownloading(false);

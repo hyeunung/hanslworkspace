@@ -1,4 +1,5 @@
 import { useState, useEffect, forwardRef, useImperativeHandle, useRef, useLayoutEffect, useMemo } from 'react';
+import { logger } from '@/lib/logger';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
@@ -142,10 +143,10 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
   // 엑셀 다운로드 핸들러
   const handleDownload = async () => {
     try {
-      console.log('Starting download with:', { 
-        itemsCount: items.length, 
-        coordsCount: coordinates.length, 
-        boardName 
+      logger.debug('Starting download', {
+        itemsCount: items.length,
+        coordsCount: coordinates.length,
+        boardName
       });
       
       // 데이터 검증
@@ -196,7 +197,7 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
         excelMetadata
       );
       
-      console.log('Blob generated:', { size: blob.size, type: blob.type });
+      logger.debug('Blob generated', { size: blob.size, type: blob.type });
       
       if (!blob || blob.size === 0) {
         throw new Error('엑셀 파일 생성에 실패했습니다. (빈 파일)');
@@ -215,7 +216,7 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
       downloadExcelBlob(blob, `${cleanName}_${dateStr}_정리본.xlsx`);
       toast.success('엑셀 파일이 다운로드되었습니다.');
     } catch (error) {
-      console.error('Download error details:', error);
+      logger.error('Download error details', error);
       let errorMessage = '알 수 없는 오류';
       
       if (error instanceof Error) {

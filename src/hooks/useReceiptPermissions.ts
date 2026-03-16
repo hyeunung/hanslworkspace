@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { ReceiptPermissions, UserRole } from '@/types/receipt';
+import { logger } from '@/lib/logger';
 
 /**
  * 영수증 관리 권한을 관리하는 React Hook
@@ -75,7 +76,7 @@ export function useReceiptPermissions() {
         canViewUploaderInfo: isAppAdmin, // 오직 app_admin만
       });
     } catch (error) {
-      console.error('영수증 권한 확인 실패', error)
+      logger.error('영수증 권한 확인 실패', error)
       setUserRole(null)
       setPermissions({
         canView: false,

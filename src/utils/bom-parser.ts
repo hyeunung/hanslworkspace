@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { logger } from '@/lib/logger';
 
 export interface BOMRawData {
   headers: string[];
@@ -37,7 +38,7 @@ export async function parseBOMFile(
       await workbook.xlsx.load(file);
     }
   } catch (error) {
-    console.error('Excel file load error:', error);
+    logger.error('Excel file load error', error);
     throw new Error('엑셀 파일을 읽을 수 없습니다. 올바른 형식인지 확인해주세요.');
   }
   

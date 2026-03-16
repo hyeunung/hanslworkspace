@@ -147,7 +147,7 @@ class TransactionStatementService {
       const { data: { user } } = await this.supabase.auth.getUser();
 
       // DB에 레코드 생성
-      console.log('[Upload] DB 레코드 생성 시도:', { imageUrl, fileName: file.name, userId: user?.id, uploaderName });
+      logger.debug('[Upload] DB 레코드 생성 시도:', { imageUrl, fileName: file.name, userId: user?.id, uploaderName });
       
       const actualReceiptDateIso = actualReceiptDate ? dateToISOString(actualReceiptDate) : null;
       const extractedData: Record<string, unknown> = { file_type: fileType };
@@ -173,11 +173,11 @@ class TransactionStatementService {
       
 
       if (dbError) {
-        console.error('[Upload] DB insert 실패:', dbError);
+        logger.error('[Upload] DB insert 실패:', dbError);
         throw new Error(`DB 저장 실패: ${dbError.message} (code: ${dbError.code})`);
       }
       
-      console.log('[Upload] DB 레코드 생성 성공:', { statementId: statement.id });
+      logger.debug('[Upload] DB 레코드 생성 성공:', { statementId: statement.id });
 
       return {
         success: true,
@@ -188,7 +188,7 @@ class TransactionStatementService {
         }
       };
     } catch (error) {
-      console.error('Upload statement error:', error);
+      logger.error('Upload statement error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : '업로드 중 오류가 발생했습니다.'
@@ -259,7 +259,7 @@ class TransactionStatementService {
         .single();
 
       if (dbError) {
-        console.error('[Upload Receipt] DB insert 실패:', dbError);
+        logger.error('[Upload Receipt] DB insert 실패:', dbError);
         throw new Error(`DB 저장 실패: ${dbError.message} (code: ${dbError.code})`);
       }
 
@@ -274,7 +274,7 @@ class TransactionStatementService {
         }
       };
     } catch (error) {
-      console.error('Upload receipt quantity error:', error);
+      logger.error('Upload receipt quantity error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : '업로드 중 오류가 발생했습니다.'
@@ -344,7 +344,7 @@ class TransactionStatementService {
         .single();
 
       if (dbError) {
-        console.error('[Upload Monthly] DB insert 실패:', dbError);
+        logger.error('[Upload Monthly] DB insert 실패:', dbError);
         throw new Error(`DB 저장 실패: ${dbError.message} (code: ${dbError.code})`);
       }
 
@@ -359,7 +359,7 @@ class TransactionStatementService {
         }
       };
     } catch (error) {
-      console.error('Upload monthly statement error:', error);
+      logger.error('Upload monthly statement error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : '업로드 중 오류가 발생했습니다.'
@@ -380,7 +380,7 @@ class TransactionStatementService {
         }
       });
     } catch (error) {
-      console.warn('Failed to trigger monthly statement parsing:', error);
+      logger.warn('Failed to trigger monthly statement parsing:', error);
     }
   }
 
@@ -395,7 +395,7 @@ class TransactionStatementService {
         }
       });
     } catch (error) {
-      console.warn('Failed to trigger receipt quantity extraction:', error);
+      logger.warn('Failed to trigger receipt quantity extraction:', error);
     }
   }
 
@@ -413,7 +413,7 @@ class TransactionStatementService {
     let invokeContextBody: string | null = null;
     let resolvedFileType: StatementFileType = fileType || 'image';
     try {
-      console.log('[Service] Calling Edge Function with:', { statementId, imageUrl });
+      logger.debug('[Service] Calling Edge Function with:', { statementId, imageUrl });
 
       const { data: sessionData } = await this.supabase.auth.getSession();
       const session = sessionData?.session;
@@ -516,7 +516,7 @@ class TransactionStatementService {
         }
       }
 
-      console.log('[Service] Edge Function response:', { data, error });
+      logger.debug('[Service] Edge Function response:', { data, error });
 
       if (error) throw error;
 
@@ -533,16 +533,16 @@ class TransactionStatementService {
       }
 
       // 거래처명 확인 로그
-      console.log('[Service] 거래처 매칭 결과:', { 
-        vendor_name: data.vendor_name, 
-        vendor_match_source: data.vendor_match_source 
+      logger.debug('[Service] 거래처 매칭 결과:', {
+        vendor_name: data.vendor_name,
+        vendor_match_source: data.vendor_match_source
       });
 
       // 추출된 데이터 조회
       const result = await this.getStatementWithItems(statementId);
       return result;
     } catch (error) {
-      console.error('[Service] Extract statement error:', error);
+      logger.error('[Service] Extract statement error:', error);
       // 546 WORKER_LIMIT: 워커 리소스 부족 → 대기열로 전환하여 자동 재시도
       if (invokeContextStatus === 546 && resolvedFileType === 'image') {
         try {
@@ -772,7 +772,7 @@ class TransactionStatementService {
 
       return { success: true, data: statementsWithPurchases, count: count || 0 };
     } catch (error) {
-      console.error('Get statements error:', error);
+      logger.error('Get statements error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : '조회 중 오류가 발생했습니다.'
@@ -933,7 +933,7 @@ class TransactionStatementService {
         }
       };
     } catch (error) {
-      console.error('Get statement with items error:', error);
+      logger.error('Get statement with items error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : '조회 중 오류가 발생했습니다.'
@@ -984,7 +984,7 @@ class TransactionStatementService {
             
             // 거래처 유사도 70% 미만이면 스킵 (거래처 다르면 후보 제외)
             if (vendorSimilarity < 50) {
-              console.log(`❌ 거래처 불일치로 제외: "${statementVendorName}" vs "${sysVendorName}" (${vendorSimilarity}%)`);
+              logger.debug(`❌ 거래처 불일치로 제외: "${statementVendorName}" vs "${sysVendorName}" (${vendorSimilarity}%)`);
               continue;
             }
 
@@ -1049,7 +1049,7 @@ class TransactionStatementService {
 
       // 1.5. 부분 발주번호로 검색 (F20251212 또는 HS251212 - 뒤 숫자 없이 날짜만 적힌 경우)
       if (isPartialNumber && datePrefix && candidateMap.size === 0) {
-        console.log(`📅 부분 발주번호 검색: "${datePrefix}%" (해당 날짜의 모든 발주)`);
+        logger.debug(`📅 부분 발주번호 검색: "${datePrefix}%" (해당 날짜의 모든 발주)`);
         
         const { data: byDatePrefix } = await this.supabase
           .from('purchase_requests')
@@ -1152,7 +1152,7 @@ class TransactionStatementService {
         
         // 중복 제거
         const uniqueSearchTerms = [...new Set(searchTermCandidates)];
-        console.log(`🔍 품목명 검색어 후보: ${uniqueSearchTerms.join(', ')}`);
+        logger.debug(`🔍 품목명 검색어 후보: ${uniqueSearchTerms.join(', ')}`);
         
         // 각 검색어로 검색 시도 (하나라도 찾으면 됨)
         for (const searchTerm of uniqueSearchTerms) {
@@ -1178,7 +1178,7 @@ class TransactionStatementService {
             .limit(50);
           
           if (byNameOrSpec && byNameOrSpec.length > 0) {
-            console.log(`✅ 검색어 "${searchTerm}"로 ${byNameOrSpec.length}개 품목 발견`);
+            logger.debug(`✅ 검색어 "${searchTerm}"로 ${byNameOrSpec.length}개 품목 발견`);
             
             for (const purchaseItem of byNameOrSpec) {
               const key = `${purchaseItem.purchase?.id}-${purchaseItem.id}`;
@@ -1192,11 +1192,11 @@ class TransactionStatementService {
                 ? this.calculateVendorSimilarity(statementVendorName, sysVendorName)
                 : 100; // 거래처 정보 없으면 통과
               
-              console.log(`🔍 후보 검토: OCR거래처="${statementVendorName}" vs 시스템거래처="${sysVendorName}" → 유사도=${vendorSimilarity}%`);
+              logger.debug(`🔍 후보 검토: OCR거래처="${statementVendorName}" vs 시스템거래처="${sysVendorName}" → 유사도=${vendorSimilarity}%`);
               
               // 거래처 유사도 50% 미만이면 스킵 (더 관대하게 - 약간의 차이는 허용)
               if (vendorSimilarity < 50) {
-                console.log(`❌ 거래처 유사도 ${vendorSimilarity}% < 50% 스킵`);
+                logger.debug(`❌ 거래처 유사도 ${vendorSimilarity}% < 50% 스킵`);
                 continue;
               }
               
@@ -1249,11 +1249,11 @@ class TransactionStatementService {
                 matchReasons.push(`⚠️ OCR 오류 가능: ${normalizedNumber} → ${sysPO || sysSO}`);
               }
               
-              console.log(`📊 점수 계산: score=${score}점, 품목="${purchaseItem.item_name}", 규격="${purchaseItem.specification}", 발주="${purchaseItem.purchase?.purchase_order_number}"`);
+              logger.debug(`📊 점수 계산: score=${score}점, 품목="${purchaseItem.item_name}", 규격="${purchaseItem.specification}", 발주="${purchaseItem.purchase?.purchase_order_number}"`);
               
               // 점수가 15점 이상이면 후보에 추가 (더 관대한 임계값 - 품목명만 유사해도 후보로)
               if (score >= 15) {
-                console.log(`✅ 후보 추가! score=${score}점`);
+                logger.debug(`✅ 후보 추가! score=${score}점`);
                 candidateMap.set(key, {
                   purchase_id: purchaseItem.purchase?.id,
                   purchase_order_number: sysPO,
@@ -1285,7 +1285,7 @@ class TransactionStatementService {
       const needsFallback = candidateMap.size === 0 || !hasHighQualityCandidate;
       
       if (needsFallback && statementVendorName) {
-        console.log(`⚠️ 고품질 후보 없음 - 거래처 "${statementVendorName}"의 최근 발주에서 검색 시도 (현재 후보: ${candidateMap.size}개, 최고점: ${Math.max(...Array.from(candidateMap.values()).map(c => c.score), 0)}점)`);
+        logger.debug(`⚠️ 고품질 후보 없음 - 거래처 "${statementVendorName}"의 최근 발주에서 검색 시도 (현재 후보: ${candidateMap.size}개, 최고점: ${Math.max(...Array.from(candidateMap.values()).map(c => c.score), 0)}점)`);
         
         // 거래처명으로 vendor_id 찾기
         const { data: vendors } = await this.supabase
@@ -1396,14 +1396,14 @@ class TransactionStatementService {
       const candidates = Array.from(candidateMap.values());
       candidates.sort((a, b) => b.score - a.score);
 
-      console.log(`🎯 findMatchCandidates 완료: OCR품목="${item.extracted_item_name}" → ${candidates.length}개 후보 발견`);
+      logger.debug(`🎯 findMatchCandidates 완료: OCR품목="${item.extracted_item_name}" → ${candidates.length}개 후보 발견`);
       if (candidates.length > 0) {
-        console.log(`   최고점 후보: "${candidates[0].item_name}" (${candidates[0].purchase_order_number}) score=${candidates[0].score}`);
+        logger.debug(`   최고점 후보: "${candidates[0].item_name}" (${candidates[0].purchase_order_number}) score=${candidates[0].score}`);
       }
 
       return candidates.slice(0, 15); // 상위 15개 반환
     } catch (error) {
-      console.error('Find match candidates error:', error);
+      logger.error('Find match candidates error:', error);
       return [];
     }
   }
@@ -1721,7 +1721,7 @@ class TransactionStatementService {
 
       return { success: true };
     } catch (error) {
-      console.error('Update item match error:', error);
+      logger.error('Update item match error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : '매칭 업데이트 중 오류가 발생했습니다.'
@@ -2098,7 +2098,7 @@ class TransactionStatementService {
 
       return { success: true };
     } catch (error) {
-      console.error('Reject statement error:', error);
+      logger.error('Reject statement error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : '거부 처리 중 오류가 발생했습니다.'
@@ -2134,13 +2134,13 @@ class TransactionStatementService {
             await this.supabase.storage.from('receipt-images').remove([path]);
           }
         } catch (e) {
-          console.warn('Failed to delete storage file:', e);
+          logger.warn('Failed to delete storage file:', e);
         }
       }
 
       return { success: true };
     } catch (error) {
-      console.error('Delete statement error:', error);
+      logger.error('Delete statement error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : '삭제 중 오류가 발생했습니다.'
@@ -2237,7 +2237,7 @@ class TransactionStatementService {
             
             // 거래처 유사도 70% 미만이면 스킵 (거래처 다르면 후보 제외)
             if (vendorSimilarity < 50) {
-              console.log(`❌ 세트 매칭 - 거래처 불일치로 제외: "${statementVendorName}" vs "${sysVendorName}" (${vendorSimilarity}%)`);
+              logger.debug(`❌ 세트 매칭 - 거래처 불일치로 제외: "${statementVendorName}" vs "${sysVendorName}" (${vendorSimilarity}%)`);
               continue;
             }
             
@@ -2361,7 +2361,7 @@ class TransactionStatementService {
         }
       };
     } catch (error) {
-      console.error('Find best matching PO set error:', error);
+      logger.error('Find best matching PO set error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : '세트 매칭 중 오류가 발생했습니다.'
@@ -2492,7 +2492,7 @@ class TransactionStatementService {
 
       return { success: true };
     } catch (error) {
-      console.error('Save correction error:', error);
+      logger.error('Save correction error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : '교정 데이터 저장 중 오류가 발생했습니다.'
@@ -2602,7 +2602,7 @@ class TransactionStatementService {
 
       return { success: true, data: result };
     } catch (error) {
-      console.error('Get statements by purchase error:', error);
+      logger.error('Get statements by purchase error:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : '조회 중 오류가 발생했습니다.'

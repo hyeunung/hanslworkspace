@@ -1,4 +1,5 @@
 import React, { memo, useMemo, useRef, useEffect, useState, useCallback } from 'react';
+import { logger } from '@/lib/logger';
 import { Purchase } from '@/types/purchase';
 import { ColumnVisibility } from '@/types/columnSettings';
 
@@ -93,10 +94,10 @@ const VirtualScrollTable = memo<VirtualScrollTableProps>(({
         calculatedHeight = Math.min(1200, windowHeight * 0.8);
       }
       
-      console.log('🔍 동적 높이 계산:', {
+      logger.debug('동적 높이 계산', {
         windowHeight,
         calculatedHeight,
-        category: windowHeight <= 800 ? '작은모니터' : 
+        category: windowHeight <= 800 ? '작은모니터' :
                  windowHeight <= 1080 ? '일반모니터' :
                  windowHeight <= 1440 ? '큰모니터' : '매우큰모니터'
       });

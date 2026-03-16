@@ -9,6 +9,7 @@
 
 import type { Purchase, Employee } from '@/types/purchase'
 import { useState, useEffect, useRef } from 'react'
+import { logger } from '@/lib/logger'
 
 // 전역 메모리 캐시
 export interface PurchaseMemoryCache {
@@ -598,7 +599,7 @@ export const notifyCacheListeners = () => {
     try {
       listener()
     } catch (error) {
-      console.error('[CacheListener] 에러:', error)
+      logger.error('[CacheListener] 에러', error)
     }
   })
 }
