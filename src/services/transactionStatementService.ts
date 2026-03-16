@@ -70,45 +70,6 @@ class TransactionStatementService {
     return 'ocr-transaction-statement';
   }
 
-  private async getExifOrientation(file: File): Promise<number | null> {
-    if (!file.type.startsWith('image/jpeg')) return null;
-    try {
-      const buffer = await file.arrayBuffer();
-      const view = new DataView(buffer);
-      if (view.getUint16(0, false) !== 0xffd8) return null;
-      let offset = 2;
-      const length = view.byteLength;
-      while (offset < length) {
-        const marker = view.getUint16(offset, false);
-        offset += 2;
-        if (marker === 0xffe1) {
-          const segmentLength = view.getUint16(offset, false);
-          offset += 2;
-          if (view.getUint32(offset, false) !== 0x45786966) return null; // "Exif"
-          const tiffOffset = offset + 6;
-          const little = view.getUint16(tiffOffset, false) === 0x4949;
-          const firstIfd = view.getUint32(tiffOffset + 4, little);
-          let ifdOffset = tiffOffset + firstIfd;
-          const entries = view.getUint16(ifdOffset, little);
-          ifdOffset += 2;
-          for (let i = 0; i < entries; i++) {
-            const entryOffset = ifdOffset + i * 12;
-            const tag = view.getUint16(entryOffset, little);
-            if (tag === 0x0112) {
-              return view.getUint16(entryOffset + 8, little);
-            }
-          }
-          return null;
-        }
-        if ((marker & 0xff00) !== 0xff00) break;
-        const segmentLength = view.getUint16(offset, false);
-        offset += segmentLength;
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }
 
   private async prepareOcrImage(file: File): Promise<File> {
     if (!file.type.startsWith('image/')) return file;
@@ -117,40 +78,20 @@ class TransactionStatementService {
     const quality = 0.85;
 
     try {
-      const orientation = await this.getExifOrientation(file);
-      const bitmap = await createImageBitmap(file, { imageOrientation: 'none' as ImageOrientation });
+      // imageOrientation: 'from-image' 로 EXIF 회전을 브라우저가 자동 처리 (JPEG/PNG/WebP 모두 대응)
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
       const maxDim = Math.max(bitmap.width, bitmap.height);
       const scale = maxDim > maxDimension ? maxDimension / maxDim : 1;
       const targetWidth = Math.round(bitmap.width * scale);
       const targetHeight = Math.round(bitmap.height * scale);
 
       const canvas = document.createElement('canvas');
-      const isRotated90 = orientation === 6 || orientation === 8;
-      canvas.width = isRotated90 ? targetHeight : targetWidth;
-      canvas.height = isRotated90 ? targetWidth : targetHeight;
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
       const ctx = canvas.getContext('2d');
       if (!ctx) return file;
 
-      switch (orientation) {
-        case 3:
-          ctx.translate(canvas.width, canvas.height);
-          ctx.rotate(Math.PI);
-          ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
-          break;
-        case 6:
-          ctx.translate(canvas.width, 0);
-          ctx.rotate(Math.PI / 2);
-          ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
-          break;
-        case 8:
-          ctx.translate(0, canvas.height);
-          ctx.rotate(-Math.PI / 2);
-          ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
-          break;
-        default:
-          ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
-          break;
-      }
+      ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
 
       const blob = await new Promise<Blob | null>((resolve) =>
         canvas.toBlob(resolve, 'image/jpeg', quality)
@@ -936,6 +877,7 @@ class TransactionStatementService {
             if (purchaseItem) {
               matchedItem = {
                 id: purchaseItem.id,
+                line_number: purchaseItem.line_number,
                 item_name: purchaseItem.item_name,
                 specification: purchaseItem.specification,
                 quantity: purchaseItem.quantity,
@@ -1800,9 +1742,7 @@ class TransactionStatementService {
       // 1. 품목별 확정 처리 + 단가/금액/회계상입고일 즉시 시스템 반영
       for (const item of request.items) {
         // 품목 확정 상태 업데이트
-        const { error: itemError } = await this.supabase
-          .from('transaction_statement_items')
-          .update({
+        const itemUpdateData: Record<string, unknown> = {
             is_confirmed: true,
             matched_purchase_id: item.matched_purchase_id,
             matched_item_id: item.matched_item_id,
@@ -1811,7 +1751,11 @@ class TransactionStatementService {
             confirmed_amount: item.confirmed_amount,
             is_additional_item: item.is_additional_item || false,
             parent_item_id: item.parent_item_id
-          })
+          };
+
+        const { error: itemError } = await this.supabase
+          .from('transaction_statement_items')
+          .update(itemUpdateData)
           .eq('id', item.itemId);
 
         if (itemError) throw itemError;

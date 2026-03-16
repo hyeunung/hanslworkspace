@@ -41,7 +41,12 @@ const COMPANY_CARDS = [
   { label: "공용1", number: "8967", value: "공용1 8967" },
   { label: "공용2", number: "9976", value: "공용2 9976" },
   { label: "원자재", number: "4963", value: "원자재 4963" },
+  { label: "기타1", number: "8936", value: "기타1 8936" },
 ];
+
+type CompanyCardOption = (typeof COMPANY_CARDS)[number];
+
+const formatCompanyCardOptionLabel = (option: CompanyCardOption) => `${option.label} (${option.number})`;
 
 const COMPANY_VEHICLES = [
   { label: "PALISADE", plate: "259누 8222", value: "PALISADE 259누 8222" },
@@ -1769,6 +1774,8 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                     options={COMPANY_CARDS}
                     value={formCardNumber ? COMPANY_CARDS.find((c) => c.value === formCardNumber) || null : null}
                     onChange={(opt) => setFormCardNumber((opt as { value: string } | null)?.value || null)}
+                      formatOptionLabel={(option) => formatCompanyCardOptionLabel(option as CompanyCardOption)}
+                      getOptionLabel={(option) => formatCompanyCardOptionLabel(option as CompanyCardOption)}
                     placeholder="선택"
                     isSearchable={false}
                     styles={reactSelectStyles}
@@ -2211,6 +2218,8 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                   options={COMPANY_CARDS}
                   value={formCardNumber ? COMPANY_CARDS.find((c) => c.value === formCardNumber) || null : null}
                   onChange={(opt) => setFormCardNumber((opt as { value: string } | null)?.value || null)}
+                  formatOptionLabel={(option) => formatCompanyCardOptionLabel(option as CompanyCardOption)}
+                  getOptionLabel={(option) => formatCompanyCardOptionLabel(option as CompanyCardOption)}
                   placeholder="선택"
                   isSearchable={false}
                   styles={reactSelectStyles}

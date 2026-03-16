@@ -79,8 +79,8 @@ export default function ReceiptQuantityUploadModal({
 
     setFile(selectedFile);
 
-    // EXIF 회전 적용된 미리보기 생성
-    createImageBitmap(selectedFile).then(bitmap => {
+    // EXIF 회전 반영된 미리보기 생성 (from-image: EXIF orientation 적용)
+    createImageBitmap(selectedFile, { imageOrientation: 'from-image' }).then(bitmap => {
       const canvas = document.createElement('canvas');
       canvas.width = bitmap.width;
       canvas.height = bitmap.height;

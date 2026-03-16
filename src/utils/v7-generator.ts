@@ -6,7 +6,6 @@
  */
 
 import * as XLSX from 'xlsx';
-import { createClient } from '@/lib/supabase/client';
 
 // ============================================================
 // 타입 정의
@@ -162,79 +161,6 @@ export async function loadLearningData(): Promise<LearningDataType> {
     // 고정 매핑 적용 (기존 정적 JSON 데이터 + 고정 매핑)
     const mergedPartNameMapping = { ...partNameMapping, ...FIXED_MAPPINGS };
     const mergedTypeMapping = { ...typeMapping };
-
-    // 2. DB에서 사용자가 수동으로 입력한 학습 데이터 로드 및 병합
-    try {
-      console.log('📊 DB 학습 데이터 로드 중...');
-      const supabase = createClient();
-      const { data: learningRecords, error: dbError } = await supabase
-        .from('ai_learning_records')
-        .select('processed_bom_data')
-        .not('processed_bom_data', 'is', null)
-        .order('created_at', { ascending: false }); // 최신 데이터 우선
-
-      if (dbError) {
-        console.warn('⚠️ DB 학습 데이터 로드 실패 (기본 데이터만 사용):', dbError);
-      } else if (learningRecords && learningRecords.length > 0) {
-        console.log(`📚 ${learningRecords.length}개의 학습 레코드 발견`);
-        
-        let dbPartNameCount = 0;
-        let dbTypeCount = 0;
-        
-        // 각 레코드에서 학습 데이터 추출
-        for (const record of learningRecords) {
-          const bomData = record.processed_bom_data;
-          if (!Array.isArray(bomData)) continue;
-
-          for (const item of bomData) {
-            // 원본 데이터가 있어야 매핑 가능
-            if (!item.originalPart && !item.originalFootprint) continue;
-            
-            const part = (item.originalPart || '').trim();
-            const footprint = (item.originalFootprint || '').trim().toUpperCase();
-            const itemName = (item.itemName || '').trim();
-            const itemType = (item.itemType || '').trim();
-
-            // 품명 매핑 추가 (Footprint → 품명)
-            // 사용자가 수동으로 수정한 데이터는 항상 반영
-            if (footprint && itemName && itemName !== '데이터 없음 (수동 확인 필요)') {
-              // 사용자가 수정한 경우인지 확인 (footprint와 itemName이 다름)
-              const isUserModified = itemName !== footprint && itemName.toUpperCase() !== footprint;
-              
-              // Part|Footprint 조합으로 저장
-              if (part) {
-                const combo = `${part}|${footprint}`;
-                // 사용자가 수정한 경우는 항상 반영, 아니면 기존 데이터가 없을 때만 추가
-                if (isUserModified || !mergedPartNameMapping[combo]) {
-                  mergedPartNameMapping[combo] = itemName;
-                  dbPartNameCount++;
-                }
-              }
-              
-              // Footprint만으로도 저장
-              // 사용자가 수정한 경우는 항상 반영, 아니면 기존 데이터가 없을 때만 추가
-              if (isUserModified || !mergedPartNameMapping[footprint]) {
-                mergedPartNameMapping[footprint] = itemName;
-                dbPartNameCount++;
-              }
-            }
-
-            // 종류 매핑 추가 (품명 → 종류)
-            // 기존 정적 JSON에 없거나, DB 데이터가 더 최신이면 추가/업데이트
-            if (itemName && itemType && itemType !== '데이터 없음') {
-              if (!mergedTypeMapping[itemName] || mergedTypeMapping[itemName] !== itemType) {
-                mergedTypeMapping[itemName] = itemType;
-                dbTypeCount++;
-              }
-            }
-          }
-        }
-        
-        console.log(`✅ DB 학습 데이터 반영 완료 (품명: +${dbPartNameCount}개, 종류: +${dbTypeCount}개)`);
-      }
-    } catch (dbLoadError) {
-      console.warn('⚠️ DB 학습 데이터 로드 중 오류 (기본 데이터만 사용):', dbLoadError);
-    }
 
     learningDataCache = {
       typeMapping: mergedTypeMapping,

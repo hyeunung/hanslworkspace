@@ -63,7 +63,7 @@ import StatementUploadModal from "./StatementUploadModal";
 import ReceiptQuantityUploadModal from "./ReceiptQuantityUploadModal";
 import MonthlyStatementUploadModal from "./MonthlyStatementUploadModal";
 import StatementConfirmModal from "./StatementConfirmModal";
-import StatementImageViewer from "./StatementImageViewer";
+import StatementImageViewer, { openStatementPreview } from "./StatementImageViewer";
 import PurchaseDetailModal from "@/components/purchase/PurchaseDetailModal";
 
 /**
@@ -525,20 +525,13 @@ export default function TransactionStatementMain() {
       statement.status === 'queued' ||
       statement.status === 'failed'
     ) {
-      // 그 외 - 파일 뷰어 열기
-      const urlPath = statement.image_url.split('?')[0].toLowerCase();
-      const isExcel = urlPath.endsWith('.xls') || urlPath.endsWith('.xlsx');
-      if (isExcel) {
-        const width = 1000;
-        const height = 800;
-        const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
-        const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
-        const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(statement.image_url)}&embedded=true`;
-        window.open(viewerUrl, 'transaction-statement-viewer', `width=${width},height=${height},left=${left},top=${top}`);
-      } else {
-        setViewerImageUrl(statement.image_url);
-        setIsImageViewerOpen(true);
-      }
+      openStatementPreview({
+        fileUrl: statement.image_url,
+        onOpenImageViewer: (viewerImageUrl) => {
+          setViewerImageUrl(viewerImageUrl);
+          setIsImageViewerOpen(true);
+        },
+      });
     }
   };
   
@@ -557,20 +550,13 @@ export default function TransactionStatementMain() {
   // 파일 뷰어 열기 (이미지/PDF는 내장 뷰어, 엑셀은 Google Docs Viewer 새 창)
   const handleViewImage = (e: React.MouseEvent, imageUrl: string) => {
     e.stopPropagation();
-    const urlPath = imageUrl.split('?')[0].toLowerCase();
-    const isExcel = urlPath.endsWith('.xls') || urlPath.endsWith('.xlsx');
-
-    if (isExcel) {
-      const width = 1000;
-      const height = 800;
-      const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
-      const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
-      const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(imageUrl)}&embedded=true`;
-      window.open(viewerUrl, 'transaction-statement-viewer', `width=${width},height=${height},left=${left},top=${top}`);
-    } else {
-      setViewerImageUrl(imageUrl);
-      setIsImageViewerOpen(true);
-    }
+    openStatementPreview({
+      fileUrl: imageUrl,
+      onOpenImageViewer: (viewerImageUrl) => {
+        setViewerImageUrl(viewerImageUrl);
+        setIsImageViewerOpen(true);
+      },
+    });
   };
 
   // OCR 추출 시작

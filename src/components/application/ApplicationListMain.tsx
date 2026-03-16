@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -17,6 +17,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+
 const APPLICATION_APPROVER_ROLES = ["hr", "app_admin"];
 
 const APPLICATION_TYPES = [
@@ -53,6 +54,154 @@ interface AiServiceApplication {
   requester_department?: string | null;
 }
 
+// ── 신청서 상세 모달 ─────────────────────────────────────────
+function ApplicationDetailModal({
+  app,
+  open,
+  onClose,
+  canApprove,
+  onApprove,
+  onReject,
+}: {
+  app: AiServiceApplication | null;
+  open: boolean;
+  onClose: () => void;
+  canApprove: boolean;
+  onApprove?: (id: number) => void;
+  onReject?: (id: number) => void;
+}) {
+  if (!app) return null;
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto p-0 gap-0">
+        <DialogHeader className="px-6 pt-5 pb-3 border-b border-gray-100">
+          <DialogTitle className="modal-title">업무용 AI 서비스 사용 지원 신청서</DialogTitle>
+          <p className="text-[10px] text-gray-400 mt-0.5">AI Service Usage Support Application</p>
+        </DialogHeader>
+
+        <div className="px-6 py-4 space-y-0">
+          {/* 신청자 정보 */}
+          <div className="grid grid-cols-3 gap-4 border-b border-gray-100 pb-3 mb-3">
+            <div>
+              <p className="doc-form-cell-label doc-form-cell-label-title">이름</p>
+              <p className="card-title text-gray-900 mt-0.5">{app.requester_name || "-"}</p>
+            </div>
+            <div>
+              <p className="doc-form-cell-label doc-form-cell-label-title">부서</p>
+              <p className="card-title text-gray-900 mt-0.5">{app.requester_department || "-"}</p>
+            </div>
+            <div>
+              <p className="doc-form-cell-label doc-form-cell-label-title">신청일</p>
+              <p className="card-title text-gray-900 mt-0.5">{format(new Date(app.application_date), "yyyy-MM-dd")}</p>
+            </div>
+          </div>
+
+          {/* 서비스 정보 */}
+          <div className="border-b border-gray-100 pb-3 mb-3">
+            <p className="doc-form-cell-label mb-1">서비스명</p>
+            <p className="card-title text-gray-900">{app.service_name}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-4 border-b border-gray-100 pb-3 mb-3">
+            <div>
+              <p className="doc-form-cell-label mb-1">요금제 (Plan)</p>
+              <p className="card-title text-gray-900">{app.plan_name || "-"}</p>
+            </div>
+            <div>
+              <p className="doc-form-cell-label mb-1">월 예상 비용</p>
+              <p className="card-title text-gray-900">{app.monthly_cost || "-"}</p>
+            </div>
+          </div>
+
+          {/* 사용 목적 */}
+          <div className="border-b border-gray-100 pb-3 mb-3">
+            <p className="doc-form-cell-label mb-1">사용 목적 (업무 활용 용도)</p>
+            <p className="text-[11px] text-gray-800 whitespace-pre-wrap leading-relaxed">{app.usage_purpose || "-"}</p>
+          </div>
+
+          {/* 활용 사례 */}
+          <div className="border-b border-gray-100 pb-3 mb-3">
+            <p className="doc-form-cell-label mb-1">활용 예정/실제 사례</p>
+            <p className="text-[11px] text-gray-800 whitespace-pre-wrap leading-relaxed">{app.usage_example || "-"}</p>
+          </div>
+
+          {/* 현재 사용 여부 */}
+          <div className={app.current_usage_status === "paid_personal" ? "border-b border-gray-100 pb-3 mb-3" : "pb-1"}>
+            <p className="doc-form-cell-label mb-1">현재 사용 여부</p>
+            <p className="card-title text-gray-900">{CURRENT_USAGE_LABELS[app.current_usage_status] || app.current_usage_status}</p>
+          </div>
+
+          {/* 유료(개인) 추가 정보 */}
+          {app.current_usage_status === "paid_personal" && (
+            <div className="grid grid-cols-2 gap-4 pb-1">
+              <div>
+                <p className="doc-form-cell-label mb-1">사용 중인 모델</p>
+                <p className="card-title text-gray-900">{app.current_model || "-"}</p>
+              </div>
+              <div>
+                <p className="doc-form-cell-label mb-1">현재 월 비용</p>
+                <p className="card-title text-gray-900">{app.current_cost || "-"}</p>
+              </div>
+            </div>
+          )}
+
+          {/* 반려 사유 */}
+          {app.approval_status === "rejected" && app.rejection_reason && (
+            <div className="mt-3 p-3 bg-red-50 rounded-lg border border-red-100">
+              <p className="doc-form-cell-label text-red-600 mb-1">반려 사유</p>
+              <p className="text-[11px] text-red-700 whitespace-pre-wrap">{app.rejection_reason}</p>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="px-6 py-3 border-t border-gray-100 bg-gray-50">
+          <div className="flex items-center justify-between w-full">
+            <div>
+              {app.approval_status && (
+                <span className={`badge-stats ${
+                  app.approval_status === "approved" ? "badge-utk-complete" :
+                  app.approval_status === "rejected" ? "bg-red-100 text-red-700" :
+                  "badge-utk-pending"
+                }`}>
+                  {app.approval_status === "approved" ? "승인완료" : app.approval_status === "rejected" ? "반려" : "승인대기"}
+                </span>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {canApprove && app.approval_status === "pending" && onApprove && onReject && (
+                <>
+                  <Button
+                    type="button"
+                    onClick={() => { onApprove(app.id); onClose(); }}
+                    className="button-base bg-green-500 hover:bg-green-600 text-white"
+                  >
+                    <Check className="w-3 h-3 mr-0.5" />
+                    승인
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => { onReject(app.id); onClose(); }}
+                    className="button-base border border-red-200 bg-white text-red-600 hover:bg-red-50"
+                  >
+                    <X className="w-3 h-3 mr-0.5" />
+                    반려
+                  </Button>
+                </>
+              )}
+              <Button
+                type="button"
+                onClick={onClose}
+                className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+              >
+                닫기
+              </Button>
+            </div>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function ApplicationListMain() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { currentUserRoles, employee } = useAuth();
@@ -65,13 +214,18 @@ export default function ApplicationListMain() {
     setActiveTab(tabFromUrl);
   }, [tabFromUrl]);
   const [applications, setApplications] = useState<AiServiceApplication[]>([]);
-  const [pendingApplications, setPendingApplications] = useState<AiServiceApplication[]>([]);
+  const [allApplications, setAllApplications] = useState<AiServiceApplication[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingPending, setLoadingPending] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectTargetId, setRejectTargetId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [detailModalApp, setDetailModalApp] = useState<AiServiceApplication | null>(null);
+  const [statusPopoverId, setStatusPopoverId] = useState<number | null>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  const pendingApplications = allApplications.filter((a) => a.approval_status === "pending");
 
   const loadMyApplications = useCallback(async () => {
     try {
@@ -100,7 +254,7 @@ export default function ApplicationListMain() {
 
       const { data, error } = await supabase
         .from("ai_service_applications")
-        .select("id, service_name, plan_name, monthly_cost, application_date, current_usage_status, created_at, approval_status, rejection_reason")
+        .select("id, service_name, plan_name, monthly_cost, application_date, current_usage_status, current_model, current_cost, usage_purpose, usage_example, created_at, approval_status, rejection_reason, requester_name, requester_department")
         .eq("requester_id", emp.id)
         .order("created_at", { ascending: false });
 
@@ -122,13 +276,12 @@ export default function ApplicationListMain() {
       const { data, error } = await supabase
         .from("ai_service_applications")
         .select("id, service_name, plan_name, monthly_cost, application_date, current_usage_status, current_model, current_cost, usage_purpose, usage_example, created_at, approval_status, rejection_reason, requester_name, requester_department")
-        .eq("approval_status", "pending")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      setPendingApplications((data || []) as AiServiceApplication[]);
+      setAllApplications((data || []) as AiServiceApplication[]);
     } catch (err) {
-      logger.error("승인 대기 목록 조회 실패", err);
-      setPendingApplications([]);
+      logger.error("승인 관리 목록 조회 실패", err);
+      setAllApplications([]);
     } finally {
       setLoadingPending(false);
     }
@@ -162,13 +315,16 @@ export default function ApplicationListMain() {
           .eq("id", appId);
         if (error) throw error;
         toast.success("승인되었습니다.");
-        loadPendingApplications();
+        setAllApplications((prev) =>
+          prev.map((a) => a.id === appId ? { ...a, approval_status: "approved", rejection_reason: null } : a)
+        );
+        setStatusPopoverId(null);
       } catch (err) {
         logger.error("승인 처리 실패", err);
         toast.error("승인 처리에 실패했습니다.");
       }
     },
-    [employee?.id, loadPendingApplications]
+    [employee?.id]
   );
 
   const handleReject = useCallback(async () => {
@@ -190,15 +346,18 @@ export default function ApplicationListMain() {
         .eq("id", rejectTargetId);
       if (error) throw error;
       toast.success("반려되었습니다.");
+      setAllApplications((prev) =>
+        prev.map((a) => a.id === rejectTargetId ? { ...a, approval_status: "rejected", rejection_reason: rejectReason.trim() } : a)
+      );
       setRejectModalOpen(false);
       setRejectTargetId(null);
       setRejectReason("");
-      loadPendingApplications();
+      setStatusPopoverId(null);
     } catch (err) {
       logger.error("반려 처리 실패", err);
       toast.error("반려 처리에 실패했습니다.");
     }
-  }, [rejectTargetId, rejectReason, employee?.id, loadPendingApplications]);
+  }, [rejectTargetId, rejectReason, employee?.id]);
 
   const openRejectModal = (appId: number) => {
     setRejectTargetId(appId);
@@ -215,6 +374,68 @@ export default function ApplicationListMain() {
     const conf = map[status] || { text: status, cls: "badge-stats bg-gray-100 text-gray-600" };
     return <span className={`badge-stats ${conf.cls}`}>{conf.text}</span>;
   };
+
+  // 승인 관리용 클릭 가능한 상태 배지 (pending일 때만 팝오버)
+  const getApprovalStatusCell = (app: AiServiceApplication) => {
+    const isPending = app.approval_status === "pending";
+
+    if (!isPending) {
+      return getStatusBadge(app.approval_status || "pending");
+    }
+
+    const isOpen = statusPopoverId === app.id;
+
+    return (
+      <div className="relative inline-block" ref={isOpen ? popoverRef : null}>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setStatusPopoverId(isOpen ? null : app.id);
+          }}
+          className="badge-stats badge-utk-pending cursor-pointer hover:opacity-80 transition-opacity"
+        >
+          승인대기 ▾
+        </button>
+        {isOpen && (
+          <div
+            className="absolute left-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
+            style={{ minWidth: "110px" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); handleApprove(app.id); }}
+              className="flex items-center gap-1.5 w-full px-3 py-1.5 text-[11px] font-medium text-green-700 hover:bg-green-50 transition-colors"
+            >
+              <Check className="w-3 h-3" />
+              승인
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setStatusPopoverId(null); openRejectModal(app.id); }}
+              className="flex items-center gap-1.5 w-full px-3 py-1.5 text-[11px] font-medium text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <X className="w-3 h-3" />
+              반려
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // 팝오버 외부 클릭 시 닫기
+  useEffect(() => {
+    if (statusPopoverId === null) return;
+    const handler = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setStatusPopoverId(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [statusPopoverId]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -333,7 +554,11 @@ export default function ApplicationListMain() {
                   </thead>
                   <tbody>
                     {applications.map((app) => (
-                      <tr key={app.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                      <tr
+                        key={app.id}
+                        onClick={() => setDetailModalApp(app)}
+                        className="border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
+                      >
                         <td className="px-2 py-1.5 text-center whitespace-nowrap">{getStatusBadge(app.approval_status || "pending")}</td>
                         <td className="px-2 py-1.5 card-date whitespace-nowrap">{format(new Date(app.application_date), "yyyy-MM-dd", { locale: ko })}</td>
                         <td className="px-2 py-1.5 card-title truncate max-w-[130px]">{app.service_name}</td>
@@ -355,17 +580,17 @@ export default function ApplicationListMain() {
               <div className="w-8 h-8 border-2 border-hansl-600 border-t-transparent rounded-full animate-spin" />
               <span className="ml-3 text-gray-600">로딩 중...</span>
             </div>
-          ) : pendingApplications.length === 0 ? (
+          ) : allApplications.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 bg-white border border-gray-200 rounded-lg business-radius-card">
               <FileText className="w-12 h-12 text-gray-300 mb-4" />
-              <p className="card-description text-gray-500">승인 대기 신청이 없습니다.</p>
+              <p className="card-description text-gray-500">신청 내역이 없습니다.</p>
             </div>
           ) : (
             <div className="overflow-x-auto overflow-y-auto max-h-[70vh] border border-gray-200 rounded-lg bg-white">
               <table className="w-full min-w-[1200px] border-collapse">
                 <thead className="sticky top-0 z-30 bg-gray-50" style={{ boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)" }}>
                   <tr>
-                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[80px]">상태</th>
+                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[100px]">상태</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[90px]">신청일</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[140px]">서비스명</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[76px]">요청자</th>
@@ -377,13 +602,18 @@ export default function ApplicationListMain() {
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[90px]">현재 월 비용</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">사용 목적</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">활용 예정/사례</th>
-                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[120px]">액션</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {pendingApplications.map((app) => (
-                    <tr key={app.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                      <td className="px-2 py-1.5 text-center whitespace-nowrap">{getStatusBadge("pending")}</td>
+                  <tbody>
+                  {allApplications.map((app) => (
+                    <tr
+                      key={app.id}
+                      onClick={() => setDetailModalApp(app)}
+                      className="border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer"
+                    >
+                      <td className="px-2 py-1.5 text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        {getApprovalStatusCell(app)}
+                      </td>
                       <td className="px-2 py-1.5 card-date whitespace-nowrap">{format(new Date(app.application_date), "yyyy-MM-dd", { locale: ko })}</td>
                       <td className="px-2 py-1.5 card-title truncate max-w-[130px]">{app.service_name}</td>
                       <td className="px-2 py-1.5 card-subtitle truncate max-w-[70px]">{app.requester_name || "-"}</td>
@@ -399,26 +629,6 @@ export default function ApplicationListMain() {
                       </td>
                       <td className="px-2 py-1.5 card-subtitle truncate max-w-[180px]">{app.usage_purpose || "-"}</td>
                       <td className="px-2 py-1.5 card-subtitle truncate max-w-[180px]">{app.usage_example || "-"}</td>
-                      <td className="px-2 py-1.5 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <Button
-                            type="button"
-                            onClick={() => handleApprove(app.id)}
-                            className="button-base bg-green-500 hover:bg-green-600 text-white"
-                          >
-                            <Check className="w-3 h-3 mr-0.5" />
-                            승인
-                          </Button>
-                          <Button
-                            type="button"
-                            onClick={() => openRejectModal(app.id)}
-                            className="button-base border border-red-200 bg-white text-red-600 hover:bg-red-50"
-                          >
-                            <X className="w-3 h-3 mr-0.5" />
-                            반려
-                          </Button>
-                        </div>
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -426,6 +636,15 @@ export default function ApplicationListMain() {
             </div>
           )
         )}
+
+        <ApplicationDetailModal
+          app={detailModalApp}
+          open={!!detailModalApp}
+          onClose={() => setDetailModalApp(null)}
+          canApprove={canApprove}
+          onApprove={(id) => { handleApprove(id); }}
+          onReject={(id) => { openRejectModal(id); }}
+        />
 
         <Dialog
           open={rejectModalOpen}

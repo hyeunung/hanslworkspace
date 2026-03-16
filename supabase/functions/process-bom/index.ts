@@ -118,16 +118,6 @@ serve(async (req) => {
       processing_time_ms: 0 // TODO: 시간 측정
     });
 
-    // 학습용 데이터 저장 (AI가 잘했는지 못했는지 나중에 판단하기 위해 원본과 결과를 저장)
-    await supabase.from('ai_learning_records').insert({
-      cad_drawing_id: cadDrawingId,
-      raw_bom_data: { content: bomText.substring(0, 5000) }, // 용량 제한 고려
-      raw_coordinate_data: { content: coordText.substring(0, 5000) },
-      processed_bom_data: processedData.bomItems,
-      processed_coordinate_data: processedData.coordinates,
-      cad_program_type: 'unknown' // 나중에 AI가 판단하게 할 수 있음
-    });
-
     return new Response(
       JSON.stringify({ 
         success: true, 

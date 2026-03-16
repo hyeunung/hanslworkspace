@@ -44,6 +44,7 @@ const DASHBOARD_CARDS = [
   { label: "원자재", number: "4963", value: "원자재 4963" },
   { label: "출장용", number: "5914", value: "출장용 5914" },
   { label: "공용2", number: "9976", value: "공용2 9976" },
+  { label: "기타1", number: "8936", value: "기타1 8936" },
 ]
 
 const VEHICLE_FIXED_STATUS: Record<string, { status: "away"; driver: string; destination: string }> = {

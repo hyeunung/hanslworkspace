@@ -38,6 +38,7 @@ import { logger } from "@/lib/logger";
 
 import PurchaseDetailModal from "@/components/purchase/PurchaseDetailModal";
 import { UTK_AUTHORIZED_ROLES } from "@/constants/columnSettings";
+import StatementImageViewer, { openStatementPreview } from "./StatementImageViewer";
 
 interface StatementConfirmModalProps {
   isOpen: boolean;
@@ -67,9 +68,17 @@ interface SystemPurchaseItem {
 const MIN_AUTO_MATCH_SCORE = 40;
 
 function getOCRLineHint(
-  item: Pick<TransactionStatementItemWithMatch, 'extracted_po_line_number' | 'extracted_po_number' | 'line_number'>
+  item: Pick<TransactionStatementItemWithMatch, 'extracted_po_line_number' | 'extracted_specification' | 'extracted_po_number' | 'line_number'>
 ): number | null {
-  return item.extracted_po_line_number ?? extractLineNumberFromPO(item.extracted_po_number || '') ?? item.line_number ?? null;
+  if (item.extracted_po_line_number != null) return item.extracted_po_line_number;
+
+  const fromSpecification = extractLineNumberFromPO(item.extracted_specification || '');
+  if (fromSpecification != null) return fromSpecification;
+
+  const fromPONumber = extractLineNumberFromPO(item.extracted_po_number || '');
+  if (fromPONumber != null) return fromPONumber;
+
+  return item.line_number ?? null;
 }
 
 function mapCandidateToSystemItem(candidate: MatchCandidate): SystemPurchaseItem {
@@ -295,6 +304,8 @@ export default function StatementConfirmModal({
 }: StatementConfirmModalProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
+  const [viewerImageUrl, setViewerImageUrl] = useState("");
   const [savingAction, setSavingAction] = useState<'confirm' | 'quantity-match' | 'reject' | 'utk' | null>(null);
   const [statementWithItems, setStatementWithItems] = useState<TransactionStatementWithItems | null>(null);
   const [confirmerName, setConfirmerName] = useState("");
@@ -321,6 +332,7 @@ export default function StatementConfirmModal({
   // 발주 상세 모달 상태
   const [isPurchaseDetailModalOpen, setIsPurchaseDetailModalOpen] = useState(false);
   const [selectedPurchaseIdForDetail, setSelectedPurchaseIdForDetail] = useState<number | null>(null);
+  const [dropdownToRestoreAfterDetail, setDropdownToRestoreAfterDetail] = useState<string | null>(null);
   
   // OCR 품목 편집 상태 (학습용)
   // key: itemId, value: 수정된 값들
@@ -427,13 +439,10 @@ export default function StatementConfirmModal({
   const systemCandidateLogKeyRef = useRef<string | null>(null);
   
   // 발주번호 인라인 검색 상태
-  const [poSearchInputOpen, setPOSearchInputOpen] = useState(false);
   const [poSearchInput, setPOSearchInput] = useState('');
   const [poSearchResults, setPOSearchResults] = useState<Array<{ id: number; poNumber: string; soNumber?: string; vendorName?: string }>>([]);
   const [poSearchLoading, setPOSearchLoading] = useState(false);
-  const [poDropdownOpen, setPODropdownOpen] = useState(false);
   const [manuallySelectedPO, setManuallySelectedPO] = useState(false); // 수동 선택 여부
-  const keepPODropdownOpenRef = useRef(false);
   const [itemPOSearchInputs, setItemPOSearchInputs] = useState<Record<string, string>>({});
   const [itemPOSearchResults, setItemPOSearchResults] = useState<Record<string, Array<{ id: number; poNumber: string; soNumber?: string; vendorName?: string }>>>({});
   const [itemPOSearchLoading, setItemPOSearchLoading] = useState<Record<string, boolean>>({});
@@ -784,6 +793,9 @@ export default function StatementConfirmModal({
             initialMatches.set(item.id, {
               purchase_id: item.matched_purchase_id!,
               item_id: item.matched_item_id!,
+              line_number:
+                (item as any).matched_item?.line_number ??
+                item.match_candidates?.find((candidate) => candidate.item_id === item.matched_item_id)?.line_number,
               purchase_order_number: item.matched_purchase.purchase_order_number || '',
               sales_order_number: item.matched_purchase.sales_order_number,
               item_name: (item as any).matched_item?.item_name || (item as any).matched_item_name || '',
@@ -1340,6 +1352,7 @@ export default function StatementConfirmModal({
               purchase_order_number: item.purchase_order_number || '',
               sales_order_number: item.sales_order_number,
               item_id: item.item_id,
+              line_number: item.line_number,
               item_name: item.item_name,
               specification: item.specification,
               quantity: item.quantity ?? 0,
@@ -2025,7 +2038,7 @@ export default function StatementConfirmModal({
       case 'item_name':
         return ocrItem.extracted_item_name || '';
       case 'quantity':
-        return ocrItem.extracted_quantity ?? '';
+        return ocrItem.extracted_quantity ?? 1;
       case 'unit_price':
         return ocrItem.extracted_unit_price ?? '';
       case 'amount':
@@ -2477,12 +2490,10 @@ export default function StatementConfirmModal({
   const handlePOSearch = async (searchValue: string) => {
     if (!searchValue.trim()) {
       setPOSearchResults([]);
-      setPODropdownOpen(false);
       return;
     }
     
     setPOSearchLoading(true);
-    setPODropdownOpen(true);
     
     try {
       const normalized = normalizeOrderNumber(searchValue.trim());
@@ -3057,12 +3068,21 @@ export default function StatementConfirmModal({
     return candidate?.purchaseId || candidate?.items?.[0]?.purchase_id;
   }, [allPONumberCandidates]);
 
-  const handleOpenPurchaseDetail = useCallback((purchaseId: number) => {
-    // 상세 모달이 최상위가 되도록 기존 드롭다운을 먼저 닫는다.
+  const handleOpenPurchaseDetail = useCallback((
+    purchaseId: number,
+    options?: { preserveGlobalDropdown?: boolean }
+  ) => {
+    const shouldRestoreGlobalDropdown = Boolean(
+      options?.preserveGlobalDropdown && openDropdowns.has('global-po')
+    );
+
+    // 상세 모달이 최상위가 되도록 현재 드롭다운은 일단 닫고,
+    // 필요하면 닫을 때 다시 열 수 있도록 키를 저장한다.
+    setDropdownToRestoreAfterDetail(shouldRestoreGlobalDropdown ? 'global-po' : null);
     setOpenDropdowns(new Set());
     setSelectedPurchaseIdForDetail(purchaseId);
     setIsPurchaseDetailModalOpen(true);
-  }, [statement.id, openDropdowns]);
+  }, [openDropdowns]);
 
   useEffect(() => {
     if (!isPurchaseDetailModalOpen) return;
@@ -3486,7 +3506,7 @@ export default function StatementConfirmModal({
         
         const confirmedQuantity = edited?.quantity !== undefined 
           ? edited.quantity 
-          : item.extracted_quantity;
+          : (item.extracted_quantity ?? 1);
         const confirmedUnitPrice = edited?.unit_price !== undefined 
           ? edited.unit_price 
           : item.extracted_unit_price;
@@ -3501,7 +3521,7 @@ export default function StatementConfirmModal({
           matched_item_id: matched?.item_id,
           confirmed_quantity: confirmedQuantity,
           confirmed_unit_price: confirmedUnitPrice,
-          confirmed_amount: confirmedAmount
+          confirmed_amount: confirmedAmount,
         };
       });
 
@@ -3543,7 +3563,7 @@ export default function StatementConfirmModal({
                   itemId: item.id,
                   matched_purchase_id: matched?.purchase_id,
                   matched_item_id: matched?.item_id,
-                  confirmed_quantity: edited?.quantity !== undefined ? edited.quantity : item.extracted_quantity
+                  confirmed_quantity: edited?.quantity !== undefined ? edited.quantity : (item.extracted_quantity ?? 1),
                 };
               });
 
@@ -3609,13 +3629,13 @@ export default function StatementConfirmModal({
 
         const confirmedQuantity = edited?.quantity !== undefined
           ? edited.quantity
-          : item.extracted_quantity;
+          : (item.extracted_quantity ?? 1);
 
         return {
           itemId: item.id,
           matched_purchase_id: matched?.purchase_id,
           matched_item_id: matched?.item_id,
-          confirmed_quantity: confirmedQuantity
+          confirmed_quantity: confirmedQuantity,
         };
       });
 
@@ -3685,7 +3705,7 @@ export default function StatementConfirmModal({
               itemId: item.id,
               matched_purchase_id: matched?.purchase_id,
               matched_item_id: matched?.item_id,
-              confirmed_quantity: edited?.quantity !== undefined ? edited.quantity : item.extracted_quantity
+              confirmed_quantity: edited?.quantity !== undefined ? edited.quantity : (item.extracted_quantity ?? 1),
             };
           });
 
@@ -3836,22 +3856,13 @@ export default function StatementConfirmModal({
   const handleOpenOriginalImage = () => {
     const fileUrl = statementWithItems?.image_url || statement.image_url;
     if (!fileUrl) return;
-
-    const urlPath = fileUrl.split('?')[0].toLowerCase();
-    const isPdf = urlPath.endsWith('.pdf');
-    const isExcel = urlPath.endsWith('.xls') || urlPath.endsWith('.xlsx');
-
-    const width = 1000;
-    const height = 800;
-    const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
-    const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
-
-    if (isExcel) {
-      const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(fileUrl)}&embedded=true`;
-      window.open(viewerUrl, 'transaction-statement-viewer', `width=${width},height=${height},left=${left},top=${top}`);
-    } else {
-      window.open(fileUrl, 'transaction-statement-viewer', `width=${width},height=${height},left=${left},top=${top}`);
-    }
+    openStatementPreview({
+      fileUrl,
+      onOpenImageViewer: (viewerImageUrl) => {
+        setViewerImageUrl(viewerImageUrl);
+        setIsImageViewerOpen(true);
+      },
+    });
   };
 
   const resetReextractState = () => {
@@ -3866,8 +3877,9 @@ export default function StatementConfirmModal({
     setItemPOSearchResults({});
     setItemPOSearchLoading({});
     setPOSearchInput('');
-    setPOSearchInputOpen(false);
-    setPODropdownOpen(false);
+    setPOSearchResults([]);
+    setPOSearchLoading(false);
+    setDropdownToRestoreAfterDetail(null);
     setVendorInputValue('');
     setVendorSearchResults([]);
     setVendorDropdownOpen(false);
@@ -4120,19 +4132,19 @@ export default function StatementConfirmModal({
       <Dialog
         open={isOpen}
         onOpenChange={(open) => {
-          if (!open && !isPurchaseDetailModalOpen) {
+          if (!open && !isPurchaseDetailModalOpen && !isImageViewerOpen) {
             handleCloseWithSave();
           }
         }}
         modal={isDialogModal}
       >
-        <DialogContent 
+        <DialogContent
           maxWidth="max-w-[85vw] sm:max-w-[85vw]"
-          className="max-h-[90vh] overflow-hidden flex flex-col business-radius-modal" 
+          className="max-h-[90vh] overflow-hidden flex flex-col business-radius-modal"
           data-debug={dialogDebugId}
           showCloseButton={false}
           onPointerDownOutside={(e) => {
-            if (isPurchaseDetailModalOpen) { e.preventDefault(); return; }
+            if (isPurchaseDetailModalOpen || isImageViewerOpen) { e.preventDefault(); return; }
             const target = e.target as HTMLElement | null;
             const isDropdownInteraction = Boolean(target?.closest('[data-ts-dropdown-panel="true"]'));
             if (isDropdownInteraction || openDropdowns.size > 0) {
@@ -4140,7 +4152,7 @@ export default function StatementConfirmModal({
             }
           }}
           onFocusOutside={(e) => {
-            if (isPurchaseDetailModalOpen) { e.preventDefault(); return; }
+            if (isPurchaseDetailModalOpen || isImageViewerOpen) { e.preventDefault(); return; }
             const target = e.target as HTMLElement | null;
             const isDropdownInteraction = Boolean(target?.closest('[data-ts-dropdown-panel="true"]'));
             if (isDropdownInteraction || openDropdowns.size > 0) {
@@ -4148,7 +4160,7 @@ export default function StatementConfirmModal({
             }
           }}
           onInteractOutside={(e) => {
-            if (isPurchaseDetailModalOpen) { e.preventDefault(); return; }
+            if (isPurchaseDetailModalOpen || isImageViewerOpen) { e.preventDefault(); return; }
             const target = e.target as HTMLElement | null;
             const isDropdownInteraction = Boolean(target?.closest('[data-ts-dropdown-panel="true"]'));
             if (isDropdownInteraction) {
@@ -4199,6 +4211,22 @@ export default function StatementConfirmModal({
             <div className="flex-1 overflow-hidden flex flex-col py-3 px-4">
               {/* 요약 정보 */}
               <div className="flex items-center gap-6 p-3 bg-gray-50 business-radius-card mb-4">
+                <div>
+                  <p className="modal-label">명세서 코드</p>
+                  <p className="modal-value">{statementWithItems.statement_code || statement.statement_code || '-'}</p>
+                </div>
+                <div>
+                  <p className="modal-label">발주 구분</p>
+                  <p className="modal-value">
+                    {statementWithItems.po_scope === 'single'
+                      ? '단일 발주'
+                      : statementWithItems.po_scope === 'multi'
+                        ? '다중 발주'
+                        : isSamePONumber
+                          ? '단일 발주'
+                          : '다중 발주'}
+                  </p>
+                </div>
                 <div className="relative">
                   <p className="modal-label">거래처</p>
                   <div className="relative">
@@ -4310,7 +4338,11 @@ export default function StatementConfirmModal({
                           {isSamePONumber && allPONumberCandidates.length > 0 && (
                             <div className="relative flex items-center gap-1">
                               <button
-                                onClick={(e) => toggleDropdown('global-po', e)}
+                                onClick={(e) => {
+                                  setPOSearchInput('');
+                                  setPOSearchResults([]);
+                                  toggleDropdown('global-po', e);
+                                }}
                                 className="inline-flex items-center gap-1 px-1.5 h-5 text-[10px] font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700"
                               >
                                 {(() => {
@@ -4334,112 +4366,6 @@ export default function StatementConfirmModal({
                                   ⚠️
                                 </span>
                               )}
-                              {/* 수동 검색 - 인라인 input */}
-                              <div className="relative flex items-center">
-                                {poSearchInputOpen ? (
-                                  <>
-                                    <input
-                                      type="text"
-                                      value={poSearchInput}
-                                      onChange={(e) => {
-                                        setPOSearchInput(e.target.value);
-                                        handlePOSearch(e.target.value);
-                                      }}
-                                      onBlur={() => {
-                                        if (keepPODropdownOpenRef.current) {
-                                          keepPODropdownOpenRef.current = false;
-                                          return;
-                                        }
-                                        setTimeout(() => {
-                                          setPOSearchInputOpen(false);
-                                          setPODropdownOpen(false);
-                                        }, 200);
-                                      }}
-                                      placeholder="F... 또는 HS..."
-                                      className="w-[150px] h-5 px-1.5 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-hansl-400"
-                                      style={{ fontSize: '10px', fontWeight: 500 }}
-                                      autoFocus
-                                      onClick={(e) => e.stopPropagation()}
-                                    />
-                                    {poSearchLoading && (
-                                      <Loader2 className="absolute right-1 w-3 h-3 animate-spin text-gray-400" />
-                                    )}
-                                    {/* 인라인 드롭다운 */}
-                                    {poDropdownOpen && poSearchResults.length > 0 && (
-                                      <div className="absolute top-full left-0 mt-1 w-[280px] bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[180px] overflow-y-auto">
-                                        {poSearchResults.map((po) => (
-                                          <div
-                                            key={po.id}
-                                            className="w-full px-2 py-1.5 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                                          >
-                                            <button
-                                              onMouseDown={(e) => e.preventDefault()}
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                keepPODropdownOpenRef.current = false;
-                                                // 검색어에 맞는 번호 선택: HS로 검색했으면 soNumber, F로 검색했으면 poNumber
-                                                const searchUpper = poSearchInput.trim().toUpperCase();
-                                                let selectedNumber: string;
-                                                if (searchUpper.startsWith('HS') && po.soNumber) {
-                                                  selectedNumber = po.soNumber;
-                                                } else if (searchUpper.startsWith('F') && po.poNumber) {
-                                                  selectedNumber = po.poNumber;
-                                                } else {
-                                                  selectedNumber = po.poNumber || po.soNumber || '';
-                                                }
-                                                setPOSearchInput('');
-                                                setPOSearchInputOpen(false);
-                                                setPODropdownOpen(false);
-                                                // 수동 선택 플래그 설정 (자동 교정 방지)
-                                                setManuallySelectedPO(true);
-                                                // 발주번호 선택 및 품목 매칭 업데이트 (거래처명, 수주번호 포함)
-                                                handleSelectGlobalPO(selectedNumber, po.vendorName, po.soNumber);
-                                                toast.success(`${selectedNumber} 발주가 선택되었습니다`);
-                                              }}
-                                              className="w-full text-left"
-                                            >
-                                              <div className="flex items-center justify-between gap-2">
-                                                <div className="text-[10px] font-medium text-gray-900">
-                                                  {po.poNumber}
-                                                  {po.soNumber && <span className="text-gray-400 ml-1">({po.soNumber})</span>}
-                                                </div>
-                                                <button
-                                                  type="button"
-                                                  onMouseDown={(e) => {
-                                                    keepPODropdownOpenRef.current = true;
-                                                    e.preventDefault();
-                                                  }}
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleOpenPurchaseDetail(po.id);
-                                                  }}
-                                                  className="text-[9px] font-medium text-blue-600 hover:text-blue-800"
-                                                >
-                                                  상세
-                                                </button>
-                                              </div>
-                                            </button>
-                                            {po.vendorName && (
-                                              <div className="text-[9px] text-gray-500">{po.vendorName}</div>
-                                            )}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </>
-                                ) : (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setPOSearchInputOpen(true);
-                                    }}
-                                    className="inline-flex items-center gap-0.5 px-1 h-5 text-[9px] font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded"
-                                    title="발주/수주번호 직접 검색"
-                                  >
-                                    <Search className="w-3 h-3" />
-                                  </button>
-                                )}
-                              </div>
                               {/* 발주 상세보기 버튼 */}
                               {selectedPONumber && (() => {
                                 const selectedCandidate = allPONumberCandidates.find(
@@ -4476,56 +4402,50 @@ export default function StatementConfirmModal({
                           <span className="modal-section-title text-gray-700">
                             OCR 추출 품목
                           </span>
-                          {isSamePONumber && commonPONumber && (
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="text"
-                                value={(() => {
-                                  // 편집된 값이 있으면 사용, 없으면 원본 사용
+                          {isSamePONumber && (
+                            <div className="relative flex items-center gap-1">
+                              <button
+                                onClick={(e) => {
+                                  setPOSearchInput('');
+                                  setPOSearchResults([]);
+                                  toggleDropdown('global-po', e);
+                                }}
+                                className="inline-flex items-center gap-1 px-1.5 h-5 text-[10px] font-medium bg-white border border-gray-300 rounded-md hover:bg-gray-50 text-gray-700"
+                              >
+                                {(() => {
                                   const firstItem = statementWithItems?.items[0];
-                                  if (firstItem) {
-                                    return getOCRItemValue(firstItem, 'po_number') as string;
+                                  const currentValue = firstItem
+                                    ? (getOCRItemValue(firstItem, 'po_number') as string)
+                                    : '';
+                                  const displayValue = currentValue || selectedPONumber || commonPONumber || '발주번호 선택';
+                                  const pairedNumber = getPairedOrderNumberWithOverrides(displayValue);
+                                  if (pairedNumber) {
+                                    return <>{displayValue} <span className="text-gray-400">({pairedNumber})</span></>;
                                   }
-                                  return commonPONumber;
+                                  return displayValue;
                                 })()}
-                                onChange={(e) => handleOCRPONumberChange(e.target.value)}
-                                className="px-1.5 h-5 bg-white border border-gray-300 text-gray-700 text-[10px] font-medium business-radius focus:outline-none focus:ring-1 focus:ring-gray-400"
-                                style={{ fontSize: '11px', fontWeight: 500 }}
-                                title="OCR 추출 발주번호 (수정 가능)"
-                              />
-                              {(() => {
-                                // 현재 입력된 값 가져오기
-                                const firstItem = statementWithItems?.items[0];
-                                const currentValue = firstItem ? (getOCRItemValue(firstItem, 'po_number') as string) : commonPONumber;
-                                const pairedNumber = getPairedOrderNumberWithOverrides(currentValue);
-                                if (pairedNumber) {
-                                  return <span className="text-gray-400 text-[10px] font-normal" style={{ fontSize: '11px' }}>{pairedNumber}</span>;
-                                }
-                                return null;
-                              })()}
-                            </div>
-                          )}
-                          {isSamePONumber && !commonPONumber && (
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="text"
-                                placeholder="발주/수주번호 입력"
-                                onChange={(e) => handleOCRPONumberChange(e.target.value)}
-                                className="px-1.5 h-5 bg-white border border-gray-300 text-gray-700 text-[10px] font-medium business-radius focus:outline-none focus:ring-1 focus:ring-gray-400"
-                                style={{ fontSize: '11px', fontWeight: 500 }}
-                                title="발주번호 직접 입력"
-                              />
+                                <ChevronDown className="w-3 h-3" />
+                              </button>
                               {(() => {
                                 const firstItem = statementWithItems?.items[0];
                                 const currentValue = firstItem
                                   ? (getOCRItemValue(firstItem, 'po_number') as string)
                                   : '';
-                                const pairedNumber = getPairedOrderNumberWithOverrides(currentValue);
-                                if (!pairedNumber) return null;
+                                const resolvedValue = currentValue || selectedPONumber || commonPONumber || '';
+                                if (!resolvedValue) return null;
+                                const purchaseId = getPurchaseIdByNumber(resolvedValue);
+                                if (!purchaseId) return null;
                                 return (
-                                  <span className="text-gray-400 text-[10px] font-normal" style={{ fontSize: '11px' }}>
-                                    {pairedNumber}
-                                  </span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenPurchaseDetail(purchaseId);
+                                    }}
+                                    className="inline-flex items-center gap-0.5 px-1 h-5 text-[9px] font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                                    title="발주 상세 보기"
+                                  >
+                                    <ExternalLink className="w-3 h-3" />
+                                  </button>
                                 );
                               })()}
                             </div>
@@ -4651,10 +4571,10 @@ export default function StatementConfirmModal({
                         if (aLine !== bLine) return aLine - bLine;
                         return b.score - a.score;
                       });
-                      const poLineFromSuffix = extractLineNumberFromPO(ocrItem.extracted_po_number || '');
-                      const systemDisplayLineNumber = poLineFromSuffix ?? matchedSystem?.line_number ?? displayLineByItemId.get(ocrItem.id) ?? (ocrLineSeqByItemId.get(ocrItem.id) ?? rowIndex + 1);
+                      const ocrLineHint = getOCRLineHint(ocrItem);
+                      const systemDisplayLineNumber = matchedSystem?.line_number ?? ocrLineHint ?? null;
                       const systemDisplayLineLabel = systemDisplayLineNumber !== null ? `${systemDisplayLineNumber}.` : '-';
-                      const ocrDisplayLineLabel = ocrItem.line_number ? `${ocrItem.line_number}.` : systemDisplayLineLabel;
+                      const ocrDisplayLineLabel = systemDisplayLineLabel;
                       const ocrItemNameValue = ((getOCRItemValue(ocrItem, 'item_name') as string) || '').trim();
                       let effectiveSystemForNameMatch: SystemPurchaseItem | null = matchedSystem || null;
                       if (!effectiveSystemForNameMatch) {
@@ -5277,7 +5197,7 @@ export default function StatementConfirmModal({
                               <input
                                 type="number"
                                 value={getOCRItemValue(ocrItem, 'quantity') ?? ''}
-                                onChange={(e) => handleEditOCRItem(ocrItem.id, 'quantity', e.target.value ? Number(e.target.value) : 0)}
+                                onChange={(e) => handleEditOCRItem(ocrItem.id, 'quantity', e.target.value ? Number(e.target.value) : 1)}
                                 onBlur={() => handleOCRItemBlur(ocrItem.id, 'quantity')}
                                 className={`w-14 px-1 h-5 !text-[10px] !font-medium text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
                                   isOCRItemEdited(ocrItem, 'quantity') 
@@ -5849,92 +5769,223 @@ export default function StatementConfirmModal({
 
       {/* 발주번호 선택 드롭다운 */}
       {openDropdowns.has('global-po') && createPortal(
-        <>
-          {/* 오버레이 */}
-          <div 
-            className="fixed inset-0 z-[9998]" 
-            style={{ pointerEvents: 'auto' }}
-            onClick={() => toggleDropdown('global-po')}
-          />
-          {/* 드롭다운 */}
-          <div 
-            data-ts-dropdown-panel="true"
-            className="fixed z-[9999] pointer-events-auto bg-white border border-gray-200 rounded-lg shadow-xl min-w-[280px] max-h-[350px] overflow-y-auto"
-            style={{
-              top: dropdownPosition.top,
-              left: dropdownPosition.left,
-              maxHeight: dropdownPosition.maxHeight,
-              pointerEvents: 'auto'
-            }}
-            onClick={(e) => e.stopPropagation()}
-            onWheel={handleGlobalPODropdownWheel}
-          >
-            <div className="sticky top-0 bg-gray-50 px-3 py-2 border-b border-gray-100 rounded-t-lg">
-              <span className="text-[10px] font-semibold text-gray-600">발주번호 선택</span>
-            </div>
-            {/* allPONumberCandidates는 이미 발주번호 일치 → 점수순으로 정렬됨 */}
-            {allPONumberCandidates.map((c, idx) => {
-              const displayNumber = c.poNumber || c.salesOrderNumber || '';
-              const isSelected = selectedPONumber === displayNumber;
-              const isBestMatch = setMatchResult?.bestMatch?.purchase_order_number === c.poNumber ||
-                                 setMatchResult?.bestMatch?.sales_order_number === c.salesOrderNumber;
-              
-              return (
-                <div
-                  key={idx}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSelectGlobalPO(displayNumber);
-                    toggleDropdown('global-po');
-                  }}
-                  className={`p-2.5 cursor-pointer border-b border-gray-50 last:border-0 transition-colors ${
-                    isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
-                  } ${isBestMatch ? 'ring-1 ring-inset ring-green-400' : ''}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-[12px] font-medium text-gray-900">
-                      {c.poNumber || c.salesOrderNumber}
-                      {c.poNumber && c.salesOrderNumber && (
-                        <span className="text-gray-500 font-normal"> ({c.salesOrderNumber})</span>
-                      )}
-                    </p>
-                    {(c.displayScore !== undefined || c.setMatchScore !== undefined) && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                        (c.displayScore ?? c.setMatchScore ?? 0) >= 80 ? 'bg-green-100 text-green-700' :
-                        (c.displayScore ?? c.setMatchScore ?? 0) >= 50 ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-gray-100 text-gray-600'
-                      }`}>
-                        {Math.min(100, c.displayScore ?? c.setMatchScore ?? 0)}%
-                      </span>
+        (() => {
+          const query = poSearchInput.trim();
+          const queryUpper = query.toUpperCase();
+          const normalizedQuery = query ? normalizeOrderNumber(query).toUpperCase() : '';
+          const filteredCandidates = allPONumberCandidates.filter((c) => {
+            if (!query) return true;
+            const po = (c.poNumber || '').toUpperCase();
+            const so = (c.salesOrderNumber || '').toUpperCase();
+            const vendor = (c.vendorName || '').toUpperCase();
+            return (
+              po.includes(queryUpper) ||
+              so.includes(queryUpper) ||
+              vendor.includes(queryUpper) ||
+              (normalizedQuery !== '' && (po.includes(normalizedQuery) || so.includes(normalizedQuery)))
+            );
+          });
+          const candidateNumberSet = new Set<string>();
+          filteredCandidates.forEach((c) => {
+            if (c.poNumber) candidateNumberSet.add(c.poNumber);
+            if (c.salesOrderNumber) candidateNumberSet.add(c.salesOrderNumber);
+          });
+          const extraSearchResults = poSearchResults.filter((po) => {
+            if (!query) return false;
+            if (po.poNumber && candidateNumberSet.has(po.poNumber)) return false;
+            if (po.soNumber && candidateNumberSet.has(po.soNumber)) return false;
+            return true;
+          });
+
+          return (
+            <>
+              {/* 오버레이 */}
+              <div 
+                className="fixed inset-0 z-[9998]" 
+                style={{ pointerEvents: 'auto' }}
+                onClick={() => {
+                  setPOSearchInput('');
+                  setPOSearchResults([]);
+                  toggleDropdown('global-po');
+                }}
+              />
+              {/* 드롭다운 (포털 렌더링으로 모달 밖 표시) */}
+              <div 
+                data-ts-dropdown-panel="true"
+                className="fixed z-[9999] pointer-events-auto bg-white border border-gray-200 rounded-lg shadow-xl min-w-[320px] max-h-[350px] overflow-y-auto"
+                style={{
+                  top: dropdownPosition.top,
+                  left: dropdownPosition.left,
+                  maxHeight: dropdownPosition.maxHeight,
+                  pointerEvents: 'auto'
+                }}
+                onClick={(e) => e.stopPropagation()}
+                onWheel={handleGlobalPODropdownWheel}
+              >
+                <div className="sticky top-0 z-10 bg-gray-50 px-3 py-2 border-b border-gray-100 rounded-t-lg space-y-1.5">
+                  <span className="text-[10px] font-semibold text-gray-600">발주번호 선택</span>
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                    <input
+                      type="text"
+                      value={poSearchInput}
+                      onChange={(e) => {
+                        const nextValue = e.target.value;
+                        setPOSearchInput(nextValue);
+                        handlePOSearch(nextValue);
+                      }}
+                      placeholder="발주/수주번호 또는 거래처 검색"
+                      className="w-full h-7 pl-7 pr-7 text-[11px] bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-hansl-400"
+                    />
+                    {poSearchLoading && (
+                      <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 animate-spin text-gray-400" />
                     )}
                   </div>
-                  <p className="text-[10px] text-gray-500 mt-0.5">
-                    {c.matchedItemCount !== undefined 
-                      ? `${c.matchedItemCount}/${statementWithItems?.items.length || 0}개 매칭`
-                      : `${c.itemCount}개 품목`
-                    } · {c.vendorName || '거래처 미상'}
-                  </p>
-                  {/* 수량 일치 정보 */}
-                  {c.quantityMatchedCount !== undefined && c.matchedItemCount !== undefined && c.matchedItemCount > 0 && (
-                    <p className={`text-[9px] mt-0.5 ${
-                      c.quantityMismatchedCount === 0 ? 'text-green-600' : 'text-orange-600'
-                    }`}>
-                      {c.quantityMismatchedCount === 0 
-                        ? `✅ 수량 모두 일치`
-                        : `⚠️ 수량 ${c.quantityMismatchedCount}개 불일치`
-                      }
-                    </p>
-                  )}
-                  {isBestMatch && (
-                    <p className="text-[9px] text-green-600 font-medium mt-0.5">
-                      ✅ 세트 매칭 추천
-                    </p>
-                  )}
                 </div>
-              );
-            })}
-          </div>
-        </>,
+
+                {filteredCandidates.map((c, idx) => {
+                  const displayNumber = c.poNumber || c.salesOrderNumber || '';
+                  const isSelected = selectedPONumber === displayNumber;
+                  const isBestMatch = setMatchResult?.bestMatch?.purchase_order_number === c.poNumber ||
+                                     setMatchResult?.bestMatch?.sales_order_number === c.salesOrderNumber;
+                  const purchaseId = c.purchaseId || c.items?.[0]?.purchase_id;
+                  
+                  return (
+                    <div
+                      key={`candidate-${idx}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectGlobalPO(displayNumber);
+                        setPOSearchInput('');
+                        setPOSearchResults([]);
+                        toggleDropdown('global-po');
+                      }}
+                      className={`p-2.5 cursor-pointer border-b border-gray-50 last:border-0 transition-colors ${
+                        isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                      } ${isBestMatch ? 'ring-1 ring-inset ring-green-400' : ''}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[12px] font-medium text-gray-900">
+                          {c.poNumber || c.salesOrderNumber}
+                          {c.poNumber && c.salesOrderNumber && (
+                            <span className="text-gray-500 font-normal"> ({c.salesOrderNumber})</span>
+                          )}
+                        </p>
+                        <div className="flex items-center gap-1">
+                          {(c.displayScore !== undefined || c.setMatchScore !== undefined) && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                              (c.displayScore ?? c.setMatchScore ?? 0) >= 80 ? 'bg-green-100 text-green-700' :
+                              (c.displayScore ?? c.setMatchScore ?? 0) >= 50 ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>
+                              {Math.min(100, c.displayScore ?? c.setMatchScore ?? 0)}%
+                            </span>
+                          )}
+                          {purchaseId && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenPurchaseDetail(purchaseId, {
+                                  preserveGlobalDropdown: !selectedPONumber,
+                                });
+                              }}
+                              className="text-[9px] font-medium text-blue-600 hover:text-blue-800"
+                            >
+                              상세
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-gray-500 mt-0.5">
+                        {c.matchedItemCount !== undefined 
+                          ? `${c.matchedItemCount}/${statementWithItems?.items.length || 0}개 매칭`
+                          : `${c.itemCount}개 품목`
+                        } · {c.vendorName || '거래처 미상'}
+                      </p>
+                      {/* 수량 일치 정보 */}
+                      {c.quantityMatchedCount !== undefined && c.matchedItemCount !== undefined && c.matchedItemCount > 0 && (
+                        <p className={`text-[9px] mt-0.5 ${
+                          c.quantityMismatchedCount === 0 ? 'text-green-600' : 'text-orange-600'
+                        }`}>
+                          {c.quantityMismatchedCount === 0 
+                            ? `✅ 수량 모두 일치`
+                            : `⚠️ 수량 ${c.quantityMismatchedCount}개 불일치`
+                          }
+                        </p>
+                      )}
+                      {isBestMatch && (
+                        <p className="text-[9px] text-green-600 font-medium mt-0.5">
+                          ✅ 세트 매칭 추천
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {extraSearchResults.length > 0 && (
+                  <>
+                    <div className="px-3 py-1.5 text-[10px] font-semibold text-gray-500 bg-gray-50 border-y border-gray-100">
+                      전체 검색 결과
+                    </div>
+                    {extraSearchResults.map((po) => (
+                      <div
+                        key={`search-${po.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const searchUpper = poSearchInput.trim().toUpperCase();
+                          let selectedNumber: string;
+                          if (searchUpper.startsWith('HS') && po.soNumber) {
+                            selectedNumber = po.soNumber;
+                          } else if (searchUpper.startsWith('F') && po.poNumber) {
+                            selectedNumber = po.poNumber;
+                          } else {
+                            selectedNumber = po.poNumber || po.soNumber || '';
+                          }
+                          setManuallySelectedPO(true);
+                          handleSelectGlobalPO(selectedNumber, po.vendorName, po.soNumber);
+                          toast.success(`${selectedNumber} 발주가 선택되었습니다`);
+                          setPOSearchInput('');
+                          setPOSearchResults([]);
+                          toggleDropdown('global-po');
+                        }}
+                        className="p-2.5 cursor-pointer border-b border-gray-50 hover:bg-gray-50"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[12px] font-medium text-gray-900">
+                            {po.poNumber}
+                            {po.soNumber && <span className="text-gray-500 font-normal"> ({po.soNumber})</span>}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenPurchaseDetail(po.id, {
+                                preserveGlobalDropdown: !selectedPONumber,
+                              });
+                            }}
+                            className="text-[9px] font-medium text-blue-600 hover:text-blue-800"
+                          >
+                            상세
+                          </button>
+                        </div>
+                        {po.vendorName && (
+                          <p className="text-[10px] text-gray-500 mt-0.5">{po.vendorName}</p>
+                        )}
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {!poSearchLoading && filteredCandidates.length === 0 && extraSearchResults.length === 0 && (
+                  <div className="px-3 py-6 text-center text-[11px] text-gray-500">
+                    검색 결과가 없습니다.
+                  </div>
+                )}
+              </div>
+            </>
+          );
+        })(),
         document.body
       )}
 
@@ -5946,11 +5997,28 @@ export default function StatementConfirmModal({
           onClose={() => {
             setIsPurchaseDetailModalOpen(false);
             setSelectedPurchaseIdForDetail(null);
+            if (dropdownToRestoreAfterDetail) {
+              setOpenDropdowns(new Set([dropdownToRestoreAfterDetail]));
+              setDropdownToRestoreAfterDetail(null);
+              return;
+            }
+            setDropdownToRestoreAfterDetail(null);
           }}
           activeTab="done"
           forceShowStatementColumns={true}
         />
       )}
+
+      {/* 이미지 뷰어 (회전 저장 기능 포함) */}
+      <StatementImageViewer
+        isOpen={isImageViewerOpen}
+        imageUrl={viewerImageUrl}
+        onClose={() => {
+          setIsImageViewerOpen(false);
+          setViewerImageUrl("");
+        }}
+        onSaved={(newUrl) => setViewerImageUrl(newUrl)}
+      />
     </>
   );
 }

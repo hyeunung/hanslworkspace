@@ -826,36 +826,6 @@ export default function BomCoordinateIntegrated() {
         if (insertCoordError) throw insertCoordError;
       }
 
-      // 5. AI 학습 데이터 저장 (중요: 지속적인 학습을 위해 원본과 결과 저장)
-      // 사용자가 최종 수정한 데이터(items, processedResult.processedData.coordinates)가 정답 데이터가 됨
-      if (uploadedFilePaths) { // 원본 파일 경로가 있을 때만
-        // 텍스트 내용은 클라이언트에서 다시 읽어오기 번거로우므로, 일단 파일 경로와 결과 데이터만 저장하거나
-        // 추후 Edge Function이 복구되면 거기서 처리. 
-        // 현재는 DB에 파일 경로와 결과 JSON을 저장하여 나중에 파인튜닝에 활용
-        
-        /* 학습 데이터 저장 로직 (ai_learning_records 테이블) */
-        const { error: learningError } = await supabase
-          .from('ai_learning_records')
-          .insert({
-            cad_drawing_id: cadDrawingId,
-            // 원본 데이터는 URL로 참조하거나, 필요시 텍스트로 저장해야 함. 
-            // 여기서는 메타데이터 위주로 저장
-            processed_bom_data: items, // 사용자가 검수/수정한 최종 BOM
-            processed_coordinate_data: processedResult.processedData?.coordinates,
-            cad_program_type: 'unknown', // 추후 분석 가능
-            created_at: new Date().toISOString()
-          });
-          
-        if (learningError) {
-            console.warn('학습 데이터 저장 실패 (기능에는 영향 없음):', learningError);
-        } else {
-          // 학습 데이터 저장 성공 시 캐시 리셋하여 다음에 새 데이터 반영되도록 함
-          const { resetLearningDataCache } = await import('@/utils/v7-generator');
-          resetLearningDataCache();
-          console.log('✅ 학습 데이터 캐시 리셋 완료');
-        }
-      }
-      
       // cadDrawingId 업데이트
       setProcessedResult((prev: any) => ({
         ...prev,
@@ -1354,8 +1324,6 @@ export default function BomCoordinateIntegrated() {
       if (rawFilesError) {
         console.warn('bom_raw_files 삭제 실패:', rawFilesError);
       }
-
-      // ai_learning_records는 학습 데이터이므로 삭제하지 않음 (유지)
 
       // 2. 메인 cad_drawings 삭제
       const { error: cadError } = await supabase

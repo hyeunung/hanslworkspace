@@ -89,9 +89,9 @@ export default function MonthlyStatementUploadModal({
 
     setFile(selectedFile);
 
-    // 이미지인 경우 EXIF 회전 적용된 미리보기 생성
+    // 이미지인 경우 EXIF 회전 반영된 미리보기 생성 (from-image: EXIF orientation 적용)
     if (selectedFile.type.startsWith('image/')) {
-      createImageBitmap(selectedFile).then(bitmap => {
+      createImageBitmap(selectedFile, { imageOrientation: 'from-image' }).then(bitmap => {
         const canvas = document.createElement('canvas');
         canvas.width = bitmap.width;
         canvas.height = bitmap.height;

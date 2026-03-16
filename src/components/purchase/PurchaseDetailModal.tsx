@@ -1746,6 +1746,7 @@ ${itemsText}`
         if (showStatementColumns) {
           columnConfigs.push(
             { key: 'transaction_confirm', minWidth: 85, maxWidth: 120, baseWidth: 85, isFixed: false },
+            { key: 'actual_trade_date', minWidth: 80, maxWidth: 130, baseWidth: 80, isFixed: false },
             { key: 'accounting_date', minWidth: 70, maxWidth: 70, baseWidth: 70, isFixed: true }
           )
         }
@@ -1753,6 +1754,7 @@ ${itemsText}`
       if (activeTab === 'done' && (purchase?.payment_category === '발주' || forceShowStatementColumns)) {
         columnConfigs.push(
           { key: 'transaction_confirm', minWidth: 85, maxWidth: 120, baseWidth: 85, isFixed: false }, // 거래명세서 확인 칼럼 너비 축소
+          { key: 'actual_trade_date', minWidth: 80, maxWidth: 130, baseWidth: 80, isFixed: false }, // 실거래일 칼럼
           { key: 'accounting_date', minWidth: 70, maxWidth: 70, baseWidth: 70, isFixed: true }, // 회계상 입고일 칼럼 너비 축소
           { key: 'expenditure_info', minWidth: 90, maxWidth: 150, baseWidth: 90, isFixed: false } // 지출정보 칼럼 너비 축소
         )
@@ -1780,13 +1782,13 @@ ${itemsText}`
         if (activeTab === 'receipt') {
           const receiptHeaders = [...baseHeaders, '실제입고일']
           if (showStatementColumns) {
-            receiptHeaders.push('거래명세서 확인', '회계상 입고일')
+            receiptHeaders.push('거래명세서 확인', '실거래일', '회계상 입고일')
           }
           return receiptHeaders
         } else if (activeTab === 'done') {
           const doneHeaders = [...baseHeaders]
           if (showStatementColumns) {
-            doneHeaders.push('거래명세서 확인', '회계상 입고일')
+            doneHeaders.push('거래명세서 확인', '실거래일', '회계상 입고일')
             if (showExpenditureColumn) {
               doneHeaders.push('지출정보')
             }
@@ -1854,6 +1856,9 @@ ${itemsText}`
             break
           case 'transaction_confirm':
             cellValue = item.is_statement_received ? '확인완료' : '미확인'
+            break
+          case 'actual_trade_date':
+            cellValue = item.actual_received_date ? formatDate(item.actual_received_date) : ''
             break
           case 'accounting_date':
             cellValue = item.accounting_received_date ? formatDate(item.accounting_received_date) : ''
@@ -1952,13 +1957,13 @@ ${itemsText}`
     if (activeTab === 'receipt') {
       const receiptColumns = [...baseColumns, '100px'] // 실제입고일
       if (showStatementColumns) {
-        receiptColumns.push('100px', '80px') // 거래명세서 확인, 회계상 입고일
+        receiptColumns.push('100px', '80px', '80px') // 거래명세서 확인, 실거래일, 회계상 입고일
       }
       return receiptColumns.join(' ')
     } else if (activeTab === 'done') {
       const doneColumns = [...baseColumns]
       if (showStatementColumns) {
-        doneColumns.push('100px', '80px') // 거래명세서 확인, 회계상 입고일
+        doneColumns.push('100px', '80px', '80px') // 거래명세서 확인, 실거래일, 회계상 입고일
         if (showExpenditureColumn) {
           doneColumns.push('110px') // 지출정보
         }
@@ -4438,6 +4443,23 @@ ${itemsText}`
             </div>
           )}
 
+          {/* 실거래일 - 거래명세서 기준 실제 거래일 */}
+          {showStatementColumns && (
+            <div className="text-center flex justify-center items-center">
+              {item.actual_received_date ? (
+                <div className="modal-subtitle text-blue-700">
+                  {new Date(item.actual_received_date).toLocaleDateString('ko-KR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                  })}
+                </div>
+              ) : (
+                <span className="modal-subtitle text-gray-400">-</span>
+              )}
+            </div>
+          )}
+
           {/* 회계상 입고일 - 발주 + 리드바이어 입고현황/전체항목 */}
           {showStatementColumns && (
             <div className="text-center flex justify-center items-center">
@@ -4850,6 +4872,19 @@ ${itemsText}`
                   </span>
                 )}
               </div>
+            </div>
+          )}
+
+          {!isEditing && showStatementColumns && (
+            <div className="flex items-center justify-between">
+              <span className="text-gray-500 text-xs">실거래일:</span>
+              <span className="modal-subtitle text-blue-700">
+                {item.actual_received_date ? new Date(item.actual_received_date).toLocaleDateString('ko-KR', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit'
+                }) : '-'}
+              </span>
             </div>
           )}
 
@@ -5786,6 +5821,7 @@ ${itemsText}`
                               {showStatementColumns && (
                                 <>
                                   <div className="text-center">거래명세서 확인</div>
+                                  <div className="text-center">실거래일</div>
                                   <div className="text-center">회계상 입고일</div>
                                   {showExpenditureColumn && <div className="text-center">지출정보</div>}
                                 </>
@@ -5808,6 +5844,7 @@ ${itemsText}`
                               {showStatementColumns && (
                                 <>
                                   <div className="text-center">거래명세서 확인</div>
+                                  <div className="text-center">실거래일</div>
                                   <div className="text-center">회계상 입고일</div>
                                   {showExpenditureColumn && <div className="text-center">지출정보</div>}
                                 </>
@@ -5902,6 +5939,13 @@ ${itemsText}`
                         )
                       )}
                       {activeTab === 'receipt' && <div></div>}
+                      {activeTab === 'receipt' && showStatementColumns && (
+                        <>
+                          <div></div>
+                          <div></div>
+                          <div></div>
+                        </>
+                      )}
                       {activeTab === 'done' && (
                         <>
                           {/* 거래명세서 칼럼 - 발주인 경우 지출총합 금액 표시 */}
@@ -5919,6 +5963,8 @@ ${itemsText}`
                                       )}`}
                                 </div>
                               </div>
+                              {/* 실거래일 칼럼 */}
+                              <div></div>
                               {/* 회계상 입고일 칼럼 */}
                               <div></div>
                               {/* 지출정보 칼럼 */}
@@ -5966,9 +6012,18 @@ ${itemsText}`
                         <div></div>
                         {isEditing ? <div></div> : <div></div>}
                         {activeTab === 'receipt' && <div></div>}
+                        {activeTab === 'receipt' && showStatementColumns && (
+                          <>
+                            <div></div>
+                            <div></div>
+                            <div></div>
+                          </>
+                        )}
                         {activeTab === 'done' && purchase.payment_category === '발주' && (
                           <>
                             {/* 거래명세서 칼럼 */}
+                            <div></div>
+                            {/* 실거래일 칼럼 */}
                             <div></div>
                             {/* 회계상 입고일 칼럼 */}
                             <div></div>
