@@ -204,15 +204,17 @@ function ApplicationDetailModal({
 
 export default function ApplicationListMain() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { currentUserRoles, employee } = useAuth();
+  const { currentUserRoles, employee, loading: authLoading } = useAuth();
   const canApprove = APPLICATION_APPROVER_ROLES.some((r) => currentUserRoles.includes(r));
   const tabParam = searchParams.get("tab");
   const tabFromUrl = tabParam === "history" ? "history" : (tabParam === "approval" && canApprove) ? "approval" : "write";
   const [activeTab, setActiveTab] = useState(tabFromUrl);
 
   useEffect(() => {
-    setActiveTab(tabFromUrl);
-  }, [tabFromUrl]);
+    if (!authLoading) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [tabFromUrl, authLoading]);
   const [applications, setApplications] = useState<AiServiceApplication[]>([]);
   const [allApplications, setAllApplications] = useState<AiServiceApplication[]>([]);
   const [loading, setLoading] = useState(false);
