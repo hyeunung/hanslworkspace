@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { FileEdit, ChevronRight, FileText, Check, X } from "lucide-react";
+import { FileEdit, ChevronRight, FileText, Check, X, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { logger } from "@/lib/logger";
@@ -367,6 +367,24 @@ export default function ApplicationListMain() {
     setRejectModalOpen(true);
   };
 
+  const handleDelete = useCallback(async (appId: number) => {
+    if (!confirm("이 신청서를 삭제하시겠습니까?")) return;
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("ai_service_applications")
+        .delete()
+        .eq("id", appId);
+      if (error) throw error;
+      toast.success("신청서가 삭제되었습니다.");
+      setApplications((prev) => prev.filter((a) => a.id !== appId));
+      setAllApplications((prev) => prev.filter((a) => a.id !== appId));
+    } catch (err) {
+      logger.error("신청서 삭제 실패", err);
+      toast.error("삭제에 실패했습니다.");
+    }
+  }, []);
+
   const getStatusBadge = (status: string) => {
     const map: Record<string, { text: string; cls: string }> = {
       pending: { text: "승인대기", cls: "badge-utk-pending" },
@@ -552,6 +570,7 @@ export default function ApplicationListMain() {
                       <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[90px]">월 예상 비용</th>
                       <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[100px]">사용 현황</th>
                       <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">반려 사유</th>
+                      <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[50px]">삭제</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -568,6 +587,16 @@ export default function ApplicationListMain() {
                         <td className="px-2 py-1.5 card-subtitle truncate max-w-[80px]">{app.monthly_cost || "-"}</td>
                         <td className="px-2 py-1.5 card-subtitle whitespace-nowrap">{CURRENT_USAGE_LABELS[app.current_usage_status] || app.current_usage_status}</td>
                         <td className="px-2 py-1.5 card-description text-red-600 truncate max-w-[200px]">{app.approval_status === "rejected" && app.rejection_reason ? app.rejection_reason : "-"}</td>
+                        <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(app.id)}
+                            className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                            title="삭제"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -604,6 +633,7 @@ export default function ApplicationListMain() {
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[90px]">현재 월 비용</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">사용 목적</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">활용 예정/사례</th>
+                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[50px]">삭제</th>
                   </tr>
                 </thead>
                   <tbody>
@@ -631,6 +661,16 @@ export default function ApplicationListMain() {
                       </td>
                       <td className="px-2 py-1.5 card-subtitle truncate max-w-[180px]">{app.usage_purpose || "-"}</td>
                       <td className="px-2 py-1.5 card-subtitle truncate max-w-[180px]">{app.usage_example || "-"}</td>
+                      <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(app.id)}
+                          className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                          title="삭제"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
