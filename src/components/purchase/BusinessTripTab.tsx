@@ -724,8 +724,10 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
 
     try {
       setRequestSubmitting(true);
-      const { error } = await supabase.from("business_trips").insert({
+      const { data: insertedTrip, error } = await supabase.from("business_trips").insert({
         requester_id: currentUser?.id || null,
+        requester_name: currentUser?.name || null,
+        requester_position: currentUser?.position || null,
         request_department: formDepartment,
         project_name: formProjectName.trim() || null,
         trip_purpose: formPurpose.trim(),
@@ -733,17 +735,51 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
         trip_start_date: format(startDate, "yyyy-MM-dd"),
         trip_end_date: format(endDate, "yyyy-MM-dd"),
         companions: selectedCompanions,
+        travelers: [currentUser?.name, ...selectedCompanions.map((c: { name: string }) => c.name)].filter(Boolean),
         transport_type: formTransportType,
         requested_vehicle_info:
           formTransportType === "private_car"
             ? null
             : (formTransportType === "other" ? formTransportDetail.trim() : formTransportDetail) || null,
+        vehicle_name:
+          formTransportType === "company_vehicle"
+            ? COMPANY_VEHICLES.find((v) => v.value === formTransportDetail)?.label || formTransportDetail.split(" ")[0] || null
+            : formTransportType === "public_transport"
+              ? formTransportDetail || null
+              : formTransportType === "private_car"
+                ? "자차"
+                : formTransportDetail.trim().split(" ")[0] || null,
         request_corporate_card: Boolean(formCardNumber),
         requested_card_number: formCardNumber,
         expected_total_amount: toNumber(formExpectedAmount),
         precheck_note: formPrecheckNote.trim() || null,
-      });
+      }).select("id").single();
       if (error) throw error;
+
+      // 회사차량 선택 시 vehicle_requests에 승인대기 상태로 자동 생성
+      if (insertedTrip && formTransportType === "company_vehicle" && formTransportDetail) {
+        const tripStartAt = new Date(startDate);
+        tripStartAt.setHours(9, 0, 0, 0);
+        const tripEndAt = new Date(endDate);
+        tripEndAt.setHours(18, 0, 0, 0);
+
+        await supabase.from("vehicle_requests").insert({
+          business_trip_id: insertedTrip.id,
+          auto_created_by_trip: true,
+          requester_id: currentUser?.id || null,
+          use_department: formDepartment,
+          purpose: formPurpose.trim(),
+          vehicle_info: formTransportDetail,
+          route: formDestination.trim(),
+          driver_id: currentUser?.id || null,
+          companions: selectedCompanions,
+          passenger_count: 1 + selectedCompanions.length,
+          start_at: tripStartAt.toISOString(),
+          end_at: tripEndAt.toISOString(),
+          notes: `출장 자동생성 (${formProjectName.trim() || ""})`,
+        });
+      }
+
       if (isCreateMode) {
         resetRequestForm();
       } else {
@@ -804,22 +840,36 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
         })
         .eq("id", tripId);
       if (error) throw error;
-      const targetTrip = trips.find((t) => t.id === tripId);
-      const shouldCreateVehicleRequest =
-        targetTrip?.transport_type === "company_vehicle" &&
-        Boolean(targetTrip?.requested_vehicle_info?.trim());
-      toast.success(
-        shouldCreateVehicleRequest
-          ? "출장 요청이 승인되었습니다. 차량요청이 등록되어 HR/App Admin 승인 대기 상태입니다."
-          : "출장 요청이 승인되었습니다."
-      );
+
+      // 연결된 차량 요청이 있으면 자동 승인 처리
+      const { data: linkedVehicle } = await supabase
+        .from("vehicle_requests")
+        .select("id")
+        .eq("business_trip_id", tripId)
+        .eq("approval_status", "pending")
+        .maybeSingle();
+
+      if (linkedVehicle) {
+        await supabase
+          .from("vehicle_requests")
+          .update({
+            approval_status: "approved",
+            approved_by: currentUser?.id || null,
+            approved_at: new Date().toISOString(),
+          })
+          .eq("id", linkedVehicle.id);
+        toast.success("출장이 승인되었습니다. 차량 배차도 자동 승인되었습니다.");
+      } else {
+        toast.success("출장 요청이 승인되었습니다.");
+      }
+
       loadTrips();
       onBadgeRefresh?.();
     } catch (err) {
       logger.error("출장 승인 실패", err);
       toast.error("승인 처리에 실패했습니다.");
     }
-  }, [currentUser?.id, loadTrips, supabase, trips]);
+  }, [currentUser?.id, loadTrips, supabase]);
 
   const openRejectDialog = useCallback((tripId: number, mode: "approval" | "settlement") => {
     setRejectTargetTripId(tripId);
@@ -846,6 +896,19 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
           })
           .eq("id", rejectTargetTripId);
         if (error) throw error;
+
+        // 연결된 차량 요청도 자동 반려
+        await supabase
+          .from("vehicle_requests")
+          .update({
+            approval_status: "rejected",
+            approved_by: currentUser?.id || null,
+            approved_at: new Date().toISOString(),
+            rejection_reason: `출장 반려: ${rejectReason.trim()}`,
+          })
+          .eq("business_trip_id", rejectTargetTripId)
+          .eq("approval_status", "pending");
+
         toast.success("출장 승인 반려 처리되었습니다.");
       } else {
         const { error } = await supabase
@@ -1014,6 +1077,42 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
         });
       }
 
+      // 기존 정산 비용 데이터가 없을 때, 모바일에서 업로드한 카드사용 영수증 자동 반영
+      let mobileReceiptRows: ExpenseFormRow[] = [];
+      if (expenseData.length === 0 && trip.linkedCard?.id) {
+        const { data: cardReceipts } = await supabase
+          .from("card_usage_receipts")
+          .select("id, card_usage_id, receipt_url, merchant_name, item_name, quantity, unit_price, total_amount, remark, created_at")
+          .eq("card_usage_id", trip.linkedCard.id)
+          .order("created_at", { ascending: true });
+
+        if (cardReceipts && cardReceipts.length > 0) {
+          mobileReceiptRows = cardReceipts.map((cr: {
+            id: number; receipt_url: string; merchant_name: string | null;
+            item_name: string | null; quantity: number | null;
+            unit_price: number | null; total_amount: number | null;
+            remark: string | null;
+          }) => ({
+            key: `mobile-${cr.id}-${newKey()}`,
+            expense_type: "corporate_card" as const,
+            expense_date: toMonthDay(trip.trip_start_date),
+            vendor_name: cr.merchant_name || "",
+            category_detail: cr.item_name || "",
+            quantity: String(cr.quantity ?? 1),
+            unit_price: cr.unit_price != null ? Number(cr.unit_price).toLocaleString("ko-KR") : "",
+            amount: cr.total_amount != null ? Number(cr.total_amount).toLocaleString("ko-KR") : "",
+            currency: "KRW",
+            companion_note: "",
+            expense_purpose: "",
+            remark: cr.remark || "",
+            existingReceipts: cr.receipt_url
+              ? [{ id: cr.id, business_trip_expense_id: 0, receipt_url: cr.receipt_url }]
+              : [],
+            newReceiptFiles: [],
+          }));
+        }
+      }
+
       setExpenseRows(
         expenseData.length > 0
           ? expenseData.map((r) => ({
@@ -1032,7 +1131,9 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
               existingReceipts: receiptMap.get(r.id) || [],
               newReceiptFiles: [],
             }))
-          : [createEmptyExpense(trip)]
+          : mobileReceiptRows.length > 0
+            ? mobileReceiptRows
+            : [createEmptyExpense(trip)]
       );
 
       setMileageRows(
@@ -1191,12 +1292,18 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
   const openReceiptPreview = useCallback(async (receiptPath: string) => {
     try {
       setReceiptPreviewLoading(true);
-      const { data, error } = await supabase.storage
-        .from("business-trip-receipts")
-        .createSignedUrl(receiptPath, 3600);
-      if (error) throw error;
-      setReceiptPreviewPath(receiptPath);
-      setReceiptPreviewUrl(data?.signedUrl || null);
+      // 모바일 업로드 영수증은 이미 전체 공개 URL로 저장됨
+      if (receiptPath.startsWith("http")) {
+        setReceiptPreviewPath(receiptPath);
+        setReceiptPreviewUrl(receiptPath);
+      } else {
+        const { data, error } = await supabase.storage
+          .from("business-trip-receipts")
+          .createSignedUrl(receiptPath, 3600);
+        if (error) throw error;
+        setReceiptPreviewPath(receiptPath);
+        setReceiptPreviewUrl(data?.signedUrl || null);
+      }
     } catch (err) {
       logger.error("출장 영수증 미리보기 URL 생성 실패", err);
       toast.error("영수증 미리보기에 실패했습니다.");
@@ -1212,12 +1319,17 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     const target = receipts[startIdx];
     try {
       setReceiptPreviewLoading(true);
-      const { data, error } = await supabase.storage
-        .from("business-trip-receipts")
-        .createSignedUrl(target.receipt_url, 3600);
-      if (error) throw error;
-      setReceiptPreviewPath(target.receipt_url);
-      setReceiptPreviewUrl(data?.signedUrl || null);
+      if (target.receipt_url.startsWith("http")) {
+        setReceiptPreviewPath(target.receipt_url);
+        setReceiptPreviewUrl(target.receipt_url);
+      } else {
+        const { data, error } = await supabase.storage
+          .from("business-trip-receipts")
+          .createSignedUrl(target.receipt_url, 3600);
+        if (error) throw error;
+        setReceiptPreviewPath(target.receipt_url);
+        setReceiptPreviewUrl(data?.signedUrl || null);
+      }
     } catch (err) {
       logger.error("출장 영수증 직접 열기 실패", err);
       toast.error("영수증을 불러오지 못했습니다.");
@@ -1233,12 +1345,17 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     try {
       setReceiptPreviewLoading(true);
       setReceiptPreviewUrl(null);
-      const { data, error } = await supabase.storage
-        .from("business-trip-receipts")
-        .createSignedUrl(target.receipt_url, 3600);
-      if (error) throw error;
-      setReceiptPreviewPath(target.receipt_url);
-      setReceiptPreviewUrl(data?.signedUrl || null);
+      if (target.receipt_url.startsWith("http")) {
+        setReceiptPreviewPath(target.receipt_url);
+        setReceiptPreviewUrl(target.receipt_url);
+      } else {
+        const { data, error } = await supabase.storage
+          .from("business-trip-receipts")
+          .createSignedUrl(target.receipt_url, 3600);
+        if (error) throw error;
+        setReceiptPreviewPath(target.receipt_url);
+        setReceiptPreviewUrl(data?.signedUrl || null);
+      }
     } catch (err) {
       logger.error("영수증 네비게이션 실패", err);
       toast.error("영수증을 불러오지 못했습니다.");
@@ -1532,8 +1649,10 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
 
   const getVehicleStatusText = (trip: BusinessTrip) => {
     if (trip.transport_type !== "company_vehicle") return "-";
-    if (trip.approval_status !== "approved") return "출장 승인 후 요청";
-    if (!trip.linkedVehicle) return "요청생성대기";
+    if (!trip.linkedVehicle) {
+      if (trip.approval_status === "approved") return "요청생성대기";
+      return "승인대기";
+    }
 
     const map: Record<string, string> = {
       pending: "승인대기",
