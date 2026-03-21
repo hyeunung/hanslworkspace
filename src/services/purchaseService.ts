@@ -18,7 +18,7 @@ class PurchaseService {
   }
 
   // 발주요청서 생성
-  async createPurchaseRequest(data: FormValues): Promise<{ success: boolean; data?: any; error?: string }> {
+  async createPurchaseRequest(data: FormValues): Promise<{ success: boolean; data?: PurchaseRequest; error?: string }> {
     try {
       // 발주 번호 생성
       const purchaseOrderNumber = `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;

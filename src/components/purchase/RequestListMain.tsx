@@ -177,7 +177,7 @@ export default function RequestListMain({ showEmailButton = true }: RequestListM
           void loadBadgeCounts();
         }
       )
-      .subscribe((status) => {
+      .subscribe((status: string) => {
         if (status === "SUBSCRIBED") {
           logger.debug("RequestListMain 배지 Realtime 구독 성공");
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {

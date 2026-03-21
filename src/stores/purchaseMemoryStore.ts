@@ -7,7 +7,7 @@
  * - 기존 폴링(10ms, 50ms) 방식 제거하고 이벤트 기반으로 전환
  */
 
-import type { Purchase, Employee } from '@/types/purchase'
+import type { Purchase, Employee, PurchaseRequestItem } from '@/types/purchase'
 import { useState, useEffect, useRef } from 'react'
 import { logger } from '@/lib/logger'
 
@@ -447,21 +447,21 @@ export const markItemAsStatementCanceled = (purchaseId: number | string, itemId:
     const currentItems = (purchase.items && purchase.items.length > 0) ? purchase.items : (purchase.purchase_request_items || [])
     
     // 해당 품목만 거래명세서 확인 취소로 업데이트
-    const updatedItems = currentItems.map(item => 
-      String(item.id) === targetItemId 
-        ? { 
-            ...item, 
-            is_statement_received: false, 
+    const updatedItems: PurchaseRequestItem[] = currentItems.map(item =>
+      String(item.id) === targetItemId
+        ? {
+            ...item,
+            is_statement_received: false,
             statement_received_date: null,
-            accounting_received_date: null,
+            accounting_received_date: undefined,
             statement_received_by_name: null
           }
         : item
     )
-    
+
     // 모든 품목이 거래명세서 확인되었는지 확인
     const allItemsReceived = updatedItems.every(item => item.is_statement_received)
-    
+
     return {
       ...purchase,
       is_statement_received: allItemsReceived,

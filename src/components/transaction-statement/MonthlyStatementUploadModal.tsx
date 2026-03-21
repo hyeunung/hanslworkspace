@@ -18,13 +18,6 @@ interface MonthlyStatementUploadModalProps {
   onSuccess: (statementId: string, fileUrl: string) => void;
 }
 
-const ACCEPTED_TYPES = [
-  'application/vnd.ms-excel',                                                    // .xls
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',           // .xlsx
-  'application/pdf',                                                              // .pdf
-  'image/jpeg', 'image/png', 'image/gif', 'image/webp'                          // 이미지
-];
-
 const ACCEPTED_EXTENSIONS = ['.xls', '.xlsx', '.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp'];
 
 function getFileType(file: File): 'excel' | 'pdf' | 'image' {

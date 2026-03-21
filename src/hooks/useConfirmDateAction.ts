@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { markItemAsReceived, markItemAsReceiptCanceled, markItemAsStatementReceived, markItemAsStatementCanceled } from '@/stores/purchaseMemoryStore'
 import { dateToISOString } from '@/utils/helpers'
+import type { ReceiptHistoryItem } from '@/types/purchase'
 
 export interface ConfirmDateActionConfig {
   field: 'statement_received' | 'actual_received'
@@ -104,7 +105,7 @@ ${config.confirmMessage.confirm}`
     onBeforeUpdate?.()
 
     try {
-      let updateData: any
+      let updateData: Record<string, string | boolean | number | null | ReceiptHistoryItem[]> = {}
 
       if (config.field === 'statement_received') {
         updateData = {
@@ -119,17 +120,17 @@ ${config.confirmMessage.confirm}`
         const currentReceivedQuantity = itemInfo?.received_quantity || 0
         const newReceivedQuantity = receivedQuantity !== undefined ? receivedQuantity : requestedQuantity
         const totalReceivedQuantity = currentReceivedQuantity + newReceivedQuantity
-        
+
         // 기존 이력 가져오기 위해 먼저 조회
         const { data: existingItem } = await supabase
           .from('purchase_request_items')
           .select('receipt_history')
           .eq('id', numericId)
           .single()
-        
-        const existingHistory = (existingItem?.receipt_history as any[]) || []
+
+        const existingHistory = (existingItem?.receipt_history as ReceiptHistoryItem[] | null) || []
         const nextSeq = existingHistory.length + 1
-        
+
         // 새 입고 이력 항목
         const newHistoryItem = {
           seq: nextSeq,
@@ -137,12 +138,12 @@ ${config.confirmMessage.confirm}`
           date: dateToISOString(selectedDate),
           by: currentUserName || '알수없음'
         }
-        
+
         const updatedHistory = [...existingHistory, newHistoryItem]
-        
+
         // 입고 완료 여부 판단: 누적 입고량 >= 요청 수량
         const isFullyReceived = totalReceivedQuantity >= requestedQuantity
-        
+
         updateData = {
           actual_received_date: dateToISOString(selectedDate),
           is_received: isFullyReceived,
@@ -150,7 +151,7 @@ ${config.confirmMessage.confirm}`
           delivery_status: totalReceivedQuantity === 0 ? 'pending' : (isFullyReceived ? 'received' : 'partial'),
           receipt_history: updatedHistory
         }
-        
+
         logger.debug('📦 분할 입고 처리:', {
           requestedQuantity,
           currentReceivedQuantity,
@@ -271,7 +272,7 @@ ${config.confirmMessage.cancel}`
         itemName: itemInfo?.item_name 
       })
 
-      let updateData: any
+      let updateData: Record<string, string | boolean | number | null | ReceiptHistoryItem[]> = {}
 
       if (config.field === 'statement_received') {
         updateData = {
@@ -349,7 +350,7 @@ ${config.confirmMessage.cancel}`
     }
   }, [config, canPerformAction, purchaseId, onUpdate, onBeforeUpdate, onOptimisticUpdate, supabase])
 
-  const isCompleted = useCallback((item: any) => {
+  const isCompleted = useCallback((item: { is_statement_received?: boolean; is_received?: boolean }) => {
     if (config.field === 'statement_received') {
       return item.is_statement_received
     } else if (config.field === 'actual_received') {
@@ -359,7 +360,7 @@ ${config.confirmMessage.cancel}`
   }, [config.field])
 
   // 부분 입고 상태 확인 (분할 입고용)
-  const isPartiallyReceived = useCallback((item: any) => {
+  const isPartiallyReceived = useCallback((item: { received_quantity?: number; quantity?: number }) => {
     if (config.field === 'actual_received') {
       const receivedQty = item.received_quantity || 0
       const requestedQty = item.quantity || 0
@@ -369,13 +370,13 @@ ${config.confirmMessage.cancel}`
   }, [config.field])
 
   // 미입고 수량 계산
-  const getRemainingQuantity = useCallback((item: any) => {
+  const getRemainingQuantity = useCallback((item: { received_quantity?: number; quantity?: number }) => {
     const receivedQty = item.received_quantity || 0
     const requestedQty = item.quantity || 0
     return Math.max(0, requestedQty - receivedQty)
   }, [])
 
-  const getCompletedDate = useCallback((item: any) => {
+  const getCompletedDate = useCallback((item: { statement_received_date?: string | null; actual_received_date?: string }) => {
     if (config.field === 'statement_received') {
       return item.statement_received_date
     } else if (config.field === 'actual_received') {
@@ -384,7 +385,7 @@ ${config.confirmMessage.cancel}`
     return null
   }, [config.field])
 
-  const getCompletedByName = useCallback((item: any) => {
+  const getCompletedByName = useCallback((item: { statement_received_by_name?: string | null }) => {
     if (config.field === 'statement_received') {
       return item.statement_received_by_name
     } else if (config.field === 'actual_received') {

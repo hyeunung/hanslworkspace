@@ -9,6 +9,7 @@ import type {
   QuickAction,
   Employee,
   PurchaseRequestWithDetails,
+  PurchaseRequestItem,
   Purchase
 } from '@/types/purchase'
 
@@ -75,7 +76,7 @@ export class DashboardService {
     if (purchaseRole) {
       if (Array.isArray(purchaseRole)) {
         // 배열인 경우
-        roles = purchaseRole.map((r: any) => String(r).trim())
+        roles = purchaseRole.map((r: string) => String(r).trim())
       } else {
         // 문자열인 경우 (일반적)
         const roleString = String(purchaseRole)
@@ -190,7 +191,7 @@ export class DashboardService {
 
   // ===== Memory-based implementations (발주요청 관리와 동일: 메모리 캐시 기반) =====
 
-  private isPendingStatus(status: any): boolean {
+  private isPendingStatus(status: string | null | undefined): boolean {
     return status === 'pending' || status === '대기' || status === '' || status === null || status === undefined
   }
 
@@ -224,8 +225,8 @@ export class DashboardService {
     const requesterName = employee.name || employee.email
 
     const filtered = purchases
-      .filter((item: any) => (item.requester_name || '') === requesterName)
-      .filter((item: any) => {
+      .filter((item: Purchase) => (item.requester_name || '') === requesterName)
+      .filter((item: Purchase) => {
         // 승인 진행중인 항목만 (승인 대기는 제외)
         const middleApproved = item.middle_manager_status === 'approved'
         const finalPending = this.isPendingStatus(item.final_manager_status)
@@ -233,10 +234,10 @@ export class DashboardService {
         const notPaid = !item.is_payment_completed
         return (middleApproved && finalPending) || (finalApproved && notPaid)
       })
-      .sort((a: any, b: any) => this.toTime(b.created_at) - this.toTime(a.created_at))
+      .sort((a: Purchase, b: Purchase) => this.toTime(b.created_at) - this.toTime(a.created_at))
       .slice(0, 5)
 
-    return filtered.map((item: any) => ({
+    return filtered.map((item: Purchase) => ({
       ...item,
       vendor_name: item.vendor_name,
       total_items: (item.purchase_request_items || []).length,
@@ -244,7 +245,7 @@ export class DashboardService {
       current_step: this.getCurrentStep(item),
       next_action: this.getNextAction(item),
       estimated_completion: this.estimateCompletion(item)
-    })) as MyRequestStatus[]
+    })) as unknown as MyRequestStatus[]
   }
 
   async getPendingApprovalsFromMemory(employee: Employee): Promise<PurchaseRequestWithDetails[]> {
@@ -254,10 +255,10 @@ export class DashboardService {
     const purchases = this.getPurchaseMemory()
 
     // 최신 순 정렬 후 처리 (기존 쿼리: request_date desc, limit 100)
-    const sorted = [...purchases].sort((a: any, b: any) => this.toTime(b.request_date) - this.toTime(a.request_date))
+    const sorted = [...purchases].sort((a: Purchase, b: Purchase) => this.toTime(b.request_date) - this.toTime(a.request_date))
 
     // 승인 대기인 항목만 필터링
-    const filteredPending = sorted.filter((item: any) => {
+    const filteredPending = sorted.filter((item: Purchase) => {
       const middlePending = this.isPendingStatus(item.middle_manager_status)
       const finalPending = this.isPendingStatus(item.final_manager_status)
 
@@ -275,21 +276,21 @@ export class DashboardService {
     if (roles.includes('app_admin')) {
       // all
     } else if (roles.includes('middle_manager')) {
-      roleFiltered = filteredPending.filter((item: any) => this.isPendingStatus(item.middle_manager_status))
+      roleFiltered = filteredPending.filter((item: Purchase) => this.isPendingStatus(item.middle_manager_status))
     } else if (roles.includes('final_approver') || roles.includes('ceo')) {
-      roleFiltered = filteredPending.filter((item: any) => item.middle_manager_status === 'approved' && this.isPendingStatus(item.final_manager_status))
+      roleFiltered = filteredPending.filter((item: Purchase) => item.middle_manager_status === 'approved' && this.isPendingStatus(item.final_manager_status))
     } else if (roles.includes('raw_material_manager') || roles.includes('consumable_manager')) {
-      roleFiltered = filteredPending.filter((item: any) => item.middle_manager_status === 'approved' && this.isPendingStatus(item.final_manager_status))
+      roleFiltered = filteredPending.filter((item: Purchase) => item.middle_manager_status === 'approved' && this.isPendingStatus(item.final_manager_status))
     } else if (roles.includes('lead buyer')) {
-      roleFiltered = filteredPending.filter((item: any) => item.final_manager_status === 'approved' && !item.is_payment_completed)
+      roleFiltered = filteredPending.filter((item: Purchase) => item.final_manager_status === 'approved' && !item.is_payment_completed)
     } else {
       roleFiltered = []
     }
 
     // 데이터 가공: total_amount 보강
-    const enhanced = roleFiltered.slice(0, 100).map((item: any) => {
+    const enhanced = roleFiltered.slice(0, 100).map((item: Purchase) => {
       const items = item.purchase_request_items || item.items || []
-      const total_amount = Number(item.total_amount) || items.reduce((sum: number, i: any) => {
+      const total_amount = Number(item.total_amount) || items.reduce((sum: number, i: PurchaseRequestItem) => {
         const amount = Number(i?.amount_value) || (Number(i?.quantity) || 0) * (Number(i?.unit_price_value) || 0)
         return sum + amount
       }, 0)
@@ -299,11 +300,11 @@ export class DashboardService {
         purchase_request_items: items,
         items,
         total_amount,
-        vendor_name: item.vendor_name || item.project_vendor || item.vendor?.vendor_name
+        vendor_name: item.vendor_name || item.project_vendor
       }
     })
 
-    return enhanced as PurchaseRequestWithDetails[]
+    return enhanced as unknown as PurchaseRequestWithDetails[]
   }
 
   async getQuickActionsFromMemory(employee: Employee): Promise<QuickAction[]> {
@@ -326,7 +327,7 @@ export class DashboardService {
 
     if (roles.includes('lead buyer') || roles.includes('lead buyer')) {
       const purchases = this.getPurchaseMemory()
-      const purchaseCount = purchases.filter((p: any) => p.final_manager_status === 'approved' && p.is_payment_completed === false).length
+      const purchaseCount = purchases.filter((p: Purchase) => p.final_manager_status === 'approved' && p.is_payment_completed === false).length
       if (purchaseCount > 0) {
         actions.push({
           id: 'purchase',
@@ -352,9 +353,9 @@ export class DashboardService {
       return t >= this.toTime(today) && t < this.toTime(tomorrow)
     }
 
-    const approved = purchases.filter((p: any) => inRange(p.updated_at) && (p.middle_manager_status === 'approved' || p.final_manager_status === 'approved')).length
-    const requested = purchases.filter((p: any) => (p.requester_name || '') === employee.name && inRange(p.created_at)).length
-    const received = purchases.filter((p: any) => p.is_received === true && inRange(p.received_at)).length
+    const approved = purchases.filter((p: Purchase) => inRange(p.updated_at) && (p.middle_manager_status === 'approved' || p.final_manager_status === 'approved')).length
+    const requested = purchases.filter((p: Purchase) => (p.requester_name || '') === employee.name && inRange(p.created_at)).length
+    const received = purchases.filter((p: Purchase) => p.is_received === true && inRange(p.received_at)).length
 
     return { approved, requested, received }
   }
@@ -370,9 +371,9 @@ export class DashboardService {
     // lead buyer/app_admin: 전체, 그 외: 본인 것만
     const allMyRequests = isLeadBuyer
       ? purchases
-      : purchases.filter((p: any) => (p.requester_name || '') === requesterName)
+      : purchases.filter((p: Purchase) => (p.requester_name || '') === requesterName)
 
-    const waitingPurchase = allMyRequests.filter((item: any) => {
+    const waitingPurchase = allMyRequests.filter((item: Purchase) => {
       const category = (item.payment_category || '').trim()
       const isPurchaseRequest = category === '구매 요청'
       const notPaid = !item.is_payment_completed
@@ -386,7 +387,7 @@ export class DashboardService {
       return isIlban && finalApproved
     })
 
-    const waitingDelivery = purchases.filter((item: any) => {
+    const waitingDelivery = purchases.filter((item: Purchase) => {
       const notReceived = !item.is_received
       const isSeonJin = (item.progress_type || '').includes('선진행')
 
@@ -399,7 +400,7 @@ export class DashboardService {
       return notReceived && finalApproved
     })
 
-    const recentCompleted = purchases.filter((item: any) => {
+    const recentCompleted = purchases.filter((item: Purchase) => {
       if (item.is_received !== true) return false
       if (!item.received_at) return false
       if ((item.requester_name || '') !== requesterName) return false
@@ -407,12 +408,12 @@ export class DashboardService {
     })
 
     // 대시보드 UI용: 최신순 정렬 (created_at desc)
-    const sortDesc = (a: any, b: any) => this.toTime(b.created_at) - this.toTime(a.created_at)
+    const sortDesc = (a: Purchase, b: Purchase) => this.toTime(b.created_at) - this.toTime(a.created_at)
 
     return {
-      waitingPurchase: [...waitingPurchase].sort(sortDesc) as any,
-      waitingDelivery: [...waitingDelivery].sort(sortDesc) as any,
-      recentCompleted: [...recentCompleted].sort(sortDesc) as any
+      waitingPurchase: [...waitingPurchase].sort(sortDesc) as unknown as PurchaseRequestWithDetails[],
+      waitingDelivery: [...waitingDelivery].sort(sortDesc) as unknown as PurchaseRequestWithDetails[],
+      recentCompleted: [...recentCompleted].sort(sortDesc) as unknown as PurchaseRequestWithDetails[]
     }
   }
 
@@ -420,22 +421,22 @@ export class DashboardService {
     const purchases = this.getPurchaseMemory()
 
     if (roles.includes('app_admin')) {
-      const mid = purchases.filter((p: any) => this.isPendingStatus(p.middle_manager_status)).length
-      const fin = purchases.filter((p: any) => p.middle_manager_status === 'approved' && this.isPendingStatus(p.final_manager_status)).length
-      const pur = purchases.filter((p: any) => p.final_manager_status === 'approved' && p.is_payment_completed === false).length
+      const mid = purchases.filter((p: Purchase) => this.isPendingStatus(p.middle_manager_status)).length
+      const fin = purchases.filter((p: Purchase) => p.middle_manager_status === 'approved' && this.isPendingStatus(p.final_manager_status)).length
+      const pur = purchases.filter((p: Purchase) => p.final_manager_status === 'approved' && p.is_payment_completed === false).length
       return mid + fin + pur
     }
 
     if (roles.includes('middle_manager')) {
-      return purchases.filter((p: any) => this.isPendingStatus(p.middle_manager_status)).length
+      return purchases.filter((p: Purchase) => this.isPendingStatus(p.middle_manager_status)).length
     }
 
     if (roles.includes('final_approver') || roles.includes('ceo')) {
-      return purchases.filter((p: any) => p.middle_manager_status === 'approved' && this.isPendingStatus(p.final_manager_status)).length
+      return purchases.filter((p: Purchase) => p.middle_manager_status === 'approved' && this.isPendingStatus(p.final_manager_status)).length
     }
 
     if (roles.includes('lead buyer')) {
-      return purchases.filter((p: any) => p.final_manager_status === 'approved' && p.is_payment_completed === false).length
+      return purchases.filter((p: Purchase) => p.final_manager_status === 'approved' && p.is_payment_completed === false).length
     }
 
     return 0
@@ -445,23 +446,23 @@ export class DashboardService {
     const purchases = this.getPurchaseMemory()
     const threeDaysAgo = this.toTime(threeDaysAgoIso)
 
-    const base = purchases.filter((p: any) => this.toTime(p.created_at) > 0 && this.toTime(p.created_at) < threeDaysAgo)
+    const base = purchases.filter((p: Purchase) => this.toTime(p.created_at) > 0 && this.toTime(p.created_at) < threeDaysAgo)
 
     if (roles.includes('app_admin')) {
-      return base.filter((p: any) =>
+      return base.filter((p: Purchase) =>
         p.middle_manager_status === 'pending' ||
         p.final_manager_status === 'pending' ||
         p.is_payment_completed === false
       ).length
     }
     if (roles.includes('middle_manager')) {
-      return base.filter((p: any) => p.middle_manager_status === 'pending').length
+      return base.filter((p: Purchase) => p.middle_manager_status === 'pending').length
     }
     if (roles.includes('final_approver') || roles.includes('ceo')) {
-      return base.filter((p: any) => p.middle_manager_status === 'approved' && p.final_manager_status === 'pending').length
+      return base.filter((p: Purchase) => p.middle_manager_status === 'approved' && p.final_manager_status === 'pending').length
     }
     if (roles.includes('lead buyer')) {
-      return base.filter((p: any) => p.final_manager_status === 'approved' && p.is_payment_completed === false).length
+      return base.filter((p: Purchase) => p.final_manager_status === 'approved' && p.is_payment_completed === false).length
     }
     return 0
   }
@@ -475,7 +476,7 @@ export class DashboardService {
       return t >= this.toTime(todayIsoDate) && t < this.toTime(tomorrowIsoDate)
     }
 
-    return purchases.filter((p: any) => inRange(p.updated_at) && (p.requester_name || '') === employee.name).length
+    return purchases.filter((p: Purchase) => inRange(p.updated_at) && (p.requester_name || '') === employee.name).length
   }
 
   // 통계 정보 (우선순위 재정렬)
@@ -544,15 +545,18 @@ export class DashboardService {
       .order('created_at', { ascending: false })
       .limit(5)
 
-    return (data || []).map((item: any) => ({
-      ...item,
-      vendor_name: item.vendors?.vendor_name,
-      total_items: item.purchase_request_items?.length || 0,
-      progress_percentage: this.calculateProgress(item),
-      current_step: this.getCurrentStep(item),
-      next_action: this.getNextAction(item),
-      estimated_completion: this.estimateCompletion(item)
-    })) as MyRequestStatus[]
+    return (data || []).map((item: Record<string, unknown>) => {
+      const row = item as unknown as Purchase & { vendors?: { vendor_name?: string } }
+      return {
+        ...row,
+        vendor_name: row.vendors?.vendor_name,
+        total_items: row.purchase_request_items?.length || 0,
+        progress_percentage: this.calculateProgress(row),
+        current_step: this.getCurrentStep(row),
+        next_action: this.getNextAction(row),
+        estimated_completion: this.estimateCompletion(row)
+      }
+    }) as unknown as MyRequestStatus[]
   }
 
   // 승인 대기 항목 (전체 조회) - JOIN 쿼리로 N+1 문제 해결
@@ -596,7 +600,7 @@ export class DashboardService {
     let filteredData = allRequests || []
 
     // pending, 대기, 빈문자열, null 모두 대기로 처리
-    const isPending = (status: any) => (
+    const isPending = (status: string | null | undefined) => (
       status === 'pending' || status === '대기' || status === '' || status === null || status === undefined
     )
 
@@ -605,7 +609,7 @@ export class DashboardService {
     })
     
     // 승인 대기인 항목만 필터링
-    filteredData = filteredData.filter((item: any) => {
+    filteredData = filteredData.filter((item: Purchase) => {
       const middlePending = isPending(item.middle_manager_status)
       const finalPending = isPending(item.final_manager_status)
       
@@ -629,14 +633,14 @@ export class DashboardService {
       })
     } else if (roles.includes('middle_manager')) {
       // 중간승인자: 중간승인 대기 항목만
-      roleFilteredData = filteredData.filter((item: any) => isPending(item.middle_manager_status))
+      roleFilteredData = filteredData.filter((item: Purchase) => isPending(item.middle_manager_status))
       logger.debug('🔑 middle_manager 권한으로 중간승인 대기 항목만 표시', {
         beforeFilter: filteredData.length,
         afterFilter: roleFilteredData.length
       })
     } else if (roles.includes('final_approver') || roles.includes('ceo')) {
       // 최종승인자: 중간승인 완료 + 최종승인 대기 항목만
-      roleFilteredData = filteredData.filter((item: any) => {
+      roleFilteredData = filteredData.filter((item: Purchase) => {
         const middleApproved = item.middle_manager_status === 'approved'
         const finalPending = isPending(item.final_manager_status)
         return middleApproved && finalPending
@@ -647,7 +651,7 @@ export class DashboardService {
       })
     } else if (roles.includes('raw_material_manager') || roles.includes('consumable_manager')) {
       // 원자재/소모품 매니저: 최종승인자와 동일한 권한
-      roleFilteredData = filteredData.filter((item: any) => {
+      roleFilteredData = filteredData.filter((item: Purchase) => {
         const middleApproved = item.middle_manager_status === 'approved'
         const finalPending = isPending(item.final_manager_status)
         return middleApproved && finalPending
@@ -658,7 +662,7 @@ export class DashboardService {
       })
     } else if (roles.includes('lead buyer')) {
       // 구매담당자: 최종승인 완료 + 구매 대기 항목만
-      roleFilteredData = filteredData.filter((item: any) => {
+      roleFilteredData = filteredData.filter((item: Purchase) => {
         const finalApproved = item.final_manager_status === 'approved'
         const purchasePending = !item.is_payment_completed
         return finalApproved && purchasePending
@@ -674,15 +678,16 @@ export class DashboardService {
     }
 
     // ✅ 데이터 가공: JOIN으로 가져온 데이터를 기반으로 처리
-    const enhancedData = roleFilteredData.map((item: any) => {
+    const enhancedData = roleFilteredData.map((item: Record<string, unknown>) => {
       // vendor_name 처리 (JOIN 결과 사용)
-      const vendor_name = item.vendors?.vendor_name || item.vendor_name || '업체 정보 없음'
+      const row = item as unknown as Purchase & { vendors?: { vendor_name?: string } }
+      const vendor_name = row.vendors?.vendor_name || row.vendor_name || '업체 정보 없음'
       
       // purchase_request_items 처리 (이미 JOIN으로 가져옴)
-      const purchase_request_items = item.purchase_request_items || []
+      const purchase_request_items = row.purchase_request_items || []
       
       // total_amount 계산
-      const total_amount = purchase_request_items.reduce((sum: number, i: any) => {
+      const total_amount = purchase_request_items.reduce((sum: number, i: PurchaseRequestItem) => {
         const amount = Number(i?.amount_value) || (Number(i?.quantity) || 0) * (Number(i?.unit_price_value) || 0)
         return sum + amount
       }, 0)
@@ -825,7 +830,7 @@ export class DashboardService {
 
     // 클라이언트 사이드 필터링 (PurchaseListMain 구매/입고 탭과 동일한 로직)
     
-    const waitingPurchase = allMyRequests.filter((item: any) => {
+    const waitingPurchase = allMyRequests.filter((item: Purchase) => {
       // 구매 대기: 구매 요청 + 결제 미완료 + (선진행이거나 최종승인완료)
       const category = (item.payment_category || '').trim()
       const isPurchaseRequest = category === '구매 요청'
@@ -849,7 +854,7 @@ export class DashboardService {
     })
 
 
-    const waitingDelivery = allMyRequests.filter((item: any) => {
+    const waitingDelivery = allMyRequests.filter((item: Purchase) => {
       // 입고 탭 로직: 입고 미완료 + 선진행(승인무관) OR 최종승인
       const notReceived = !item.is_received
       const isSeonJin = (item.progress_type || '').includes('선진행')
@@ -871,7 +876,7 @@ export class DashboardService {
     })
 
 
-    const recentCompleted = allMyRequests.filter((item: any) => {
+    const recentCompleted = allMyRequests.filter((item: Purchase) => {
       // 입고 완료 && 7일 이내 && 본인 것만
       if (item.is_received !== true) return false
       if (!item.received_at) return false
@@ -909,11 +914,11 @@ export class DashboardService {
         return { success: false, error: '요청을 찾을 수 없습니다.' }
       }
 
-      let updateData: any = {}
+      let updateData: { middle_manager_status?: string; final_manager_status?: string } = {}
       let stage: 'middle' | 'final' | null = null
 
       // pending, 대기, null, 빈 문자열 모두 대기 상태로 간주
-      const isPending = (status: any) =>
+      const isPending = (status: string | null | undefined) =>
         status === 'pending' || status === '대기' || status === '' || status === null || status === undefined
 
       if (roles.includes('app_admin')) {
@@ -1116,7 +1121,7 @@ export class DashboardService {
     return count || 0
   }
 
-  private calculateProgress(request: any): number {
+  private calculateProgress(request: Purchase): number {
     let progress = 0
     
     if (request.middle_manager_status === 'approved') progress += 25
@@ -1127,14 +1132,14 @@ export class DashboardService {
     return progress
   }
 
-  private getCurrentStep(request: any): 'approval' | 'purchase' | 'delivery' | 'payment' | 'completed' {
+  private getCurrentStep(request: Purchase): 'approval' | 'purchase' | 'delivery' | 'payment' | 'completed' {
     if (request.is_received) return 'completed'
     if (request.is_payment_completed) return 'delivery'
     if (request.final_manager_status === 'approved') return 'purchase'
     return 'approval'
   }
 
-  private getNextAction(request: any): string {
+  private getNextAction(request: Purchase): string {
     if (request.middle_manager_status === 'pending') return '중간 승인 대기 중'
     if (request.final_manager_status === 'pending') return '최종 승인 대기 중'
     if (!request.is_payment_completed) return '구매 처리 대기 중'
@@ -1142,8 +1147,8 @@ export class DashboardService {
     return '완료'
   }
 
-  private estimateCompletion(request: any): string {
-    const created = new Date(request.created_at)
+  private estimateCompletion(request: Purchase): string {
+    const created = new Date(request.created_at || Date.now())
     const today = new Date()
     const daysPassed = Math.floor((today.getTime() - created.getTime()) / (1000 * 60 * 60 * 24))
     
@@ -1168,17 +1173,17 @@ export class DashboardService {
     // ✅ 메모리 캐시가 있으면 DB 조회 없이 즉시 계산 (대시보드 체감 속도 개선)
     if (this.hasValidPurchaseMemory(employee)) {
       const purchases = this.getPurchaseMemory()
-        .filter((item: any) => item.is_po_download !== true) // NULL/false 포함
-        .sort((a: any, b: any) => this.toTime(b.created_at) - this.toTime(a.created_at))
+        .filter((item: Purchase) => item.is_po_download !== true) // NULL/false 포함
+        .sort((a: Purchase, b: Purchase) => this.toTime(b.created_at) - this.toTime(a.created_at))
         .slice(0, 500)
 
-      const filteredData = purchases.filter((item: any) => {
+      const filteredData = purchases.filter((item: Purchase) => {
         if (item.is_po_download === true) return false
         if (item.progress_type === '선진행') return true
         return item.final_manager_status === 'approved'
       })
 
-      return filteredData as any
+      return filteredData as unknown as PurchaseRequestWithDetails[]
     }
 
     try {
@@ -1206,7 +1211,7 @@ export class DashboardService {
       }
 
       // 클라이언트 사이드에서 조건에 맞는 것만 필터링
-      const filteredData = (data || []).filter((item: any) => {
+      const filteredData = (data || []).filter((item: Purchase) => {
         if (item.is_po_download === true) return false
         if (item.progress_type === '선진행') return true
         return item.final_manager_status === 'approved'

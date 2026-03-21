@@ -47,6 +47,22 @@ interface Metadata {
   productionQuantity: number;
 }
 
+interface ProcessedResultState {
+  id?: string;
+  cadDrawingId?: string;
+  isEditMode?: boolean;
+  processedData: {
+    bomItems: BOMItem[];
+    topCoordinates: CoordinateItem[];
+    bottomCoordinates: CoordinateItem[];
+    coordinates: CoordinateItem[];
+    coordinatesProvided?: boolean;
+    summary: ProcessedResult['summary'];
+  };
+  status?: string;
+  production_manager?: string;
+}
+
 export default function BomCoordinateIntegrated() {
   const [viewMode, setViewMode] = useState<'list' | 'create'>('create');
   const [step, setStep] = useState<'input' | 'processing' | 'preview'>('input');
@@ -66,7 +82,7 @@ export default function BomCoordinateIntegrated() {
   const [uploading, setUploading] = useState(false);
   const [openArtworkManager, setOpenArtworkManager] = useState(false);
   const [openProductionManager, setOpenProductionManager] = useState(false);
-  const [processedResult, setProcessedResult] = useState<any>(null);
+  const [processedResult, setProcessedResult] = useState<ProcessedResultState | null>(null);
   const [dragActive, setDragActive] = useState<string | null>(null);
   const [savedBoards, setSavedBoards] = useState<Array<{
     id: string;
@@ -109,7 +125,7 @@ export default function BomCoordinateIntegrated() {
     const coordRefs = new Set<string>();
     coords.forEach((coord: CoordinateItem) => {
       // refDes 또는 ref 필드 모두 확인
-      const ref = coord?.refDes || (coord as any)?.ref;
+      const ref = coord?.refDes || (coord as CoordinateItem & { ref?: string })?.ref;
       if (ref) coordRefs.add(ref.trim().toUpperCase());
     });
 
@@ -162,7 +178,7 @@ export default function BomCoordinateIntegrated() {
 
     const inspectorRaw = normalizeName(board.production_manager);
     const myName = normalizeName(currentUser?.name);
-    const myId = normalizeName((currentUser as any)?.id);
+    const myId = normalizeName((currentUser as { email: string; name: string; id?: string } | null)?.id);
 
     if (!inspectorRaw) return false;
 
@@ -243,7 +259,7 @@ export default function BomCoordinateIntegrated() {
           ...restoredResult,
           processedData: {
             ...restoredResult.processedData,
-            coordinates: restoredResult.processedData.coordinates.map((coord: any) => ({
+            coordinates: restoredResult.processedData.coordinates.map((coord: CoordinateItem & { ref?: string }) => ({
               ...coord,
               refDes: coord.refDes || coord.ref || ''
             }))
@@ -590,9 +606,9 @@ export default function BomCoordinateIntegrated() {
       toast.success('BOM 분석 및 정리가 완료되었습니다.');
       setStep('preview');
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Processing error:', error);
-      const msg = `처리 중 오류가 발생했습니다: ${error.message || error}`;
+      const msg = `처리 중 오류가 발생했습니다: ${error instanceof Error ? error.message : error}`;
       setErrorMessage(msg);
       
       if (timer) clearInterval(timer);
@@ -822,14 +838,13 @@ export default function BomCoordinateIntegrated() {
       }
 
       // cadDrawingId 업데이트
-      setProcessedResult((prev: any) => ({
+      setProcessedResult((prev: ProcessedResultState | null) => prev ? ({
         ...prev,
-        cadDrawingId: cadDrawingId,
         processedData: {
           ...prev.processedData,
           bomItems: items
         }
-      }));
+      }) : null);
 
       // 저장 완료 시 임시 데이터 삭제 및 로컬 상태 초기화
       clearTempData();
@@ -837,7 +852,7 @@ export default function BomCoordinateIntegrated() {
       // UI 즉시 반영: savedBoards에 해당 id가 있으면 status를 갱신 (목록이 stale이어도 화면이 바로 바뀌도록)
       setSavedBoards(prev => prev.map(b => (
         b.id === cadDrawingId
-          ? { ...b, status: saveStatus as any, production_manager: (finalProductionManager ?? b.production_manager) as any }
+          ? { ...b, status: saveStatus as 'pending' | 'completed' | undefined, production_manager: (finalProductionManager ?? b.production_manager) }
           : b
       )));
       
@@ -862,9 +877,9 @@ export default function BomCoordinateIntegrated() {
         toast.success('검토 요청이 완료되었습니다. 생산 담당자의 확인을 기다려주세요.');
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Save error:', error);
-      toast.error(`저장에 실패했습니다: ${error.message}`);
+      toast.error(`저장에 실패했습니다: ${error instanceof Error ? error.message : error}`);
     } finally {
       setIsSaving(false);
     }
@@ -924,19 +939,19 @@ export default function BomCoordinateIntegrated() {
     });
     
     // processedResult 업데이트
-    setProcessedResult((prev: any) => ({
+    setProcessedResult((prev: ProcessedResultState | null) => prev ? ({
       ...prev,
       processedData: {
         ...prev.processedData,
         bomItems: updatedBomItems,
         coordinates: updatedCoordinates
       }
-    }));
+    }) : null);
   };
 
   // 좌표 미리보기에서 직접 수정한 값들을 processedResult에 반영 (Full Edit)
   const handleCoordinatesChange = useCallback((nextCoordinates: CoordinateItem[]) => {
-    setProcessedResult((prev: any) => {
+    setProcessedResult((prev: ProcessedResultState | null) => {
       if (!prev?.processedData) return prev;
       return {
         ...prev,
@@ -958,7 +973,7 @@ export default function BomCoordinateIntegrated() {
       );
       if (normalizedToDelete.size === 0) return;
 
-      setProcessedResult((prev: any) => {
+      setProcessedResult((prev: ProcessedResultState | null) => {
         if (!prev?.processedData) return prev;
 
         const prevBom: BOMItem[] = prev.processedData?.bomItems ?? [];
@@ -1054,7 +1069,7 @@ export default function BomCoordinateIntegrated() {
       if (coordError) throw coordError;
 
       // BOMItem 형식으로 변환
-      const convertedBOMItems: BOMItem[] = (bomItems || []).map((item: any) => ({
+      const convertedBOMItems: BOMItem[] = (bomItems || []).map((item: Record<string, unknown>) => ({
         lineNumber: item.line_number,
         itemType: item.item_type || '',
         itemName: item.item_name,
@@ -1077,11 +1092,11 @@ export default function BomCoordinateIntegrated() {
         return v;
       };
 
-      const convertedCoords: CoordinateItem[] = (coordinates || []).map((coord: any) => ({
+      const convertedCoords: CoordinateItem[] = (coordinates || []).map((coord: Record<string, unknown>) => ({
         type: coord.part_type || '',
         partName: coord.part_name || '',
         refDes: coord.ref || '',
-        layer: normalizeLayer(coord.side) || coord.side || '',
+        layer: normalizeLayer(coord.side as string | null) || (coord.side as string) || '',
         locationX: Number(coord.x_coordinate ?? 0) || 0,
         locationY: Number(coord.y_coordinate ?? 0) || 0,
         rotation: Number(coord.angle ?? 0) || 0,
@@ -1129,9 +1144,9 @@ export default function BomCoordinateIntegrated() {
       downloadExcelBlob(blob, fileName);
       
       toast.success('엑셀 파일이 다운로드되었습니다.');
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Download error:', error);
-      toast.error(`다운로드 중 오류가 발생했습니다: ${error.message}`);
+      toast.error(`다운로드 중 오류가 발생했습니다: ${error instanceof Error ? error.message : error}`);
     }
   };
 
@@ -1169,8 +1184,8 @@ export default function BomCoordinateIntegrated() {
       if (coordError) throw coordError;
 
       // 4. BOMItem 형식으로 변환
-      const convertedBOMItems: BOMItem[] = (bomItems || []).map((item: any) => {
-        const itemName = item.item_name || '';
+      const convertedBOMItems: BOMItem[] = (bomItems || []).map((item: Record<string, unknown>) => {
+        const itemName = (item.item_name as string) || '';
         const isDataMissing = itemName === '데이터 없음' || itemName.includes('수동 확인');
         return {
         lineNumber: item.line_number,
@@ -1190,7 +1205,7 @@ export default function BomCoordinateIntegrated() {
       });
 
       // 5. CoordinateItem 형식으로 변환 (DB 컬럼명: ref, 저장 시 ref: coord.refDes로 저장함)
-      const convertedCoords: CoordinateItem[] = (coordinates || []).map((coord: any) => ({
+      const convertedCoords: CoordinateItem[] = (coordinates || []).map((coord: Record<string, unknown>) => ({
         type: coord.part_type || '',
         partName: coord.part_name || '',
         refDes: coord.ref || '',  // DB 컬럼명은 'ref'
@@ -1200,7 +1215,7 @@ export default function BomCoordinateIntegrated() {
         locationY: coord.y_coordinate || 0,
         rotation: coord.angle || 0,
         remark: coord.remark || ''
-      })) as any;
+      })) as CoordinateItem[];
 
       // 6. 상태 설정
       setMetadata({
@@ -1222,7 +1237,15 @@ export default function BomCoordinateIntegrated() {
         isEditMode: true,      // 편집 모드 플래그 (pending → completed)
         processedData: {
           bomItems: convertedBOMItems,
-          coordinates: convertedCoords
+          topCoordinates: convertedCoords.filter((c) => ((c.layer || '') as string).toUpperCase().includes('TOP')),
+          bottomCoordinates: convertedCoords.filter((c) => ((c.layer || '') as string).toUpperCase().includes('BOT')),
+          coordinates: convertedCoords,
+          summary: {
+            totalItems: convertedBOMItems.length,
+            manualRequiredCount: 0,
+            newPartCount: 0,
+            misapCount: 0
+          }
         }
       });
 
@@ -1236,9 +1259,9 @@ export default function BomCoordinateIntegrated() {
       setStep('preview');
       
       toast.success('데이터를 불러왔습니다. 검토 후 최종 저장해주세요.');
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Error loading pending board:', error);
-      toast.error(`데이터 로드 실패: ${error.message}`);
+      toast.error(`데이터 로드 실패: ${error instanceof Error ? error.message : error}`);
     } finally {
       setLoading(false);
       setLoadingText('');
@@ -1332,9 +1355,9 @@ export default function BomCoordinateIntegrated() {
       setSavedBoards(prev => prev.filter(board => board.id !== boardId));
       
       toast.success(`"${boardName}" BOM이 삭제되었습니다.`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('Delete error:', error);
-      toast.error(`삭제 중 오류가 발생했습니다: ${error.message}`);
+      toast.error(`삭제 중 오류가 발생했습니다: ${error instanceof Error ? error.message : error}`);
     } finally {
       setDeletingBoardId(null);
     }

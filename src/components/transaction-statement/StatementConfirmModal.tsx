@@ -33,7 +33,7 @@ import type {
   OCRFieldType,
   StatementMode
 } from "@/types/transactionStatement";
-import { normalizeOrderNumber, extractLineNumberFromPO } from "@/types/transactionStatement";
+import { normalizeOrderNumber, extractLineNumberFromPO, isValidOrderNumber } from "@/types/transactionStatement";
 import { logger } from "@/lib/logger";
 
 import PurchaseDetailModal from "@/components/purchase/PurchaseDetailModal";
@@ -67,6 +67,12 @@ interface SystemPurchaseItem {
 
 const MIN_AUTO_MATCH_SCORE = 40;
 
+function normalizeValidOrderNumber(value?: string | null): string {
+  if (!value) return '';
+  const normalized = normalizeOrderNumber(value);
+  return normalized && isValidOrderNumber(normalized) ? normalized : '';
+}
+
 function getOCRLineHint(
   item: Pick<TransactionStatementItemWithMatch, 'extracted_po_line_number' | 'extracted_specification' | 'extracted_po_number' | 'line_number'>
 ): number | null {
@@ -93,10 +99,34 @@ function mapCandidateToSystemItem(candidate: MatchCandidate): SystemPurchaseItem
     quantity: candidate.quantity,
     received_quantity: candidate.received_quantity,
     unit_price: candidate.unit_price,
-    amount: (candidate as any).amount,
+    amount: (candidate as MatchCandidate & { amount?: number }).amount,
     vendor_name: candidate.vendor_name
   };
 }
+
+function isSameSystemPurchaseItem(
+  left: SystemPurchaseItem | null | undefined,
+  right: SystemPurchaseItem | null | undefined
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+
+  return (
+    left.purchase_id === right.purchase_id &&
+    left.item_id === right.item_id &&
+    (left.line_number ?? null) === (right.line_number ?? null) &&
+    (left.purchase_order_number || '') === (right.purchase_order_number || '') &&
+    (left.sales_order_number || '') === (right.sales_order_number || '') &&
+    (left.item_name || '') === (right.item_name || '') &&
+    (left.specification || '') === (right.specification || '') &&
+    (left.quantity ?? null) === (right.quantity ?? null) &&
+    (left.received_quantity ?? null) === (right.received_quantity ?? null) &&
+    (left.unit_price ?? null) === (right.unit_price ?? null) &&
+    (left.amount ?? null) === (right.amount ?? null) &&
+    (left.vendor_name || '') === (right.vendor_name || '')
+  );
+}
+
 
 // Levenshtein 거리 계산 함수
 function levenshteinDistance(str1: string, str2: string): number {
@@ -302,13 +332,12 @@ export default function StatementConfirmModal({
   onReextractStart,
   onReextractFinish,
 }: StatementConfirmModalProps) {
-  // #region agent log
-  const renderCountRef = useRef(0);
-  renderCountRef.current += 1;
-  if (renderCountRef.current <= 30) {
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'StatementConfirmModal.tsx:304',message:'RENDER',data:{renderCount:renderCountRef.current,isOpen,statementId:statement?.id},timestamp:Date.now()})}).catch(()=>{});
-  }
-  // #endregion
+  // unmount 후 state 업데이트 방지
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
@@ -390,25 +419,6 @@ export default function StatementConfirmModal({
 
   useEffect(() => {
     if (!statementWithItems) return;
-    const sample = statementWithItems.items.slice(0, 5).map(item => {
-      const matchedSystem = itemMatches.get(item.id);
-      return {
-        itemId: item.id,
-        matched: Boolean(matchedSystem),
-        sysUnitPrice: matchedSystem?.unit_price ?? null,
-        sysAmount: matchedSystem?.amount ?? null,
-        sysKeys: matchedSystem ? Object.keys(matchedSystem) : []
-      };
-    });
-  }, [statementWithItems, itemMatches, isReceiptMode, statement.id]);
-
-  useEffect(() => {
-    if (!statementWithItems) return;
-    const matchedSample = Array.from(itemMatches.values()).find(Boolean) as any;
-  }, [statementWithItems, itemMatches, statement.id]);
-
-  useEffect(() => {
-    if (!statementWithItems) return;
     const purchaseIds = Array.from(itemMatches.values())
       .filter(Boolean)
       .map(item => (item as SystemPurchaseItem).purchase_id)
@@ -453,7 +463,6 @@ export default function StatementConfirmModal({
   const [itemPOSearchInputs, setItemPOSearchInputs] = useState<Record<string, string>>({});
   const [itemPOSearchResults, setItemPOSearchResults] = useState<Record<string, Array<{ id: number; poNumber: string; soNumber?: string; vendorName?: string }>>>({});
   const [itemPOSearchLoading, setItemPOSearchLoading] = useState<Record<string, boolean>>({});
-  const lastSelectedSystemItemRef = useRef<string | null>(null);
   const [statementDateInput, setStatementDateInput] = useState('');
 
   // OCR 발주/수주번호 페어 캐시 (실시간 입력용)
@@ -469,36 +478,6 @@ export default function StatementConfirmModal({
     };
   }, []);
 
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const logMetrics = (reason: string) => {
-      const el = document.querySelector(`[data-debug="${dialogDebugId}"]`) as HTMLElement | null;
-      const viewport = {
-        innerWidth: window.innerWidth,
-        innerHeight: window.innerHeight,
-        clientWidth: document.documentElement?.clientWidth,
-        clientHeight: document.documentElement?.clientHeight
-      };
-
-      if (!el) {
-        return;
-      }
-
-      const rect = el.getBoundingClientRect();
-      const styles = window.getComputedStyle(el);
-    };
-
-    const rafId = requestAnimationFrame(() => logMetrics("open"));
-    const handleResize = () => logMetrics("resize");
-    window.addEventListener("resize", handleResize);
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      window.removeEventListener("resize", handleResize);
-    };
-  }, [isOpen, dialogDebugId]);
-  
   // 세트 매칭 결과 (Case 1용)
   const [setMatchResult, setSetMatchResult] = useState<{
     bestMatch: {
@@ -534,7 +513,7 @@ export default function StatementConfirmModal({
     if (statementWithItems?.po_scope === 'multi') return false;
     
     const poNumbers = statementWithItems.items
-      .map(item => item.extracted_po_number ? normalizeOrderNumber(item.extracted_po_number) : null)
+      .map(item => normalizeValidOrderNumber(item.extracted_po_number) || null)
       .filter(Boolean);
     
     if (poNumbers.length === 0) return true;
@@ -546,8 +525,9 @@ export default function StatementConfirmModal({
   const commonPONumber = useMemo(() => {
     if (!statementWithItems?.items.length) return null;
     
-    const poNumber = statementWithItems.items.find(item => item.extracted_po_number)?.extracted_po_number;
-    return poNumber ? normalizeOrderNumber(poNumber) : null;
+    return statementWithItems.items
+      .map(item => normalizeValidOrderNumber(item.extracted_po_number))
+      .find(Boolean) || null;
   }, [statementWithItems]);
 
   // 거래처명 초기값 설정
@@ -583,9 +563,6 @@ export default function StatementConfirmModal({
 
   // 데이터 로드
   const loadData = useCallback(async () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'StatementConfirmModal.tsx:578',message:'loadData START',data:{statementId:statement.id},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     try {
       setLoading(true);
       
@@ -633,6 +610,99 @@ export default function StatementConfirmModal({
           hydratedPoItemsMap.set(normalized, sorted);
           hydratedPoItemsMap.set(orderNumber, sorted);
         };
+        type PurchaseItemsRow = {
+          id: number;
+          purchase_order_number?: string;
+          sales_order_number?: string;
+          vendor?: { vendor_name?: string } | null;
+          items?: Array<{
+            id: number;
+            line_number?: number;
+            item_name?: string;
+            specification?: string;
+            quantity?: number;
+            received_quantity?: number;
+            unit_price_value?: number;
+            amount_value?: number;
+          }>;
+        };
+        const registerPurchaseRow = (purchase: PurchaseItemsRow) => {
+          const vendorName = (purchase.vendor as { vendor_name?: string } | null)?.vendor_name || '';
+          const mappedItems: SystemPurchaseItem[] = (purchase.items || []).map((item) => ({
+            purchase_id: purchase.id,
+            item_id: item.id,
+            line_number: item.line_number,
+            purchase_order_number: purchase.purchase_order_number || '',
+            sales_order_number: purchase.sales_order_number,
+            item_name: item.item_name || '',
+            specification: item.specification,
+            quantity: item.quantity,
+            received_quantity: item.received_quantity,
+            unit_price: item.unit_price_value,
+            amount: item.amount_value,
+            vendor_name: vendorName
+          }));
+          registerPoItems(purchase.purchase_order_number, mappedItems);
+          registerPoItems(purchase.sales_order_number, mappedItems);
+        };
+        const ensurePoItemsHydrated = async (poNumber: string, purchaseId?: number | null) => {
+          if (!poNumber) return;
+          const normalized = normalizeOrderNumber(poNumber);
+          if (hydratedPoItemsMap.has(normalized) || hydratedPoItemsMap.has(poNumber)) return;
+
+          let purchaseRow: PurchaseItemsRow | null = null;
+          if (purchaseId) {
+            const { data: purchaseRowsById } = await supabase
+              .from('purchase_requests')
+              .select(`
+                id,
+                purchase_order_number,
+                sales_order_number,
+                vendor:vendors(vendor_name),
+                items:purchase_request_items(
+                  id,
+                  line_number,
+                  item_name,
+                  specification,
+                  quantity,
+                  received_quantity,
+                  unit_price_value,
+                  amount_value
+                )
+              `)
+              .eq('id', purchaseId)
+              .limit(1);
+            purchaseRow = ((purchaseRowsById || [])[0] as PurchaseItemsRow | undefined) || null;
+          }
+
+          if (!purchaseRow) {
+            const { data: purchaseRowsByNumber } = await supabase
+              .from('purchase_requests')
+              .select(`
+                id,
+                purchase_order_number,
+                sales_order_number,
+                vendor:vendors(vendor_name),
+                items:purchase_request_items(
+                  id,
+                  line_number,
+                  item_name,
+                  specification,
+                  quantity,
+                  received_quantity,
+                  unit_price_value,
+                  amount_value
+                )
+              `)
+              .or(`purchase_order_number.eq.${normalized},sales_order_number.eq.${normalized}`)
+              .limit(1);
+            purchaseRow = ((purchaseRowsByNumber || [])[0] as PurchaseItemsRow | undefined) || null;
+          }
+
+          if (purchaseRow) {
+            registerPurchaseRow(purchaseRow);
+          }
+        };
 
         const candidatePurchaseIds = new Set<number>();
         result.data.items.forEach((item) => {
@@ -668,31 +738,13 @@ export default function StatementConfirmModal({
             .in('id', Array.from(candidatePurchaseIds));
 
           if (purchaseRows && purchaseRows.length > 0) {
-            purchaseRows.forEach((purchase: any) => {
-              const vendorName = (purchase.vendor as { vendor_name?: string } | null)?.vendor_name || '';
-              const mappedItems: SystemPurchaseItem[] = (purchase.items || []).map((item: any) => ({
-                purchase_id: purchase.id,
-                item_id: item.id,
-                line_number: item.line_number,
-                purchase_order_number: purchase.purchase_order_number || '',
-                sales_order_number: purchase.sales_order_number,
-                item_name: item.item_name || '',
-                specification: item.specification,
-                quantity: item.quantity,
-                received_quantity: item.received_quantity,
-                unit_price: item.unit_price_value,
-                amount: item.amount_value,
-                vendor_name: vendorName
-              }));
-              registerPoItems(purchase.purchase_order_number, mappedItems);
-              registerPoItems(purchase.sales_order_number, mappedItems);
-            });
+            (purchaseRows as PurchaseItemsRow[]).forEach(registerPurchaseRow);
           }
         }
 
         const extractedOrderNumbers = Array.from(new Set(
           result.data.items
-            .map((item) => item.extracted_po_number ? normalizeOrderNumber(item.extracted_po_number) : '')
+            .map((item) => normalizeValidOrderNumber(item.extracted_po_number))
             .filter(Boolean)
         ));
 
@@ -721,38 +773,11 @@ export default function StatementConfirmModal({
                 .or(`purchase_order_number.eq.${orderNumber},sales_order_number.eq.${orderNumber}`)
                 .limit(1);
 
-              const purchase = purchaseRowsByNumber?.[0];
+              const purchase = purchaseRowsByNumber?.[0] as PurchaseItemsRow | undefined;
               if (!purchase) return;
-
-              const vendorName = (purchase.vendor as { vendor_name?: string } | null)?.vendor_name || '';
-              const mappedItems: SystemPurchaseItem[] = (purchase.items || []).map((item: any) => ({
-                purchase_id: purchase.id,
-                item_id: item.id,
-                line_number: item.line_number,
-                purchase_order_number: purchase.purchase_order_number || '',
-                sales_order_number: purchase.sales_order_number,
-                item_name: item.item_name || '',
-                specification: item.specification,
-                quantity: item.quantity,
-                received_quantity: item.received_quantity,
-                unit_price: item.unit_price_value,
-                amount: item.amount_value,
-                vendor_name: vendorName
-              }));
-              registerPoItems(purchase.purchase_order_number, mappedItems);
-              registerPoItems(purchase.sales_order_number, mappedItems);
+              registerPurchaseRow(purchase);
             })
           );
-        }
-
-        if (hydratedPoItemsMap.size > 0) {
-          setPoItemsMap((prev) => {
-            const next = new Map(prev);
-            hydratedPoItemsMap.forEach((items, key) => {
-              next.set(key, items);
-            });
-            return next;
-          });
         }
 
         const getSystemItemsForPOLocal = (poNumber: string): SystemPurchaseItem[] => {
@@ -784,12 +809,9 @@ export default function StatementConfirmModal({
         const initialMatches = new Map<string, SystemPurchaseItem | null>();
         result.data.items.forEach(item => {
           // 추출된 발주번호 설정 (시스템 형식으로 정규화)
-          let poNumber = '';
-          if (item.extracted_po_number) {
-            poNumber = normalizeOrderNumber(item.extracted_po_number);
-            if (poNumber) {
-              initialPONumbers.set(item.id, poNumber);
-            }
+          const poNumber = normalizeValidOrderNumber(item.extracted_po_number);
+          if (poNumber) {
+            initialPONumbers.set(item.id, poNumber);
           }
           
           // 기존 매칭 정보가 있으면 설정
@@ -800,20 +822,21 @@ export default function StatementConfirmModal({
             if (matchedPO) {
               initialPONumbers.set(item.id, matchedPO);
             }
+            const mi = item.matched_item as { id: number; item_name: string; specification?: string; quantity: number; unit_price_value?: number; amount_value?: number; received_quantity?: number; line_number?: number } | undefined;
             initialMatches.set(item.id, {
               purchase_id: item.matched_purchase_id!,
               item_id: item.matched_item_id!,
               line_number:
-                (item as any).matched_item?.line_number ??
+                mi?.line_number ??
                 item.match_candidates?.find((candidate) => candidate.item_id === item.matched_item_id)?.line_number,
               purchase_order_number: item.matched_purchase.purchase_order_number || '',
               sales_order_number: item.matched_purchase.sales_order_number,
-              item_name: (item as any).matched_item?.item_name || (item as any).matched_item_name || '',
-              specification: (item as any).matched_item?.specification,
-              quantity: (item as any).matched_item?.quantity ?? (item as any).matched_item_quantity,
-              unit_price: (item as any).matched_item?.unit_price_value ?? (item as any).matched_item_unit_price,
-              amount: (item as any).matched_item?.amount_value ?? (item as any).matched_item_amount,
-              received_quantity: (item as any).matched_item?.received_quantity,
+              item_name: mi?.item_name || '',
+              specification: mi?.specification,
+              quantity: mi?.quantity,
+              unit_price: mi?.unit_price_value,
+              amount: mi?.amount_value,
+              received_quantity: mi?.received_quantity,
               vendor_name: item.matched_purchase.vendor_name
             });
           } else {
@@ -953,20 +976,19 @@ export default function StatementConfirmModal({
           }
         });
 
-        setItemPONumbers(initialPONumbers);
-        setItemMatches(initialMatches);
-        
-        // Case 1: 공통 발주번호 설정
-        const firstPO = result.data.items.find(i => i.extracted_po_number)?.extracted_po_number;
-        if (firstPO) {
-          const normalizedFirstPO = normalizeOrderNumber(firstPO);
-          setSelectedPONumber(normalizedFirstPO);
-        }
-        
+        // 세트 매칭/자동 선택 결과를 모아서 한 번에 커밋한다.
+        // (초기 매칭 -> 세트 매칭 재매칭으로 이어지는 중복 렌더링 최소화)
+        const firstPO = result.data.items
+          .map((item) => normalizeValidOrderNumber(item.extracted_po_number))
+          .find(Boolean) || '';
+        let nextSelectedPONumber = firstPO;
+        let nextSelectedPurchaseId: number | null = null;
+        let finalMatches = new Map(initialMatches);
+
         // 세트 매칭 실행 (Case 1: 모든 품목이 같은 발주번호일 때)
         // 발주번호가 동일한지 확인
         const poNumbers = result.data.items
-          .map(item => item.extracted_po_number ? normalizeOrderNumber(item.extracted_po_number) : null)
+          .map(item => normalizeValidOrderNumber(item.extracted_po_number))
           .filter(Boolean);
         const isSingleScope = result.data.po_scope === 'single';
         const isMultiScope = result.data.po_scope === 'multi';
@@ -991,7 +1013,10 @@ export default function StatementConfirmModal({
             if (setMatchResponse.data.bestMatch) {
               const bestPO = setMatchResponse.data.bestMatch.purchase_order_number || 
                             setMatchResponse.data.bestMatch.sales_order_number || '';
-              setSelectedPONumber(bestPO);
+              if (bestPO) {
+                nextSelectedPONumber = bestPO;
+              }
+              nextSelectedPurchaseId = setMatchResponse.data.bestMatch.purchase_id;
               
               // 세트 매칭 결과로 품목들 자동 매칭
               const autoMatchedItems = new Map<string, SystemPurchaseItem | null>();
@@ -1012,7 +1037,7 @@ export default function StatementConfirmModal({
                       quantity: candidate.quantity,
                       received_quantity: candidate.received_quantity,
                       unit_price: candidate.unit_price,
-                      amount: (candidate as any).amount,
+                      amount: (candidate as MatchCandidate & { amount?: number }).amount,
                       vendor_name: candidate.vendor_name
                     });
                     break;
@@ -1025,8 +1050,7 @@ export default function StatementConfirmModal({
               autoMatchedItems.forEach((value, key) => {
                 if (value) mergedMatches.set(key, value);
               });
-              const mergedValues = Array.from(mergedMatches.values()).filter(Boolean) as SystemPurchaseItem[];
-              setItemMatches(mergedMatches);
+              finalMatches = mergedMatches;
               
               // 세트 매칭 성공 알림
               const confidence = setMatchResponse.data.bestMatch.confidence;
@@ -1039,11 +1063,33 @@ export default function StatementConfirmModal({
               const fallbackCandidate = result.data.items[0]?.match_candidates?.[0];
               const fallbackPO = fallbackCandidate?.purchase_order_number || fallbackCandidate?.sales_order_number || '';
               if (fallbackPO) {
-                setSelectedPONumber(fallbackPO);
+                nextSelectedPONumber = fallbackPO;
+                nextSelectedPurchaseId = fallbackCandidate?.purchase_id || null;
               }
             }
+          } else {
+            setSetMatchResult(null);
           }
+        } else {
+          setSetMatchResult(null);
         }
+
+        if (nextSelectedPONumber) {
+          await ensurePoItemsHydrated(nextSelectedPONumber, nextSelectedPurchaseId);
+        }
+        if (hydratedPoItemsMap.size > 0) {
+          setPoItemsMap((prev) => {
+            const next = new Map(prev);
+            hydratedPoItemsMap.forEach((items, key) => {
+              next.set(key, items);
+            });
+            return next;
+          });
+        }
+
+        setItemPONumbers(initialPONumbers);
+        setItemMatches(finalMatches);
+        setSelectedPONumber(nextSelectedPONumber);
       } else {
         toast.error(result.error || '데이터를 불러오는데 실패했습니다.');
       }
@@ -1055,9 +1101,6 @@ export default function StatementConfirmModal({
   }, [statement.id, supabase]);
 
   useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'StatementConfirmModal.tsx:1047',message:'loadData useEffect triggered',data:{isOpen,statementId:statement.id},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (isOpen && statement) {
       setManuallySelectedPO(false); // 모달 열릴 때 수동 선택 플래그 리셋
       loadData();
@@ -1082,7 +1125,7 @@ export default function StatementConfirmModal({
       // 현재 적용해야 할 발주번호
       const poNumber = isSamePONumber 
         ? selectedPONumber 
-        : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
+        : (itemPONumbers.get(ocrItem.id) || normalizeValidOrderNumber(ocrItem.extracted_po_number));
       
       const rOcrLineNum = getOCRLineHint(ocrItem);
       const isCurrentSamePO = !poNumber || currentMatch?.purchase_order_number === poNumber || currentMatch?.sales_order_number === poNumber;
@@ -1142,11 +1185,13 @@ export default function StatementConfirmModal({
         }
       }
       
-      newMatches.set(ocrItem.id, bestMatch);
+      const normalizedBestMatch =
+        isSameSystemPurchaseItem(currentMatch, bestMatch) ? (currentMatch ?? null) : bestMatch;
+      newMatches.set(ocrItem.id, normalizedBestMatch);
       
       // 매칭된 시스템 품목의 발주번호로 표시 번호 업데이트 (OCR 오류 수정)
-      if (bestMatch) {
-        const matchedPO = bestMatch.purchase_order_number || bestMatch.sales_order_number || '';
+      if (normalizedBestMatch) {
+        const matchedPO = normalizedBestMatch.purchase_order_number || normalizedBestMatch.sales_order_number || '';
         const currentDisplayPO = itemPONumbers.get(ocrItem.id) || '';
         
         // 현재 표시 번호와 다르면 시스템 번호로 업데이트
@@ -1157,17 +1202,11 @@ export default function StatementConfirmModal({
       }
       
       // 변경 감지
-      if (currentMatch !== bestMatch) {
+      if (!isSameSystemPurchaseItem(currentMatch, normalizedBestMatch)) {
         hasMatchChanges = true;
       }
     });
-    
-    const newMatchValues = Array.from(newMatches.values()).filter(Boolean) as SystemPurchaseItem[];
-    if (lastSelectedSystemItemRef.current) {
-      const selectedItemId = lastSelectedSystemItemRef.current;
-      const currentSelected = itemMatches.get(selectedItemId);
-      const nextSelected = newMatches.get(selectedItemId);
-    }
+
     // 변경이 있을 때만 상태 업데이트 (무한 루프 방지)
     if (hasMatchChanges) {
       setItemMatches(newMatches);
@@ -1245,7 +1284,7 @@ export default function StatementConfirmModal({
               quantity: bestMatch.quantity,
               received_quantity: bestMatch.received_quantity,
               unit_price: bestMatch.unit_price,
-              amount: (bestMatch as any).amount,
+              amount: bestMatch.amount,
               vendor_name: bestMatch.vendor_name
             });
             hasChanges = true;
@@ -1276,9 +1315,12 @@ export default function StatementConfirmModal({
   const allPONumberCandidates = useMemo(() => {
     if (!statementWithItems) return [];
     
-    // 첫 번째 OCR 추출 번호로 타입 결정 (F vs HS)
-    const firstExtracted = statementWithItems.items.find(i => i.extracted_po_number)?.extracted_po_number || '';
-    const normalizedFirst = firstExtracted ? normalizeOrderNumber(firstExtracted).toUpperCase() : '';
+    // 첫 번째 유효 OCR 번호로 타입 결정 (F vs HS)
+    const normalizedFirst = (
+      statementWithItems.items
+        .map((item) => normalizeValidOrderNumber(item.extracted_po_number))
+        .find(Boolean) || ''
+    ).toUpperCase();
     const useSONumber = normalizedFirst.startsWith('HS');
     
     type CandidateMapValue = {
@@ -1293,6 +1335,7 @@ export default function StatementConfirmModal({
       purchaseId?: number; // 발주 상세 모달용
       quantityMatchedCount?: number; // 수량 일치 품목 수
       quantityMismatchedCount?: number; // 수량 불일치 품목 수
+      hasOrderNumberMatch?: boolean; // 발주번호 일치 여부
     };
     
     const candidateMap = new Map<string, CandidateMapValue>();
@@ -1466,7 +1509,7 @@ export default function StatementConfirmModal({
       
       candidate.quantityMatchedCount = quantityMatchedCount;
       candidate.quantityMismatchedCount = quantityMismatchedCount;
-      (candidate as any).hasOrderNumberMatch = hasOrderNumberMatch;
+      candidate.hasOrderNumberMatch = hasOrderNumberMatch;
     });
     
     // 3. 정렬: 발주번호 일치 여부 먼저, 그 다음 점수순
@@ -1475,8 +1518,8 @@ export default function StatementConfirmModal({
     
     result.sort((a, b) => {
       // 먼저 발주번호 일치 여부로 정렬 (일치하는 것이 맨 위)
-      const aHasMatch = (a as any).hasOrderNumberMatch ? 1 : 0;
-      const bHasMatch = (b as any).hasOrderNumberMatch ? 1 : 0;
+      const aHasMatch = a.hasOrderNumberMatch ? 1 : 0;
+      const bHasMatch = b.hasOrderNumberMatch ? 1 : 0;
       if (aHasMatch !== bHasMatch) {
         return bHasMatch - aHasMatch;
       }
@@ -1532,40 +1575,33 @@ export default function StatementConfirmModal({
   // (단, 사용자가 수동으로 선택한 경우는 건너뜀)
   useEffect(() => {
     if (!allPONumberCandidates.length || !isSamePONumber) return;
-
-    // 사용자가 수동으로 발주번호를 선택한 경우 자동 교정 건너뜀
     if (manuallySelectedPO) return;
 
-    // 발주번호 일치하는 후보 찾기 (hasOrderNumberMatch가 true인 것)
+    // 발주번호 일치하는 후보 찾기
     const matchingCandidate = allPONumberCandidates.find(
-      c => (c as any).hasOrderNumberMatch === true
+      c => 'hasOrderNumberMatch' in c && c.hasOrderNumberMatch === true
     );
 
     if (matchingCandidate) {
       const matchingPO = matchingCandidate.poNumber || matchingCandidate.salesOrderNumber || '';
-      // 현재 선택된 것과 다르면 변경
-      if (matchingPO && matchingPO !== selectedPONumber) {
-        logger.debug(`[자동 선택] 발주번호 일치 후보 "${matchingPO}"로 자동 선택`);
-        setSelectedPONumber(matchingPO);
+      if (matchingPO) {
+        setSelectedPONumber(prev => prev !== matchingPO ? matchingPO : prev);
         return;
       }
     }
 
-    // 발주번호 일치 후보가 없으면, 현재 선택이 후보 목록에 있는지 확인
-    const isInCandidates = allPONumberCandidates.some(
-      c => c.poNumber === selectedPONumber || c.salesOrderNumber === selectedPONumber
-    );
-
-    // 후보 목록에 없으면 첫 번째 후보로 자동 변경
-    if (!isInCandidates && allPONumberCandidates[0]) {
-      const firstCandidate = allPONumberCandidates[0];
-      const newPO = firstCandidate.poNumber || firstCandidate.salesOrderNumber || '';
-      if (newPO) {
-        logger.debug(`[자동 수정] OCR 발주번호 "${selectedPONumber}"가 DB에 없음 → 추천 발주 "${newPO}"로 변경`);
-        setSelectedPONumber(newPO);
+    // 발주번호 일치 후보가 없으면 첫 번째 후보로 자동 변경
+    setSelectedPONumber(prev => {
+      const isInCandidates = allPONumberCandidates.some(
+        c => c.poNumber === prev || c.salesOrderNumber === prev
+      );
+      if (!isInCandidates && allPONumberCandidates[0]) {
+        const newPO = allPONumberCandidates[0].poNumber || allPONumberCandidates[0].salesOrderNumber || '';
+        return newPO || prev;
       }
-    }
-  }, [allPONumberCandidates, selectedPONumber, isSamePONumber, manuallySelectedPO]);
+      return prev;
+    });
+  }, [allPONumberCandidates, isSamePONumber, manuallySelectedPO]);
 
   // 특정 발주번호에 해당하는 시스템 품목들
   const getSystemItemsForPO = useCallback((poNumber: string): SystemPurchaseItem[] => {
@@ -1596,7 +1632,7 @@ export default function StatementConfirmModal({
             quantity: candidate.quantity,
             received_quantity: candidate.received_quantity,
             unit_price: candidate.unit_price,
-            amount: (candidate as any).amount,
+            amount: (candidate as MatchCandidate & { amount?: number }).amount,
             vendor_name: candidate.vendor_name
           });
         }
@@ -1623,9 +1659,7 @@ export default function StatementConfirmModal({
     const poNumbers = new Set<string>();
     
     // OCR 추출 번호 정규화
-    const extractedNumber = item.extracted_po_number 
-      ? normalizeOrderNumber(item.extracted_po_number).toUpperCase() 
-      : '';
+    const extractedNumber = normalizeValidOrderNumber(item.extracted_po_number).toUpperCase();
     
     // 추출된 번호가 HS로 시작하면 수주번호, 그 외(F 또는 없음)는 발주번호
     const useSONumber = extractedNumber.startsWith('HS');
@@ -1645,9 +1679,7 @@ export default function StatementConfirmModal({
   }, [statementWithItems]);
 
   const resolveItemPONumber = useCallback((item: TransactionStatementItemWithMatch): string => {
-    const normalizedExtracted = item.extracted_po_number
-      ? normalizeOrderNumber(item.extracted_po_number)
-      : '';
+    const normalizedExtracted = normalizeValidOrderNumber(item.extracted_po_number);
     const candidates = getPOCandidatesForItem(item.id);
     const candidateSet = new Set(candidates.map(candidate => normalizeOrderNumber(candidate)));
     const selected = itemPONumbers.get(item.id);
@@ -1657,16 +1689,12 @@ export default function StatementConfirmModal({
       : '';
     if (normalizedSelected && candidateSet.has(normalizedSelected)) return normalizedSelected;
     if (extractedInDb) return extractedInDb;
-    if (normalizedSelected && !candidateSet.has(normalizedSelected)) {
-    }
     if (normalizedSelected) return normalizedSelected;
     return normalizedExtracted || '';
   }, [getPOCandidatesForItem, itemPONumbers]);
 
   const getDisplayPOForMultiScope = useCallback((item: TransactionStatementItemWithMatch): string => {
-    const normalizedExtracted = item.extracted_po_number
-      ? normalizeOrderNumber(item.extracted_po_number)
-      : '';
+    const normalizedExtracted = normalizeValidOrderNumber(item.extracted_po_number);
     const candidates = getPOCandidatesForItem(item.id);
     const candidateSet = new Set(candidates.map(candidate => normalizeOrderNumber(candidate)));
     const selected = itemPONumbers.get(item.id);
@@ -1674,8 +1702,6 @@ export default function StatementConfirmModal({
     const extractedInDb = normalizedExtracted && candidateSet.has(normalizedExtracted)
       ? normalizedExtracted
       : '';
-    if (normalizedSelected && !candidateSet.has(normalizedSelected)) {
-    }
     if (normalizedSelected && candidateSet.has(normalizedSelected)) return normalizedSelected;
     if (extractedInDb) return extractedInDb;
     // 다중발주에서는 시스템 후보에 없는 OCR/선택 번호는 빈칸 처리
@@ -1701,19 +1727,6 @@ export default function StatementConfirmModal({
     return seqMap;
   }, [statementWithItems, resolveItemPONumber, isSamePONumber, selectedPONumber]);
 
-  const systemLineByPurchaseItemKey = useMemo(() => {
-    const lineMap = new Map<string, number>();
-    poItemsMap.forEach((items) => {
-      items.forEach((item) => {
-        const key = `${item.purchase_id}:${item.item_id}`;
-        if (!lineMap.has(key) && item.line_number != null) {
-          lineMap.set(key, item.line_number);
-        }
-      });
-    });
-    return lineMap;
-  }, [poItemsMap]);
-
   const displayLineByItemId = useMemo(() => {
     const lineMap = new Map<string, number>();
     if (!statementWithItems) return lineMap;
@@ -1722,9 +1735,7 @@ export default function StatementConfirmModal({
     const perPOUsedLines = new Map<string, Set<number>>();
 
     const extractRawLine = (item: TransactionStatementItemWithMatch): { base: string; line: number | null } => {
-      const base = item.extracted_po_number
-        ? normalizeOrderNumber(item.extracted_po_number)
-        : '';
+      const base = normalizeValidOrderNumber(item.extracted_po_number);
       return {
         base,
         line: getOCRLineHint(item),
@@ -1789,36 +1800,6 @@ export default function StatementConfirmModal({
     itemMatches,
     ocrLineSeqByItemId,
   ]);
-
-  useEffect(() => {
-    if (!statementWithItems || !isOpen) return;
-
-    const sample = statementWithItems.items.slice(0, 12).map((ocrItem) => {
-      const activePONumber = isSamePONumber
-        ? (selectedPONumber ? normalizeOrderNumber(selectedPONumber) : '')
-        : resolveItemPONumber(ocrItem);
-
-      const matchedSystem = itemMatches.get(ocrItem.id);
-      const systemLine = matchedSystem?.line_number ?? null;
-      const legacyUiSeq = ocrLineSeqByItemId.get(ocrItem.id) ?? null;
-      const displayedLine = systemLine ?? (matchedSystem ? null : legacyUiSeq);
-
-      return {
-        ocrItemId: ocrItem.id,
-        ocrItemName: (ocrItem.extracted_item_name || '').slice(0, 30),
-        activePONumber: activePONumber || null,
-        matchedItemId: matchedSystem?.item_id ?? null,
-        systemItemsCount: 0,
-        systemLine: systemLine ?? null,
-        legacyUiSeq,
-        displayedLineByMap: displayLineByItemId.get(ocrItem.id) ?? null,
-        displayedLine,
-        lineSource: systemLine !== null ? 'db-line' : (matchedSystem ? 'unresolved' : 'ocr-seq'),
-        legacyMismatch: systemLine !== null && legacyUiSeq !== null ? systemLine !== legacyUiSeq : null
-      };
-    });
-
-  }, [statementWithItems, isOpen, selectedPONumber, isSamePONumber, itemMatches, ocrLineSeqByItemId, displayLineByItemId, resolveItemPONumber, statement.id]);
 
   // 단일 OCR 품목 수정값 즉시 DB 저장
   const persistSingleOCRItem = useCallback(async (itemId: string, field: keyof EditedOCRItem, value: string | number) => {
@@ -2008,17 +1989,11 @@ export default function StatementConfirmModal({
   }, [statementWithItems, deletedOCRItemIds, editedOCRItems, supabase]);
 
   const handleCloseWithSave = useCallback(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'StatementConfirmModal.tsx:1997',message:'handleCloseWithSave called',data:{isAlreadyClosing:isClosingWithSaveRef.current,editedSize:editedOCRItems.size,deletedSize:deletedOCRItemIds.size},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (isClosingWithSaveRef.current) return;
     isClosingWithSaveRef.current = true;
 
     const close = () => {
       isClosingWithSaveRef.current = false;
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'StatementConfirmModal.tsx:2001',message:'handleCloseWithSave calling onClose',data:{},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       onClose();
     };
 
@@ -2065,7 +2040,7 @@ export default function StatementConfirmModal({
       case 'po_number':
         // OCR 컬럼은 기본적으로 DB의 extracted_po_number를 보여준다.
         // (itemPONumbers는 매칭/추천 흐름용 상태이며 OCR 원문 표시를 덮어쓰지 않음)
-        return ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : '';
+        return normalizeValidOrderNumber(ocrItem.extracted_po_number);
       default:
         return '';
     }
@@ -2082,7 +2057,7 @@ export default function StatementConfirmModal({
       case 'unit_price': return edited.unit_price !== ocrItem.extracted_unit_price;
       case 'amount': return edited.amount !== ocrItem.extracted_amount;
       case 'po_number': {
-        const original = ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : '';
+        const original = normalizeValidOrderNumber(ocrItem.extracted_po_number);
         return edited.po_number !== original;
       }
       default: return false;
@@ -2147,7 +2122,7 @@ export default function StatementConfirmModal({
       }
       
       if (edited.po_number !== undefined) {
-        const original = ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : '';
+        const original = normalizeValidOrderNumber(ocrItem.extracted_po_number);
         if (edited.po_number !== original) {
           corrections.push({
             statement_id: statementWithItems.id,
@@ -2226,7 +2201,7 @@ export default function StatementConfirmModal({
     if (!effectiveMatch) {
       const poNumber = isSamePONumber 
         ? selectedPONumber 
-        : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
+        : (itemPONumbers.get(ocrItem.id) || normalizeValidOrderNumber(ocrItem.extracted_po_number));
       
       if (poNumber) {
         const systemItems = getSystemItemsForPO(poNumber);
@@ -2292,7 +2267,7 @@ export default function StatementConfirmModal({
         specification: item.specification,
         quantity: item.quantity,
         unit_price: item.unit_price,
-        amount: (item as any).amount,
+        amount: (item as MatchCandidate & { amount?: number }).amount,
         vendor_name: item.vendor_name
       }));
 
@@ -2333,8 +2308,8 @@ export default function StatementConfirmModal({
 
         if (purchaseRequest) {
           // 거래처명 설정
-          if (!vendorName && (purchaseRequest.vendor as any)?.vendor_name) {
-            vendorName = (purchaseRequest.vendor as any).vendor_name;
+          if (!vendorName && (purchaseRequest.vendor as { vendor_name?: string } | null)?.vendor_name) {
+            vendorName = (purchaseRequest.vendor as { vendor_name?: string })!.vendor_name!;
           }
 
           // 수주번호/발주번호 페어 저장
@@ -2366,8 +2341,8 @@ export default function StatementConfirmModal({
             .eq('purchase_request_id', purchaseRequest.id);
 
           if (purchaseItems && purchaseItems.length > 0) {
-            systemItems = purchaseItems.map((item: any) => ({
-              purchase_id: purchaseRequest.id,
+            systemItems = purchaseItems.map((item: { id: string; line_number?: number; item_name?: string; specification?: string; quantity?: number; received_quantity?: number; unit_price_value?: number; amount_value?: number }) => ({
+              purchase_id: purchaseRequest.id as number,
               item_id: item.id,
               line_number: item.line_number,
               purchase_order_number: purchaseRequest.purchase_order_number || '',
@@ -2465,8 +2440,8 @@ export default function StatementConfirmModal({
             matched_item_id: matched?.item_id ?? null,
           })
           .eq('id', ocrItem.id)
-          .then(({ error }: { error: any }) => {
-            if (error) logger.warn('전체 발주번호 선택 자동 저장 실패:', error);
+          .then(({ error }: { error: unknown }) => {
+            if (error) logger.warn('전체 발주번호 선택 자동 저장 실패:', { error });
           });
       });
 
@@ -2531,11 +2506,11 @@ export default function StatementConfirmModal({
       
       if (error) throw error;
       
-      setPOSearchResults((purchases || []).map((p: any) => ({
+      setPOSearchResults((purchases || []).map((p: { id: number; purchase_order_number?: string; sales_order_number?: string; vendor?: { vendor_name?: string } | null }) => ({
         id: p.id,
         poNumber: p.purchase_order_number || '',
         soNumber: p.sales_order_number,
-        vendorName: p.vendor?.vendor_name
+        vendorName: (p.vendor as { vendor_name?: string } | null)?.vendor_name
       })));
     } catch (err) {
       logger.error('발주번호 검색 오류:', err);
@@ -2647,8 +2622,8 @@ export default function StatementConfirmModal({
           const vendorName = (purchase.vendor as { vendor_name?: string } | null)?.vendor_name || '';
           
           // poItemsMap에 추가
-          const newItems = items.map((item: any) => ({
-            purchase_id: purchase.id,
+          const newItems = items.map((item: { id: number; line_number?: number; item_name?: string; specification?: string; quantity?: number; received_quantity?: number; unit_price_value?: number; amount_value?: number }) => ({
+            purchase_id: purchase.id as number,
             item_id: item.id,
             line_number: item.line_number,
             purchase_order_number: purchase.purchase_order_number || '',
@@ -2745,8 +2720,9 @@ export default function StatementConfirmModal({
       
       const itemsMap = new Map<string, SystemPurchaseItem[]>();
       let totalMapItems = 0;
-      purchases.forEach((purchase: any) => {
-        const mappedItems: SystemPurchaseItem[] = (purchase.items || []).map((item: any) => ({
+      type PurchaseRow = { id: number; purchase_order_number?: string; sales_order_number?: string; items?: Array<{ id: number; line_number?: number; item_name?: string; specification?: string; quantity?: number; received_quantity?: number; unit_price_value?: number; amount_value?: number }> };
+      (purchases as PurchaseRow[]).forEach((purchase) => {
+        const mappedItems: SystemPurchaseItem[] = (purchase.items || []).map((item) => ({
           purchase_id: purchase.id,
           item_id: item.id,
           line_number: item.line_number,
@@ -2782,9 +2758,9 @@ export default function StatementConfirmModal({
           let maxSimilarity = 0;
           let comparedCount = 0;
           
-          purchases.forEach((purchase: any) => {
-            (purchase.items || []).forEach((item: any) => {
-              const similarity = calculateItemSimilarity(ocrItem.extracted_item_name || '', item.item_name, item.specification);
+          (purchases as PurchaseRow[]).forEach((purchase) => {
+            (purchase.items || []).forEach((item) => {
+              const similarity = calculateItemSimilarity(ocrItem.extracted_item_name || '', item.item_name || '', item.specification || '');
               comparedCount += 1;
               if (similarity > maxSimilarity) {
                 maxSimilarity = similarity;
@@ -2797,7 +2773,7 @@ export default function StatementConfirmModal({
                   sales_order_number: purchase.sales_order_number,
                   item_name: item.item_name || '',
                   specification: item.specification,
-                  quantity: item.quantity,
+                  quantity: item.quantity ?? 0,
                   unit_price: item.unit_price_value,
                   score: similarity,
                   match_reasons: ['거래처 매칭'],
@@ -2818,12 +2794,13 @@ export default function StatementConfirmModal({
         setSelectedPONumber(firstPO);
         
         const newMatches = new Map<string, SystemPurchaseItem | null>();
-        const systemItems: SystemPurchaseItem[] = (purchases[0]?.items || []).map((item: any) => ({
-          purchase_id: purchases[0].id,
+        const firstPurchase = purchases[0] as PurchaseRow;
+        const systemItems: SystemPurchaseItem[] = (firstPurchase?.items || []).map((item) => ({
+          purchase_id: firstPurchase.id,
           item_id: item.id,
           line_number: item.line_number,
-          purchase_order_number: purchases[0].purchase_order_number || '',
-          sales_order_number: purchases[0].sales_order_number,
+          purchase_order_number: firstPurchase.purchase_order_number || '',
+          sales_order_number: firstPurchase.sales_order_number,
           item_name: item.item_name || '',
           specification: item.specification,
           quantity: item.quantity,
@@ -2878,12 +2855,12 @@ export default function StatementConfirmModal({
             confidence: 'high',
             itemMatches: []
           },
-          candidates: purchases.map((p: any) => ({
+          candidates: (purchases as PurchaseRow[]).map((p) => ({
             purchase_id: p.id,
             purchase_order_number: p.purchase_order_number || '',
             sales_order_number: p.sales_order_number,
             vendor_name: vendorName,
-            matchScore: p.id === purchases[0].id ? 100 : 50,
+            matchScore: p.id === purchases[0]?.id ? 100 : 50,
             matchedItemCount: (p.items || []).length
           }))
         });
@@ -2986,8 +2963,8 @@ export default function StatementConfirmModal({
         if (purchaseData && purchaseData.length > 0) {
           const purchase = purchaseData[0];
           const vendorName = (purchase.vendor as { vendor_name?: string } | null)?.vendor_name || '';
-          const fetchedItems: SystemPurchaseItem[] = (purchase.purchase_request_items || []).map((item: any) => ({
-            purchase_id: purchase.id,
+          const fetchedItems: SystemPurchaseItem[] = ((purchase as { purchase_request_items?: Array<{ id: number; line_number?: number; item_name?: string; specification?: string; quantity?: number; received_quantity?: number; unit_price_value?: number; amount_value?: number }> }).purchase_request_items || []).map((item) => ({
+            purchase_id: purchase.id as number,
             item_id: item.id,
             line_number: item.line_number,
             purchase_order_number: purchase.purchase_order_number || '',
@@ -3009,11 +2986,11 @@ export default function StatementConfirmModal({
               .eq('inquiry_type', 'delete');
 
             const pendingDeleteItemIds = new Set<number>();
-            (deleteInquiries || []).forEach((inq: any) => {
-              if (!inq || !['open', 'in_progress'].includes(inq.status)) return;
+            (deleteInquiries || []).forEach((inq: { status?: string; inquiry_payload?: Record<string, unknown> }) => {
+              if (!inq || !['open', 'in_progress'].includes(inq.status || '')) return;
               const payload = inq.inquiry_payload || {};
               const deleteItems = Array.isArray(payload.delete_items) ? payload.delete_items : [];
-              deleteItems.forEach((it: any) => {
+              deleteItems.forEach((it: { item_id?: number | string }) => {
                 const id = Number(it?.item_id);
                 if (!Number.isNaN(id) && id > 0) pendingDeleteItemIds.add(id);
               });
@@ -3023,7 +3000,7 @@ export default function StatementConfirmModal({
 
             const allDeleteItemIds = new Set<number>();
             const overlapByStatus: Record<string, number> = {};
-            (deleteInquiries || []).forEach((inq: any) => {
+            (deleteInquiries || []).forEach((inq: { status?: string; inquiry_payload?: Record<string, unknown> }) => {
               const statusKey = String(inq?.status || 'unknown');
               if (overlapByStatus[statusKey] === undefined) {
                 overlapByStatus[statusKey] = 0;
@@ -3031,7 +3008,7 @@ export default function StatementConfirmModal({
               const payload = inq?.inquiry_payload || {};
               const deleteItems = Array.isArray(payload.delete_items) ? payload.delete_items : [];
               const idsForInquiry: number[] = [];
-              deleteItems.forEach((it: any) => {
+              deleteItems.forEach((it: { item_id?: number | string }) => {
                 const id = Number(it?.item_id);
                 if (!Number.isNaN(id) && id > 0) {
                   allDeleteItemIds.add(id);
@@ -3103,10 +3080,6 @@ export default function StatementConfirmModal({
     setIsPurchaseDetailModalOpen(true);
   }, [openDropdowns]);
 
-  useEffect(() => {
-    if (!isPurchaseDetailModalOpen) return;
-  }, [isPurchaseDetailModalOpen, openDropdowns, statement.id]);
-
   const handleItemPOSearch = useCallback(async (ocrItemId: string, searchValue: string) => {
     setItemPOSearchInputs(prev => ({ ...prev, [ocrItemId]: searchValue }));
 
@@ -3132,11 +3105,11 @@ export default function StatementConfirmModal({
 
       if (error) throw error;
 
-      const results = (data || []).map((row: any) => ({
+      const results = (data || []).map((row: { id: number; purchase_order_number?: string; sales_order_number?: string; vendor?: { vendor_name?: string } | null }) => ({
         id: row.id,
         poNumber: row.purchase_order_number || '',
         soNumber: row.sales_order_number || undefined,
-        vendorName: row.vendor?.vendor_name
+        vendorName: (row.vendor as { vendor_name?: string } | null)?.vendor_name
       }));
       setItemPOSearchResults(prev => ({ ...prev, [ocrItemId]: results }));
     } catch (err) {
@@ -3163,7 +3136,6 @@ export default function StatementConfirmModal({
 
   // 시스템 품목 직접 선택
   const handleSelectSystemItem = (ocrItemId: string, systemItem: SystemPurchaseItem | null) => {
-    lastSelectedSystemItemRef.current = ocrItemId;
     setItemMatches(prev => {
       const newMap = new Map(prev);
       newMap.set(ocrItemId, systemItem);
@@ -3198,12 +3170,6 @@ export default function StatementConfirmModal({
   };
 
   useEffect(() => {
-    if (!lastSelectedSystemItemRef.current) return;
-    const itemId = lastSelectedSystemItemRef.current;
-    const matched = itemMatches.get(itemId);
-  }, [itemMatches]);
-
-  useEffect(() => {
     if (!statementWithItems || itemMatches.size === 0) return;
 
     let didUpdate = false;
@@ -3215,7 +3181,7 @@ export default function StatementConfirmModal({
 
       const itemPO = isSamePONumber
         ? selectedPONumber
-        : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
+        : (itemPONumbers.get(ocrItem.id) || normalizeValidOrderNumber(ocrItem.extracted_po_number));
       const systemItems = itemPO ? getSystemItemsForPO(itemPO) : [];
       if (systemItems.length === 0) return;
 
@@ -3281,7 +3247,7 @@ export default function StatementConfirmModal({
     } else {
       statementWithItems.items.forEach((item) => {
         const matched = itemMatches.get(item.id);
-        const itemOrderNumber = itemPONumbers.get(item.id) || (item.extracted_po_number ? normalizeOrderNumber(item.extracted_po_number) : '');
+        const itemOrderNumber = itemPONumbers.get(item.id) || normalizeValidOrderNumber(item.extracted_po_number);
         const purchaseIdFromPO = itemOrderNumber ? getPurchaseIdByNumber(itemOrderNumber) : undefined;
         addTarget(
           matched?.purchase_id ?? purchaseIdFromPO ?? item.matched_purchase_id,
@@ -3337,7 +3303,7 @@ export default function StatementConfirmModal({
       return;
     }
 
-    const rowMap = new Map<number, any>((data || []).map((row: any) => [row.id, row]));
+    const rowMap = new Map<number, { id: number; purchase_order_number?: string; sales_order_number?: string; is_utk_checked?: boolean }>((data || []).map((row: { id: number; purchase_order_number?: string; sales_order_number?: string; is_utk_checked?: boolean }) => [row.id, row]));
     const nextMap = new Map<number, {
       isChecked: boolean;
       purchaseOrderNumber?: string;
@@ -3368,13 +3334,13 @@ export default function StatementConfirmModal({
     }
   }, [isOpen, isMultiUtkTarget, statement.id]);
   
-  // 권한 체크: app_admin은 모든 작업 가능
+  // 권한 체크: lead_buyer, app_admin만 확정 가능
   const canConfirm = isLeadBuyer || isAppAdmin;
-  const canQuantityMatch = isUploader || isAppAdmin;
+  const canQuantityMatch = isLeadBuyer || isAppAdmin;
   
   
   // 입고수량 모드에서는 확정 버튼 비활성화 (lead_buyer 승인 불필요)
-  const isConfirmDisabled = saving || !statementWithItems || !canConfirm || isManagerConfirmed || isStatementConfirmed || isReceiptMode;
+  const isConfirmDisabled = saving || !statementWithItems || !canConfirm || isManagerConfirmed || isStatementConfirmed || isReceiptMode || !isQuantityMatchConfirmed;
   const isQuantityMatchDisabled = saving || !statementWithItems || !canQuantityMatch || isQuantityMatchConfirmed || isStatementConfirmed;
   const isUtkDisabled = saving || !statementWithItems || !canUtkCheck || utkTargetPurchases.length === 0;
   const confirmButtonLabel = isManagerConfirmed || isStatementConfirmed ? '확정 완료' : '확정';
@@ -3565,55 +3531,7 @@ export default function StatementConfirmModal({
         if (result.updatedStatement) {
           setStatementWithItems(prev => (prev ? { ...prev, ...result.updatedStatement } : prev));
         }
-
-        // 확정 후 모든 매칭 품목에 received_quantity가 이미 있으면 자동 수량일치
-        if (!result.finalized && statementWithItems) {
-          const allReceived = activeItems.every(ocrItem => {
-            const matched = itemMatches.get(ocrItem.id);
-            return matched && matched.received_quantity != null && matched.received_quantity > 0;
-          });
-
-          if (allReceived) {
-            try {
-              const qmItems: ConfirmItemRequest[] = activeItems.map(item => {
-                const matched = itemMatches.get(item.id);
-                const edited = editedOCRItems.get(item.id);
-                return {
-                  itemId: item.id,
-                  matched_purchase_id: matched?.purchase_id,
-                  matched_item_id: matched?.item_id,
-                  confirmed_quantity: edited?.quantity !== undefined ? edited.quantity : (item.extracted_quantity ?? 1),
-                };
-              });
-
-              const qmResult = await transactionStatementService.confirmQuantityMatch(
-                {
-                  statementId: statement.id,
-                  items: qmItems,
-                  actual_received_date: statementWithItems.extracted_data?.actual_received_date
-                },
-                effectiveConfirmerName
-              );
-
-              if (qmResult.success) {
-                if (qmResult.updatedStatement) {
-                  setStatementWithItems(prev => (prev ? { ...prev, ...qmResult.updatedStatement } : prev));
-                }
-                toast.success(qmResult.finalized ? '거래명세서가 확정되었습니다.' : '확정 + 수량일치 자동 완료');
-                onConfirm();
-                return;
-              }
-            } catch (_) {
-              // 자동 수량일치 실패 시 확정만 완료된 상태로 진행
-            }
-          }
-        }
-
-        if (result.finalized) {
-          toast.success('거래명세서가 확정되었습니다.');
-        } else {
-          toast.success('확정 처리 완료 (수량일치 대기)');
-        }
+        toast.success(result.finalized ? '거래명세서가 확정되었습니다.' : '확정 처리 완료');
         onConfirm();
       } else {
         toast.error(result.error || '확정에 실패했습니다.');
@@ -3621,8 +3539,10 @@ export default function StatementConfirmModal({
     } catch (error) {
       toast.error('확정 중 오류가 발생했습니다.');
     } finally {
-      setSaving(false);
-      setSavingAction(null);
+      if (isMountedRef.current) {
+        setSaving(false);
+        setSavingAction(null);
+      }
     }
   };
 
@@ -3678,62 +3598,7 @@ export default function StatementConfirmModal({
         if (result.updatedStatement) {
           setStatementWithItems(prev => (prev ? { ...prev, ...result.updatedStatement } : prev));
         }
-
-        // 수량일치 후 금액이 모두 채워져 있으면 이어서 금액확정 자동 처리
-        const allAmountsFilled = !result.finalized && activeItems.every(ocrItem => {
-          const edited = editedOCRItems.get(ocrItem.id);
-          const amount = edited?.amount !== undefined ? edited.amount : ocrItem.extracted_amount;
-          return amount != null && amount > 0;
-        });
-
-        if (allAmountsFilled) {
-          try {
-            const cfItems: ConfirmItemRequest[] = activeItems.map(item => {
-              const matched = itemMatches.get(item.id);
-              const edited = editedOCRItems.get(item.id);
-              return {
-                itemId: item.id,
-                matched_purchase_id: matched?.purchase_id,
-                matched_item_id: matched?.item_id,
-                confirmed_quantity: edited?.quantity !== undefined ? edited.quantity : (item.extracted_quantity ?? 1),
-                confirmed_unit_price: edited?.unit_price !== undefined ? edited.unit_price : item.extracted_unit_price,
-                confirmed_amount: edited?.amount !== undefined ? edited.amount : item.extracted_amount,
-              };
-            });
-            const cfGrandTotal = activeItems.reduce((sum, item) => {
-              const edited = editedOCRItems.get(item.id);
-              return sum + (edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0));
-            }, 0);
-
-            const cfResult = await transactionStatementService.confirmStatement(
-              {
-                statementId: statement.id,
-                items: cfItems,
-                actual_received_date: statementWithItems.extracted_data?.actual_received_date,
-                accounting_received_date: normalizeStatementDate(statementDateInput),
-                confirmed_grand_total: cfGrandTotal
-              },
-              effectiveConfirmerName
-            );
-
-            if (cfResult.success) {
-              if (cfResult.updatedStatement) {
-                setStatementWithItems(prev => (prev ? { ...prev, ...cfResult.updatedStatement } : prev));
-              }
-              toast.success('거래명세서가 확정되었습니다.');
-              onConfirm();
-              return;
-            }
-          } catch (_) {
-            // 자동 금액확정 실패 시 수량일치만 완료 상태로 진행
-          }
-        }
-
-        if (result.finalized) {
-          toast.success('거래명세서가 확정되었습니다.');
-        } else {
-          toast.success('수량일치 확인 완료 (확정 대기)');
-        }
+        toast.success('수량일치 확인 완료');
         onConfirm();
       } else {
         toast.error(result.error || '수량일치 확인에 실패했습니다.');
@@ -3741,214 +3606,13 @@ export default function StatementConfirmModal({
     } catch (error) {
       toast.error('수량일치 확인 중 오류가 발생했습니다.');
     } finally {
-      setSaving(false);
-      setSavingAction(null);
+      if (isMountedRef.current) {
+        setSaving(false);
+        setSavingAction(null);
+      }
     }
   };
 
-  // 자동 수량일치: 매칭된 모든 품목의 received_quantity가 채워져 있으면 자동 처리
-  // 권한 무관하게 시스템이 자동 판단 (수동 입고가 이미 완료된 경우)
-  const autoQuantityMatchTriggeredRef = useRef(false);
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'StatementConfirmModal.tsx:3733',message:'autoQuantityMatch useEffect',data:{isOpen,loading,saving,isQuantityMatchConfirmed,isStatementConfirmed,triggered:autoQuantityMatchTriggeredRef.current,matchSize:itemMatches.size,hasItems:!!statementWithItems},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-    if (!statementWithItems || !isOpen || loading || saving) return;
-    if (isQuantityMatchConfirmed || isStatementConfirmed) return;
-    if (autoQuantityMatchTriggeredRef.current) return;
-    if (itemMatches.size === 0) return;
-
-    const allItems = statementWithItems.items;
-    if (allItems.length === 0) return;
-
-    const allMatched = allItems.every(ocrItem => {
-      const matched = itemMatches.get(ocrItem.id);
-      return matched && matched.received_quantity != null && matched.received_quantity > 0;
-    });
-
-    if (allMatched) {
-      autoQuantityMatchTriggeredRef.current = true;
-      (async () => {
-        try {
-          const qmItems: ConfirmItemRequest[] = statementWithItems.items.map(item => {
-            const matched = itemMatches.get(item.id);
-            const edited = editedOCRItems.get(item.id);
-            return {
-              itemId: item.id,
-              matched_purchase_id: matched?.purchase_id,
-              matched_item_id: matched?.item_id,
-              confirmed_quantity: edited?.quantity !== undefined ? edited.quantity : (item.extracted_quantity ?? 1),
-            };
-          });
-
-          const qmGrandTotal = statementWithItems.items.reduce((sum, item) => {
-            const edited = editedOCRItems.get(item.id);
-            return sum + (edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0));
-          }, 0);
-
-          const qmResult = await transactionStatementService.confirmQuantityMatch(
-            {
-              statementId: statement.id,
-              items: qmItems,
-              actual_received_date: statementWithItems.extracted_data?.actual_received_date,
-              confirmed_grand_total: qmGrandTotal
-            },
-            effectiveConfirmerName
-          );
-
-          if (qmResult.success) {
-            if (qmResult.updatedStatement) {
-              setStatementWithItems(prev => (prev ? { ...prev, ...qmResult.updatedStatement } : prev));
-            }
-
-            // 수량일치 후 금액이 모두 있으면 이어서 금액확정 자동 처리
-            const activeItemsForConfirm = statementWithItems.items.filter(item => !deletedOCRItemIds.has(item.id));
-            const allAmounts = activeItemsForConfirm.every(ocrItem => {
-              const edited = editedOCRItems.get(ocrItem.id);
-              const amount = edited?.amount !== undefined ? edited.amount : ocrItem.extracted_amount;
-              return amount != null && amount > 0;
-            });
-
-            if (allAmounts && !qmResult.finalized) {
-              autoConfirmTriggeredRef.current = true;
-              try {
-                const cfItems: ConfirmItemRequest[] = activeItemsForConfirm.map(item => {
-                  const matched = itemMatches.get(item.id);
-                  const edited = editedOCRItems.get(item.id);
-                  return {
-                    itemId: item.id,
-                    matched_purchase_id: matched?.purchase_id,
-                    matched_item_id: matched?.item_id,
-                    confirmed_quantity: edited?.quantity !== undefined ? edited.quantity : (item.extracted_quantity ?? 1),
-                    confirmed_unit_price: edited?.unit_price !== undefined ? edited.unit_price : item.extracted_unit_price,
-                    confirmed_amount: edited?.amount !== undefined ? edited.amount : item.extracted_amount,
-                  };
-                });
-                const cfGrandTotal = activeItemsForConfirm.reduce((sum, item) => {
-                  const edited = editedOCRItems.get(item.id);
-                  return sum + (edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0));
-                }, 0);
-
-                const cfResult = await transactionStatementService.confirmStatement(
-                  {
-                    statementId: statement.id,
-                    items: cfItems,
-                    actual_received_date: statementWithItems.extracted_data?.actual_received_date,
-                    accounting_received_date: normalizeStatementDate(statementDateInput),
-                    confirmed_grand_total: cfGrandTotal
-                  },
-                  effectiveConfirmerName
-                );
-                if (cfResult.success) {
-                  if (cfResult.updatedStatement) {
-                    setStatementWithItems(prev => (prev ? { ...prev, ...cfResult.updatedStatement } : prev));
-                  }
-                  toast.success('거래명세서가 확정되었습니다.');
-                  onConfirm();
-                  return;
-                }
-              } catch (_) {
-                // 자동 금액확정 실패 시 수량일치만 완료 상태로 진행
-              }
-            }
-
-            toast.success(qmResult.finalized ? '거래명세서가 확정되었습니다.' : '수량일치 자동 완료');
-            onConfirm();
-          }
-        } catch (_) {
-          // 자동 수량일치 실패는 무시
-        }
-      })();
-    }
-  }, [statementWithItems, isOpen, loading, saving, itemMatches, isQuantityMatchConfirmed, isStatementConfirmed]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      autoQuantityMatchTriggeredRef.current = false;
-    }
-  }, [isOpen]);
-
-  // 자동 금액확정: 수량확인 완료 + 모든 품목에 금액이 있으면 자동 처리
-  const autoConfirmTriggeredRef = useRef(false);
-  useEffect(() => {
-    if (!statementWithItems || !isOpen || loading || saving) return;
-    if (isManagerConfirmed || isStatementConfirmed) return;
-    if (!isQuantityMatchConfirmed) return;
-    if (autoConfirmTriggeredRef.current) return;
-    if (itemMatches.size === 0) return;
-
-    const activeItems = statementWithItems.items.filter(item => !deletedOCRItemIds.has(item.id));
-    if (activeItems.length === 0) return;
-
-    const allAmountsFilled = activeItems.every(ocrItem => {
-      const edited = editedOCRItems.get(ocrItem.id);
-      const amount = edited?.amount !== undefined ? edited.amount : ocrItem.extracted_amount;
-      return amount != null && amount > 0;
-    });
-
-    if (allAmountsFilled) {
-      autoConfirmTriggeredRef.current = true;
-      (async () => {
-        try {
-          setSaving(true);
-          setSavingAction('confirm');
-
-          await saveOCRCorrections();
-          await saveItemNameAliasesFromMatches();
-          await persistEditedOCRItems();
-          await persistDeletedOCRItems();
-
-          const confirmItems: ConfirmItemRequest[] = activeItems.map(item => {
-            const matched = itemMatches.get(item.id);
-            const edited = editedOCRItems.get(item.id);
-            return {
-              itemId: item.id,
-              matched_purchase_id: matched?.purchase_id,
-              matched_item_id: matched?.item_id,
-              confirmed_quantity: edited?.quantity !== undefined ? edited.quantity : (item.extracted_quantity ?? 1),
-              confirmed_unit_price: edited?.unit_price !== undefined ? edited.unit_price : item.extracted_unit_price,
-              confirmed_amount: edited?.amount !== undefined ? edited.amount : item.extracted_amount,
-            };
-          });
-
-          const confirmedGrandTotal = activeItems.reduce((sum, item) => {
-            const edited = editedOCRItems.get(item.id);
-            return sum + (edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0));
-          }, 0);
-
-          const result = await transactionStatementService.confirmStatement(
-            {
-              statementId: statement.id,
-              items: confirmItems,
-              actual_received_date: statementWithItems.extracted_data?.actual_received_date,
-              accounting_received_date: normalizeStatementDate(statementDateInput),
-              confirmed_grand_total: confirmedGrandTotal
-            },
-            effectiveConfirmerName
-          );
-
-          if (result.success) {
-            if (result.updatedStatement) {
-              setStatementWithItems(prev => (prev ? { ...prev, ...result.updatedStatement } : prev));
-            }
-            toast.success(result.finalized ? '거래명세서가 확정되었습니다.' : '금액확정 자동 완료');
-            onConfirm();
-          }
-        } catch (_) {
-          // 자동 금액확정 실패는 무시
-        } finally {
-          setSaving(false);
-          setSavingAction(null);
-        }
-      })();
-    }
-  }, [statementWithItems, isOpen, loading, saving, itemMatches, editedOCRItems, deletedOCRItemIds, isManagerConfirmed, isStatementConfirmed, isQuantityMatchConfirmed]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      autoConfirmTriggeredRef.current = false;
-    }
-  }, [isOpen]);
 
   // 거부
   const handleReject = async () => {
@@ -4002,18 +3666,6 @@ export default function StatementConfirmModal({
     }
     return null;
   };
-
-  useEffect(() => {
-    if (!statementWithItems) return;
-    const matchedValues = Array.from(itemMatches.values()).filter(Boolean) as SystemPurchaseItem[];
-    const totalFromUI = matchedValues.reduce((sum, item) => sum + (getSystemAmount(item) || 0), 0);
-    const totalFromUnitPriceQty = matchedValues.reduce((sum, item) => {
-      const qty = item.quantity ?? 0;
-      const unitPrice = item.unit_price ?? 0;
-      return sum + (qty * unitPrice);
-    }, 0);
-  }, [statementWithItems, itemMatches, isReceiptMode, statement.id]);
-
 
   const getSystemItemLabel = (item?: SystemPurchaseItem | null, showLineNumber = true, ocrExtractedName?: string) => {
     if (!item) return '';
@@ -4137,7 +3789,7 @@ export default function StatementConfirmModal({
     if (!effectiveMatch) {
       const poNumber = isSamePONumber 
         ? selectedPONumber 
-        : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
+        : (itemPONumbers.get(ocrItem.id) || normalizeValidOrderNumber(ocrItem.extracted_po_number));
       
       if (poNumber) {
         const systemItems = getSystemItemsForPO(poNumber);
@@ -4338,9 +3990,6 @@ export default function StatementConfirmModal({
       <Dialog
         open={isOpen}
         onOpenChange={(open) => {
-          // #region agent log
-          fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'StatementConfirmModal.tsx:4318',message:'Dialog onOpenChange',data:{open,isOpen,isPurchaseDetailModalOpen,isImageViewerOpen,isClosing:isClosingWithSaveRef.current},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
           if (!open && !isPurchaseDetailModalOpen && !isImageViewerOpen) {
             handleCloseWithSave();
           }
@@ -4711,9 +4360,7 @@ export default function StatementConfirmModal({
                       const matchedSystem = itemMatches.get(ocrItem.id);
                       const matchStatus = getMatchStatus(ocrItem);
                       // OCR 추출 번호를 시스템 형식으로 정규화 (예: _01 → _001, -1 → -01)
-                      const normalizedExtractedPO = ocrItem.extracted_po_number 
-                        ? normalizeOrderNumber(ocrItem.extracted_po_number) 
-                        : undefined;
+                      const normalizedExtractedPO = normalizeValidOrderNumber(ocrItem.extracted_po_number) || undefined;
                       const poCandidates = getPOCandidatesForItem(ocrItem.id);
                       const normalizedCandidates = poCandidates.map(candidate => normalizeOrderNumber(candidate));
                       const candidateSet = new Set(normalizedCandidates);
@@ -4737,7 +4384,7 @@ export default function StatementConfirmModal({
                           : rawOrderedPOs;
                       const nextItem = visibleItems[rowIndex + 1];
                       const nextItemPO = nextItem ? getDisplayPOForItem(nextItem) : '';
-                      const isGroupEnd = rowIndex < visibleItems.length - 1 && itemPO !== nextItemPO;
+                      const isGroupEnd = !isSamePONumber && rowIndex < visibleItems.length - 1 && itemPO !== nextItemPO;
                       const rowClassName = isGroupEnd
                         ? 'hover:bg-gray-50 border-b-2 border-gray-500'
                         : 'hover:bg-gray-50';
@@ -4789,7 +4436,7 @@ export default function StatementConfirmModal({
                       if (!effectiveSystemForNameMatch) {
                         const poNumForNameMatch = isSamePONumber
                           ? selectedPONumber
-                          : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
+                          : (itemPONumbers.get(ocrItem.id) || normalizeValidOrderNumber(ocrItem.extracted_po_number));
                         if (poNumForNameMatch) {
                           const sysItemsForNameMatch = getSystemItemsForPO(poNumForNameMatch);
                           let bestScoreForNameMatch = 0;
@@ -5240,7 +4887,7 @@ export default function StatementConfirmModal({
                               if (!effSys) {
                                 const poNum = isSamePONumber
                                   ? selectedPONumber
-                                  : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
+                                  : (itemPONumbers.get(ocrItem.id) || normalizeValidOrderNumber(ocrItem.extracted_po_number));
                                 if (poNum) {
                                   const sysItems = getSystemItemsForPO(poNum);
                                   let bestScore = 0;
@@ -5371,7 +5018,7 @@ export default function StatementConfirmModal({
                                 if (!effectiveSystem) {
                                   const poNum = isSamePONumber
                                     ? selectedPONumber
-                                    : (itemPONumbers.get(ocrItem.id) || (ocrItem.extracted_po_number ? normalizeOrderNumber(ocrItem.extracted_po_number) : ''));
+                                    : (itemPONumbers.get(ocrItem.id) || normalizeValidOrderNumber(ocrItem.extracted_po_number));
                                   if (poNum) {
                                     const sysItems = getSystemItemsForPO(poNum);
                                     let bestScore = 0;

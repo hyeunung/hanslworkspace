@@ -182,7 +182,7 @@ export default function ReceiptDetailModal({ receipt, groupReceipts, isOpen, onC
       toast.success('인쇄 완료로 표시되었습니다.');
       if (onDelete) onDelete();
     } catch (error) {
-      const errorObj = error as any;
+      const errorObj = error instanceof Error ? error : null;
       logger.error('인쇄완료 처리 예외', errorObj);
       toast.error(`인쇄 완료 처리에 실패했습니다: ${errorObj?.message || '알 수 없는 오류'}`);
     }

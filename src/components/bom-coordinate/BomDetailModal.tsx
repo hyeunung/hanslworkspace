@@ -78,7 +78,7 @@ export default function BomDetailModal({ boardId, isOpen, onClose }: BomDetailMo
       if (coordError) throw coordError;
 
       // BOM 항목 변환
-      const convertedBOMItems: BOMItem[] = (bomItems || []).map((item: any) => ({
+      const convertedBOMItems: BOMItem[] = (bomItems || []).map((item: Record<string, unknown>) => ({
         lineNumber: item.line_number,
         itemType: item.item_type || '',
         itemName: item.item_name || '',
@@ -102,16 +102,16 @@ export default function BomDetailModal({ boardId, isOpen, onClose }: BomDetailMo
       const topCoords: CoordinateItem[] = [];
       const bottomCoords: CoordinateItem[] = [];
       
-      (coordinates || []).forEach((coord: any) => {
+      (coordinates || []).forEach((coord: Record<string, unknown>) => {
         const coordItem: CoordinateItem = {
-          refDes: coord.ref || '',           // DB: ref
-          type: coord.part_type || '',       // DB: part_type
-          partName: coord.part_name || '',   // DB: part_name
-          layer: coord.side || 'TOP',        // DB: side
-          locationX: coord.x_coordinate || 0, // DB: x_coordinate
-          locationY: coord.y_coordinate || 0, // DB: y_coordinate
-          rotation: coord.angle || 0,        // DB: angle
-          remark: coord.remark || '',
+          refDes: (coord.ref as string) || '',           // DB: ref
+          type: (coord.part_type as string) || '',       // DB: part_type
+          partName: (coord.part_name as string) || '',   // DB: part_name
+          layer: (coord.side as string) || 'TOP',        // DB: side
+          locationX: (coord.x_coordinate as number) || 0, // DB: x_coordinate
+          locationY: (coord.y_coordinate as number) || 0, // DB: y_coordinate
+          rotation: (coord.angle as number) || 0,        // DB: angle
+          remark: (coord.remark as string) || '',
         };
         
         if (coord.side === 'TOP') {

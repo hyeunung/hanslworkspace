@@ -1,28 +1,27 @@
 import { createClient } from '@/lib/supabase/client'
 import { purchaseMemoryCache, calculateMemoryUsage } from '@/stores/purchaseMemoryStore'
 import { logger } from '@/lib/logger'
-import type { Purchase } from '@/types/purchase'
+import type { Purchase, PurchaseRequestItem } from '@/types/purchase'
 
 // 초기 로드 제한
 const INITIAL_LOAD_LIMIT = 2000
 
 // 실제 금액 계산 (검수 금액 또는 기본 금액)
-function calculateActualAmount(items: any[]): number {
+function calculateActualAmount(items: Pick<PurchaseRequestItem, 'amount_value'>[]): number {
   return items.reduce((sum, item) => {
     const baseAmount = item.amount_value || 0
-    const actualAmount = item.actual_amount || baseAmount
-    return sum + actualAmount
+    return sum + baseAmount
   }, 0)
 }
 
 // 실제 입고일 계산
-function calculateActualReceivedDate(items: any[]): string | null {
+function calculateActualReceivedDate(items: Pick<PurchaseRequestItem, 'is_received' | 'actual_received_date'>[]): string | null {
   const receivedItems = items.filter(item => item.is_received)
   if (receivedItems.length === 0) return null
   
   const dates = receivedItems
     .map(item => item.actual_received_date)
-    .filter(date => date)
+    .filter((date): date is string => !!date)
     .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())
   
   return dates[0] || null
@@ -80,7 +79,7 @@ export async function loadAllPurchaseData(userId?: string): Promise<void> {
     }
     
     // 3. 데이터 처리 및 변환
-    const processedData: Purchase[] = (rawData || []).map((request: any) => {
+    const processedData: Purchase[] = (rawData || []).map((request: Record<string, unknown> & { purchase_request_items?: PurchaseRequestItem[]; vendors?: { vendor_payment_schedule?: string } | null; vendor_contacts?: { contact_name?: string } | null }) => {
       return {
         ...request,
         purchase_request_items: request.purchase_request_items || [],

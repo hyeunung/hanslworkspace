@@ -3,9 +3,10 @@ import { createClient } from '@/lib/supabase/client'
 import { logger } from '@/lib/logger'
 import { purchaseRealtimeService } from '@/services/purchaseRealtimeService'
 import type { Employee } from '@/types/purchase'
+import type { User, AuthChangeEvent, Session } from '@supabase/supabase-js'
 
 interface AuthContextType {
-  user: any
+  user: User | null
   employee: Employee | null
   currentUserRoles: string[]
   currentUserName: string
@@ -23,7 +24,7 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<User | null>(null)
   const [employee, setEmployee] = useState<Employee | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -136,7 +137,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     loadAuthData({ background: false })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, _session: any) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, _session: Session | null) => {
       logger.debug('[AuthContext] Auth state changed:', { event })
 
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {

@@ -577,7 +577,7 @@ function extractOrderNumber(text: string): string | null {
   return null
 }
 
-function parseOrderNumberWithLine(input: string): { base: string; lineNumber: number | null } {
+function parseOrderNumberWithLine(input: string): { base: string; lineNumber: number | null } | null {
   const normalized = input.toUpperCase().replace(/\s+/g, '')
 
   // F20260121_001-07 → base=F20260121_001, lineNumber=7
@@ -616,11 +616,11 @@ function parseOrderNumberWithLine(input: string): { base: string; lineNumber: nu
     }
   }
 
-  return { base: normalized, lineNumber: null }
+  return null
 }
 
 function normalizeOrderNumber(input: string): string {
-  return parseOrderNumberWithLine(input).base
+  return parseOrderNumberWithLine(input)?.base || ''
 }
 
 async function matchItemsToSystem(

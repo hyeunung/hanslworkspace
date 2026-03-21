@@ -360,7 +360,7 @@ export async function downloadExcelBlob(blob: Blob, filename: string) {
   // showSaveFilePicker API 지원 여부 확인 (Chrome/Edge에서만 지원)
   if ('showSaveFilePicker' in window) {
     try {
-      const handle = await (window as any).showSaveFilePicker({
+      const handle = await (window as unknown as { showSaveFilePicker: (options: { suggestedName: string; types: Array<{ description: string; accept: Record<string, string[]> }> }) => Promise<FileSystemFileHandle> }).showSaveFilePicker({
         suggestedName: filename,
         types: [{
           description: 'Excel 파일',
@@ -371,9 +371,9 @@ export async function downloadExcelBlob(blob: Blob, filename: string) {
       await writable.write(blob);
       await writable.close();
       return;
-    } catch (err: any) {
+    } catch (err: unknown) {
       // 사용자가 취소한 경우
-      if (err.name === 'AbortError') {
+      if (err instanceof DOMException && err.name === 'AbortError') {
         return;
       }
       // 다른 오류면 fallback으로 진행

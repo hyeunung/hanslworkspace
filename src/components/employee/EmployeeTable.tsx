@@ -1,6 +1,6 @@
 
 import { useEffect, useMemo, useState } from 'react'
-import { Employee, PurchaseRole } from '@/types/purchase'
+import { Employee, EmployeeUpsertData, PurchaseRole } from '@/types/purchase'
 import { formatDate } from '@/utils/helpers'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -311,7 +311,7 @@ export default function EmployeeTable({
       return
     }
 
-    const rawPayload: any = {
+    const rawPayload: Record<string, string | number | boolean | string[] | null> = {
       // 사번은 1칸 입력으로 받고, 하위호환 필드까지 동일 값으로 저장
       employeeID: toNullableTrimmed(draft.employeeID),
       employee_number: toNullableTrimmed(draft.employeeID),
@@ -335,9 +335,9 @@ export default function EmployeeTable({
     const allowedColumns =
       availableEmployeeColumns ?? (employees[0] ? new Set(Object.keys(employees[0])) : null)
     const payload =
-      allowedColumns === null
+      (allowedColumns === null
         ? rawPayload
-        : Object.fromEntries(Object.entries(rawPayload).filter(([key]) => allowedColumns.has(key)))
+        : Object.fromEntries(Object.entries(rawPayload).filter(([key]) => allowedColumns.has(key)))) as unknown as EmployeeUpsertData
 
     setLoadingId(editingRowId)
     try {
@@ -380,7 +380,7 @@ export default function EmployeeTable({
       department: draft?.department || '',
       position: draft?.position || '',
       phone: draft?.phone || '',
-      purchase_role: draft?.purchase_role ? [draft.purchase_role] : null,
+      purchase_role: draft?.purchase_role ? [draft.purchase_role] : undefined,
       is_active: draft?.is_active === 'true',
       terminated_at: null,
       created_at: new Date().toISOString(),

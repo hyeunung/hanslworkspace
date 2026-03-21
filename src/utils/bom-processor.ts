@@ -1,9 +1,21 @@
 import * as XLSX from 'xlsx';
 import { logger } from '@/lib/logger';
 
+interface BOMProcessedItem {
+  lineNumber: string;
+  itemType: string;
+  itemName: string;
+  setCount: string;
+  totalQuantity: string;
+  refList: string;
+  remark: string;
+  coordinates: unknown[];
+  specification?: string;
+}
+
 interface ProcessedBOMResult {
-  bomItems: any[];
-  coordinates: any[];
+  bomItems: BOMProcessedItem[];
+  coordinates: unknown[];
 }
 
 export async function processBOMWithAI(
@@ -81,7 +93,7 @@ Example Output:
         if (cols.length < 3) continue;
 
         // [좌표 파싱 로직 추가]
-        let itemCoordinates = [];
+        let itemCoordinates: unknown[] = [];
         try {
              // 마지막 컬럼(인덱스 10)에 있는 JSON 문자열 파싱
              const coordStr = cols[10]?.trim();
@@ -92,7 +104,7 @@ Example Output:
                  }
              }
         } catch (e) {
-             logger.warn('Frontend Coordinate Parse Error:', e);
+             logger.warn('Frontend Coordinate Parse Error:', e as Record<string, unknown>);
         }
 
         bomItems.push({
@@ -112,7 +124,7 @@ Example Output:
       
       // 후처리 및 데이터 보정 (Rule-based Correction)
       // 이 로직은 AI가 실수했을 때를 대비한 안전망으로 남겨둡니다.
-      const correctedBomItems = bomItems.map((item: any) => {
+      const correctedBomItems = bomItems.map((item: BOMProcessedItem) => {
           // 1. Ref 추출 (문자열)
           let refPrefix = '';
           if (item.refList && typeof item.refList === 'string') {
@@ -213,7 +225,7 @@ async function readFileAsText(file: File): Promise<string> {
           
           resolve(rows.join('\n'));
         } catch (err) {
-          logger.warn('Excel parsing failed, fallback to text', err);
+          logger.warn('Excel parsing failed, fallback to text', err as Record<string, unknown>);
           // 바이너리를 텍스트로 읽으면 깨지므로 에러 처리
           reject(new Error('엑셀 파일 파싱에 실패했습니다.'));
         }

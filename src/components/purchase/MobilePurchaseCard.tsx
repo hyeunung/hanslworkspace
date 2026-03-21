@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { Eye } from 'lucide-react'
-import { Purchase } from '@/types/purchase'
+import { Purchase, PurchaseRequestItem } from '@/types/purchase'
 import { formatDateShort } from '@/utils/helpers'
 
 interface MobilePurchaseCardProps {
@@ -13,7 +13,7 @@ const getReceiptProgress = (purchase: Purchase) => {
   if (!purchase.purchase_request_items || purchase.purchase_request_items.length === 0) return { received: 0, total: 0, percentage: 0 }
   
   const total = purchase.purchase_request_items.length
-  const received = purchase.purchase_request_items.filter((item: any) => 
+  const received = purchase.purchase_request_items.filter((item: PurchaseRequestItem) =>
     item.actual_received_date !== null && item.actual_received_date !== undefined
   ).length
   const percentage = total > 0 ? Math.round((received / total) * 100) : 0

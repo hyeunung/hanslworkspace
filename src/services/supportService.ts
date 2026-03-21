@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { logger } from '@/lib/logger'
 
 export interface SupportAttachment {
@@ -18,6 +19,7 @@ export type SupportInquiryType =
   | 'delivery_date_change'
   | 'quantity_change'
   | 'price_change'
+  | 'item_add'
 
 export type SupportInquiryPayload =
   | {
@@ -57,6 +59,16 @@ export type SupportInquiryPayload =
         specification?: string | null
       }[]
     }
+  | {
+      items: {
+        item_name: string
+        specification?: string | null
+        quantity: number
+        unit: string
+        unit_price: number
+        remark?: string | null
+      }[]
+    }
 
 export interface SupportInquiry {
   id?: number
@@ -76,7 +88,7 @@ export interface SupportInquiry {
   purchase_order_number?: string
   processed_at?: string
   requester_id?: string
-  purchase_requests?: any
+  purchase_requests?: { id: number; purchase_order_number?: string } | null
   attachments?: SupportAttachment[]
   inquiry_payload?: SupportInquiryPayload | null
 }
@@ -105,8 +117,8 @@ export interface CreateSupportInquiryPayload {
 class SupportService {
   private supabase = createClient()
   private readonly BUCKET_NAME = 'support-attachments'
-  private inquiriesChannel: any | null = null
-  private inquirySubscribers = new Set<(payload: any) => void>()
+  private inquiriesChannel: RealtimeChannel | null = null
+  private inquirySubscribers = new Set<(payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void>()
 
   // 이미지 첨부파일 업로드
   async uploadAttachment(file: File): Promise<{ success: boolean; data?: SupportAttachment; error?: string }> {
@@ -283,7 +295,7 @@ class SupportService {
     }
   }
 
-  subscribeToInquiryMessages(inquiryId: number, callback: (payload: any) => void) {
+  subscribeToInquiryMessages(inquiryId: number, callback: (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void) {
     return this.supabase
       .channel(`support_inquiry_messages_${inquiryId}`)
       .on(
@@ -306,14 +318,15 @@ class SupportService {
         .select('inquiry_type,inquiry_payload')
         .eq('id', inquiryId)
         .maybeSingle()
-      const payloadItems = Array.isArray((inquiryMeta as any)?.inquiry_payload?.items)
-        ? (inquiryMeta as any).inquiry_payload.items
+      const meta = inquiryMeta as { inquiry_type?: string; inquiry_payload?: { items?: { item_id?: string }[] } } | null
+      const payloadItems = Array.isArray(meta?.inquiry_payload?.items)
+        ? meta.inquiry_payload.items
         : []
-      const hasUndefinedItemId = payloadItems.some((item: any) => {
+      const hasUndefinedItemId = payloadItems.some((item: { item_id?: string }) => {
         const rawItemId = item?.item_id
         return rawItemId === undefined || rawItemId === null || rawItemId === 'undefined' || rawItemId === ''
       })
-      const inquiryType = (inquiryMeta as any)?.inquiry_type || null
+      const inquiryType = meta?.inquiry_type || null
       const shouldUseFallbackResolve =
         (inquiryType === 'quantity_change' || inquiryType === 'price_change') && hasUndefinedItemId
 
@@ -408,9 +421,9 @@ class SupportService {
         .eq('email', user.email)
         .single()
 
-      const updateData: any = {
+      const updateData: { status: string; handled_by: string; updated_at: string; processed_at?: string; resolution_note?: string } = {
         status,
-        handled_by: employee?.name || user.email,
+        handled_by: employee?.name || user.email || '',
         updated_at: new Date().toISOString()
       }
 
@@ -510,7 +523,7 @@ class SupportService {
   }
 
   // 실시간 구독 설정
-  subscribeToInquiries(callback: (payload: any) => void) {
+  subscribeToInquiries(callback: (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void) {
     // 싱글톤 채널: 여러 컴포넌트가 동시에 구독해도 채널은 1개만 유지
     this.inquirySubscribers.add(callback)
 
@@ -524,7 +537,7 @@ class SupportService {
             schema: 'public',
             table: 'support_inquires'
           },
-          (payload: any) => {
+          (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
             for (const sub of this.inquirySubscribers) {
               try {
                 sub(payload)
@@ -563,8 +576,8 @@ class SupportService {
     }
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      const updateData: any = {}
-      
+      const updateData: { item_name?: string; specification?: string; quantity?: number; remark?: string; unit_price_value?: number; unit_price_currency?: string; amount_value?: number; amount_currency?: string } = {}
+
       if (updates.item_name !== undefined) updateData.item_name = updates.item_name
       if (updates.specification !== undefined) updateData.specification = updates.specification
       if (updates.quantity !== undefined) updateData.quantity = updates.quantity
@@ -661,7 +674,7 @@ class SupportService {
   }
 
   // 발주요청 상세 조회
-  async getPurchaseRequestDetail(requestId: string): Promise<{ success: boolean; data?: any; error?: string }> {
+  async getPurchaseRequestDetail(requestId: string): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }> {
     try {
       const { data, error } = await this.supabase
         .from('purchase_requests')

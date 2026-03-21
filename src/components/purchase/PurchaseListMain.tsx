@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
-import { Purchase } from "@/types/purchase";
+import { Purchase, PurchaseRequestItem } from "@/types/purchase";
 import { hasManagerRole, getRoleCase, filterByEmployeeVisibility } from "@/utils/roleHelper";
 import { filterByEmployee, sortPurchases, calculateTabCounts } from "@/utils/purchaseFilters";
 import { logger } from "@/lib/logger";
@@ -278,7 +278,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
           .select('name');
         
         if (employees) {
-          const employeeNames = [...new Set(employees.map((e: any) => e.name).filter(Boolean))];
+          const employeeNames = [...new Set(employees.map((e: { name: string }) => e.name).filter(Boolean))];
           setAvailableEmployees(employeeNames as string[]);
         }
 
@@ -288,7 +288,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
           .select('vendor_name');
         
         if (vendors) {
-          const vendorNames = [...new Set(vendors.map((v: any) => v.vendor_name).filter(Boolean))];
+          const vendorNames = [...new Set(vendors.map((v: { vendor_name: string }) => v.vendor_name).filter(Boolean))];
           setAvailableVendors(vendorNames as string[]);
         }
 
@@ -298,7 +298,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
           .select('contact_name');
         
         if (contacts) {
-          const contactNames = [...new Set(contacts.map((c: any) => c.contact_name).filter(Boolean))];
+          const contactNames = [...new Set(contacts.map((c: { contact_name: string }) => c.contact_name).filter(Boolean))];
           setAvailableContacts(contactNames as string[]);
         }
 
@@ -308,7 +308,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
           .select('vendor_payment_schedule');
         
         if (schedules) {
-          const scheduleNames = [...new Set(schedules.map((s: any) => s.vendor_payment_schedule).filter(Boolean))];
+          const scheduleNames = [...new Set(schedules.map((s: { vendor_payment_schedule: string }) => s.vendor_payment_schedule).filter(Boolean))];
           setAvailablePaymentSchedules(scheduleNames as string[]);
         }
       } catch (error) {
@@ -340,7 +340,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     }
     
     const total = purchase.purchase_request_items.length;
-    const received = purchase.purchase_request_items.filter((item: any) => 
+    const received = purchase.purchase_request_items.filter((item: PurchaseRequestItem) =>
       item.is_received === true
     ).length;
     const percentage = total > 0 ? Math.round((received / total) * 100) : 0;
@@ -355,7 +355,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     }
     
     const total = purchase.purchase_request_items.length;
-    const completed = purchase.purchase_request_items.filter((item: any) => 
+    const completed = purchase.purchase_request_items.filter((item: PurchaseRequestItem) =>
       item.is_payment_completed === true
     ).length;
     const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -369,7 +369,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   };
 
   // 필드 값 추출 함수 - useCallback으로 최적화
-  const getFieldValue = useCallback((purchase: Purchase, field: string): any => {
+  const getFieldValue = useCallback((purchase: Purchase, field: string): unknown => {
     switch (field) {
       case 'purchase_order_number':
         return purchase.purchase_order_number;
@@ -431,7 +431,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   }, []);
 
   // 필터 조건 적용 함수 - useCallback으로 최적화
-  const applyFilterCondition = useCallback((fieldValue: any, condition: string, filterValue: any, filterField?: string): boolean => {
+  const applyFilterCondition = useCallback((fieldValue: unknown, condition: string, filterValue: unknown, filterField?: string): boolean => {
     if (fieldValue === null || fieldValue === undefined) {
       return condition === 'is_empty';
     }
@@ -439,12 +439,12 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     // 날짜 범위 필터 특별 처리 (시작일~종료일)
     if (filterField === 'date_range' && filterValue && typeof filterValue === 'string' && filterValue.includes('~')) {
       if (!fieldValue) return false;
-      
+
       const [startDate, endDate] = filterValue.split('~');
-      const fieldDate = new Date(fieldValue);
+      const fieldDate = new Date(fieldValue as string);
       const start = new Date(startDate);
       const end = new Date(endDate);
-      
+
       // 시작일과 종료일 포함하여 범위 내에 있는지 확인
       return fieldDate >= start && fieldDate <= end;
     }
@@ -452,12 +452,12 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     // 월별 범위 필터 특별 처리 (시작월~종료월)
     if (filterField === 'date_month' && filterValue && typeof filterValue === 'string' && filterValue.includes('~')) {
       if (!fieldValue) return false;
-      
+
       const [startMonth, endMonth] = filterValue.split('~');
-      const fieldDate = new Date(fieldValue);
+      const fieldDate = new Date(fieldValue as string);
       const start = new Date(`${startMonth}-01`);
       const end = new Date(`${endMonth}-01`);
-      
+
       // 월 범위 비교 (해당 월의 마지막 날까지 포함)
       const endOfMonth = new Date(end.getFullYear(), end.getMonth() + 1, 0, 23, 59, 59);
       return fieldDate >= start && fieldDate <= endOfMonth;
@@ -466,11 +466,12 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     // 월별 필터 특별 처리 (단일 월)
     if (filterField && (filterField === 'date_month' || filterField.endsWith('_month'))) {
       if (!filterValue) return true;
-      
-      const fieldDate = new Date(fieldValue);
-      const [filterYear, filterMonth] = filterValue.split('-');
-      
-      return fieldDate.getFullYear() === parseInt(filterYear) && 
+
+      const fieldDate = new Date(fieldValue as string);
+      const filterValueStr = String(filterValue);
+      const [filterYear, filterMonth] = filterValueStr.split('-');
+
+      return fieldDate.getFullYear() === parseInt(filterYear) &&
              (fieldDate.getMonth() + 1) === parseInt(filterMonth);
     }
 
@@ -482,11 +483,11 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         return fieldStr.includes(filterStr);
       case 'equals':
         // 날짜 필드의 경우 정확한 날짜 비교
-        if (filterField === 'date_range' || filterValue.match(/^[0-9]{4}-[0-9]{2}-[0-9]{2}/)) {
+        if (filterField === 'date_range' || filterStr.match(/^[0-9]{4}-[0-9]{2}-[0-9]{2}/)) {
           if (!fieldValue) return false;
           try {
-            const fieldDate = new Date(fieldValue).toISOString().split('T')[0];
-            const filterDate = filterValue.split('T')[0];
+            const fieldDate = new Date(fieldValue as string).toISOString().split('T')[0];
+            const filterDate = filterStr.split('T')[0];
             return fieldDate === filterDate;
           } catch (error) {
             logger.error('날짜 비교 오류:', error);
@@ -510,9 +511,9 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         // 범위 필터는 추후 구현
         return true;
       case 'after':
-        return new Date(fieldValue) > new Date(filterValue);
+        return new Date(fieldValue as string) > new Date(filterValue as string);
       case 'before':
-        return new Date(fieldValue) < new Date(filterValue);
+        return new Date(fieldValue as string) < new Date(filterValue as string);
       case 'not_equals':
         return fieldStr !== filterStr;
       default:
@@ -526,7 +527,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     const employeeName = selectedEmployee === 'all' || selectedEmployee === '전체' ? null : selectedEmployee;
     
     return getFilteredPurchases({
-      tab: activeTab as any,
+      tab: activeTab as 'pending' | 'purchase' | 'receipt' | 'done',
       employeeName,
       searchTerm,
       advancedFilters: activeFilters,
@@ -537,7 +538,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   // 발주/구매 템플릿 데이터만 표시 (기존 데이터 호환: '일반' 및 null 포함)
   const tabFilteredPurchases = useMemo(() => {
     return baseFilteredPurchases.filter((p: Purchase) => {
-      const templateType = (p as any).po_template_type;
+      const templateType = p.po_template_type;
       return !templateType || templateType === '발주/구매' || templateType === '일반';
     });
   }, [baseFilteredPurchases]);
@@ -620,7 +621,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     // 필터에 나오는 모든 항목의 합계 계산
     const totalFilteredAmount = tabFilteredPurchases.reduce((sum, purchase) => {
       if (purchase.purchase_request_items?.length) {
-        const itemsTotal = purchase.purchase_request_items.reduce((itemSum: number, item: any) => {
+        const itemsTotal = purchase.purchase_request_items.reduce((itemSum: number, item: PurchaseRequestItem) => {
           // 발주 카테고리인 경우 세액도 포함
           const baseAmount = item.amount_value || 0;
           const taxAmount = (purchase.payment_category === '발주' && item.tax_amount_value) ? item.tax_amount_value : 0;
@@ -665,7 +666,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
         const monthTotal = monthData.reduce((sum, purchase) => {
           // items의 amount_value 합계 또는 total_amount 사용
           if (purchase.purchase_request_items?.length) {
-            const itemsTotal = purchase.purchase_request_items.reduce((itemSum: number, item: any) => {
+            const itemsTotal = purchase.purchase_request_items.reduce((itemSum: number, item: PurchaseRequestItem) => {
               // 발주 카테고리인 경우 세액도 포함
               const baseAmount = item.amount_value || 0;
               const taxAmount = (purchase.payment_category === '발주' && item.tax_amount_value) ? item.tax_amount_value : 0;
@@ -711,7 +712,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       const monthTotal = monthData.reduce((sum, purchase) => {
         // items의 amount_value 합계 또는 total_amount 사용
         if (purchase.purchase_request_items?.length) {
-          const itemsTotal = purchase.purchase_request_items.reduce((itemSum: number, item: any) => {
+          const itemsTotal = purchase.purchase_request_items.reduce((itemSum: number, item: PurchaseRequestItem) => {
             // 발주 카테고리인 경우 세액도 포함
             const baseAmount = item.amount_value || 0;
             const taxAmount = (purchase.payment_category === '발주' && item.tax_amount_value) ? item.tax_amount_value : 0;

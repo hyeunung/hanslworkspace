@@ -175,21 +175,31 @@ export default function StatementImageViewer({
       const blob = await response.blob();
       const bitmap = await createImageBitmap(blob);
 
-      const rad = (rotation * Math.PI) / 180;
-      const isRotated90 = rotation === 90 || rotation === 270;
-      const canvas = document.createElement('canvas');
-      canvas.width = isRotated90 ? bitmap.height : bitmap.width;
-      canvas.height = isRotated90 ? bitmap.width : bitmap.height;
+      let rotatedBlob: Blob;
+      try {
+        const rad = (rotation * Math.PI) / 180;
+        const isRotated90 = rotation === 90 || rotation === 270;
+        const canvas = document.createElement('canvas');
+        canvas.width = isRotated90 ? bitmap.height : bitmap.width;
+        canvas.height = isRotated90 ? bitmap.width : bitmap.height;
 
-      const ctx = canvas.getContext('2d')!;
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate(rad);
-      ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+        const ctx = canvas.getContext('2d')!;
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(rad);
+        ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
 
-      const rotatedBlob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, 'image/jpeg', 0.92)
-      );
-      if (!rotatedBlob) throw new Error('canvas.toBlob 실패 (null 반환)');
+        const result = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob(resolve, 'image/jpeg', 0.92)
+        );
+        if (!result) throw new Error('canvas.toBlob 실패 (null 반환)');
+        rotatedBlob = result;
+
+        // Canvas 메모리 해제
+        canvas.width = 0;
+        canvas.height = 0;
+      } finally {
+        bitmap.close();
+      }
 
       const { data: uploadData, error } = await supabase.storage
         .from(storageInfo.bucket)

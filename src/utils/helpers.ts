@@ -5,7 +5,7 @@
 /**
  * Debounce function execution
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
@@ -25,13 +25,13 @@ export function debounce<T extends (...args: any[]) => any>(
 /**
  * Throttle function execution
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: unknown[]) => unknown>(
   func: T,
   limit: number
 ): (...args: Parameters<T>) => void {
   let inThrottle: boolean;
-  
-  return function(this: any, ...args: Parameters<T>) {
+
+  return function(this: unknown, ...args: Parameters<T>) {
     if (!inThrottle) {
       func.apply(this, args);
       inThrottle = true;
@@ -100,8 +100,8 @@ export function chunk<T>(array: T[], size: number): T[][] {
  */
 export function deepClone<T>(obj: T): T {
   if (obj === null || typeof obj !== 'object') return obj;
-  if (obj instanceof Date) return new Date(obj.getTime()) as any;
-  if (obj instanceof Array) return obj.map(item => deepClone(item)) as any;
+  if (obj instanceof Date) return new Date(obj.getTime()) as T;
+  if (obj instanceof Array) return obj.map(item => deepClone(item)) as T;
   
   const clonedObj = {} as T;
   for (const key in obj) {
@@ -137,7 +137,7 @@ export function generateId(prefix: string = ''): string {
 /**
  * Safe JSON parse
  */
-export function safeJsonParse<T = any>(json: string, defaultValue: T): T {
+export function safeJsonParse<T = unknown>(json: string, defaultValue: T): T {
   try {
     return JSON.parse(json);
   } catch {

@@ -102,7 +102,7 @@ export const downloadPurchaseOrderExcel = async (
       project_vendor: purchaseRequest.project_vendor,
       sales_order_number: purchaseRequest.sales_order_number,
       project_item: purchaseRequest.project_item,
-      items: orderItems.map((item: any) => ({
+      items: orderItems.map((item: { line_number?: number; item_name?: string; specification?: string; quantity?: number; unit_price_value?: number; amount_value?: number; remark?: string }) => ({
         line_number: item.line_number,
         item_name: item.item_name,
         specification: item.specification,

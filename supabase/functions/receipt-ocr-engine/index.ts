@@ -41,13 +41,13 @@ serve(async (req) => {
   try {
     supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
     supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
+    const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY");
 
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error("Supabase env is missing");
     }
-    if (!openaiApiKey) {
-      throw new Error("OPENAI_API_KEY is not set");
+    if (!anthropicApiKey) {
+      throw new Error("ANTHROPIC_API_KEY is not set");
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -79,10 +79,11 @@ serve(async (req) => {
 
     const imageBuffer = await downloadImage(imageUrl);
     const base64Image = arrayBufferToBase64(imageBuffer);
-    const extracted = await extractReceiptWithGPT4o(base64Image, openaiApiKey);
+    const mediaType = detectMediaType(imageUrl);
+    const extracted = await extractReceiptWithClaude(base64Image, mediaType, anthropicApiKey);
     let normalizedPaymentDate = normalizePaymentDate(extracted.payment_date);
     if (!normalizedPaymentDate) {
-      const fallbackPaymentDate = await extractPaymentDateOnlyWithGPT4o(base64Image, openaiApiKey);
+      const fallbackPaymentDate = await extractPaymentDateOnlyWithClaude(base64Image, mediaType, anthropicApiKey);
       normalizedPaymentDate = normalizePaymentDate(fallbackPaymentDate);
     }
     const normalizedQuantity = normalizeAmount(extracted.quantity);
@@ -187,7 +188,39 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-async function extractReceiptWithGPT4o(base64Image: string, apiKey: string): Promise<ReceiptExtractionResult> {
+function detectMediaType(url: string): string {
+  const lower = url.toLowerCase();
+  if (lower.includes(".png")) return "image/png";
+  if (lower.includes(".jpg") || lower.includes(".jpeg")) return "image/jpeg";
+  if (lower.includes(".gif")) return "image/gif";
+  if (lower.includes(".webp")) return "image/webp";
+  return "image/png";
+}
+
+function parseClaudeJson(content: string): any {
+  try {
+    return JSON.parse(content);
+  } catch (_) {}
+
+  const fenced = content.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    try { return JSON.parse(fenced[1].trim()); } catch (_) {}
+  }
+
+  const first = content.indexOf("{");
+  const last = content.lastIndexOf("}");
+  if (first >= 0 && last > first) {
+    try { return JSON.parse(content.slice(first, last + 1)); } catch (_) {}
+  }
+
+  throw new Error("Failed to parse JSON from Claude response");
+}
+
+async function extractReceiptWithClaude(
+  base64Image: string,
+  mediaType: string,
+  apiKey: string,
+): Promise<ReceiptExtractionResult> {
   const prompt = `영수증 이미지를 보고 아래 필드를 JSON으로 추출하세요.
 
 필드:
@@ -207,41 +240,60 @@ async function extractReceiptWithGPT4o(base64Image: string, apiKey: string): Pro
 - quantity, unit_price, total_amount는 숫자만 (통화기호/쉼표 제거)
 - 값을 못 찾으면 null 허용`;
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: "gpt-4o",
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1024,
+      temperature: 0,
       messages: [
-        {
-          role: "system",
-          content: "You extract structured fields from receipt images. Return JSON only.",
-        },
         {
           role: "user",
           content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: `data:image/png;base64,${base64Image}`, detail: "high" } },
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: mediaType,
+                data: base64Image,
+              },
+            },
+            {
+              type: "text",
+              text: prompt,
+            },
           ],
         },
       ],
-      temperature: 0.1,
-      max_tokens: 800,
-      response_format: { type: "json_object" },
     }),
   });
 
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Claude API error: ${response.status} ${body}`);
+  }
+
   const result = await response.json();
-  if (result.error) throw new Error(`GPT error: ${result.error.message}`);
-  const content = result.choices?.[0]?.message?.content;
-  if (!content) throw new Error("No content in GPT response");
-  return JSON.parse(content);
+  const textContent = (result?.content || [])
+    .filter((b: any) => b?.type === "text")
+    .map((b: any) => b?.text || "")
+    .join("\n")
+    .trim();
+
+  if (!textContent) throw new Error("No content in Claude response");
+  return parseClaudeJson(textContent);
 }
 
-async function extractPaymentDateOnlyWithGPT4o(base64Image: string, apiKey: string): Promise<string | null> {
+async function extractPaymentDateOnlyWithClaude(
+  base64Image: string,
+  mediaType: string,
+  apiKey: string,
+): Promise<string | null> {
   const prompt = `영수증 이미지에서 결제일(payment_date)만 찾아 JSON으로 반환하세요.
 
 반환 형식:
@@ -253,40 +305,52 @@ async function extractPaymentDateOnlyWithGPT4o(base64Image: string, apiKey: stri
 - 날짜+시간(예: 2026/03/04 21:30:21)이면 날짜만 사용한다
 - YY-MM-DD 또는 YY/MM/DD는 20YY-MM-DD로 보정한다`;
 
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: "gpt-4o",
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 256,
+      temperature: 0,
       messages: [
-        {
-          role: "system",
-          content: "You extract only payment date from receipt images. Return JSON only.",
-        },
         {
           role: "user",
           content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: `data:image/png;base64,${base64Image}`, detail: "high" } },
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: mediaType,
+                data: base64Image,
+              },
+            },
+            {
+              type: "text",
+              text: prompt,
+            },
           ],
         },
       ],
-      temperature: 0,
-      max_tokens: 200,
-      response_format: { type: "json_object" },
     }),
   });
 
+  if (!response.ok) return null;
+
   const result = await response.json();
-  if (result.error) return null;
-  const content = result.choices?.[0]?.message?.content;
-  if (!content) return null;
+  const textContent = (result?.content || [])
+    .filter((b: any) => b?.type === "text")
+    .map((b: any) => b?.text || "")
+    .join("\n")
+    .trim();
+
+  if (!textContent) return null;
 
   try {
-    const parsed = JSON.parse(content);
+    const parsed = parseClaudeJson(textContent);
     return typeof parsed?.payment_date === "string" ? parsed.payment_date : null;
   } catch {
     return null;

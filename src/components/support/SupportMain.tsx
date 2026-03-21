@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MessageCircle, Send, Calendar, Search, CheckCircle, Clock, AlertCircle, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Eye, X, Edit2, Trash2, Save, ImagePlus, Loader2, Plus, ListPlus } from 'lucide-react'
-import { supportService, type SupportInquiry, type SupportAttachment, type SupportInquiryMessage, type SupportInquiryPayload } from '@/services/supportService'
+import { supportService, type SupportInquiry, type SupportInquiryType, type SupportAttachment, type SupportInquiryMessage, type SupportInquiryPayload } from '@/services/supportService'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { removePurchaseFromMemory, updatePurchaseInMemory, notifyCacheListeners } from '@/stores/purchaseMemoryStore'
@@ -28,7 +28,43 @@ import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { DateRange } from 'react-day-picker'
 import PurchaseDetailModal from '@/components/purchase/PurchaseDetailModal'
-import ReactSelect from 'react-select'
+import ReactSelect, { type StylesConfig } from 'react-select'
+
+type SupportPurchaseRequest = {
+  id: number
+  purchase_order_number?: string
+  sales_order_number?: string
+  requester_name?: string
+  vendor_name?: string
+  request_date?: string
+  created_at?: string
+  delivery_request_date?: string
+  purchase_request_items?: Array<{
+    id: string | number
+    line_number?: number
+    item_name?: string
+    specification?: string
+    quantity?: number
+    unit_price_value?: number
+    unit_price?: number
+    amount_value?: number
+    remark?: string
+    link?: string
+  }>
+}
+
+type SupportPurchaseItem = {
+  id: string | number
+  line_number?: number
+  item_name?: string
+  specification?: string
+  quantity?: number
+  unit_price_value?: number
+  unit_price?: number
+  amount_value?: number | string
+  remark?: string
+  link?: string
+}
 
 type QuantityChangeRow = {
   id: string
@@ -43,6 +79,25 @@ type QuantityChangePayloadItem = {
   specification?: string | null
   current_quantity?: number | null
   new_quantity: number
+}
+
+type ItemAddRow = {
+  id: string
+  itemName: string
+  specification: string
+  quantity: string
+  unit: string
+  unitPrice: string
+  remark: string
+}
+
+type ItemAddPayloadItem = {
+  item_name: string
+  specification?: string | null
+  quantity: number
+  unit: string
+  unit_price: number
+  remark?: string | null
 }
 
 type PriceChangeType = 'unit_price' | 'amount'
@@ -82,13 +137,14 @@ export default function SupportMain() {
   // 발주요청 선택 관련
   const [showPurchaseSelect, setShowPurchaseSelect] = useState(false)
   const [dateRange, setDateRange] = useState<DateRange | undefined>()
-  const [purchaseRequests, setPurchaseRequests] = useState<any[]>([])
-  const [selectedPurchase, setSelectedPurchase] = useState<any>(null)
+  const [purchaseRequests, setPurchaseRequests] = useState<SupportPurchaseRequest[]>([])
+  const [selectedPurchase, setSelectedPurchase] = useState<SupportPurchaseRequest | null>(null)
   const [searchingPurchase, setSearchingPurchase] = useState(false)
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState<Date | undefined>()
   const [quantityChangeRows, setQuantityChangeRows] = useState<QuantityChangeRow[]>([])
   const [priceChangeRows, setPriceChangeRows] = useState<PriceChangeRow[]>([])
-  const purchaseLinkedInquiryTypes = ['modify', 'delete', 'delivery_date_change', 'quantity_change', 'price_change']
+  const [itemAddRows, setItemAddRows] = useState<ItemAddRow[]>([])
+  const purchaseLinkedInquiryTypes = ['modify', 'delete', 'delivery_date_change', 'quantity_change', 'price_change', 'item_add']
 
   // 직원 선택 관련 (발주번호 조회 시 본인 외 다른 직원 선택 가능)
   const [employeeNames, setEmployeeNames] = useState<string[]>([])
@@ -118,16 +174,16 @@ export default function SupportMain() {
   
   // 모달 관련
   const [showDetailModal, setShowDetailModal] = useState(false)
-  const [selectedInquiryDetail, setSelectedInquiryDetail] = useState<any>(null)
+  const [selectedInquiryDetail, setSelectedInquiryDetail] = useState<(SupportInquiry & { vendor_name?: string; requester_name?: string; request_date?: string; delivery_request_date?: string; notes?: string; purchase_request_items?: SupportPurchaseItem[] }) | null>(null)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
-  const [editingItem, setEditingItem] = useState<any>(null)
+  const [editingItem, setEditingItem] = useState<{ id: string | number; item_name?: string; specification?: string; quantity?: number; unit_price_value?: number; amount_value?: number | string; remark?: string } | null>(null)
 
   // 전체항목 탭 상세모달(PurchaseDetailModal) 재사용
   const [purchaseDetailModalOpen, setPurchaseDetailModalOpen] = useState(false)
   const [purchaseDetailId, setPurchaseDetailId] = useState<number | null>(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
-  const [purchaseToDelete, setPurchaseToDelete] = useState<any>(null)
+  const [purchaseToDelete, setPurchaseToDelete] = useState<{ id: number; purchase_order_number?: string } | null>(null)
   const [purchaseMissingOpen, setPurchaseMissingOpen] = useState(false)
   const [purchaseMissingMessage, setPurchaseMissingMessage] = useState('발주내역이 삭제 되었거나 없습니다.')
 
@@ -314,6 +370,7 @@ export default function SupportMain() {
     setRequestedDeliveryDate(undefined)
     setQuantityChangeRows([])
     setPriceChangeRows([])
+    setItemAddRows([])
     setDeleteType('all')
     setDeleteItemIds([])
   }, [inquiryType])
@@ -357,17 +414,18 @@ export default function SupportMain() {
         return
       }
 
-      const purchase = result.data
+      const purchase = result.data as unknown as SupportPurchaseRequest
       setSelectedPurchase(purchase)
       setPurchaseRequests([purchase])
       setRequestedDeliveryDate(undefined)
       setQuantityChangeRows([])
       setPriceChangeRows([])
+      setItemAddRows([])
 
       if (purchase.requester_name) {
         setSelectedEmployeeName(purchase.requester_name)
       }
-      const purchaseDate = new Date(purchase.request_date || purchase.created_at)
+      const purchaseDate = new Date(purchase.request_date || purchase.created_at || '')
       const from = new Date(purchaseDate)
       from.setMonth(from.getMonth() - 1)
       const to = new Date()
@@ -382,6 +440,7 @@ export default function SupportMain() {
     setRequestedDeliveryDate(undefined)
     setQuantityChangeRows([])
     setPriceChangeRows([])
+    setItemAddRows([])
   }, [selectedPurchase?.id])
 
   useEffect(() => {
@@ -391,7 +450,10 @@ export default function SupportMain() {
     if (inquiryType === 'price_change' && priceChangeRows.length === 0) {
       setPriceChangeRows([{ id: createRowId(), itemId: '', changeType: 'unit_price', newValue: '' }])
     }
-  }, [inquiryType, quantityChangeRows.length, priceChangeRows.length])
+    if (inquiryType === 'item_add' && itemAddRows.length === 0) {
+      setItemAddRows([{ id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '' }])
+    }
+  }, [inquiryType, quantityChangeRows.length, priceChangeRows.length, itemAddRows.length])
 
   useEffect(() => {
     if (!showPurchaseSelect) return
@@ -406,6 +468,7 @@ export default function SupportMain() {
     setRequestedDeliveryDate(undefined)
     setQuantityChangeRows([])
     setPriceChangeRows([])
+    setItemAddRows([])
   }, [selectedEmployeeName])
 
   // 발주요청 검색
@@ -418,8 +481,8 @@ export default function SupportMain() {
     const result = await supportService.getMyPurchaseRequests(startDate, endDate, selectedEmployeeName || undefined)
     
     if (result.success) {
-      let data = result.data
-      if (selectedPurchase && !data.some((p: any) => p.id === selectedPurchase.id)) {
+      let data = result.data as unknown as SupportPurchaseRequest[]
+      if (selectedPurchase && !data.some((p: { id: number }) => p.id === selectedPurchase.id)) {
         data = [selectedPurchase, ...data]
       }
       setPurchaseRequests(data)
@@ -457,8 +520,8 @@ export default function SupportMain() {
     const orderNumber = pr.purchase_order_number || '(승인대기)'
     const vendorName = pr.vendor_name || ''
     const firstItem = pr.purchase_request_items?.[0]?.item_name || '품목 없음'
-    const extraCount = pr.purchase_request_items?.length > 1
-      ? ` 외 ${pr.purchase_request_items.length - 1}건`
+    const extraCount = (pr.purchase_request_items?.length ?? 0) > 1
+      ? ` 외 ${(pr.purchase_request_items?.length ?? 0) - 1}건`
       : ''
     const label = `${orderNumber} · ${vendorName} · ${firstItem}${extraCount}`.trim()
     const searchText = `${orderNumber} ${vendorName} ${pr.requester_name || ''} ${firstItem}`.toLowerCase()
@@ -474,6 +537,7 @@ export default function SupportMain() {
     { value: 'delivery_date_change', label: '입고일 변경 요청' },
     { value: 'quantity_change', label: '수량 변경 요청' },
     { value: 'price_change', label: '단가/합계 금액 변경 요청' },
+    { value: 'item_add', label: '품목 추가 요청' },
     { value: 'bug', label: '오류 신고' },
     { value: 'modify', label: '수정 요청' },
     { value: 'delete', label: '삭제 요청' },
@@ -481,13 +545,13 @@ export default function SupportMain() {
   ]
 
   const selectedPurchaseItems = Array.isArray(selectedPurchase?.purchase_request_items)
-    ? [...selectedPurchase.purchase_request_items].sort((a: any, b: any) => {
+    ? [...selectedPurchase.purchase_request_items].sort((a: { line_number?: number }, b: { line_number?: number }) => {
         const aLine = a.line_number ?? Number.MAX_SAFE_INTEGER
         const bLine = b.line_number ?? Number.MAX_SAFE_INTEGER
         return aLine - bLine
       })
     : []
-  const itemOptions = selectedPurchaseItems.map((item: any) => ({
+  const itemOptions = selectedPurchaseItems.map((item: { id: string | number; item_name?: string; specification?: string; quantity?: number; unit_price_value?: number; amount_value?: number | string; line_number?: number }) => ({
     value: String(item.id),
     label: `${item.line_number ? `${item.line_number}.` : ''} ${item.item_name} (${item.specification || '-'})`.trim()
   }))
@@ -576,7 +640,7 @@ export default function SupportMain() {
   const dateRangeWidthEm = Math.max('발주요청 기간을 선택하세요'.length + 5, 22)
 
   const getCompactSelectStyles = (controlWidthPx?: number, menuWidthPx?: number) => ({
-    control: (base: any) => ({
+    control: (base: Record<string, unknown>) => ({
       ...base,
       minHeight: '28px',
       height: '28px',
@@ -586,24 +650,24 @@ export default function SupportMain() {
       boxShadow: 'none',
       flexWrap: 'nowrap' as const
     }),
-    container: (base: any) => ({
+    container: (base: Record<string, unknown>) => ({
       ...base,
       width: controlWidthPx ? `${controlWidthPx}px` : base.width,
       maxWidth: '100%'
     }),
-    valueContainer: (base: any) => ({
+    valueContainer: (base: Record<string, unknown>) => ({
       ...base,
       padding: '0 8px',
       overflow: 'hidden',
       flexWrap: 'nowrap' as const
     }),
-    input: (base: any) => ({
+    input: (base: Record<string, unknown>) => ({
       ...base,
       margin: 0,
       padding: 0,
       fontSize: '11px'
     }),
-    indicatorsContainer: (base: any) => ({
+    indicatorsContainer: (base: Record<string, unknown>) => ({
       ...base,
       height: '28px',
       flexShrink: 0
@@ -611,20 +675,20 @@ export default function SupportMain() {
     indicatorSeparator: () => ({
       display: 'none'
     }),
-    option: (base: any) => ({
+    option: (base: Record<string, unknown>) => ({
       ...base,
       fontSize: '11px',
       whiteSpace: 'nowrap',
       overflow: 'visible',
       textOverflow: 'clip'
     }),
-    placeholder: (base: any) => ({
+    placeholder: (base: Record<string, unknown>) => ({
       ...base,
       fontSize: '11px',
       color: '#9ca3af',
       whiteSpace: 'nowrap'
     }),
-    singleValue: (base: any) => ({
+    singleValue: (base: Record<string, unknown>) => ({
       ...base,
       fontSize: '11px',
       overflow: 'hidden',
@@ -632,13 +696,13 @@ export default function SupportMain() {
       whiteSpace: 'nowrap',
       maxWidth: 'calc(100% - 8px)'
     }),
-    menu: (base: any) => ({
+    menu: (base: Record<string, unknown>) => ({
       ...base,
       width: menuWidthPx ? `${menuWidthPx}px` : base.width,
       minWidth: menuWidthPx ? `${menuWidthPx}px` : base.minWidth,
       maxWidth: menuWidthPx ? `${menuWidthPx}px` : '90vw'
     }),
-    menuList: (base: any) => ({
+    menuList: (base: Record<string, unknown>) => ({
       ...base,
       width: menuWidthPx ? `${menuWidthPx}px` : base.width,
       minWidth: menuWidthPx ? `${menuWidthPx}px` : base.minWidth,
@@ -657,8 +721,8 @@ export default function SupportMain() {
     if (selectedPurchaseItems.length === 0) return
     const existingItemIds = new Set(quantityChangeRows.map(row => row.itemId))
     const newRows = selectedPurchaseItems
-      .filter((item: any) => !existingItemIds.has(String(item.id)))
-      .map((item: any) => ({
+      .filter((item: { id: string | number }) => !existingItemIds.has(String(item.id)))
+      .map((item: { id: string | number; item_name?: string; specification?: string; quantity?: number; unit_price_value?: number; amount_value?: number | string; line_number?: number }) => ({
         id: createRowId(),
         itemId: String(item.id),
         newQuantity: ''
@@ -696,11 +760,29 @@ export default function SupportMain() {
     setPriceChangeRows(prev => prev.filter(row => row.id !== rowId))
   }
 
+  const addItemAddRow = () => {
+    setItemAddRows(prev => [
+      ...prev,
+      { id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '' }
+    ])
+  }
+
+  const updateItemAddRow = (rowId: string, updates: Partial<ItemAddRow>) => {
+    setItemAddRows(prev =>
+      prev.map(row => row.id === rowId ? { ...row, ...updates } : row)
+    )
+  }
+
+  const removeItemAddRow = (rowId: string) => {
+    setItemAddRows(prev => prev.filter(row => row.id !== rowId))
+  }
+
   // 문의 제출
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!inquiryType || !message) {
+    const messageOptionalTypes = ['quantity_change', 'price_change', 'item_add', 'delivery_date_change']
+    if (!inquiryType || (!message && !messageOptionalTypes.includes(inquiryType))) {
       toast.error('모든 필드를 입력해주세요.')
       return
     }
@@ -762,7 +844,7 @@ export default function SupportMain() {
           return
         }
 
-        const targetItem = selectedPurchaseItems.find((item: any) => String(item.id) === row.itemId)
+        const targetItem = selectedPurchaseItems.find((item) => String(item.id) === row.itemId)
         if (!targetItem) {
           toast.error('선택한 품목을 찾을 수 없습니다.')
           setLoading(false)
@@ -772,7 +854,7 @@ export default function SupportMain() {
         itemsPayload.push({
           item_id: String(targetItem.id),
           line_number: targetItem.line_number ?? null,
-          item_name: targetItem.item_name,
+          item_name: targetItem.item_name || '',
           specification: targetItem.specification ?? null,
           current_quantity: targetItem.quantity ?? null,
           new_quantity: newQuantity
@@ -808,7 +890,7 @@ export default function SupportMain() {
           return
         }
 
-        const targetItem = selectedPurchaseItems.find((item: any) => String(item.id) === row.itemId)
+        const targetItem = selectedPurchaseItems.find((item) => String(item.id) === row.itemId)
         if (!targetItem) {
           toast.error('선택한 품목을 찾을 수 없습니다.')
           setLoading(false)
@@ -826,7 +908,7 @@ export default function SupportMain() {
           itemsPayload.push({
             item_id: String(targetItem.id),
             line_number: targetItem.line_number ?? null,
-            item_name: targetItem.item_name,
+            item_name: targetItem.item_name || '',
             specification: targetItem.specification ?? null,
             change_type: 'amount',
             current_unit_price: currentUnitPrice,
@@ -845,7 +927,7 @@ export default function SupportMain() {
           itemsPayload.push({
             item_id: String(targetItem.id),
             line_number: targetItem.line_number ?? null,
-            item_name: targetItem.item_name,
+            item_name: targetItem.item_name || '',
             specification: targetItem.specification ?? null,
             change_type: 'unit_price',
             current_unit_price: currentUnitPrice,
@@ -864,6 +946,51 @@ export default function SupportMain() {
       inquiryPayload = { items: itemsPayload }
     }
 
+    if (inquiryType === 'item_add') {
+      const activeRows = itemAddRows.filter(row => row.itemName.trim() || row.quantity.trim())
+      if (activeRows.length === 0) {
+        toast.error('추가할 품목을 입력해주세요.')
+        setLoading(false)
+        return
+      }
+
+      const itemsPayload: ItemAddPayloadItem[] = []
+      for (const row of activeRows) {
+        if (!row.itemName.trim()) {
+          toast.error('품목명을 입력해주세요.')
+          setLoading(false)
+          return
+        }
+        const quantity = Number(row.quantity)
+        if (!row.quantity.trim() || !Number.isFinite(quantity) || quantity <= 0) {
+          toast.error('수량을 올바르게 입력해주세요.')
+          setLoading(false)
+          return
+        }
+        const unitPrice = Number(normalizeNumericInput(row.unitPrice))
+        if (!row.unitPrice.trim() || !Number.isFinite(unitPrice) || unitPrice < 0) {
+          toast.error('단가를 올바르게 입력해주세요.')
+          setLoading(false)
+          return
+        }
+
+        itemsPayload.push({
+          item_name: row.itemName.trim(),
+          specification: row.specification.trim() || null,
+          quantity,
+          unit: row.unit.trim() || 'EA',
+          unit_price: unitPrice,
+          remark: row.remark.trim() || null,
+        })
+        const amount = quantity * unitPrice
+        summaryLines.push(
+          `${row.itemName.trim()} (${row.specification.trim() || '-'}) ${quantity}${row.unit || 'EA'} × ${unitPrice.toLocaleString('ko-KR')} = ${amount.toLocaleString('ko-KR')}`
+        )
+      }
+
+      inquiryPayload = { items: itemsPayload }
+    }
+
     if (inquiryType === 'delete') {
       if (deleteType === 'items') {
         if (deleteItemIds.length === 0) {
@@ -872,7 +999,7 @@ export default function SupportMain() {
           return
         }
         const deleteItemsPayload = deleteItemIds.map(itemId => {
-          const targetItem = selectedPurchaseItems.find((item: any) => String(item.id) === itemId)
+          const targetItem = selectedPurchaseItems.find((item) => String(item.id) === itemId)
           return {
             item_id: itemId,
             line_number: targetItem?.line_number ?? null,
@@ -892,7 +1019,7 @@ export default function SupportMain() {
     
     if (selectedPurchase) {
       const items = selectedPurchase.purchase_request_items || [];
-      const itemsText = items.map((item: any, index: number) => 
+      const itemsText = items.map((item, index: number) =>
         `- ${item.line_number ?? index + 1}. ${item.item_name} (${item.specification || '-'}) ${item.quantity}개`
       ).join('\n');
       
@@ -905,17 +1032,20 @@ export default function SupportMain() {
 ${itemsText}`;
     }
 
-    const messageSections = [message.trim()]
+    const messageSections: string[] = []
+    if (message.trim()) {
+      messageSections.push(message.trim())
+    }
     if (summaryLines.length > 0) {
       messageSections.push(`[요청 상세]\n${summaryLines.join('\n')}`)
     }
     if (purchaseInfo) {
       messageSections.push(`[관련 발주 정보]\n${purchaseInfo}`)
     }
-    finalMessage = messageSections.join('\n\n')
+    finalMessage = messageSections.join('\n\n') || subjectText
 
     const result = await supportService.createInquiry({
-      inquiry_type: inquiryType as any,
+      inquiry_type: inquiryType as SupportInquiryType,
       subject: subjectText,
       message: finalMessage,
       purchase_request_id: selectedPurchase?.id,
@@ -946,7 +1076,7 @@ ${itemsText}`;
               .select('name')
               .eq('email', userEmail)
               .maybeSingle()
-            byName = (emp as any)?.name || null
+            byName = (emp as { name?: string } | null)?.name || null
           }
 
           const { error } = await supabase
@@ -1283,9 +1413,10 @@ ${itemsText}`;
   }
 
   // 품목 수정 시작
-  const startEditItem = (item: any) => {
-    setEditingItemId(item.id)
+  const startEditItem = (item: SupportPurchaseItem) => {
+    setEditingItemId(String(item.id))
     setEditingItem({
+      id: item.id,
       item_name: item.item_name,
       specification: item.specification,
       quantity: item.quantity,
@@ -1348,7 +1479,7 @@ ${itemsText}`;
     if (!selectedInquiryDetail?.id) return
     if (!confirm('이 발주요청 전체를 삭제하시겠습니까?\n모든 품목이 함께 삭제됩니다.')) return
 
-    const result = await supportService.deletePurchaseRequest(selectedInquiryDetail.id)
+    const result = await supportService.deletePurchaseRequest(String(selectedInquiryDetail.id))
 
     if (result.success) {
       // 🚀 메모리 캐시에서 즉시 삭제 (실시간 반영)
@@ -1460,6 +1591,7 @@ ${itemsText}`;
       case 'delivery_date_change': return '입고일 변경 요청'
       case 'quantity_change': return '수량 변경 요청'
       case 'price_change': return '단가/합계 금액 변경 요청'
+      case 'item_add': return '품목 추가 요청'
       case 'delete': return '삭제 요청'
       case 'annual_leave': return '연차 문의'
       case 'attendance': return '근태 문의'
@@ -1469,31 +1601,33 @@ ${itemsText}`;
   }
 
   const renderInquiryPayloadSummary = (inquiry: SupportInquiry) => {
-    const payload = inquiry.inquiry_payload as any
+    const payload = inquiry.inquiry_payload as SupportInquiryPayload | null
     if (!payload || typeof payload !== 'object') return null
 
     if (inquiry.inquiry_type === 'delivery_date_change') {
+      const p = payload as { requested_date: string; current_date?: string | null }
       return (
         <div>
           <span className="modal-value text-gray-700">입고일 변경 요청:</span>
           <div className="mt-1 text-gray-600">
-            <div>현재 입고요청일: {payload.current_date || '-'}</div>
-            <div>변경 입고일: {payload.requested_date || '-'}</div>
+            <div>현재 입고요청일: {p.current_date || '-'}</div>
+            <div>변경 입고일: {p.requested_date || '-'}</div>
           </div>
         </div>
       )
     }
 
     if (inquiry.inquiry_type === 'quantity_change') {
-      const items = Array.isArray(payload.items) ? payload.items : []
+      const p = payload as { items: Array<{ item_id: string; line_number?: number | null; item_name: string; specification?: string | null; current_quantity?: number | null; new_quantity: number }> }
+      const items = Array.isArray(p.items) ? p.items : []
       if (items.length === 0) return null
       return (
         <div>
           <span className="modal-value text-gray-700">수량 변경 요청:</span>
           <div className="mt-1 text-gray-600 space-y-1">
-            {items.map((item: any, index: number) => (
+            {items.map((item, index: number) => (
               <div key={`${item.item_id}-${index}`}>
-                {item.line_number ?? '-'}번 {item.item_name} ({item.specification || '-'}) {item.current_quantity ?? '-'} → {item.new_quantity}
+                {item.line_number ?? '-'}번 {item.item_name} ({item.specification || '-'}) {item.current_quantity ?? '-'} &rarr; {item.new_quantity}
               </div>
             ))}
           </div>
@@ -1502,13 +1636,14 @@ ${itemsText}`;
     }
 
     if (inquiry.inquiry_type === 'price_change') {
-      const items = Array.isArray(payload.items) ? payload.items : []
+      const p = payload as { items: Array<{ item_id: string; line_number?: number | null; item_name: string; specification?: string | null; change_type?: 'unit_price' | 'amount'; current_unit_price?: number | null; new_unit_price?: number | null; current_amount?: number | null; new_amount?: number | null }> }
+      const items = Array.isArray(p.items) ? p.items : []
       if (items.length === 0) return null
       return (
         <div>
           <span className="modal-value text-gray-700">단가/합계 금액 변경 요청:</span>
           <div className="mt-1 text-gray-600 space-y-1">
-            {items.map((item: any, index: number) => (
+            {items.map((item, index: number) => (
               <div key={`${item.item_id}-${index}`}>
                 {item.line_number ?? '-'}번 {item.item_name} ({item.specification || '-'}){' '}
                 {item.change_type === 'amount'
@@ -1521,10 +1656,33 @@ ${itemsText}`;
       )
     }
 
+    if (inquiry.inquiry_type === 'item_add') {
+      const p = payload as { items: Array<{ item_name: string; specification?: string | null; quantity: number; unit: string; unit_price: number; remark?: string | null }> }
+      const items = Array.isArray(p.items) ? p.items : []
+      if (items.length === 0) return null
+      return (
+        <div>
+          <span className="modal-value text-gray-700">품목 추가 요청:</span>
+          <div className="mt-1 text-gray-600 space-y-1">
+            {items.map((item, index: number) => {
+              const amount = item.quantity * item.unit_price
+              return (
+                <div key={`item-add-${index}`}>
+                  {item.item_name} ({item.specification || '-'}) {item.quantity}{item.unit} × {item.unit_price.toLocaleString('ko-KR')} = {amount.toLocaleString('ko-KR')}
+                  {item.remark ? ` (${item.remark})` : ''}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )
+    }
+
     if (inquiry.inquiry_type === 'delete') {
-      if (!payload.reason && !payload.delete_type) return null
-      const isItemDelete = payload.delete_type === 'items'
-      const deleteItems = Array.isArray(payload.delete_items) ? payload.delete_items : []
+      const p = payload as { reason?: string; delete_type?: 'all' | 'items'; delete_items?: Array<{ item_id: string; line_number?: number | null; item_name: string; specification?: string | null }> }
+      if (!p.reason && !p.delete_type) return null
+      const isItemDelete = p.delete_type === 'items'
+      const deleteItems = Array.isArray(p.delete_items) ? p.delete_items : []
       return (
         <div>
           <div className="flex items-center gap-2">
@@ -1536,17 +1694,17 @@ ${itemsText}`;
           {isItemDelete && deleteItems.length > 0 && (
             <div className="mt-1 text-gray-600 space-y-0.5">
               <span className="modal-label text-gray-500">삭제 대상 품목:</span>
-              {deleteItems.map((item: any, index: number) => (
+              {deleteItems.map((item, index: number) => (
                 <div key={`${item.item_id}-${index}`} className="pl-2 card-description">
                   {item.line_number ?? '-'}번 {item.item_name} ({item.specification || '-'})
                 </div>
               ))}
             </div>
           )}
-          {payload.reason && (
+          {p.reason && (
             <div className="mt-1">
               <span className="modal-value text-gray-700">삭제 사유:</span>
-              <p className="text-gray-600 mt-0.5 whitespace-pre-wrap">{payload.reason}</p>
+              <p className="text-gray-600 mt-0.5 whitespace-pre-wrap">{p.reason}</p>
             </div>
           )}
         </div>
@@ -1633,11 +1791,11 @@ ${itemsText}`;
                       <label className="modal-label text-gray-600 mb-2 block">직원 선택</label>
                       <ReactSelect
                         value={employeeNameOptions.find(o => o.value === selectedEmployeeName) || null}
-                        onChange={(option) => setSelectedEmployeeName((option as any)?.value || '')}
+                        onChange={(option) => setSelectedEmployeeName((option as { value?: string } | null)?.value || '')}
                         options={employeeNameOptions}
                         placeholder="직원 선택"
                         isSearchable
-                        styles={getCompactSelectStyles(180, 200)}
+                        styles={getCompactSelectStyles(180, 200) as StylesConfig<{ value: string; label: string }, false>}
                         menuPortalTarget={document.body}
                       />
                     </div>
@@ -1665,7 +1823,7 @@ ${itemsText}`;
                       </div>
                       <ReactSelect
                         value={purchaseOptions.find(option => option.value === String(selectedPurchase?.id)) || null}
-                        onChange={(option) => setSelectedPurchase((option as any)?.data || null)}
+                        onChange={(option) => setSelectedPurchase((option as { data?: typeof selectedPurchase } | null)?.data || null)}
                         options={purchaseOptions}
                         placeholder="발주번호 선택/검색"
                         isSearchable
@@ -1674,10 +1832,10 @@ ${itemsText}`;
                         filterOption={(option, inputValue) => {
                           const keyword = inputValue.toLowerCase()
                           const label = option.label.toLowerCase()
-                          const searchText = option.data?.searchText || ''
+                          const searchText = (option.data as { searchText?: string })?.searchText || ''
                           return label.includes(keyword) || searchText.includes(keyword)
                         }}
-                        styles={getCompactSelectStyles(purchaseControlWidthPx, purchaseMenuWidthPx)}
+                        styles={getCompactSelectStyles(purchaseControlWidthPx, purchaseMenuWidthPx) as StylesConfig<{ value: string; label: string; [key: string]: unknown }, false>}
                       />
                       {!searchingPurchase && purchaseRequests.length === 0 && (
                         <div className="card-description text-gray-500">
@@ -1692,13 +1850,13 @@ ${itemsText}`;
                             <span className="card-subtitle">{selectedPurchase.vendor_name}</span>
                             <span className="card-date">
                               {(selectedPurchase.request_date || selectedPurchase.created_at) &&
-                                format(new Date(selectedPurchase.request_date || selectedPurchase.created_at), 'MM/dd')}
+                                format(new Date((selectedPurchase.request_date || selectedPurchase.created_at)!), 'MM/dd')}
                             </span>
                           </div>
                           {selectedPurchaseItems.length > 0 && (
                             <div className="mt-2 space-y-1">
                               <div className="modal-label text-gray-600">품목 상세</div>
-                              {selectedPurchaseItems.map((item: any, index: number) => (
+                              {selectedPurchaseItems.map((item, index: number) => (
                                 <div key={item.id || index} className="flex items-center gap-2 pl-2">
                                   <span className="card-description text-gray-400">{item.line_number ?? index + 1}.</span>
                                   <span className="card-description">{item.item_name}</span>
@@ -1758,14 +1916,14 @@ ${itemsText}`;
 
                     <div className="space-y-2">
                       {quantityChangeRows.map((row) => {
-                        const selectedItem = selectedPurchaseItems.find((item: any) => String(item.id) === row.itemId)
+                        const selectedItem = selectedPurchaseItems.find((item) => String(item.id) === row.itemId)
 
                         return (
                           <div key={row.id} className="flex flex-col sm:flex-row sm:items-center gap-2">
                             <div className="flex-1">
                               <ReactSelect
                                 value={itemOptions.find(option => option.value === row.itemId) || null}
-                                onChange={(option) => updateQuantityRow(row.id, { itemId: (option as any)?.value || '' })}
+                                onChange={(option) => updateQuantityRow(row.id, { itemId: (option as { value?: string } | null)?.value || '' })}
                                 options={itemOptions}
                                 placeholder="품목 선택/검색"
                                 isSearchable
@@ -1774,7 +1932,7 @@ ${itemsText}`;
                                 filterOption={(option, inputValue) =>
                                   option.label.toLowerCase().includes(inputValue.toLowerCase())
                                 }
-                                styles={getCompactSelectStyles(itemControlWidthPx, itemMenuWidthPx)}
+                                styles={getCompactSelectStyles(itemControlWidthPx, itemMenuWidthPx) as StylesConfig<{ value: string; label: string }, false>}
                               />
                             </div>
                             <div className="badge-text text-gray-600 sm:w-24 text-right">
@@ -1831,7 +1989,7 @@ ${itemsText}`;
 
                     <div className="space-y-2">
                       {priceChangeRows.map((row) => {
-                        const selectedItem = selectedPurchaseItems.find((item: any) => String(item.id) === row.itemId)
+                        const selectedItem = selectedPurchaseItems.find((item) => String(item.id) === row.itemId)
                         const currentUnitPrice = Number(selectedItem?.unit_price_value ?? selectedItem?.unit_price ?? 0)
                         const currentAmount = Number(selectedItem?.amount_value ?? (currentUnitPrice * (selectedItem?.quantity ?? 0)))
                         const currentUnitPriceLabel = selectedItem ? currentUnitPrice.toLocaleString('ko-KR') : '-'
@@ -1845,7 +2003,7 @@ ${itemsText}`;
                             <div className="flex-1">
                               <ReactSelect
                                 value={itemOptions.find(option => option.value === row.itemId) || null}
-                                onChange={(option) => updatePriceRow(row.id, { itemId: (option as any)?.value || '' })}
+                                onChange={(option) => updatePriceRow(row.id, { itemId: (option as { value?: string } | null)?.value || '' })}
                                 options={itemOptions}
                                 placeholder="품목 선택/검색"
                                 isSearchable
@@ -1854,7 +2012,7 @@ ${itemsText}`;
                                 filterOption={(option, inputValue) =>
                                   option.label.toLowerCase().includes(inputValue.toLowerCase())
                                 }
-                                styles={getCompactSelectStyles(itemControlWidthPx, itemMenuWidthPx)}
+                                styles={getCompactSelectStyles(itemControlWidthPx, itemMenuWidthPx) as StylesConfig<{ value: string; label: string }, false>}
                               />
                             </div>
                             <div className="flex items-center gap-2">
@@ -1920,6 +2078,99 @@ ${itemsText}`;
                   </div>
                 )}
 
+                {inquiryType === 'item_add' && (
+                  <div className="space-y-3 p-4 bg-gray-50 business-radius-card border border-gray-200">
+                    <div className="modal-section-title text-gray-900">품목 추가 요청</div>
+
+                    <div className="space-y-2">
+                      {itemAddRows.map((row) => (
+                        <div key={row.id} className="flex flex-col lg:flex-row lg:items-center gap-2">
+                          <div className="flex-[2] min-w-0">
+                            <Input
+                              type="text"
+                              value={row.itemName}
+                              onChange={(e) => updateItemAddRow(row.id, { itemName: e.target.value })}
+                              placeholder="품목명 *"
+                              className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                              disabled={!selectedPurchase}
+                            />
+                          </div>
+                          <div className="flex-[2] min-w-0">
+                            <Input
+                              type="text"
+                              value={row.specification}
+                              onChange={(e) => updateItemAddRow(row.id, { specification: e.target.value })}
+                              placeholder="규격"
+                              className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                              disabled={!selectedPurchase}
+                            />
+                          </div>
+                          <div className="flex-[1] min-w-0">
+                            <Input
+                              type="number"
+                              value={row.quantity}
+                              onChange={(e) => updateItemAddRow(row.id, { quantity: e.target.value })}
+                              placeholder="수량 *"
+                              className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                              min={1}
+                              disabled={!selectedPurchase}
+                            />
+                          </div>
+                          <div className="flex-[1] min-w-0">
+                            <Input
+                              type="text"
+                              value={row.unit}
+                              onChange={(e) => updateItemAddRow(row.id, { unit: e.target.value })}
+                              placeholder="단위"
+                              className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                              disabled={!selectedPurchase}
+                            />
+                          </div>
+                          <div className="flex-[1.5] min-w-0">
+                            <Input
+                              type="text"
+                              inputMode="numeric"
+                              value={formatNumericInput(row.unitPrice)}
+                              onChange={(e) => updateItemAddRow(row.id, { unitPrice: normalizeNumericInput(e.target.value) })}
+                              placeholder="단가 *"
+                              className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                              disabled={!selectedPurchase}
+                            />
+                          </div>
+                          <div className="flex-[1.5] min-w-0">
+                            <Input
+                              type="text"
+                              value={row.remark}
+                              onChange={(e) => updateItemAddRow(row.id, { remark: e.target.value })}
+                              placeholder="비고"
+                              className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                              disabled={!selectedPurchase}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeItemAddRow(row.id)}
+                            className="button-action-danger shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 mr-1" />
+                            삭제
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={addItemAddRow}
+                      className="button-action-secondary"
+                      disabled={!selectedPurchase}
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1" />
+                      품목 추가
+                    </button>
+                  </div>
+                )}
+
                 {inquiryType === 'delete' && selectedPurchase && (
                   <div className="space-y-3 p-4 bg-gray-50 business-radius-card border border-gray-200">
                     <div className="modal-section-title text-gray-900">삭제 유형 선택</div>
@@ -1954,7 +2205,7 @@ ${itemsText}`;
                               if (deleteItemIds.length === selectedPurchaseItems.length) {
                                 setDeleteItemIds([])
                               } else {
-                                setDeleteItemIds(selectedPurchaseItems.map((item: any) => String(item.id)))
+                                setDeleteItemIds(selectedPurchaseItems.map((item) => String(item.id)))
                               }
                             }}
                             className="button-base border border-gray-300 bg-white text-gray-600"
@@ -1965,7 +2216,7 @@ ${itemsText}`;
                             <span className="badge-text text-red-600">{deleteItemIds.length}개 선택됨</span>
                           )}
                         </div>
-                        {selectedPurchaseItems.map((item: any, index: number) => {
+                        {selectedPurchaseItems.map((item, index: number) => {
                           const itemId = String(item.id)
                           const isChecked = deleteItemIds.includes(itemId)
                           return (
@@ -2159,23 +2410,23 @@ ${itemsText}`;
                               {getInquiryTypeLabel(inquiry.inquiry_type)}
                             </span>
                             <span className="flex-shrink-0">{getStatusBadge(inquiry.status)}</span>
-                            {inquiry.purchase_order_number ? (
-                              <button
-                                type="button"
-                                className="card-title truncate flex-1 min-w-0 text-blue-600 hover:underline text-left"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  openPurchaseDetailFromInquiry(inquiry)
-                                }}
-                                title="발주 상세 열기"
-                              >
-                                {inquiry.purchase_order_number}
-                              </button>
-                            ) : (
-                              <span className="card-title truncate flex-1 min-w-0">
-                                {inquiry.subject}
-                              </span>
-                            )}
+                            <span className="card-title truncate flex-1 min-w-0">
+                              {inquiry.purchase_order_number ? (
+                                <button
+                                  type="button"
+                                  className="text-blue-600 hover:underline"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    openPurchaseDetailFromInquiry(inquiry)
+                                  }}
+                                  title="발주 상세 열기"
+                                >
+                                  {inquiry.purchase_order_number}
+                                </button>
+                              ) : (
+                                inquiry.subject
+                              )}
+                            </span>
                             {isAdmin && (
                               <span className="badge-text text-gray-500 whitespace-nowrap flex-shrink-0">
                                 {inquiry.user_name || inquiry.user_email}
@@ -2476,7 +2727,7 @@ ${itemsText}`;
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-200">
-                      {selectedInquiryDetail.purchase_request_items?.map((item: any, index: number) => (
+                      {selectedInquiryDetail.purchase_request_items?.map((item, index: number) => (
                         <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-3 py-3 text-center modal-value text-gray-600">
                             {item.line_number || index + 1}
@@ -2485,7 +2736,7 @@ ${itemsText}`;
                             {editingItemId === item.id ? (
                               <Input
                                 value={editingItem?.item_name || ''}
-                                onChange={(e) => setEditingItem({...editingItem, item_name: e.target.value})}
+                                onChange={(e) => setEditingItem(editingItem ? {...editingItem, item_name: e.target.value} : null)}
                                 className="business-radius-input h-7 text-[11px] w-full"
                                 autoFocus
                               />
@@ -2497,7 +2748,7 @@ ${itemsText}`;
                             {editingItemId === item.id ? (
                               <Input
                                 value={editingItem?.specification || ''}
-                                onChange={(e) => setEditingItem({...editingItem, specification: e.target.value})}
+                                onChange={(e) => setEditingItem(editingItem ? {...editingItem, specification: e.target.value} : null)}
                                 className="business-radius-input h-7 text-[11px] w-full"
                               />
                             ) : (
@@ -2509,7 +2760,7 @@ ${itemsText}`;
                               <Input
                                 type="number"
                                 value={editingItem?.quantity || ''}
-                                onChange={(e) => setEditingItem({...editingItem, quantity: parseInt(e.target.value)})}
+                                onChange={(e) => setEditingItem(editingItem ? {...editingItem, quantity: parseInt(e.target.value)} : null)}
                                 className="business-radius-input h-7 text-[11px] text-center w-full"
                               />
                             ) : (
@@ -2521,12 +2772,12 @@ ${itemsText}`;
                               <Input
                                 type="number"
                                 value={editingItem?.unit_price_value || ''}
-                                onChange={(e) => setEditingItem({...editingItem, unit_price_value: parseInt(e.target.value)})}
+                                onChange={(e) => setEditingItem(editingItem ? {...editingItem, unit_price_value: parseInt(e.target.value)} : null)}
                                 className="business-radius-input h-7 text-[11px] text-right w-full"
                               />
                             ) : (
                               <span className="modal-value">
-                                {item.unit_price_value ? `${parseFloat(item.unit_price_value).toLocaleString()}` : '-'}
+                                {item.unit_price_value ? `${parseFloat(String(item.unit_price_value)).toLocaleString()}` : '-'}
                               </span>
                             )}
                           </td>
@@ -2537,7 +2788,7 @@ ${itemsText}`;
                               </span>
                             ) : (
                               <span className="font-semibold text-blue-600">
-                                {item.amount_value ? `${parseFloat(item.amount_value).toLocaleString()}` : '-'}
+                                {item.amount_value ? `${parseFloat(String(item.amount_value)).toLocaleString()}` : '-'}
                               </span>
                             )}
                           </td>
@@ -2545,7 +2796,7 @@ ${itemsText}`;
                             {editingItemId === item.id ? (
                               <Textarea
                                 value={editingItem?.remark || ''}
-                                onChange={(e) => setEditingItem({...editingItem, remark: e.target.value})}
+                                onChange={(e) => setEditingItem(editingItem ? {...editingItem, remark: e.target.value} : null)}
                                 className="business-radius-input h-7 text-[11px] w-full resize-none"
                                 rows={1}
                               />
@@ -2572,7 +2823,7 @@ ${itemsText}`;
                               {editingItemId === item.id ? (
                                 <div className="flex justify-center gap-1">
                                   <Button
-                                    onClick={() => saveEditItem(item.id)}
+                                    onClick={() => saveEditItem(String(item.id))}
                                       className="button-action-success"
                                   >
                                     <Save className="w-4 h-4 mr-1" />
@@ -2594,7 +2845,7 @@ ${itemsText}`;
                                     <Edit2 className="w-4 h-4 text-blue-600" />
                                   </Button>
                                   <Button
-                                    onClick={() => deleteItem(item.id)}
+                                    onClick={() => deleteItem(String(item.id))}
                                       className="button-action-danger"
                                   >
                                     <Trash2 className="w-4 h-4 text-red-600" />
@@ -2613,7 +2864,7 @@ ${itemsText}`;
                         </td>
                         <td className="modal-value text-right px-3 py-3 text-blue-600">
                           {selectedInquiryDetail.purchase_request_items
-                            ?.reduce((sum: number, item: any) => sum + (parseFloat(item.amount_value) || 0), 0)
+                            ?.reduce((sum: number, item: { amount_value?: number | string }) => sum + (parseFloat(String(item.amount_value)) || 0), 0)
                             .toLocaleString()}
                         </td>
                         <td colSpan={isAdmin ? 3 : 2} className="px-3 py-3"></td>
@@ -2648,7 +2899,7 @@ ${itemsText}`;
         currentUserRoles={currentUserRoles}
         activeTab="done"
         onDelete={(purchase) => {
-          setPurchaseToDelete(purchase)
+          setPurchaseToDelete({ id: Number(purchase.id), purchase_order_number: purchase.purchase_order_number })
           setDeleteConfirmOpen(true)
         }}
       />

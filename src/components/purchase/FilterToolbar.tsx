@@ -637,8 +637,8 @@ export default function FilterToolbar({
                   <div className="text-xs font-medium text-gray-600 mb-2">날짜 범위 선택</div>
                   <CalendarComponent
                     mode="range"
-                    selected={tempDateRange as any}
-                    onSelect={(range: any) => {
+                    selected={tempDateRange as import('react-day-picker').DateRange}
+                    onSelect={(range: import('react-day-picker').DateRange | undefined) => {
                       if (range) {
                         setTempDateRange(range);
                       }

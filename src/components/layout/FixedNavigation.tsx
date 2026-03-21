@@ -19,12 +19,6 @@ import { supportService } from '@/services/supportService'
 import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
 import { countPendingApprovalsForSidebarBadge } from '@/utils/purchaseFilters'
 import { useAuth } from '@/contexts/AuthContext'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 
 interface NavigationProps {
   role?: string | string[]
@@ -39,6 +33,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
   const pathname = location.pathname
   const { allPurchases } = usePurchaseMemory()
   const { employee } = useAuth()
+  const [isExpanded, setIsExpanded] = useState(false)
 
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
   const [pendingStatementCount, setPendingStatementCount] = useState(0)
@@ -75,7 +70,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
     if (isAdmin) return
 
     const supabase = createClient()
-    let subscription: any
+    let subscription: { unsubscribe: () => void } | null = null
     let cancelled = false
     let currentUserId = ''
 
@@ -130,7 +125,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
     if (!canSeeStatementBadge) return
     const supabase = createClient()
     let cancelled = false
-    let subscription: any
+    let subscription: ReturnType<ReturnType<typeof createClient>['channel']> | null = null
 
     const loadPendingStatements = async () => {
       const { count } = await supabase
@@ -306,9 +301,24 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
         />
       )}
       
-      <TooltipProvider delayDuration={0}>
-        {/* 데스크톱 네비게이션 - 절대 고정 */}
-        <aside className="hidden lg:block" style={{ position: 'fixed', left: 0, top: '56px', width: '56px', height: 'calc(100vh - 56px)', backgroundColor: 'white', borderRight: '1px solid #e5e7eb', zIndex: 30 }}>
+        {/* 데스크톱 네비게이션 - hover 시 확장 */}
+        <aside
+          className="hidden lg:block"
+          style={{
+            position: 'fixed',
+            left: 0,
+            top: '56px',
+            width: isExpanded ? '200px' : '56px',
+            height: 'calc(100vh - 56px)',
+            backgroundColor: 'white',
+            borderRight: '1px solid #e5e7eb',
+            zIndex: 30,
+            transition: 'width 0.2s ease',
+            overflow: 'hidden',
+          }}
+          onMouseEnter={() => setIsExpanded(true)}
+          onMouseLeave={() => setIsExpanded(false)}
+        >
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             {/* 메뉴 아이템들 */}
             <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -316,98 +326,129 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
                 {filteredMenuItems.map((item) => {
                   const Icon = item.icon
                   const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
-                  
+
                   return (
                     <li key={item.href}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Link
-                            to={item.href}
-                            className={cn(
-                              'flex items-center justify-center w-10 h-10 rounded-lg transition-colors',
-                              isActive
-                                ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
-                                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                      <Link
+                        to={item.href}
+                        className={cn(
+                          'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap',
+                          isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
+                          isActive
+                            ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
+                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                        )}
+                      >
+                        <div className="relative flex-shrink-0">
+                          <Icon className="w-4 h-4" />
+                          {!isExpanded && item.href === '/purchase/list' && purchasePendingBadge > 0 && (
+                            <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                              {purchasePendingBadge > 99 ? '99+' : purchasePendingBadge}
+                            </span>
+                          )}
+                          {!isExpanded && item.href === '/transaction-statement' && canSeeStatementBadge && statementBadge > 0 && (
+                            <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                              {statementBadge > 99 ? '99+' : statementBadge}
+                            </span>
+                          )}
+                        </div>
+                        {isExpanded && (
+                          <>
+                            <span className="text-sm font-medium flex-1">{item.label}</span>
+                            {item.href === '/purchase/list' && purchasePendingBadge > 0 && (
+                              <span className={cn(
+                                "text-[11px] font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center",
+                                isActive ? "bg-hansl-200 text-hansl-700" : "bg-red-100 text-red-700"
+                              )}>
+                                {purchasePendingBadge > 99 ? '99+' : purchasePendingBadge}
+                              </span>
                             )}
-                          >
-                            <div className="relative">
-                              <Icon className="w-4 h-4" />
-                              {item.href === '/purchase/list' && purchasePendingBadge > 0 && (
-                                <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
-                                  {purchasePendingBadge > 99 ? '99+' : purchasePendingBadge}
-                                </span>
-                              )}
-                              {item.href === '/transaction-statement' && canSeeStatementBadge && statementBadge > 0 && (
-                                <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
-                                  {statementBadge > 99 ? '99+' : statementBadge}
-                                </span>
-                              )}
-                            </div>
-                          </Link>
-                        </TooltipTrigger>
-                        <TooltipContent side="right" className="ml-2 bg-white border border-gray-200 text-gray-900 shadow-md">
-                          <p className="modal-subtitle">{item.label}</p>
-                        </TooltipContent>
-                      </Tooltip>
+                            {item.href === '/transaction-statement' && canSeeStatementBadge && statementBadge > 0 && (
+                              <span className={cn(
+                                "text-[11px] font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center",
+                                isActive ? "bg-hansl-200 text-hansl-700" : "bg-red-100 text-red-700"
+                              )}>
+                                {statementBadge > 99 ? '99+' : statementBadge}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </Link>
                     </li>
                   )
                 })}
               </ul>
             </div>
-            
+
             {/* 신청서 관리 / 문의하기 버튼 - 하단 고정 */}
             <div className="p-2 border-t border-gray-200 space-y-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Link
-                    to="/application"
-                    className={cn(
-                      'flex items-center justify-center w-10 h-10 rounded-lg transition-colors',
-                      pathname === '/application' || pathname.startsWith('/application/')
-                        ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
-                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+              <Link
+                to="/application"
+                className={cn(
+                  'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap',
+                  isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
+                  pathname === '/application' || pathname.startsWith('/application/')
+                    ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
+                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                )}
+              >
+                <div className="relative flex-shrink-0">
+                  <FileEdit className="w-4 h-4" />
+                  {!isExpanded && isApplicationApprover && pendingApplicationCount > 0 && (
+                    <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                      {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
+                    </span>
+                  )}
+                </div>
+                {isExpanded && (
+                  <>
+                    <span className="text-sm font-medium flex-1">신청서 관리</span>
+                    {isApplicationApprover && pendingApplicationCount > 0 && (
+                      <span className={cn(
+                        "text-[11px] font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center",
+                        pathname === '/application' || pathname.startsWith('/application/')
+                          ? "bg-hansl-200 text-hansl-700" : "bg-red-100 text-red-700"
+                      )}>
+                        {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
+                      </span>
                     )}
-                  >
-                    <div className="relative">
-                      <FileEdit className="w-4 h-4" />
-                      {isApplicationApprover && pendingApplicationCount > 0 && (
-                        <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
-                          {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
-                        </span>
-                      )}
-                    </div>
-                  </Link>
-                </TooltipTrigger>
-                <TooltipContent side="right" className="ml-2 bg-white border border-gray-200 text-gray-900 shadow-md">
-                  <p className="modal-subtitle">신청서 관리</p>
-                </TooltipContent>
-              </Tooltip>
+                  </>
+                )}
+              </Link>
               <div className="border-t border-gray-200 my-1" />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Link
-                    to="/support"
-                    className={cn(
-                      'flex items-center justify-center w-10 h-10 rounded-lg transition-colors',
-                      pathname === '/support'
-                        ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
-                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+              <Link
+                to="/support"
+                className={cn(
+                  'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap',
+                  isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
+                  pathname === '/support'
+                    ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
+                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                )}
+              >
+                <div className="relative flex-shrink-0">
+                  <MessageCircle className="w-4 h-4" />
+                  {!isExpanded && supportBadge > 0 && (
+                    <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                      {supportBadge > 99 ? '99+' : supportBadge}
+                    </span>
+                  )}
+                </div>
+                {isExpanded && (
+                  <>
+                    <span className="text-sm font-medium flex-1">문의하기</span>
+                    {supportBadge > 0 && (
+                      <span className={cn(
+                        "text-[11px] font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center",
+                        pathname === '/support'
+                          ? "bg-hansl-200 text-hansl-700" : "bg-red-100 text-red-700"
+                      )}>
+                        {supportBadge > 99 ? '99+' : supportBadge}
+                      </span>
                     )}
-                  >
-                    <div className="relative">
-                    <MessageCircle className="w-4 h-4" />
-                      {supportBadge > 0 && (
-                        <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
-                          {supportBadge > 99 ? '99+' : supportBadge}
-                        </span>
-                      )}
-                    </div>
-                  </Link>
-                </TooltipTrigger>
-                <TooltipContent side="right" className="ml-2 bg-white border border-gray-200 text-gray-900 shadow-md">
-                  <p className="modal-subtitle">문의하기</p>
-                </TooltipContent>
-              </Tooltip>
+                  </>
+                )}
+              </Link>
             </div>
           </div>
         </aside>
@@ -501,7 +542,6 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
             </Link>
           </div>
         </nav>
-      </TooltipProvider>
     </>
   )
 }

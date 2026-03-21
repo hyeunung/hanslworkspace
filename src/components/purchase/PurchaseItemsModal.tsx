@@ -211,7 +211,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
   };
 
   // 품목 값 변경
-  const handleItemChange = (index: number, field: keyof PurchaseItem, value: any) => {
+  const handleItemChange = (index: number, field: keyof PurchaseItem, value: string | number | boolean | null) => {
     const newItems = [...editingItems];
     newItems[index] = {
       ...newItems[index],
@@ -361,14 +361,14 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
     ];
 
     const widths = columnDefs.map((col, index) => {
-      const values = data.map((item: any, rowIndex: number) => {
+      const values = data.map((item: PurchaseItem, rowIndex: number) => {
         if (col.accessor) {
           return col.accessor(item, rowIndex) ?? '';
         }
         return '';
       });
       const headerLength = col.header ? col.header.length : 0;
-      const maxLen = Math.max(headerLength, ...values.map((value: any) => (value ? String(value).length : 0)));
+      const maxLen = Math.max(headerLength, ...values.map((value: string | number) => (value ? String(value).length : 0)));
       const computed = maxLen * 8 + 32;
       const limited = col.max ? Math.min(col.max, computed) : computed;
       return Math.max(col.base, limited);
@@ -400,7 +400,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
     return Math.max(total, 960);
   }, [items, baseItems, activeTab, isEditing]);
 
-  const totalAmount = items.reduce((sum: number, item: any) => sum + (item.amount_value || 0), 0);
+  const totalAmount = items.reduce((sum: number, item: PurchaseItem) => sum + (item.amount_value || 0), 0);
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -522,7 +522,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                 </tr>
               </thead>
               <tbody>
-              {(isEditing ? editingItems : items).map((item: any, index: number) => (
+              {(isEditing ? editingItems : items).map((item: PurchaseItem, index: number) => (
                   <tr key={item.id || index} className="border-b last:border-b-0">
                     <td className="py-2 text-center align-top modal-value">{item.line_number || index + 1}</td>
                     <td className="px-3 py-2 align-top min-w-[140px]">
@@ -657,10 +657,10 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                                 }
 
                                 // 🔧 모든 품목이 구매완료되었는지 확인하여 헤더도 업데이트
-                                const updatedItems = items.map((i: any) => 
+                                const updatedItems = items.map((i: PurchaseItem) =>
                                   i.id === item.id ? { ...i, is_payment_completed: true } : i
                                 );
-                                const allItemsCompleted = updatedItems.every((i: any) => i.is_payment_completed === true);
+                                const allItemsCompleted = updatedItems.every((i: PurchaseItem) => i.is_payment_completed === true);
                                 if (allItemsCompleted && purchase?.id) {
                                   await supabase
                                     .from('purchase_requests')
@@ -764,7 +764,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                     <td className="px-3 py-2 text-center align-top min-w-[130px]">
                       {actualReceivedAction.getCompletedDate(item) ? (
                         <span className="modal-subtitle text-green-600">
-                          {format(new Date(actualReceivedAction.getCompletedDate(item)), 'yyyy-MM-dd HH:mm')}
+                          {format(new Date(actualReceivedAction.getCompletedDate(item)!), 'yyyy-MM-dd HH:mm')}
                         </span>
                       ) : (
                         <span className="modal-subtitle">-</span>
@@ -828,7 +828,7 @@ export default function PurchaseItemsModal({ isOpen, onClose, purchase, isAdmin,
                       <td className="px-3 py-2 text-center align-top min-w-[130px]">
                         {statementReceivedAction.getCompletedDate(item) ? (
                           <span className="modal-subtitle">
-                            {format(new Date(statementReceivedAction.getCompletedDate(item)), 'yyyy-MM-dd')}
+                            {format(new Date(statementReceivedAction.getCompletedDate(item)!), 'yyyy-MM-dd')}
                           </span>
                         ) : (
                           <span className="modal-subtitle">-</span>

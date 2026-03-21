@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Employee, EmployeeFilters as EmployeeFiltersType } from '@/types/purchase'
 import { employeeService } from '@/services/employeeService'
 import EmployeeFilters from '@/components/employee/EmployeeFilters'
@@ -15,25 +15,23 @@ export default function EmployeeMain() {
   const canManageEmployees = currentUserRoles.includes('app_admin') || currentUserRoles.includes('hr')
 
   const [employees, setEmployees] = useState<Employee[]>([])
-  const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState<EmployeeFiltersType>({})
   const [createRequestToken, setCreateRequestToken] = useState(0)
-  
+
   // 출근현황표 모달 상태
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false)
   // 연차사용현황 모달 상태
   const [isAnnualLeaveUsageModalOpen, setIsAnnualLeaveUsageModalOpen] = useState(false)
 
-  // 직원 목록 로드
+  // 직원 목록 로드 (전체 데이터 1회 로드)
   const loadEmployees = async () => {
     setLoading(true)
     try {
-      const result = await employeeService.getEmployees(filters)
-      
+      const result = await employeeService.getEmployees()
+
       if (result.success && result.data) {
         setEmployees(result.data)
-        setFilteredEmployees(result.data)
       } else {
         toast.error(result.error || '직원 목록을 불러오는데 실패했습니다.')
       }
@@ -49,10 +47,61 @@ export default function EmployeeMain() {
     loadEmployees()
   }, [])
 
-  // 필터 변경 시 직원 목록 다시 로드
-  useEffect(() => {
-    loadEmployees()
-  }, [filters])
+  // 클라이언트 사이드 필터링 (실시간 검색)
+  const filteredEmployees = useMemo(() => {
+    let result = employees
+
+    // 텍스트 검색 (모든 컬럼)
+    if (filters.search) {
+      const keyword = filters.search.toLowerCase()
+      result = result.filter((emp) => {
+        const fields = [
+          emp.name,
+          emp.email,
+          emp.phone,
+          emp.position,
+          emp.department,
+          emp.employeeID,
+          emp.employee_number,
+          emp.personal_email,
+          emp.bank_account,
+          emp.adress,
+          emp.join_date,
+          emp.birthday,
+        ]
+        return fields.some((f) => f && String(f).toLowerCase().includes(keyword))
+      })
+    }
+
+    // 부서 필터
+    if (filters.department) {
+      result = result.filter((emp) => emp.department === filters.department)
+    }
+
+    // 직급 필터
+    if (filters.position) {
+      result = result.filter((emp) => emp.position === filters.position)
+    }
+
+    // 권한 필터
+    if (filters.purchase_role === 'none') {
+      result = result.filter((emp) => !emp.purchase_role || (Array.isArray(emp.purchase_role) && emp.purchase_role.length === 0))
+    } else if (filters.purchase_role) {
+      const role = filters.purchase_role
+      result = result.filter((emp) => {
+        if (Array.isArray(emp.purchase_role)) return emp.purchase_role.includes(role)
+        if (typeof emp.purchase_role === 'string') return emp.purchase_role === role
+        return false
+      })
+    }
+
+    // 활성 상태 필터
+    if (filters.is_active !== undefined) {
+      result = result.filter((emp) => emp.is_active === filters.is_active)
+    }
+
+    return result
+  }, [employees, filters])
 
   const handleCreateNew = () => {
     if (!canManageEmployees) {

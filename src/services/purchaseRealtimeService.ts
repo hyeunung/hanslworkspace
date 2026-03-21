@@ -17,7 +17,7 @@ import {
   notifyCacheListeners,
   invalidatePurchaseMemoryCache
 } from '@/stores/purchaseMemoryStore'
-import type { Purchase } from '@/types/purchase'
+import type { Purchase, PurchaseRequestItem } from '@/types/purchase'
 import { logger } from '@/lib/logger'
 
 // 구독자 콜백 타입
@@ -122,7 +122,7 @@ class PurchaseRealtimeService {
           schema: 'public',
           table: 'purchase_requests'
         },
-        (payload: RealtimePostgresChangesPayload<any>) => {
+        (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
           this.handlePurchaseRequestChange(payload)
         }
       )
@@ -133,7 +133,7 @@ class PurchaseRealtimeService {
           schema: 'public',
           table: 'purchase_request_items'
         },
-        (payload: RealtimePostgresChangesPayload<any>) => {
+        (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => {
           this.handlePurchaseItemChange(payload)
         }
       )
@@ -221,10 +221,10 @@ class PurchaseRealtimeService {
   /**
    * purchase_requests 테이블 변경 처리
    */
-  private handlePurchaseRequestChange(payload: RealtimePostgresChangesPayload<any>): void {
+  private handlePurchaseRequestChange(payload: RealtimePostgresChangesPayload<Record<string, unknown>>): void {
     const { eventType } = payload
-    const newRecord = payload.new as Record<string, any> | null
-    const oldRecord = payload.old as Record<string, any> | null
+    const newRecord = ('new' in payload && payload.new && Object.keys(payload.new).length > 0) ? payload.new as Record<string, unknown> : null
+    const oldRecord = ('old' in payload && payload.old && Object.keys(payload.old).length > 0) ? payload.old as Record<string, unknown> : null
 
     logger.info(`📡 [Realtime] purchase_requests ${eventType}:`, {
       id: newRecord?.id || oldRecord?.id
@@ -257,10 +257,10 @@ class PurchaseRealtimeService {
    * purchase_request_items 테이블 변경 처리
    * 🚀 개선: 업데이트 성공 시에만 리스너 알림 (경쟁 상태 방지)
    */
-  private handlePurchaseItemChange(payload: RealtimePostgresChangesPayload<any>): void {
+  private handlePurchaseItemChange(payload: RealtimePostgresChangesPayload<Record<string, unknown>>): void {
     const { eventType } = payload
-    const newRecord = payload.new as Record<string, any> | null
-    const oldRecord = payload.old as Record<string, any> | null
+    const newRecord = ('new' in payload && payload.new && Object.keys(payload.new).length > 0) ? payload.new as Record<string, unknown> : null
+    const oldRecord = ('old' in payload && payload.old && Object.keys(payload.old).length > 0) ? payload.old as Record<string, unknown> : null
 
     logger.info(`📡 [Realtime] purchase_request_items ${eventType}:`, {
       id: newRecord?.id || oldRecord?.id,
@@ -300,30 +300,30 @@ class PurchaseRealtimeService {
   /**
    * 새 발주서 추가 처리
    */
-  private async handlePurchaseInsert(record: any): Promise<void> {
+  private async handlePurchaseInsert(record: Record<string, unknown> | null): Promise<void> {
     if (!purchaseMemoryCache.allPurchases || !record) return
 
     // 이미 존재하는지 확인
     const exists = purchaseMemoryCache.allPurchases.some(p => p.id === record.id)
     if (exists) {
-      logger.info('⚠️ [Realtime] 이미 존재하는 발주서, 업데이트로 처리:', record.id)
+      logger.info('⚠️ [Realtime] 이미 존재하는 발주서, 업데이트로 처리:', { id: record.id })
       this.handlePurchaseUpdate(record)
       return
     }
 
     // 새 발주서를 캐시에 추가 (품목 정보는 별도 로드 필요)
-    const newPurchase: Purchase = {
-      ...record,
-      items: [],
-      purchase_request_items: []
-    }
+    const newPurchase = {
+      ...(record as unknown as Purchase),
+      items: [] as Purchase['items'],
+      purchase_request_items: [] as Purchase['purchase_request_items']
+    } satisfies Purchase
 
     // 품목 정보 로드
     try {
       const { data: items } = await this.supabase
         .from('purchase_request_items')
         .select('*')
-        .eq('purchase_request_id', record.id)
+        .eq('purchase_request_id', record.id as number)
 
       if (items) {
         newPurchase.items = items
@@ -336,42 +336,42 @@ class PurchaseRealtimeService {
     // 배열 맨 앞에 추가 (최신 항목)
     purchaseMemoryCache.allPurchases = [newPurchase, ...purchaseMemoryCache.allPurchases]
     
-    logger.info('✅ [Realtime] 새 발주서 추가됨:', record.id)
+    logger.info('✅ [Realtime] 새 발주서 추가됨:', { id: record.id })
   }
 
   /**
    * 발주서 업데이트 처리
    */
-  private handlePurchaseUpdate(record: any): void {
+  private handlePurchaseUpdate(record: Record<string, unknown> | null): void {
     if (!record) return
 
-    const updated = updatePurchaseInMemory(record.id, (purchase) => ({
+    const updated = updatePurchaseInMemory(record.id as number, (purchase) => ({
       ...purchase,
-      ...record,
+      ...(record as unknown as Partial<Purchase>),
       // items는 유지 (별도로 관리됨)
       items: purchase.items,
       purchase_request_items: purchase.purchase_request_items
     }))
 
     if (updated) {
-      logger.info('✅ [Realtime] 발주서 업데이트됨:', record.id)
+      logger.info('✅ [Realtime] 발주서 업데이트됨:', { id: record.id })
     } else {
-      logger.warn('⚠️ [Realtime] 업데이트할 발주서를 찾을 수 없음:', record.id)
+      logger.warn('⚠️ [Realtime] 업데이트할 발주서를 찾을 수 없음:', { id: record.id })
     }
   }
 
   /**
    * 발주서 삭제 처리
    */
-  private handlePurchaseDelete(record: any): void {
+  private handlePurchaseDelete(record: Record<string, unknown> | null): void {
     if (!record) return
 
-    const deleted = removePurchaseFromMemory(record.id)
-    
+    const deleted = removePurchaseFromMemory(record.id as number)
+
     if (deleted) {
-      logger.info('✅ [Realtime] 발주서 삭제됨:', record.id)
+      logger.info('✅ [Realtime] 발주서 삭제됨:', { id: record.id })
     } else {
-      logger.warn('⚠️ [Realtime] 삭제할 발주서를 찾을 수 없음:', record.id)
+      logger.warn('⚠️ [Realtime] 삭제할 발주서를 찾을 수 없음:', { id: record.id })
     }
   }
 
@@ -379,23 +379,24 @@ class PurchaseRealtimeService {
    * 새 품목 추가 처리
    * @returns 업데이트 성공 여부
    */
-  private handleItemInsert(record: any): boolean {
+  private handleItemInsert(record: Record<string, unknown> | null): boolean {
     if (!record || !record.purchase_request_id) {
       logger.warn('⚠️ [Realtime] 품목 추가 실패 - 필수 정보 없음')
       return false
     }
 
-    const success = updatePurchaseInMemory(record.purchase_request_id, (purchase) => {
+    const itemRecord = record as unknown as PurchaseRequestItem
+    const success = updatePurchaseInMemory(record.purchase_request_id as number, (purchase) => {
       const currentItems = purchase.items || purchase.purchase_request_items || []
-      
+
       // 이미 존재하는지 확인
-      const exists = currentItems.some(item => item.id === record.id)
+      const exists = currentItems.some(item => item.id === itemRecord.id)
       if (exists) {
         return purchase
       }
 
-      const updatedItems = [...currentItems, record]
-      const newTotalAmount = updatedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
+      const updatedItems = [...currentItems, itemRecord]
+      const newTotalAmount = updatedItems.reduce((sum: number, item: PurchaseRequestItem) => sum + (item.amount_value || 0), 0)
 
       // 🔧 헤더-품목 동기화: 모든 품목 상태를 확인하여 헤더 상태 재계산
       const allItemsReceived = updatedItems.length > 0 && updatedItems.every(item => item.is_received === true)
@@ -412,7 +413,7 @@ class PurchaseRealtimeService {
     })
 
     if (success) {
-      logger.info('✅ [Realtime] 품목 추가됨:', record.id)
+      logger.info('✅ [Realtime] 품목 추가됨:', { id: record.id })
     }
     return success
   }
@@ -421,56 +422,57 @@ class PurchaseRealtimeService {
    * 품목 업데이트 처리
    * @returns 업데이트 성공 여부
    */
-  private handleItemUpdate(record: any): boolean {
+  private handleItemUpdate(record: Record<string, unknown> | null): boolean {
     if (!record) {
       logger.warn('⚠️ [Realtime] 품목 업데이트 실패 - record 없음')
       return false
     }
 
     // purchase_request_id가 있으면 직접 업데이트
-    let targetPurchaseId = record.purchase_request_id
+    const itemRecord = record as unknown as Partial<PurchaseRequestItem>
+    let targetPurchaseId: number | string | undefined = itemRecord.purchase_request_id as string | undefined
 
     // 🚀 purchase_request_id가 없으면 item ID로 해당 purchase를 찾음 (RLS 필터링 대응)
-    if (!targetPurchaseId && record.id && purchaseMemoryCache.allPurchases) {
+    if (!targetPurchaseId && itemRecord.id && purchaseMemoryCache.allPurchases) {
       for (const purchase of purchaseMemoryCache.allPurchases) {
         const items = purchase.items || purchase.purchase_request_items || []
-        const foundItem = items.find(item => item.id === record.id)
+        const foundItem = items.find(item => item.id === itemRecord.id)
         if (foundItem) {
           targetPurchaseId = purchase.id
-          logger.info('🔍 [Realtime] item ID로 purchase 찾음:', { itemId: record.id, purchaseId: targetPurchaseId })
+          logger.info('🔍 [Realtime] item ID로 purchase 찾음:', { itemId: String(itemRecord.id), purchaseId: String(targetPurchaseId) })
           break
         }
       }
     }
 
     if (!targetPurchaseId) {
-      logger.warn('⚠️ [Realtime] 품목 업데이트 실패 - purchase를 찾을 수 없음:', record.id)
+      logger.warn('⚠️ [Realtime] 품목 업데이트 실패 - purchase를 찾을 수 없음:', { id: itemRecord.id })
       return false
     }
 
     const success = updatePurchaseInMemory(targetPurchaseId, (purchase) => {
       const currentItems = purchase.items || purchase.purchase_request_items || []
-      
+
       // 🚀 items가 비어있으면 업데이트 하지 않음 (데이터 보호)
       if (currentItems.length === 0) {
         logger.warn('⚠️ [Realtime] 품목 업데이트 스킵 - 기존 items가 비어있음')
         return purchase
       }
-      
+
       const updatedItems = currentItems.map(item => {
-        if (item.id !== record.id) return item
-        const merged = { ...item, ...record }
+        if (item.id !== itemRecord.id) return item
+        const merged: PurchaseRequestItem = { ...item, ...itemRecord as PurchaseRequestItem }
         // ✅ Realtime payload가 null/undefined로 들어오는 경우 기존 값 보존 (0으로 롤백 방지)
-        if (record.amount_value === null || record.amount_value === undefined) {
+        if (itemRecord.amount_value === null || itemRecord.amount_value === undefined) {
           merged.amount_value = item.amount_value
         }
-        if (record.unit_price_value === null || record.unit_price_value === undefined) {
+        if (itemRecord.unit_price_value === null || itemRecord.unit_price_value === undefined) {
           merged.unit_price_value = item.unit_price_value
         }
         return merged
       })
 
-      const newTotalAmount = updatedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
+      const newTotalAmount = updatedItems.reduce((sum: number, item: PurchaseRequestItem) => sum + (item.amount_value || 0), 0)
 
       // 🔧 헤더-품목 동기화: 모든 품목 상태를 확인하여 헤더 상태 재계산
       const allItemsReceived = updatedItems.length > 0 && updatedItems.every(item => item.is_received === true)
@@ -488,7 +490,7 @@ class PurchaseRealtimeService {
     })
 
     if (success) {
-      logger.info('✅ [Realtime] 품목 업데이트됨:', record.id)
+      logger.info('✅ [Realtime] 품목 업데이트됨:', { id: record.id })
     }
     return success
   }
@@ -497,14 +499,14 @@ class PurchaseRealtimeService {
    * 품목 삭제 처리
    * @returns 삭제 성공 여부
    */
-  private handleItemDelete(record: any): boolean {
+  private handleItemDelete(record: Record<string, unknown> | null): boolean {
     if (!record) {
       logger.warn('⚠️ [Realtime] 품목 삭제 실패 - record 없음')
       return false
     }
 
     // purchase_request_id가 있으면 직접 사용
-    let targetPurchaseId = record.purchase_request_id
+    let targetPurchaseId: number | string | undefined = record.purchase_request_id as number | undefined
 
     // 🚀 purchase_request_id가 없으면 item ID로 해당 purchase를 찾음 (RLS 필터링 대응)
     if (!targetPurchaseId && record.id && purchaseMemoryCache.allPurchases) {
@@ -513,21 +515,21 @@ class PurchaseRealtimeService {
         const foundItem = items.find(item => item.id === record.id)
         if (foundItem) {
           targetPurchaseId = purchase.id
-          logger.info('🔍 [Realtime] item ID로 purchase 찾음 (삭제):', { itemId: record.id, purchaseId: targetPurchaseId })
+          logger.info('🔍 [Realtime] item ID로 purchase 찾음 (삭제):', { itemId: String(record.id), purchaseId: String(targetPurchaseId) })
           break
         }
       }
     }
 
     if (!targetPurchaseId) {
-      logger.warn('⚠️ [Realtime] 품목 삭제 실패 - purchase를 찾을 수 없음:', record.id)
+      logger.warn('⚠️ [Realtime] 품목 삭제 실패 - purchase를 찾을 수 없음:', { id: record.id })
       return false
     }
 
-    const deleted = removeItemFromMemory(targetPurchaseId, record.id)
+    const deleted = removeItemFromMemory(targetPurchaseId, record.id as number | string)
     
     if (deleted) {
-      logger.info('✅ [Realtime] 품목 삭제됨:', record.id)
+      logger.info('✅ [Realtime] 품목 삭제됨:', { id: record.id })
     }
     return deleted
   }

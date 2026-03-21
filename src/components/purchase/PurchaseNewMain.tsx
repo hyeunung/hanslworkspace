@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import type { User } from '@supabase/supabase-js';
 import { logger } from '@/lib/logger';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,7 +40,7 @@ export default function PurchaseNewMain() {
   const navigate = useNavigate();
   const supabase = createClient();
   
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [employeeName, setEmployeeName] = useState<string>("");
   const [employees, setEmployees] = useState<{id: string; name: string; email?: string; phone?: string; address?: string; position?: string; department?: string;}[]>([]);
   const [defaultRequesterLoaded, setDefaultRequesterLoaded] = useState(false);
@@ -86,7 +87,7 @@ export default function PurchaseNewMain() {
         
         
         if (data && !error && data.length > 0) {
-          setEmployees(data.map((dbEmp: any) => ({
+          setEmployees(data.map((dbEmp: { id: string; name: string; email?: string; phone?: string; address?: string; position?: string; department?: string }) => ({
             id: dbEmp.id,
             name: dbEmp.name,
             email: dbEmp.email || '',
@@ -95,9 +96,9 @@ export default function PurchaseNewMain() {
             position: dbEmp.position || '',
             department: dbEmp.department || ''
           })));
-          
+
           // 이미 설정된 employeeName이 있고 employees 배열에 해당 직원이 있는지 확인
-          if (employeeName && !data.find((emp: any) => emp.name === employeeName)) {
+          if (employeeName && !data.find((emp: { name: string }) => emp.name === employeeName)) {
             // 현재 사용자를 employees 배열에 추가
             const currentUser = {
               id: user?.id || 'current-user',
@@ -108,7 +109,7 @@ export default function PurchaseNewMain() {
               position: '',
               department: ''
             };
-            setEmployees([...data.map((dbEmp: any) => ({
+            setEmployees([...data.map((dbEmp: { id: string; name: string; email?: string; phone?: string; address?: string; position?: string; department?: string }) => ({
               id: dbEmp.id,
               name: dbEmp.name,
               email: dbEmp.email || '',
@@ -585,7 +586,7 @@ export default function PurchaseNewMain() {
           
           if (items && items.length > 0) {
             // BOM 데이터 매핑
-            const bomRows = items.map((item: any) => ({
+            const bomRows = items.map((item: { line_number: number; item_name: string; specification?: string; set_count?: number; remark?: string }) => ({
               line_number: item.line_number,
               item_name: item.item_name,
               specification: item.specification || '',
@@ -802,9 +803,9 @@ export default function PurchaseNewMain() {
           prId = pr.id;
           break; // 성공 시 루프 종료
           
-        } catch (retryError: any) {
+        } catch (retryError: unknown) {
           // 발주요청번호 중복이 아닌 에러는 바로 throw
-          if (!retryError.message.includes('duplicate key value violates unique constraint')) {
+          if (!(retryError instanceof Error && retryError.message.includes('duplicate key value violates unique constraint'))) {
             throw retryError;
           }
           
@@ -916,9 +917,10 @@ export default function PurchaseNewMain() {
         window.location.href = '/purchase/list?tab=pending';
       }
       return;
-    } catch (err: any) {
-      setError(err.message || "오류가 발생했습니다.");
-      toast.error(err.message || "발주요청서 저장에 실패했습니다.");
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "오류가 발생했습니다.";
+      setError(errorMessage);
+      toast.error(errorMessage || "발주요청서 저장에 실패했습니다.");
     } finally {
       // 오류가 있었을 때만 실행됨 (성공 시에는 return으로 빠짐)
       setLoading(false);

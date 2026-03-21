@@ -80,7 +80,7 @@ export default function Navigation({ role }: NavigationProps) {
     if (isAdmin) return
 
     const supabase = createClient()
-    let subscription: any
+    let subscription: { unsubscribe: () => void } | null = null
     let cancelled = false
     let currentUserId = ''
 
@@ -191,7 +191,14 @@ export default function Navigation({ role }: NavigationProps) {
     }
   }, [isApplicationApprover])
 
-  const menuItems = [
+  const menuItems: Array<{
+    label: string
+    href: string
+    icon: typeof Home
+    roles: string[]
+    badge?: number
+    openInNewTab?: boolean
+  }> = [
     {
       label: '대시보드',
       href: '/dashboard',
@@ -277,8 +284,8 @@ export default function Navigation({ role }: NavigationProps) {
         {filteredMenuItems.map((item) => {
           const Icon = item.icon
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
-          const badge = (item as any).badge
-          const openInNewTab = (item as any).openInNewTab
+          const badge = item.badge
+          const openInNewTab = item.openInNewTab
           const linkClass = cn(
             'flex items-center gap-3 px-4 py-3 rounded-lg transition-all',
             isActive

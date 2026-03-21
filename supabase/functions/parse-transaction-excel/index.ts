@@ -706,7 +706,7 @@ function normalizeOrderNumber(input: string): string {
     return `${soMatch[1]}-${soMatch[2].padStart(2, '0')}`
   }
 
-  return normalized
+  return ''
 }
 
 async function matchItemsToSystem(

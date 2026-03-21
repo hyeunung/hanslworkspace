@@ -207,7 +207,7 @@ class VendorService {
       if (error) throw error;
 
       // Excel 형식에 맞게 데이터 변환
-      const exportData = (data || []).map((vendor: any) => ({
+      const exportData = (data || []).map((vendor: { vendor_name: string; vendor_phone?: string; vendor_fax?: string; vendor_payment_schedule?: string; vendor_address?: string; note?: string; created_at?: string }) => ({
         '업체명': vendor.vendor_name,
         '전화번호': vendor.vendor_phone || '',
         '팩스번호': vendor.vendor_fax || '',

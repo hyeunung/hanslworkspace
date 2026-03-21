@@ -9,7 +9,11 @@ import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
 import { countPendingApprovalsForSidebarBadge } from '@/utils/purchaseFilters'
 
 interface HeaderProps {
-  user: any
+  user: {
+    id?: string
+    name?: string
+    purchase_role?: string | string[]
+  } | null
   onMenuClick?: () => void
 }
 
@@ -136,7 +140,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
     if (isAdmin) return
 
     const supabase = createClient()
-    let subscription: any
+    let subscription: { unsubscribe: () => void } | null = null
     let cancelled = false
     let currentUserId = ''
 
@@ -184,7 +188,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
     if (!canSeeStatementBadge) return
     const supabase = createClient()
     let cancelled = false
-    let subscription: any
+    let subscription: ReturnType<ReturnType<typeof createClient>['channel']> | null = null
 
     const loadPendingStatements = async () => {
       const { count } = await supabase
@@ -389,7 +393,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
             </span>
             {user?.purchase_role && (
               <span className="text-xs text-gray-500">
-                {getRoleDisplayName(user.purchase_role)}
+                {getRoleDisplayName(Array.isArray(user.purchase_role) ? user.purchase_role[0] : user.purchase_role as string)}
               </span>
             )}
           </div>

@@ -1,12 +1,14 @@
 // 네비게이션 성능 최적화 유틸리티
 import { logger } from '@/lib/logger'
 
+interface NavigationCacheEntry {
+  component: unknown;
+  timestamp: number;
+  preloaded: boolean;
+}
+
 interface NavigationCache {
-  [key: string]: {
-    component: any;
-    timestamp: number;
-    preloaded: boolean;
-  }
+  [key: string]: NavigationCacheEntry
 }
 
 class NavigationOptimizer {
@@ -15,7 +17,7 @@ class NavigationOptimizer {
   private preloadTimeouts: Map<string, NodeJS.Timeout> = new Map()
   
   // 컴포넌트 캐시 설정
-  setCachedComponent(path: string, component: any, preloaded = false) {
+  setCachedComponent(path: string, component: unknown, preloaded = false) {
     this.cache[path] = {
       component,
       timestamp: Date.now(),
@@ -38,7 +40,7 @@ class NavigationOptimizer {
   }
   
   // 프리로딩 스케줄링
-  schedulePreload(path: string, importFn: () => Promise<any>, delay = 100) {
+  schedulePreload(path: string, importFn: () => Promise<unknown>, delay = 100) {
     // 이미 캐시된 경우 스킵
     if (this.cache[path]) return
     

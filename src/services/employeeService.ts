@@ -19,13 +19,8 @@ class EmployeeService {
 
       // 검색 필터 적용
       if (filters?.search) {
-        query = query.or(`
-          name.ilike.%${filters.search}%,
-          email.ilike.%${filters.search}%,
-          phone.ilike.%${filters.search}%,
-          position.ilike.%${filters.search}%,
-          department.ilike.%${filters.search}%
-        `);
+        const s = filters.search
+        query = query.or(`name.ilike.%${s}%,email.ilike.%${s}%,phone.ilike.%${s}%,position.ilike.%${s}%,department.ilike.%${s}%,employeeID.ilike.%${s}%,employee_number.ilike.%${s}%,personal_email.ilike.%${s}%,bank_account.ilike.%${s}%,adress.ilike.%${s}%`);
       }
 
       // 부서 필터 적용
@@ -123,12 +118,12 @@ class EmployeeService {
       const msg =
         error instanceof Error
           ? error.message
-          : typeof error === 'object' && error && 'message' in (error as any)
-            ? String((error as any).message)
+          : typeof error === 'object' && error !== null && 'message' in (error as Record<string, unknown>)
+            ? String((error as Record<string, unknown>).message)
             : '알 수 없는 오류가 발생했습니다.'
-      return { 
-        success: false, 
-        error: msg 
+      return {
+        success: false,
+        error: msg
       };
     }
   }
@@ -150,14 +145,14 @@ class EmployeeService {
         }
       }
 
-      const updateData: Record<string, any> = {
+      const updateData: Record<string, string | string[] | boolean | number | null | undefined> = {
         ...employeeData
       };
 
       if (employeeData.purchase_role === undefined) {
         delete updateData.purchase_role;
       } else {
-        updateData.purchase_role = employeeData.purchase_role.length > 0 ? employeeData.purchase_role : null;
+        updateData.purchase_role = employeeData.purchase_role && employeeData.purchase_role.length > 0 ? employeeData.purchase_role : null;
       }
 
       // is_active를 직접 업데이트하는 경우 terminated_at도 일관되게 처리
@@ -180,12 +175,12 @@ class EmployeeService {
       const msg =
         error instanceof Error
           ? error.message
-          : typeof error === 'object' && error && 'message' in (error as any)
-            ? String((error as any).message)
+          : typeof error === 'object' && error !== null && 'message' in (error as Record<string, unknown>)
+            ? String((error as Record<string, unknown>).message)
             : '알 수 없는 오류가 발생했습니다.'
-      return { 
-        success: false, 
-        error: msg 
+      return {
+        success: false,
+        error: msg
       };
     }
   }
@@ -304,8 +299,8 @@ class EmployeeService {
 
       // 클라이언트 사이드에서 null과 빈 문자열 필터링 후 중복 제거하고 정렬
       const departments = [...new Set((data || [])
-        .map((emp: any) => emp.department)
-        .filter((dept: any) => dept != null && dept !== '')
+        .map((emp: { department: string | null }) => emp.department)
+        .filter((dept: string | null): dept is string => dept != null && dept !== '')
       )].sort() as string[];
 
       return { success: true, data: departments };
@@ -329,8 +324,8 @@ class EmployeeService {
 
       // 클라이언트 사이드에서 null과 빈 문자열 필터링 후 중복 제거하고 정렬
       const positions = [...new Set((data || [])
-        .map((emp: any) => emp.position)
-        .filter((pos: any) => pos != null && pos !== '')
+        .map((emp: { position: string | null }) => emp.position)
+        .filter((pos: string | null): pos is string => pos != null && pos !== '')
       )].sort() as string[];
 
       return { success: true, data: positions };
@@ -354,7 +349,7 @@ class EmployeeService {
       if (error) throw error;
 
       // Excel 형식에 맞게 데이터 변환
-      const exportData = (data || []).map((employee: any) => ({
+      const exportData = (data || []).map((employee: { name: string; email?: string; phone?: string; adress?: string; department?: string; position?: string; purchase_role?: string | string[] | null; is_active: boolean; created_at?: string }) => ({
         '이름': employee.name,
         '이메일': employee.email || '',
         '전화번호': employee.phone || '',

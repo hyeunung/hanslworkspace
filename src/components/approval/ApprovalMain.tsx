@@ -100,7 +100,7 @@ export default function ApprovalMain() {
     }
   }
 
-  const loadApprovalsData = async (employeeData: any) => {
+  const loadApprovalsData = async (employeeData: { purchase_role?: string | string[] | null }) => {
     try {
       const { data: approvalData, error: approvalError } = await supabase
         .from('purchase_requests')
@@ -109,7 +109,7 @@ export default function ApprovalMain() {
 
       if (approvalError) throw approvalError
 
-      const purchasesWithDetails = (approvalData || []).map((purchase: any) => ({
+      const purchasesWithDetails = (approvalData || []).map((purchase: Record<string, unknown>) => ({
         ...purchase,
         items: purchase.purchase_request_items || [],
         vendor: purchase.vendor || { id: 0, vendor_name: '알 수 없음' },
@@ -127,7 +127,7 @@ export default function ApprovalMain() {
     }
   }
 
-  const calculateTabCounts = (purchases: PurchaseRequestWithDetails[], employeeData: any): TabCounts => {
+  const calculateTabCounts = (purchases: PurchaseRequestWithDetails[], employeeData: { purchase_role?: string | string[] | null }): TabCounts => {
     const counts = { middle: 0, final: 0 }
     
     // purchase_role 처리
@@ -217,29 +217,29 @@ export default function ApprovalMain() {
       // Supabase 직접 호출 - hanslwebapp 방식으로 변경
       const roles = parseRoles(employee!.purchase_role)
       
-      let updateData: any = {}
+      let updateData: Record<string, string> = {}
 
       // PurchaseDetailModal과 동일한 방식으로 단순화
       // 실제 DB에 없는 필드들 제거: middle_manager_name, final_manager_name, *_comment
       if (roles.includes('middle_manager')) {
         // 1차 승인 (검증)
         if (action === 'approve') {
-          updateData = { 
+          updateData = {
             middle_manager_status: 'approved'
           }
         } else {
-          updateData = { 
+          updateData = {
             middle_manager_status: 'rejected'
           }
         }
       } else if (roles.some((r: string) => ['final_approver', 'ceo', 'app_admin'].includes(r))) {
         // 최종 승인
         if (action === 'approve') {
-          updateData = { 
+          updateData = {
             final_manager_status: 'approved'
           }
         } else {
-          updateData = { 
+          updateData = {
             final_manager_status: 'rejected',
             // 최종 승인자가 반려하면 중간 승인도 함께 반려
             middle_manager_status: 'rejected'
@@ -287,7 +287,7 @@ export default function ApprovalMain() {
       const roles = parseRoles(employee!.purchase_role)
       
 
-      let updateData: any = {}
+      let updateData: Record<string, string> = {}
 
       // PurchaseDetailModal과 동일한 방식으로 단순화
       // 실제 DB에 없는 필드들 제거: middle_manager_name, final_manager_name, *_comment
@@ -435,7 +435,7 @@ export default function ApprovalMain() {
                 onSelectAll={handleSelectAll}
                 allSelected={selectedApprovals.length === (filteredApprovals as PurchaseRequestWithDetails[]).length}
               />
-              <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
+              <Select value={sortBy} onValueChange={(value: string) => setSortBy(value as typeof sortBy)}>
                 <SelectTrigger className="w-[200px]">
                   <ArrowUpDown className="w-4 h-4 mr-2" />
                   <SelectValue placeholder="정렬 기준" />

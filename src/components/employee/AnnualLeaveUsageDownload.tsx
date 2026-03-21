@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { employeeService } from '@/services/employeeService'
 import { calcAnnualLeaveUsageByWorkdays, classifyLeaveForAnnualUsage, type LeaveRow } from '@/utils/leave/calcAnnualLeaveWorkdays'
-import { generateAnnualLeaveUsageExcel } from '@/utils/exceljs/generateAnnualLeaveUsageExcel'
+import { generateAnnualLeaveUsageExcel, type AnnualLeaveUsageDebugLeaveRow } from '@/utils/exceljs/generateAnnualLeaveUsageExcel'
 
 interface AnnualLeaveUsageDownloadProps {
   isOpen: boolean
@@ -76,7 +76,7 @@ export default function AnnualLeaveUsageDownload({ isOpen, onClose }: AnnualLeav
           const cls = classifyLeaveForAnnualUsage(l)
           if (!cls.ok) return null
           return {
-            id: l.id,
+            id: l.id as number | string | undefined,
             user_email: l.user_email,
             start_date: l.start_date,
             end_date: l.end_date,
@@ -86,14 +86,14 @@ export default function AnnualLeaveUsageDownload({ isOpen, onClose }: AnnualLeav
             reason: l.reason ?? null
           }
         })
-        .filter(Boolean) as any[]
+        .filter(Boolean) as AnnualLeaveUsageDebugLeaveRow[]
 
       const excludedLeaves = leaves
         .map((l) => {
           const cls = classifyLeaveForAnnualUsage(l)
           if (cls.ok) return null
           return {
-            id: l.id,
+            id: l.id as number | string | undefined,
             user_email: l.user_email,
             start_date: l.start_date,
             end_date: l.end_date,
@@ -103,7 +103,7 @@ export default function AnnualLeaveUsageDownload({ isOpen, onClose }: AnnualLeav
             reason: l.reason ?? null
           }
         })
-        .filter(Boolean) as any[]
+        .filter(Boolean) as AnnualLeaveUsageDebugLeaveRow[]
 
       // 3) 백엔드 leave(days/period) 기반으로 일자 상세 + 직원별 합계 계산
       const { summaries, details } = calcAnnualLeaveUsageByWorkdays({
@@ -123,7 +123,7 @@ export default function AnnualLeaveUsageDownload({ isOpen, onClose }: AnnualLeav
         throw new Error(employeesResult.error || '직원 목록을 불러오지 못했습니다.')
       }
       const employees = employeesResult.data
-      const empByEmail = new Map<string, any>()
+      const empByEmail = new Map<string, { employeeID?: string; employee_number?: string; name?: string; join_date?: string }>()
       employees.forEach((e) => {
         if (e.email) empByEmail.set(e.email, e)
       })
@@ -164,7 +164,7 @@ export default function AnnualLeaveUsageDownload({ isOpen, onClose }: AnnualLeav
 
       const summaryRows = summaries.map((s) => {
         const emp = empByEmail.get(s.user_email)
-        const months: Record<number, string> = {} as any
+        const months: Record<number, string> = {} as Record<number, string>
         for (let m = 1; m <= 12; m++) {
           months[m] = formatMonthCell(s.user_email, m)
         }
@@ -200,9 +200,9 @@ export default function AnnualLeaveUsageDownload({ isOpen, onClose }: AnnualLeav
 
       toast.success('연차사용현황 엑셀이 다운로드되었습니다.')
       onClose()
-    } catch (err: any) {
+    } catch (err: unknown) {
       const msg =
-        err?.message ||
+        (err instanceof Error ? err.message : null) ||
         (typeof err === 'string' ? err : '') ||
         '다운로드 중 오류가 발생했습니다.'
       toast.error(msg)

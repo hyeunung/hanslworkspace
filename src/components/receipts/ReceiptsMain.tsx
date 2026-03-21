@@ -193,7 +193,7 @@ export default function ReceiptsMain() {
         return;
       }
 
-      const receiptIds = baseReceipts.map((receipt) => receipt.id);
+      const receiptIds = baseReceipts.map((receipt: { id: number | string }) => receipt.id);
       const { data: ocrJobs, error: ocrError } = await supabase
         .from('receipt_ocr_jobs')
         .select(`
@@ -228,14 +228,14 @@ export default function ReceiptsMain() {
         totalAmount?: number | null;
       }>();
 
-      (ocrJobs || []).forEach((job: any) => {
+      (ocrJobs || []).forEach((job: { source_receipt_id?: number | null; status?: string; receipt_ocr_results?: Array<{ merchant_name?: string | null; item_name?: string | null; payment_date?: string | null; quantity?: number | null; unit_price?: number | null; total_amount?: number | null }> | { merchant_name?: string | null; item_name?: string | null; payment_date?: string | null; quantity?: number | null; unit_price?: number | null; total_amount?: number | null } | null }) => {
         const sourceId = String(job.source_receipt_id || '');
         if (!sourceId || ocrByReceiptId.has(sourceId)) return;
         const result = Array.isArray(job.receipt_ocr_results)
           ? job.receipt_ocr_results[0]
           : job.receipt_ocr_results;
         ocrByReceiptId.set(sourceId, {
-          status: job.status,
+          status: job.status as 'pending' | 'queued' | 'processing' | 'succeeded' | 'failed' | undefined,
           merchantName: result?.merchant_name ?? null,
           itemName: result?.item_name ?? null,
           paymentDate: result?.payment_date ?? null,
@@ -245,7 +245,7 @@ export default function ReceiptsMain() {
         });
       });
 
-      const mergedReceipts = baseReceipts.map((receipt) => {
+      const mergedReceipts = baseReceipts.map((receipt: { id: number | string; [key: string]: unknown }) => {
         const ocr = ocrByReceiptId.get(String(receipt.id));
         if (!ocr) return receipt;
         return {
@@ -388,7 +388,7 @@ export default function ReceiptsMain() {
       toast.success('인쇄 완료로 표시되었습니다.');
       loadReceipts();
     } catch (error) {
-      const errorObj = error as any;
+      const errorObj = error instanceof Error ? error : null;
       logger.error('영수증 인쇄완료 처리 중 예외 발생', error);
       toast.error(`인쇄 완료 처리에 실패했습니다: ${errorObj?.message || '알 수 없는 오류'}`);
     }

@@ -19,7 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Purchase, PurchaseRequestWithDetails } from "@/types/purchase";
+import { Purchase, PurchaseRequestItem, PurchaseRequestWithDetails } from "@/types/purchase";
 import { DoneTabColumnId, ColumnVisibility } from "@/types/columnSettings";
 import { RESTRICTED_COLUMNS, AUTHORIZED_ROLES, UTK_AUTHORIZED_ROLES } from "@/constants/columnSettings";
 
@@ -235,7 +235,7 @@ const PaymentProgressBar = memo(({ purchase, activeTab }: { purchase: Purchase; 
   
   // 개별 아이템 구매완료 상태 계산
   const total = memoryPurchase.purchase_request_items.length;
-  const completed = memoryPurchase.purchase_request_items.filter((item: any) => 
+  const completed = memoryPurchase.purchase_request_items.filter((item: PurchaseRequestItem) =>
     item.is_payment_completed === true
   ).length;
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -284,7 +284,7 @@ const ReceiptProgressBar = memo(({ purchase }: { purchase: Purchase }) => {
   
   // 개별 아이템 실제 입고 상태 계산 (is_received 기준)
   const total = memoryPurchase.purchase_request_items.length;
-  const received = memoryPurchase.purchase_request_items.filter((item: any) => 
+  const received = memoryPurchase.purchase_request_items.filter((item: PurchaseRequestItem) =>
     item.is_received === true
   ).length;
   const percentage = total > 0 ? Math.round((received / total) * 100) : 0;
@@ -327,7 +327,7 @@ const StatementProgressBar = memo(({ purchase }: { purchase: Purchase }) => {
     }
     
     const total = items.length;
-    const completed = items.filter((item: any) => item.is_statement_received === true).length;
+    const completed = items.filter((item: PurchaseRequestItem) => item.is_statement_received === true).length;
     const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
     
     return { completed, total, percentage };
@@ -526,14 +526,14 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
                 e.stopPropagation();
                 await onToggleUtkCheck?.(purchase);
               }}
-              className={`${(purchase as any).is_utk_checked ? 'badge-utk-complete' : 'badge-utk-pending'} mx-auto cursor-pointer`}
-              title={(purchase as any).is_utk_checked ? 'UTK 확인 취소' : 'UTK 확인'}
+              className={`${purchase.is_utk_checked ? 'badge-utk-complete' : 'badge-utk-pending'} mx-auto cursor-pointer`}
+              title={purchase.is_utk_checked ? 'UTK 확인 취소' : 'UTK 확인'}
             >
-              {(purchase as any).is_utk_checked ? '완료' : '대기'}
+              {purchase.is_utk_checked ? '완료' : '대기'}
             </button>
           ) : (
-            <span className={(purchase as any).is_utk_checked ? 'badge-utk-complete' : 'badge-utk-pending'}>
-              {(purchase as any).is_utk_checked ? '완료' : '대기'}
+            <span className={purchase.is_utk_checked ? 'badge-utk-complete' : 'badge-utk-pending'}>
+              {purchase.is_utk_checked ? '완료' : '대기'}
             </span>
           )}
         </td>
@@ -907,7 +907,7 @@ const FastPurchaseTable = ({
   // UTK 확인 토글 (전체항목 테이블에서 사용)
   const handleToggleUtkCheck = useCallback(async (purchase: Purchase) => {
     if (!purchase?.id) return
-    const isCurrentlyChecked = (purchase as any).is_utk_checked || false
+    const isCurrentlyChecked = purchase.is_utk_checked || false
     const newStatus = !isCurrentlyChecked
 
     const confirmMessage = newStatus
@@ -1029,7 +1029,7 @@ const FastPurchaseTable = ({
         sales_order_number: purchaseRequest.sales_order_number,
         project_item: purchaseRequest.project_item,
         vendor_payment_schedule: vendorInfo.vendor_payment_schedule,
-        items: orderItems.map((item: any) => ({
+        items: orderItems.map((item: PurchaseRequestItem) => ({
           line_number: item.line_number,
           item_name: item.item_name,
           specification: item.specification,
@@ -1134,7 +1134,7 @@ const FastPurchaseTable = ({
       let roles: string[] = [];
       if (employee.purchase_role) {
         if (Array.isArray(employee.purchase_role)) {
-          roles = employee.purchase_role.map((r: any) => String(r).trim());
+          roles = employee.purchase_role.map((r: string) => String(r).trim());
         } else {
           const roleString = String(employee.purchase_role);
           roles = roleString.split(',').map((r: string) => r.trim()).filter((r: string) => r.length > 0);
@@ -1232,7 +1232,7 @@ const FastPurchaseTable = ({
           logger.info('🗑️ [handleConfirmDelete] support_inquires 레코드 업데이트 필요 (문의 기록 보존)', {
             purchaseId: purchaseIdForDelete,
             inquiriesCount: relatedInquiries.length,
-            inquiryIds: relatedInquiries.map((i: any) => i.id),
+            inquiryIds: relatedInquiries.map((i: { id: string | number }) => i.id),
             note: '문의 기록은 삭제하지 않고 purchase_request_id만 null로 업데이트합니다.'
           });
           
@@ -1259,7 +1259,7 @@ const FastPurchaseTable = ({
             logger.info('✅ [handleConfirmDelete] support_inquires 업데이트 완료 (문의 기록 보존)', {
               purchaseId: purchaseIdForDelete,
               updatedCount: updatedInquiries?.length || relatedInquiries.length,
-              updatedInquiryIds: updatedInquiries?.map((i: any) => i.id) || relatedInquiries.map((i: any) => i.id),
+              updatedInquiryIds: updatedInquiries?.map((i: { id: string | number }) => i.id) || relatedInquiries.map((i: { id: string | number }) => i.id),
               note: '문의 기록은 그대로 보존되었고, purchase_request_id만 null로 변경되었습니다.'
             });
             
@@ -1370,18 +1370,18 @@ const FastPurchaseTable = ({
         }
       }
     } catch (error) {
-      const errorObj = error as any;
+      const errorObj = error instanceof Error ? error : new Error(String(error));
       logger.error('❌ [handleConfirmDelete] 발주요청 삭제 중 예외 발생', errorObj, {
-        name: errorObj?.name,
-        message: errorObj?.message,
-        code: errorObj?.code,
-        details: errorObj?.details,
-        hint: errorObj?.hint,
-        stack: errorObj?.stack,
+        name: errorObj.name,
+        message: errorObj.message,
+        code: (error as { code?: string })?.code,
+        details: (error as { details?: string })?.details,
+        hint: (error as { hint?: string })?.hint,
+        stack: errorObj.stack,
         purchaseId: purchaseToDelete?.id,
         purchaseOrderNumber: purchaseToDelete?.purchase_order_number
       });
-      toast.error(`삭제 중 오류가 발생했습니다: ${errorObj?.message || '알 수 없는 오류'}`);
+      toast.error(`삭제 중 오류가 발생했습니다: ${errorObj.message || '알 수 없는 오류'}`);
     } finally {
       setDeleteConfirmOpen(false);
       setPurchaseToDelete(null);

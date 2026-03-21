@@ -19,7 +19,6 @@ import {
   Image as ImageIcon,
   SlidersHorizontal,
   ChevronRight,
-  ExternalLink,
   X,
   ChevronDown,
   Package,
@@ -248,7 +247,6 @@ export default function TransactionStatementMain() {
         const processingAgeMinutes = processingStartedAt
           ? Math.round((Date.now() - new Date(processingStartedAt).getTime()) / 60000)
           : null;
-        const staleProcessingSuspected = processingAgeMinutes !== null && processingAgeMinutes >= 6;
         const rows = result.data || [];
         const terminalStatuses: TransactionStatementStatus[] = ['extracted', 'failed', 'confirmed', 'rejected'];
         const processingIds = rows
@@ -312,8 +310,6 @@ export default function TransactionStatementMain() {
   const shouldReconnectRef = useRef(true);
   const realtimeIsSubscribingRef = useRef(false);
   const realtimeIsSubscribedRef = useRef(false);
-  const realtimeInstanceIdRef = useRef(Math.random().toString(36).slice(2, 8));
-  
   useEffect(() => {
     const supabase = supabaseRef.current;
 
@@ -350,18 +346,18 @@ export default function TransactionStatementMain() {
             schema: 'public',
             table: 'transaction_statements'
           },
-          (payload: any) => {
+          (payload: { eventType: string; new?: Record<string, unknown>; old?: Record<string, unknown> }) => {
             logger.debug('[Realtime] Statement changed', { payload });
             // 상태가 변경되면 목록 갱신
             if (payload.eventType === 'UPDATE') {
-              const newStatus = payload.new?.status;
-              const oldStatus = payload.old?.status;
-              const changedId = payload.new?.id;
+              const newStatus = payload.new?.status as string | undefined;
+              const oldStatus = payload.old?.status as string | undefined;
+              const changedId = payload.new?.id as string | undefined;
               const newGrandTotal = payload.new?.grand_total;
               const oldGrandTotal = payload.old?.grand_total;
               const newTotalAmount = payload.new?.total_amount;
               const oldTotalAmount = payload.old?.total_amount;
-              
+
               const statusChanged = newStatus !== oldStatus;
               const amountChanged = newGrandTotal !== oldGrandTotal || newTotalAmount !== oldTotalAmount;
               const confirmChanged =
@@ -369,7 +365,7 @@ export default function TransactionStatementMain() {
                 payload.new?.manager_confirmed_at !== payload.old?.manager_confirmed_at ||
                 payload.new?.all_quantities_matched !== payload.old?.all_quantities_matched;
 
-              if (statusChanged && changedId && ['extracted', 'failed', 'confirmed', 'rejected'].includes(newStatus)) {
+              if (statusChanged && changedId && newStatus && ['extracted', 'failed', 'confirmed', 'rejected'].includes(newStatus)) {
                 optimisticReextractIdsRef.current.delete(changedId);
                 setExtractingIds(prev => {
                   if (!prev.has(changedId)) return prev;
@@ -385,7 +381,7 @@ export default function TransactionStatementMain() {
                 if (
                   statusChanged &&
                   oldStatus === 'processing' &&
-                  ['extracted', 'failed', 'confirmed', 'rejected'].includes(newStatus)
+                  newStatus && ['extracted', 'failed', 'confirmed', 'rejected'].includes(newStatus)
                 ) {
                   transactionStatementService.kickQueue();
                 }
@@ -432,7 +428,6 @@ export default function TransactionStatementMain() {
   // 상태 배지 렌더링
   const renderStatusBadge = (status: TransactionStatementStatus, errorMessage?: string | null, statementMode?: StatementMode, statement?: TransactionStatement) => {
     const baseClass = "inline-flex items-center gap-1 business-radius-badge px-2 py-0.5 text-[10px] font-medium leading-tight";
-    const miniClass = "inline-flex items-center gap-0.5 business-radius-badge px-1.5 py-0.5 text-[9px] font-medium leading-tight";
     
     switch (status) {
       case 'pending':
@@ -686,17 +681,14 @@ export default function TransactionStatementMain() {
   };
 
   // 확정 모달 닫기
-  const handleConfirmModalClose = () => {
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'83394a'},body:JSON.stringify({sessionId:'83394a',location:'TransactionStatementMain.tsx:689',message:'handleConfirmModalClose called',data:{isConfirmModalOpen,selectedStatementId:selectedStatement?.id},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+  const handleConfirmModalClose = useCallback(() => {
     setIsConfirmModalOpen(false);
     setSelectedStatement(null);
     loadStatements();
-  };
+  }, [loadStatements]);
 
   // 재추출 시작: 모달이 닫힌 뒤에도 상태 칼럼을 즉시 처리중으로 표시
-  const handleReextractStartFromModal = (statementId: string) => {
+  const handleReextractStartFromModal = useCallback((statementId: string) => {
     reextractTraceIdRef.current = statementId;
     optimisticReextractIdsRef.current.add(statementId);
     setExtractingIds(prev => {
@@ -704,10 +696,10 @@ export default function TransactionStatementMain() {
       next.add(statementId);
       return next;
     });
-  };
+  }, []);
 
   // 재추출 종료: 처리중 표시 해제 후 서버 상태 동기화
-  const handleReextractFinishFromModal = (statementId: string) => {
+  const handleReextractFinishFromModal = useCallback((statementId: string) => {
     optimisticReextractIdsRef.current.delete(statementId);
     reextractTraceIdRef.current = null;
     setExtractingIds(prev => {
@@ -716,7 +708,7 @@ export default function TransactionStatementMain() {
       return next;
     });
     loadStatements();
-  };
+  }, [loadStatements]);
 
   // 날짜 포맷
   const formatDate = (dateString: string) => {

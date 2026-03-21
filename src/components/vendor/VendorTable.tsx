@@ -1,6 +1,6 @@
 
 import { useState } from 'react'
-import { Vendor } from '@/types/purchase'
+import { Vendor, VendorContact } from '@/types/purchase'
 import { formatDate } from '@/utils/helpers'
 import { Button } from '@/components/ui/button'
 import { 
@@ -124,7 +124,7 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                 <TableCell className="px-2 py-1.5">
                   <div className="space-y-0.5">
                     {vendor.vendor_contacts && vendor.vendor_contacts.length > 0 ? (
-                      vendor.vendor_contacts.slice(0, 2).map((contact: any, idx: number) => (
+                      vendor.vendor_contacts.slice(0, 2).map((contact: VendorContact, idx: number) => (
                         <div key={idx} className="text-[10px]">
                           <span className="modal-value">{contact.contact_name}</span>
                           <span className="text-gray-500 ml-1">{contact.contact_phone}</span>
@@ -310,7 +310,7 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                 value={
                   <div className="space-y-1">
                     {vendor.vendor_contacts && vendor.vendor_contacts.length > 0 ? (
-                      vendor.vendor_contacts.slice(0, 2).map((contact: any, idx: number) => (
+                      vendor.vendor_contacts.slice(0, 2).map((contact: VendorContact, idx: number) => (
                         <div key={idx} className="modal-subtitle">
                           <div className="modal-value">{contact.contact_name}</div>
                           <div className="text-gray-500 badge-text">{contact.contact_phone}</div>

@@ -332,11 +332,9 @@ const GeneratedPreviewPanel = forwardRef<GeneratedPreviewPanelRef, GeneratedPrev
     
     // 숫자 필드 처리
     if (field === 'setCount' || field === 'totalQuantity' || field === 'stockQuantity') {
-      (item as any)[field] = Number(value) || 0;
-    } else if (field === 'refList') {
-      (item as any)[field] = value;
+      (item[field] as number) = Number(value) || 0;
     } else {
-      (item as any)[field] = value;
+      (item[field] as string) = value;
     }
     
     // 수동 입력 완료 시 플래그 해제

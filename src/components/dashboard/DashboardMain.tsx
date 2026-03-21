@@ -69,8 +69,21 @@ export default function DashboardMain() {
   const [dismissedApprovalIds, setDismissedApprovalIds] = useState<Set<string>>(new Set())
   
   // 차량/법인카드 현황
-  const [vehicleRequests, setVehicleRequests] = useState<any[]>([])
-  const [cardUsages, setCardUsages] = useState<any[]>([])
+  const [vehicleRequests, setVehicleRequests] = useState<Array<{
+    vehicle_info?: string
+    start_at: string
+    end_at: string
+    route?: string
+    requester?: { name?: string }
+    driver?: { name?: string }
+    [key: string]: unknown
+  }>>([])
+  const [cardUsages, setCardUsages] = useState<Array<{
+    card_number?: string
+    usage_category?: string
+    requester?: { name?: string }
+    [key: string]: unknown
+  }>>([])
   const [statusNow, setStatusNow] = useState(() => new Date())
 
   // 문의하기 관련 (app_admin용)
@@ -87,7 +100,7 @@ export default function DashboardMain() {
   
   // 삭제 확인 다이얼로그 상태
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
-  const [purchaseToDelete, setPurchaseToDelete] = useState<any>(null)
+  const [purchaseToDelete, setPurchaseToDelete] = useState<{ id: string | number; purchase_order_number?: string } | null>(null)
   
   // 입고일정지연알림 모달 상태
   const [isWarningModalOpen, setIsWarningModalOpen] = useState(false)
@@ -159,7 +172,7 @@ export default function DashboardMain() {
     for (const card of DASHBOARD_CARDS) {
       const active = cardUsages.find(u => u.card_number === card.value)
       if (active) {
-        map[card.value] = { inUse: true, user: active.requester?.name || "-", category: active.usage_category }
+        map[card.value] = { inUse: true, user: active.requester?.name || "-", category: active.usage_category || "" }
       } else {
         map[card.value] = { inUse: false, user: "", category: "" }
       }
@@ -440,7 +453,7 @@ export default function DashboardMain() {
       setData((prev) => {
         if (!prev) return prev
         const targetId = String(purchaseIdForDelete)
-        const removeById = (list: any[] = []) => list.filter((item: any) => String(item.id) !== targetId)
+        const removeById = <T extends { id?: string | number }>(list: T[] = []) => list.filter((item) => String(item.id) !== targetId)
         
         const nextMyStatus = prev.myPurchaseStatus
           ? {
@@ -524,9 +537,9 @@ export default function DashboardMain() {
         // 2) 메모리 캐시도 동기화 → 다른 화면/리스너 실시간 반영
         updatePurchaseInMemory(normalizedId, (purchase) => {
           if (result.stage === 'middle') {
-            return { ...purchase, middle_manager_status: 'approved' as any }
+            return { ...purchase, middle_manager_status: 'approved' as const }
           }
-          return { ...purchase, final_manager_status: 'approved' as any }
+          return { ...purchase, final_manager_status: 'approved' as const }
         })
 
         toast.success('승인이 완료되었습니다.')
@@ -548,21 +561,21 @@ export default function DashboardMain() {
   }
 
   // 모달 열기 헬퍼 함수 (PurchaseDetailModal 사용, activeTab 전달)
-  const openPurchaseModal = (item: any, activeTab: string = 'pending') => {
+  const openPurchaseModal = (item: { id: string | number }, activeTab: string = 'pending') => {
     setSelectedPurchaseId(Number(item.id))
     setModalActiveTab(activeTab)
     setIsModalOpen(true)
   }
 
   // 검색 필터링 함수
-  const filterItems = useCallback((items: any[], searchTerm: string) => {
+  const filterItems = useCallback(<T extends { purchase_order_number?: string; vendor_name?: string; purchase_request_items?: Array<{ item_name?: string }> }>(items: T[], searchTerm: string): T[] => {
     if (!searchTerm.trim()) return items
-    
+
     return items.filter(item => {
       const orderNumber = item.purchase_order_number || ''
       const vendorName = item.vendor_name || ''
       const itemsText = (item.purchase_request_items || [])
-        .map((pItem: any) => pItem.item_name || '')
+        .map((pItem) => pItem.item_name || '')
         .join(' ')
       
       return [orderNumber, vendorName, itemsText]
@@ -651,7 +664,7 @@ export default function DashboardMain() {
 
   // 권한 파싱 및 표시 여부 결정
   const roles = Array.isArray(data.employee.purchase_role)
-    ? (data.employee.purchase_role as any[]).map((r: any) => String(r).trim())
+    ? (data.employee.purchase_role as string[]).map((r: string) => String(r).trim())
     : (data.employee.purchase_role
         ? String(data.employee.purchase_role)
             .split(',')
@@ -740,7 +753,7 @@ export default function DashboardMain() {
                       {filteredPending.slice(0, 10).map((approval, index) => {
                         const items = approval.purchase_request_items || []
                         const firstItem = items[0] || {}
-                        const totalAmount = approval.total_amount || items.reduce((sum: number, i: any) => sum + (Number(i.amount_value) || 0), 0)
+                        const totalAmount = approval.total_amount || items.reduce((sum: number, i: { amount_value?: number | string }) => sum + (Number(i.amount_value) || 0), 0)
                         const isAdvance = approval.progress_type === '선진행'
                         const typeColorClass = getTypeColorClass(approval.payment_category)
                         
@@ -995,9 +1008,9 @@ export default function DashboardMain() {
                         const items = item.purchase_request_items || []
                         const firstItem = items[0]
                         const totalItems = items.length
-                        const receivedItems = items.filter((i: any) => i.is_received).length
+                        const receivedItems = items.filter((i: { is_received?: boolean }) => i.is_received).length
                         const progress = totalItems > 0 ? Math.round((receivedItems / totalItems) * 100) : 0
-                        const totalAmount = items.reduce((sum: number, i: any) => sum + (Number(i.amount_value) || 0), 0)
+                        const totalAmount = items.reduce((sum: number, i: { amount_value?: number | string }) => sum + (Number(i.amount_value) || 0), 0)
                         const isSeonJin = (item.progress_type || '').includes('선진행')
                         
                         return (

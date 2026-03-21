@@ -3,7 +3,7 @@
  * 메모리에 있는 데이터를 즉시 필터링
  */
 
-import type { Purchase, Employee } from '@/types/purchase'
+import type { Purchase, Employee, PurchaseRequestItem } from '@/types/purchase'
 import { HIDDEN_EMPLOYEES } from '@/config/constants'
 import { logger } from '@/lib/logger'
 
@@ -41,26 +41,26 @@ export const filterByTab = (
   
   const userRoles = Array.isArray(currentUser.purchase_role) 
     ? currentUser.purchase_role.map((r: string) => r.trim())
-    : typeof currentUser.purchase_role === 'string' 
+    : typeof currentUser.purchase_role === 'string'
     ? currentUser.purchase_role.split(',').map((r: string) => r.trim())
     : []
-  
+
   switch (tab) {
     case 'pending': {
       // 승인 대기 탭: 권한별로 필터링
       return purchases.filter(purchase => {
         // 기본 조건: 둘 다 approved면 제외
-        if (purchase.middle_manager_status === 'approved' && 
+        if (purchase.middle_manager_status === 'approved' &&
             purchase.final_manager_status === 'approved') {
           return false // 승인 완료는 승인대기 탭에서 제외
         }
-        
+
         // 반려된 경우 제외
-        if (purchase.middle_manager_status === 'rejected' || 
+        if (purchase.middle_manager_status === 'rejected' ||
             purchase.final_manager_status === 'rejected') {
           return false
         }
-        
+
         // 1. 카테고리별 관리자 먼저 체크 (특정 항목만 보기)
         if (userRoles.includes('consumable_manager')) {
           // 구매 요청만 볼 수 있음
@@ -68,26 +68,25 @@ export const filterByTab = (
             return false
           }
         }
-        
+
         if (userRoles.includes('raw_material_manager')) {
           // 발주만 볼 수 있음
           if (purchase.payment_category !== '발주') {
             return false
           }
         }
-        
+
         // 2. 전체 권한자 체크 (app_admin과 ceo만)
-        if (userRoles.includes('app_admin') || 
+        if (userRoles.includes('app_admin') ||
             userRoles.includes('ceo')) {
           logger.debug('🔥 App Admin detected! Showing all items for:', { purchase_order_number: purchase.purchase_order_number });
           return true
         }
-        
+
         // 3. middle_manager는 중간승인 대기 항목만
         if (userRoles.includes('middle_manager')) {
-          const isMiddlePending = ['pending', '대기', '', null, undefined].includes(
-            purchase.middle_manager_status as any
-          )
+          const middleStatus = purchase.middle_manager_status
+          const isMiddlePending = !middleStatus || middleStatus === 'pending' || middleStatus === '대기'
           return isMiddlePending
         }
         
@@ -195,12 +194,21 @@ export const filterByEmployee = (
   })
 }
 
+interface AdvancedFilter {
+  id?: string
+  field: string
+  condition: string
+  value: string | number | Date
+  label?: string
+  dateField?: string
+}
+
 /**
  * 고급 필터 적용
  */
 export const applyAdvancedFilters = (
   purchases: Purchase[],
-  filters: any[]
+  filters: AdvancedFilter[]
 ): Purchase[] => {
   if (!filters || filters.length === 0) return purchases
   
@@ -213,25 +221,25 @@ export const applyAdvancedFilters = (
       const items = purchase.purchase_request_items || []
       
       // 각 품목에 대해 필터 조건 검사
-      const matchedItems = items.filter((item: any) => {
+      const matchedItems = items.filter((item: PurchaseRequestItem) => {
         return filters.every(filter => {
           const { field, condition, value, dateField } = filter
           const targetField = dateField || field
-          
+
           // 품목 필드인 경우
           if (ITEM_FIELDS.includes(targetField)) {
-            const fieldValue = item[targetField]
+            const fieldValue = (item as unknown as Record<string, unknown>)[targetField]
             return checkFilterCondition(fieldValue, condition, value)
           }
-          
+
           // 헤더 필드인 경우
           const fieldValue = getFieldValue(purchase, targetField)
           return checkFilterCondition(fieldValue, condition, value)
         })
       })
-      
+
       // 매칭된 품목만 포함하여 purchase 객체 반환
-      return matchedItems.map((item: any) => ({
+      return matchedItems.map((item: PurchaseRequestItem) => ({
         ...purchase,
         purchase_request_items: [item]
       }))
@@ -252,7 +260,7 @@ export const applyAdvancedFilters = (
 /**
  * 필터 조건 체크 헬퍼 함수
  */
-const checkFilterCondition = (fieldValue: any, condition: string, value: any): boolean => {
+const checkFilterCondition = (fieldValue: unknown, condition: string, value: string | number | Date): boolean => {
   // null/undefined 체크
   if (fieldValue === null || fieldValue === undefined) {
     return condition === 'is_empty'
@@ -267,7 +275,7 @@ const checkFilterCondition = (fieldValue: any, condition: string, value: any): b
         if (!fieldValue) return false
         try {
         const [startDate, endDate] = value.split('~')
-        const purchaseDate = new Date(fieldValue).toISOString().split('T')[0]
+        const purchaseDate = new Date(fieldValue as string).toISOString().split('T')[0]
         return purchaseDate >= startDate && purchaseDate <= endDate
         } catch (error) {
           logger.error('날짜 범위 처리 오류', error)
@@ -280,10 +288,10 @@ const checkFilterCondition = (fieldValue: any, condition: string, value: any): b
         try {
         if (value.includes('~')) {
           const [startMonth, endMonth] = value.split('~')
-          const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7) // YYYY-MM 형식
+          const purchaseMonth = new Date(fieldValue as string).toISOString().slice(0, 7) // YYYY-MM 형식
           return purchaseMonth >= startMonth && purchaseMonth <= endMonth
         } else {
-          const purchaseMonth = new Date(fieldValue).toISOString().slice(0, 7)
+          const purchaseMonth = new Date(fieldValue as string).toISOString().slice(0, 7)
           return purchaseMonth === value
           }
         } catch (error) {
@@ -304,20 +312,20 @@ const checkFilterCondition = (fieldValue: any, condition: string, value: any): b
     case 'less_than':
       return Number(fieldValue) < Number(value)
     case 'after':
-      return new Date(fieldValue) > new Date(value)
+      return new Date(fieldValue as string) > new Date(value as string | number)
     case 'before':
-      return new Date(fieldValue) < new Date(value)
+      return new Date(fieldValue as string) < new Date(value as string | number)
     case 'is_empty':
       return !fieldValue || fieldValue === '' || fieldValue === null
     case 'is_not_empty':
       return fieldValue && fieldValue !== '' && fieldValue !== null
     case 'between': {
-      const [min, max] = value.split(',').map(Number)
+      const [min, max] = String(value).split(',').map(Number)
       const numValue = Number(fieldValue)
       return numValue >= min && numValue <= max
     }
     case 'in': {
-      const values = value.split(',').map((v: string) => v.trim())
+      const values = String(value).split(',').map((v: string) => v.trim())
       return values.includes(String(fieldValue))
     }
     default:
@@ -353,30 +361,31 @@ export const filterBySearchTerm = (
     
     // 품목에서 검색어 매치 확인
     const items = purchase.purchase_request_items || []
-    const matchedItems = items.filter((item: any) => {
+    const matchedItems = items.filter((item: PurchaseRequestItem) => {
+      const itemRecord = item as unknown as Record<string, unknown>
       const itemFields = [
         item.item_name,
-        item.item_detail,
-        item.manufacturer,
-        item.model,
+        itemRecord.item_detail,
+        itemRecord.manufacturer,
+        itemRecord.model,
         item.specification,
-        item.spec, // 하위 호환성을 위해 유지
+        itemRecord.spec, // 하위 호환성을 위해 유지
         item.remark
       ]
-      
-      return itemFields.some(field => 
+
+      return itemFields.some(field =>
         field && String(field).toLowerCase().includes(term)
       )
     })
-    
+
     // 헤더 매치만 있는 경우: 전체 purchase 반환
     if (headerMatch && matchedItems.length === 0) {
       return [purchase]
     }
-    
+
     // 품목 매치가 있는 경우: 매치된 품목만 포함하여 반환
     if (matchedItems.length > 0) {
-      return matchedItems.map((item: any) => ({
+      return matchedItems.map((item: PurchaseRequestItem) => ({
         ...purchase,
         purchase_request_items: [item]
       }))
@@ -434,7 +443,7 @@ export const sortPurchases = (
 /**
  * 필드 값 추출 헬퍼
  */
-const getFieldValue = (purchase: Purchase, field: string): any => {
+const getFieldValue = (purchase: Purchase, field: string): unknown => {
   // date_range와 date_month는 request_date를 사용
   if (field === 'date_range' || field === 'date_month') {
     return purchase.request_date
@@ -479,11 +488,11 @@ const getFieldValue = (purchase: Purchase, field: string): any => {
   
   // 중첩된 필드 처리 (예: items.0.item_name)
   const keys = field.split('.')
-  let value: any = purchase
+  let value: unknown = purchase as unknown as Record<string, unknown>
   
   for (const key of keys) {
     if (value === null || value === undefined) return null
-    value = value[key]
+    value = (value as Record<string, unknown>)[key]
   }
   
   return value
@@ -611,14 +620,12 @@ export const countPendingApprovalsForSidebarBadge = (
 
     if (!matchesManagedCategory(purchase)) return false
 
-    const isMiddlePending = ['pending', '대기', '', null, undefined].includes(
-      purchase.middle_manager_status as any
-    )
+    const middleStatus = purchase.middle_manager_status
+    const isMiddlePending = !middleStatus || middleStatus === 'pending' || middleStatus === '대기'
+    const finalStatus = purchase.final_manager_status
     const isFinalPending =
       purchase.middle_manager_status === 'approved' &&
-      ['pending', '대기', '', null, undefined].includes(
-        purchase.final_manager_status as any
-      )
+      (!finalStatus || finalStatus === 'pending' || finalStatus === '대기')
 
     if (hasAppAdmin) {
       return isMiddlePending || isFinalPending
@@ -806,7 +813,7 @@ export interface FilterOptions {
   tab?: TabType
   employeeName?: string | null
   searchTerm?: string
-  advancedFilters?: any[]
+  advancedFilters?: AdvancedFilter[]
   startDate?: string
   endDate?: string
   sortConfig?: { key: string; direction: 'asc' | 'desc' }
