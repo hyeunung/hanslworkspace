@@ -193,7 +193,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
       const { count } = await supabase
         .from('transaction_statements')
         .select('id', { count: 'exact', head: true })
-        .in('status', ['pending', 'processing', 'extracted'])
+        .eq('status', 'extracted')
 
       if (!cancelled && typeof count === 'number') {
         setPendingStatementCount(count)

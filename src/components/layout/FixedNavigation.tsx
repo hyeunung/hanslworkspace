@@ -133,7 +133,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
       const { count } = await supabase
         .from('transaction_statements')
         .select('id', { count: 'exact', head: true })
-        .in('status', ['pending', 'processing', 'extracted'])
+        .eq('status', 'extracted')
 
       if (!cancelled && typeof count === 'number') {
         setPendingStatementCount(count)
