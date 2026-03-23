@@ -42,6 +42,7 @@ interface StatementItemRow {
   matched_item_id: number | null;
   extracted_quantity: number | null;
   confirmed_quantity: number | null;
+  extracted_amount: number | null;
   match_candidates_data: MatchCandidate[] | null;
 }
 
@@ -50,6 +51,8 @@ interface StatementListRow extends Record<string, unknown> {
   id: string;
   status: string;
   all_quantities_matched?: boolean;
+  all_amounts_matched?: boolean;
+  grand_total?: number | string | null;
   items?: StatementItemRow[];
 }
 
@@ -756,7 +759,7 @@ class TransactionStatementService {
         .from('transaction_statements')
         .select(`
           *,
-          items:transaction_statement_items(matched_purchase_id,matched_item_id,extracted_quantity,confirmed_quantity,match_candidates_data)
+          items:transaction_statement_items(matched_purchase_id,matched_item_id,extracted_quantity,confirmed_quantity,extracted_amount,match_candidates_data)
         `, { count: 'exact' })
         .order('statement_date', { ascending: false, nullsFirst: false })
         .order('uploaded_at', { ascending: false });
@@ -880,12 +883,52 @@ class TransactionStatementService {
           }
         }
 
+        // 금액 일치: DB에 저장된 값을 우선 사용, 없으면 match_candidates_data 기반 계산
+        let all_amounts_matched = statement.all_amounts_matched === true;
+        if (!all_amounts_matched && stmtItems.length > 0 && (statement.status === 'extracted' || statement.status === 'confirmed')) {
+          if (hasCandidates) {
+            const ocrGrandTotal = Math.round(Number(statement.grand_total ?? 0));
+            if (ocrGrandTotal > 0) {
+              let sysTotal = 0;
+              let allHaveCandidates = true;
+              for (const item of stmtItems) {
+                const candidates = item.match_candidates_data;
+                if (!Array.isArray(candidates) || candidates.length === 0) {
+                  allHaveCandidates = false;
+                  break;
+                }
+                // 동일한 후보 선택 로직
+                let selected: MatchCandidate | null = null;
+                if (item.matched_item_id) {
+                  selected = candidates.find((c: MatchCandidate) => c.item_id === item.matched_item_id) || null;
+                }
+                if (!selected && item.matched_purchase_id) {
+                  const inPurchase = candidates.filter((c: MatchCandidate) => c.purchase_id === item.matched_purchase_id);
+                  if (inPurchase.length > 0) {
+                    selected = inPurchase.reduce((a: MatchCandidate, b: MatchCandidate) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), inPurchase[0]);
+                  }
+                }
+                if (!selected) {
+                  selected = candidates.reduce((a: MatchCandidate, b: MatchCandidate) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
+                }
+                const sysAmount = Number(selected?.amount);
+                if (!Number.isFinite(sysAmount)) { allHaveCandidates = false; break; }
+                sysTotal += sysAmount;
+              }
+              if (allHaveCandidates) {
+                all_amounts_matched = Math.round(sysTotal) === ocrGrandTotal;
+              }
+            }
+          }
+        }
+
         const { items, ...rest } = statement;
         return {
           ...rest,
           matched_purchase_id: matchedPurchases[0]?.purchase_id || null,
           matched_purchases: matchedPurchases,
-          all_quantities_matched
+          all_quantities_matched,
+          all_amounts_matched
         };
       });
 
@@ -1032,6 +1075,31 @@ class TransactionStatementService {
           await this.supabase
             .from('transaction_statements')
             .update({ all_quantities_matched: allMatched })
+            .eq('id', statementId);
+        }
+
+        // 금액일치 여부 계산: OCR 합계 vs 매칭 후보 금액 합산
+        let allAmountsMatched = false;
+        const ocrGrandTotal = Math.round(Number(statement.grand_total ?? 0));
+        if (ocrGrandTotal > 0 && itemsWithMatch.length > 0) {
+          let sysTotal = 0;
+          let allHaveCandidates = true;
+          for (const item of itemsWithMatch) {
+            const candidates = item.match_candidates || [];
+            if (candidates.length === 0) { allHaveCandidates = false; break; }
+            const best = candidates.reduce((a, b) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
+            const sysAmount = Number(best.amount);
+            if (!Number.isFinite(sysAmount)) { allHaveCandidates = false; break; }
+            sysTotal += sysAmount;
+          }
+          if (allHaveCandidates) {
+            allAmountsMatched = Math.round(sysTotal) === ocrGrandTotal;
+          }
+        }
+        if (allAmountsMatched !== (statement.all_amounts_matched ?? false)) {
+          await this.supabase
+            .from('transaction_statements')
+            .update({ all_amounts_matched: allAmountsMatched })
             .eq('id', statementId);
         }
       }
@@ -1876,12 +1944,14 @@ class TransactionStatementService {
       const updateData: Record<string, unknown> = {
         manager_confirmed_at: confirmedAt,
         manager_confirmed_by: user?.id,
-        manager_confirmed_by_name: confirmerName || null
+        manager_confirmed_by_name: confirmerName || null,
+        all_amounts_matched: true
       };
       if (request.confirmed_grand_total !== undefined) {
         updateData.grand_total = request.confirmed_grand_total;
         updateData.total_amount = request.confirmed_grand_total;
       }
+
       const { data: updatedStatement, error: stmtError } = await this.supabase
         .from('transaction_statements')
         .update(updateData)
@@ -1983,9 +2053,7 @@ class TransactionStatementService {
 
           const requestedQuantityRaw = Number(existingItem?.quantity ?? 0);
           const requestedQuantity = Number.isFinite(requestedQuantityRaw) ? requestedQuantityRaw : 0;
-          const currentReceivedQuantityRaw = Number(existingItem?.received_quantity ?? 0);
-          const currentReceivedQuantity = Number.isFinite(currentReceivedQuantityRaw) ? currentReceivedQuantityRaw : 0;
-          const totalReceivedQuantity = currentReceivedQuantity + newReceivedQuantity;
+          const totalReceivedQuantity = newReceivedQuantity;
           const isFullyReceived = totalReceivedQuantity >= requestedQuantity;
           const deliveryStatus: 'pending' | 'partial' | 'received' = totalReceivedQuantity === 0
             ? 'pending'
@@ -2081,11 +2149,11 @@ class TransactionStatementService {
         return { success: true, finalized: true, updatedStatement: statement };
       }
 
-      const isManagerConfirmed = !!statement.manager_confirmed_at;
-      const isQuantityMatched = !!statement.quantity_match_confirmed_at;
+      const isQuantityMatched = statement.all_quantities_matched === true;
+      const isAmountMatched = statement.all_amounts_matched === true;
 
-      // 둘 다 완료되지 않았으면 아직 최종 확정 아님
-      if (!isManagerConfirmed || !isQuantityMatched) {
+      // 수량 + 금액 둘 다 일치해야 최종 확정
+      if (!isQuantityMatched || !isAmountMatched) {
         return { success: true, finalized: false, updatedStatement: statement };
       }
 

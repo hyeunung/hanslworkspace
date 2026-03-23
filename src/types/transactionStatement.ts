@@ -70,6 +70,8 @@ export interface TransactionStatement {
   }>;
   // 목록 조회 시 계산된 수량 일치 여부 (OCR수량 == 시스템수량, 전 품목)
   all_quantities_matched?: boolean;
+  // 목록 조회 시 계산된 금액 일치 여부 (OCR합계 == 시스템합계)
+  all_amounts_matched?: boolean;
 }
 
 // 거래명세서 품목 타입

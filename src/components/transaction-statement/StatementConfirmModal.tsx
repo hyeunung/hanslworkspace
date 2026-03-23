@@ -37,6 +37,7 @@ import { normalizeOrderNumber, extractLineNumberFromPO, isValidOrderNumber } fro
 import { logger } from "@/lib/logger";
 
 import PurchaseDetailModal from "@/components/purchase/PurchaseDetailModal";
+import { markItemAsReceived } from "@/stores/purchaseMemoryStore";
 import { UTK_AUTHORIZED_ROLES } from "@/constants/columnSettings";
 import StatementImageViewer, { openStatementPreview } from "./StatementImageViewer";
 
@@ -3598,6 +3599,15 @@ export default function StatementConfirmModal({
         if (result.updatedStatement) {
           setStatementWithItems(prev => (prev ? { ...prev, ...result.updatedStatement } : prev));
         }
+
+        // 메모리 캐시에 입고 정보 동기화 (발주 상세모달에서 최신 데이터 표시)
+        const receivedDate = statementWithItems.extracted_data?.actual_received_date || new Date().toISOString();
+        for (const item of confirmItems) {
+          if (item.matched_purchase_id && item.matched_item_id && item.confirmed_quantity != null && item.confirmed_quantity > 0) {
+            markItemAsReceived(item.matched_purchase_id, item.matched_item_id, receivedDate, item.confirmed_quantity);
+          }
+        }
+
         toast.success('수량일치 확인 완료');
         onConfirm();
       } else {
@@ -4930,10 +4940,40 @@ export default function StatementConfirmModal({
                           {!isReceiptMode && (
                             <>
                               <td className="p-1 text-right">
-                                <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem ? formatAmount(matchedSystem.unit_price) : '-'}</span>
+                                <div className="flex items-center justify-end gap-0.5">
+                                  <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>{matchedSystem ? formatAmount(matchedSystem.unit_price) : '-'}</span>
+                                  {(() => {
+                                    if (!matchedSystem || matchedSystem.unit_price == null) return null;
+                                    const ocrVal = Number(getOCRItemValue(ocrItem, 'unit_price'));
+                                    if (isNaN(ocrVal)) return null;
+                                    const matched = ocrVal === matchedSystem.unit_price;
+                                    return (
+                                      <span className={`text-[9px] flex-shrink-0 ${matched ? 'text-green-500' : 'text-red-400'}`}
+                                        title={`시스템: ${formatAmount(matchedSystem.unit_price)}, OCR: ${formatAmount(ocrVal)}`}>
+                                        {matched ? '✓' : '✗'}
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
                               </td>
                               <td className="p-1 text-right">
-                                <span className="text-[11px] font-bold text-gray-900" style={{ fontSize: '11px', fontWeight: 700 }}>{matchedSystem ? formatAmount(getSystemAmount(matchedSystem) ?? undefined) : '-'}</span>
+                                <div className="flex items-center justify-end gap-0.5">
+                                  <span className="text-[11px] font-bold text-gray-900" style={{ fontSize: '11px', fontWeight: 700 }}>{matchedSystem ? formatAmount(getSystemAmount(matchedSystem) ?? undefined) : '-'}</span>
+                                  {(() => {
+                                    if (!matchedSystem) return null;
+                                    const sysAmount = getSystemAmount(matchedSystem);
+                                    if (sysAmount == null) return null;
+                                    const ocrVal = Number(getOCRItemValue(ocrItem, 'amount'));
+                                    if (isNaN(ocrVal)) return null;
+                                    const matched = ocrVal === sysAmount;
+                                    return (
+                                      <span className={`text-[9px] flex-shrink-0 ${matched ? 'text-green-500' : 'text-red-400'}`}
+                                        title={`시스템: ${formatAmount(sysAmount)}, OCR: ${formatAmount(ocrVal)}`}>
+                                        {matched ? '✓' : '✗'}
+                                      </span>
+                                    );
+                                  })()}
+                                </div>
                               </td>
                             </>
                           )}
@@ -5069,46 +5109,113 @@ export default function StatementConfirmModal({
                           {!isReceiptMode && (
                             <>
                               <td className="p-1 text-right w-20">
-                                <input
-                                  type="text"
-                                  value={focusedAmountField === `${ocrItem.id}-unit_price`
-                                    ? String(getOCRItemValue(ocrItem, 'unit_price') ?? '')
-                                    : formatAmount(getOCRItemValue(ocrItem, 'unit_price') as number)}
-                                  onChange={(e) => {
-                                    const num = Number(e.target.value.replace(/[^0-9.-]/g, ''));
-                                    handleEditOCRItem(ocrItem.id, 'unit_price', isNaN(num) ? 0 : num);
-                                  }}
-                                  onFocus={() => setFocusedAmountField(`${ocrItem.id}-unit_price`)}
-                                  onBlur={() => { setFocusedAmountField(null); handleOCRItemBlur(ocrItem.id, 'unit_price'); }}
-                                  className={`w-16 px-1 h-5 !text-[10px] !font-medium text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
-                                    isOCRItemEdited(ocrItem, 'unit_price') 
-                                      ? 'border-orange-400 bg-orange-50' 
-                                      : 'border-gray-200 bg-white'
-                                  }`}
-                                  style={{ fontSize: '11px', fontWeight: 500 }}
-                                  title={isOCRItemEdited(ocrItem, 'unit_price') ? `원본: ${formatAmount(ocrItem.extracted_unit_price ?? undefined)}` : undefined}
-                                />
+                                <div className="flex items-center justify-end gap-0.5">
+                                  {(() => {
+                                    let effSys = matchedSystem;
+                                    if (!effSys) {
+                                      const poNum = isSamePONumber
+                                        ? selectedPONumber
+                                        : (itemPONumbers.get(ocrItem.id) || normalizeValidOrderNumber(ocrItem.extracted_po_number));
+                                      if (poNum) {
+                                        const sysItems = getSystemItemsForPO(poNum);
+                                        let bestScore = 0;
+                                        sysItems.forEach(si => {
+                                          const sc = calculateItemSimilarity(
+                                            (getOCRItemValue(ocrItem, 'item_name') as string) || '',
+                                            si.item_name, si.specification
+                                          );
+                                          if (sc > bestScore) { bestScore = sc; effSys = si; }
+                                        });
+                                        if (bestScore < 40) effSys = null;
+                                      }
+                                    }
+                                    if (!effSys || effSys.unit_price == null) return null;
+                                    const ocrVal = Number(getOCRItemValue(ocrItem, 'unit_price'));
+                                    const sysVal = effSys.unit_price;
+                                    if (isNaN(ocrVal)) return null;
+                                    const matched = ocrVal === sysVal;
+                                    return (
+                                      <span className={`text-[9px] flex-shrink-0 ${matched ? 'text-green-500' : 'text-red-400'}`}
+                                        title={`시스템: ${formatAmount(sysVal)}, OCR: ${formatAmount(ocrVal)}`}>
+                                        {matched ? '✓' : '✗'}
+                                      </span>
+                                    );
+                                  })()}
+                                  <input
+                                    type="text"
+                                    value={focusedAmountField === `${ocrItem.id}-unit_price`
+                                      ? String(getOCRItemValue(ocrItem, 'unit_price') ?? '')
+                                      : formatAmount(getOCRItemValue(ocrItem, 'unit_price') as number)}
+                                    onChange={(e) => {
+                                      const num = Number(e.target.value.replace(/[^0-9.-]/g, ''));
+                                      handleEditOCRItem(ocrItem.id, 'unit_price', isNaN(num) ? 0 : num);
+                                    }}
+                                    onFocus={() => setFocusedAmountField(`${ocrItem.id}-unit_price`)}
+                                    onBlur={() => { setFocusedAmountField(null); handleOCRItemBlur(ocrItem.id, 'unit_price'); }}
+                                    className={`w-16 px-1 h-5 !text-[10px] !font-medium text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                                      isOCRItemEdited(ocrItem, 'unit_price')
+                                        ? 'border-orange-400 bg-orange-50'
+                                        : 'border-gray-200 bg-white'
+                                    }`}
+                                    style={{ fontSize: '11px', fontWeight: 500 }}
+                                    title={isOCRItemEdited(ocrItem, 'unit_price') ? `원본: ${formatAmount(ocrItem.extracted_unit_price ?? undefined)}` : undefined}
+                                  />
+                                </div>
                               </td>
                               <td className="p-1 text-right w-24">
-                                <input
-                                  type="text"
-                                  value={focusedAmountField === `${ocrItem.id}-amount`
-                                    ? String(getOCRItemValue(ocrItem, 'amount') ?? '')
-                                    : formatAmount(getOCRItemValue(ocrItem, 'amount') as number)}
-                                  onChange={(e) => {
-                                    const num = Number(e.target.value.replace(/[^0-9.-]/g, ''));
-                                    handleEditOCRItem(ocrItem.id, 'amount', isNaN(num) ? 0 : num);
-                                  }}
-                                  onFocus={() => setFocusedAmountField(`${ocrItem.id}-amount`)}
-                                  onBlur={() => { setFocusedAmountField(null); handleOCRItemBlur(ocrItem.id, 'amount'); }}
-                                  className={`w-20 px-1 h-5 !text-[10px] !font-bold text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
-                                    isOCRItemEdited(ocrItem, 'amount') 
-                                      ? 'border-orange-400 bg-orange-50' 
-                                      : 'border-gray-200 bg-white'
-                                  }`}
-                                  style={{ fontSize: '11px', fontWeight: 700 }}
-                                  title={isOCRItemEdited(ocrItem, 'amount') ? `원본: ${formatAmount(ocrItem.extracted_amount ?? undefined)}` : undefined}
-                                />
+                                <div className="flex items-center justify-end gap-0.5">
+                                  {(() => {
+                                    let effSys = matchedSystem;
+                                    if (!effSys) {
+                                      const poNum = isSamePONumber
+                                        ? selectedPONumber
+                                        : (itemPONumbers.get(ocrItem.id) || normalizeValidOrderNumber(ocrItem.extracted_po_number));
+                                      if (poNum) {
+                                        const sysItems = getSystemItemsForPO(poNum);
+                                        let bestScore = 0;
+                                        sysItems.forEach(si => {
+                                          const sc = calculateItemSimilarity(
+                                            (getOCRItemValue(ocrItem, 'item_name') as string) || '',
+                                            si.item_name, si.specification
+                                          );
+                                          if (sc > bestScore) { bestScore = sc; effSys = si; }
+                                        });
+                                        if (bestScore < 40) effSys = null;
+                                      }
+                                    }
+                                    if (!effSys) return null;
+                                    const sysAmount = getSystemAmount(effSys);
+                                    if (sysAmount == null) return null;
+                                    const ocrVal = Number(getOCRItemValue(ocrItem, 'amount'));
+                                    if (isNaN(ocrVal)) return null;
+                                    const matched = ocrVal === sysAmount;
+                                    return (
+                                      <span className={`text-[9px] flex-shrink-0 ${matched ? 'text-green-500' : 'text-red-400'}`}
+                                        title={`시스템: ${formatAmount(sysAmount)}, OCR: ${formatAmount(ocrVal)}`}>
+                                        {matched ? '✓' : '✗'}
+                                      </span>
+                                    );
+                                  })()}
+                                  <input
+                                    type="text"
+                                    value={focusedAmountField === `${ocrItem.id}-amount`
+                                      ? String(getOCRItemValue(ocrItem, 'amount') ?? '')
+                                      : formatAmount(getOCRItemValue(ocrItem, 'amount') as number)}
+                                    onChange={(e) => {
+                                      const num = Number(e.target.value.replace(/[^0-9.-]/g, ''));
+                                      handleEditOCRItem(ocrItem.id, 'amount', isNaN(num) ? 0 : num);
+                                    }}
+                                    onFocus={() => setFocusedAmountField(`${ocrItem.id}-amount`)}
+                                    onBlur={() => { setFocusedAmountField(null); handleOCRItemBlur(ocrItem.id, 'amount'); }}
+                                    className={`w-20 px-1 h-5 !text-[10px] !font-bold text-gray-900 text-right border business-radius focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+                                      isOCRItemEdited(ocrItem, 'amount')
+                                        ? 'border-orange-400 bg-orange-50'
+                                        : 'border-gray-200 bg-white'
+                                    }`}
+                                    style={{ fontSize: '11px', fontWeight: 700 }}
+                                    title={isOCRItemEdited(ocrItem, 'amount') ? `원본: ${formatAmount(ocrItem.extracted_amount ?? undefined)}` : undefined}
+                                  />
+                                </div>
                               </td>
                             </>
                           )}

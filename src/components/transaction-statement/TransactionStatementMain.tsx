@@ -974,17 +974,15 @@ export default function TransactionStatementMain() {
                           {(statement.status === 'extracted' || statement.status === 'confirmed') ? (
                             <div className="flex items-center justify-center gap-1 text-[11px] font-medium">
                               <span className={
-                                statement.quantity_match_confirmed_at 
-                                  ? 'text-green-600' 
-                                  : statement.all_quantities_matched 
-                                    ? 'text-blue-500' 
-                                    : 'text-gray-400'
+                                statement.all_quantities_matched
+                                  ? 'text-green-600'
+                                  : 'text-gray-400'
                               }>
-                                수량{statement.quantity_match_confirmed_at ? '✓' : statement.all_quantities_matched ? '✓' : ''}
+                                수량{statement.all_quantities_matched ? '✓' : ''}
                               </span>
                               <span className="text-gray-300">|</span>
-                              <span className={statement.manager_confirmed_at ? 'text-green-600' : 'text-gray-400'}>
-                                금액{statement.manager_confirmed_at ? '✓' : ''}
+                              <span className={statement.all_amounts_matched ? 'text-green-600' : 'text-gray-400'}>
+                                금액{statement.all_amounts_matched ? '✓' : ''}
                               </span>
                             </div>
                           ) : (
