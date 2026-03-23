@@ -50,6 +50,8 @@ interface StatementItemRow {
 interface StatementListRow extends Record<string, unknown> {
   id: string;
   status: string;
+  statement_mode?: string | null;
+  quantity_match_confirmed_at?: string | null;
   all_quantities_matched?: boolean;
   all_amounts_matched?: boolean;
   grand_total?: number | string | null;
@@ -823,6 +825,28 @@ class TransactionStatementService {
         });
       }
 
+      // 매칭된 item_id들의 실시간 received_quantity 일괄 조회
+      const allItemIds = new Set<number>();
+      typedData.forEach((statement: StatementListRow) => {
+        statement.items?.forEach((item: StatementItemRow) => {
+          if (item.matched_item_id) allItemIds.add(item.matched_item_id);
+          const candidates = item.match_candidates_data;
+          if (Array.isArray(candidates)) {
+            candidates.forEach((c: MatchCandidate) => { if (c.item_id) allItemIds.add(c.item_id); });
+          }
+        });
+      });
+      const receivedQtyMap = new Map<number, number>();
+      if (allItemIds.size > 0) {
+        const { data: itemRows } = await this.supabase
+          .from('purchase_request_items')
+          .select('id, received_quantity')
+          .in('id', Array.from(allItemIds));
+        (itemRows || []).forEach((row: { id: number; received_quantity?: number }) => {
+          receivedQtyMap.set(row.id, row.received_quantity ?? 0);
+        });
+      }
+
       // 각 거래명세서에 매칭된 발주 목록 + 수량 일치 플래그 추가
       const statementsWithPurchases = typedData.map((statement: StatementListRow) => {
         const stmtItems: StatementItemRow[] = statement.items || [];
@@ -847,24 +871,58 @@ class TransactionStatementService {
           };
         });
 
-        // 수량 일치: DB에 저장된 값을 우선 사용, 없으면 match_candidates_data 기반 계산
-        let all_quantities_matched = statement.all_quantities_matched === true;
+        // 수량 일치: 실시간 received_quantity 기준으로 항상 재계산
+        let all_quantities_matched = false;
         const hasCandidates = stmtItems.some((i: StatementItemRow) => Array.isArray(i.match_candidates_data) && i.match_candidates_data.length > 0);
+        const shouldDebugReceiptQuantity =
+          statement.status === 'extracted' || statement.status === 'confirmed';
 
-        if (!all_quantities_matched && stmtItems.length > 0 && (statement.status === 'extracted' || statement.status === 'confirmed')) {
+        if (shouldDebugReceiptQuantity) {
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H3',location:'transactionStatementService.ts:getStatements:quantity-start',message:'receipt quantity badge recalculation started',data:{statementId:statement.id,status:statement.status,statementMode:statement.statement_mode ?? null,itemCount:stmtItems.length,hasCandidates,dbAllQuantitiesMatched:statement.all_quantities_matched ?? null,quantityMatchConfirmedAt:statement.quantity_match_confirmed_at ?? null},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
+        }
+
+        if (stmtItems.length > 0 && (statement.status === 'extracted' || statement.status === 'confirmed')) {
           if (hasCandidates) {
-            all_quantities_matched = stmtItems.every((item: StatementItemRow) => {
+            all_quantities_matched = stmtItems.every((item: StatementItemRow, itemIdx: number) => {
               const ocrRaw = item.confirmed_quantity ?? item.extracted_quantity;
-              if (ocrRaw == null) return false;
+              if (ocrRaw == null) {
+                if (shouldDebugReceiptQuantity) {
+                  // #region agent log
+                  fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H4',location:'transactionStatementService.ts:getStatements:ocr-quantity-null',message:'item ocr quantity is null',data:{statementId:statement.id,itemIndex:itemIdx,confirmedQuantity:item.confirmed_quantity ?? null,extractedQuantity:item.extracted_quantity ?? null},timestamp:Date.now()})}).catch(()=>{});
+                  // #endregion
+                }
+                return false;
+              }
               const ocrQty = Number(ocrRaw);
-              if (!Number.isFinite(ocrQty)) return false;
+              if (!Number.isFinite(ocrQty)) {
+                if (shouldDebugReceiptQuantity) {
+                  // #region agent log
+                  fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H4',location:'transactionStatementService.ts:getStatements:ocr-quantity-not-finite',message:'item ocr quantity is not finite number',data:{statementId:statement.id,itemIndex:itemIdx,ocrRaw,ocrRawType:typeof ocrRaw},timestamp:Date.now()})}).catch(()=>{});
+                  // #endregion
+                }
+                return false;
+              }
               const candidates = item.match_candidates_data;
-              if (!Array.isArray(candidates) || candidates.length === 0) return false;
+              if (!Array.isArray(candidates) || candidates.length === 0) {
+                if (shouldDebugReceiptQuantity) {
+                  // #region agent log
+                  fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H3',location:'transactionStatementService.ts:getStatements:no-candidates',message:'item has no match candidates',data:{statementId:statement.id,itemIndex:itemIdx,matchedPurchaseId:item.matched_purchase_id ?? null,matchedItemId:item.matched_item_id ?? null},timestamp:Date.now()})}).catch(()=>{});
+                  // #endregion
+                }
+                return false;
+              }
 
               // 우선순위: 사용자가 선택한 매칭 -> 해당 발주 within best score -> 전체 best score
               let selected: MatchCandidate | null = null;
               if (item.matched_item_id) {
                 selected = candidates.find((c: MatchCandidate) => c.item_id === item.matched_item_id) || null;
+                if (!selected && shouldDebugReceiptQuantity) {
+                  // #region agent log
+                  fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H2',location:'transactionStatementService.ts:getStatements:matched-item-not-in-candidates',message:'matched item id not found in candidate cache',data:{statementId:statement.id,itemIndex:itemIdx,matchedItemId:item.matched_item_id,candidateItemIds:candidates.map((c: MatchCandidate) => c.item_id).slice(0, 20),candidateCount:candidates.length},timestamp:Date.now()})}).catch(()=>{});
+                  // #endregion
+                }
               }
               if (!selected && item.matched_purchase_id) {
                 const inPurchase = candidates.filter((c: MatchCandidate) => c.purchase_id === item.matched_purchase_id);
@@ -876,11 +934,33 @@ class TransactionStatementService {
                 selected = candidates.reduce((a: MatchCandidate, b: MatchCandidate) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
               }
 
-              const sysQty = Number(selected?.quantity);
-              if (!Number.isFinite(sysQty)) return false;
-              return sysQty === ocrQty;
+              // 실시간 DB에서 received_quantity 조회
+              const sysReceivedQty = receivedQtyMap.get(selected.item_id);
+              if (sysReceivedQty == null) {
+                if (shouldDebugReceiptQuantity) {
+                  // #region agent log
+                  fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H2',location:'transactionStatementService.ts:getStatements:missing-received-quantity',message:'selected item has no received quantity in map',data:{statementId:statement.id,itemIndex:itemIdx,selectedItemId:selected.item_id,matchedItemId:item.matched_item_id ?? null},timestamp:Date.now()})}).catch(()=>{});
+                  // #endregion
+                }
+                return false;
+              }
+
+              const isEqual = sysReceivedQty === ocrQty;
+              if (shouldDebugReceiptQuantity && !isEqual) {
+                // #region agent log
+                fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H1',location:'transactionStatementService.ts:getStatements:quantity-compare-failed',message:'received quantity comparison failed',data:{statementId:statement.id,itemIndex:itemIdx,selectedItemId:selected.item_id,matchedItemId:item.matched_item_id ?? null,ocrQty,ocrQtyType:typeof ocrQty,sysReceivedQty,sysReceivedQtyType:typeof sysReceivedQty},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
+              }
+
+              return isEqual;
             });
           }
+        }
+
+        if (shouldDebugReceiptQuantity) {
+          // #region agent log
+          fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H3',location:'transactionStatementService.ts:getStatements:quantity-finish',message:'receipt quantity badge recalculation finished',data:{statementId:statement.id,status:statement.status,statementMode:statement.statement_mode ?? null,computedAllQuantitiesMatched:all_quantities_matched,hasCandidates,itemCount:stmtItems.length},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
         }
 
         // 금액 일치: DB에 저장된 값을 우선 사용, 없으면 match_candidates_data 기반 계산
@@ -972,7 +1052,16 @@ class TransactionStatementService {
       
       // 매칭된 purchase_id 일괄 조회 (N+1 방지)
       const purchaseIds = [...new Set((items || []).map((i: TransactionStatementItem) => i.matched_purchase_id).filter(Boolean))] as number[];
-      const itemIds = [...new Set((items || []).map((i: TransactionStatementItem) => i.matched_item_id).filter(Boolean))] as number[];
+      // matched_item_id + match_candidates의 item_id들도 수집 (실시간 received_quantity 조회용)
+      const itemIdSet = new Set<number>();
+      (items || []).forEach((i: TransactionStatementItem) => {
+        if (i.matched_item_id) itemIdSet.add(i.matched_item_id);
+        const cached = (i as TransactionStatementItem & { match_candidates_data?: MatchCandidate[] }).match_candidates_data;
+        if (Array.isArray(cached)) {
+          cached.forEach((c: MatchCandidate) => { if (c.item_id) itemIdSet.add(c.item_id); });
+        }
+      });
+      const itemIds = [...itemIdSet];
 
       const purchaseMap = new Map<number, PurchaseLookupRow>();
       const itemMap = new Map<number, PurchaseItemRow & { received_quantity?: number }>();
@@ -1066,9 +1155,11 @@ class TransactionStatementService {
             const candidates = item.match_candidates || [];
             if (candidates.length === 0) return false;
             const best = candidates.reduce((a, b) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
-            const sysQty = Number(best.quantity);
-            if (!Number.isFinite(sysQty)) return false;
-            return sysQty === ocrQty;
+            // 실시간 DB 값 사용 (itemMap에서 조회)
+            const freshItem = itemMap.get(best.item_id);
+            const sysReceivedQty = freshItem?.received_quantity;
+            if (sysReceivedQty == null) return false;
+            return Number(sysReceivedQty) === ocrQty;
           });
         }
         if (allMatched !== (statement.all_quantities_matched ?? false)) {

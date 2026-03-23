@@ -4915,9 +4915,9 @@ export default function StatementConfirmModal({
                               const ocrQty = typeof ocrQtyRaw === 'number'
                                 ? ocrQtyRaw
                                 : (ocrQtyRaw !== '' && ocrQtyRaw != null ? Number(ocrQtyRaw) : undefined);
-                              const sysQty = effSys?.quantity;
-                              const matched = isQuantityMatched(ocrQty, sysQty);
-                              const level = getQuantityMatchLevel(ocrQty, sysQty);
+                              const sysReceivedQty = effSys?.received_quantity;
+                              const matched = isQuantityMatched(ocrQty, sysReceivedQty);
+                              const level = getQuantityMatchLevel(ocrQty, sysReceivedQty);
                               return (
                                 <div className="flex items-center justify-end gap-0.5">
                                   <span className="text-[11px] text-gray-700" style={{ fontSize: '11px' }}>
@@ -5077,15 +5077,15 @@ export default function StatementConfirmModal({
                                 const ocrQty = typeof ocrQtyRaw === 'number'
                                   ? ocrQtyRaw
                                   : (ocrQtyRaw !== '' && ocrQtyRaw != null ? Number(ocrQtyRaw) : undefined);
-                                const sysQty = effectiveSystem.quantity;
-                                const matched = isQuantityMatched(ocrQty, sysQty);
-                                const level = getQuantityMatchLevel(ocrQty, sysQty);
+                                const sysReceivedQty = effectiveSystem.received_quantity;
+                                const matched = isQuantityMatched(ocrQty, sysReceivedQty);
+                                const level = getQuantityMatchLevel(ocrQty, sysReceivedQty);
                                 return (
                                   <span className={`text-[9px] flex-shrink-0 ${
                                     matched ? 'text-green-500' :
                                     level === 'partial' ? 'text-yellow-500' :
                                     'text-red-400'
-                                  }`} title={`시스템: ${sysQty ?? '-'}, OCR: ${ocrQty ?? '-'}`}>
+                                  }`} title={`시스템입고: ${sysReceivedQty ?? '-'}, OCR: ${ocrQty ?? '-'}`}>
                                     {matched ? '✓' : level === 'partial' ? '~' : '✗'}
                                   </span>
                                 );
