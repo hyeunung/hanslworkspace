@@ -19,30 +19,32 @@ import { supportService } from '@/services/supportService'
 import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
 import { countPendingApprovalsForSidebarBadge } from '@/utils/purchaseFilters'
 import { useAuth } from '@/contexts/AuthContext'
+import { parseRoles } from '@/utils/roleHelper'
 
 interface NavigationProps {
   role?: string | string[]
   isOpen?: boolean
   onClose?: () => void
+  isExpanded?: boolean
+  onExpandChange?: (expanded: boolean) => void
 }
 
-const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "app_admin"]
+const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "superadmin"]
 
-export default function FixedNavigation({ role, isOpen = false, onClose }: NavigationProps) {
+export default function FixedNavigation({ role, isOpen = false, onClose, isExpanded = false, onExpandChange }: NavigationProps) {
   const location = useLocation()
   const pathname = location.pathname
   const { allPurchases } = usePurchaseMemory()
   const { employee } = useAuth()
-  const [isExpanded, setIsExpanded] = useState(false)
 
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
   const [pendingStatementCount, setPendingStatementCount] = useState(0)
   const [pendingApplicationCount, setPendingApplicationCount] = useState(0)
 
-  const roles = Array.isArray(role) ? role : (role ? [role] : [])
-  const isAdmin = roles.includes('app_admin')
-  const isApplicationApprover = roles.includes('app_admin') || roles.includes('hr')
-  const canSeeStatementBadge = roles.includes('app_admin') || roles.includes('lead buyer')
+  const roles = parseRoles(role)
+  const isAdmin = roles.includes('superadmin')
+  const isApplicationApprover = roles.includes('superadmin') || roles.includes('hr')
+  const canSeeStatementBadge = roles.includes('superadmin') || roles.includes('lead buyer')
 
   // 관리자: 미처리(open+in_progress) 건수
   useEffect(() => {
@@ -164,7 +166,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
   const loadOtherPendingCounts = useCallback(async () => {
     try {
       const supabase = createClient()
-      const isCardVehicleApprover = roles.includes('app_admin') || roles.includes('hr')
+      const isCardVehicleApprover = roles.includes('superadmin') || roles.includes('hr')
       const isTripApprover = roles.some((r: string) => TRIP_APPROVER_ROLES.includes(r))
 
       const [cardRes, vehicleRes, tripRes, myTripRes] = await Promise.all([
@@ -201,7 +203,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
     return () => window.clearInterval(timer)
   }, [loadOtherPendingCounts])
 
-  // hr, app_admin: 신청서 승인 대기 개수
+  // hr, superadmin: 신청서 승인 대기 개수
   useEffect(() => {
     if (!isApplicationApprover) return
     const supabase = createClient()
@@ -258,7 +260,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
       label: '영수증',
       href: '/receipts',
       icon: Receipt,
-      roles: ['app_admin', 'hr', 'lead buyer']
+      roles: ['superadmin', 'hr', 'lead buyer']
     },
     {
       label: '업체 관리',
@@ -282,13 +284,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
 
   const filteredMenuItems = menuItems.filter(item => {
     if (item.roles.includes('all')) return true
-    
-    if (Array.isArray(role)) {
-      return item.roles.some(r => role.includes(r))
-    } else if (role) {
-      return item.roles.includes(role)
-    }
-    return false
+    return item.roles.some(r => roles.includes(r))
   })
 
   return (
@@ -316,8 +312,8 @@ export default function FixedNavigation({ role, isOpen = false, onClose }: Navig
             transition: 'width 0.2s ease',
             overflow: 'hidden',
           }}
-          onMouseEnter={() => setIsExpanded(true)}
-          onMouseLeave={() => setIsExpanded(false)}
+          onMouseEnter={() => onExpandChange?.(true)}
+          onMouseLeave={() => onExpandChange?.(false)}
         >
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             {/* 메뉴 아이템들 */}

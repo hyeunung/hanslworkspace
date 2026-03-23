@@ -12,31 +12,34 @@ import AppRoutes from '@/components/layout/AppRoutes'
 export default function AppLayout() {
   const { employee } = useAuth()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
 
   return (
     <div style={{ position: 'relative', minHeight: '100vh', backgroundColor: '#f9fafb' }}>
       {/* 고정 헤더 */}
-      <Header 
-        user={employee} 
-        onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+      <Header
+        user={employee}
+        onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)}
       />
-      
+
       {/* 고정 네비게이션 */}
-      <FixedNavigation 
-        role={employee?.purchase_role} 
+      <FixedNavigation
+        role={employee?.roles}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        isExpanded={isSidebarExpanded}
+        onExpandChange={setIsSidebarExpanded}
       />
-      
+
       {/* 콘텐츠 영역 */}
       <div style={{ paddingTop: '56px', paddingLeft: '0' }}>
         {/* 데스크톱 뷰 - 항상 보이도록 수정 */}
-        <div style={{ marginLeft: '56px' }} className="hidden lg:block">
+        <div style={{ marginLeft: isSidebarExpanded ? '200px' : '56px', transition: 'margin-left 0.2s ease' }} className="hidden lg:block">
           <main className="p-1 sm:p-2 lg:p-3" style={{ minHeight: 'calc(100vh - 56px)' }}>
             <AppRoutes />
           </main>
         </div>
-        
+
         {/* 모바일 뷰 */}
         <div className="block lg:hidden">
           <main className="p-1 sm:p-2" style={{ minHeight: 'calc(100vh - 56px)' }}>
