@@ -131,6 +131,21 @@ class TransactionStatementService {
     this.supabase = createClient();
   }
 
+  private toNumericId(value: unknown): number | null {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private chunkArray<T>(values: T[], chunkSize: number): T[][] {
+    if (values.length === 0) return [];
+    if (chunkSize <= 0) return [values];
+    const chunks: T[][] = [];
+    for (let i = 0; i < values.length; i += chunkSize) {
+      chunks.push(values.slice(i, i + chunkSize));
+    }
+    return chunks;
+  }
+
   private detectFileTypeFromTarget(target: string): StatementFileType | null {
     if (!target) return null;
     const normalized = target.toLowerCase();
@@ -799,66 +814,92 @@ class TransactionStatementService {
       const typedData = (data || []) as StatementListRow[];
       typedData.forEach((statement: StatementListRow) => {
         statement.items?.forEach((item: StatementItemRow) => {
-          if (item.matched_purchase_id) {
-            allPurchaseIds.add(item.matched_purchase_id);
+          const matchedPurchaseId = this.toNumericId(item.matched_purchase_id);
+          if (matchedPurchaseId != null) {
+            allPurchaseIds.add(matchedPurchaseId);
           }
           const candidates = item.match_candidates_data;
           if (Array.isArray(candidates) && candidates.length > 0) {
             const best = candidates.reduce((a: MatchCandidate, b: MatchCandidate) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
-            if (best?.purchase_id) allPurchaseIds.add(best.purchase_id);
+            const bestPurchaseId = this.toNumericId(best?.purchase_id);
+            if (bestPurchaseId != null) allPurchaseIds.add(bestPurchaseId);
           }
         });
       });
 
-      // 발주 정보 조회 (발주번호, 수주번호)
+      // 발주 정보 조회 (발주번호, 수주번호) - 1000행 제한 회피를 위해 청크 조회
       const purchaseInfoMap = new Map<number, { purchase_order_number: string; sales_order_number?: string }>();
       if (allPurchaseIds.size > 0) {
-        const { data: purchases } = await this.supabase
-          .from('purchase_requests')
-          .select('id, purchase_order_number, sales_order_number')
-          .in('id', Array.from(allPurchaseIds));
-        (purchases as Array<{ id: number; purchase_order_number: string; sales_order_number?: string }> || []).forEach((p) => {
-          purchaseInfoMap.set(p.id, {
-            purchase_order_number: p.purchase_order_number,
-            sales_order_number: p.sales_order_number
+        const purchaseIdChunks = this.chunkArray(Array.from(allPurchaseIds), 500);
+        for (const purchaseIdChunk of purchaseIdChunks) {
+          const { data: purchases, error: purchaseError } = await this.supabase
+            .from('purchase_requests')
+            .select('id, purchase_order_number, sales_order_number')
+            .in('id', purchaseIdChunk);
+          if (purchaseError) throw purchaseError;
+          (purchases as Array<{ id: number; purchase_order_number: string; sales_order_number?: string }> || []).forEach((p) => {
+            const purchaseId = this.toNumericId(p.id);
+            if (purchaseId == null) return;
+            purchaseInfoMap.set(purchaseId, {
+              purchase_order_number: p.purchase_order_number,
+              sales_order_number: p.sales_order_number
+            });
           });
-        });
+        }
       }
 
-      // 매칭된 item_id들의 실시간 received_quantity 일괄 조회
+      // 매칭된 item_id들의 실시간 received_quantity, amount_value 일괄 조회 (청크 조회)
       const allItemIds = new Set<number>();
       typedData.forEach((statement: StatementListRow) => {
         statement.items?.forEach((item: StatementItemRow) => {
-          if (item.matched_item_id) allItemIds.add(item.matched_item_id);
+          const matchedItemId = this.toNumericId(item.matched_item_id);
+          if (matchedItemId != null) {
+            allItemIds.add(matchedItemId);
+            return;
+          }
           const candidates = item.match_candidates_data;
           if (Array.isArray(candidates)) {
-            candidates.forEach((c: MatchCandidate) => { if (c.item_id) allItemIds.add(c.item_id); });
+            candidates.forEach((c: MatchCandidate) => {
+              const candidateItemId = this.toNumericId(c.item_id);
+              if (candidateItemId != null) allItemIds.add(candidateItemId);
+            });
           }
         });
       });
-      const receivedQtyMap = new Map<number, number>();
+      const itemInfoMap = new Map<number, { received_quantity: number; amount_value: number }>();
       if (allItemIds.size > 0) {
-        const { data: itemRows } = await this.supabase
-          .from('purchase_request_items')
-          .select('id, received_quantity')
-          .in('id', Array.from(allItemIds));
-        (itemRows || []).forEach((row: { id: number; received_quantity?: number }) => {
-          receivedQtyMap.set(row.id, row.received_quantity ?? 0);
-        });
+        const itemIdChunks = this.chunkArray(Array.from(allItemIds), 500);
+        for (const itemIdChunk of itemIdChunks) {
+          const { data: itemRows, error: itemError } = await this.supabase
+            .from('purchase_request_items')
+            .select('id, received_quantity, amount_value')
+            .in('id', itemIdChunk);
+          if (itemError) throw itemError;
+          (itemRows || []).forEach((row: { id: number; received_quantity?: number; amount_value?: number }) => {
+            const rowId = this.toNumericId(row.id);
+            if (rowId == null) return;
+            itemInfoMap.set(rowId, {
+              received_quantity: Number(row.received_quantity ?? 0),
+              amount_value: Number(row.amount_value ?? 0)
+            });
+          });
+        }
       }
 
       // 각 거래명세서에 매칭된 발주 목록 + 수량 일치 플래그 추가
-      const statementsWithPurchases = typedData.map((statement: StatementListRow) => {
+      const statementsWithPurchases = await Promise.all(typedData.map(async (statement: StatementListRow) => {
         const stmtItems: StatementItemRow[] = statement.items || [];
 
         // purchase_id 수집 (matchedPurchases용)
         const purchaseIds = new Set<number>();
         stmtItems.forEach((item: StatementItemRow) => {
-          if (item.matched_purchase_id) purchaseIds.add(item.matched_purchase_id);
+          const matchedPurchaseId = this.toNumericId(item.matched_purchase_id);
+          if (matchedPurchaseId != null) purchaseIds.add(matchedPurchaseId);
           const candidates = item.match_candidates_data;
           if (Array.isArray(candidates) && candidates.length > 0) {
             const best = candidates.reduce((a: MatchCandidate, b: MatchCandidate) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
-            if (best?.purchase_id) purchaseIds.add(best.purchase_id);
+            const bestPurchaseId = this.toNumericId(best?.purchase_id);
+            if (bestPurchaseId != null) purchaseIds.add(bestPurchaseId);
           }
         });
 
@@ -873,59 +914,71 @@ class TransactionStatementService {
 
         // 수량 일치: 실시간 received_quantity 기준으로 항상 재계산
         let all_quantities_matched = false;
-        const hasCandidates = stmtItems.some((i: StatementItemRow) => Array.isArray(i.match_candidates_data) && i.match_candidates_data.length > 0);
-        const shouldDebugReceiptQuantity =
-          statement.status === 'extracted' || statement.status === 'confirmed';
-
-        if (shouldDebugReceiptQuantity) {
-          // #region agent log
-          fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H3',location:'transactionStatementService.ts:getStatements:quantity-start',message:'receipt quantity badge recalculation started',data:{statementId:statement.id,status:statement.status,statementMode:statement.statement_mode ?? null,itemCount:stmtItems.length,hasCandidates,dbAllQuantitiesMatched:statement.all_quantities_matched ?? null,quantityMatchConfirmedAt:statement.quantity_match_confirmed_at ?? null},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
-        }
 
         if (stmtItems.length > 0 && (statement.status === 'extracted' || statement.status === 'confirmed')) {
-          if (hasCandidates) {
-            all_quantities_matched = stmtItems.every((item: StatementItemRow, itemIdx: number) => {
-              const ocrRaw = item.confirmed_quantity ?? item.extracted_quantity;
-              if (ocrRaw == null) {
-                if (shouldDebugReceiptQuantity) {
-                  // #region agent log
-                  fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H4',location:'transactionStatementService.ts:getStatements:ocr-quantity-null',message:'item ocr quantity is null',data:{statementId:statement.id,itemIndex:itemIdx,confirmedQuantity:item.confirmed_quantity ?? null,extractedQuantity:item.extracted_quantity ?? null},timestamp:Date.now()})}).catch(()=>{});
-                  // #endregion
-                }
-                return false;
+          all_quantities_matched = stmtItems.every((item: StatementItemRow) => {
+            const ocrRaw = item.confirmed_quantity ?? item.extracted_quantity;
+            if (ocrRaw == null) return false;
+            const ocrQty = Number(ocrRaw);
+            if (!Number.isFinite(ocrQty)) return false;
+
+            // matched_item_id가 있으면 직접 사용 (후보 목록에 없을 수 있음)
+            if (item.matched_item_id) {
+              const info = itemInfoMap.get(Number(item.matched_item_id));
+              if (info == null) return false;
+              return info.received_quantity === ocrQty;
+            }
+
+            // matched_item_id가 없으면 후보에서 best score로 선택
+            const candidates = item.match_candidates_data;
+            if (!Array.isArray(candidates) || candidates.length === 0) return false;
+
+            let selected: MatchCandidate | null = null;
+            const matchedPurchaseId = this.toNumericId(item.matched_purchase_id);
+            if (matchedPurchaseId != null) {
+              const inPurchase = candidates.filter((c: MatchCandidate) => Number(c.purchase_id) === matchedPurchaseId);
+              if (inPurchase.length > 0) {
+                selected = inPurchase.reduce((a: MatchCandidate, b: MatchCandidate) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), inPurchase[0]);
               }
-              const ocrQty = Number(ocrRaw);
-              if (!Number.isFinite(ocrQty)) {
-                if (shouldDebugReceiptQuantity) {
-                  // #region agent log
-                  fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H4',location:'transactionStatementService.ts:getStatements:ocr-quantity-not-finite',message:'item ocr quantity is not finite number',data:{statementId:statement.id,itemIndex:itemIdx,ocrRaw,ocrRawType:typeof ocrRaw},timestamp:Date.now()})}).catch(()=>{});
-                  // #endregion
-                }
-                return false;
-              }
-              const candidates = item.match_candidates_data;
-              if (!Array.isArray(candidates) || candidates.length === 0) {
-                if (shouldDebugReceiptQuantity) {
-                  // #region agent log
-                  fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H3',location:'transactionStatementService.ts:getStatements:no-candidates',message:'item has no match candidates',data:{statementId:statement.id,itemIndex:itemIdx,matchedPurchaseId:item.matched_purchase_id ?? null,matchedItemId:item.matched_item_id ?? null},timestamp:Date.now()})}).catch(()=>{});
-                  // #endregion
-                }
-                return false;
+            }
+            if (!selected) {
+              selected = candidates.reduce((a: MatchCandidate, b: MatchCandidate) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
+            }
+
+            const info = itemInfoMap.get(Number(selected.item_id));
+            if (info == null) return false;
+
+            return info.received_quantity === ocrQty;
+          });
+        }
+
+        // 금액 일치: 실시간 amount_value 합계 기준으로 항상 재계산
+        let all_amounts_matched = false;
+        if (stmtItems.length > 0 && (statement.status === 'extracted' || statement.status === 'confirmed')) {
+          const ocrGrandTotal = Math.round(Number(statement.grand_total ?? 0));
+          if (ocrGrandTotal > 0) {
+            let sysTotal = 0;
+            let allHaveCandidates = true;
+            for (const item of stmtItems) {
+              // matched_item_id가 있으면 DB에서 직접 금액 조회 (후보에 없을 수 있음)
+              if (item.matched_item_id) {
+                const info = itemInfoMap.get(Number(item.matched_item_id));
+                if (info == null) { allHaveCandidates = false; break; }
+                const sysAmount = info.amount_value;
+                if (!Number.isFinite(sysAmount)) { allHaveCandidates = false; break; }
+                sysTotal += sysAmount;
+                continue;
               }
 
-              // 우선순위: 사용자가 선택한 매칭 -> 해당 발주 within best score -> 전체 best score
-              let selected: MatchCandidate | null = null;
-              if (item.matched_item_id) {
-                selected = candidates.find((c: MatchCandidate) => c.item_id === item.matched_item_id) || null;
-                if (!selected && shouldDebugReceiptQuantity) {
-                  // #region agent log
-                  fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H2',location:'transactionStatementService.ts:getStatements:matched-item-not-in-candidates',message:'matched item id not found in candidate cache',data:{statementId:statement.id,itemIndex:itemIdx,matchedItemId:item.matched_item_id,candidateItemIds:candidates.map((c: MatchCandidate) => c.item_id).slice(0, 20),candidateCount:candidates.length},timestamp:Date.now()})}).catch(()=>{});
-                  // #endregion
-                }
+              const candidates = item.match_candidates_data;
+              if (!Array.isArray(candidates) || candidates.length === 0) {
+                allHaveCandidates = false;
+                break;
               }
-              if (!selected && item.matched_purchase_id) {
-                const inPurchase = candidates.filter((c: MatchCandidate) => c.purchase_id === item.matched_purchase_id);
+              let selected: MatchCandidate | null = null;
+              const matchedPurchaseId = this.toNumericId(item.matched_purchase_id);
+              if (matchedPurchaseId != null) {
+                const inPurchase = candidates.filter((c: MatchCandidate) => Number(c.purchase_id) === matchedPurchaseId);
                 if (inPurchase.length > 0) {
                   selected = inPurchase.reduce((a: MatchCandidate, b: MatchCandidate) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), inPurchase[0]);
                 }
@@ -933,84 +986,66 @@ class TransactionStatementService {
               if (!selected) {
                 selected = candidates.reduce((a: MatchCandidate, b: MatchCandidate) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
               }
-
-              // 실시간 DB에서 received_quantity 조회
-              const sysReceivedQty = receivedQtyMap.get(selected.item_id);
-              if (sysReceivedQty == null) {
-                if (shouldDebugReceiptQuantity) {
-                  // #region agent log
-                  fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H2',location:'transactionStatementService.ts:getStatements:missing-received-quantity',message:'selected item has no received quantity in map',data:{statementId:statement.id,itemIndex:itemIdx,selectedItemId:selected.item_id,matchedItemId:item.matched_item_id ?? null},timestamp:Date.now()})}).catch(()=>{});
-                  // #endregion
-                }
-                return false;
-              }
-
-              const isEqual = sysReceivedQty === ocrQty;
-              if (shouldDebugReceiptQuantity && !isEqual) {
-                // #region agent log
-                fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H1',location:'transactionStatementService.ts:getStatements:quantity-compare-failed',message:'received quantity comparison failed',data:{statementId:statement.id,itemIndex:itemIdx,selectedItemId:selected.item_id,matchedItemId:item.matched_item_id ?? null,ocrQty,ocrQtyType:typeof ocrQty,sysReceivedQty,sysReceivedQtyType:typeof sysReceivedQty},timestamp:Date.now()})}).catch(()=>{});
-                // #endregion
-              }
-
-              return isEqual;
-            });
+              const sysAmount = Number(selected?.amount);
+              if (!Number.isFinite(sysAmount)) { allHaveCandidates = false; break; }
+              sysTotal += sysAmount;
+            }
+            if (allHaveCandidates) {
+              all_amounts_matched = Math.round(sysTotal) === ocrGrandTotal;
+            }
           }
         }
 
-        if (shouldDebugReceiptQuantity) {
-          // #region agent log
-          fetch('http://127.0.0.1:7244/ingest/bcff4c94-b61e-4135-9773-9da9936cebbc',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'683dc0'},body:JSON.stringify({sessionId:'683dc0',runId:'initial',hypothesisId:'H3',location:'transactionStatementService.ts:getStatements:quantity-finish',message:'receipt quantity badge recalculation finished',data:{statementId:statement.id,status:statement.status,statementMode:statement.statement_mode ?? null,computedAllQuantitiesMatched:all_quantities_matched,hasCandidates,itemCount:stmtItems.length},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
+        const storedAllQuantitiesMatched = statement.all_quantities_matched === true;
+        const storedAllAmountsMatched = statement.all_amounts_matched === true;
+        let statusForReturn = statement.status;
+        const updatePayload: Record<string, unknown> = {};
+
+        if (all_quantities_matched !== storedAllQuantitiesMatched) {
+          updatePayload.all_quantities_matched = all_quantities_matched;
+        }
+        if (all_amounts_matched !== storedAllAmountsMatched) {
+          updatePayload.all_amounts_matched = all_amounts_matched;
         }
 
-        // 금액 일치: DB에 저장된 값을 우선 사용, 없으면 match_candidates_data 기반 계산
-        let all_amounts_matched = statement.all_amounts_matched === true;
-        if (!all_amounts_matched && stmtItems.length > 0 && (statement.status === 'extracted' || statement.status === 'confirmed')) {
-          if (hasCandidates) {
-            const ocrGrandTotal = Math.round(Number(statement.grand_total ?? 0));
-            if (ocrGrandTotal > 0) {
-              let sysTotal = 0;
-              let allHaveCandidates = true;
-              for (const item of stmtItems) {
-                const candidates = item.match_candidates_data;
-                if (!Array.isArray(candidates) || candidates.length === 0) {
-                  allHaveCandidates = false;
-                  break;
-                }
-                // 동일한 후보 선택 로직
-                let selected: MatchCandidate | null = null;
-                if (item.matched_item_id) {
-                  selected = candidates.find((c: MatchCandidate) => c.item_id === item.matched_item_id) || null;
-                }
-                if (!selected && item.matched_purchase_id) {
-                  const inPurchase = candidates.filter((c: MatchCandidate) => c.purchase_id === item.matched_purchase_id);
-                  if (inPurchase.length > 0) {
-                    selected = inPurchase.reduce((a: MatchCandidate, b: MatchCandidate) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), inPurchase[0]);
-                  }
-                }
-                if (!selected) {
-                  selected = candidates.reduce((a: MatchCandidate, b: MatchCandidate) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
-                }
-                const sysAmount = Number(selected?.amount);
-                if (!Number.isFinite(sysAmount)) { allHaveCandidates = false; break; }
-                sysTotal += sysAmount;
-              }
-              if (allHaveCandidates) {
-                all_amounts_matched = Math.round(sysTotal) === ocrGrandTotal;
-              }
-            }
+        // 둘 다 일치하면 버튼 없이 자동으로 확정 처리
+        if (statusForReturn !== 'confirmed' && all_quantities_matched && all_amounts_matched) {
+          statusForReturn = 'confirmed';
+          const managerConfirmedBy = (statement as Record<string, unknown>).manager_confirmed_by as string | null | undefined;
+          const quantityMatchConfirmedBy = (statement as Record<string, unknown>).quantity_match_confirmed_by as string | null | undefined;
+          const managerConfirmedByName = (statement as Record<string, unknown>).manager_confirmed_by_name as string | null | undefined;
+          const quantityMatchConfirmedByName = (statement as Record<string, unknown>).quantity_match_confirmed_by_name as string | null | undefined;
+
+          updatePayload.status = 'confirmed';
+          updatePayload.confirmed_at = new Date().toISOString();
+          updatePayload.confirmed_by = managerConfirmedBy ?? quantityMatchConfirmedBy ?? null;
+          updatePayload.confirmed_by_name = managerConfirmedByName ?? quantityMatchConfirmedByName ?? null;
+        }
+
+        if (Object.keys(updatePayload).length > 0) {
+          const { error: updateError } = await this.supabase
+            .from('transaction_statements')
+            .update(updatePayload)
+            .eq('id', statement.id);
+
+          if (updateError) {
+            logger.warn('Failed to persist statement match status flags', {
+              statementId: statement.id,
+              error: updateError
+            });
           }
         }
 
         const { items, ...rest } = statement;
         return {
           ...rest,
+          status: statusForReturn as TransactionStatementStatus,
           matched_purchase_id: matchedPurchases[0]?.purchase_id || null,
           matched_purchases: matchedPurchases,
           all_quantities_matched,
           all_amounts_matched
         };
-      });
+      }));
 
       return { success: true, data: statementsWithPurchases as unknown as TransactionStatement[], count: count || 0 };
     } catch (error) {
@@ -1051,14 +1086,27 @@ class TransactionStatementService {
       const statementVendorName = statement.vendor_name || '';
       
       // 매칭된 purchase_id 일괄 조회 (N+1 방지)
-      const purchaseIds = [...new Set((items || []).map((i: TransactionStatementItem) => i.matched_purchase_id).filter(Boolean))] as number[];
+      const purchaseIds = [
+        ...new Set(
+          (items || [])
+            .map((i: TransactionStatementItem) => this.toNumericId(i.matched_purchase_id))
+            .filter((id: number | null): id is number => id != null)
+        )
+      ];
       // matched_item_id + match_candidates의 item_id들도 수집 (실시간 received_quantity 조회용)
       const itemIdSet = new Set<number>();
       (items || []).forEach((i: TransactionStatementItem) => {
-        if (i.matched_item_id) itemIdSet.add(i.matched_item_id);
+        const matchedItemId = this.toNumericId(i.matched_item_id);
+        if (matchedItemId != null) {
+          itemIdSet.add(matchedItemId);
+          return;
+        }
         const cached = (i as TransactionStatementItem & { match_candidates_data?: MatchCandidate[] }).match_candidates_data;
         if (Array.isArray(cached)) {
-          cached.forEach((c: MatchCandidate) => { if (c.item_id) itemIdSet.add(c.item_id); });
+          cached.forEach((c: MatchCandidate) => {
+            const candidateItemId = this.toNumericId(c.item_id);
+            if (candidateItemId != null) itemIdSet.add(candidateItemId);
+          });
         }
       });
       const itemIds = [...itemIdSet];
@@ -1067,19 +1115,35 @@ class TransactionStatementService {
       const itemMap = new Map<number, PurchaseItemRow & { received_quantity?: number }>();
       
       if (purchaseIds.length > 0) {
-        const { data: purchases } = await this.supabase
-          .from('purchase_requests')
-          .select('id, purchase_order_number, sales_order_number, vendor:vendors(vendor_name)')
-          .in('id', purchaseIds);
-        (purchases as PurchaseLookupRow[] || []).forEach((p: PurchaseLookupRow) => purchaseMap.set(p.id, p));
+        const purchaseIdChunks = this.chunkArray(purchaseIds, 500);
+        for (const purchaseIdChunk of purchaseIdChunks) {
+          const { data: purchases, error: purchaseError } = await this.supabase
+            .from('purchase_requests')
+            .select('id, purchase_order_number, sales_order_number, vendor:vendors(vendor_name)')
+            .in('id', purchaseIdChunk);
+          if (purchaseError) throw purchaseError;
+          (purchases as PurchaseLookupRow[] || []).forEach((p: PurchaseLookupRow) => {
+            const purchaseId = this.toNumericId(p.id);
+            if (purchaseId == null) return;
+            purchaseMap.set(purchaseId, p);
+          });
+        }
       }
       
       if (itemIds.length > 0) {
-        const { data: purchaseItems } = await this.supabase
-          .from('purchase_request_items')
-          .select('id, line_number, item_name, specification, quantity, unit_price_value, amount_value, received_quantity')
-          .in('id', itemIds);
-        (purchaseItems as (PurchaseItemRow & { received_quantity?: number })[] || []).forEach((i) => itemMap.set(i.id, i));
+        const itemIdChunks = this.chunkArray(itemIds, 500);
+        for (const itemIdChunk of itemIdChunks) {
+          const { data: purchaseItems, error: purchaseItemError } = await this.supabase
+            .from('purchase_request_items')
+            .select('id, line_number, item_name, specification, quantity, unit_price_value, amount_value, received_quantity')
+            .in('id', itemIdChunk);
+          if (purchaseItemError) throw purchaseItemError;
+          (purchaseItems as (PurchaseItemRow & { received_quantity?: number })[] || []).forEach((i) => {
+            const itemId = this.toNumericId(i.id);
+            if (itemId == null) return;
+            itemMap.set(itemId, i);
+          });
+        }
       }
 
       const itemsWithMatch: TransactionStatementItemWithMatch[] = await Promise.all(
@@ -1106,7 +1170,7 @@ class TransactionStatementService {
           let matchedItem = undefined;
           
           if (item.matched_purchase_id) {
-            const purchase = purchaseMap.get(item.matched_purchase_id);
+            const purchase = purchaseMap.get(Number(item.matched_purchase_id));
             if (purchase) {
               matchedPurchase = {
                 id: purchase.id,
@@ -1118,7 +1182,7 @@ class TransactionStatementService {
           }
 
           if (item.matched_item_id) {
-            const purchaseItem = itemMap.get(item.matched_item_id);
+            const purchaseItem = itemMap.get(Number(item.matched_item_id));
             if (purchaseItem) {
               matchedItem = {
                 id: purchaseItem.id,
@@ -1142,7 +1206,7 @@ class TransactionStatementService {
         })
       );
 
-      // 수량일치 여부 계산: 각 OCR item의 best candidate 수량과 비교하여 DB에 저장
+      // 수량일치 여부 계산: 사용자 매칭(matched_item_id) 우선, 없으면 best candidate
       if (statement.status === 'extracted' || statement.status === 'confirmed') {
         let allMatched = false;
         if (itemsWithMatch.length > 0) {
@@ -1151,12 +1215,22 @@ class TransactionStatementService {
             if (ocrRaw == null) return false;
             const ocrQty = Number(ocrRaw);
             if (!Number.isFinite(ocrQty)) return false;
-            // match_candidates에서 최고 점수 후보의 수량과 비교
+
+            // matched_item_id가 있으면 직접 사용 (후보 목록에 없을 수 있음)
+            if (item.matched_item_id) {
+              const freshItem = itemMap.get(Number(item.matched_item_id));
+              const sysReceivedQty = freshItem?.received_quantity;
+              if (sysReceivedQty == null) return false;
+              return Number(sysReceivedQty) === ocrQty;
+            }
+
+            // matched_item_id가 없으면 후보에서 best score로 선택
             const candidates = item.match_candidates || [];
             if (candidates.length === 0) return false;
-            const best = candidates.reduce((a, b) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
-            // 실시간 DB 값 사용 (itemMap에서 조회)
-            const freshItem = itemMap.get(best.item_id);
+
+            const selected = candidates.reduce((a, b) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
+
+            const freshItem = itemMap.get(Number(selected.item_id));
             const sysReceivedQty = freshItem?.received_quantity;
             if (sysReceivedQty == null) return false;
             return Number(sysReceivedQty) === ocrQty;
@@ -1169,17 +1243,27 @@ class TransactionStatementService {
             .eq('id', statementId);
         }
 
-        // 금액일치 여부 계산: OCR 합계 vs 매칭 후보 금액 합산
+        // 금액일치 여부 계산: 사용자 매칭(matched_item_id) 우선, 없으면 best candidate
         let allAmountsMatched = false;
         const ocrGrandTotal = Math.round(Number(statement.grand_total ?? 0));
         if (ocrGrandTotal > 0 && itemsWithMatch.length > 0) {
           let sysTotal = 0;
           let allHaveCandidates = true;
           for (const item of itemsWithMatch) {
+            // matched_item_id가 있으면 DB에서 직접 금액 조회 (후보에 없을 수 있음)
+            if (item.matched_item_id) {
+              const freshItem = itemMap.get(Number(item.matched_item_id));
+              if (!freshItem) { allHaveCandidates = false; break; }
+              const sysAmount = Number(freshItem.amount_value);
+              if (!Number.isFinite(sysAmount)) { allHaveCandidates = false; break; }
+              sysTotal += sysAmount;
+              continue;
+            }
+
             const candidates = item.match_candidates || [];
             if (candidates.length === 0) { allHaveCandidates = false; break; }
-            const best = candidates.reduce((a, b) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
-            const sysAmount = Number(best.amount);
+            const selected = candidates.reduce((a, b) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
+            const sysAmount = Number(selected.amount);
             if (!Number.isFinite(sysAmount)) { allHaveCandidates = false; break; }
             sysTotal += sysAmount;
           }

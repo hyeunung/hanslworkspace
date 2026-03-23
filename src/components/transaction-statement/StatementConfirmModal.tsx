@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   Dialog,
@@ -85,7 +85,8 @@ function getOCRLineHint(
   const fromPONumber = extractLineNumberFromPO(item.extracted_po_number || '');
   if (fromPONumber != null) return fromPONumber;
 
-  return item.line_number ?? null;
+  // item.line_number는 OCR 행 순서(1,2,3...)이므로 발주 품목의 line_number와 매칭하면 안 됨
+  return null;
 }
 
 function mapCandidateToSystemItem(candidate: MatchCandidate): SystemPurchaseItem {
@@ -335,8 +336,13 @@ export default function StatementConfirmModal({
 }: StatementConfirmModalProps) {
   // unmount 후 state 업데이트 방지
   const isMountedRef = useRef(true);
+  const activeLoadRequestRef = useRef(0);
+  const openLoadGuardRef = useRef<string | null>(null);
   useEffect(() => {
-    return () => { isMountedRef.current = false; };
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
   }, []);
 
   const [loading, setLoading] = useState(true);
@@ -417,7 +423,6 @@ export default function StatementConfirmModal({
     (statementWithItems?.statement_mode ?? statement.statement_mode) === "receipt";
   const isMonthlyMode =
     (statementWithItems?.statement_mode ?? statement.statement_mode) === "monthly";
-
   useEffect(() => {
     if (!statementWithItems) return;
     const purchaseIds = Array.from(itemMatches.values())
@@ -469,6 +474,22 @@ export default function StatementConfirmModal({
   // OCR 발주/수주번호 페어 캐시 (실시간 입력용)
   const [poPairOverrides, setPoPairOverrides] = useState<Map<string, string | null>>(new Map());
   const pendingPairLookupsRef = useRef<Set<string>>(new Set());
+
+  // 모달 재오픈/대상 변경 시 stale UI가 1프레임 보이는 현상 방지
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+
+    setLoading(true);
+    setStatementWithItems(null);
+    setSetMatchResult(null);
+    setSelectedPONumber('');
+    setItemPONumbers(new Map());
+    setItemMatches(new Map());
+    setOpenDropdowns(new Set());
+    setVendorDropdownOpen(false);
+    setMatchDetailPopup(null);
+    setIsIntegratedMatchDetailOpen(false);
+  }, [isOpen, statement.id]);
 
   // 모달 닫힐 때 디바운스 타이머 정리
   useEffect(() => {
@@ -564,6 +585,9 @@ export default function StatementConfirmModal({
 
   // 데이터 로드
   const loadData = useCallback(async () => {
+    const requestId = ++activeLoadRequestRef.current;
+    const isStaleRequest = () => requestId !== activeLoadRequestRef.current;
+
     try {
       setLoading(true);
       
@@ -582,6 +606,8 @@ export default function StatementConfirmModal({
 
       const result = await transactionStatementService.getStatementWithItems(statement.id);
       
+      if (isStaleRequest() || !isMountedRef.current) return;
+
       if (result.success && result.data) {
         // 합계금액을 OCR 항목에서 계산하여 동기화
         const itemsTotal = result.data.items.reduce((sum, item) => sum + (item.extracted_amount || 0), 0);
@@ -596,6 +622,7 @@ export default function StatementConfirmModal({
             .then();
         }
 
+        if (isStaleRequest() || !isMountedRef.current) return;
         setStatementWithItems(result.data);
 
         // 라인넘버 직접 매칭을 위해 발주 품목 전체를 선로딩한다.
@@ -1097,12 +1124,22 @@ export default function StatementConfirmModal({
     } catch (error) {
       toast.error('데이터를 불러오는데 실패했습니다.');
     } finally {
+      if (isStaleRequest() || !isMountedRef.current) return;
       setLoading(false);
     }
   }, [statement.id, supabase]);
 
   useEffect(() => {
+    if (!isOpen) {
+      openLoadGuardRef.current = null;
+      return;
+    }
     if (isOpen && statement) {
+      const openKey = `${statement.id}:${isOpen}`;
+      if (openLoadGuardRef.current === openKey) {
+        return;
+      }
+      openLoadGuardRef.current = openKey;
       setManuallySelectedPO(false); // 모달 열릴 때 수동 선택 플래그 리셋
       loadData();
     }
