@@ -3336,7 +3336,7 @@ export default function StatementConfirmModal({
   
   // 권한 체크: lead_buyer, superadmin만 확정 가능
   const canConfirm = isLeadBuyer || isAppAdmin;
-  const canQuantityMatch = isLeadBuyer || isAppAdmin;
+  const canQuantityMatch = isUploader || isAppAdmin;
   
   
   // 입고수량 모드에서는 확정 버튼 비활성화 (lead_buyer 승인 불필요)
