@@ -30,6 +30,7 @@ import { Calendar as CalendarIcon } from 'lucide-react';
 import CardUsageTab from "@/components/purchase/CardUsageTab";
 import BusinessTripTab from "@/components/purchase/BusinessTripTab";
 import VehicleTab from "@/components/purchase/VehicleTab";
+import LeaveRequestForm from "@/components/leave/LeaveRequestForm";
 
 interface EmployeeOption {
   value: string;
@@ -1095,10 +1096,10 @@ export default function PurchaseNewMain() {
           {/* 헤더: 템플릿에 따라 제목 변경 */}
           <div className="flex flex-col">
             <h4 className="font-semibold text-foreground text-sm">
-              {{'발주/구매': '발주/구매 요청 정보', '카드사용': '카드사용 요청 정보', '출장': '출장 요청 정보', '차량': '차량 요청 정보'}[watch('po_template_type')] || '요청 정보'}
+              {{'발주/구매': '발주/구매 요청 정보', '카드사용': '카드사용 요청 정보', '출장': '출장 요청 정보', '차량': '차량 요청 정보', '연차 신청': '연차 신청 정보'}[watch('po_template_type')] || '요청 정보'}
             </h4>
             <p className="text-[10px] text-muted-foreground">
-              {{'발주/구매': 'Purchase Request', '카드사용': 'Card Usage Request', '출장': 'Business Trip Request', '차량': 'Vehicle Request'}[watch('po_template_type')] || 'Request Information'}
+              {{'발주/구매': 'Purchase Request', '카드사용': 'Card Usage Request', '출장': 'Business Trip Request', '차량': 'Vehicle Request', '연차 신청': 'Annual Leave Request'}[watch('po_template_type')] || 'Request Information'}
             </p>
           </div>
 
@@ -1114,6 +1115,7 @@ export default function PurchaseNewMain() {
                 <SelectItem value="카드사용">카드사용</SelectItem>
                 <SelectItem value="출장">출장</SelectItem>
                 <SelectItem value="차량">차량</SelectItem>
+                <SelectItem value="연차 신청">연차 신청</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1961,6 +1963,12 @@ export default function PurchaseNewMain() {
         {selectedTemplate === '차량' && (
           <div className="w-full lg:w-3/4">
             <VehicleTab mode="create" />
+          </div>
+        )}
+
+        {selectedTemplate === '연차 신청' && (
+          <div className="w-full lg:w-3/4">
+            <LeaveRequestForm />
           </div>
         )}
       </div>

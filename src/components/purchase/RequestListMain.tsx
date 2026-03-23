@@ -3,6 +3,7 @@ import PurchaseListMain from "@/components/purchase/PurchaseListMain";
 import CardUsageTab from "@/components/purchase/CardUsageTab";
 import BusinessTripTab from "@/components/purchase/BusinessTripTab";
 import VehicleTab from "@/components/purchase/VehicleTab";
+import AnnualLeaveTab from "@/components/leave/AnnualLeaveTab";
 import { useSearchParams } from "react-router-dom";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -14,7 +15,7 @@ interface RequestListMainProps {
   showEmailButton?: boolean;
 }
 
-type TemplateTabKey = "발주/구매" | "카드사용" | "출장" | "차량";
+type TemplateTabKey = "발주/구매" | "카드사용" | "출장" | "차량" | "연차 신청";
 type BadgeCounts = Record<TemplateTabKey, number>;
 
 const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "superadmin"];
@@ -25,6 +26,7 @@ const TEMPLATE_TABS: { key: TemplateTabKey; label: string }[] = [
   { key: "카드사용", label: "카드사용" },
   { key: "출장", label: "출장" },
   { key: "차량", label: "차량" },
+  { key: "연차 신청", label: "연차 신청" },
 ];
 
 
@@ -43,10 +45,11 @@ export default function RequestListMain({ showEmailButton = true }: RequestListM
     "카드사용": 0,
     출장: 0,
     차량: 0,
+    "연차 신청": 0,
   });
 
   const parseTab = (tab: string | null): TemplateTabKey => {
-    if (tab === "카드사용" || tab === "출장" || tab === "차량" || tab === "발주/구매") {
+    if (tab === "카드사용" || tab === "출장" || tab === "차량" || tab === "발주/구매" || tab === "연차 신청") {
       return tab;
     }
     return "발주/구매";
@@ -76,6 +79,7 @@ export default function RequestListMain({ showEmailButton = true }: RequestListM
         vehiclePendingRes,
         tripPendingRes,
         myTripUnsettledRes,
+        leavePendingRes,
       ] = await Promise.all([
         isCardVehicleApprover
           ? supabase
@@ -101,19 +105,26 @@ export default function RequestListMain({ showEmailButton = true }: RequestListM
           .eq("requester_id", employee?.id || "__no_user__")
           .eq("approval_status", "approved")
           .in("settlement_status", ["draft", "submitted", "rejected"]),
+        supabase
+          .from("leave")
+          .select("id", { count: "exact", head: true })
+          .eq("user_email", employee?.email || "__no_user__")
+          .eq("status", "pending"),
       ]);
 
       if (
         cardPendingRes.error ||
         vehiclePendingRes.error ||
         tripPendingRes.error ||
-        myTripUnsettledRes.error
+        myTripUnsettledRes.error ||
+        leavePendingRes.error
       ) {
         throw (
           cardPendingRes.error ||
           vehiclePendingRes.error ||
           tripPendingRes.error ||
-          myTripUnsettledRes.error
+          myTripUnsettledRes.error ||
+          leavePendingRes.error
         );
       }
 
@@ -132,6 +143,7 @@ export default function RequestListMain({ showEmailButton = true }: RequestListM
         "카드사용": isCardVehicleApprover ? cardPendingRes.count || 0 : 0,
         출장: approvableTripCount + (myTripUnsettledRes.count || 0),
         차량: isCardVehicleApprover ? vehiclePendingRes.count || 0 : 0,
+        "연차 신청": leavePendingRes.count || 0,
       };
 
       setBadgeCounts(nextCounts);
@@ -173,6 +185,13 @@ export default function RequestListMain({ showEmailButton = true }: RequestListM
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "vehicle_requests" },
+        () => {
+          void loadBadgeCounts();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "leave" },
         () => {
           void loadBadgeCounts();
         }
@@ -227,6 +246,7 @@ export default function RequestListMain({ showEmailButton = true }: RequestListM
       {activeTemplateTab === "카드사용" && <CardUsageTab onBadgeRefresh={loadBadgeCounts} />}
       {activeTemplateTab === "출장" && <BusinessTripTab onBadgeRefresh={loadBadgeCounts} />}
       {activeTemplateTab === "차량" && <VehicleTab onBadgeRefresh={loadBadgeCounts} />}
+      {activeTemplateTab === "연차 신청" && <AnnualLeaveTab onBadgeRefresh={loadBadgeCounts} />}
     </div>
   );
 }

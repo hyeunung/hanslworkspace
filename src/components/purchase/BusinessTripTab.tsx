@@ -39,6 +39,7 @@ const SETTLEMENT_APPROVER_ROLES = ["final_approver", "ceo", "superadmin"];
 
 const COMPANY_CARDS = [
   { label: "출장용", number: "5914", value: "출장용 5914" },
+  { label: "청송", number: "0948", value: "청송 0948" },
   { label: "공용1", number: "8967", value: "공용1 8967" },
   { label: "공용2", number: "9976", value: "공용2 9976" },
   { label: "원자재", number: "4963", value: "원자재 4963" },
@@ -1995,6 +1996,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[110px]">출장코드</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[140px]">출장기간</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[76px]">요청자</th>
+                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[100px]">동승자</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[125px]">출장지</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[90px]">카드신청</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[126px]">이동수단</th>
@@ -2060,6 +2062,11 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                           </div>
                         </td>
                         <td className="px-3 py-1.5 card-title whitespace-nowrap">{trip.requester?.name || "-"}</td>
+                        <td className="px-3 py-1.5 card-title whitespace-normal break-keep">
+                          {trip.companions && trip.companions.length > 0
+                            ? trip.companions.map((c) => c.name).join(", ")
+                            : "-"}
+                        </td>
                         <td className="px-3 py-1.5 card-title truncate max-w-[120px]">{trip.trip_destination}</td>
                         <td className="px-3 py-1.5 whitespace-nowrap">
                           {trip.requested_card_number?.trim() || trip.linkedCard ? (
