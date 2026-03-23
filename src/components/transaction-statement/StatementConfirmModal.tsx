@@ -3200,7 +3200,7 @@ export default function StatementConfirmModal({
   const effectiveConfirmerName = confirmerName || currentUserName || '알수없음';
   const uploaderEmail = statementWithItems?.uploaded_by_email ?? statement.uploaded_by_email;
   const uploaderId = statementWithItems?.uploaded_by ?? statement.uploaded_by;
-  const isAppAdmin = currentUserRoles.includes('app_admin');
+  const isAppAdmin = currentUserRoles.includes('superadmin');
   const isLeadBuyer = currentUserRoles.includes('lead buyer');
   const isUploader = Boolean(
     (currentUserEmail && uploaderEmail && currentUserEmail === uploaderEmail) ||
@@ -3334,7 +3334,7 @@ export default function StatementConfirmModal({
     }
   }, [isOpen, isMultiUtkTarget, statement.id]);
   
-  // 권한 체크: lead_buyer, app_admin만 확정 가능
+  // 권한 체크: lead_buyer, superadmin만 확정 가능
   const canConfirm = isLeadBuyer || isAppAdmin;
   const canQuantityMatch = isLeadBuyer || isAppAdmin;
   

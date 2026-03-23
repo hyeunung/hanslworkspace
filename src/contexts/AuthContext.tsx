@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/client'
 import { logger } from '@/lib/logger'
 import { purchaseRealtimeService } from '@/services/purchaseRealtimeService'
 import type { Employee } from '@/types/purchase'
+import { parseRoles } from '@/utils/roleHelper'
 import type { User, AuthChangeEvent, Session } from '@supabase/supabase-js'
 
 interface AuthContextType {
@@ -32,21 +33,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const initialLoadCompleteRef = useRef(false)
 
   const supabase = createClient()
-
-  // 역할 파싱 (문자열/배열 정규화)
-  const parseRoles = (purchaseRole: string | string[] | null | undefined): string[] => {
-    if (!purchaseRole) return []
-    
-    if (Array.isArray(purchaseRole)) {
-      return purchaseRole.filter(role => role && role.trim())
-    }
-    
-    if (typeof purchaseRole === 'string') {
-      return purchaseRole.split(',').map(role => role.trim()).filter(Boolean)
-    }
-    
-    return []
-  }
 
   const loadAuthData = async (options?: { background?: boolean }) => {
     const isBackground = options?.background ?? false
@@ -101,7 +87,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setEmployee(employeeWithStringId)
         logger.info('[AuthContext] 인증 데이터 로드 완료', { 
           email: employeeData.email, 
-          roles: parseRoles(employeeData.purchase_role) 
+          roles: parseRoles(employeeData.roles) 
         })
 
         // 🚀 Realtime 구독 시작 (로그인 성공 시)
@@ -166,7 +152,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [])
 
   // 계산된 값들
-  const currentUserRoles = parseRoles(employee?.purchase_role)
+  const currentUserRoles = parseRoles(employee?.roles)
   const currentUserName = employee?.name || ''
   const currentUserEmail = employee?.email || user?.email || ''
   const currentUserId = user?.id || ''

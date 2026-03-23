@@ -1,6 +1,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Employee, EmployeeUpsertData, PurchaseRole } from '@/types/purchase'
+import { parseRoles } from '@/utils/roleHelper'
 import { formatDate } from '@/utils/helpers'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -62,21 +63,19 @@ type EmployeeDraft = {
   birthday: string
   bank_account: string
   adress: string
-  purchase_role: string
+  roles: string
   is_active: 'true' | 'false'
 }
 
 const NEW_ROW_ID = '__new_employee__'
 
 const PURCHASE_ROLES: { value: PurchaseRole; label: string }[] = [
-  { value: 'app_admin', label: '앱 관리자' },
+  { value: 'superadmin', label: '앱 관리자' },
   { value: 'hr', label: 'HR' },
-  { value: 'accounting', label: '회계' },
   { value: 'ceo', label: 'CEO' },
   { value: 'final_approver', label: '최종 승인자' },
   { value: 'middle_manager', label: '중간 관리자' },
   { value: 'lead buyer', label: '수석 구매자' },
-  { value: 'buyer', label: '구매자' },
 ]
 
 const toInputDate = (value?: string | null) => {
@@ -100,7 +99,7 @@ const defaultDraft = (): EmployeeDraft => ({
   birthday: '',
   bank_account: '',
   adress: '',
-  purchase_role: '',
+  roles: '',
   is_active: 'true',
 })
 
@@ -112,7 +111,7 @@ export default function EmployeeTable({
 }: EmployeeTableProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const { sortedData, sortConfig, handleSort } = useTableSort(employees, 'name', 'asc')
-  const canManageEmployees = currentUserRoles.includes('app_admin') || currentUserRoles.includes('hr')
+  const canManageEmployees = currentUserRoles.includes('superadmin') || currentUserRoles.includes('hr')
   const [editingRowId, setEditingRowId] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [draft, setDraft] = useState<EmployeeDraft | null>(null)
@@ -166,34 +165,21 @@ export default function EmployeeTable({
     }
   }
 
-  const normalizeRoles = (role?: string | string[] | null) => {
-    if (!role) return []
-    if (Array.isArray(role)) {
-      return role.filter((value) => value && value.trim())
-    }
-    if (typeof role === 'string') {
-      return role.split(',').map((value) => value.trim()).filter(Boolean)
-    }
-    return []
-  }
-
   const getPrimaryRole = (role?: string | string[] | null) => {
-    const roles = normalizeRoles(role)
+    const roles = parseRoles(role)
     return roles[0]
   }
 
-  const getRoleDisplayName = (role?: string | string[] | null) => {
+  const getRoleDisplayName = (role?: string | string[] | null): string => {
     const roleNames: Record<string, string> = {
-      'app_admin': '앱 관리자',
+      'superadmin': '앱 관리자',
       'hr': 'HR',
-      'accounting': '회계',
       'ceo': 'CEO',
       'final_approver': '최종 승인자',
       'middle_manager': '중간 관리자',
       'lead buyer': '수석 구매자',
-      'buyer': '구매자'
     }
-    
+
     const primaryRole = getPrimaryRole(role)
     if (!primaryRole) {
       return '권한 없음'
@@ -203,14 +189,12 @@ export default function EmployeeTable({
 
   const getRoleBadgeColor = (role?: string | string[] | null) => {
     const colorMap: Record<string, string> = {
-      'app_admin': 'bg-purple-100 text-purple-800',
+      'superadmin': 'bg-purple-100 text-purple-800',
       'hr': 'bg-blue-100 text-blue-800',
-      'accounting': 'bg-sky-100 text-sky-800',
       'ceo': 'bg-red-100 text-red-800',
       'final_approver': 'bg-hansl-100 text-hansl-800',
       'middle_manager': 'bg-green-100 text-green-800',
       'lead buyer': 'bg-yellow-100 text-yellow-800',
-      'buyer': 'bg-gray-100 text-gray-800'
     }
     
     const primaryRole = getPrimaryRole(role)
@@ -244,7 +228,7 @@ export default function EmployeeTable({
       return
     }
 
-    const primaryRole = getPrimaryRole(employee.purchase_role) || ''
+    const primaryRole = getPrimaryRole(employee.roles) || ''
     setIsCreating(false)
     setEditingRowId(employee.id)
     setAvailableEmployeeColumns(new Set(Object.keys(employee || {})))
@@ -270,7 +254,7 @@ export default function EmployeeTable({
       birthday: toInputDate(employee.birthday),
       bank_account: employee.bank_account || '',
       adress: employee.adress || '',
-      purchase_role: primaryRole,
+      roles: primaryRole,
       is_active: employee.is_active ? 'true' : 'false',
     })
   }
@@ -328,7 +312,7 @@ export default function EmployeeTable({
       birthday: toNullableTrimmed(draft.birthday),
       bank_account: toNullableTrimmed(draft.bank_account),
       adress: toNullableTrimmed(draft.adress),
-      purchase_role: draft.purchase_role ? [draft.purchase_role] : [],
+      roles: draft.roles ? [draft.roles] : [],
       is_active: draft.is_active === 'true',
     }
 
@@ -380,7 +364,7 @@ export default function EmployeeTable({
       department: draft?.department || '',
       position: draft?.position || '',
       phone: draft?.phone || '',
-      purchase_role: draft?.purchase_role ? [draft.purchase_role] : undefined,
+      roles: draft?.roles ? [draft.roles] : undefined,
       is_active: draft?.is_active === 'true',
       terminated_at: null,
       created_at: new Date().toISOString(),
@@ -501,10 +485,10 @@ export default function EmployeeTable({
                 <TableHead className="min-w-[120px]">주소</TableHead>
                 <TableHead>
                   <SortableHeader
-                    sortKey="purchase_role"
+                    sortKey="roles"
                     currentSortKey={sortConfig.key as string | null}
                     sortDirection={sortConfig.direction}
-                    onSort={() => handleSort('purchase_role' as keyof Employee)}
+                    onSort={() => handleSort('roles' as keyof Employee)}
                   >
                     권한
                   </SortableHeader>
@@ -706,8 +690,8 @@ export default function EmployeeTable({
                     <TableCell className="px-2 py-1.5">
                       {isEditingRow(employee.id) ? (
                         <Select
-                          value={draft?.purchase_role || 'none'}
-                          onValueChange={(value) => updateDraft('purchase_role', value === 'none' ? '' : value)}
+                          value={draft?.roles || 'none'}
+                          onValueChange={(value) => updateDraft('roles', value === 'none' ? '' : value)}
                         >
                           <SelectTrigger className="!h-auto !min-h-[20px] !py-px !px-2 !text-[11px] business-radius-input border border-gray-300 bg-white text-gray-700">
                             <SelectValue placeholder="권한" />
@@ -722,8 +706,8 @@ export default function EmployeeTable({
                           </SelectContent>
                         </Select>
                       ) : (
-                        <span className={`badge-stats text-[10px] px-1.5 py-0.5 ${getRoleBadgeColor(employee.purchase_role)}`}>
-                          {getRoleDisplayName(employee.purchase_role)}
+                        <span className={`badge-stats text-[10px] px-1.5 py-0.5 ${getRoleBadgeColor(employee.roles)}`}>
+                          {getRoleDisplayName(employee.roles)}
                         </span>
                       )}
                     </TableCell>
@@ -948,8 +932,8 @@ export default function EmployeeTable({
                     value={
                       isEditingRow(employee.id) ? (
                         <Select
-                          value={draft?.purchase_role || 'none'}
-                          onValueChange={(value) => updateDraft('purchase_role', value === 'none' ? '' : value)}
+                          value={draft?.roles || 'none'}
+                          onValueChange={(value) => updateDraft('roles', value === 'none' ? '' : value)}
                         >
                           <SelectTrigger className="!h-auto !min-h-[20px] !py-px !px-2 !text-[11px] business-radius-input border border-gray-300 bg-white text-gray-700">
                             <SelectValue placeholder="권한" />
@@ -964,8 +948,8 @@ export default function EmployeeTable({
                           </SelectContent>
                         </Select>
                       ) : (
-                        <span className={`badge-stats ${getRoleBadgeColor(employee.purchase_role)}`}>
-                          {getRoleDisplayName(employee.purchase_role)}
+                        <span className={`badge-stats ${getRoleBadgeColor(employee.roles)}`}>
+                          {getRoleDisplayName(employee.roles)}
                         </span>
                       )
                     } 

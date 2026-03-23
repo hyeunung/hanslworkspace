@@ -10,22 +10,13 @@ import BatchApprovalButton from '@/components/approval/BatchApprovalButton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Loader2, AlertCircle, ArrowUpDown } from 'lucide-react'
 import { toast } from 'sonner'
+import { parseRoles } from '@/utils/roleHelper'
 
 type ApprovalTab = 'middle' | 'final'
 
 interface TabCounts {
   middle: number
   final: number
-}
-
-// 역할 파싱 유틸리티 함수
-const parseRoles = (purchaseRole: string | string[] | null | undefined): string[] => {
-  if (Array.isArray(purchaseRole)) {
-    return purchaseRole
-  } else if (typeof purchaseRole === 'string') {
-    return purchaseRole.split(',').map((r: string) => r.trim())
-  }
-  return []
 }
 
 export default function ApprovalMain() {
@@ -72,11 +63,11 @@ export default function ApprovalMain() {
       setLoading(true)
       
       // 승인 권한이 있는지 확인
-      const approvalRoles = ['middle_manager', 'final_approver', 'ceo', 'app_admin']
+      const approvalRoles = ['middle_manager', 'final_approver', 'ceo', 'superadmin']
       const hasApprovalRole = currentUserRoles.some((role: string) => approvalRoles.includes(role))
 
       if (!hasApprovalRole) {
-        toast.error(`승인 권한이 없습니다. 현재 role: ${employee.purchase_role || '없음'}`)
+        toast.error(`승인 권한이 없습니다. 현재 role: ${employee.roles || '없음'}`)
         setLoading(false)
         return
       }
@@ -88,7 +79,7 @@ export default function ApprovalMain() {
       if (!activeTab) {
         if (currentUserRoles.includes('middle_manager')) {
           setActiveTab('middle')
-        } else if (currentUserRoles.some(role => ['final_approver', 'ceo', 'app_admin'].includes(role))) {
+        } else if (currentUserRoles.some(role => ['final_approver', 'ceo', 'superadmin'].includes(role))) {
           setActiveTab('final')
         }
       }
@@ -100,7 +91,7 @@ export default function ApprovalMain() {
     }
   }
 
-  const loadApprovalsData = async (employeeData: { purchase_role?: string | string[] | null }) => {
+  const loadApprovalsData = async (employeeData: { roles?: string | string[] | null }) => {
     try {
       const { data: approvalData, error: approvalError } = await supabase
         .from('purchase_requests')
@@ -127,11 +118,11 @@ export default function ApprovalMain() {
     }
   }
 
-  const calculateTabCounts = (purchases: PurchaseRequestWithDetails[], employeeData: { purchase_role?: string | string[] | null }): TabCounts => {
+  const calculateTabCounts = (purchases: PurchaseRequestWithDetails[], employeeData: { roles?: string | string[] | null }): TabCounts => {
     const counts = { middle: 0, final: 0 }
     
-    // purchase_role 처리
-    const roles = parseRoles(employeeData.purchase_role)
+    // roles 처리
+    const roles = parseRoles(employeeData.roles)
     
     purchases.forEach(purchase => {
       // 1차 승인 대기 (중간관리자)
@@ -140,10 +131,10 @@ export default function ApprovalMain() {
         counts.middle++
       }
       
-      // 최종 승인 대기 (최종승인자/CEO/app_admin)
+      // 최종 승인 대기 (최종승인자/CEO/superadmin)
       if (purchase.middle_manager_status === 'approved' && 
           purchase.final_manager_status === 'pending' &&
-          roles.some((role: string) => ['final_approver', 'ceo', 'app_admin'].includes(role))) {
+          roles.some((role: string) => ['final_approver', 'ceo', 'superadmin'].includes(role))) {
         counts.final++
       }
       
@@ -156,8 +147,8 @@ export default function ApprovalMain() {
   const getFilteredApprovals = (): PurchaseRequestWithDetails[] => {
     if (!employee) return []
 
-    // purchase_role 처리
-    const roles = parseRoles(employee.purchase_role)
+    // roles 처리
+    const roles = parseRoles(employee.roles)
     
     let filtered: PurchaseRequestWithDetails[] = []
     
@@ -180,7 +171,7 @@ export default function ApprovalMain() {
         filtered = approvals.filter(approval => 
           approval.middle_manager_status === 'pending'
         )
-      } else if (roles.some((role: string) => ['final_approver', 'ceo', 'app_admin'].includes(role))) {
+      } else if (roles.some((role: string) => ['final_approver', 'ceo', 'superadmin'].includes(role))) {
         // 최종 승인 대기
         filtered = approvals.filter(approval => 
           approval.middle_manager_status === 'approved' && 
@@ -215,7 +206,7 @@ export default function ApprovalMain() {
     try {
       
       // Supabase 직접 호출 - hanslwebapp 방식으로 변경
-      const roles = parseRoles(employee!.purchase_role)
+      const roles = parseRoles(employee!.roles)
       
       let updateData: Record<string, string> = {}
 
@@ -232,7 +223,7 @@ export default function ApprovalMain() {
             middle_manager_status: 'rejected'
           }
         }
-      } else if (roles.some((r: string) => ['final_approver', 'ceo', 'app_admin'].includes(r))) {
+      } else if (roles.some((r: string) => ['final_approver', 'ceo', 'superadmin'].includes(r))) {
         // 최종 승인
         if (action === 'approve') {
           updateData = {
@@ -284,7 +275,7 @@ export default function ApprovalMain() {
 
     try {
       // Supabase 일괄 처리 - hanslwebapp 방식으로 변경
-      const roles = parseRoles(employee!.purchase_role)
+      const roles = parseRoles(employee!.roles)
       
 
       let updateData: Record<string, string> = {}
@@ -295,7 +286,7 @@ export default function ApprovalMain() {
         updateData = {
           middle_manager_status: 'approved'
         }
-      } else if (roles.some((r: string) => ['final_approver', 'ceo', 'app_admin'].includes(r))) {
+      } else if (roles.some((r: string) => ['final_approver', 'ceo', 'superadmin'].includes(r))) {
         updateData = {
           final_manager_status: 'approved'
         }
@@ -369,7 +360,7 @@ export default function ApprovalMain() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">승인 관리</h1>
         <div className="text-sm text-gray-600">
-          {employee.name} ({employee.purchase_role || '권한 없음'})
+          {employee.name} ({employee.roles || '권한 없음'})
         </div>
       </div>
 
@@ -377,7 +368,7 @@ export default function ApprovalMain() {
       <div className="border-b border-gray-200">
         <nav className="-mb-px flex space-x-8" aria-label="Tabs">
           {employee && (() => {
-            const roles = parseRoles(employee.purchase_role)
+            const roles = parseRoles(employee.roles)
             
             const tabs = []
             
@@ -400,7 +391,7 @@ export default function ApprovalMain() {
               )
             }
             
-            if (roles.some((role: string) => ['final_approver', 'ceo', 'app_admin'].includes(role))) {
+            if (roles.some((role: string) => ['final_approver', 'ceo', 'superadmin'].includes(role))) {
               tabs.push(
                 <button
                   key="final"

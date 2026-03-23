@@ -33,7 +33,7 @@ BEGIN
   SELECT EXISTS(
     SELECT 1 FROM public.employees e
     WHERE e.email = auth.email()
-      AND 'app_admin' = ANY(e.purchase_role)
+      AND 'superadmin' = ANY(e.roles)
   ) INTO v_is_admin;
 
   IF NOT v_is_admin THEN

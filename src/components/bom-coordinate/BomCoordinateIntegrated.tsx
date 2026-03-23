@@ -166,7 +166,7 @@ export default function BomCoordinateIntegrated() {
   const { currentUserRoles } = useAuth();
   
   // 관리자 권한 확인
-  const isAdmin = currentUserRoles.includes('app_admin');
+  const isAdmin = currentUserRoles.includes('superadmin');
 
   const normalizeName = (name?: string | null) => (name || '').trim();
 
@@ -1268,7 +1268,7 @@ export default function BomCoordinateIntegrated() {
     }
   };
 
-  // 저장된 BOM 삭제 (app_admin 또는 최종점검 처리자만 가능)
+  // 저장된 BOM 삭제 (superadmin 또는 최종점검 처리자만 가능)
   const handleDeleteSavedBOM = async (boardId: string, boardName: string) => {
     const targetBoard = savedBoards.find(b => b.id === boardId);
     if (!targetBoard || !canDeleteBoard(targetBoard)) {

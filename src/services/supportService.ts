@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client'
 import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { logger } from '@/lib/logger'
+import { parseRoles } from '@/utils/roleHelper'
 
 export interface SupportAttachment {
   url: string
@@ -699,11 +700,11 @@ class SupportService {
       // 관리자 권한 확인
       const { data: employee } = await this.supabase
         .from('employees')
-        .select('purchase_role')
+        .select('roles')
         .eq('email', user.email)
         .single()
 
-      const isAdmin = employee?.purchase_role?.includes('app_admin')
+      const isAdmin = parseRoles(employee?.roles).includes('superadmin')
 
       // 관리자가 아닌 경우에만 본인 문의 확인
       if (!isAdmin) {

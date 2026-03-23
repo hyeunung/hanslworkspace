@@ -21,12 +21,13 @@ import { createClient } from '@/lib/supabase/client'
 import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
 import { countPendingApprovalsForSidebarBadge } from '@/utils/purchaseFilters'
 import { useAuth } from '@/contexts/AuthContext'
+import { parseRoles } from '@/utils/roleHelper'
 
 interface NavigationProps {
   role?: string | string[]  // hanslwebapp과 동일하게 배열도 지원
 }
 
-const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "app_admin"]
+const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "superadmin"]
 
 export default function Navigation({ role }: NavigationProps) {
   const location = useLocation()
@@ -44,11 +45,11 @@ export default function Navigation({ role }: NavigationProps) {
   const totalRequestBadge = purchaseOnlyCount + otherPendingCount
 
   // role 배열 확인
-  const roles = Array.isArray(role) ? role : (role ? [role] : [])
-  const isAdmin = roles.includes('app_admin')
-  const isApplicationApprover = roles.includes('app_admin') || roles.includes('hr')
+  const roles = parseRoles(role)
+  const isAdmin = roles.includes('superadmin')
+  const isApplicationApprover = roles.includes('superadmin') || roles.includes('hr')
   
-  // app_admin인 경우 미처리 문의 개수 조회
+  // superadmin인 경우 미처리 문의 개수 조회
   useEffect(() => {
     if (!isAdmin) return
     
@@ -126,7 +127,7 @@ export default function Navigation({ role }: NavigationProps) {
   const loadOtherPendingCounts = useCallback(async () => {
     try {
       const supabase = createClient()
-      const isCardVehicleApprover = roles.includes('app_admin') || roles.includes('hr')
+      const isCardVehicleApprover = roles.includes('superadmin') || roles.includes('hr')
       const isTripApprover = roles.some((r: string) => TRIP_APPROVER_ROLES.includes(r))
 
       const [cardRes, vehicleRes, tripRes, myTripRes] = await Promise.all([
@@ -163,7 +164,7 @@ export default function Navigation({ role }: NavigationProps) {
     return () => window.clearInterval(timer)
   }, [loadOtherPendingCounts])
 
-  // hr, app_admin: 신청서 승인 대기 개수
+  // hr, superadmin: 신청서 승인 대기 개수
   useEffect(() => {
     if (!isApplicationApprover) return
     const supabase = createClient()
@@ -228,7 +229,7 @@ export default function Navigation({ role }: NavigationProps) {
       label: '영수증',
       href: '/receipts',
       icon: Receipt,
-      roles: ['app_admin', 'hr', 'lead buyer']
+      roles: ['superadmin', 'hr', 'lead buyer']
     },
     {
       label: '업체 관리',
@@ -268,14 +269,7 @@ export default function Navigation({ role }: NavigationProps) {
 
   const filteredMenuItems = menuItems.filter(item => {
     if (item.roles.includes('all')) return true
-    
-    // role이 배열인 경우와 문자열인 경우 모두 처리
-    if (Array.isArray(role)) {
-      return item.roles.some(r => role.includes(r))
-    } else if (role) {
-      return item.roles.includes(role)
-    }
-    return false
+    return item.roles.some(r => roles.includes(r))
   })
 
   return (

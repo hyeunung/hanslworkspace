@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { PurchaseRequestWithDetails, PurchaseRequestItem, Purchase, Vendor, VendorContact } from '@/types/purchase'
 import { findPurchaseInMemory, markItemAsPaymentCompleted, markPurchaseAsPaymentCompleted, markItemAsReceived, markPurchaseAsReceived, markItemAsPaymentCanceled, markItemAsStatementReceived, markItemAsStatementCanceled, usePurchaseMemory, updatePurchaseInMemory, removeItemFromMemory, markItemAsExpenditureSet, markBulkExpenditureSet, removePurchaseFromMemory, addCacheListener } from '@/stores/purchaseMemoryStore'
 import { formatDate, dateToISOString } from '@/utils/helpers'
+import { parseRoles } from '@/utils/roleHelper'
 import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { DateAmountPickerPopover } from '@/components/ui/date-amount-picker-popover'
 import { DateQuantityPickerPopover } from '@/components/ui/date-quantity-picker-popover'
@@ -929,18 +930,8 @@ ${itemsText}`
             setCurrentUserName(employeeData.name)
           }
           
-          if (employeeData?.purchase_role) {
-            let roles: string[] = []
-            if (Array.isArray(employeeData.purchase_role)) {
-              roles = employeeData.purchase_role.map((r: string) => String(r).trim())
-            } else {
-              const roleString = String(employeeData.purchase_role)
-              roles = roleString
-                .split(',')
-                .map((r: string) => r.trim())
-                .filter((r: string) => r.length > 0)
-            }
-            setUserRoles(roles)
+          if (employeeData?.roles) {
+            setUserRoles(parseRoles(employeeData.roles))
           }
         }
       } catch (error) {
@@ -984,7 +975,7 @@ ${itemsText}`
   // 권한 체크
   // 전체 수정 권한 (모든 필드 수정 가능)
   const canEditAll = effectiveRoles.includes('final_approver') || 
-                     effectiveRoles.includes('app_admin') || 
+                     effectiveRoles.includes('superadmin') || 
                      effectiveRoles.includes('ceo')
   
   // lead buyer 제한적 수정 권한 (금액/수량만 수정 가능)
@@ -1010,29 +1001,28 @@ ${itemsText}`
     ? canEditAll  // 승인된 요청은 관리자만 삭제 가능 (lead buyer 제외)
     : (canEditAll || (purchase?.requester_name === currentUserName))  // 미승인도 lead buyer 제외
   
-  // 구매 권한 체크: app_admin + lead buyer만 (요청자 본인 제외)
-  const canPurchase = effectiveRoles.includes('app_admin') || 
+  // 구매 권한 체크: superadmin + lead buyer만 (요청자 본인 제외)
+  const canPurchase = effectiveRoles.includes('superadmin') || 
                      effectiveRoles.includes('lead buyer') || 
                      effectiveRoles.includes('lead buyer')
   
   // 입고 권한 체크 
   // 1. 관리자는 모든 건 입고 처리 가능
   // 2. 요청자는 자신의 요청건만 입고 처리 가능
-  const canReceiveItems = effectiveRoles.includes('app_admin') || 
+  const canReceiveItems = effectiveRoles.includes('superadmin') || 
                          (purchase?.requester_name === currentUserName)
   // 2. 일반 직원은 본인이 요청한 건만 입고 처리 가능
   const isAdmin = effectiveRoles.includes('final_approver') || 
-                  effectiveRoles.includes('app_admin') || 
+                  effectiveRoles.includes('superadmin') || 
                   effectiveRoles.includes('ceo')
   const isRequester = purchase?.requester_name === currentUserName
   
-  // 거래명세서 확인 & UTK 확인 권한: app_admin과 lead buyer, accounting만 가능
-  const canReceiptCheck = effectiveRoles.includes('app_admin') || 
-                         effectiveRoles.includes('lead buyer') ||
-                         effectiveRoles.includes('accounting')
+  // 거래명세서 확인 & UTK 확인 권한: superadmin과 lead buyer만 가능
+  const canReceiptCheck = effectiveRoles.includes('superadmin') ||
+                         effectiveRoles.includes('lead buyer')
   
-  // 입고 처리 권한: app_admin 또는 본인이 요청한 건
-  const canProcessReceipt = effectiveRoles.includes('app_admin') || isRequester
+  // 입고 처리 권한: superadmin 또는 본인이 요청한 건
+  const canProcessReceipt = effectiveRoles.includes('superadmin') || isRequester
   
   // 모달 내부 데이터만 새로고침하는 함수 (모달 닫지 않음)
   const refreshModalData = useCallback(async () => {
@@ -1634,11 +1624,11 @@ ${itemsText}`
   
   // 승인 권한 체크
  const canApproveMiddle = effectiveRoles.includes('middle_manager') || 
-                          effectiveRoles.includes('app_admin') || 
+                          effectiveRoles.includes('superadmin') || 
                           effectiveRoles.includes('ceo')
  
  const canApproveFinal = effectiveRoles.includes('final_approver') || 
-                         effectiveRoles.includes('app_admin') || 
+                         effectiveRoles.includes('superadmin') || 
                          effectiveRoles.includes('ceo')
  
  const approvalPillClass = 'inline-flex items-center gap-1 business-radius-badge px-2 py-0.5 badge-text leading-tight'
@@ -6186,7 +6176,7 @@ ${itemsText}`
         {/* Apple-style Header */}
         <div className="relative px-3 sm:px-6 pt-0 sm:pt-3 lg:pt-4 pb-0 sm:pb-2 lg:pb-3 flex-shrink-0">
           <div className="absolute right-3 sm:right-6 top-3 sm:top-3 lg:top-4 flex items-center gap-2 z-10">
-            {/* 수정 버튼 (app_admin, final_approver, ceo, lead_buyer) */}
+            {/* 수정 버튼 (superadmin, final_approver, ceo, lead_buyer) */}
             {!isEditing && canEdit && (
               <Button
                 size="sm"

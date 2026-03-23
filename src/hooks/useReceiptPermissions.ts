@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { ReceiptPermissions, UserRole } from '@/types/receipt';
 import { logger } from '@/lib/logger';
+import { parseRoles } from '@/utils/roleHelper';
 
 /**
  * 영수증 관리 권한을 관리하는 React Hook
@@ -52,17 +53,17 @@ export function useReceiptPermissions() {
 
       const { data: employee } = await supabase
         .from('employees')
-        .select('purchase_role')
+        .select('roles')
         .eq('email', user.email)
         .single();
 
-      const role = employee?.purchase_role || '';
-      setUserRole(role);
+      const roles = parseRoles(employee?.roles);
+      setUserRole(roles.length > 0 ? roles[0] : null);
 
       // 권한 계산
-      const isAppAdmin = role.includes('app_admin');
-      const isHr = role.includes('hr');
-      const isLeadBuyer = role.includes('lead buyer');
+      const isAppAdmin = roles.includes('superadmin');
+      const isHr = roles.includes('hr');
+      const isLeadBuyer = roles.includes('lead buyer');
       
       // 영수증 관리 접근 가능 권한
       const hasReceiptAccess = isAppAdmin || isHr || isLeadBuyer;
@@ -72,8 +73,8 @@ export function useReceiptPermissions() {
         canUpload: hasReceiptAccess,
         canDownload: hasReceiptAccess,
         canPrint: hasReceiptAccess,
-        canDelete: isAppAdmin, // 오직 app_admin만
-        canViewUploaderInfo: isAppAdmin, // 오직 app_admin만
+        canDelete: isAppAdmin, // 오직 superadmin만
+        canViewUploaderInfo: isAppAdmin, // 오직 superadmin만
       });
     } catch (error) {
       logger.error('영수증 권한 확인 실패', error)

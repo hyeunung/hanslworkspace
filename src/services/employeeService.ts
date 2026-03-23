@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { Employee, EmployeeFilters, EmployeeUpsertData, PurchaseRole } from "@/types/purchase";
 import { logger } from "@/lib/logger";
+import { parseRoles } from '@/utils/roleHelper';
 
 class EmployeeService {
   private supabase;
@@ -34,10 +35,10 @@ class EmployeeService {
       }
 
       // 권한 필터 적용
-      if (filters?.purchase_role === 'none') {
-        query = query.is('purchase_role', null);
-      } else if (filters?.purchase_role) {
-        query = query.contains('purchase_role', [filters.purchase_role]);
+      if (filters?.roles === 'none') {
+        query = query.is('roles', null);
+      } else if (filters?.roles) {
+        query = query.contains('roles', [filters.roles]);
       }
 
       // 활성 상태 필터 적용
@@ -103,7 +104,7 @@ class EmployeeService {
         .insert({
           id: employeeId,
           ...employeeData,
-          purchase_role: employeeData.purchase_role && employeeData.purchase_role.length > 0 ? employeeData.purchase_role : null,
+          roles: employeeData.roles && employeeData.roles.length > 0 ? employeeData.roles : null,
           is_active: isActive,
           terminated_at: isActive ? null : new Date().toISOString()
         })
@@ -149,10 +150,10 @@ class EmployeeService {
         ...employeeData
       };
 
-      if (employeeData.purchase_role === undefined) {
-        delete updateData.purchase_role;
+      if (employeeData.roles === undefined) {
+        delete updateData.roles;
       } else {
-        updateData.purchase_role = employeeData.purchase_role && employeeData.purchase_role.length > 0 ? employeeData.purchase_role : null;
+        updateData.roles = employeeData.roles && employeeData.roles.length > 0 ? employeeData.roles : null;
       }
 
       // is_active를 직접 업데이트하는 경우 terminated_at도 일관되게 처리
@@ -271,7 +272,7 @@ class EmployeeService {
     try {
       const { data, error } = await this.supabase
         .from('employees')
-        .update({ purchase_role: role ? [role] : null })
+        .update({ roles: role ? [role] : null })
         .eq('id', id)
         .select()
         .single();
@@ -349,14 +350,14 @@ class EmployeeService {
       if (error) throw error;
 
       // Excel 형식에 맞게 데이터 변환
-      const exportData = (data || []).map((employee: { name: string; email?: string; phone?: string; adress?: string; department?: string; position?: string; purchase_role?: string | string[] | null; is_active: boolean; created_at?: string }) => ({
+      const exportData = (data || []).map((employee: { name: string; email?: string; phone?: string; adress?: string; department?: string; position?: string; roles?: string | string[] | null; is_active: boolean; created_at?: string }) => ({
         '이름': employee.name,
         '이메일': employee.email || '',
         '전화번호': employee.phone || '',
         '주소': employee.adress || '',
         '부서': employee.department || '',
         '직급': employee.position || '',
-        '권한': this.getRoleDisplayName(employee.purchase_role),
+        '권한': this.getRoleDisplayName(employee.roles),
         '상태': employee.is_active ? '활성' : '비활성',
         '등록일': employee.created_at ? new Date(employee.created_at).toLocaleDateString('ko-KR') : ''
       }));
@@ -374,17 +375,15 @@ class EmployeeService {
   // 권한명 표시용 변환
   private getRoleDisplayName(role?: string | string[] | null): string {
     const roleNames: Record<string, string> = {
-      'app_admin': '앱 관리자',
+      'superadmin': '앱 관리자',
       'hr': 'HR',
-      'accounting': '회계',
       'ceo': 'CEO',
       'final_approver': '최종 승인자',
       'middle_manager': '중간 관리자',
       'lead buyer': '수석 구매자',
-      'buyer': '구매자'
     };
-    
-    const roles = this.normalizeRoles(role)
+
+    const roles = parseRoles(role)
     if (roles.length === 0) {
       return '권한 없음'
     }
@@ -392,26 +391,12 @@ class EmployeeService {
     return roles.map((value) => roleNames[value] || value).join(', ')
   }
 
-  private normalizeRoles(role?: string | string[] | null): string[] {
-    if (!role) return []
-
-    if (Array.isArray(role)) {
-      return role.filter((value) => value && value.trim())
-    }
-
-    if (typeof role === 'string') {
-      return role.split(',').map((value) => value.trim()).filter(Boolean)
-    }
-
-    return []
-  }
-
   // 권한 체크 함수
   async checkPermission(userId: string, requiredRoles: string[]): Promise<{ success: boolean; hasPermission?: boolean; error?: string }> {
     try {
       const { data: employee } = await this.supabase
         .from('employees')
-        .select('purchase_role, is_active')
+        .select('roles, is_active')
         .eq('id', userId)
         .single();
 
@@ -419,7 +404,7 @@ class EmployeeService {
         return { success: true, hasPermission: false };
       }
 
-      const roles = this.normalizeRoles(employee.purchase_role)
+      const roles = parseRoles(employee.roles)
       const hasPermission = roles.some((role) => requiredRoles.includes(role));
       return { success: true, hasPermission };
     } catch (error) {

@@ -31,10 +31,11 @@ import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
 import { Plane, RefreshCw, Check, X, Calendar as CalendarIcon, Trash2, Upload, Download, Printer, ChevronLeft, ChevronRight } from "lucide-react";
+import { parseRoles } from '@/utils/roleHelper';
 
-const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "app_admin"];
-const HIGH_AMOUNT_APPROVER_ROLES = ["final_approver", "ceo", "app_admin"];
-const SETTLEMENT_APPROVER_ROLES = ["final_approver", "ceo", "app_admin"];
+const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "superadmin"];
+const HIGH_AMOUNT_APPROVER_ROLES = ["final_approver", "ceo", "superadmin"];
+const SETTLEMENT_APPROVER_ROLES = ["final_approver", "ceo", "superadmin"];
 
 const COMPANY_CARDS = [
   { label: "출장용", number: "5914", value: "출장용 5914" },
@@ -164,7 +165,7 @@ interface Employee {
   department: string | null;
   position: string | null;
   email: string | null;
-  purchase_role?: string[] | null;
+  roles?: string[] | null;
 }
 
 interface CardUsageLink {
@@ -376,12 +377,6 @@ const toSafeFileName = (fileName: string) => {
   return `${safeBase}${ext}`;
 };
 
-const parseRoles = (purchaseRole: string[] | null | undefined) => {
-  if (!purchaseRole) return [] as string[];
-  return Array.isArray(purchaseRole)
-    ? purchaseRole.map((r) => String(r).trim()).filter(Boolean)
-    : String(purchaseRole).split(",").map((r) => r.trim()).filter(Boolean);
-};
 
 const formatDateRangeLabel = (from?: Date, to?: Date) => {
   if (!from) return "선택";
@@ -452,8 +447,8 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     return () => document.removeEventListener("wheel", handler);
   }, []);
 
-  const roles = useMemo(() => parseRoles(currentUser?.purchase_role), [currentUser?.purchase_role]);
-  const isAppAdmin = useMemo(() => roles.includes("app_admin"), [roles]);
+  const roles = useMemo(() => parseRoles(currentUser?.roles), [currentUser?.roles]);
+  const isAppAdmin = useMemo(() => roles.includes("superadmin"), [roles]);
 
   const canApproveTrip = useCallback((trip: BusinessTrip) => {
     const isHighAmount = Number(trip.expected_total_amount || 0) >= 1_000_000;
@@ -612,7 +607,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     try {
       const { data, error } = await supabase
         .from("employees")
-        .select("id, name, department, position, email, purchase_role")
+        .select("id, name, department, position, email, roles")
         .eq("is_active", true)
         .order("name");
       if (error) throw error;
@@ -631,7 +626,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
 
       const { data, error } = await supabase
         .from("employees")
-        .select("id, name, department, position, email, purchase_role")
+        .select("id, name, department, position, email, roles")
         .eq("email", user.email)
         .single();
       if (error) throw error;
@@ -692,6 +687,13 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
       resetRequestForm();
     }
   }, [isCreateMode, resetRequestForm]);
+
+  // currentUser 로드 후 사용부서가 비어있으면 자동 설정
+  useEffect(() => {
+    if (isCreateMode && currentUser?.department && !formDepartment) {
+      setFormDepartment(currentUser.department);
+    }
+  }, [isCreateMode, currentUser?.department, formDepartment]);
 
   const tripButtonDisabled = requestSubmitting || !formDepartment || !formProjectName.trim() || !formPurpose.trim() || !formDestination.trim() || !formDateRange?.from || (formTransportType === "company_vehicle" && !formTransportDetail) || (formTransportType === "public_transport" && !formTransportDetail) || (formTransportType === "other" && !formTransportDetail.trim());
 
@@ -1257,7 +1259,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
 
   const handleDeleteExistingReceipt = useCallback(async (rowKey: string, receipt: BusinessTripExpenseReceipt) => {
     if (!isAppAdmin) {
-      toast.error("영수증 삭제는 app_admin만 가능합니다.");
+      toast.error("영수증 삭제는 superadmin만 가능합니다.");
       return;
     }
     try {

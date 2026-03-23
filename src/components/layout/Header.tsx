@@ -7,19 +7,20 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supportService } from '@/services/supportService'
 import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
 import { countPendingApprovalsForSidebarBadge } from '@/utils/purchaseFilters'
+import { parseRoles } from '@/utils/roleHelper'
 
 interface HeaderProps {
   user: {
     id?: string
     name?: string
-    purchase_role?: string | string[]
+    roles?: string | string[]
   } | null
   onMenuClick?: () => void
 }
 
 const getRoleDisplayName = (role: string) => {
   const roleMap: Record<string, string> = {
-    app_admin: '시스템 관리자',
+    superadmin: '시스템 관리자',
     ceo: 'CEO',
     final_approver: '최종 승인자',
     middle_manager: '중간 관리자',
@@ -30,7 +31,7 @@ const getRoleDisplayName = (role: string) => {
   return roleMap[role] || role
 }
 
-const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "app_admin"]
+const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "superadmin"]
 
 export default function Header({ user, onMenuClick }: HeaderProps) {
   const navigate = useNavigate()
@@ -41,19 +42,17 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
   const [otherPendingCount, setOtherPendingCount] = useState(0)
   const { allPurchases } = usePurchaseMemory()
 
-  const roles = Array.isArray(user?.purchase_role)
-    ? user.purchase_role
-    : (user?.purchase_role ? [user.purchase_role] : [])
-  const isAdmin = roles.includes('app_admin')
-  const isApplicationApprover = roles.includes('app_admin') || roles.includes('hr')
-  const canSeeStatementBadge = roles.includes('app_admin') || roles.includes('lead buyer')
+  const roles = parseRoles(user?.roles)
+  const isAdmin = roles.includes('superadmin')
+  const isApplicationApprover = roles.includes('superadmin') || roles.includes('hr')
+  const canSeeStatementBadge = roles.includes('superadmin') || roles.includes('lead buyer')
   const purchaseOnlyCount = useMemo(
-    () => countPendingApprovalsForSidebarBadge(allPurchases, user?.purchase_role),
-    [allPurchases, user?.purchase_role]
+    () => countPendingApprovalsForSidebarBadge(allPurchases, user?.roles),
+    [allPurchases, user?.roles]
   )
   const pendingPurchaseCount = purchaseOnlyCount + otherPendingCount
 
-  // app_admin: 상단 로고 옆에 미처리 문의(open+in_progress) 뱃지 표시
+  // superadmin: 상단 로고 옆에 미처리 문의(open+in_progress) 뱃지 표시
   useEffect(() => {
     if (!isAdmin) return
 
@@ -227,7 +226,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
   const loadOtherPendingCounts = useCallback(async () => {
     try {
       const supabase = createClient()
-      const isCardVehicleApprover = roles.includes('app_admin') || roles.includes('hr')
+      const isCardVehicleApprover = roles.includes('superadmin') || roles.includes('hr')
       const isTripApprover = roles.some((r: string) => TRIP_APPROVER_ROLES.includes(r))
 
       const [cardRes, vehicleRes, tripRes, myTripRes] = await Promise.all([
@@ -264,7 +263,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
     return () => window.clearInterval(timer)
   }, [loadOtherPendingCounts])
 
-  // hr, app_admin: 신청서 승인 대기 개수
+  // hr, superadmin: 신청서 승인 대기 개수
   useEffect(() => {
     if (!isApplicationApprover) return
     const supabase = createClient()
@@ -391,9 +390,9 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
             <span className="text-sm font-medium text-gray-700">
               {user?.name || '사용자'}
             </span>
-            {user?.purchase_role && (
+            {roles.length > 0 && (
               <span className="text-xs text-gray-500">
-                {getRoleDisplayName(Array.isArray(user.purchase_role) ? user.purchase_role[0] : user.purchase_role as string)}
+                {getRoleDisplayName(roles[0])}
               </span>
             )}
           </div>

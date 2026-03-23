@@ -38,7 +38,7 @@ export interface EmployeeFilters {
   is_active?: boolean
   department?: string
   position?: string
-  purchase_role?: string
+  roles?: string
 }
 
 export interface EmployeeFormData {
@@ -47,22 +47,19 @@ export interface EmployeeFormData {
   department?: string
   position?: string
   phone?: string
-  purchase_role?: string[]
+  roles?: string[]
 }
 
 export type PurchaseRole =
-  | 'app_admin'
+  | 'superadmin'
   | 'hr'
-  | 'accounting'
   | 'ceo'
   | 'middle_manager'
   | 'final_approver'
   | 'raw_material_manager'
   | 'consumable_manager'
   | 'purchase_manager'
-  | 'requester'
   | 'lead buyer'
-  | 'buyer' // hanslwebapp과 동일
 
 export interface EmployeeUpsertData {
   // 기본
@@ -76,7 +73,7 @@ export interface EmployeeUpsertData {
   phone?: string | null
 
   // 권한/상태
-  purchase_role?: PurchaseRole[] | string[] | null
+  roles?: PurchaseRole[] | string[] | null
   is_active?: boolean | null
 
   // 민감 정보/기타
@@ -102,8 +99,7 @@ export interface Employee {
   department?: string
   position?: string
   phone?: string
-  purchase_role?: string | string[]  // 발주 관련 권한 (app_admin, ceo, middle_manager 등)
-  role?: string  // 직원 관리 권한 (hr, admin)
+  roles?: string | string[]  // 권한 (superadmin, ceo, middle_manager 등)
   is_active: boolean
   terminated_at?: string | null
   created_at: string

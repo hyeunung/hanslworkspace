@@ -8,11 +8,12 @@ import AttendanceDownload from '@/components/employee/AttendanceDownload'
 import AnnualLeaveUsageDownload from '@/components/employee/AnnualLeaveUsageDownload'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
+import { parseRoles } from '@/utils/roleHelper'
 // XLSX는 사용할 때만 동적으로 import (성능 최적화)
 
 export default function EmployeeMain() {
   const { currentUserRoles } = useAuth()
-  const canManageEmployees = currentUserRoles.includes('app_admin') || currentUserRoles.includes('hr')
+  const canManageEmployees = currentUserRoles.includes('superadmin') || currentUserRoles.includes('hr')
 
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
@@ -84,15 +85,11 @@ export default function EmployeeMain() {
     }
 
     // 권한 필터
-    if (filters.purchase_role === 'none') {
-      result = result.filter((emp) => !emp.purchase_role || (Array.isArray(emp.purchase_role) && emp.purchase_role.length === 0))
-    } else if (filters.purchase_role) {
-      const role = filters.purchase_role
-      result = result.filter((emp) => {
-        if (Array.isArray(emp.purchase_role)) return emp.purchase_role.includes(role)
-        if (typeof emp.purchase_role === 'string') return emp.purchase_role === role
-        return false
-      })
+    if (filters.roles === 'none') {
+      result = result.filter((emp) => parseRoles(emp.roles).length === 0)
+    } else if (filters.roles) {
+      const role = filters.roles
+      result = result.filter((emp) => parseRoles(emp.roles).includes(role))
     }
 
     // 활성 상태 필터

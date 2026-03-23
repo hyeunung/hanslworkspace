@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useReceiptPermissions } from "@/hooks/useReceiptPermissions";
 import type { ReceiptItem } from "@/types/receipt";
 import { logger } from "@/lib/logger";
+import { parseRoles } from "@/utils/roleHelper";
 
 interface ReceiptDetailModalProps {
   receipt: ReceiptItem;
@@ -143,7 +144,7 @@ export default function ReceiptDetailModal({ receipt, groupReceipts, isOpen, onC
 
       const { data: employee, error: empError } = await supabase
         .from('employees')
-        .select('name, purchase_role')
+        .select('name, roles')
         .eq('email', user.email)
         .single();
 
@@ -152,8 +153,8 @@ export default function ReceiptDetailModal({ receipt, groupReceipts, isOpen, onC
         return;
       }
 
-      const role = employee?.purchase_role || '';
-      const hasPermission = role.includes('app_admin') || role.includes('hr') || role.includes('lead buyer');
+      const roles = parseRoles(employee?.roles);
+      const hasPermission = roles.includes('superadmin') || roles.includes('hr') || roles.includes('lead buyer');
       
       if (!hasPermission) {
         toast.error('인쇄완료 처리 권한이 없습니다.');

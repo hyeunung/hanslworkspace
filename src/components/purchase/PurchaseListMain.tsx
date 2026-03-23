@@ -18,6 +18,7 @@ const PurchaseItemsModal = lazy(() => import("@/components/purchase/PurchaseItem
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { parseRoles } from '@/utils/roleHelper';
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Purchase, PurchaseRequestItem } from "@/types/purchase";
@@ -83,15 +84,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   }, [columnVisibility]);
   
   
-  const currentUserRoles = useMemo(() => {
-    if (Array.isArray(currentUser?.purchase_role)) {
-      return currentUser.purchase_role.map((r: string) => r.trim())
-    }
-    if (typeof currentUser?.purchase_role === 'string') {
-      return currentUser.purchase_role.split(',').map((r: string) => r.trim())
-    }
-    return []
-  }, [currentUser?.purchase_role])
+  const currentUserRoles = useMemo(() => parseRoles(currentUser?.roles), [currentUser?.roles])
   
   const currentUserName = currentUser?.name || null;
   
@@ -117,7 +110,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     updatePurchaseInMemory(purchaseId, updater)
   }, []);
   
-  const isAdmin = currentUserRoles?.includes('app_admin');
+  const isAdmin = currentUserRoles?.includes('superadmin');
   
   // roleCase 계산 (탭별 기본 직원 필터용) - 먼저 정의
   const roleCase = useMemo(() => getRoleCase(currentUserRoles), [currentUserRoles]);
@@ -137,7 +130,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     const hasHrRole = currentUserRoles.includes('hr');
     const hasPurchaseManagerRole = currentUserRoles.includes('purchase_manager');
     const hasManagerRole = currentUserRoles.some((role: string) => 
-      ['app_admin', 'ceo', 'lead buyer', 'finance_team', 'raw_material_manager', 'consumable_manager', 'purchase_manager', 'hr'].includes(role)
+      ['superadmin', 'ceo', 'lead buyer', 'raw_material_manager', 'consumable_manager', 'purchase_manager', 'hr'].includes(role)
     );
     
     const result = {

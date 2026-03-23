@@ -22,6 +22,7 @@ import {
 import { Purchase, PurchaseRequestItem, PurchaseRequestWithDetails } from "@/types/purchase";
 import { DoneTabColumnId, ColumnVisibility } from "@/types/columnSettings";
 import { RESTRICTED_COLUMNS, AUTHORIZED_ROLES, UTK_AUTHORIZED_ROLES } from "@/constants/columnSettings";
+import { parseRoles } from '@/utils/roleHelper';
 
 interface FastPurchaseTableProps {
   purchases: Purchase[];
@@ -846,16 +847,16 @@ const FastPurchaseTable = ({
   // vendorColumnWidth는 이제 useMemo로 직접 계산됨
   const supabase = createClient();
 
-  // 권한 체크 - lead buyer와 app_admin만 구매완료/입고완료 버튼 사용 가능
+  // 권한 체크 - lead buyer와 superadmin만 구매완료/입고완료 버튼 사용 가능
   const isLeadBuyer = currentUserRoles && (
     currentUserRoles.includes('lead buyer') ||
-    currentUserRoles.includes('app_admin')
+    currentUserRoles.includes('superadmin')
   );
   
 
   // 권한 체크
   const canEdit = currentUserRoles.includes('final_approver') || 
-                  currentUserRoles.includes('app_admin') || 
+                  currentUserRoles.includes('superadmin') || 
                   currentUserRoles.includes('ceo');
   
   const canDelete = canEdit;
@@ -1120,7 +1121,7 @@ const FastPurchaseTable = ({
       // 사용자 권한 확인
       const { data: employee, error: empError } = await supabase
         .from('employees')
-        .select('name, email, purchase_role')
+        .select('name, email, roles')
         .eq('email', user.email)
         .single();
 
@@ -1131,18 +1132,10 @@ const FastPurchaseTable = ({
       }
 
       // 권한 체크
-      let roles: string[] = [];
-      if (employee.purchase_role) {
-        if (Array.isArray(employee.purchase_role)) {
-          roles = employee.purchase_role.map((r: string) => String(r).trim());
-        } else {
-          const roleString = String(employee.purchase_role);
-          roles = roleString.split(',').map((r: string) => r.trim()).filter((r: string) => r.length > 0);
-        }
-      }
+      const roles = parseRoles(employee.roles);
 
       const canEdit = roles.includes('final_approver') || 
-                      roles.includes('app_admin') || 
+                      roles.includes('superadmin') || 
                       roles.includes('ceo');
       
       const isApproved = purchaseToDelete.final_manager_status === 'approved';

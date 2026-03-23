@@ -24,12 +24,11 @@ interface EmployeeFiltersProps {
 }
 
 const PURCHASE_ROLES: { value: PurchaseRole; label: string }[] = [
-  { value: 'app_admin', label: '앱 관리자' },
+  { value: 'superadmin', label: '앱 관리자' },
   { value: 'ceo', label: 'CEO' },
   { value: 'final_approver', label: '최종 승인자' },
   { value: 'middle_manager', label: '중간 관리자' },
   { value: 'lead buyer', label: '수석 구매자' },
-  { value: 'buyer', label: '구매자' },
 ]
 
 export default function EmployeeFilters({ 
@@ -102,7 +101,7 @@ export default function EmployeeFilters({
   const handleRoleChange = (value: string) => {
     onFiltersChange({
       ...filters,
-      purchase_role: value === 'all' ? undefined : value
+      roles: value === 'all' ? undefined : value
     })
   }
 
@@ -121,7 +120,7 @@ export default function EmployeeFilters({
   const hasFilters = filters.search || 
                      filters.department || 
                      filters.position || 
-                     filters.purchase_role || 
+                     filters.roles || 
                      filters.is_active !== undefined
 
   return (
@@ -226,7 +225,7 @@ export default function EmployeeFilters({
         {/* 권한 필터 */}
         <div className="min-w-[140px]">
           <Select
-            value={filters.purchase_role || 'all'}
+            value={filters.roles || 'all'}
             onValueChange={handleRoleChange}
           >
             <SelectTrigger className="!h-auto !min-h-[20px] !py-px !px-2 !text-[11px] business-radius-input border border-gray-300 bg-white text-gray-700">

@@ -25,6 +25,7 @@ import DeliveryDateWarningModal, { useDeliveryWarningCount } from '@/components/
 
 import { toast } from 'sonner'
 import type { DashboardData, Purchase } from '@/types/purchase'
+import { parseRoles } from '@/utils/roleHelper'
 import { useNavigate } from 'react-router-dom'
 import { logger } from '@/lib/logger'
 import { supportService, type SupportInquiry } from '@/services/supportService'
@@ -86,7 +87,7 @@ export default function DashboardMain() {
   }>>([])
   const [statusNow, setStatusNow] = useState(() => new Date())
 
-  // 문의하기 관련 (app_admin용)
+  // 문의하기 관련 (superadmin용)
   const [inquiries, setInquiries] = useState<SupportInquiry[]>([])
   const [loadingInquiries, setLoadingInquiries] = useState(false)
   const [expandedInquiryId, setExpandedInquiryId] = useState<number | null>(null)
@@ -259,9 +260,9 @@ export default function DashboardMain() {
     return () => unsubscribe()
   }, [loadDashboardData])
 
-  // 문의 목록 초기 로드 (app_admin만)
+  // 문의 목록 초기 로드 (superadmin만)
   useEffect(() => {
-    if (!currentUserRoles.includes('app_admin')) return
+    if (!currentUserRoles.includes('superadmin')) return
 
     const loadInquiries = async () => {
       try {
@@ -284,9 +285,9 @@ export default function DashboardMain() {
     loadInquiries()
   }, [currentUserRoles])
 
-  // 문의 목록 실시간 구독 (app_admin만)
+  // 문의 목록 실시간 구독 (superadmin만)
   useEffect(() => {
-    if (!currentUserRoles.includes('app_admin')) return
+    if (!currentUserRoles.includes('superadmin')) return
 
     const subscription = supportService.subscribeToInquiries((payload) => {
       const eventType = payload?.eventType as 'INSERT' | 'UPDATE' | 'DELETE' | undefined
@@ -385,7 +386,7 @@ export default function DashboardMain() {
     }
   }
 
-  // 문의 삭제 (app_admin)
+  // 문의 삭제 (superadmin)
   const handleDeleteInquiry = async (inquiryId: number) => {
     if (!confirm('정말로 이 문의를 삭제하시겠습니까?\n삭제된 문의는 복구할 수 없습니다.')) return
 
@@ -663,16 +664,9 @@ export default function DashboardMain() {
   }
 
   // 권한 파싱 및 표시 여부 결정
-  const roles = Array.isArray(data.employee.purchase_role)
-    ? (data.employee.purchase_role as string[]).map((r: string) => String(r).trim())
-    : (data.employee.purchase_role
-        ? String(data.employee.purchase_role)
-            .split(',')
-            .map((r: string) => r.trim())
-            .filter((r: string) => r.length > 0)
-        : [])
+  const roles = parseRoles(data.employee.roles)
 
-  const canSeeApprovalBox = roles.some((r: string) => ['middle_manager', 'final_approver', 'app_admin', 'raw_material_manager', 'consumable_manager'].includes(r))
+  const canSeeApprovalBox = roles.some((r: string) => ['middle_manager', 'final_approver', 'superadmin', 'raw_material_manager', 'consumable_manager'].includes(r))
 
   // 결제/요청 유형별 색상 매핑 (payment_category 기준)
   const getTypeColorClass = (paymentCategory: string | null | undefined) => {
@@ -813,7 +807,7 @@ export default function DashboardMain() {
           )}
 
           {/* 2. 문의하기 내역 - App Admin만 표시 */}
-          {currentUserRoles.includes('app_admin') && (
+          {currentUserRoles.includes('superadmin') && (
             <Card className="w-full col-span-1 border-gray-200 shadow-sm hover:shadow-md transition-shadow">
               <CardHeader className="h-12 px-4 bg-gray-50 border-b flex items-center">
                 <CardTitle className="section-title flex items-center w-full">

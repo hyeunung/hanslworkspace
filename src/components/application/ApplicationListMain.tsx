@@ -18,7 +18,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
-const APPLICATION_APPROVER_ROLES = ["hr", "app_admin"];
+const APPLICATION_APPROVER_ROLES = ["hr", "superadmin"];
 
 const APPLICATION_TYPES = [
   {

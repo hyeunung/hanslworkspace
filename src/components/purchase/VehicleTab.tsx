@@ -27,13 +27,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Car, RefreshCw, AlertTriangle, Check, X, Calendar as CalendarIcon, Trash2 } from "lucide-react";
+import { parseRoles } from '@/utils/roleHelper';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
 
-const VEHICLE_APPROVER_ROLES = ["hr", "app_admin"];
+const VEHICLE_APPROVER_ROLES = ["hr", "superadmin"];
 
 const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
   const h = String(Math.floor(i / 2)).padStart(2, "0");
@@ -71,7 +72,7 @@ interface Employee {
   department: string | null;
   position: string | null;
   email: string | null;
-  purchase_role?: string[] | null;
+  roles?: string[] | null;
 }
 
 interface VehicleTabProps {
@@ -250,20 +251,14 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
   }, []);
 
   const canApprove = useMemo(() => {
-    if (!currentUser?.purchase_role) return false;
-    const roles = Array.isArray(currentUser.purchase_role)
-      ? currentUser.purchase_role
-      : (currentUser.purchase_role as unknown as string).split(",").map((r: string) => r.trim());
+    const roles = parseRoles(currentUser?.roles);
     return roles.some((r: string) => VEHICLE_APPROVER_ROLES.includes(r));
-  }, [currentUser?.purchase_role]);
+  }, [currentUser?.roles]);
 
   const isAppAdmin = useMemo(() => {
-    if (!currentUser?.purchase_role) return false;
-    const roles = Array.isArray(currentUser.purchase_role)
-      ? currentUser.purchase_role
-      : (currentUser.purchase_role as unknown as string).split(",").map((r: string) => r.trim());
-    return roles.includes("app_admin");
-  }, [currentUser?.purchase_role]);
+    const roles = parseRoles(currentUser?.roles);
+    return roles.includes("superadmin");
+  }, [currentUser?.roles]);
 
   const loadRequests = useCallback(async () => {
     try {
@@ -320,7 +315,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
       if (!user?.email) return;
       const { data } = await supabase
         .from("employees")
-        .select("id, name, department, position, email, purchase_role")
+        .select("id, name, department, position, email, roles")
         .eq("email", user.email)
         .single();
       if (data) setCurrentUser(data);

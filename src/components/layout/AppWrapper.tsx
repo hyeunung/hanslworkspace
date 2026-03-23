@@ -39,7 +39,7 @@ function AppWrapper() {
         
         {/* 고정 네비게이션 */}
         <FixedNavigation 
-          role={employee?.purchase_role} 
+          role={employee?.roles} 
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
         />

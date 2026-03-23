@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { parseRoles } from '@/utils/roleHelper'
 import { logger } from '@/lib/logger'
 import { purchaseMemoryCache, CACHE_DURATION, updatePurchaseInMemory } from '@/stores/purchaseMemoryStore'
 import type { 
@@ -67,28 +68,6 @@ export class DashboardService {
 
   private getPurchaseMemory(): Purchase[] {
     return (purchaseMemoryCache.allPurchases || []) as Purchase[]
-  }
-
-  // 역할 파싱 유틸: 배열/CSV 문자열/단일 문자열을 모두 배열로 정규화
-  private parseRoles(purchaseRole: string | string[] | null | undefined): string[] {
-    let roles: string[] = []
-    
-    if (purchaseRole) {
-      if (Array.isArray(purchaseRole)) {
-        // 배열인 경우
-        roles = purchaseRole.map((r: string) => String(r).trim())
-      } else {
-        // 문자열인 경우 (일반적)
-        const roleString = String(purchaseRole)
-        // 쉼표로 분할하고 공백 제거
-        roles = roleString
-          .split(',')
-          .map((r: string) => r.trim())
-          .filter((r: string) => r.length > 0)
-      }
-    }
-    
-    return roles
   }
 
   // 메인 대시보드 데이터 로드
@@ -204,7 +183,7 @@ export class DashboardService {
   async getDashboardStatsFromMemory(employee: Employee): Promise<DashboardStats> {
     const purchases = this.getPurchaseMemory()
     const today = new Date().toISOString().split('T')[0]
-    const roles = this.parseRoles(employee.purchase_role)
+    const roles = parseRoles(employee.roles)
 
     const requesterName = employee.name || employee.email
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
@@ -249,7 +228,7 @@ export class DashboardService {
   }
 
   async getPendingApprovalsFromMemory(employee: Employee): Promise<PurchaseRequestWithDetails[]> {
-    const roles = this.parseRoles(employee.purchase_role)
+    const roles = parseRoles(employee.roles)
     if (roles.length === 0) return []
 
     const purchases = this.getPurchaseMemory()
@@ -273,7 +252,7 @@ export class DashboardService {
     // 역할별 권한에 따른 추가 필터링
     let roleFiltered = filteredPending
 
-    if (roles.includes('app_admin')) {
+    if (roles.includes('superadmin')) {
       // all
     } else if (roles.includes('middle_manager')) {
       roleFiltered = filteredPending.filter((item: Purchase) => this.isPendingStatus(item.middle_manager_status))
@@ -308,10 +287,10 @@ export class DashboardService {
   }
 
   async getQuickActionsFromMemory(employee: Employee): Promise<QuickAction[]> {
-    const roles = this.parseRoles(employee.purchase_role)
+    const roles = parseRoles(employee.roles)
     const actions: QuickAction[] = []
 
-    if (roles.includes('app_admin') || roles.includes('middle_manager') || roles.includes('final_approver') || roles.includes('ceo')) {
+    if (roles.includes('superadmin') || roles.includes('middle_manager') || roles.includes('final_approver') || roles.includes('ceo')) {
       const pendingCount = await this.getPendingCountFromMemory(employee, roles)
       if (pendingCount > 0) {
         actions.push({
@@ -361,14 +340,14 @@ export class DashboardService {
   }
 
   async getMyPurchaseStatusFromMemory(employee: Employee): Promise<{ waitingPurchase: PurchaseRequestWithDetails[], waitingDelivery: PurchaseRequestWithDetails[], recentCompleted: PurchaseRequestWithDetails[] }> {
-    const roles = this.parseRoles(employee.purchase_role)
-    const isLeadBuyer = roles.includes('lead buyer') || roles.includes('app_admin')
+    const roles = parseRoles(employee.roles)
+    const isLeadBuyer = roles.includes('lead buyer') || roles.includes('superadmin')
 
     const requesterName = employee.name || employee.email
     const purchases = this.getPurchaseMemory()
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
-    // lead buyer/app_admin: 전체, 그 외: 본인 것만
+    // lead buyer/superadmin: 전체, 그 외: 본인 것만
     const allMyRequests = isLeadBuyer
       ? purchases
       : purchases.filter((p: Purchase) => (p.requester_name || '') === requesterName)
@@ -420,7 +399,7 @@ export class DashboardService {
   private async getPendingCountFromMemory(employee: Employee, roles: string[]): Promise<number> {
     const purchases = this.getPurchaseMemory()
 
-    if (roles.includes('app_admin')) {
+    if (roles.includes('superadmin')) {
       const mid = purchases.filter((p: Purchase) => this.isPendingStatus(p.middle_manager_status)).length
       const fin = purchases.filter((p: Purchase) => p.middle_manager_status === 'approved' && this.isPendingStatus(p.final_manager_status)).length
       const pur = purchases.filter((p: Purchase) => p.final_manager_status === 'approved' && p.is_payment_completed === false).length
@@ -448,7 +427,7 @@ export class DashboardService {
 
     const base = purchases.filter((p: Purchase) => this.toTime(p.created_at) > 0 && this.toTime(p.created_at) < threeDaysAgo)
 
-    if (roles.includes('app_admin')) {
+    if (roles.includes('superadmin')) {
       return base.filter((p: Purchase) =>
         p.middle_manager_status === 'pending' ||
         p.final_manager_status === 'pending' ||
@@ -482,7 +461,7 @@ export class DashboardService {
   // 통계 정보 (우선순위 재정렬)
   async getDashboardStats(employee: Employee): Promise<DashboardStats> {
     const today = new Date().toISOString().split('T')[0]
-    const roles = this.parseRoles(employee.purchase_role)
+    const roles = parseRoles(employee.roles)
 
 
     // 병렬 쿼리로 성능 최적화
@@ -561,7 +540,7 @@ export class DashboardService {
 
   // 승인 대기 항목 (전체 조회) - JOIN 쿼리로 N+1 문제 해결
   async getPendingApprovals(employee: Employee): Promise<PurchaseRequestWithDetails[]> {
-    const roles = this.parseRoles(employee.purchase_role)
+    const roles = parseRoles(employee.roles)
 
     // 역할이 있는 사용자만 승인 대기 항목을 볼 수 있음
     if (roles.length === 0) {
@@ -626,9 +605,9 @@ export class DashboardService {
     // 역할별 권한에 따른 추가 필터링
     let roleFilteredData = filteredData
     
-    if (roles.includes('app_admin')) {
-      // app_admin은 모든 승인 대기 항목 볼 수 있음 (필터링 없음)
-      logger.debug('🔑 app_admin 권한으로 모든 승인대기 항목 표시', {
+    if (roles.includes('superadmin')) {
+      // superadmin은 모든 승인 대기 항목 볼 수 있음 (필터링 없음)
+      logger.debug('🔑 superadmin 권한으로 모든 승인대기 항목 표시', {
         totalItems: roleFilteredData.length
       })
     } else if (roles.includes('middle_manager')) {
@@ -710,12 +689,12 @@ export class DashboardService {
 
   // 빠른 액션 버튼 데이터
   async getQuickActions(employee: Employee): Promise<QuickAction[]> {
-    const roles = this.parseRoles(employee.purchase_role)
+    const roles = parseRoles(employee.roles)
 
     const actions: QuickAction[] = []
 
     // 승인 권한이 있는 경우
-    if (roles.includes('app_admin') || roles.includes('middle_manager') || roles.includes('final_approver') || roles.includes('ceo')) {
+    if (roles.includes('superadmin') || roles.includes('middle_manager') || roles.includes('final_approver') || roles.includes('ceo')) {
       const pendingCount = await this.getPendingCount(employee, roles)
       if (pendingCount > 0) {
         actions.push({
@@ -793,8 +772,8 @@ export class DashboardService {
   // 내 구매/입고 상태 확인 - JOIN 쿼리로 최적화됨
   async getMyPurchaseStatus(employee: Employee): Promise<{ waitingPurchase: PurchaseRequestWithDetails[], waitingDelivery: PurchaseRequestWithDetails[], recentCompleted: PurchaseRequestWithDetails[] }> {
     
-    const roles = this.parseRoles(employee.purchase_role)
-    const isLeadBuyer = roles.includes('lead buyer') || roles.includes('app_admin')
+    const roles = parseRoles(employee.roles)
+    const isLeadBuyer = roles.includes('lead buyer') || roles.includes('superadmin')
     
     // name이 없으면 email 사용
     const requesterName = employee.name || employee.email
@@ -802,7 +781,7 @@ export class DashboardService {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
     // ✅ JOIN을 사용하여 한 번의 쿼리로 모든 관련 데이터 조회
-    // lead buyer 또는 app_admin은 모든 항목 조회, 그 외는 본인 것만
+    // lead buyer 또는 superadmin은 모든 항목 조회, 그 외는 본인 것만
     // PurchaseItemsModal과 동일한 데이터 구조를 위해 purchase_request_items 전체 필드 조회
     let query = this.supabase
       .from('purchase_requests')
@@ -901,7 +880,7 @@ export class DashboardService {
     employee: Employee
   ): Promise<{ success: boolean; stage?: 'middle' | 'final'; error?: string }> {
     try {
-      const roles = this.parseRoles(employee.purchase_role)
+      const roles = parseRoles(employee.roles)
 
       // 먼저 현재 요청의 상태를 확인
       const { data: request } = await this.supabase
@@ -921,7 +900,7 @@ export class DashboardService {
       const isPending = (status: string | null | undefined) =>
         status === 'pending' || status === '대기' || status === '' || status === null || status === undefined
 
-      if (roles.includes('app_admin')) {
+      if (roles.includes('superadmin')) {
         if (isPending(request.middle_manager_status)) {
           updateData = {
             middle_manager_status: 'approved'
@@ -995,7 +974,7 @@ export class DashboardService {
     )
 
     // 역할별 카운트 쿼리 구성
-    if (roles.includes('app_admin')) {
+    if (roles.includes('superadmin')) {
       // 1) 중간 승인 대기 + 2) 최종 승인 대기(중간 승인 완료) + 3) 구매 대기(최종 승인 완료)
       const [mid, fin, pur] = await Promise.all([
         this.supabase
@@ -1075,7 +1054,7 @@ export class DashboardService {
       .select('id', { count: 'exact', head: true })
       .lt('created_at', threeDaysAgo)
 
-    if (roles.includes('app_admin')) {
+    if (roles.includes('superadmin')) {
       query = query.or('middle_manager_status.eq.pending,final_manager_status.eq.pending,is_payment_completed.eq.false')
     } else if (roles.includes('middle_manager')) {
       query = query.eq('middle_manager_status', 'pending')
@@ -1160,12 +1139,12 @@ export class DashboardService {
     return estimatedCompletion.toLocaleDateString('ko-KR')
   }
 
-  // lead buyer 또는 app_admin을 위한 미다운로드 발주서 목록 조회 - 이미 JOIN 최적화됨
+  // lead buyer 또는 superadmin을 위한 미다운로드 발주서 목록 조회 - 이미 JOIN 최적화됨
   async getUndownloadedOrders(employee: Employee): Promise<PurchaseRequestWithDetails[]> {
-    const roles = this.parseRoles(employee.purchase_role)
+    const roles = parseRoles(employee.roles)
     
-    // lead buyer 또는 app_admin 권한 체크
-    if (!roles.includes('lead buyer') && !roles.includes('app_admin')) {
+    // lead buyer 또는 superadmin 권한 체크
+    if (!roles.includes('lead buyer') && !roles.includes('superadmin')) {
       logger.info('[DashboardService] 미다운로드 발주서 조회 권한 없음:', { roles })
       return []
     }

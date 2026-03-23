@@ -6,6 +6,7 @@
 import type { Purchase, Employee, PurchaseRequestItem } from '@/types/purchase'
 import { HIDDEN_EMPLOYEES } from '@/config/constants'
 import { logger } from '@/lib/logger'
+import { parseRoles } from '@/utils/roleHelper'
 
 // 탭 타입 정의
 export type TabType = 'pending' | 'purchase' | 'receipt' | 'done'
@@ -39,11 +40,7 @@ export const filterByTab = (
 ): Purchase[] => {
   if (!purchases || !currentUser) return []
   
-  const userRoles = Array.isArray(currentUser.purchase_role) 
-    ? currentUser.purchase_role.map((r: string) => r.trim())
-    : typeof currentUser.purchase_role === 'string'
-    ? currentUser.purchase_role.split(',').map((r: string) => r.trim())
-    : []
+  const userRoles = parseRoles(currentUser.roles)
 
   switch (tab) {
     case 'pending': {
@@ -76,8 +73,8 @@ export const filterByTab = (
           }
         }
 
-        // 2. 전체 권한자 체크 (app_admin과 ceo만)
-        if (userRoles.includes('app_admin') ||
+        // 2. 전체 권한자 체크 (superadmin과 ceo만)
+        if (userRoles.includes('superadmin') ||
             userRoles.includes('ceo')) {
           logger.debug('🔥 App Admin detected! Showing all items for:', { purchase_order_number: purchase.purchase_order_number });
           return true
@@ -99,7 +96,7 @@ export const filterByTab = (
       // 구매 현황 탭: 결제 대기중인 구매요청들
       // 관리자 권한 체크
       const hasManagerRole = userRoles.some((role: string) => 
-        ['app_admin', 'ceo', 'lead buyer', 'finance_team', 'raw_material_manager', 'consumable_manager', 'purchase_manager', 'hr'].includes(role)
+        ['superadmin', 'ceo', 'lead buyer', 'raw_material_manager', 'consumable_manager', 'purchase_manager', 'hr'].includes(role)
       )
       
       return purchases.filter(purchase => {
@@ -129,7 +126,7 @@ export const filterByTab = (
       // hr 권한이 있으면 모든 항목 볼 수 있음
       const hasHrRole = userRoles.includes('hr')
       const hasManagerRole = userRoles.some((role: string) => 
-        ['app_admin', 'ceo', 'finance_team', 'raw_material_manager', 'consumable_manager', 'purchase_manager'].includes(role)
+        ['superadmin', 'ceo', 'raw_material_manager', 'consumable_manager', 'purchase_manager'].includes(role)
       )
       
       return purchases.filter(purchase => {
@@ -173,13 +170,9 @@ export const filterByEmployee = (
   if (!purchases || !employeeName || employeeName === '전체') return purchases
   
   // HIDDEN_EMPLOYEES 체크 (관리자 권한 필요)
-  const userRoles = Array.isArray(currentUser?.purchase_role) 
-    ? currentUser.purchase_role.map((r: string) => r.trim())
-    : typeof currentUser?.purchase_role === 'string' 
-    ? currentUser.purchase_role.split(',').map((r: string) => r.trim())
-    : []
+  const userRoles = parseRoles(currentUser?.roles)
   const hasManagerRole = userRoles.some((role: string) => 
-    ['lead buyer', 'ceo', 'finance_team', 'raw_material_manager', 'consumable_manager'].includes(role)
+    ['lead buyer', 'ceo', 'raw_material_manager', 'consumable_manager'].includes(role)
   )
   
   return purchases.filter(purchase => {
@@ -526,7 +519,7 @@ export const filterPendingApprovals = (
 ): Purchase[] => {
   if (!purchases || !currentUser) return []
   
-  const userRoles = parseRoles(currentUser.purchase_role)
+  const userRoles = parseRoles(currentUser.roles)
   
   return purchases.filter(purchase => {
     // 이미 양쪽 승인 완료되었거나 반려된 경우 제외
@@ -539,8 +532,8 @@ export const filterPendingApprovals = (
       return false
     }
     
-    // app_admin, ceo는 모든 승인 대기 항목 볼 수 있음
-    if (userRoles.includes('app_admin') || userRoles.includes('ceo')) {
+    // superadmin, ceo는 모든 승인 대기 항목 볼 수 있음
+    if (userRoles.includes('superadmin') || userRoles.includes('ceo')) {
       return true
     }
     
@@ -573,7 +566,7 @@ export const filterPendingApprovals = (
  * 사이드바 발주요청 승인대기 배지 카운트
  * - middle_manager: 1차 승인 대기만
  * - final_approver: 최종 승인 대기만
- * - app_admin: 1차/최종 모두
+ * - superadmin: 1차/최종 모두
  * - ceo: 제외
  */
 export const countPendingApprovalsForSidebarBadge = (
@@ -583,12 +576,12 @@ export const countPendingApprovalsForSidebarBadge = (
   if (!purchases || purchases.length === 0) return 0
 
   const roles = parseRoles(purchaseRole)
-  const hasAppAdmin = roles.includes('app_admin')
+  const hasAppAdmin = roles.includes('superadmin')
   const hasMiddleManager = roles.includes('middle_manager')
   const hasFinalApprover = roles.includes('final_approver')
   const hasCeo = roles.includes('ceo')
 
-  // ceo는 알림 배지 대상에서 제외 (app_admin이 함께 있으면 app_admin 우선)
+  // ceo는 알림 배지 대상에서 제외 (superadmin이 함께 있으면 superadmin 우선)
   if (hasCeo && !hasAppAdmin) return 0
 
   // 발주/구매요청 카테고리 관리자 역할이 있으면 해당 카테고리만 카운트
@@ -647,14 +640,14 @@ export const filterMiddlePendingApprovals = (
 ): Purchase[] => {
   if (!purchases || !currentUser) return []
   
-  const userRoles = parseRoles(currentUser.purchase_role)
+  const userRoles = parseRoles(currentUser.roles)
   
   return purchases.filter(purchase => {
     // 1차 승인 대기 상태
     if (purchase.middle_manager_status !== 'pending') return false
     
-    // app_admin, ceo는 모두 볼 수 있음
-    if (userRoles.includes('app_admin') || userRoles.includes('ceo')) {
+    // superadmin, ceo는 모두 볼 수 있음
+    if (userRoles.includes('superadmin') || userRoles.includes('ceo')) {
       return true
     }
     
@@ -684,7 +677,7 @@ export const filterFinalPendingApprovals = (
 ): Purchase[] => {
   if (!purchases || !currentUser) return []
   
-  const userRoles = parseRoles(currentUser.purchase_role)
+  const userRoles = parseRoles(currentUser.roles)
   
   return purchases.filter(purchase => {
     // 1차 승인 완료 + 최종 대기
@@ -693,8 +686,8 @@ export const filterFinalPendingApprovals = (
       return false
     }
     
-    // app_admin, ceo는 모두 볼 수 있음
-    if (userRoles.includes('app_admin') || userRoles.includes('ceo')) {
+    // superadmin, ceo는 모두 볼 수 있음
+    if (userRoles.includes('superadmin') || userRoles.includes('ceo')) {
       return true
     }
     
@@ -717,9 +710,9 @@ export const filterPurchaseInProgress = (
 ): Purchase[] => {
   if (!purchases || !currentUser) return []
   
-  const userRoles = parseRoles(currentUser.purchase_role)
+  const userRoles = parseRoles(currentUser.roles)
   const hasManagerRole = userRoles.some(role => 
-    ['app_admin', 'ceo', 'lead buyer', 'finance_team', 'purchase_manager'].includes(role)
+    ['superadmin', 'ceo', 'lead buyer', 'purchase_manager'].includes(role)
   )
   
   return purchases.filter(purchase => {
@@ -748,9 +741,9 @@ export const filterDeliveryPending = (
 ): Purchase[] => {
   if (!purchases || !currentUser) return []
   
-  const userRoles = parseRoles(currentUser.purchase_role)
+  const userRoles = parseRoles(currentUser.roles)
   const hasManagerRole = userRoles.some(role => 
-    ['app_admin', 'ceo', 'hr', 'finance_team', 'purchase_manager'].includes(role)
+    ['superadmin', 'ceo', 'hr', 'purchase_manager'].includes(role)
   )
   
   return purchases.filter(purchase => {
@@ -783,23 +776,6 @@ export const filterUndownloadedOrders = (
     
     return finalApproved && notDownloaded
   })
-}
-
-/**
- * 역할 파싱 헬퍼 함수
- */
-const parseRoles = (purchaseRole: string | string[] | null | undefined): string[] => {
-  if (!purchaseRole) return []
-  
-  if (Array.isArray(purchaseRole)) {
-    return purchaseRole.map(r => r.trim()).filter(Boolean)
-  }
-  
-  if (typeof purchaseRole === 'string') {
-    return purchaseRole.split(',').map(r => r.trim()).filter(Boolean)
-  }
-  
-  return []
 }
 
 // ============================================================

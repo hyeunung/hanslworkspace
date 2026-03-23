@@ -82,8 +82,8 @@ export default function TransactionStatementMain() {
   const { currentUserRoles } = useAuth();
   const supabase = createClient();
   
-  // app_admin 권한 확인
-  const isAppAdmin = currentUserRoles.includes('app_admin');
+  // superadmin 권한 확인
+  const isAppAdmin = currentUserRoles.includes('superadmin');
   
   const [statements, setStatements] = useState<TransactionStatement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,7 +96,7 @@ export default function TransactionStatementMain() {
   // 서브 탭 상태 (거래명세서 / 입고수량)
   const [activeTab, setActiveTab] = useState<'default' | 'receipt'>('default');
   
-  // 직원 목록 (등록자 변경용 - app_admin만)
+  // 직원 목록 (등록자 변경용 - superadmin만)
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [editingUploaderId, setEditingUploaderId] = useState<string | null>(null);
   
@@ -154,7 +154,7 @@ export default function TransactionStatementMain() {
     };
   }, [statements, activeTab]);
 
-  // 직원 목록 로드 (app_admin만)
+  // 직원 목록 로드 (superadmin만)
   useEffect(() => {
     if (!isAppAdmin) return;
     
@@ -172,7 +172,7 @@ export default function TransactionStatementMain() {
     loadEmployees();
   }, [isAppAdmin, supabase]);
 
-  // 등록자 변경 핸들러 (app_admin만)
+  // 등록자 변경 핸들러 (superadmin만)
   const handleUploaderChange = async (statementId: string, newUploaderId: string) => {
     if (!isAppAdmin) return;
     

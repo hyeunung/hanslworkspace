@@ -17,8 +17,8 @@ interface RequestListMainProps {
 type TemplateTabKey = "발주/구매" | "카드사용" | "출장" | "차량";
 type BadgeCounts = Record<TemplateTabKey, number>;
 
-const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "app_admin"];
-const HIGH_AMOUNT_APPROVER_ROLES = ["final_approver", "ceo", "app_admin"];
+const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "superadmin"];
+const HIGH_AMOUNT_APPROVER_ROLES = ["final_approver", "ceo", "superadmin"];
 
 const TEMPLATE_TABS: { key: TemplateTabKey; label: string }[] = [
   { key: "발주/구매", label: "발주/구매" },
@@ -35,8 +35,8 @@ export default function RequestListMain({ showEmailButton = true }: RequestListM
   const { allPurchases } = usePurchaseMemory();
 
   const purchasePendingCount = useMemo(
-    () => countPendingApprovalsForSidebarBadge(allPurchases, employee?.purchase_role),
-    [allPurchases, employee?.purchase_role]
+    () => countPendingApprovalsForSidebarBadge(allPurchases, employee?.roles),
+    [allPurchases, employee?.roles]
   );
   const [badgeCounts, setBadgeCounts] = useState<BadgeCounts>({
     "발주/구매": 0,
@@ -66,7 +66,7 @@ export default function RequestListMain({ showEmailButton = true }: RequestListM
   const loadBadgeCounts = useCallback(async () => {
     try {
       const isCardVehicleApprover =
-        currentUserRoles.includes("app_admin") || currentUserRoles.includes("hr");
+        currentUserRoles.includes("superadmin") || currentUserRoles.includes("hr");
 
       const isTripApprover = currentUserRoles.some((r) => TRIP_APPROVER_ROLES.includes(r));
       const isHighAmountApprover = currentUserRoles.some((r) => HIGH_AMOUNT_APPROVER_ROLES.includes(r));

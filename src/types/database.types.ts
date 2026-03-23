@@ -116,6 +116,7 @@ export type Database = {
           purchase_role: string[] | null
           remaining_annual_leave: number | null
           role: string | null
+          roles: string[] | null
           terminated_at: string | null
           updated_at: string | null
           used_annual_leave: number | null
@@ -140,6 +141,7 @@ export type Database = {
           purchase_role?: string[] | null
           remaining_annual_leave?: number | null
           role?: string | null
+          roles?: string[] | null
           terminated_at?: string | null
           updated_at?: string | null
           used_annual_leave?: number | null
@@ -164,6 +166,7 @@ export type Database = {
           purchase_role?: string[] | null
           remaining_annual_leave?: number | null
           role?: string | null
+          roles?: string[] | null
           terminated_at?: string | null
           updated_at?: string | null
           used_annual_leave?: number | null
@@ -1729,6 +1732,7 @@ export type Database = {
           purchase_role: string[] | null
           remaining_annual_leave: number | null
           role: string | null
+          roles: string[] | null
           updated_at: string | null
           used_annual_leave: number | null
         }[]

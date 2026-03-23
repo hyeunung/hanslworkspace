@@ -13,6 +13,7 @@ import { toast } from 'sonner'
 import { removePurchaseFromMemory, updatePurchaseInMemory, notifyCacheListeners } from '@/stores/purchaseMemoryStore'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
+import { parseRoles } from '@/utils/roleHelper'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   AlertDialog,
@@ -284,17 +285,15 @@ export default function SupportMain() {
 
     const { data: employee } = await supabase
       .from('employees')
-      .select('purchase_role')
+      .select('roles')
       .eq('email', user.email)
       .single()
 
     if (employee) {
-      const roles = Array.isArray(employee.purchase_role)
-        ? employee.purchase_role
-        : employee.purchase_role?.split(',').map((r: string) => r.trim()) || []
-      
+      const roles = parseRoles(employee.roles)
+
       setCurrentUserRoles(roles)
-      const adminStatus = roles.includes('app_admin')
+      const adminStatus = roles.includes('superadmin')
       setIsAdmin(adminStatus)
       
       // 권한 확인 후 바로 목록 로드
@@ -1740,7 +1739,7 @@ ${itemsText}`;
         </div>
 
         <div className={`${isAdmin ? 'w-full' : 'grid grid-cols-1 xl:grid-cols-2 gap-4'}`}>
-          {/* 문의 작성 폼 - app_admin이 아닌 경우에만 표시 */}
+          {/* 문의 작성 폼 - superadmin이 아닌 경우에만 표시 */}
           {!isAdmin && (
             <Card className="business-radius-card border border-gray-200 shadow-sm">
               <CardHeader className="pb-3 pt-4 px-4">

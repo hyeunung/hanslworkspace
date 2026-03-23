@@ -28,12 +28,13 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { CreditCard, RefreshCw, Check, X, Upload, Trash2, Calendar as CalendarIcon } from "lucide-react";
+import { parseRoles } from '@/utils/roleHelper';
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
 
-const CARD_APPROVER_ROLES = ["app_admin"];
-const CARD_RETURN_ROLES = ["lead buyer", "app_admin"];
+const CARD_APPROVER_ROLES = ["superadmin"];
+const CARD_RETURN_ROLES = ["lead buyer", "superadmin"];
 
 const COMPANY_CARDS = [
   { label: "공용1", number: "8967", value: "공용1 8967" },
@@ -96,7 +97,7 @@ interface Employee {
   department: string | null;
   position: string | null;
   email: string | null;
-  purchase_role?: string[] | null;
+  roles?: string[] | null;
 }
 
 interface CardUsageTabProps {
@@ -241,28 +242,19 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
   const [receiptImageUrl, setReceiptImageUrl] = useState<string | null>(null);
 
   const canApprove = useMemo(() => {
-    if (!currentUser?.purchase_role) return false;
-    const roles = Array.isArray(currentUser.purchase_role)
-      ? currentUser.purchase_role
-      : (currentUser.purchase_role as unknown as string).split(",").map((r: string) => r.trim());
+    const roles = parseRoles(currentUser?.roles);
     return roles.some((r: string) => CARD_APPROVER_ROLES.includes(r));
-  }, [currentUser?.purchase_role]);
+  }, [currentUser?.roles]);
 
   const canReturnCard = useMemo(() => {
-    if (!currentUser?.purchase_role) return false;
-    const roles = Array.isArray(currentUser.purchase_role)
-      ? currentUser.purchase_role
-      : (currentUser.purchase_role as unknown as string).split(",").map((r: string) => r.trim());
+    const roles = parseRoles(currentUser?.roles);
     return roles.some((r: string) => CARD_RETURN_ROLES.includes(r));
-  }, [currentUser?.purchase_role]);
+  }, [currentUser?.roles]);
 
   const isAppAdmin = useMemo(() => {
-    if (!currentUser?.purchase_role) return false;
-    const roles = Array.isArray(currentUser.purchase_role)
-      ? currentUser.purchase_role
-      : (currentUser.purchase_role as unknown as string).split(",").map((r: string) => r.trim());
-    return roles.includes("app_admin");
-  }, [currentUser?.purchase_role]);
+    const roles = parseRoles(currentUser?.roles);
+    return roles.includes("superadmin");
+  }, [currentUser?.roles]);
 
   const unavailableCards = useMemo(() => {
     const inUse = new Set<string>();
@@ -333,7 +325,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
       if (user?.email) {
         const { data } = await supabase
           .from("employees")
-          .select("id, name, department, position, email, purchase_role")
+          .select("id, name, department, position, email, roles")
           .eq("email", user.email)
           .single();
         if (data) setCurrentUser(data as Employee);
