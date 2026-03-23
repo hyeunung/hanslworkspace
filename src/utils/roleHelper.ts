@@ -3,24 +3,35 @@
  * 메모리 기반 발주 시스템의 권한 관리를 중앙화
  */
 
-export type PurchaseRole = 
-  | 'app_admin' 
-  | 'ceo' 
-  | 'middle_manager' 
-  | 'final_approver' 
-  | 'raw_material_manager' 
-  | 'consumable_manager' 
-  | 'purchase_manager' 
-  | 'requester' 
-  | 'lead buyer' 
-  | 'buyer' 
-  | 'hr'
-  | 'accounting';
+export type PurchaseRole =
+  | 'superadmin'
+  | 'ceo'
+  | 'middle_manager'
+  | 'final_approver'
+  | 'raw_material_manager'
+  | 'consumable_manager'
+  | 'purchase_manager'
+  | 'lead buyer'
+  | 'hr';
+
+/**
+ * 역할 문자열/배열을 정규화된 배열로 파싱
+ */
+export function parseRoles(roles: string | string[] | null | undefined): string[] {
+  if (!roles) return []
+  if (Array.isArray(roles)) {
+    return roles.filter(role => role && role.trim())
+  }
+  if (typeof roles === 'string') {
+    return roles.split(',').map(role => role.trim()).filter(Boolean)
+  }
+  return []
+}
 
 // 관리자 권한 목록
 export const MANAGER_ROLES: PurchaseRole[] = [
   'purchase_manager',
-  'app_admin',
+  'superadmin',
   'raw_material_manager',
   'consumable_manager'
 ];
@@ -28,7 +39,7 @@ export const MANAGER_ROLES: PurchaseRole[] = [
 // 승인자 권한 목록
 export const APPROVER_ROLES: PurchaseRole[] = [
   'final_approver',
-  'app_admin',
+  'superadmin',
   'ceo',
   'middle_manager',
   'hr'
@@ -55,13 +66,13 @@ export function hasApproverRole(roles: string[]): boolean {
  * 역할 그룹 계산 (탭별 기본 필터용)
  * 1: 일반 사용자 (본인 데이터만)
  * 2: 카테고리별 관리자 (구매 요청 또는 발주만)
- * 3: 전체 권한자 (app_admin, ceo만 - 모든 데이터)
+ * 3: 전체 권한자 (superadmin, ceo만 - 모든 데이터)
  */
 export function getRoleCase(roles: string[]): number {
   if (!roles || roles.length === 0) return 1;
   
-  // app_admin과 ceo는 전체 권한 (case 3)
-  if (roles.includes('app_admin') || roles.includes('ceo')) return 3;
+  // superadmin과 ceo는 전체 권한 (case 3)
+  if (roles.includes('superadmin') || roles.includes('ceo')) return 3;
   
   // 카테고리별 관리자는 제한된 권한 (case 2)
   if (roles.includes('consumable_manager') || 
