@@ -707,6 +707,96 @@ export default function DashboardMain() {
             </span>
           </h2>
         </div>
+        {/* 차량 / 법인카드 현황 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+          {/* 차량 현황 */}
+          <Card className="border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/purchase/list?tab=차량')}>
+            <CardHeader className="h-12 px-4 bg-gray-50 border-b flex items-center">
+              <CardTitle className="section-title flex items-center justify-between w-full">
+                <div className="flex items-center gap-2">
+                  <Car className="w-3.5 h-3.5 text-gray-600" />
+                  <span>차량 현황</span>
+                </div>
+                <span className="badge-stats bg-gray-200 text-gray-700">
+                  {vehicleAwayCount > 0 ? `${vehicleAwayCount}대 출타중` : '전체 대기'}
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3">
+              <div className="grid grid-cols-3 gap-2">
+                {DASHBOARD_VEHICLES.map((v) => {
+                  const info = vehicleStatusMap[v.label]
+                  const isAway = info?.status === "away"
+                  return (
+                    <div
+                      key={v.label}
+                      className={`border business-radius-card px-3 py-2 ${isAway ? "border-orange-200 bg-orange-50/50" : "border-gray-100 bg-gray-50/50"}`}
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[10px] font-semibold text-gray-900">{v.label}</span>
+                        <span className={`badge-stats ${isAway ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-500"}`}>
+                          {isAway ? "출타중" : "대기중"}
+                        </span>
+                      </div>
+                      {isAway && info ? (
+                        <div>
+                          {info.driver && <p className="text-[9px] text-gray-600 truncate">{info.driver}</p>}
+                          <p className="text-[9px] text-gray-500 truncate">{info.destination}</p>
+                        </div>
+                      ) : (
+                        <p className="text-[9px] text-gray-400">배차 가능</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* 법인카드 현황 */}
+          <Card className="border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/purchase/list?tab=카드사용')}>
+            <CardHeader className="h-12 px-4 bg-gray-50 border-b flex items-center">
+              <CardTitle className="section-title flex items-center justify-between w-full">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="w-3.5 h-3.5 text-gray-600" />
+                  <span>법인카드 현황</span>
+                </div>
+                <span className="badge-stats bg-gray-200 text-gray-700">
+                  {cardInUseCount > 0 ? `${cardInUseCount}장 사용중` : '전체 보관중'}
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3">
+              <div className="grid grid-cols-2 gap-2">
+                {DASHBOARD_CARDS.map((card) => {
+                  const status = cardStatusMap[card.value]
+                  return (
+                    <div
+                      key={card.value}
+                      className={`border business-radius-card px-3 py-2 ${status?.inUse ? "border-blue-200 bg-blue-50/50" : "border-gray-100 bg-gray-50/50"}`}
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[10px] font-semibold text-gray-900">
+                          {card.label}
+                          <span className="ml-1 text-[8px] font-normal text-gray-400">{card.number}</span>
+                        </span>
+                        <span className={`badge-stats ${status?.inUse ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-500"}`}>
+                          {status?.inUse ? "사용중" : "보관중"}
+                        </span>
+                      </div>
+                      {status?.inUse ? (
+                        <p className="text-[9px] text-blue-600 truncate">{status.user} · {status.category}</p>
+                      ) : (
+                        <p className="text-[9px] text-gray-400">사용 가능</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {/* 1. 승인 대기 (승인 권한자만 표시) */}
           {canSeeApprovalBox && (
@@ -1046,95 +1136,6 @@ export default function DashboardMain() {
 
         </div>
 
-        {/* 차량 / 법인카드 현황 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-4">
-          {/* 차량 현황 */}
-          <Card className="border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/purchase/list?tab=차량')}>
-            <CardHeader className="h-12 px-4 bg-gray-50 border-b flex items-center">
-              <CardTitle className="section-title flex items-center justify-between w-full">
-                <div className="flex items-center gap-2">
-                  <Car className="w-3.5 h-3.5 text-gray-600" />
-                  <span>차량 현황</span>
-                </div>
-                <span className="badge-stats bg-gray-200 text-gray-700">
-                  {vehicleAwayCount > 0 ? `${vehicleAwayCount}대 출타중` : '전체 대기'}
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-3">
-              <div className="grid grid-cols-3 gap-2">
-                {DASHBOARD_VEHICLES.map((v) => {
-                  const info = vehicleStatusMap[v.label]
-                  const isAway = info?.status === "away"
-                  return (
-                    <div
-                      key={v.label}
-                      className={`border business-radius-card px-3 py-2 ${isAway ? "border-orange-200 bg-orange-50/50" : "border-gray-100 bg-gray-50/50"}`}
-                    >
-                      <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[10px] font-semibold text-gray-900">{v.label}</span>
-                        <span className={`badge-stats ${isAway ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-500"}`}>
-                          {isAway ? "출타중" : "대기중"}
-                        </span>
-                      </div>
-                      {isAway && info ? (
-                        <div>
-                          {info.driver && <p className="text-[9px] text-gray-600 truncate">{info.driver}</p>}
-                          <p className="text-[9px] text-gray-500 truncate">{info.destination}</p>
-                        </div>
-                      ) : (
-                        <p className="text-[9px] text-gray-400">배차 가능</p>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 법인카드 현황 */}
-          <Card className="border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate('/purchase/list?tab=카드사용')}>
-            <CardHeader className="h-12 px-4 bg-gray-50 border-b flex items-center">
-              <CardTitle className="section-title flex items-center justify-between w-full">
-                <div className="flex items-center gap-2">
-                  <CreditCard className="w-3.5 h-3.5 text-gray-600" />
-                  <span>법인카드 현황</span>
-                </div>
-                <span className="badge-stats bg-gray-200 text-gray-700">
-                  {cardInUseCount > 0 ? `${cardInUseCount}장 사용중` : '전체 보관중'}
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-3">
-              <div className="grid grid-cols-2 gap-2">
-                {DASHBOARD_CARDS.map((card) => {
-                  const status = cardStatusMap[card.value]
-                  return (
-                    <div
-                      key={card.value}
-                      className={`border business-radius-card px-3 py-2 ${status?.inUse ? "border-blue-200 bg-blue-50/50" : "border-gray-100 bg-gray-50/50"}`}
-                    >
-                      <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-[10px] font-semibold text-gray-900">
-                          {card.label}
-                          <span className="ml-1 text-[8px] font-normal text-gray-400">{card.number}</span>
-                        </span>
-                        <span className={`badge-stats ${status?.inUse ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-500"}`}>
-                          {status?.inUse ? "사용중" : "보관중"}
-                        </span>
-                      </div>
-                      {status?.inUse ? (
-                        <p className="text-[9px] text-blue-600 truncate">{status.user} · {status.category}</p>
-                      ) : (
-                        <p className="text-[9px] text-gray-400">사용 가능</p>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
 
         {/* 오늘의 요약 - 상단 통계에 통합 */}
       </div>

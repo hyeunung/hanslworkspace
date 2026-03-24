@@ -818,10 +818,41 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
   ]);
 
   const handleDeleteTrip = useCallback(async (tripId: number) => {
-    if (!confirm("이 출장 요청을 삭제하시겠습니까?")) return;
     try {
+      // 연결된 카드사용/차량사용 조회
+      const [{ data: linkedCards }, { data: linkedVehicles }] = await Promise.all([
+        supabase.from("card_usages").select("id").eq("business_trip_id", tripId),
+        supabase.from("vehicle_requests").select("id").eq("business_trip_id", tripId),
+      ]);
+
+      const cardCount = linkedCards?.length || 0;
+      const vehicleCount = linkedVehicles?.length || 0;
+
+      let confirmMsg = "이 출장 요청을 삭제하시겠습니까?";
+      if (cardCount > 0 || vehicleCount > 0) {
+        const parts: string[] = [];
+        if (cardCount > 0) parts.push(`카드사용 ${cardCount}건`);
+        if (vehicleCount > 0) parts.push(`차량사용 ${vehicleCount}건`);
+        confirmMsg = `이 출장을 삭제하면 연결된 ${parts.join(", ")}도 함께 삭제됩니다.\n\n정말 삭제하시겠습니까?`;
+      }
+
+      if (!confirm(confirmMsg)) return;
+
+      // 연결된 데이터 먼저 삭제 후 출장 삭제
+      const deleteOps: Promise<unknown>[] = [];
+      if (cardCount > 0) {
+        deleteOps.push(supabase.from("card_usages").delete().eq("business_trip_id", tripId));
+      }
+      if (vehicleCount > 0) {
+        deleteOps.push(supabase.from("vehicle_requests").delete().eq("business_trip_id", tripId));
+      }
+      if (deleteOps.length > 0) {
+        await Promise.all(deleteOps);
+      }
+
       const { error } = await supabase.from("business_trips").delete().eq("id", tripId);
       if (error) throw error;
+
       toast.success("출장 요청이 삭제되었습니다.");
       loadTrips();
       onBadgeRefresh?.();
