@@ -546,6 +546,7 @@ export type Database = {
       }
       purchase_requests: {
         Row: {
+          card_usage_id: number | null
           contact_id: number | null
           created_at: string | null
           currency: string
@@ -587,6 +588,7 @@ export type Database = {
           vendor_name: string | null
         }
         Insert: {
+          card_usage_id?: number | null
           contact_id?: number | null
           created_at?: string | null
           currency: string
@@ -628,6 +630,7 @@ export type Database = {
           vendor_name?: string | null
         }
         Update: {
+          card_usage_id?: number | null
           contact_id?: number | null
           created_at?: string | null
           currency?: string
@@ -1368,6 +1371,7 @@ export type Database = {
           receipt_url: string
           merchant_name: string
           item_name: string
+          specification: string | null
           quantity: number
           unit_price: number | null
           total_amount: number
@@ -1380,6 +1384,7 @@ export type Database = {
           receipt_url: string
           merchant_name: string
           item_name: string
+          specification?: string | null
           quantity?: number
           unit_price?: number | null
           total_amount: number
@@ -1392,6 +1397,7 @@ export type Database = {
           receipt_url?: string
           merchant_name?: string
           item_name?: string
+          specification?: string | null
           quantity?: number
           unit_price?: number | null
           total_amount?: number

@@ -15,6 +15,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import ReactSelect from "react-select";
+import CreatableSelect from "react-select/creatable";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,7 +28,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CreditCard, RefreshCw, Check, X, Upload, Trash2, Calendar as CalendarIcon } from "lucide-react";
+import { CreditCard, RefreshCw, Check, X, Upload, Trash2, Plus, Calendar as CalendarIcon } from "lucide-react";
 import { parseRoles } from '@/utils/roleHelper';
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -85,6 +86,7 @@ interface CardUsageReceipt {
   receipt_url: string;
   merchant_name: string;
   item_name: string;
+  specification: string | null;
   quantity: number;
   unit_price: number | null;
   total_amount: number;
@@ -227,16 +229,29 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
   const [rejectTargetId, setRejectTargetId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
+  // Vendors for receipt merchant selection
+  const [vendors, setVendors] = useState<{ id: number; vendor_name: string }[]>([]);
+
   // Receipt modal
   const [receiptModalUsage, setReceiptModalUsage] = useState<CardUsage | null>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptMerchant, setReceiptMerchant] = useState("");
+  const [receiptItems, setReceiptItems] = useState<{
+    item_name: string;
+    specification: string;
+    quantity: string;
+    unit_price: string;
+    total_amount: string;
+    remark: string;
+  }[]>([{ item_name: "", specification: "", quantity: "1", unit_price: "", total_amount: "", remark: "" }]);
+  const [receiptUploading, setReceiptUploading] = useState(false);
+
+  // Legacy single-item states (kept for compatibility)
   const [receiptItemName, setReceiptItemName] = useState("");
   const [receiptQuantity, setReceiptQuantity] = useState("1");
   const [receiptUnitPrice, setReceiptUnitPrice] = useState("");
   const [receiptTotalAmount, setReceiptTotalAmount] = useState("");
   const [receiptRemark, setReceiptRemark] = useState("");
-  const [receiptUploading, setReceiptUploading] = useState(false);
 
   // Detail modal
   const [detailUsage, setDetailUsage] = useState<CardUsage | null>(null);
@@ -336,6 +351,18 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
     init();
   }, [supabase, loadUsages]);
 
+  // 업체 목록 로드 (영수증 사용처 선택용)
+  useEffect(() => {
+    const loadVendors = async () => {
+      const { data } = await supabase
+        .from("vendors")
+        .select("id, vendor_name")
+        .order("vendor_name");
+      if (data) setVendors(data);
+    };
+    loadVendors();
+  }, [supabase]);
+
   // Scroll fix for ReactSelect in dialogs
   useEffect(() => {
     const handler = (e: WheelEvent) => {
@@ -348,6 +375,14 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
     document.addEventListener("wheel", handler, { passive: true });
     return () => document.removeEventListener("wheel", handler);
   }, []);
+
+  // detailUsage를 usages 갱신 시 동기화
+  useEffect(() => {
+    if (detailUsage) {
+      const updated = usages.find((u) => u.id === detailUsage.id);
+      if (updated) setDetailUsage(updated);
+    }
+  }, [usages]);
 
   const sortedUsages = useMemo(() => {
     return [...usages].sort((a, b) => {
@@ -458,8 +493,142 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
     }
   }, [supabase, currentUser, rejectTargetId, rejectReason, loadUsages, onBadgeRefresh]);
 
+  // 발주번호 자동 생성 (PurchaseNewMain과 동일 로직)
+  const generatePurchaseOrderNumber = useCallback(async () => {
+    const today = new Date();
+    const koreaTime = new Date(today.getTime() + (9 * 60 * 60 * 1000));
+    const dateStr = koreaTime.toISOString().slice(0, 10).replace(/-/g, "");
+    const prefix = `F${dateStr}_`;
+
+    const { data: existingOrders, error: queryError } = await supabase
+      .from("purchase_requests")
+      .select("purchase_order_number")
+      .like("purchase_order_number", `${prefix}%`)
+      .order("purchase_order_number", { ascending: false });
+
+    if (queryError) throw queryError;
+
+    let maxSequence = 0;
+    if (existingOrders && existingOrders.length > 0) {
+      for (const order of existingOrders) {
+        const parts = order.purchase_order_number.split("_");
+        if (parts.length >= 2) {
+          const sequence = parseInt(parts[1], 10);
+          if (!isNaN(sequence) && sequence > maxSequence) {
+            maxSequence = sequence;
+          }
+        }
+      }
+    }
+
+    const nextNumber = maxSequence + 1;
+    return `${prefix}${String(nextNumber).padStart(3, "0")}`;
+  }, [supabase]);
+
+  // 업체 조회 또는 자동 생성
+  const findOrCreateVendor = useCallback(async (merchantName: string): Promise<number> => {
+    const trimmed = merchantName.trim();
+    // 기존 업체 검색
+    const { data: existing } = await supabase
+      .from("vendors")
+      .select("id")
+      .eq("vendor_name", trimmed)
+      .limit(1)
+      .single();
+
+    if (existing) return existing.id;
+
+    // 신규 업체 자동 등록
+    const { data: created, error } = await supabase
+      .from("vendors")
+      .insert({ vendor_name: trimmed })
+      .select("id")
+      .single();
+
+    if (error || !created) throw error || new Error("업체 생성 실패");
+    return created.id;
+  }, [supabase]);
+
   const handleCardReturn = useCallback(async (id: number) => {
     try {
+      // 1. 해당 카드사용의 영수증 조회
+      const usage = usages.find((u) => u.id === id);
+      if (!usage) throw new Error("카드사용 정보를 찾을 수 없습니다.");
+
+      const receipts = usage.receipts || [];
+
+      // 2. 영수증이 있으면 업체별로 그룹핑하여 발주 자동 생성
+      if (receipts.length > 0) {
+        // merchant_name 기준 그룹핑
+        const receiptsByMerchant: Record<string, CardUsageReceipt[]> = {};
+        for (const r of receipts) {
+          const key = r.merchant_name.trim();
+          if (!receiptsByMerchant[key]) receiptsByMerchant[key] = [];
+          receiptsByMerchant[key].push(r);
+        }
+
+        // request_type 매핑: 자재구매 → 원자재, 그 외 → 소모품
+        const requestType = usage.usage_category === "자재구매" ? "원자재" : "소모품";
+
+        // 업체별로 발주 생성
+        for (const [merchantName, merchantReceipts] of Object.entries(receiptsByMerchant)) {
+          const vendorId = await findOrCreateVendor(merchantName);
+          const poNumber = await generatePurchaseOrderNumber();
+          const totalAmount = merchantReceipts.reduce((sum, r) => sum + (r.total_amount || 0), 0);
+
+          // purchase_requests 생성
+          const { data: pr, error: prError } = await supabase
+            .from("purchase_requests")
+            .insert({
+              card_usage_id: id,
+              purchase_order_number: poNumber,
+              requester_id: usage.requester_id,
+              requester_name: usage.requester?.name || "",
+              vendor_id: vendorId,
+              vendor_name: merchantName,
+              request_type: requestType,
+              progress_type: "일반",
+              payment_category: "현장 결제",
+              currency: "KRW",
+              unit_price_currency: "KRW",
+              po_template_type: "발주/구매",
+              request_date: usage.usage_date_start,
+              total_amount: totalAmount,
+              is_payment_completed: true,
+              middle_manager_status: "approved",
+              middle_manager_approved_at: usage.approved_at,
+              final_manager_status: "approved",
+              final_manager_approved_at: usage.approved_at,
+            })
+            .select("id")
+            .single();
+
+          if (prError || !pr) throw prError || new Error("발주 생성 실패");
+
+          // purchase_request_items 생성 (영수증 → 품목)
+          for (const [idx, receipt] of merchantReceipts.entries()) {
+            const { error: itemErr } = await supabase
+              .from("purchase_request_items")
+              .insert({
+                purchase_request_id: pr.id,
+                line_number: idx + 1,
+                item_name: receipt.item_name,
+                specification: receipt.specification || null,
+                quantity: receipt.quantity || 1,
+                unit_price_value: receipt.unit_price || 0,
+                unit_price_currency: "KRW",
+                amount_value: receipt.total_amount,
+                amount_currency: "KRW",
+                remark: receipt.remark || null,
+                vendor_name: merchantName,
+                is_payment_completed: true,
+              });
+            if (itemErr) throw itemErr;
+          }
+        }
+      }
+
+      // 3. 카드 반납 처리
       const { error } = await supabase
         .from("card_usages")
         .update({
@@ -470,18 +639,25 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
         })
         .eq("id", id);
       if (error) throw error;
-      toast.success("카드 반납 처리되었습니다.");
+
+      toast.success(
+        receipts.length > 0
+          ? "카드 반납 처리 및 발주가 자동 등록되었습니다."
+          : "카드 반납 처리되었습니다."
+      );
       loadUsages();
       onBadgeRefresh?.();
-    } catch {
+    } catch (err) {
+      logger.error("카드 반납 처리 실패", err);
       toast.error("카드 반납 처리에 실패했습니다.");
     }
-  }, [supabase, currentUser, loadUsages]);
+  }, [supabase, currentUser, usages, loadUsages, onBadgeRefresh, findOrCreateVendor, generatePurchaseOrderNumber]);
 
   const openReceiptModal = useCallback((usage: CardUsage) => {
     setReceiptModalUsage(usage);
     setReceiptFile(null);
     setReceiptMerchant("");
+    setReceiptItems([{ item_name: "", specification: "", quantity: "1", unit_price: "", total_amount: "", remark: "" }]);
     setReceiptItemName("");
     setReceiptQuantity("1");
     setReceiptUnitPrice("");
@@ -491,8 +667,20 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
 
   const handleReceiptUpload = useCallback(async () => {
     if (!receiptModalUsage || !receiptFile) return;
-    if (!receiptMerchant.trim() || !receiptItemName.trim() || !receiptTotalAmount.trim()) {
-      toast.error("사용처, 상세내역/품명, 합계는 필수입니다.");
+    // 사용처 필수 체크
+    if (!receiptMerchant.trim()) {
+      toast.error("사용처는 필수입니다.");
+      return;
+    }
+    // 첫번째 행 비고(사용 이유) 필수
+    if (!receiptItems[0]?.remark?.trim()) {
+      toast.error("첫번째 품목의 비고(사용 이유)는 필수입니다.");
+      return;
+    }
+    // 품목 최소 1개, 각 품목에 품명+합계 필수
+    const validItems = receiptItems.filter((item) => item.item_name.trim() && item.total_amount.trim());
+    if (validItems.length === 0) {
+      toast.error("최소 1개 품목의 품명과 합계를 입력해주세요.");
       return;
     }
     try {
@@ -507,17 +695,21 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
         });
       if (uploadError) throw uploadError;
 
-      const { error: insertError } = await supabase.from("card_usage_receipts").insert({
-        card_usage_id: receiptModalUsage.id,
-        receipt_url: storagePath,
-        merchant_name: receiptMerchant.trim(),
-        item_name: receiptItemName.trim(),
-        quantity: parseNumericInput(receiptQuantity) || 1,
-        unit_price: receiptUnitPrice.trim() ? Math.min(parseNumericInput(receiptUnitPrice), MAX_KRW_AMOUNT) : null,
-        total_amount: Math.min(parseNumericInput(receiptTotalAmount) || 0, MAX_KRW_AMOUNT),
-        remark: receiptRemark.trim() || null,
-      });
-      if (insertError) throw insertError;
+      // 품목별로 card_usage_receipts에 저장 (같은 receipt_url, merchant_name 공유)
+      for (const item of validItems) {
+        const { error: insertError } = await supabase.from("card_usage_receipts").insert({
+          card_usage_id: receiptModalUsage.id,
+          receipt_url: storagePath,
+          merchant_name: receiptMerchant.trim(),
+          item_name: item.item_name.trim(),
+          specification: item.specification.trim() || null,
+          quantity: parseNumericInput(item.quantity) || 1,
+          unit_price: item.unit_price.trim() ? Math.min(parseNumericInput(item.unit_price), MAX_KRW_AMOUNT) : null,
+          total_amount: Math.min(parseNumericInput(item.total_amount) || 0, MAX_KRW_AMOUNT),
+          remark: item.remark.trim() || null,
+        });
+        if (insertError) throw insertError;
+      }
 
       if (receiptModalUsage.approval_status === "approved") {
         await supabase
@@ -526,16 +718,16 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
           .eq("id", receiptModalUsage.id);
       }
 
-      toast.success("영수증이 등록되었습니다.");
+      toast.success(`영수증이 등록되었습니다. (${validItems.length}개 품목)`);
       setReceiptModalUsage(null);
-      loadUsages();
+      await loadUsages();
     } catch (err) {
       logger.error("영수증 업로드 실패", err);
       toast.error("영수증 등록에 실패했습니다.");
     } finally {
       setReceiptUploading(false);
     }
-  }, [receiptModalUsage, receiptFile, receiptMerchant, receiptItemName, receiptQuantity, receiptUnitPrice, receiptTotalAmount, receiptRemark, supabase, loadUsages]);
+  }, [receiptModalUsage, receiptFile, receiptMerchant, receiptItems, supabase, loadUsages]);
 
   const handleDeleteReceipt = useCallback(async (receiptId: number, receiptUrl: string) => {
     try {
@@ -559,14 +751,14 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
     const styles: Record<string, string> = {
       pending: "badge-stats bg-orange-500 text-white",
       approved: "badge-stats bg-blue-500 text-white",
-      settled: "badge-stats bg-green-500 text-white",
-      returned: "badge-stats bg-gray-500 text-white",
+      settled: "badge-stats bg-blue-500 text-white",
+      returned: "badge-stats bg-green-500 text-white",
       rejected: "badge-stats bg-red-500 text-white",
     };
     const labels: Record<string, string> = {
       pending: "승인대기",
       approved: "승인완료",
-      settled: "반납완료",
+      settled: "승인완료",
       returned: "카드반납",
       rejected: "반려",
     };
@@ -745,7 +937,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
 
             <div className="doc-form-row" style={{ borderBottom: "none" }}>
               <div className="doc-form-cell">
-                <div className="doc-form-cell-label">비고(프로젝트/내용) <span className="required">*</span></div>
+                <div className="doc-form-cell-label">비고(프로젝트 및 사용처) <span className="required">*</span></div>
                 <Textarea
                   value={formDescription}
                   onChange={(e) => setFormDescription(e.target.value)}
@@ -839,7 +1031,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[100px]">사용예정일</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[60px]">영수증</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-right w-[90px]">합계금액</th>
-                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">비고(프로젝트/내용)</th>
+                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">비고(프로젝트 및 사용처)</th>
                     {isAppAdmin && (
                       <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[40px]"></th>
                     )}
@@ -885,13 +1077,13 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                           ) : u.approval_status === "settled" && canReturn ? (
                             <Popover>
                               <PopoverTrigger asChild>
-                                <button className="badge-stats bg-green-500 text-white cursor-pointer hover:bg-green-600">
-                                  반납완료
+                                <button className="badge-stats bg-blue-500 text-white cursor-pointer hover:bg-blue-600">
+                                  승인완료
                                 </button>
                               </PopoverTrigger>
                               <PopoverContent className="w-auto p-2" side="right" align="start">
                                 <Button
-                                  className="button-base bg-gray-600 hover:bg-gray-700 text-white"
+                                  className="button-base bg-green-600 hover:bg-green-700 text-white"
                                   onClick={() => handleCardReturn(u.id)}
                                 >
                                   카드반납 처리
@@ -1103,9 +1295,9 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
               </Popover>
             </div>
 
-            {/* 비고(프로젝트/내용) */}
+            {/* 비고(프로젝트 및 사용처) */}
             <div>
-              <Label className="modal-label mb-1.5 block text-[11px]">비고(프로젝트/내용)<span className="text-red-500 ml-0.5">*</span></Label>
+              <Label className="modal-label mb-1.5 block text-[11px]">비고(프로젝트 및 사용처)<span className="text-red-500 ml-0.5">*</span></Label>
               <Textarea
                 value={formDescription}
                 onChange={(e) => setFormDescription(e.target.value)}
@@ -1137,127 +1329,199 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
 
       {/* Receipt Upload Modal */}
       <Dialog open={!!receiptModalUsage} onOpenChange={(open) => !open && setReceiptModalUsage(null)}>
-        <DialogContent className="sm:max-w-[480px] p-0">
+        <DialogContent className="sm:max-w-[900px] p-0 max-h-[85vh] overflow-y-auto">
           <DialogHeader className="px-5 pt-4 pb-3 border-b border-gray-100" style={{ gap: 0 }}>
             <DialogTitle className="text-[14px] font-bold leading-tight">영수증 등록</DialogTitle>
             <p className="page-subtitle leading-tight" style={{ marginTop: "-1px" }}>Receipt Upload</p>
           </DialogHeader>
 
-          <div className="px-5 py-4 space-y-3">
-            <div>
-              <Label className="modal-label mb-1.5 block text-[11px]">
-                영수증 이미지<span className="text-red-500 ml-0.5">*</span>
-              </Label>
-              <div className="flex items-center gap-2">
-                <label className="inline-flex items-center px-3 h-[28px] text-xs font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-200 transition-colors whitespace-nowrap">
-                  <Upload className="w-3 h-3 mr-1.5" />
-                  파일 선택
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
-                    className="hidden"
-                  />
-                </label>
-                <span className="text-xs text-gray-500 truncate">
-                  {receiptFile ? receiptFile.name : "선택된 파일 없음"}
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
+          <div className="px-5 py-4 space-y-4">
+            {/* 영수증 이미지 + 사용처 */}
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="modal-label mb-1.5 block text-[11px]">
-                  사용처<span className="text-red-500 ml-0.5">*</span>
+                  영수증 이미지<span className="text-red-500 ml-0.5">*</span>
                 </Label>
-                <Input
-                  value={receiptMerchant}
-                  onChange={(e) => setReceiptMerchant(e.target.value)}
-                  placeholder="입력"
-                  className="h-[28px] text-xs business-radius-input"
-                />
-              </div>
-              <div>
-                <Label className="modal-label mb-1.5 block text-[11px]">
-                  상세내역/품명<span className="text-red-500 ml-0.5">*</span>
-                </Label>
-                <Input
-                  value={receiptItemName}
-                  onChange={(e) => setReceiptItemName(e.target.value)}
-                  placeholder="입력"
-                  className="h-[28px] text-xs business-radius-input"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <Label className="modal-label mb-1.5 block text-[11px]">수량</Label>
-                <Input
-                  type="text"
-                  value={receiptQuantity}
-                  onChange={(e) => {
-                    const qty = e.target.value.replace(/[^0-9]/g, "");
-                    setReceiptQuantity(qty);
-                    if (receiptUnitPrice.trim()) {
-                      const calc = (parseNumericInput(qty) || 0) * (parseNumericInput(receiptUnitPrice) || 0);
-                      const clamped = Math.min(calc, MAX_KRW_AMOUNT);
-                      setReceiptTotalAmount(clamped > 0 ? clamped.toLocaleString("ko-KR") : "");
-                    }
-                  }}
-                  placeholder="1"
-                  className="h-[28px] text-xs business-radius-input"
-                />
-              </div>
-              <div>
-                <Label className="modal-label mb-1.5 block text-[11px]">단가</Label>
-                <div className="flex items-center gap-1">
-                  <Input
-                    type="text"
-                    value={receiptUnitPrice}
-                    onChange={(e) => {
-                      const price = formatKrwInput(e.target.value);
-                      setReceiptUnitPrice(price);
-                      if (price.trim()) {
-                        const calc = (parseNumericInput(receiptQuantity) || 1) * (parseNumericInput(price) || 0);
-                        const clamped = Math.min(calc, MAX_KRW_AMOUNT);
-                        setReceiptTotalAmount(clamped > 0 ? clamped.toLocaleString("ko-KR") : "");
-                      }
-                    }}
-                    placeholder="최대 1,000,000,000"
-                    className="h-[28px] text-xs business-radius-input text-right w-[140px]"
-                  />
-                  <span className="text-[11px] text-gray-500 whitespace-nowrap">원</span>
+                <div className="flex items-center gap-2">
+                  <label className="inline-flex items-center px-3 h-[28px] text-xs font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-200 transition-colors whitespace-nowrap">
+                    <Upload className="w-3 h-3 mr-1.5" />
+                    파일 선택
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
+                      className="hidden"
+                    />
+                  </label>
+                  <span className="text-xs text-gray-500 truncate">
+                    {receiptFile ? receiptFile.name : "선택된 파일 없음"}
+                  </span>
                 </div>
               </div>
               <div>
                 <Label className="modal-label mb-1.5 block text-[11px]">
-                  합계<span className="text-red-500 ml-0.5">*</span>
+                  사용처(업체)<span className="text-red-500 ml-0.5">*</span>
                 </Label>
-                <div className="flex items-center gap-1">
-                  <Input
-                    type="text"
-                    value={receiptTotalAmount}
-                    onChange={(e) => {
-                      setReceiptTotalAmount(formatKrwInput(e.target.value));
-                      setReceiptUnitPrice("");
-                    }}
-                    placeholder="최대 1,000,000,000"
-                    className="h-[28px] text-xs business-radius-input text-right w-[140px]"
-                  />
-                  <span className="text-[11px] text-gray-500 whitespace-nowrap">원</span>
-                </div>
+                <CreatableSelect
+                  isClearable
+                  placeholder="업체 검색 또는 직접 입력"
+                  formatCreateLabel={(input: string) => `"${input}" 신규 등록`}
+                  value={receiptMerchant ? { label: receiptMerchant, value: receiptMerchant } : null}
+                  onChange={(opt) => setReceiptMerchant(opt?.value || "")}
+                  options={vendors.map((v) => ({ label: v.vendor_name, value: v.vendor_name }))}
+                  styles={reactSelectStyles}
+                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                  menuPosition="fixed"
+                />
               </div>
             </div>
 
+            {/* 품목 목록 테이블 */}
             <div>
-              <Label className="modal-label mb-1.5 block text-[11px]">비고</Label>
-              <Input
-                value={receiptRemark}
-                onChange={(e) => setReceiptRemark(e.target.value)}
-                placeholder="입력"
-                className="h-[28px] text-xs business-radius-input"
-              />
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="modal-section-title">품목 목록</span>
+                  <span className="badge-stats bg-blue-100 text-blue-700">{receiptItems.length}개</span>
+                  <span className="text-[11px] text-gray-500">KRW</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-green-600">
+                    총액: {receiptItems.reduce((sum, item) => sum + (parseNumericInput(item.total_amount) || 0), 0).toLocaleString("ko-KR")} KRW
+                  </span>
+                  <Button
+                    type="button"
+                    className="button-base bg-blue-500 hover:bg-blue-600 text-white h-[26px] px-2 text-[11px]"
+                    onClick={() => setReceiptItems([...receiptItems, { item_name: "", specification: "", quantity: "1", unit_price: "", total_amount: "", remark: "" }])}
+                  >
+                    <Plus className="w-3 h-3 mr-0.5" />추가
+                  </Button>
+                </div>
+              </div>
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full border-collapse">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-2 py-1.5 modal-label text-gray-900 text-center w-[30px]">#</th>
+                      <th className="px-2 py-1.5 modal-label text-gray-900 text-left w-[150px]">품목<span className="text-red-500">*</span></th>
+                      <th className="px-2 py-1.5 modal-label text-gray-900 text-left w-[150px]">규격</th>
+                      <th className="px-2 py-1.5 modal-label text-gray-900 text-center w-[60px]">수량<span className="text-red-500">*</span></th>
+                      <th className="px-2 py-1.5 modal-label text-gray-900 text-right w-[100px]">단가 (KRW)</th>
+                      <th className="px-2 py-1.5 modal-label text-gray-900 text-right w-[110px]">합계 (KRW)</th>
+                      <th className="px-2 py-1.5 modal-label text-gray-900 text-left">비고(사용이유)<span className="text-red-500">*</span></th>
+                      <th className="px-2 py-1.5 w-[30px]"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {receiptItems.map((item, idx) => (
+                      <tr key={idx} className="border-t border-gray-100">
+                        <td className="px-2 py-1 text-center text-[11px] text-gray-500">{idx + 1}</td>
+                        <td className="px-1 py-1">
+                          <Input
+                            value={item.item_name}
+                            onChange={(e) => {
+                              const updated = [...receiptItems];
+                              updated[idx] = { ...updated[idx], item_name: e.target.value };
+                              setReceiptItems(updated);
+                            }}
+                            placeholder="품목명 입력"
+                            className="h-[26px] text-xs border-gray-200"
+                          />
+                        </td>
+                        <td className="px-1 py-1">
+                          <Input
+                            value={item.specification}
+                            onChange={(e) => {
+                              const updated = [...receiptItems];
+                              updated[idx] = { ...updated[idx], specification: e.target.value };
+                              setReceiptItems(updated);
+                            }}
+                            placeholder="규격 입력"
+                            className="h-[26px] text-xs border-gray-200"
+                          />
+                        </td>
+                        <td className="px-1 py-1">
+                          <Input
+                            type="text"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const qty = e.target.value.replace(/[^0-9]/g, "");
+                              const updated = [...receiptItems];
+                              updated[idx] = { ...updated[idx], quantity: qty };
+                              if (item.unit_price.trim()) {
+                                const calc = (parseNumericInput(qty) || 0) * (parseNumericInput(item.unit_price) || 0);
+                                updated[idx].total_amount = calc > 0 ? Math.min(calc, MAX_KRW_AMOUNT).toLocaleString("ko-KR") : "";
+                              }
+                              setReceiptItems(updated);
+                            }}
+                            placeholder="1"
+                            className="h-[26px] text-xs border-gray-200 text-center"
+                          />
+                        </td>
+                        <td className="px-1 py-1">
+                          <div className="flex items-center gap-0.5">
+                            <Input
+                              type="text"
+                              value={item.unit_price}
+                              onChange={(e) => {
+                                const price = formatKrwInput(e.target.value);
+                                const updated = [...receiptItems];
+                                updated[idx] = { ...updated[idx], unit_price: price };
+                                if (price.trim()) {
+                                  const calc = (parseNumericInput(item.quantity) || 1) * (parseNumericInput(price) || 0);
+                                  updated[idx].total_amount = calc > 0 ? Math.min(calc, MAX_KRW_AMOUNT).toLocaleString("ko-KR") : "";
+                                }
+                                setReceiptItems(updated);
+                              }}
+                              placeholder="0"
+                              className="h-[26px] text-xs border-gray-200 text-right"
+                            />
+                            <span className="text-[10px] text-gray-400">&#8361;</span>
+                          </div>
+                        </td>
+                        <td className="px-1 py-1">
+                          <div className="flex items-center gap-0.5">
+                            <Input
+                              type="text"
+                              value={item.total_amount}
+                              onChange={(e) => {
+                                const updated = [...receiptItems];
+                                updated[idx] = { ...updated[idx], total_amount: formatKrwInput(e.target.value), unit_price: "" };
+                                setReceiptItems(updated);
+                              }}
+                              placeholder="0"
+                              className="h-[26px] text-xs border-gray-200 text-right"
+                            />
+                            <span className="text-[10px] text-gray-400">&#8361;</span>
+                          </div>
+                        </td>
+                        <td className="px-1 py-1">
+                          <Input
+                            value={item.remark}
+                            onChange={(e) => {
+                              const updated = [...receiptItems];
+                              updated[idx] = { ...updated[idx], remark: e.target.value };
+                              setReceiptItems(updated);
+                            }}
+                            placeholder={idx === 0 ? "사용이유" : "비고"}
+                            className="h-[26px] text-xs border-gray-200"
+                          />
+                        </td>
+                        <td className="px-1 py-1 text-center">
+                          {receiptItems.length > 1 && (
+                            <button
+                              type="button"
+                              className="text-gray-300 hover:text-red-500 transition-colors"
+                              onClick={() => setReceiptItems(receiptItems.filter((_, i) => i !== idx))}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
@@ -1271,7 +1535,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
             </Button>
             <Button
               onClick={handleReceiptUpload}
-              disabled={receiptUploading || !receiptFile || !receiptMerchant.trim() || !receiptItemName.trim() || !receiptTotalAmount.trim()}
+              disabled={receiptUploading || !receiptFile || !receiptMerchant.trim() || !receiptItems[0]?.remark?.trim() || !receiptItems.some((item) => item.item_name.trim() && item.total_amount.trim())}
               className="button-base bg-blue-500 hover:bg-blue-600 text-white"
             >
               <Upload className="w-3.5 h-3.5 mr-1" />
@@ -1328,7 +1592,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                 </div>
                 {detailUsage.description && (
                   <div className="col-span-2">
-                    <span className="modal-label block">비고(프로젝트/내용)</span>
+                    <span className="modal-label block">비고(프로젝트 및 사용처)</span>
                     <span className="modal-value">{detailUsage.description}</span>
                   </div>
                 )}
@@ -1348,10 +1612,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                     && !detailUsage.card_returned && (
                     <Button
                       className="button-base bg-blue-500 hover:bg-blue-600 text-white"
-                      onClick={() => {
-                        setDetailUsage(null);
-                        openReceiptModal(detailUsage);
-                      }}
+                      onClick={() => openReceiptModal(detailUsage)}
                     >
                       <Upload className="w-3.5 h-3.5 mr-1" />영수증 추가
                     </Button>
