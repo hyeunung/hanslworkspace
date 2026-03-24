@@ -865,6 +865,7 @@ export type Database = {
           amount: number
           business_trip_id: number
           category_detail: string | null
+          specification: string | null
           companion_note: string | null
           created_at: string
           currency: string
@@ -882,6 +883,7 @@ export type Database = {
           amount?: number
           business_trip_id: number
           category_detail?: string | null
+          specification?: string | null
           companion_note?: string | null
           created_at?: string
           currency?: string
@@ -899,6 +901,7 @@ export type Database = {
           amount?: number
           business_trip_id?: number
           category_detail?: string | null
+          specification?: string | null
           companion_note?: string | null
           created_at?: string
           currency?: string

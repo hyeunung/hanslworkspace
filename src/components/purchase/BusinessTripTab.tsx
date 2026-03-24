@@ -27,10 +27,11 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import ReactSelect from "react-select";
+import CreatableSelect from "react-select/creatable";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
-import { Plane, RefreshCw, Check, X, Calendar as CalendarIcon, Trash2, Upload, Download, Printer, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plane, RefreshCw, Check, X, Calendar as CalendarIcon, Trash2, Upload, Download, Printer, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { parseRoles } from '@/utils/roleHelper';
 
 const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "superadmin"];
@@ -233,6 +234,7 @@ interface BusinessTripExpense {
   expense_date: string;
   vendor_name: string;
   category_detail: string | null;
+  specification: string | null;
   quantity: number;
   unit_price: number | null;
   amount: number;
@@ -281,6 +283,7 @@ interface ExpenseFormRow {
   expense_date: string;
   vendor_name: string;
   category_detail: string;
+  specification: string;
   quantity: string;
   unit_price: string;
   amount: string;
@@ -426,6 +429,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
   const [settlementLoading, setSettlementLoading] = useState(false);
   const [settlementSaving, setSettlementSaving] = useState(false);
   const [expenseRows, setExpenseRows] = useState<ExpenseFormRow[]>([]);
+  const [vendors, setVendors] = useState<{ id: number; vendor_name: string }[]>([]);
   const [mileageRows, setMileageRows] = useState<MileageFormRow[]>([]);
   const [allowanceRows, setAllowanceRows] = useState<AllowanceFormRow[]>([]);
   const [receiptViewerRowKey, setReceiptViewerRowKey] = useState<string | null>(null);
@@ -618,6 +622,19 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     }
   }, [supabase]);
 
+  const loadVendors = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("vendors")
+        .select("id, vendor_name")
+        .order("vendor_name");
+      if (error) throw error;
+      setVendors((data || []) as { id: number; vendor_name: string }[]);
+    } catch (err) {
+      logger.error("업체 목록 조회 실패", err);
+    }
+  }, [supabase]);
+
   const loadCurrentUser = useCallback(async () => {
     try {
       const {
@@ -641,7 +658,8 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     loadTrips();
     loadEmployees();
     loadCurrentUser();
-  }, [loadTrips, loadEmployees, loadCurrentUser]);
+    loadVendors();
+  }, [loadTrips, loadEmployees, loadCurrentUser, loadVendors]);
 
   const sortedTrips = useMemo(() => {
     return [...trips].sort((a, b) => {
@@ -1006,6 +1024,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     expense_date: dateStr ?? toMonthDay(trip?.trip_start_date),
     vendor_name: "",
     category_detail: "",
+    specification: "",
     quantity: "1",
     unit_price: "",
     amount: "",
@@ -1088,13 +1107,14 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
       if (expenseData.length === 0 && trip.linkedCard?.id) {
         const { data: cardReceipts } = await supabase
           .from("card_usage_receipts")
-          .select("id, card_usage_id, receipt_url, merchant_name, item_name, quantity, unit_price, total_amount, remark, created_at")
+          .select("id, card_usage_id, receipt_url, merchant_name, item_name, specification, quantity, unit_price, total_amount, remark, created_at")
           .eq("card_usage_id", trip.linkedCard.id)
           .order("created_at", { ascending: true });
 
         if (cardReceipts && cardReceipts.length > 0) {
           mobileReceiptRows = cardReceipts.map((cr: {
             id: number; receipt_url: string; merchant_name: string | null;
+            specification: string | null;
             item_name: string | null; quantity: number | null;
             unit_price: number | null; total_amount: number | null;
             remark: string | null;
@@ -1104,6 +1124,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
             expense_date: toMonthDay(trip.trip_start_date),
             vendor_name: cr.merchant_name || "",
             category_detail: cr.item_name || "",
+            specification: cr.specification || "",
             quantity: String(cr.quantity ?? 1),
             unit_price: cr.unit_price != null ? Number(cr.unit_price).toLocaleString("ko-KR") : "",
             amount: cr.total_amount != null ? Number(cr.total_amount).toLocaleString("ko-KR") : "",
@@ -1127,6 +1148,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
               expense_date: toMonthDay(r.expense_date),
               vendor_name: r.vendor_name || "",
               category_detail: r.category_detail || "",
+              specification: r.specification || "",
               quantity: String(r.quantity ?? 1),
               unit_price: r.unit_price != null ? String(r.unit_price) : "",
               amount: r.amount != null ? Number(r.amount).toLocaleString("ko-KR") : "",
@@ -1199,6 +1221,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
       (r) =>
         r.vendor_name.trim() ||
         r.category_detail.trim() ||
+        r.specification.trim() ||
         toNumber(r.amount) > 0 ||
         r.existingReceipts.length > 0 ||
         r.newReceiptFiles.length > 0
@@ -1370,6 +1393,59 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     }
   }, [directReceiptList, supabase]);
 
+  // 발주번호 자동 생성 (CardUsageTab과 동일 로직)
+  const generatePurchaseOrderNumber = useCallback(async () => {
+    const today = new Date();
+    const koreaTime = new Date(today.getTime() + (9 * 60 * 60 * 1000));
+    const dateStr = koreaTime.toISOString().slice(0, 10).replace(/-/g, "");
+    const prefix = `F${dateStr}_`;
+
+    const { data: existingOrders, error: queryError } = await supabase
+      .from("purchase_requests")
+      .select("purchase_order_number")
+      .like("purchase_order_number", `${prefix}%`)
+      .order("purchase_order_number", { ascending: false });
+
+    if (queryError) throw queryError;
+
+    let maxSequence = 0;
+    if (existingOrders && existingOrders.length > 0) {
+      for (const order of existingOrders) {
+        const parts = order.purchase_order_number.split("_");
+        if (parts.length >= 2) {
+          const sequence = parseInt(parts[1], 10);
+          if (!Number.isNaN(sequence) && sequence > maxSequence) {
+            maxSequence = sequence;
+          }
+        }
+      }
+    }
+
+    return `${prefix}${String(maxSequence + 1).padStart(3, "0")}`;
+  }, [supabase]);
+
+  // 업체 조회 또는 자동 생성
+  const findOrCreateVendor = useCallback(async (merchantName: string): Promise<number> => {
+    const trimmed = merchantName.trim();
+    const { data: existing } = await supabase
+      .from("vendors")
+      .select("id")
+      .eq("vendor_name", trimmed)
+      .limit(1)
+      .single();
+
+    if (existing) return existing.id;
+
+    const { data: created, error } = await supabase
+      .from("vendors")
+      .insert({ vendor_name: trimmed })
+      .select("id")
+      .single();
+
+    if (error || !created) throw error || new Error("업체 생성 실패");
+    return created.id;
+  }, [supabase]);
+
   const saveSettlement = useCallback(async (mode: "draft" | "submitted") => {
     if (!settlementTrip) return;
     if (mode === "submitted") {
@@ -1382,13 +1458,19 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
         return;
       }
       const filledExpenseRows = expenseRows.filter(
-        (r) => r.vendor_name.trim() || r.category_detail.trim() || toNumber(r.amount) > 0 || r.existingReceipts.length > 0 || r.newReceiptFiles.length > 0
+        (r) =>
+          r.vendor_name.trim() ||
+          r.category_detail.trim() ||
+          r.specification.trim() ||
+          toNumber(r.amount) > 0 ||
+          r.existingReceipts.length > 0 ||
+          r.newReceiptFiles.length > 0
       );
       for (let i = 0; i < filledExpenseRows.length; i += 1) {
         const r = filledExpenseRows[i];
         const missing: string[] = [];
         if (!r.vendor_name.trim()) missing.push("사용처");
-        if (!r.category_detail.trim()) missing.push("상세내역/품명");
+        if (!r.category_detail.trim()) missing.push("품명");
         if (toNumber(r.amount) <= 0) missing.push("합계");
         if (missing.length > 0) {
           toast.error(`카드사용내역 ${i + 1}행: ${missing.join(", ")}을(를) 입력해주세요.`);
@@ -1410,6 +1492,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
         (r) =>
           r.vendor_name.trim() ||
           r.category_detail.trim() ||
+          r.specification.trim() ||
           toNumber(r.amount) > 0 ||
           r.existingReceipts.length > 0 ||
           r.newReceiptFiles.length > 0
@@ -1422,6 +1505,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
           expense_date: settlementTrip.trip_start_date || format(new Date(), "yyyy-MM-dd"),
           vendor_name: r.vendor_name.trim() || "미입력",
           category_detail: r.category_detail.trim() || null,
+          specification: r.specification.trim() || null,
           quantity: Math.max(toNumber(r.quantity), 1),
           unit_price: r.unit_price.trim() ? Math.min(toNumber(r.unit_price), MAX_KRW_AMOUNT) : null,
           amount: Math.min(toNumber(r.amount), MAX_KRW_AMOUNT),
@@ -1465,6 +1549,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
       }
 
       const linkedCardUsageId = settlementTrip.linkedCard?.id || null;
+      const autoGeneratedProjectItem = `출장정산자동생성:${settlementTrip.trip_code}`;
       if (linkedCardUsageId) {
         const { error: cardReceiptDeleteError } = await supabase
           .from("card_usage_receipts")
@@ -1472,6 +1557,31 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
           .eq("card_usage_id", linkedCardUsageId)
           .like("receipt_url", "business-trip-receipts/%");
         if (cardReceiptDeleteError) throw cardReceiptDeleteError;
+      }
+
+      if (mode === "submitted" && linkedCardUsageId) {
+        // 기존 자동생성 발주 정리 후 재생성 (중복 방지)
+        const { data: existingAutoRequests, error: existingAutoReqError } = await supabase
+          .from("purchase_requests")
+          .select("id")
+          .eq("card_usage_id", linkedCardUsageId)
+          .eq("project_item", autoGeneratedProjectItem);
+        if (existingAutoReqError) throw existingAutoReqError;
+
+        const existingAutoRequestIds = (existingAutoRequests || []).map((r) => r.id);
+        if (existingAutoRequestIds.length > 0) {
+          const { error: deleteItemsError } = await supabase
+            .from("purchase_request_items")
+            .delete()
+            .in("purchase_request_id", existingAutoRequestIds);
+          if (deleteItemsError) throw deleteItemsError;
+
+          const { error: deleteRequestsError } = await supabase
+            .from("purchase_requests")
+            .delete()
+            .in("id", existingAutoRequestIds);
+          if (deleteRequestsError) throw deleteRequestsError;
+        }
       }
 
       if (expensePayload.length > 0) {
@@ -1492,11 +1602,13 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
           receipt_url: string;
           merchant_name: string;
           item_name: string;
+          specification: string | null;
           quantity: number;
           unit_price: number | null;
           total_amount: number;
           remark: string | null;
         }[] = [];
+        const uploadedReceiptPathMap = new WeakMap<File, string>();
 
         for (let i = 0; i < expenseRowsForSave.length; i += 1) {
           const row = expenseRowsForSave[i];
@@ -1519,15 +1631,19 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
 
           // 신규 파일 업로드 후 경로 저장
           for (const file of row.newReceiptFiles) {
-            const safeName = toSafeFileName(file.name);
-            const storagePath = `${settlementTrip.trip_code}/${lineOrder}-${Date.now()}-${Math.random()
-              .toString(36)
-              .slice(2, 8)}-${safeName}`;
+            let storagePath = uploadedReceiptPathMap.get(file);
+            if (!storagePath) {
+              const safeName = toSafeFileName(file.name);
+              storagePath = `${settlementTrip.trip_code}/${lineOrder}-${Date.now()}-${Math.random()
+                .toString(36)
+                .slice(2, 8)}-${safeName}`;
 
-            const { error: uploadError } = await supabase.storage
-              .from("business-trip-receipts")
-              .upload(storagePath, file, { upsert: false });
-            if (uploadError) throw uploadError;
+              const { error: uploadError } = await supabase.storage
+                .from("business-trip-receipts")
+                .upload(storagePath, file, { upsert: false });
+              if (uploadError) throw uploadError;
+              uploadedReceiptPathMap.set(file, storagePath);
+            }
 
             receiptInsertPayload.push({
               business_trip_expense_id: expenseId,
@@ -1543,6 +1659,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                 receipt_url: receiptPath,
                 merchant_name: row.vendor_name.trim() || "미입력",
                 item_name: row.category_detail.trim() || "미입력",
+                specification: row.specification.trim() || null,
                 quantity: Math.max(toNumber(row.quantity), 1),
                 unit_price: row.unit_price.trim() ? Math.min(toNumber(row.unit_price), MAX_KRW_AMOUNT) : null,
                 total_amount: Math.min(toNumber(row.amount), MAX_KRW_AMOUNT),
@@ -1565,6 +1682,74 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
             .insert(corporateCardReceiptPayload);
           if (cardReceiptInsertError) throw cardReceiptInsertError;
         }
+
+        if (mode === "submitted" && linkedCardUsageId && corporateCardReceiptPayload.length > 0) {
+          const receiptsByMerchant: Record<string, typeof corporateCardReceiptPayload> = {};
+          for (const receipt of corporateCardReceiptPayload) {
+            const merchantKey = receipt.merchant_name.trim() || "미입력";
+            if (!receiptsByMerchant[merchantKey]) receiptsByMerchant[merchantKey] = [];
+            receiptsByMerchant[merchantKey].push(receipt);
+          }
+
+          const approvedAt = settlementTrip.approved_at || new Date().toISOString();
+          const requesterName = settlementTrip.requester?.name || currentUser?.name || "";
+
+          for (const [merchantName, merchantReceipts] of Object.entries(receiptsByMerchant)) {
+            const vendorId = await findOrCreateVendor(merchantName);
+            const poNumber = await generatePurchaseOrderNumber();
+            const totalAmount = merchantReceipts.reduce((sum, r) => sum + (r.total_amount || 0), 0);
+
+            const { data: pr, error: prError } = await supabase
+              .from("purchase_requests")
+              .insert({
+                card_usage_id: linkedCardUsageId,
+                purchase_order_number: poNumber,
+                requester_id: settlementTrip.requester_id,
+                requester_name: requesterName,
+                vendor_id: vendorId,
+                vendor_name: merchantName,
+                request_type: "소모품",
+                progress_type: "일반",
+                payment_category: "현장 결제",
+                currency: "KRW",
+                unit_price_currency: "KRW",
+                po_template_type: "발주/구매",
+                request_date: settlementTrip.trip_start_date,
+                total_amount: totalAmount,
+                is_payment_completed: true,
+                middle_manager_status: "approved",
+                middle_manager_approved_at: approvedAt,
+                final_manager_status: "approved",
+                final_manager_approved_at: approvedAt,
+                project_item: autoGeneratedProjectItem,
+                project_vendor: settlementTrip.trip_code,
+              })
+              .select("id")
+              .single();
+
+            if (prError || !pr) throw prError || new Error("출장 정산 자동 발주 생성 실패");
+
+            for (const [idx, receipt] of merchantReceipts.entries()) {
+              const { error: itemErr } = await supabase
+                .from("purchase_request_items")
+                .insert({
+                  purchase_request_id: pr.id,
+                  line_number: idx + 1,
+                  item_name: receipt.item_name,
+                  specification: receipt.specification || null,
+                  quantity: receipt.quantity || 1,
+                  unit_price_value: receipt.unit_price || 0,
+                  unit_price_currency: "KRW",
+                  amount_value: receipt.total_amount,
+                  amount_currency: "KRW",
+                  remark: receipt.remark || null,
+                  vendor_name: merchantName,
+                  is_payment_completed: true,
+                });
+              if (itemErr) throw itemErr;
+            }
+          }
+        }
       }
       const { error: tripUpdateError } = await supabase
         .from("business_trips")
@@ -1580,7 +1765,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
 
       toast.success(
         mode === "submitted"
-          ? "정산이 제출되었습니다. (영수증 포함)"
+          ? "정산이 제출되었습니다. (영수증/발주 자동생성)"
           : "정산 임시저장 완료"
       );
       closeSettlementModal();
@@ -1599,8 +1784,11 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     hasSettlementData,
     loadTrips,
     mileageRows,
+    currentUser?.name,
     settlementTrip,
     supabase,
+    findOrCreateVendor,
+    generatePurchaseOrderNumber,
   ]);
 
   const getApprovalBadge = (status: string) => {
@@ -2497,14 +2685,15 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                       <tr>
                         <th className="px-1.5 py-1 modal-label text-left w-[100px]">구분<span className="text-red-500 ml-0.5">*</span></th>
                         <th className="px-1.5 py-1 modal-label text-left w-[92px]">날짜 ({settlementYearLabel})</th>
-                        <th className="px-1.5 py-1 modal-label text-left w-[160px]">사용처<span className="text-red-500 ml-0.5">*</span></th>
-                        <th className="px-1.5 py-1 modal-label text-left w-[173px]">상세내역/품명<span className="text-red-500 ml-0.5">*</span></th>
+                        <th className="px-1.5 py-1 modal-label text-left w-[220px]">사용처<span className="text-red-500 ml-0.5">*</span></th>
+                        <th className="px-1.5 py-1 modal-label text-left w-[170px]">품명<span className="text-red-500 ml-0.5">*</span></th>
+                        <th className="px-1.5 py-1 modal-label text-left w-[160px]">규격</th>
                         <th className="px-1.5 py-1 modal-label text-left w-[56px]">수량<span className="text-red-500 ml-0.5">*</span></th>
                         <th className="px-1.5 py-1 modal-label text-left w-[116px]">단가</th>
                         <th className="px-1.5 py-1 modal-label text-left w-[120px]">합계<span className="text-red-500 ml-0.5">*</span></th>
                         <th className="px-1.5 py-1 modal-label text-left w-[148px]">영수증</th>
-                        <th className="px-1.5 py-1 modal-label text-left w-[240px]">비고</th>
-                        <th className="px-1.5 py-1 modal-label text-center w-[32px]"></th>
+                        <th className="px-1.5 py-1 modal-label text-left w-[220px]">비고(사용이유)</th>
+                        <th className="px-1.5 py-1 modal-label text-center w-[64px]"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2527,8 +2716,31 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                               <span className="card-description whitespace-nowrap">{tripPeriod.sameDay ? tripPeriod.start : `${tripPeriod.start}~${tripPeriod.end}`}</span>
                             </div>
                           </td>
-                          <td className="px-1.5 py-1"><Input value={row.vendor_name} maxLength={20} onChange={(e) => setExpenseRows((prev) => prev.map((r) => (r.key === row.key ? { ...r, vendor_name: e.target.value } : r)))} className="h-7 text-xs" /></td>
+                          <td className="px-1.5 py-1">
+                            <CreatableSelect
+                              isClearable
+                              placeholder="업체 검색 또는 직접 입력"
+                              formatCreateLabel={(input: string) => `"${input}" 신규 등록`}
+                              value={row.vendor_name ? { label: row.vendor_name, value: row.vendor_name } : null}
+                              onChange={(opt) =>
+                                setExpenseRows((prev) =>
+                                  prev.map((r) =>
+                                    r.key === row.key
+                                      ? { ...r, vendor_name: ((opt as { value: string } | null)?.value || "") }
+                                      : r
+                                  )
+                                )
+                              }
+                              options={vendors.map((v) => ({ label: v.vendor_name, value: v.vendor_name }))}
+                              styles={reactSelectStyles}
+                              menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                              menuPosition="fixed"
+                              menuShouldBlockScroll={false}
+                              isDisabled={settlementViewOnly}
+                            />
+                          </td>
                           <td className="px-1.5 py-1"><Input value={row.category_detail} maxLength={20} onChange={(e) => setExpenseRows((prev) => prev.map((r) => (r.key === row.key ? { ...r, category_detail: e.target.value } : r)))} className="h-7 text-xs" /></td>
+                          <td className="px-1.5 py-1"><Input value={row.specification} maxLength={30} onChange={(e) => setExpenseRows((prev) => prev.map((r) => (r.key === row.key ? { ...r, specification: e.target.value } : r)))} className="h-7 text-xs" /></td>
                           <td className="px-1.5 py-1">
                             <Input
                               value={row.quantity}
@@ -2671,13 +2883,46 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                             </div>
                           </td>
                           <td className="px-1.5 py-1"><Input value={row.remark} onChange={(e) => setExpenseRows((prev) => prev.map((r) => (r.key === row.key ? { ...r, remark: e.target.value } : r)))} className="h-7 text-xs" /></td>
-                          <td className="px-1.5 py-1 text-center">
-                            <button
-                              onClick={() => setExpenseRows((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== row.key) : prev))}
-                              className="text-gray-300 hover:text-red-500"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                          <td className="px-1.5 py-1">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpenseRows((prev) => {
+                                    const targetIdx = prev.findIndex((r) => r.key === row.key);
+                                    if (targetIdx < 0) return prev;
+                                    const cloned: ExpenseFormRow = {
+                                      ...row,
+                                      key: newKey(),
+                                      category_detail: "",
+                                      specification: "",
+                                      quantity: "1",
+                                      unit_price: "",
+                                      amount: "",
+                                      remark: "",
+                                      existingReceipts: [...row.existingReceipts],
+                                      newReceiptFiles: [...row.newReceiptFiles],
+                                    };
+                                    return [
+                                      ...prev.slice(0, targetIdx + 1),
+                                      cloned,
+                                      ...prev.slice(targetIdx + 1),
+                                    ];
+                                  })
+                                }
+                                className="text-gray-300 hover:text-blue-500"
+                                title="같은 영수증 품목 추가"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setExpenseRows((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== row.key) : prev))}
+                                className="text-gray-300 hover:text-red-500"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
