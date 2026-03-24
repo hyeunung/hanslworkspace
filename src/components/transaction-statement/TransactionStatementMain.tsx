@@ -1081,13 +1081,15 @@ export default function TransactionStatementMain() {
                             >
                               <ImageIcon className="w-3.5 h-3.5" />
                             </button>
-                            <button
-                              onClick={(e) => handleDelete(e, statement)}
-                              className="p-1.5 rounded-md hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors"
-                              title="삭제"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {isAppAdmin && (
+                              <button
+                                onClick={(e) => handleDelete(e, statement)}
+                                className="p-1.5 rounded-md hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors"
+                                title="삭제"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
