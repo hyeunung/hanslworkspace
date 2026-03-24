@@ -60,10 +60,13 @@ interface VehicleRequest {
   approved_by: string | null;
   approved_at: string | null;
   rejection_reason: string | null;
+  business_trip_id: number | null;
+  auto_created_by_trip: boolean;
   created_at: string | null;
   updated_at: string | null;
   requester?: { name: string; department: string | null } | null;
   driver?: { name: string } | null;
+  business_trip?: { trip_code: string } | null;
 }
 
 interface Employee {
@@ -266,7 +269,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
       const { data, error } = await supabase
         .from("vehicle_requests")
         .select(
-          "*, requester:employees!vehicle_requests_requester_id_fkey(name, department), driver:employees!vehicle_requests_driver_id_fkey(name)"
+          "*, requester:employees!vehicle_requests_requester_id_fkey(name, department), driver:employees!vehicle_requests_driver_id_fkey(name), business_trip:business_trips!vehicle_requests_business_trip_id_fkey(trip_code)"
         )
         .order("created_at", { ascending: false });
 
@@ -897,7 +900,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
             </div>
           ) : (
             <div className="overflow-x-auto overflow-y-auto max-h-[70vh] border rounded-lg">
-              <table className="w-full min-w-[1100px] border-collapse">
+              <table className="w-full min-w-[1300px] border-collapse">
                 <thead
                   className="sticky top-0 z-30 bg-gray-50"
                   style={{ boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)" }}
@@ -909,6 +912,9 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[68px]">
                       신청일
                     </th>
+                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[110px]">
+                      출장코드
+                    </th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[135px]">
                       운행일시
                     </th>
@@ -918,8 +924,8 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[76px]">
                       요청자
                     </th>
-                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[90px]">
-                      운전자
+                    <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[100px]">
+                      동승자
                     </th>
                     <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[150px]">
                       운행지
@@ -985,6 +991,9 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                       <td className="px-2 py-1.5 card-date whitespace-nowrap">
                         {req.created_at ? format(new Date(req.created_at), "MM/dd") : "-"}
                       </td>
+                      <td className="px-2 py-1.5 card-title whitespace-nowrap">
+                        {req.business_trip?.trip_code || "-"}
+                      </td>
                       <td className="px-2 py-0.5 whitespace-nowrap">
                         {req.start_at && req.end_at ? (
                           <div className="leading-tight">
@@ -1003,8 +1012,10 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                       <td className="px-2 py-1.5 card-title whitespace-nowrap truncate max-w-[80px]">
                         {req.requester?.name || "-"}
                       </td>
-                      <td className="px-2 py-1.5 card-title whitespace-nowrap truncate max-w-[90px]">
-                        {req.driver?.name || "-"}<span className="text-gray-400">({req.passenger_count})</span>
+                      <td className="px-2 py-1.5 card-title whitespace-normal break-keep">
+                        {req.companions && req.companions.length > 0
+                          ? req.companions.map((c) => c.name).join(", ")
+                          : "-"}
                       </td>
                       <td className="px-2 py-1.5 card-title truncate max-w-[140px]">
                         {req.route}

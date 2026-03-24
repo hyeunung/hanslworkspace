@@ -1216,7 +1216,6 @@ class TransactionStatementService {
             const ocrQty = Number(ocrRaw);
             if (!Number.isFinite(ocrQty)) return false;
 
-            // matched_item_id가 있으면 직접 사용 (후보 목록에 없을 수 있음)
             if (item.matched_item_id) {
               const freshItem = itemMap.get(Number(item.matched_item_id));
               const sysReceivedQty = freshItem?.received_quantity;
@@ -1224,7 +1223,6 @@ class TransactionStatementService {
               return Number(sysReceivedQty) === ocrQty;
             }
 
-            // matched_item_id가 없으면 후보에서 best score로 선택
             const candidates = item.match_candidates || [];
             if (candidates.length === 0) return false;
 
@@ -1250,7 +1248,6 @@ class TransactionStatementService {
           let sysTotal = 0;
           let allHaveCandidates = true;
           for (const item of itemsWithMatch) {
-            // matched_item_id가 있으면 DB에서 직접 금액 조회 (후보에 없을 수 있음)
             if (item.matched_item_id) {
               const freshItem = itemMap.get(Number(item.matched_item_id));
               if (!freshItem) { allHaveCandidates = false; break; }

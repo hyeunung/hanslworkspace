@@ -850,7 +850,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                     const receiptCount = u.receipts?.length || 0;
                     const totalAmount = (u.receipts || []).reduce((sum, r) => sum + (r.total_amount || 0), 0);
                     const isOwner = currentUser?.id === u.requester_id;
-                    const canUploadReceipt = isOwner && ["approved", "settled"].includes(u.approval_status) && !u.card_returned;
+                    const canUploadReceipt = (isOwner || isAppAdmin) && ["approved", "settled"].includes(u.approval_status) && !u.card_returned;
                     const canReturn = canReturnCard && u.approval_status === "settled" && !u.card_returned;
 
                     return (
@@ -1343,7 +1343,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <span className="modal-section-title">영수증 내역</span>
-                  {currentUser?.id === detailUsage.requester_id
+                  {(currentUser?.id === detailUsage.requester_id || isAppAdmin)
                     && ["approved", "settled"].includes(detailUsage.approval_status)
                     && !detailUsage.card_returned && (
                     <Button

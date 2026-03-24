@@ -1166,6 +1166,8 @@ export type Database = {
           approved_by: string | null
           approved_at: string | null
           rejection_reason: string | null
+          business_trip_id: number | null
+          auto_created_by_trip: boolean
           created_at: string | null
           updated_at: string | null
         }
@@ -1187,6 +1189,8 @@ export type Database = {
           approved_by?: string | null
           approved_at?: string | null
           rejection_reason?: string | null
+          business_trip_id?: number | null
+          auto_created_by_trip?: boolean
           created_at?: string | null
           updated_at?: string | null
         }
@@ -1208,6 +1212,8 @@ export type Database = {
           approved_by?: string | null
           approved_at?: string | null
           rejection_reason?: string | null
+          business_trip_id?: number | null
+          auto_created_by_trip?: boolean
           created_at?: string | null
           updated_at?: string | null
         }
@@ -1231,6 +1237,13 @@ export type Database = {
             columns: ["approved_by"]
             isOneToOne: false
             referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vehicle_requests_business_trip_id_fkey"
+            columns: ["business_trip_id"]
+            isOneToOne: false
+            referencedRelation: "business_trips"
             referencedColumns: ["id"]
           },
         ]
