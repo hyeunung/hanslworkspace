@@ -49,6 +49,9 @@ interface ParseResult {
   items: ParsedItem[];
   raw_text?: string;
   file_type: 'pdf';
+  expected_item_count?: number;
+  expected_max_line_number?: number;
+  extraction_passes?: number;
 }
 
 interface MatchResult {
@@ -434,7 +437,102 @@ items 각 항목:
       )
     }
   }
-  return normalizeParseResult(parsed, textContent)
+  let normalized = normalizeParseResult(parsed, textContent)
+
+  const expectedLineNumbers = await detectExpectedLineNumbersWithClaude(pdfBase64, apiKey, poScope).catch(() => [])
+
+  let expectedItemCount: number | null = null
+  let expectedMaxLineNumber: number | null = null
+  if (expectedLineNumbers.length > 0) {
+    expectedItemCount = expectedLineNumbers.length
+    expectedMaxLineNumber = Math.max(...expectedLineNumbers)
+  } else {
+    const expected = await estimateExpectedItemsWithClaude(pdfBase64, apiKey, poScope).catch(() => ({
+      expectedItemCount: null as number | null,
+      maxLineNumber: null as number | null,
+    }))
+    expectedItemCount = expected.expectedItemCount
+    expectedMaxLineNumber = expected.maxLineNumber
+  }
+
+  if (expectedItemCount === null) {
+    throw new Error('Failed to estimate expected item count for PDF extraction')
+  }
+
+  let extractionPasses = 1
+  const tailRecovery = await extractTailItemsWithClaude(
+    pdfBase64,
+    apiKey,
+    poScope,
+    getMaxLineNumber(normalized.items),
+    expectedMaxLineNumber
+  )
+  if (tailRecovery.passes > 0) {
+    extractionPasses += tailRecovery.passes
+    normalized.items = mergeParsedItems(normalized.items, tailRecovery.items)
+  }
+
+  if (
+    expectedMaxLineNumber !== null &&
+    normalized.items.length < expectedItemCount
+  ) {
+    let rangeItems: ParsedItem[] = []
+    if (expectedLineNumbers.length > 0) {
+      const missingLineNumbers = findMissingExpectedLineNumbers(normalized.items, expectedLineNumbers)
+      if (missingLineNumbers.length > 0) {
+        const ranges = buildLineRanges(missingLineNumbers, 40)
+        rangeItems = await extractItemsForRangesWithClaude(pdfBase64, apiKey, poScope, ranges)
+        extractionPasses += ranges.length
+      }
+    } else {
+      rangeItems = await extractItemsByLineRangesWithClaude(
+        pdfBase64,
+        apiKey,
+        poScope,
+        expectedMaxLineNumber
+      )
+      extractionPasses += Math.ceil(expectedMaxLineNumber / 40)
+    }
+    normalized.items = mergeParsedItems(normalized.items, rangeItems)
+  }
+
+  if (
+    normalized.items.length < expectedItemCount
+  ) {
+    const supplementalItems = await extractMissingItemsWithClaude(
+      pdfBase64,
+      apiKey,
+      poScope,
+      normalized.items,
+      expectedItemCount
+    )
+    extractionPasses += 1
+    normalized.items = mergeParsedItems(normalized.items, supplementalItems)
+  }
+
+  const missingExpectedLines = expectedLineNumbers.length > 0
+    ? findMissingExpectedLineNumbers(normalized.items, expectedLineNumbers)
+    : []
+
+  if (missingExpectedLines.length > 0) {
+    const missingPreview = missingExpectedLines.slice(0, 25).join(',')
+    throw new Error(
+      `Incomplete PDF extraction: expected_item_count=${expectedItemCount}, extracted_item_count=${normalized.items.length}, missing_lines=[${missingPreview}${missingExpectedLines.length > 25 ? ',...' : ''}]`
+    )
+  }
+
+  if (normalized.items.length < expectedItemCount) {
+    throw new Error(
+      `Incomplete PDF extraction: expected_item_count=${expectedItemCount}, extracted_item_count=${normalized.items.length}`
+    )
+  }
+
+  return {
+    ...normalized,
+    expected_item_count: expectedItemCount ?? undefined,
+    expected_max_line_number: expectedMaxLineNumber ?? undefined,
+    extraction_passes: extractionPasses,
+  }
 }
 
 function parseStrictJson(content: string): any {
@@ -535,6 +633,593 @@ ${rawContent.slice(0, 12000)}`
   }
 
   return repairedText
+}
+
+async function estimateExpectedItemsWithClaude(
+  pdfBase64: string,
+  apiKey: string,
+  poScope: 'single' | 'multi' | null
+): Promise<{ expectedItemCount: number | null; maxLineNumber: number | null }> {
+  const scopeHint = poScope === 'single'
+    ? '단일 발주/수주 건으로 간주'
+    : poScope === 'multi'
+      ? '다중 발주/수주 건으로 간주'
+      : '발주 범위 힌트 없음'
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 512,
+      temperature: 0,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: pdfBase64,
+              },
+            },
+            {
+              type: 'text',
+              text: `이 PDF의 "거래명세서(공급받는자)" 기준 품목 행 개수를 추정하세요.
+공급자 사본/중복/합계/소계/푸터/서명/계좌 행은 제외하세요.
+힌트: ${scopeHint}
+
+반드시 아래 JSON만 출력:
+{
+  "expected_item_count": 0,
+  "max_line_number": 0
+}
+
+주의:
+- expected_item_count: 실제 품목 개수
+- max_line_number: 문서에 표기된 가장 큰 line_number (없으면 expected_item_count와 동일값)
+- 값은 정수만`
+            },
+          ],
+        },
+      ],
+    }),
+  })
+
+  if (!response.ok) {
+    return { expectedItemCount: null, maxLineNumber: null }
+  }
+
+  const result = await response.json().catch(() => null)
+  const textContent = (result?.content || [])
+    .filter((b: any) => b?.type === 'text')
+    .map((b: any) => b?.text || '')
+    .join('\n')
+    .trim()
+  if (!textContent) return { expectedItemCount: null, maxLineNumber: null }
+
+  try {
+    const parsed = parseStrictJson(textContent)
+    const expectedItemCount = parsePositiveInt(parsed?.expected_item_count)
+    const maxLineNumber = parsePositiveInt(parsed?.max_line_number) ?? expectedItemCount
+    return { expectedItemCount, maxLineNumber }
+  } catch (_) {
+    return { expectedItemCount: null, maxLineNumber: null }
+  }
+}
+
+async function detectExpectedLineNumbersWithClaude(
+  pdfBase64: string,
+  apiKey: string,
+  poScope: 'single' | 'multi' | null
+): Promise<number[]> {
+  const scopeHint = poScope === 'single'
+    ? '단일 발주/수주 건으로 간주'
+    : poScope === 'multi'
+      ? '다중 발주/수주 건으로 간주'
+      : '발주 범위 힌트 없음'
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2048,
+      temperature: 0,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: pdfBase64,
+              },
+            },
+            {
+              type: 'text',
+              text: `이 PDF의 "거래명세서(공급받는자)" 본문 품목 행에서 보이는 line_number를 전부 추출하세요.
+규칙:
+- 공급자 사본은 제외
+- 합계/소계/푸터/서명/계좌행 제외
+- 중복 숫자는 제거
+- 오름차순 정렬
+- 숫자만 반환
+- 판단 불가한 값은 제외
+- 힌트: ${scopeHint}
+
+반드시 JSON만 출력:
+{
+  "line_numbers": [1,2,3]
+}`
+            },
+          ],
+        },
+      ],
+    }),
+  })
+
+  if (!response.ok) {
+    return []
+  }
+
+  const result = await response.json().catch(() => null)
+  const textContent = (result?.content || [])
+    .filter((b: any) => b?.type === 'text')
+    .map((b: any) => b?.text || '')
+    .join('\n')
+    .trim()
+  if (!textContent) return []
+
+  try {
+    const parsed = parseStrictJson(textContent)
+    const rawLineNumbers: any[] = Array.isArray(parsed?.line_numbers) ? parsed.line_numbers : []
+    const unique: number[] = Array.from(new Set<number>(
+      rawLineNumbers
+        .map((v) => parsePositiveInt(v))
+        .filter((v): v is number => v !== null)
+    )).sort((a, b) => a - b)
+    return unique
+  } catch (_) {
+    return []
+  }
+}
+
+function findMissingExpectedLineNumbers(items: ParsedItem[], expectedLineNumbers: number[]): number[] {
+  const found = new Set(
+    items
+      .map((item) => item.line_number)
+      .filter((lineNumber) => Number.isFinite(lineNumber) && lineNumber > 0)
+  )
+  return expectedLineNumbers.filter((lineNumber) => !found.has(lineNumber))
+}
+
+function buildLineRanges(lineNumbers: number[], maxSpan: number = 40): Array<{ startLine: number; endLine: number }> {
+  if (!lineNumbers.length) return []
+  const sorted = Array.from(new Set(lineNumbers)).sort((a, b) => a - b)
+  const ranges: Array<{ startLine: number; endLine: number }> = []
+
+  let start = sorted[0]
+  let prev = sorted[0]
+
+  for (let i = 1; i < sorted.length; i++) {
+    const current = sorted[i]
+    const contiguous = current === prev + 1
+    const withinSpan = current - start < maxSpan
+    if (contiguous && withinSpan) {
+      prev = current
+      continue
+    }
+    ranges.push({ startLine: start, endLine: prev })
+    start = current
+    prev = current
+  }
+  ranges.push({ startLine: start, endLine: prev })
+  return ranges
+}
+
+async function extractItemsForRangesWithClaude(
+  pdfBase64: string,
+  apiKey: string,
+  poScope: 'single' | 'multi' | null,
+  ranges: Array<{ startLine: number; endLine: number }>
+): Promise<ParsedItem[]> {
+  let merged: ParsedItem[] = []
+  for (const range of ranges) {
+    const chunkItems = await extractItemsLineRangeWithClaude(
+      pdfBase64,
+      apiKey,
+      poScope,
+      range.startLine,
+      range.endLine
+    )
+    merged = mergeParsedItems(merged, chunkItems)
+  }
+  return merged
+}
+
+async function extractItemsByLineRangesWithClaude(
+  pdfBase64: string,
+  apiKey: string,
+  poScope: 'single' | 'multi' | null,
+  maxLineNumber: number
+): Promise<ParsedItem[]> {
+  const chunkSize = 40
+  let merged: ParsedItem[] = []
+  const safeMaxLine = Math.min(Math.max(maxLineNumber, 1), 2000)
+  for (let startLine = 1; startLine <= safeMaxLine; startLine += chunkSize) {
+    const endLine = Math.min(startLine + chunkSize - 1, safeMaxLine)
+    const chunkItems = await extractItemsLineRangeWithClaude(
+      pdfBase64,
+      apiKey,
+      poScope,
+      startLine,
+      endLine
+    )
+    merged = mergeParsedItems(merged, chunkItems)
+  }
+  return merged
+}
+
+async function extractTailItemsWithClaude(
+  pdfBase64: string,
+  apiKey: string,
+  poScope: 'single' | 'multi' | null,
+  currentMaxLineNumber: number,
+  expectedMaxLineNumber: number | null
+): Promise<{ items: ParsedItem[]; passes: number }> {
+  if (!Number.isFinite(currentMaxLineNumber) || currentMaxLineNumber <= 0) {
+    return { items: [], passes: 0 }
+  }
+
+  const chunkSize = 40
+  const safeExpectedMax = expectedMaxLineNumber && expectedMaxLineNumber > 0 ? expectedMaxLineNumber : null
+  const absoluteStopLine = Math.min(
+    Math.max(
+      safeExpectedMax ?? 0,
+      currentMaxLineNumber + 120,
+      currentMaxLineNumber + chunkSize
+    ),
+    currentMaxLineNumber + 200
+  )
+
+  let startLine = currentMaxLineNumber + 1
+  let merged: ParsedItem[] = []
+  let passes = 0
+  let emptyStreak = 0
+
+  while (startLine <= absoluteStopLine) {
+    const endLine = Math.min(startLine + chunkSize - 1, absoluteStopLine)
+    const chunkItems = await extractItemsLineRangeWithClaude(
+      pdfBase64,
+      apiKey,
+      poScope,
+      startLine,
+      endLine
+    )
+    passes += 1
+
+    const usefulItems = chunkItems.filter((item) => item.line_number > currentMaxLineNumber)
+    if (usefulItems.length > 0) {
+      merged = mergeParsedItems(merged, usefulItems)
+      emptyStreak = 0
+      if (safeExpectedMax !== null && getMaxLineNumber(merged) >= safeExpectedMax) {
+        break
+      }
+    } else {
+      emptyStreak += 1
+      if (emptyStreak >= 1) {
+        break
+      }
+    }
+
+    startLine += chunkSize
+  }
+
+  return { items: merged, passes }
+}
+
+async function extractItemsLineRangeWithClaude(
+  pdfBase64: string,
+  apiKey: string,
+  poScope: 'single' | 'multi' | null,
+  startLine: number,
+  endLine: number
+): Promise<ParsedItem[]> {
+  const scopeHint = poScope === 'single'
+    ? '단일 발주/수주 건'
+    : poScope === 'multi'
+      ? '다중 발주/수주 건'
+      : '발주 범위 힌트 없음'
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 3072,
+      temperature: 0,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: pdfBase64,
+              },
+            },
+            {
+              type: 'text',
+              text: `이 PDF에서 line_number ${startLine}~${endLine} 구간에 해당하는 품목만 추출하세요.
+기준:
+- "거래명세서(공급받는자)"만 사용
+- 공급자 사본/중복 제거
+- 합계/소계/푸터/서명/계좌 행 제외
+- 구간 외 행은 절대 포함 금지
+- 힌트: ${scopeHint}
+
+반드시 JSON만 출력:
+{
+  "items": [
+    {
+      "line_number": 1,
+      "item_name": "",
+      "specification": null,
+      "quantity": null,
+      "unit_price": null,
+      "amount": 0,
+      "tax_amount": null,
+      "po_number": null,
+      "po_line_number": null,
+      "remark": null,
+      "confidence": "med"
+    }
+  ]
+}`
+            },
+          ],
+        },
+      ],
+    }),
+  })
+
+  if (!response.ok) {
+    return []
+  }
+
+  const result = await response.json().catch(() => null)
+  const textContent = (result?.content || [])
+    .filter((b: any) => b?.type === 'text')
+    .map((b: any) => b?.text || '')
+    .join('\n')
+    .trim()
+  if (!textContent) return []
+
+  try {
+    const parsed = parseStrictJson(textContent)
+    const rawItems: any[] = Array.isArray(parsed?.items)
+      ? parsed.items
+      : Array.isArray(parsed)
+        ? parsed
+        : []
+    return rawItems
+      .map((item, idx) => normalizeParsedItem(item, idx + startLine))
+      .filter((item) => item.line_number >= startLine && item.line_number <= endLine)
+  } catch (_) {
+    return []
+  }
+}
+
+async function extractMissingItemsWithClaude(
+  pdfBase64: string,
+  apiKey: string,
+  poScope: 'single' | 'multi' | null,
+  knownItems: ParsedItem[],
+  expectedItemCount: number
+): Promise<ParsedItem[]> {
+  const scopeHint = poScope === 'single'
+    ? '단일 발주/수주 건'
+    : poScope === 'multi'
+      ? '다중 발주/수주 건'
+      : '발주 범위 힌트 없음'
+
+  const knownLines = Array.from(new Set(
+    knownItems
+      .map((item) => item.line_number)
+      .filter((lineNumber) => Number.isFinite(lineNumber) && lineNumber > 0)
+  )).sort((a, b) => a - b)
+
+  const knownLineText = knownLines.join(',').slice(0, 7000)
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      temperature: 0,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: pdfBase64,
+              },
+            },
+            {
+              type: 'text',
+              text: `이 PDF의 품목 중에서 아직 누락된 행만 추출하세요.
+기준:
+- "거래명세서(공급받는자)"만 사용
+- 공급자 사본/중복 제거
+- 합계/소계/푸터/서명/계좌 행 제외
+- 힌트: ${scopeHint}
+
+이미 확보된 line_number:
+${knownLineText}
+
+총 품목 목표 개수(expected_item_count): ${expectedItemCount}
+
+반드시 JSON만 출력:
+{
+  "items": [
+    {
+      "line_number": 1,
+      "item_name": "",
+      "specification": null,
+      "quantity": null,
+      "unit_price": null,
+      "amount": 0,
+      "tax_amount": null,
+      "po_number": null,
+      "po_line_number": null,
+      "remark": null,
+      "confidence": "med"
+    }
+  ]
+}`
+            },
+          ],
+        },
+      ],
+    }),
+  })
+
+  if (!response.ok) {
+    return []
+  }
+
+  const result = await response.json().catch(() => null)
+  const textContent = (result?.content || [])
+    .filter((b: any) => b?.type === 'text')
+    .map((b: any) => b?.text || '')
+    .join('\n')
+    .trim()
+  if (!textContent) return []
+
+  try {
+    const parsed = parseStrictJson(textContent)
+    const rawItems: any[] = Array.isArray(parsed?.items)
+      ? parsed.items
+      : Array.isArray(parsed)
+        ? parsed
+        : []
+    const normalized = rawItems.map((item, idx) => normalizeParsedItem(item, idx + 1))
+    return normalized.filter((item) => !knownLines.includes(item.line_number))
+  } catch (_) {
+    return []
+  }
+}
+
+function mergeParsedItems(base: ParsedItem[], incoming: ParsedItem[]): ParsedItem[] {
+  const byLine = new Map<number, ParsedItem>()
+  const byKey = new Map<string, ParsedItem>()
+
+  const put = (item: ParsedItem) => {
+    if (!item) return
+    if (Number.isFinite(item.line_number) && item.line_number > 0) {
+      const existing = byLine.get(item.line_number)
+      if (!existing) {
+        byLine.set(item.line_number, item)
+        return
+      }
+      byLine.set(item.line_number, chooseBetterParsedItem(existing, item))
+      return
+    }
+
+    const key = buildItemMergeKey(item)
+    const existing = byKey.get(key)
+    if (!existing) {
+      byKey.set(key, item)
+      return
+    }
+    byKey.set(key, chooseBetterParsedItem(existing, item))
+  }
+
+  for (const item of base) put(item)
+  for (const item of incoming) put(item)
+
+  return [...Array.from(byLine.values()), ...Array.from(byKey.values())].sort((a, b) => {
+    if (a.line_number !== b.line_number) return a.line_number - b.line_number
+    return (a.item_name || '').localeCompare(b.item_name || '')
+  })
+}
+
+function buildItemMergeKey(item: ParsedItem): string {
+  const safe = (v: unknown) => String(v ?? '').trim().toUpperCase()
+  return [
+    item.line_number || 0,
+    safe(item.item_name),
+    safe(item.specification),
+    item.quantity ?? '',
+    item.unit_price ?? '',
+    item.amount ?? 0,
+    item.tax_amount ?? '',
+    safe(item.po_number),
+  ].join('|')
+}
+
+function parsePositiveInt(value: unknown): number | null {
+  if (value === null || value === undefined) return null
+  const n = Number(String(value).replace(/[^\d.-]/g, ''))
+  if (!Number.isFinite(n) || n <= 0) return null
+  return Math.floor(n)
+}
+
+function chooseBetterParsedItem(a: ParsedItem, b: ParsedItem): ParsedItem {
+  return scoreParsedItem(b) >= scoreParsedItem(a) ? b : a
+}
+
+function scoreParsedItem(item: ParsedItem): number {
+  const confidenceScore = item.confidence === 'high' ? 3 : item.confidence === 'med' ? 2 : 1
+  let score = confidenceScore
+  if (item.item_name) score += 3
+  if (item.specification) score += 1
+  if (item.quantity !== null && item.quantity !== undefined) score += 1
+  if (item.unit_price !== null && item.unit_price !== undefined) score += 1
+  if ((item.amount || 0) !== 0) score += 1
+  if (item.tax_amount !== null && item.tax_amount !== undefined) score += 1
+  if (item.po_number) score += 2
+  if (item.remark) score += 0.5
+  return score
+}
+
+function getMaxLineNumber(items: ParsedItem[]): number {
+  let maxLine = 0
+  for (const item of items) {
+    if (!Number.isFinite(item.line_number)) continue
+    if (item.line_number > maxLine) {
+      maxLine = item.line_number
+    }
+  }
+  return maxLine
 }
 
 function normalizeParseResult(raw: any, rawText: string): ParseResult {

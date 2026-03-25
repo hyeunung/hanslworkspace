@@ -87,6 +87,7 @@ export default function TransactionStatementMain() {
   
   const [statements, setStatements] = useState<TransactionStatement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState("");
@@ -226,9 +227,11 @@ export default function TransactionStatementMain() {
   };
 
   // 데이터 로드
-  const loadStatements = useCallback(async () => {
+  const loadStatements = useCallback(async (showLoading: boolean = false) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       const result = await transactionStatementService.getStatements({
         status: statusFilter !== 'all' ? statusFilter : undefined,
         dateFrom: dateFilter || undefined,
@@ -292,12 +295,15 @@ export default function TransactionStatementMain() {
     } catch (error) {
       toast.error('데이터를 불러오는데 실패했습니다.');
     } finally {
-      setLoading(false);
+      setHasLoadedOnce(true);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, [statusFilter, dateFilter, searchTerm]);
 
   useEffect(() => {
-    loadStatements();
+    loadStatements(true);
   }, [loadStatements]);
 
   // Realtime 이벤트 누락 대비: 처리중 건이 있을 때 주기적으로 서버 상태 동기화
@@ -837,7 +843,7 @@ export default function TransactionStatementMain() {
             </DropdownMenu>
             <Button
               variant="outline"
-              onClick={loadStatements}
+              onClick={() => loadStatements(true)}
               disabled={loading}
               className="!h-auto button-base"
             >
@@ -961,7 +967,7 @@ export default function TransactionStatementMain() {
             </button>
           </div>
 
-          {loading ? (
+          {loading && !hasLoadedOnce ? (
             <div className="flex items-center justify-center py-12">
               <div className="w-6 h-6 border-2 border-hansl-500 border-t-transparent rounded-full animate-spin" />
               <span className="ml-3 text-[11px] text-gray-500">로딩 중...</span>
