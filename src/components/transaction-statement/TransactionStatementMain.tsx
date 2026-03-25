@@ -113,6 +113,7 @@ export default function TransactionStatementMain() {
   const [extractingIds, setExtractingIds] = useState<Set<string>>(new Set());
   const reextractTraceIdRef = useRef<string | null>(null);
   const optimisticReextractIdsRef = useRef<Set<string>>(new Set());
+  const debugTargetStatementIdRef = useRef<string | null>(null);
   
   // 발주 상세 모달 상태
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
@@ -298,6 +299,36 @@ export default function TransactionStatementMain() {
   useEffect(() => {
     loadStatements();
   }, [loadStatements]);
+
+  // Realtime 이벤트 누락 대비: 처리중 건이 있을 때 주기적으로 서버 상태 동기화
+  useEffect(() => {
+    if (extractingIds.size === 0) return;
+    const intervalId = window.setInterval(() => {
+      const targetId = debugTargetStatementIdRef.current;
+      const targetRow = targetId ? statements.find((s) => s.id === targetId) : null;
+      const startedAt = targetRow?.processing_started_at ? new Date(targetRow.processing_started_at).getTime() : null;
+      const processingAgeMs = startedAt && Number.isFinite(startedAt) ? Date.now() - startedAt : null;
+      const shouldForceFail = Boolean(
+        targetId &&
+        targetRow?.status === 'processing' &&
+        processingAgeMs != null &&
+        processingAgeMs >= 2 * 60 * 1000
+      );
+
+      if (shouldForceFail && targetId) {
+        transactionStatementService.failStaleProcessingStatement(targetId, 2)
+          .then((result) => {
+            void result;
+            loadStatements();
+          })
+          .catch(() => {});
+      }
+      loadStatements();
+    }, 5000);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [extractingIds, loadStatements, statements]);
 
   useEffect(() => {
     transactionStatementService.kickQueue();
@@ -558,11 +589,22 @@ export default function TransactionStatementMain() {
   // OCR 추출 시작
   const handleStartExtraction = async (e: React.MouseEvent, statement: TransactionStatement) => {
     e.stopPropagation();
+    debugTargetStatementIdRef.current = statement.id;
     const canExtract = ['pending', 'queued', 'failed'].includes(statement.status);
     if (!canExtract || extractingIds.has(statement.id)) {
       toast.info('이미 처리 중이거나 완료된 건입니다.');
       return;
     }
+
+    setStatements(prev => prev.map(item =>
+      item.id === statement.id
+        ? {
+            ...item,
+            status: 'processing',
+            extraction_error: undefined
+          }
+        : item
+    ));
 
     // 추출 시작 - ID 추가
     setExtractingIds(prev => new Set(prev).add(statement.id));
@@ -591,10 +633,30 @@ export default function TransactionStatementMain() {
         }
       } else {
         logger.error('[OCR] Failed', undefined, { error: result.error });
+        setStatements(prev => prev.map(item =>
+          item.id === statement.id
+            ? {
+                ...item,
+                status: 'failed',
+                extraction_error: result.error || item.extraction_error
+              }
+            : item
+        ));
+        await loadStatements();
         toast.error(result.error || 'OCR 추출에 실패했습니다.', { id: `extraction-${statement.id}` });
       }
     } catch (error) {
       logger.error('[OCR] Error', error);
+      setStatements(prev => prev.map(item =>
+        item.id === statement.id
+          ? {
+              ...item,
+              status: 'failed',
+              extraction_error: error instanceof Error ? error.message : item.extraction_error
+            }
+          : item
+      ));
+      await loadStatements();
       toast.error('OCR 추출 중 오류가 발생했습니다.', { id: `extraction-${statement.id}` });
     } finally {
       // 추출 완료 - ID 제거
@@ -603,6 +665,7 @@ export default function TransactionStatementMain() {
         next.delete(statement.id);
         return next;
       });
+      await loadStatements();
     }
   };
 

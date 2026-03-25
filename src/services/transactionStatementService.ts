@@ -759,6 +759,39 @@ class TransactionStatementService {
     }
   }
 
+  async failStaleProcessingStatement(statementId: string, staleMinutes: number = 2): Promise<{ success: boolean; updated: boolean; error?: string }> {
+    try {
+      const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000).toISOString();
+      const { data, error } = await this.supabase
+        .from('transaction_statements')
+        .update({
+          status: 'failed',
+          extraction_error: `처리 시간 초과(${staleMinutes}분)로 자동 실패 처리`,
+          processing_finished_at: new Date().toISOString(),
+          last_error_at: new Date().toISOString(),
+          locked_by: null
+        })
+        .eq('id', statementId)
+        .eq('status', 'processing')
+        .lte('processing_started_at', cutoff)
+        .select('id')
+        .maybeSingle();
+
+      if (error) throw error;
+
+      return {
+        success: true,
+        updated: Boolean(data?.id)
+      };
+    } catch (error) {
+      return {
+        success: false,
+        updated: false,
+        error: error instanceof Error ? error.message : '장기 처리건 자동 실패 처리 중 오류가 발생했습니다.'
+      };
+    }
+  }
+
   /**
    * 거래명세서 목록 조회
    */
@@ -778,8 +811,8 @@ class TransactionStatementService {
           *,
           items:transaction_statement_items(matched_purchase_id,matched_item_id,extracted_quantity,confirmed_quantity,extracted_amount,match_candidates_data)
         `, { count: 'exact' })
-        .order('statement_date', { ascending: false, nullsFirst: false })
-        .order('uploaded_at', { ascending: false });
+        .order('uploaded_at', { ascending: false })
+        .order('statement_date', { ascending: false, nullsFirst: true });
 
       if (filters?.status && filters.status !== 'all') {
         query = query.eq('status', filters.status);
@@ -848,7 +881,7 @@ class TransactionStatementService {
         }
       }
 
-      // 매칭된 item_id들의 실시간 received_quantity, amount_value 일괄 조회 (청크 조회)
+      // 매칭된 item_id들의 실시간 수량/금액 일괄 조회 (청크 조회)
       const allItemIds = new Set<number>();
       typedData.forEach((statement: StatementListRow) => {
         statement.items?.forEach((item: StatementItemRow) => {
@@ -866,21 +899,26 @@ class TransactionStatementService {
           }
         });
       });
-      const itemInfoMap = new Map<number, { received_quantity: number; amount_value: number }>();
+      const itemInfoMap = new Map<number, { quantity: number; received_quantity: number | null; amount_value: number }>();
       if (allItemIds.size > 0) {
         const itemIdChunks = this.chunkArray(Array.from(allItemIds), 500);
         for (const itemIdChunk of itemIdChunks) {
           const { data: itemRows, error: itemError } = await this.supabase
             .from('purchase_request_items')
-            .select('id, received_quantity, amount_value')
+            .select('id, quantity, received_quantity, amount_value')
             .in('id', itemIdChunk);
           if (itemError) throw itemError;
-          (itemRows || []).forEach((row: { id: number; received_quantity?: number; amount_value?: number }) => {
+          (itemRows || []).forEach((row: { id: number; quantity?: number; received_quantity?: number; amount_value?: number }) => {
             const rowId = this.toNumericId(row.id);
             if (rowId == null) return;
+            const quantity = Number(row.quantity ?? 0);
+            const receivedQuantityRaw = row.received_quantity;
+            const receivedQuantity = receivedQuantityRaw == null ? null : Number(receivedQuantityRaw);
+            const amountValue = Number(row.amount_value ?? 0);
             itemInfoMap.set(rowId, {
-              received_quantity: Number(row.received_quantity ?? 0),
-              amount_value: Number(row.amount_value ?? 0)
+              quantity: Number.isFinite(quantity) ? quantity : 0,
+              received_quantity: Number.isFinite(receivedQuantity ?? NaN) ? receivedQuantity : null,
+              amount_value: Number.isFinite(amountValue) ? amountValue : 0
             });
           });
         }
@@ -912,7 +950,7 @@ class TransactionStatementService {
           };
         });
 
-        // 수량 일치: 실시간 received_quantity 기준으로 항상 재계산
+        // 수량 일치: received_quantity 우선, null이면 발주수량(quantity) fallback
         let all_quantities_matched = false;
 
         if (stmtItems.length > 0 && (statement.status === 'extracted' || statement.status === 'confirmed')) {
@@ -926,7 +964,8 @@ class TransactionStatementService {
             if (item.matched_item_id) {
               const info = itemInfoMap.get(Number(item.matched_item_id));
               if (info == null) return false;
-              return info.received_quantity === ocrQty;
+              const systemQty = info.received_quantity ?? info.quantity;
+              return Number(systemQty) === ocrQty;
             }
 
             // matched_item_id가 없으면 후보에서 best score로 선택
@@ -948,7 +987,8 @@ class TransactionStatementService {
             const info = itemInfoMap.get(Number(selected.item_id));
             if (info == null) return false;
 
-            return info.received_quantity === ocrQty;
+            const systemQty = info.received_quantity ?? info.quantity;
+            return Number(systemQty) === ocrQty;
           });
         }
 
@@ -1008,8 +1048,9 @@ class TransactionStatementService {
           updatePayload.all_amounts_matched = all_amounts_matched;
         }
 
-        // 둘 다 일치하면 버튼 없이 자동으로 확정 처리
-        if (statusForReturn !== 'confirmed' && all_quantities_matched && all_amounts_matched) {
+        // 관리자 확정 버튼 이력이 있을 때만 최종 상태 확정
+        const hasManagerConfirmed = Boolean((statement as Record<string, unknown>).manager_confirmed_at);
+        if (statusForReturn !== 'confirmed' && hasManagerConfirmed && all_quantities_matched && all_amounts_matched) {
           statusForReturn = 'confirmed';
           const managerConfirmedBy = (statement as Record<string, unknown>).manager_confirmed_by as string | null | undefined;
           const quantityMatchConfirmedBy = (statement as Record<string, unknown>).quantity_match_confirmed_by as string | null | undefined;
@@ -1218,9 +1259,10 @@ class TransactionStatementService {
 
             if (item.matched_item_id) {
               const freshItem = itemMap.get(Number(item.matched_item_id));
-              const sysReceivedQty = freshItem?.received_quantity;
-              if (sysReceivedQty == null) return false;
-              return Number(sysReceivedQty) === ocrQty;
+              const systemQtyRaw = freshItem?.received_quantity ?? freshItem?.quantity;
+              const systemQty = Number(systemQtyRaw);
+              if (!Number.isFinite(systemQty)) return false;
+              return systemQty === ocrQty;
             }
 
             const candidates = item.match_candidates || [];
@@ -1229,9 +1271,10 @@ class TransactionStatementService {
             const selected = candidates.reduce((a, b) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
 
             const freshItem = itemMap.get(Number(selected.item_id));
-            const sysReceivedQty = freshItem?.received_quantity;
-            if (sysReceivedQty == null) return false;
-            return Number(sysReceivedQty) === ocrQty;
+            const systemQtyRaw = freshItem?.received_quantity ?? freshItem?.quantity;
+            const systemQty = Number(systemQtyRaw);
+            if (!Number.isFinite(systemQty)) return false;
+            return systemQty === ocrQty;
           });
         }
         if (allMatched !== (statement.all_quantities_matched ?? false)) {
@@ -2302,7 +2345,7 @@ class TransactionStatementService {
   }
 
   /**
-   * 확정/수량일치 모두 완료 시 상태 칼럼만 업데이트 (시각적 표시용)
+   * 최종 확정 조건 충족 시 상태 칼럼 업데이트 (시각적 표시용)
    * - 실제 데이터 반영은 각 단계(confirmStatement, confirmQuantityMatch)에서 즉시 처리
    */
   private async tryFinalizeStatement(
@@ -2323,13 +2366,14 @@ class TransactionStatementService {
 
       const isQuantityMatched = statement.all_quantities_matched === true;
       const isAmountMatched = statement.all_amounts_matched === true;
+      const hasManagerConfirmed = Boolean(statement.manager_confirmed_at);
 
-      // 수량 + 금액 둘 다 일치해야 최종 확정
-      if (!isQuantityMatched || !isAmountMatched) {
+      // 수량/금액 일치 + 관리자 확정 버튼 완료 시에만 최종 확정
+      if (!isQuantityMatched || !isAmountMatched || !hasManagerConfirmed) {
         return { success: true, finalized: false, updatedStatement: statement };
       }
 
-      // 둘 다 완료 → 상태만 'confirmed'로 업데이트
+      // 최종 조건 충족 → 상태만 'confirmed'로 업데이트
       const confirmedAt = new Date().toISOString();
       const confirmedBy = statement.manager_confirmed_by || statement.quantity_match_confirmed_by || null;
       const confirmedByName = statement.manager_confirmed_by_name || statement.quantity_match_confirmed_by_name || null;

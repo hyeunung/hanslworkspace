@@ -406,7 +406,34 @@ items 각 항목:
     throw new Error('No content in Claude response')
   }
 
-  const parsed = parseStrictJson(textContent)
+  let parsed: any
+  try {
+    parsed = parseStrictJson(textContent)
+  } catch (parseError) {
+    // Claude가 거의-JSON을 반환한 경우, 한번 더 "JSON 정규화"를 요청해 복구한다.
+    let repairedText = ''
+    let repairErrorMessage = ''
+    try {
+      repairedText = await repairJsonWithClaude(textContent, apiKey)
+    } catch (repairError: any) {
+      repairErrorMessage = repairError?.message || 'unknown_repair_error'
+    }
+
+    try {
+      parsed = parseStrictJson(repairedText)
+    } catch (_) {
+      const primaryTail = sanitizeForJsonb((textContent || '').slice(-300))
+      const repairedTail = sanitizeForJsonb((repairedText || '').slice(-300))
+      throw new Error(
+        `Failed to parse JSON from Claude response | ` +
+        `primary_len=${textContent?.length || 0} | ` +
+        `primary_tail=${primaryTail} | ` +
+        `repair_error=${repairErrorMessage || 'none'} | ` +
+        `repair_len=${repairedText?.length || 0} | ` +
+        `repair_tail=${repairedTail}`
+      )
+    }
+  }
   return normalizeParseResult(parsed, textContent)
 }
 
@@ -426,7 +453,88 @@ function parseStrictJson(content: string): any {
     try { return JSON.parse(content.slice(first, last + 1)) } catch (_) {}
   }
 
+  const recovered = recoverTruncatedItemsJson(content)
+  if (recovered) {
+    try {
+      return JSON.parse(recovered)
+    } catch (_) {}
+  }
+
   throw new Error('Failed to parse JSON from Claude response')
+}
+
+function recoverTruncatedItemsJson(content: string): string | null {
+  const start = content.indexOf('{')
+  if (start < 0) return null
+  const itemsKeyIndex = content.indexOf('"items"', start)
+  if (itemsKeyIndex < 0) return null
+  const arrayStart = content.indexOf('[', itemsKeyIndex)
+  if (arrayStart < 0) return null
+
+  const tail = content.slice(arrayStart + 1)
+  const lastCompleteItemEndInTail = tail.lastIndexOf('}')
+  if (lastCompleteItemEndInTail < 0) return null
+
+  const prefix = content.slice(start, arrayStart + 1)
+  let itemsBody = tail.slice(0, lastCompleteItemEndInTail + 1).trim()
+  itemsBody = itemsBody.replace(/,\s*$/, '')
+
+  // 잘린 항목 이후를 버리고, 완성된 items 배열까지만 닫아서 JSON 복구
+  return `${prefix}${itemsBody}]}`
+}
+
+async function repairJsonWithClaude(rawContent: string, apiKey: string): Promise<string> {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      temperature: 0,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `아래 텍스트를 거래명세서 JSON 스키마에 맞는 "유효한 JSON 객체 하나"로 복구하세요.
+
+규칙:
+- 출력은 JSON 객체만 허용 (코드블록/설명/주석 금지)
+- 키는 statement_date, vendor_name, vendor_name_english, total_amount, tax_amount, grand_total, items 만 사용
+- items는 배열, 각 원소 키는 line_number, item_name, specification, quantity, unit_price, amount, tax_amount, po_number, po_line_number, remark, confidence
+- 알 수 없는 값은 null 사용
+
+원본 텍스트:
+${rawContent.slice(0, 12000)}`
+            }
+          ]
+        }
+      ],
+    }),
+  })
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '')
+    throw new Error(`Claude JSON repair error: ${response.status} ${body}`)
+  }
+
+  const result = await response.json()
+  const repairedText = (result?.content || [])
+    .filter((b: any) => b?.type === 'text')
+    .map((b: any) => b?.text || '')
+    .join('\n')
+    .trim()
+
+  if (!repairedText) {
+    throw new Error('No content in Claude JSON repair response')
+  }
+
+  return repairedText
 }
 
 function normalizeParseResult(raw: any, rawText: string): ParseResult {
