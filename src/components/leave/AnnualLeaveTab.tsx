@@ -63,11 +63,13 @@ const MANAGER_DEPARTMENT_MAP: Record<string, string[]> = {
 // ─── 상수 ────────────────────────────────────────────────
 const LEAVE_TYPE_LABEL: Record<string, string> = {
   annual: "연차",
+  full: "연차",
   half_am: "오전반차",
   half_pm: "오후반차",
   official: "공가",
   adjust: "수동조정",
   biztrip: "출장",
+  biztrip_migrated: "출장",
 };
 
 function formatDateKST(dateStr: string | null): string {

@@ -1039,7 +1039,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                 </thead>
                 <tbody>
                   {sortedUsages.map((u) => {
-                    const receiptCount = u.receipts?.length || 0;
+                    const receiptCount = new Set((u.receipts || []).map((r) => r.receipt_url)).size;
                     const totalAmount = (u.receipts || []).reduce((sum, r) => sum + (r.total_amount || 0), 0);
                     const isOwner = currentUser?.id === u.requester_id;
                     const canUploadReceipt = (isOwner || isAppAdmin) && ["approved", "settled"].includes(u.approval_status) && !u.card_returned;

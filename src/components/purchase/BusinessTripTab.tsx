@@ -985,7 +985,12 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
       if (trip?.linkedCard?.id) {
         const { error: cardError } = await supabase
           .from("card_usages")
-          .update({ card_returned: true, approval_status: "settled" })
+          .update({
+            card_returned: true,
+            card_returned_at: new Date().toISOString(),
+            card_returned_by: currentUser?.id || null,
+            approval_status: "returned",
+          })
           .eq("id", trip.linkedCard.id);
         if (cardError) {
           logger.warn("카드 반납 처리 실패 (정산 승인은 완료)", { cardError });
@@ -1114,55 +1119,70 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
           .order("created_at", { ascending: true });
 
         if (cardReceipts && cardReceipts.length > 0) {
+          // receipt_url 기준으로 그룹 구분 (같은 영수증의 품목들을 묶음)
+          const seenUrls = new Set<string>();
           mobileReceiptRows = cardReceipts.map((cr: {
             id: number; receipt_url: string; merchant_name: string | null;
             specification: string | null;
             item_name: string | null; quantity: number | null;
             unit_price: number | null; total_amount: number | null;
             remark: string | null;
-          }) => ({
-            key: `mobile-${cr.id}-${newKey()}`,
-            expense_type: "corporate_card" as const,
-            expense_date: toMonthDay(trip.trip_start_date),
-            vendor_name: cr.merchant_name || "",
-            category_detail: cr.item_name || "",
-            specification: cr.specification || "",
-            quantity: String(cr.quantity ?? 1),
-            unit_price: cr.unit_price != null ? Number(cr.unit_price).toLocaleString("ko-KR") : "",
-            amount: cr.total_amount != null ? Number(cr.total_amount).toLocaleString("ko-KR") : "",
-            currency: "KRW",
-            companion_note: "",
-            expense_purpose: "",
-            remark: cr.remark || "",
-            existingReceipts: cr.receipt_url
-              ? [{ id: cr.id, business_trip_expense_id: 0, receipt_url: cr.receipt_url }]
-              : [],
-            newReceiptFiles: [],
-            starts_new_receipt_group: false,
-          }));
+          }) => {
+            const isFirstOfGroup = !seenUrls.has(cr.receipt_url);
+            if (cr.receipt_url) seenUrls.add(cr.receipt_url);
+            return {
+              key: `mobile-${cr.id}-${newKey()}`,
+              expense_type: "corporate_card" as const,
+              expense_date: toMonthDay(trip.trip_start_date),
+              vendor_name: cr.merchant_name || "",
+              category_detail: cr.item_name || "",
+              specification: cr.specification || "",
+              quantity: String(cr.quantity ?? 1),
+              unit_price: cr.unit_price != null ? Number(cr.unit_price).toLocaleString("ko-KR") : "",
+              amount: cr.total_amount != null ? Number(cr.total_amount).toLocaleString("ko-KR") : "",
+              currency: "KRW",
+              companion_note: "",
+              expense_purpose: "",
+              remark: cr.remark || "",
+              existingReceipts: isFirstOfGroup && cr.receipt_url
+                ? [{ id: cr.id, business_trip_expense_id: 0, receipt_url: cr.receipt_url }]
+                : [],
+              newReceiptFiles: [],
+              starts_new_receipt_group: isFirstOfGroup,
+            };
+          });
         }
       }
 
       setExpenseRows(
         expenseData.length > 0
-          ? expenseData.map((r) => ({
-              key: `exp-${r.id}-${newKey()}`,
-              expense_type: r.expense_type,
-              expense_date: toMonthDay(r.expense_date),
-              vendor_name: r.vendor_name || "",
-              category_detail: r.category_detail || "",
-              specification: r.specification || "",
-              quantity: String(r.quantity ?? 1),
-              unit_price: r.unit_price != null ? String(r.unit_price) : "",
-              amount: r.amount != null ? Number(r.amount).toLocaleString("ko-KR") : "",
-              currency: r.currency || "KRW",
-              companion_note: r.companion_note || "",
-              expense_purpose: r.expense_purpose || "",
-              remark: r.remark || "",
-              existingReceipts: receiptMap.get(r.id) || [],
-              newReceiptFiles: [],
-              starts_new_receipt_group: false,
-            }))
+          ? (() => {
+              const seenReceiptUrls = new Set<string>();
+              return expenseData.map((r) => {
+                const receipts = receiptMap.get(r.id) || [];
+                const firstReceiptUrl = receipts[0]?.receipt_url;
+                const isNewGroup = firstReceiptUrl ? !seenReceiptUrls.has(firstReceiptUrl) : receipts.length > 0;
+                if (firstReceiptUrl) seenReceiptUrls.add(firstReceiptUrl);
+                return {
+                  key: `exp-${r.id}-${newKey()}`,
+                  expense_type: r.expense_type,
+                  expense_date: toMonthDay(r.expense_date),
+                  vendor_name: r.vendor_name || "",
+                  category_detail: r.category_detail || "",
+                  specification: r.specification || "",
+                  quantity: String(r.quantity ?? 1),
+                  unit_price: r.unit_price != null ? String(r.unit_price) : "",
+                  amount: r.amount != null ? Number(r.amount).toLocaleString("ko-KR") : "",
+                  currency: r.currency || "KRW",
+                  companion_note: r.companion_note || "",
+                  expense_purpose: r.expense_purpose || "",
+                  remark: r.remark || "",
+                  existingReceipts: receipts,
+                  newReceiptFiles: [],
+                  starts_new_receipt_group: isNewGroup,
+                };
+              });
+            })()
           : mobileReceiptRows.length > 0
             ? mobileReceiptRows
             : [createEmptyExpense(trip)]
@@ -1722,6 +1742,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
         }
 
         if (mode === "submitted" && linkedCardUsageId && corporateCardReceiptPayload.length > 0) {
+          // 업체(merchant_name) 기준으로 그룹핑하여 발주 생성 (업체 1곳 = 발주 1건)
           const receiptsByMerchant: Record<string, typeof corporateCardReceiptPayload> = {};
           for (const receipt of corporateCardReceiptPayload) {
             const merchantKey = receipt.merchant_name.trim() || "미입력";
@@ -2339,12 +2360,12 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                               className="badge-stats bg-blue-500 text-white hover:bg-blue-600"
                               onClick={() => openSettlementModal(trip, true)}
                             >
-                              정산제출
+                              제출완료
                             </button>
                           ) : canEditSettlement ? (
                             <button
                               type="button"
-                              className="badge-stats bg-hansl-600 text-white hover:bg-hansl-700"
+                              className="badge-stats bg-orange-500 text-white hover:bg-orange-600"
                               onClick={() => openSettlementModal(trip)}
                             >
                               정산작성
@@ -2745,11 +2766,18 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                       </tr>
                     </thead>
                     <tbody>
-                      {expenseRows.map((row) => (
+                      {expenseRows.map((row, rowIdx) => {
+                        const nextRow = expenseRows[rowIdx + 1];
+                        const isLastOfGroup = !nextRow || nextRow.starts_new_receipt_group;
+                        const borderStyle: React.CSSProperties = {
+                          ...(row.starts_new_receipt_group ? { borderTop: "3px solid #60a5fa" } : {}),
+                          ...(isLastOfGroup ? { borderBottom: "3px solid #60a5fa" } : {}),
+                        };
+                        return (
                         <tr
                           key={row.key}
                           className="border-t"
-                          style={row.starts_new_receipt_group ? { borderTop: "3px solid #60a5fa" } : undefined}
+                          style={Object.keys(borderStyle).length > 0 ? borderStyle : undefined}
                         >
                           <td className="px-1.5 py-1">
                             <select
@@ -2967,7 +2995,8 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                             </div>
                           </td>
                         </tr>
-                      ))}
+                      );
+                      })}
                     </tbody>
                   </table>
                 </div>
