@@ -36,7 +36,7 @@ import { parseRoles } from '@/utils/roleHelper';
 
 const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "superadmin"];
 const HIGH_AMOUNT_APPROVER_ROLES = ["final_approver", "ceo", "superadmin"];
-const SETTLEMENT_APPROVER_ROLES = ["final_approver", "ceo", "superadmin"];
+const SETTLEMENT_APPROVER_ROLES = ["hr", "lead buyer", "superadmin"];
 
 const COMPANY_CARDS = [
   { label: "출장용", number: "5914", value: "출장용 5914" },
@@ -1504,16 +1504,16 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     return created.id;
   }, [supabase]);
 
-  const saveSettlement = useCallback(async (mode: "draft" | "submitted") => {
-    if (!settlementTrip) return;
+  const saveSettlement = useCallback(async (mode: "draft" | "submitted"): Promise<boolean> => {
+    if (!settlementTrip) return false;
     if (mode === "submitted") {
       if (settlementTrip.approval_status !== "approved") {
         toast.error("출장 승인 후 정산 제출이 가능합니다.");
-        return;
+        return false;
       }
       if (!hasSettlementData) {
         toast.error("정산 내역을 1건 이상 입력해주세요.");
-        return;
+        return false;
       }
       const filledExpenseRows = expenseRows.filter(
         (r) =>
@@ -1532,7 +1532,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
         if (toNumber(r.amount) <= 0) missing.push("합계");
         if (missing.length > 0) {
           toast.error(`카드사용내역 ${i + 1}행: ${missing.join(", ")}을(를) 입력해주세요.`);
-          return;
+          return false;
         }
       }
     }
@@ -1830,9 +1830,11 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
       closeSettlementModal();
       loadTrips();
       onBadgeRefresh?.();
+      return true;
     } catch (err) {
       logger.error("정산 저장 실패", err);
       toast.error("정산 저장에 실패했습니다.");
+      return false;
     } finally {
       setSettlementSaving(false);
     }
@@ -2358,7 +2360,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                             <button
                               type="button"
                               className="badge-stats bg-blue-500 text-white hover:bg-blue-600"
-                              onClick={() => openSettlementModal(trip, true)}
+                              onClick={() => openSettlementModal(trip)}
                             >
                               제출완료
                             </button>
@@ -2373,7 +2375,12 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                           ) : ["submitted", "approved"].includes(trip.settlement_status) ? (
                             <button
                               type="button"
-                              onClick={() => openSettlementModal(trip, true)}
+                              onClick={() =>
+                                openSettlementModal(
+                                  trip,
+                                  !(trip.settlement_status === "submitted" && canApproveSettlement)
+                                )
+                              }
                               className="cursor-pointer"
                             >
                               {getSettlementBadge(trip.settlement_status)}
@@ -3188,11 +3195,32 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                   </Button>
                   <Button
                     onClick={() => saveSettlement("submitted")}
-                    disabled={settlementSaving || settlementLoading || settlementTrip?.approval_status !== "approved"}
+                    disabled={
+                      settlementSaving ||
+                      settlementLoading ||
+                      settlementTrip?.approval_status !== "approved" ||
+                      settlementTrip?.settlement_status === "submitted"
+                    }
                     className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
                   >
                     {settlementSaving ? "저장 중..." : "정산 제출"}
                   </Button>
+                  {settlementTrip?.settlement_status === "submitted" && canApproveSettlement && (
+                    <Button
+                      onClick={async () => {
+                        if (!settlementTrip) return;
+                        const tripId = settlementTrip.id;
+                        const isSaved = await saveSettlement("submitted");
+                        if (isSaved) {
+                          requestApproveSettlement(tripId);
+                        }
+                      }}
+                      disabled={settlementSaving || settlementLoading}
+                      className="button-base bg-green-500 hover:bg-green-600 text-white"
+                    >
+                      {settlementSaving ? "저장 중..." : "저장 후 승인"}
+                    </Button>
+                  )}
                 </>
               )}
             </DialogFooter>
