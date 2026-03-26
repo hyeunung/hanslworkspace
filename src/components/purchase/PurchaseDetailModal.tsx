@@ -120,6 +120,16 @@ type SortableRowProps = {
   children: (props: SortableRenderProps) => React.ReactNode
 }
 
+type LinkedCardReceipt = {
+  id: number
+  receipt_url: string
+  merchant_name: string | null
+  item_name: string | null
+  total_amount: number | null
+  created_at: string | null
+  image_url: string
+}
+
 // ✅ SortableRow를 컴포넌트 외부에서 정의하여 리렌더링 시 재생성 방지 (입력 포커스 유지)
 const SortableRow = ({ id, children }: SortableRowProps) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
@@ -172,6 +182,7 @@ function PurchaseDetailModal({
 
   // 거래명세서 관련 상태
   const [linkedStatements, setLinkedStatements] = useState<(TransactionStatement & { linked_line_numbers?: number[] })[]>([])
+  const [linkedCardReceipts, setLinkedCardReceipts] = useState<LinkedCardReceipt[]>([])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
@@ -891,6 +902,43 @@ ${itemsText}`
   }, [columnWidths, activeTab, isEditing])
   const headerRowRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
+
+  const normalizePaymentCategory = useCallback((category?: string | null) => {
+    return (category || '').replace(/\s/g, '')
+  }, [])
+
+  const isOnsitePayment = useMemo(() => {
+    return normalizePaymentCategory(purchase?.payment_category) === '현장결제'
+  }, [normalizePaymentCategory, purchase?.payment_category])
+
+  const parseReceiptStorageInfo = useCallback((receiptUrl: string) => {
+    if (!receiptUrl) {
+      return { bucket: 'card-receipts', path: '' }
+    }
+
+    if (receiptUrl.startsWith('business-trip-receipts/')) {
+      return {
+        bucket: 'business-trip-receipts',
+        path: receiptUrl.replace('business-trip-receipts/', '')
+      }
+    }
+
+    if (receiptUrl.startsWith('card-receipts/')) {
+      return {
+        bucket: 'card-receipts',
+        path: receiptUrl.replace('card-receipts/', '')
+      }
+    }
+
+    if (receiptUrl.includes('card-receipts/')) {
+      return {
+        bucket: 'card-receipts',
+        path: receiptUrl.split('card-receipts/').pop() || ''
+      }
+    }
+
+    return { bucket: 'card-receipts', path: receiptUrl }
+  }, [])
   
   // 사용자 권한 및 이름 직접 로드
   useEffect(() => {
@@ -1667,6 +1715,7 @@ ${itemsText}`
       
       // 연결된 거래명세서 로드
       loadLinkedStatements(purchaseId)
+      loadLinkedCardReceipts(purchaseId)
     }
   }, [purchaseId, isOpen])
 
@@ -1680,6 +1729,85 @@ ${itemsText}`
     } catch (e) {
       // 에러는 조용히 처리 (연결된 거래명세서가 없어도 정상)
       setLinkedStatements([])
+    }
+  }
+
+  const loadLinkedCardReceipts = async (targetPurchaseId: number) => {
+    try {
+      const { data: purchaseRow, error: purchaseError } = await supabase
+        .from('purchase_requests')
+        .select('card_usage_id, vendor_name')
+        .eq('id', targetPurchaseId)
+        .maybeSingle()
+
+      if (purchaseError) throw purchaseError
+
+      const cardUsageId = purchaseRow?.card_usage_id
+      if (!cardUsageId) {
+        setLinkedCardReceipts([])
+        return
+      }
+
+      const { data: receiptRows, error: receiptError } = await supabase
+        .from('card_usage_receipts')
+        .select('id, receipt_url, merchant_name, item_name, total_amount, created_at')
+        .eq('card_usage_id', cardUsageId)
+        .order('created_at', { ascending: false })
+
+      if (receiptError) throw receiptError
+
+      const normalizeText = (value: string | null | undefined) =>
+        (value || '').replace(/\s/g, '').toLowerCase()
+
+      const purchaseVendorKey = normalizeText(purchaseRow?.vendor_name)
+      const scopedRows = purchaseVendorKey
+        ? (receiptRows || []).filter((row) => normalizeText(row.merchant_name) === purchaseVendorKey)
+        : (receiptRows || [])
+
+      const uniqueByUrl = new Map<string, {
+        id: number
+        receipt_url: string
+        merchant_name: string | null
+        item_name: string | null
+        total_amount: number | null
+        created_at: string | null
+      }>()
+
+      for (const row of scopedRows) {
+        if (!row.receipt_url || uniqueByUrl.has(row.receipt_url)) continue
+        uniqueByUrl.set(row.receipt_url, row)
+      }
+
+      const resolvedReceipts = await Promise.all(
+        [...uniqueByUrl.values()].map(async (row) => {
+          let imageUrl = ''
+
+          if (row.receipt_url.startsWith('http')) {
+            imageUrl = row.receipt_url
+          } else {
+            const { bucket, path } = parseReceiptStorageInfo(row.receipt_url)
+            if (path) {
+              const { data: signedData, error: signedError } = await supabase.storage
+                .from(bucket)
+                .createSignedUrl(path, 3600)
+
+              if (!signedError && signedData?.signedUrl) {
+                imageUrl = signedData.signedUrl
+              }
+            }
+          }
+
+          return {
+            ...row,
+            image_url: imageUrl
+          } as LinkedCardReceipt
+        })
+      )
+
+      setLinkedCardReceipts(resolvedReceipts.filter((receipt) => Boolean(receipt.image_url)))
+    } catch (error) {
+      logger.warn('[PurchaseDetailModal] 카드 영수증 로드 실패:', error)
+      setLinkedCardReceipts([])
     }
   }
 
@@ -5555,8 +5683,8 @@ ${itemsText}`
                 </div>
               </div>
 
-              {/* 연결된 거래명세서 */}
-              {linkedStatements.length > 0 && (
+              {/* 연결된 거래명세서 (현장결제 제외) */}
+              {!isOnsitePayment && linkedStatements.length > 0 && (
                 <div className="bg-white rounded-lg p-2 sm:p-3 border border-gray-100 shadow-sm mt-3">
                   <div className="mb-2">
                     <h3 className="modal-section-title flex items-center">
@@ -5568,7 +5696,7 @@ ${itemsText}`
                     </h3>
                   </div>
                   <div className="space-y-2">
-                    {linkedStatements.map((stmt, idx) => (
+                    {linkedStatements.map((stmt) => (
                       <div
                         key={stmt.id}
                         className="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
@@ -5618,6 +5746,62 @@ ${itemsText}`
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* 현장결제: 카드 영수증 */}
+              {isOnsitePayment && (
+                <div className="bg-white rounded-lg p-2 sm:p-3 border border-gray-100 shadow-sm mt-3">
+                  <div className="mb-2">
+                    <h3 className="modal-section-title flex items-center">
+                      <FileText className="w-4 h-4 mr-2 text-gray-600" />
+                      카드 영수증
+                      <span className="ml-2 badge-stats bg-gray-600 text-white text-[10px]">
+                        {linkedCardReceipts.length}건
+                      </span>
+                    </h3>
+                  </div>
+                  {linkedCardReceipts.length === 0 ? (
+                    <p className="text-[11px] text-gray-500">등록된 카드 영수증이 없습니다.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {linkedCardReceipts.map((receipt) => (
+                        <div
+                          key={receipt.id}
+                          className="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+                          onClick={() => handleViewStatementImage(receipt.image_url)}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <ImageIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-gray-900 truncate">
+                                {receipt.merchant_name || '카드 영수증'}
+                              </p>
+                              <p className="text-[10px] text-gray-500">
+                                {receipt.created_at ? formatDate(receipt.created_at) : '-'}
+                                {typeof receipt.total_amount === 'number' && (
+                                  <span className="ml-2 text-gray-700">
+                                    {Number(receipt.total_amount).toLocaleString()}원
+                                  </span>
+                                )}
+                              </p>
+                              {receipt.item_name && (
+                                <p className="text-[9px] text-blue-600 mt-0.5 truncate">{receipt.item_name}</p>
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0 flex-shrink-0"
+                            title="영수증 보기"
+                          >
+                            <ImageIcon className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
