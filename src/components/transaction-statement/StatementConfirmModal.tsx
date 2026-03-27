@@ -3384,6 +3384,9 @@ export default function StatementConfirmModal({
   const confirmButtonLabel = isManagerConfirmed || isStatementConfirmed ? '확정 완료' : '확정';
   const quantityMatchButtonLabel = isQuantityMatchConfirmed || isStatementConfirmed ? (isReceiptMode ? '완료' : '수량일치 완료') : '수량일치';
   const utkButtonLabel = isMultiUtkTarget ? `UTK 개별(${utkTargetPurchases.length})` : 'UTK 확인';
+  const footerActionButtonBaseClass = 'button-base h-7 text-[10px] !leading-4 border border-gray-300 bg-white';
+  const footerActionButtonEnabledClass = `${footerActionButtonBaseClass} text-gray-700 hover:bg-gray-50`;
+  const footerActionButtonDisabledClass = `${footerActionButtonBaseClass} text-gray-400 hover:bg-white`;
 
   // 거래명세서에서 UTK 확인 처리
   // - 단일 발주: 버튼 클릭 즉시 처리
@@ -5359,35 +5362,34 @@ export default function StatementConfirmModal({
             </div>
           )}
 
-          <DialogFooter className="border-t border-gray-100 pt-3 px-4 gap-2">
+          <DialogFooter className="border-t border-gray-100 pt-3 px-4 gap-2 sm:items-center">
             <Button
               variant="outline"
+              size="sm"
               onClick={handleReject}
               disabled={saving}
-              className="button-base h-8 text-[11px] text-red-500 border-red-200 hover:bg-red-50"
+              className={footerActionButtonEnabledClass}
             >
               <XCircle className="w-3.5 h-3.5 mr-1" />
               거부
             </Button>
             <Button
               variant="outline"
+              size="sm"
               onClick={handleCloseWithSave}
               disabled={saving}
-              className="button-base h-8 text-[11px]"
+              className={footerActionButtonEnabledClass}
             >
               닫기
             </Button>
-            <div className="relative">
+            <div className="relative flex items-center leading-none">
               <Button
                 variant="outline"
+                size="sm"
                 onClick={handleUtkCheck}
                 disabled={isUtkDisabled}
                 title={!canUtkCheck ? 'UTK 확인 권한이 없습니다.' : utkTargetPurchases.length === 0 ? '매칭된 발주가 없습니다.' : isMultiUtkTarget ? '클릭해서 건별 UTK 처리' : undefined}
-                className={`button-base h-8 text-[11px] ${
-                  isUtkDisabled
-                    ? 'border border-gray-300 bg-white text-gray-400'
-                    : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                }`}
+                className={isUtkDisabled ? footerActionButtonDisabledClass : footerActionButtonEnabledClass}
               >
                 {savingAction === 'utk' && !isMultiUtkTarget ? (
                   <>
@@ -5422,11 +5424,7 @@ export default function StatementConfirmModal({
                             variant="outline"
                             onClick={() => handleUtkCheckSingle(target, true)}
                             disabled={saving || isChecked}
-                            className={`button-base h-7 text-[10px] ${
-                              isChecked
-                                ? 'border border-gray-300 bg-white text-gray-400'
-                                : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                            }`}
+                            className={`h-7 text-[10px] ${isChecked ? 'button-waiting-inactive' : 'button-action-secondary'}`}
                           >
                             {isRowSaving ? (
                               <>
@@ -5445,7 +5443,7 @@ export default function StatementConfirmModal({
                     <Button
                       variant="outline"
                       onClick={() => setIsUtkDropdownOpen(false)}
-                      className="button-base h-7 text-[10px]"
+                      className="button-action-secondary h-7 text-[10px]"
                     >
                       닫기
                     </Button>
@@ -5454,13 +5452,11 @@ export default function StatementConfirmModal({
               )}
             </div>
             <Button
+              variant="outline"
+              size="sm"
               onClick={handleQuantityMatch}
               disabled={isQuantityMatchDisabled}
-              className={`button-base h-8 text-[11px] ${
-                isQuantityMatchDisabled
-                  ? 'border border-gray-300 bg-white text-gray-400'
-                  : 'bg-hansl-600 hover:bg-hansl-700 text-white'
-              }`}
+              className={isQuantityMatchDisabled ? footerActionButtonDisabledClass : footerActionButtonEnabledClass}
             >
               {savingAction === 'quantity-match' ? (
                 <>
@@ -5477,13 +5473,11 @@ export default function StatementConfirmModal({
             {/* 입고수량 모드에서는 확정 버튼 숨김 (lead_buyer 승인 불필요) */}
             {!isReceiptMode && (
               <Button
+                variant="outline"
+                size="sm"
                 onClick={handleConfirm}
                 disabled={isConfirmDisabled}
-                className={`button-base h-8 text-[11px] ${
-                  isConfirmDisabled
-                    ? 'border border-gray-300 bg-white text-gray-400'
-                    : 'bg-hansl-600 hover:bg-hansl-700 text-white'
-                }`}
+                className={isConfirmDisabled ? footerActionButtonDisabledClass : footerActionButtonEnabledClass}
               >
                 {savingAction === 'confirm' ? (
                   <>
