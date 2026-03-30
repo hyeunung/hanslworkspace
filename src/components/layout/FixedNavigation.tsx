@@ -1,25 +1,25 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { 
-  Home, 
-  ShoppingCart, 
-  Building2, 
-  Users, 
+import {
+  Home,
+  ShoppingCart,
+  Building2,
+  Users,
   FileText,
   FileCheck,
   X,
   MessageCircle,
   Receipt,
   Package,
-  FileEdit
+  FileEdit,
+  ChevronDown
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { supportService } from '@/services/supportService'
-import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
-import { countPendingApprovalsForSidebarBadge } from '@/utils/purchaseFilters'
 import { useAuth } from '@/contexts/AuthContext'
 import { parseRoles } from '@/utils/roleHelper'
+import { useRequestBadgeCounts } from '@/hooks/useRequestBadgeCounts'
 
 interface NavigationProps {
   role?: string | string[]
@@ -29,13 +29,12 @@ interface NavigationProps {
   onExpandChange?: (expanded: boolean) => void
 }
 
-const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "superadmin"]
-
 export default function FixedNavigation({ role, isOpen = false, onClose, isExpanded = false, onExpandChange }: NavigationProps) {
+  const navigate = useNavigate()
   const location = useLocation()
   const pathname = location.pathname
-  const { allPurchases } = usePurchaseMemory()
   const { employee } = useAuth()
+  const { badgeCounts } = useRequestBadgeCounts()
 
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
   const [pendingStatementCount, setPendingStatementCount] = useState(0)
@@ -45,6 +44,9 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
   const isAdmin = roles.includes('superadmin')
   const isApplicationApprover = roles.includes('superadmin') || roles.includes('hr')
   const canSeeStatementBadge = roles.includes('superadmin') || roles.includes('lead buyer')
+
+  // 총 배지 합계 (접힌 상태에서 아이콘에 표시)
+  const totalPurchaseBadge = Object.values(badgeCounts).reduce((a, b) => a + b, 0)
 
   // 관리자: 미처리(open+in_progress) 건수
   useEffect(() => {
@@ -116,12 +118,6 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
 
   const supportBadge = pendingInquiryCount
   const statementBadge = pendingStatementCount
-  const [otherPendingCount, setOtherPendingCount] = useState(0)
-  const purchaseOnlyBadge = useMemo(
-    () => countPendingApprovalsForSidebarBadge(allPurchases, role),
-    [allPurchases, role]
-  )
-  const purchasePendingBadge = purchaseOnlyBadge + otherPendingCount
 
   useEffect(() => {
     if (!canSeeStatementBadge) return
@@ -163,46 +159,6 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
     }
   }, [canSeeStatementBadge])
 
-  const loadOtherPendingCounts = useCallback(async () => {
-    try {
-      const supabase = createClient()
-      const isCardVehicleApprover = roles.includes('superadmin') || roles.includes('hr')
-      const isTripApprover = roles.some((r: string) => TRIP_APPROVER_ROLES.includes(r))
-
-      const [cardRes, vehicleRes, tripRes, myTripRes] = await Promise.all([
-        isCardVehicleApprover
-          ? supabase.from('card_usages').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending')
-          : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
-        isCardVehicleApprover
-          ? supabase.from('vehicle_requests').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending')
-          : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
-        isTripApprover
-          ? supabase.from('business_trips').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending')
-          : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
-        supabase.from('business_trips').select('id', { count: 'exact', head: true })
-          .eq('requester_id', employee?.id || '__no_user__')
-          .eq('approval_status', 'approved')
-          .in('settlement_status', ['draft', 'submitted', 'rejected']),
-      ])
-
-      const total =
-        (isCardVehicleApprover ? cardRes.count || 0 : 0) +
-        (isCardVehicleApprover ? vehicleRes.count || 0 : 0) +
-        (isTripApprover ? tripRes.count || 0 : 0) +
-        (myTripRes.count || 0)
-
-      setOtherPendingCount(total)
-    } catch {
-      // 배지 카운트 실패 시 무시
-    }
-  }, [roles, employee?.id])
-
-  useEffect(() => {
-    loadOtherPendingCounts()
-    const timer = window.setInterval(loadOtherPendingCounts, 30000)
-    return () => window.clearInterval(timer)
-  }, [loadOtherPendingCounts])
-
   // hr, superadmin: 신청서 승인 대기 개수
   useEffect(() => {
     if (!isApplicationApprover) return
@@ -231,55 +187,34 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
     }
   }, [isApplicationApprover])
 
-  const menuItems = [
-    {
-      label: '대시보드',
-      href: '/dashboard',
-      icon: Home,
-      roles: ['all']
-    },
-    {
-      label: '새 요청',
-      href: '/purchase/new',
-      icon: ShoppingCart,
-      roles: ['all']
-    },
-    {
-      label: '요청 목록',
-      href: '/purchase/list',
-      icon: FileText,
-      roles: ['all']
-    },
-    {
-      label: '거래명세서 확인',
-      href: '/transaction-statement',
-      icon: FileCheck,
-      roles: ['all']
-    },
-    {
-      label: '영수증',
-      href: '/receipts',
-      icon: Receipt,
-      roles: ['superadmin', 'hr', 'lead buyer']
-    },
-    {
-      label: '업체 관리',
-      href: '/vendor',
-      icon: Building2,
-      roles: ['all']
-    },
-    {
-      label: '직원 관리',
-      href: '/employee',
-      icon: Users,
-      roles: ['all']
-    },
-    {
-      label: 'BOM/좌표 정리',
-      href: '/bom-coordinate',
-      icon: Package,
-      roles: ['all']
+  const [purchaseListOpen, setPurchaseListOpen] = useState(
+    pathname.startsWith('/purchase/list')
+  )
+  const [searchParams] = useSearchParams()
+
+  useEffect(() => {
+    if (pathname.startsWith('/purchase/list')) {
+      setPurchaseListOpen(true)
     }
+  }, [pathname])
+
+  const purchaseSubItems = [
+    { key: '발주/구매', label: '발주/구매' },
+    { key: '카드사용', label: '카드사용' },
+    { key: '출장', label: '출장' },
+    { key: '차량', label: '차량' },
+    { key: '연차', label: '연차' },
+  ] as const
+
+  const menuItems = [
+    { label: '대시보드', href: '/dashboard', icon: Home, roles: ['all'] },
+    { label: '새 요청', href: '/purchase/new', icon: ShoppingCart, roles: ['all'] },
+    { label: '요청 목록', href: '/purchase/list', icon: FileText, roles: ['all'], hasSubmenu: true },
+    { label: '거래명세서 확인', href: '/transaction-statement', icon: FileCheck, roles: ['all'] },
+    { label: '영수증', href: '/receipts', icon: Receipt, roles: ['superadmin', 'hr', 'lead buyer'] },
+    { label: '업체 관리', href: '/vendor', icon: Building2, roles: ['all'] },
+    { label: '직원 관리', href: '/employee', icon: Users, roles: ['all'] },
+    { label: 'BOM/좌표 정리', href: '/bom-coordinate', icon: Package, roles: ['all'] }
   ]
 
   const filteredMenuItems = menuItems.filter(item => {
@@ -287,16 +222,37 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
     return item.roles.some(r => roles.includes(r))
   })
 
+  const renderBadge = (count: number, isActive: boolean) => {
+    if (count <= 0) return null
+    return (
+      <span className={cn(
+        "text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-none",
+        isActive ? "bg-hansl-200 text-hansl-700" : "bg-red-100 text-red-700"
+      )}>
+        {count > 99 ? '99+' : count}
+      </span>
+    )
+  }
+
+  const renderIconBadge = (count: number) => {
+    if (count <= 0) return null
+    return (
+      <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+        {count > 99 ? '99+' : count}
+      </span>
+    )
+  }
+
   return (
     <>
       {/* 모바일 오버레이 */}
       {isOpen && (
-        <div 
+        <div
           className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
           onClick={onClose}
         />
       )}
-      
+
         {/* 데스크톱 네비게이션 - hover 시 확장 */}
         <aside
           className="hidden lg:block"
@@ -322,6 +278,70 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                 {filteredMenuItems.map((item) => {
                   const Icon = item.icon
                   const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
+                  const currentTab = searchParams.get('tab') || '발주/구매'
+
+                  // 요청 목록: 아코디언 메뉴
+                  if (item.hasSubmenu) {
+                    return (
+                      <li key={item.href}>
+                        <button
+                          onClick={() => {
+                            if (!purchaseListOpen) {
+                              setPurchaseListOpen(true)
+                              navigate('/purchase/list?tab=' + encodeURIComponent('발주/구매'))
+                            } else {
+                              setPurchaseListOpen(false)
+                            }
+                          }}
+                          className={cn(
+                            'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap w-full',
+                            isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
+                            isActive
+                              ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
+                              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                          )}
+                        >
+                          <div className="relative flex-shrink-0">
+                            <Icon className="w-4 h-4" />
+                            {!isExpanded && renderIconBadge(totalPurchaseBadge)}
+                          </div>
+                          {isExpanded && (
+                            <>
+                              <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
+                              <ChevronDown className={cn(
+                                "w-3.5 h-3.5 transition-transform flex-shrink-0",
+                                purchaseListOpen ? "rotate-180" : ""
+                              )} />
+                            </>
+                          )}
+                        </button>
+                        {isExpanded && purchaseListOpen && (
+                          <ul className="mt-1 space-y-0.5">
+                            {purchaseSubItems.map((sub) => {
+                              const isSubActive = isActive && currentTab === sub.key
+                              const subBadge = badgeCounts[sub.key] || 0
+                              return (
+                                <li key={sub.key}>
+                                  <Link
+                                    to={`/purchase/list?tab=${encodeURIComponent(sub.key)}`}
+                                    className={cn(
+                                      'flex items-center h-8 pl-10 pr-3 rounded-lg transition-colors whitespace-nowrap text-[13px]',
+                                      isSubActive
+                                        ? 'bg-hansl-50 text-hansl-600 font-semibold'
+                                        : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
+                                    )}
+                                  >
+                                    <span className="flex-1">{sub.label}</span>
+                                    {renderBadge(subBadge, isSubActive)}
+                                  </Link>
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        )}
+                      </li>
+                    )
+                  }
 
                   return (
                     <li key={item.href}>
@@ -337,28 +357,11 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                       >
                         <div className="relative flex-shrink-0">
                           <Icon className="w-4 h-4" />
-                          {!isExpanded && item.href === '/purchase/list' && purchasePendingBadge > 0 && (
-                            <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
-                              {purchasePendingBadge > 99 ? '99+' : purchasePendingBadge}
-                            </span>
-                          )}
-                          {!isExpanded && item.href === '/transaction-statement' && canSeeStatementBadge && statementBadge > 0 && (
-                            <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
-                              {statementBadge > 99 ? '99+' : statementBadge}
-                            </span>
-                          )}
+                          {!isExpanded && item.href === '/transaction-statement' && canSeeStatementBadge && renderIconBadge(statementBadge)}
                         </div>
                         {isExpanded && (
                           <>
                             <span className="text-sm font-medium flex-1">{item.label}</span>
-                            {item.href === '/purchase/list' && purchasePendingBadge > 0 && (
-                              <span className={cn(
-                                "text-[11px] font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center",
-                                isActive ? "bg-hansl-200 text-hansl-700" : "bg-red-100 text-red-700"
-                              )}>
-                                {purchasePendingBadge > 99 ? '99+' : purchasePendingBadge}
-                              </span>
-                            )}
                             {item.href === '/transaction-statement' && canSeeStatementBadge && statementBadge > 0 && (
                               <span className={cn(
                                 "text-[11px] font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center",
@@ -390,11 +393,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
               >
                 <div className="relative flex-shrink-0">
                   <FileEdit className="w-4 h-4" />
-                  {!isExpanded && isApplicationApprover && pendingApplicationCount > 0 && (
-                    <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
-                      {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
-                    </span>
-                  )}
+                  {!isExpanded && isApplicationApprover && renderIconBadge(pendingApplicationCount)}
                 </div>
                 {isExpanded && (
                   <>
@@ -424,11 +423,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
               >
                 <div className="relative flex-shrink-0">
                   <MessageCircle className="w-4 h-4" />
-                  {!isExpanded && supportBadge > 0 && (
-                    <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
-                      {supportBadge > 99 ? '99+' : supportBadge}
-                    </span>
-                  )}
+                  {!isExpanded && renderIconBadge(supportBadge)}
                 </div>
                 {isExpanded && (
                   <>
@@ -463,12 +458,68 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
               <X className="w-5 h-5" />
             </button>
           </div>
-          
+
           <ul className="p-2 space-y-1 flex-1">
             {filteredMenuItems.map((item) => {
               const Icon = item.icon
               const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
-              
+              const currentTab = searchParams.get('tab') || '발주/구매'
+
+              if (item.hasSubmenu) {
+                return (
+                  <li key={item.href}>
+                    <button
+                      onClick={() => {
+                        if (!purchaseListOpen) {
+                          setPurchaseListOpen(true)
+                          navigate('/purchase/list?tab=' + encodeURIComponent('발주/구매'))
+                        } else {
+                          setPurchaseListOpen(false)
+                        }
+                      }}
+                      className={cn(
+                        'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors w-full',
+                        isActive
+                          ? 'bg-hansl-50 text-hansl-600 border-l-2 border-hansl-500'
+                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      )}
+                    >
+                      <Icon className="w-4 h-4" />
+                      <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
+                      <ChevronDown className={cn(
+                        "w-3.5 h-3.5 transition-transform",
+                        purchaseListOpen ? "rotate-180" : ""
+                      )} />
+                    </button>
+                    {purchaseListOpen && (
+                      <ul className="mt-1 space-y-0.5">
+                        {purchaseSubItems.map((sub) => {
+                          const isSubActive = isActive && currentTab === sub.key
+                          const subBadge = badgeCounts[sub.key] || 0
+                          return (
+                            <li key={sub.key}>
+                              <Link
+                                to={`/purchase/list?tab=${encodeURIComponent(sub.key)}`}
+                                onClick={onClose}
+                                className={cn(
+                                  'flex items-center h-9 pl-11 pr-4 rounded-lg transition-colors text-[13px]',
+                                  isSubActive
+                                    ? 'bg-hansl-50 text-hansl-600 font-semibold'
+                                    : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
+                                )}
+                              >
+                                <span className="flex-1">{sub.label}</span>
+                                {renderBadge(subBadge, isSubActive)}
+                              </Link>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
+                  </li>
+                )
+              }
+
               return (
                 <li key={item.href}>
                   <Link

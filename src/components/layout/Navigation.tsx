@@ -1,76 +1,64 @@
 
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { 
-  Home, 
-  ShoppingCart, 
-  CheckCircle, 
-  Building2, 
-  Users, 
+import {
+  Home,
+  ShoppingCart,
+  CheckCircle,
+  Building2,
+  Users,
   FileText,
   FileCheck,
   Package,
   Receipt,
   MessageCircle,
-  FileEdit
+  FileEdit,
+  ChevronDown
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supportService } from '@/services/supportService'
 import { createClient } from '@/lib/supabase/client'
-import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
-import { countPendingApprovalsForSidebarBadge } from '@/utils/purchaseFilters'
 import { useAuth } from '@/contexts/AuthContext'
 import { parseRoles } from '@/utils/roleHelper'
+import { useRequestBadgeCounts } from '@/hooks/useRequestBadgeCounts'
 
 interface NavigationProps {
-  role?: string | string[]  // hanslwebapp과 동일하게 배열도 지원
+  role?: string | string[]
 }
 
-const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "superadmin"]
-
 export default function Navigation({ role }: NavigationProps) {
+  const navigate = useNavigate()
   const location = useLocation()
   const pathname = location.pathname
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
-  const [otherPendingCount, setOtherPendingCount] = useState(0)
   const [pendingApplicationCount, setPendingApplicationCount] = useState(0)
-  const { allPurchases } = usePurchaseMemory()
   const { employee } = useAuth()
+  const { badgeCounts } = useRequestBadgeCounts()
 
-  const purchaseOnlyCount = useMemo(
-    () => countPendingApprovalsForSidebarBadge(allPurchases, role),
-    [allPurchases, role]
-  )
-  const totalRequestBadge = purchaseOnlyCount + otherPendingCount
-
-  // role 배열 확인
   const roles = parseRoles(role)
   const isAdmin = roles.includes('superadmin')
   const isApplicationApprover = roles.includes('superadmin') || roles.includes('hr')
-  
+
   // superadmin인 경우 미처리 문의 개수 조회
   useEffect(() => {
     if (!isAdmin) return
-    
+
     const loadPendingCount = async () => {
       const result = await supportService.getAllInquiries()
       if (result.success) {
-        // open 또는 in_progress 상태인 문의 개수
         const pendingCount = result.data.filter(
           inquiry => inquiry.status === 'open' || inquiry.status === 'in_progress'
         ).length
         setPendingInquiryCount(pendingCount)
       }
     }
-    
+
     loadPendingCount()
-    
-    // 실시간 구독으로 문의 개수 업데이트
     const subscription = supportService.subscribeToInquiries(() => {
       loadPendingCount()
     })
-    
+
     return () => {
       subscription.unsubscribe()
     }
@@ -124,46 +112,6 @@ export default function Navigation({ role }: NavigationProps) {
     }
   }, [isAdmin])
 
-  const loadOtherPendingCounts = useCallback(async () => {
-    try {
-      const supabase = createClient()
-      const isCardVehicleApprover = roles.includes('superadmin') || roles.includes('hr')
-      const isTripApprover = roles.some((r: string) => TRIP_APPROVER_ROLES.includes(r))
-
-      const [cardRes, vehicleRes, tripRes, myTripRes] = await Promise.all([
-        isCardVehicleApprover
-          ? supabase.from('card_usages').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending')
-          : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
-        isCardVehicleApprover
-          ? supabase.from('vehicle_requests').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending')
-          : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
-        isTripApprover
-          ? supabase.from('business_trips').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending')
-          : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
-        supabase.from('business_trips').select('id', { count: 'exact', head: true })
-          .eq('requester_id', employee?.id || '__no_user__')
-          .eq('approval_status', 'approved')
-          .in('settlement_status', ['draft', 'submitted', 'rejected']),
-      ])
-
-      const total =
-        (isCardVehicleApprover ? cardRes.count || 0 : 0) +
-        (isCardVehicleApprover ? vehicleRes.count || 0 : 0) +
-        (isTripApprover ? tripRes.count || 0 : 0) +
-        (myTripRes.count || 0)
-
-      setOtherPendingCount(total)
-    } catch {
-      // 배지 카운트 실패 시 무시
-    }
-  }, [roles, employee?.id])
-
-  useEffect(() => {
-    loadOtherPendingCounts()
-    const timer = window.setInterval(loadOtherPendingCounts, 30000)
-    return () => window.clearInterval(timer)
-  }, [loadOtherPendingCounts])
-
   // hr, superadmin: 신청서 승인 대기 개수
   useEffect(() => {
     if (!isApplicationApprover) return
@@ -192,6 +140,25 @@ export default function Navigation({ role }: NavigationProps) {
     }
   }, [isApplicationApprover])
 
+  const [purchaseListOpen, setPurchaseListOpen] = useState(
+    pathname.startsWith('/purchase/list')
+  )
+  const [searchParams] = useSearchParams()
+
+  useEffect(() => {
+    if (pathname.startsWith('/purchase/list')) {
+      setPurchaseListOpen(true)
+    }
+  }, [pathname])
+
+  const purchaseSubItems = [
+    { key: '발주/구매', label: '발주/구매' },
+    { key: '카드사용', label: '카드사용' },
+    { key: '출장', label: '출장' },
+    { key: '차량', label: '차량' },
+    { key: '연차', label: '연차' },
+  ] as const
+
   const menuItems: Array<{
     label: string
     href: string
@@ -199,71 +166,23 @@ export default function Navigation({ role }: NavigationProps) {
     roles: string[]
     badge?: number
     openInNewTab?: boolean
+    hasSubmenu?: boolean
   }> = [
+    { label: '대시보드', href: '/dashboard', icon: Home, roles: ['all'] },
+    { label: '새 요청', href: '/purchase/new', icon: ShoppingCart, roles: ['all'] },
+    { label: '요청 목록', href: '/purchase/list', icon: FileText, roles: ['all'], hasSubmenu: true },
+    { label: '거래명세서 확인', href: '/transaction-statement', icon: FileCheck, roles: ['all'] },
+    { label: '영수증', href: '/receipts', icon: Receipt, roles: ['superadmin', 'hr', 'lead buyer'] },
+    { label: '업체 관리', href: '/vendor', icon: Building2, roles: ['all'] },
+    { label: '직원 관리', href: '/employee', icon: Users, roles: ['all'] },
+    { label: 'BOM/좌표 정리', href: '/bom-coordinate', icon: Package, roles: ['all'] },
     {
-      label: '대시보드',
-      href: '/dashboard',
-      icon: Home,
-      roles: ['all']
-    },
-    {
-      label: '새 요청',
-      href: '/purchase/new',
-      icon: ShoppingCart,
-      roles: ['all']
-    },
-    {
-      label: '요청 목록',
-      href: '/purchase/list',
-      icon: FileText,
-      roles: ['all'],
-      badge: totalRequestBadge > 0 ? totalRequestBadge : undefined
-    },
-    {
-      label: '거래명세서 확인',
-      href: '/transaction-statement',
-      icon: FileCheck,
-      roles: ['all']
-    },
-    {
-      label: '영수증',
-      href: '/receipts',
-      icon: Receipt,
-      roles: ['superadmin', 'hr', 'lead buyer']
-    },
-    {
-      label: '업체 관리',
-      href: '/vendor',
-      icon: Building2,
-      roles: ['all']  // 모든 사용자가 볼 수 있도록 변경
-    },
-    {
-      label: '직원 관리',
-      href: '/employee',
-      icon: Users,
-      roles: ['all']  // hanslwebapp과 동일하게 모든 사용자 접근 가능
-    },
-    {
-      label: 'BOM/좌표 정리',
-      href: '/bom-coordinate',
-      icon: Package,
-      roles: ['all']
-    },
-    {
-      label: '신청서 관리',
-      href: '/application',
-      icon: FileEdit,
-      roles: ['all'],
+      label: '신청서 관리', href: '/application', icon: FileEdit, roles: ['all'],
       badge: isApplicationApprover && pendingApplicationCount > 0 ? pendingApplicationCount : undefined
     },
     {
-      label: '문의하기',
-      href: '/support',
-      icon: MessageCircle,
-      roles: ['all'],
-      badge: pendingInquiryCount > 0
-        ? pendingInquiryCount
-        : undefined
+      label: '문의하기', href: '/support', icon: MessageCircle, roles: ['all'],
+      badge: pendingInquiryCount > 0 ? pendingInquiryCount : undefined
     }
   ]
 
@@ -280,6 +199,70 @@ export default function Navigation({ role }: NavigationProps) {
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
           const badge = item.badge
           const openInNewTab = item.openInNewTab
+          const currentTab = searchParams.get('tab') || '발주/구매'
+
+          // 요청 목록: 아코디언 메뉴
+          if (item.hasSubmenu) {
+            return (
+              <li key={item.href}>
+                <button
+                  onClick={() => {
+                    if (!purchaseListOpen) {
+                      setPurchaseListOpen(true)
+                      navigate('/purchase/list?tab=' + encodeURIComponent('발주/구매'))
+                    } else {
+                      setPurchaseListOpen(false)
+                    }
+                  }}
+                  className={cn(
+                    'flex items-center gap-3 px-4 py-3 rounded-lg transition-all w-full',
+                    isActive
+                      ? 'bg-primary text-white'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  )}
+                >
+                  <Icon className="w-5 h-5" />
+                  <span className="header-title flex-1 text-left">{item.label}</span>
+                  <ChevronDown className={cn(
+                    "w-4 h-4 transition-transform",
+                    purchaseListOpen ? "rotate-180" : ""
+                  )} />
+                </button>
+                {purchaseListOpen && (
+                  <ul className="mt-1 space-y-0.5">
+                    {purchaseSubItems.map((sub) => {
+                      const isSubActive = isActive && currentTab === sub.key
+                      const subBadge = badgeCounts[sub.key] || 0
+                      return (
+                        <li key={sub.key}>
+                          <Link
+                            to={`/purchase/list?tab=${encodeURIComponent(sub.key)}`}
+                            className={cn(
+                              'flex items-center gap-2 pl-12 pr-4 py-2 rounded-lg transition-all text-sm',
+                              isSubActive
+                                ? 'bg-primary/10 text-primary font-semibold'
+                                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                            )}
+                          >
+                            <span className="flex-1">{sub.label}</span>
+                            {subBadge > 0 && (
+                              <span className={cn(
+                                "text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-none",
+                                isSubActive ? "bg-primary/20 text-primary" : "bg-red-100 text-red-700"
+                              )}>
+                                {subBadge > 99 ? '99+' : subBadge}
+                              </span>
+                            )}
+                          </Link>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </li>
+            )
+          }
+
           const linkClass = cn(
             'flex items-center gap-3 px-4 py-3 rounded-lg transition-all',
             isActive

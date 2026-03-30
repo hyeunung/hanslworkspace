@@ -32,7 +32,8 @@ import {
   GripVertical,
   Image as ImageIcon,
   FileCheck,
-  ListPlus
+  ListPlus,
+  ExternalLink
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -127,7 +128,6 @@ type LinkedCardReceipt = {
   item_name: string | null
   total_amount: number | null
   created_at: string | null
-  image_url: string
 }
 
 // ✅ SortableRow를 컴포넌트 외부에서 정의하여 리렌더링 시 재생성 방지 (입력 포커스 유지)
@@ -912,33 +912,91 @@ ${itemsText}`
   }, [normalizePaymentCategory, purchase?.payment_category])
 
   const parseReceiptStorageInfo = useCallback((receiptUrl: string) => {
-    if (!receiptUrl) {
+    const sanitizePath = (rawPath: string) => rawPath.split('?')[0].split('#')[0]
+    const normalizeRawUrl = (raw: string) => {
+      let value = (raw || '').trim()
+      if (value.startsWith('business-trip-receipts/http')) {
+        value = value.replace(/^business-trip-receipts\//, '')
+      }
+      if (value.startsWith('card-receipts/http')) {
+        value = value.replace(/^card-receipts\//, '')
+      }
+      return value
+    }
+
+    const normalizedUrl = normalizeRawUrl(receiptUrl)
+
+    if (!normalizedUrl) {
       return { bucket: 'card-receipts', path: '' }
     }
 
-    if (receiptUrl.startsWith('business-trip-receipts/')) {
+    if (normalizedUrl.startsWith('business-trip-receipts/')) {
       return {
         bucket: 'business-trip-receipts',
-        path: receiptUrl.replace('business-trip-receipts/', '')
+        path: sanitizePath(normalizedUrl.replace('business-trip-receipts/', ''))
       }
     }
 
-    if (receiptUrl.startsWith('card-receipts/')) {
+    if (normalizedUrl.startsWith('card-receipts/')) {
       return {
         bucket: 'card-receipts',
-        path: receiptUrl.replace('card-receipts/', '')
+        path: sanitizePath(normalizedUrl.replace('card-receipts/', ''))
       }
     }
 
-    if (receiptUrl.includes('card-receipts/')) {
+    if (normalizedUrl.includes('card-receipts/')) {
       return {
         bucket: 'card-receipts',
-        path: receiptUrl.split('card-receipts/').pop() || ''
+        path: sanitizePath(normalizedUrl.split('card-receipts/').pop() || '')
       }
     }
 
-    return { bucket: 'card-receipts', path: receiptUrl }
+    return { bucket: 'card-receipts', path: sanitizePath(normalizedUrl) }
   }, [])
+
+  const getCanonicalReceiptKey = useCallback((receiptUrl: string) => {
+    if (!receiptUrl) return ''
+
+    const normalizeRawUrl = (raw: string) => {
+      let value = (raw || '').trim()
+      if (value.startsWith('business-trip-receipts/http')) {
+        value = value.replace(/^business-trip-receipts\//, '')
+      }
+      if (value.startsWith('card-receipts/http')) {
+        value = value.replace(/^card-receipts\//, '')
+      }
+      return value
+    }
+
+    const normalizedReceiptUrl = normalizeRawUrl(receiptUrl)
+
+    const normalizePath = (path: string) =>
+      decodeURIComponent((path || '').replace(/^\/+/, '').split('?')[0].split('#')[0])
+
+    if (normalizedReceiptUrl.startsWith('http')) {
+      try {
+        const parsed = new URL(normalizedReceiptUrl)
+        const signMatch = parsed.pathname.match(/\/storage\/v1\/object\/sign\/([^/]+)\/(.+)/)
+        if (signMatch) {
+          const [,, path] = signMatch
+          return normalizePath(path)
+        }
+
+        const objectMatch = parsed.pathname.match(/\/storage\/v1\/object\/(?:public|authenticated)\/([^/]+)\/(.+)/)
+        if (objectMatch) {
+          const [,, path] = objectMatch
+          return normalizePath(path)
+        }
+      } catch {
+        return normalizedReceiptUrl
+      }
+    }
+
+    const { path } = parseReceiptStorageInfo(normalizedReceiptUrl)
+    // 버킷 무시 — card-receipts/와 business-trip-receipts/에 같은 파일이
+    // 중복 저장되는 케이스(출장 정산 시 복제)를 하나로 합치기 위해 path만 비교
+    return normalizePath(path)
+  }, [parseReceiptStorageInfo])
   
   // 사용자 권한 및 이름 직접 로드
   useEffect(() => {
@@ -1774,37 +1832,21 @@ ${itemsText}`
       }>()
 
       for (const row of scopedRows) {
-        if (!row.receipt_url || uniqueByUrl.has(row.receipt_url)) continue
-        uniqueByUrl.set(row.receipt_url, row)
+        if (!row.receipt_url) continue
+        const canonicalKey = getCanonicalReceiptKey(row.receipt_url)
+        if (!canonicalKey) continue
+        const existing = uniqueByUrl.get(canonicalKey)
+        if (existing) {
+          // business-trip-receipts/ 경로보다 원본(card-usage/) 경로를 우선 보존
+          if (existing.receipt_url.startsWith('business-trip-receipts/') && !row.receipt_url.startsWith('business-trip-receipts/')) {
+            uniqueByUrl.set(canonicalKey, row)
+          }
+          continue
+        }
+        uniqueByUrl.set(canonicalKey, row)
       }
 
-      const resolvedReceipts = await Promise.all(
-        [...uniqueByUrl.values()].map(async (row) => {
-          let imageUrl = ''
-
-          if (row.receipt_url.startsWith('http')) {
-            imageUrl = row.receipt_url
-          } else {
-            const { bucket, path } = parseReceiptStorageInfo(row.receipt_url)
-            if (path) {
-              const { data: signedData, error: signedError } = await supabase.storage
-                .from(bucket)
-                .createSignedUrl(path, 3600)
-
-              if (!signedError && signedData?.signedUrl) {
-                imageUrl = signedData.signedUrl
-              }
-            }
-          }
-
-          return {
-            ...row,
-            image_url: imageUrl
-          } as LinkedCardReceipt
-        })
-      )
-
-      setLinkedCardReceipts(resolvedReceipts.filter((receipt) => Boolean(receipt.image_url)))
+      setLinkedCardReceipts([...uniqueByUrl.values()] as LinkedCardReceipt[])
     } catch (error) {
       logger.warn('[PurchaseDetailModal] 카드 영수증 로드 실패:', error)
       setLinkedCardReceipts([])
@@ -1823,6 +1865,67 @@ ${itemsText}`
       `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
     )
   }
+
+  const resolveCardReceiptViewUrl = useCallback(async (receiptUrl: string) => {
+    const createFreshSignedUrl = async (bucket: string, path: string) => {
+      const normalizedPath = decodeURIComponent((path || '').replace(/^\/+/, '').split('?')[0].split('#')[0])
+      if (!normalizedPath) return null
+
+      const { data: signedData, error: signedError } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(normalizedPath, 3600)
+
+      if (signedError || !signedData?.signedUrl) return null
+      return signedData.signedUrl
+    }
+
+    const normalizeRawUrl = (raw: string) => {
+      let value = (raw || '').trim()
+      if (value.startsWith('business-trip-receipts/http')) {
+        value = value.replace(/^business-trip-receipts\//, '')
+      }
+      if (value.startsWith('card-receipts/http')) {
+        value = value.replace(/^card-receipts\//, '')
+      }
+      return value
+    }
+
+    const normalizedReceiptUrl = normalizeRawUrl(receiptUrl)
+    if (!normalizedReceiptUrl) return null
+
+    if (normalizedReceiptUrl.startsWith('http')) {
+      try {
+        const url = new URL(normalizedReceiptUrl)
+        const signMatch = url.pathname.match(/\/storage\/v1\/object\/sign\/([^/]+)\/(.+)/)
+        if (signMatch) {
+          const [, bucket, path] = signMatch
+          const refreshed = await createFreshSignedUrl(bucket, path)
+          if (refreshed) return refreshed
+        }
+      } catch {
+        // malformed URL이면 하단 fallback으로 진행
+      }
+      return normalizedReceiptUrl
+    }
+
+    const { bucket, path } = parseReceiptStorageInfo(normalizedReceiptUrl)
+    return await createFreshSignedUrl(bucket, path)
+  }, [parseReceiptStorageInfo, supabase])
+
+  const handleViewCardReceipt = useCallback(async (receipt: LinkedCardReceipt) => {
+    const resolvedUrl = await resolveCardReceiptViewUrl(receipt.receipt_url)
+    if (!resolvedUrl) {
+      toast.error('영수증 URL을 생성하지 못했습니다.')
+      return
+    }
+    const w = 1000, h = 800
+    const left = (window.screen.width - w) / 2
+    const top = (window.screen.height - h) / 2
+    const popup = window.open(resolvedUrl, '_blank', `width=${w},height=${h},left=${left},top=${top},scrollbars=yes,resizable=yes`)
+    if (!popup) {
+      toast.error('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요.')
+    }
+  }, [resolveCardReceiptViewUrl])
 
   // 칼럼 너비 계산 (텍스트 길이 기반)
   const calculateOptimalColumnWidths = useCallback(() => {
@@ -5703,7 +5806,6 @@ ${itemsText}`
                         onClick={() => handleViewStatementImage(stmt.image_url)}
                       >
                         <div className="flex items-center gap-2 min-w-0">
-                          <ImageIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
                               <p className="text-xs font-medium text-gray-900 truncate">
@@ -5718,7 +5820,7 @@ ${itemsText}`
                               </span>
                             </div>
                             <p className="text-[10px] text-gray-500">
-                              {stmt.statement_date 
+                              {stmt.statement_date
                                 ? formatDate(stmt.statement_date)
                                 : formatDate(stmt.uploaded_at)
                               }
@@ -5735,14 +5837,7 @@ ${itemsText}`
                             )}
                           </div>
                         </div>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 w-6 p-0 flex-shrink-0"
-                          title="이미지 보기"
-                        >
-                          <ImageIcon className="w-3 h-3" />
-                        </Button>
+                        <ExternalLink className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                       </div>
                     ))}
                   </div>
@@ -5769,10 +5864,9 @@ ${itemsText}`
                         <div
                           key={receipt.id}
                           className="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
-                          onClick={() => handleViewStatementImage(receipt.image_url)}
+                          onClick={() => handleViewCardReceipt(receipt)}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <ImageIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
                             <div className="min-w-0">
                               <p className="text-xs font-medium text-gray-900 truncate">
                                 {receipt.merchant_name || '카드 영수증'}
@@ -5790,14 +5884,7 @@ ${itemsText}`
                               )}
                             </div>
                           </div>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0 flex-shrink-0"
-                            title="영수증 보기"
-                          >
-                            <ImageIcon className="w-3 h-3" />
-                          </Button>
+                          <ExternalLink className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
                         </div>
                       ))}
                     </div>

@@ -1101,7 +1101,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                           {u.business_trip?.trip_code || "-"}
                         </td>
                         <td className="px-3 py-1.5 card-title whitespace-nowrap">
-                          {u.card_number?.split(" ")[0] || "-"}
+                          {u.card_number ? <>{u.card_number.split(" ")[0]}<span className="text-gray-400"> ({u.card_number.split(" ")[1]})</span></> : "-"}
                         </td>
                         <td className="px-3 py-1.5 card-title whitespace-nowrap">
                           {u.requester?.name || "-"}
