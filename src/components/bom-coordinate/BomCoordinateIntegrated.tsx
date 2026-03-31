@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { createClient } from '@/lib/supabase/client';
 import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
@@ -64,7 +65,10 @@ interface ProcessedResultState {
 }
 
 export default function BomCoordinateIntegrated() {
-  const [viewMode, setViewMode] = useState<'list' | 'create'>('create');
+  const location = useLocation();
+  const nav = useNavigate();
+  const viewMode = location.pathname === '/bom-coordinate/list' ? 'list' : 'create';
+  const setViewMode = (mode: 'list' | 'create') => nav(mode === 'list' ? '/bom-coordinate/list' : '/bom-coordinate/new');
   const [step, setStep] = useState<'input' | 'processing' | 'preview'>('input');
   const [fileInfo, setFileInfo] = useState<FileInfo>({
     bomFile: null,
@@ -87,6 +91,7 @@ export default function BomCoordinateIntegrated() {
   const [savedBoards, setSavedBoards] = useState<Array<{
     id: string;
     board_name: string;
+    code_number?: string;
     created_at: string;
     artwork_manager?: string;
     production_manager?: string;
@@ -95,6 +100,7 @@ export default function BomCoordinateIntegrated() {
   const [editingBoardId, setEditingBoardId] = useState<string | null>(null); // pending 상태 편집 중인 보드 ID
   const [loadingBoards, setLoadingBoards] = useState(false);
   const [uploadedFilePaths, setUploadedFilePaths] = useState<{ bomPath: string; coordPath?: string } | null>(null);
+  const [originalFileNames, setOriginalFileNames] = useState<{ bomName?: string; coordName?: string }>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const [loadingText, setLoadingText] = useState('');
@@ -365,7 +371,7 @@ export default function BomCoordinateIntegrated() {
         setLoadingBoards(true);
         const { data: boards, error } = await supabase
           .from('cad_drawings')
-          .select('id, board_name, created_at, artwork_manager, production_manager, status')
+          .select('id, board_name, code_number, created_at, artwork_manager, production_manager, status')
           .order('created_at', { ascending: false });
         
         if (error) throw error;
@@ -564,6 +570,10 @@ export default function BomCoordinateIntegrated() {
 
       // 업로드된 파일 경로 저장 (나중에 DB에 저장할 때 사용)
       setUploadedFilePaths({ bomPath, ...(coordPath ? { coordPath } : {}) });
+      setOriginalFileNames({
+        bomName: fileInfo.bomFile.name,
+        ...(fileInfo.coordFile ? { coordName: fileInfo.coordFile.name } : {})
+      });
 
       // 2. v7 엔진으로 BOM/좌표 처리 (학습 데이터 기반)
       logger.debug('Processing BOM with v7 engine...');
@@ -624,6 +634,36 @@ export default function BomCoordinateIntegrated() {
          setUploading(false);
       }
     }
+  };
+
+  const generateCodeNumber = async (): Promise<string> => {
+    const now = new Date();
+    const kst = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+    const dateStr = kst.getFullYear().toString().slice(2) +
+      String(kst.getMonth() + 1).padStart(2, '0') +
+      String(kst.getDate()).padStart(2, '0');
+    const prefix = `B${dateStr}_`;
+
+    const { data: existing, error } = await supabase
+      .from('cad_drawings')
+      .select('code_number')
+      .like('code_number', `${prefix}%`)
+      .order('code_number', { ascending: false });
+
+    if (error) throw error;
+
+    let maxSeq = 0;
+    if (existing && existing.length > 0) {
+      for (const row of existing) {
+        const parts = row.code_number?.split('_');
+        if (parts && parts.length >= 2) {
+          const seq = parseInt(parts[1], 10);
+          if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+        }
+      }
+    }
+
+    return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
   };
 
   const handleSaveBOM = async (items: BOMItem[]) => {
@@ -690,12 +730,14 @@ export default function BomCoordinateIntegrated() {
           .replace(/_\d{6}$/, '');
         const saveBoardName = `${cleanBoardName}_${dateStr}_정리본`;
 
-        logger.debug('📝 검토 요청 모드: 새 보드 생성', { saveBoardName, saveStatus });
+        const codeNumber = await generateCodeNumber();
+        logger.debug('📝 검토 요청 모드: 새 보드 생성', { saveBoardName, codeNumber, saveStatus });
         // 항상 새로 생성 (날짜로 구분되므로)
           const { data: newBoard, error: boardError } = await supabase
             .from('cad_drawings')
-          .insert({ 
+          .insert({
             board_name: saveBoardName,
+            code_number: codeNumber,
             artwork_manager: artworkManagerName,
             production_manager: finalProductionManager,
             production_quantity: metadata.productionQuantity,
@@ -862,6 +904,7 @@ export default function BomCoordinateIntegrated() {
       // 상태 초기화 (다음 새로만들기를 위해)
       setStep('input');
       setFileInfo({ bomFile: null, coordFile: null });
+      setOriginalFileNames({});
       setMetadata({
         boardName: '',
         artworkManager: '',
@@ -897,6 +940,7 @@ export default function BomCoordinateIntegrated() {
     });
     setProcessedResult(null);
     setUploadedFilePaths(null);
+    setOriginalFileNames({});
     setErrorMessage(null);
     setProgress(0);
     setLoadingText('');
@@ -904,6 +948,86 @@ export default function BomCoordinateIntegrated() {
     // 새로 만들기 시 임시 데이터 로드 방지 플래그 설정
     setSkipTempDataLoad(true);
     // 초기화 시에는 임시 데이터 유지 (저장/24시간 경과만 삭제)
+  };
+
+  // 원본 파일 미리보기 (Office Online Viewer 활용)
+  const handleOriginalFilePreview = async (type: 'bom' | 'coord') => {
+    const path = type === 'bom' ? uploadedFilePaths?.bomPath : uploadedFilePaths?.coordPath;
+    if (!path) return;
+
+    try {
+      const supabase = createClient();
+      const { data } = await supabase.storage
+        .from('bom-files')
+        .createSignedUrl(path, 60 * 30); // 30분 유효
+
+      if (data?.signedUrl) {
+        const ext = path.split('.').pop()?.toLowerCase();
+        const fileName = type === 'bom' ? originalFileNames.bomName : originalFileNames.coordName;
+        const isExcel = ext === 'xlsx' || ext === 'xls';
+        const isText = ext === 'csv' || ext === 'txt';
+
+        const toolbarStyle = `
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f3f4f6; }
+  .toolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+  .toolbar .filename { font-size: 13px; font-weight: 500; color: #374151; }
+  .toolbar button { padding: 6px 16px; font-size: 12px; font-weight: 500; color: #fff; background: #2563eb; border: none; border-radius: 6px; cursor: pointer; }
+  .toolbar button:hover { background: #1d4ed8; }`;
+
+        const downloadScript = `
+function dlFile() {
+  const a = document.createElement('a');
+  a.href = '${data.signedUrl}';
+  a.download = '${fileName || 'file'}';
+  a.click();
+}`;
+
+        let html: string;
+
+        if (isText) {
+          // CSV/TXT: fetch해서 텍스트 내용을 직접 표시
+          const res = await fetch(data.signedUrl);
+          const text = await res.text();
+          const escapedText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${fileName || '파일 미리보기'}</title>
+<style>${toolbarStyle}
+  pre { padding: 16px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; overflow: auto; height: calc(100vh - 45px); background: #fff; margin: 0; }
+</style></head><body>
+<div class="toolbar">
+  <span class="filename">${fileName || ''}</span>
+  <button onclick="dlFile()">다운로드</button>
+</div>
+<pre>${escapedText}</pre>
+<script>${downloadScript}</script></body></html>`;
+        } else {
+          // Excel: Office Online Viewer
+          const previewSrc = isExcel
+            ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(data.signedUrl)}`
+            : data.signedUrl;
+          html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${fileName || '파일 미리보기'}</title>
+<style>${toolbarStyle}
+  iframe { width: 100%; height: calc(100vh - 45px); border: none; }
+</style></head><body>
+<div class="toolbar">
+  <span class="filename">${fileName || ''}</span>
+  <button onclick="dlFile()">다운로드</button>
+</div>
+<iframe src="${previewSrc}"></iframe>
+<script>${downloadScript}</script></body></html>`;
+        }
+
+        const blob = new Blob([html], { type: 'text/html' });
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, 'filePreview', 'width=1200,height=800,scrollbars=yes,resizable=yes');
+      } else {
+        toast.error('파일 URL 생성에 실패했습니다.');
+      }
+    } catch {
+      toast.error('파일 미리보기에 실패했습니다.');
+    }
   };
 
   // BOM 수정 시 좌표 데이터 실시간 동기화
@@ -1251,6 +1375,31 @@ export default function BomCoordinateIntegrated() {
 
       setEditingBoardId(boardId); // 편집 중인 보드 ID 저장 (백업용)
 
+      // 원본 파일 정보 로드 (bom_raw_files)
+      const { data: rawFileData } = await supabase
+        .from('bom_raw_files')
+        .select('bom_file_url, coordinate_file_url, bom_file_name, coordinate_file_name')
+        .eq('cad_drawing_id', boardId)
+        .single();
+
+      if (rawFileData) {
+        // URL에서 Storage 경로 추출
+        const extractPath = (url: string) => {
+          const match = url.split('/bom-files/')[1]?.split('?')[0];
+          return match ? decodeURIComponent(match) : undefined;
+        };
+        const bomPath = rawFileData.bom_file_url ? extractPath(rawFileData.bom_file_url) : undefined;
+        const coordPath = rawFileData.coordinate_file_url ? extractPath(rawFileData.coordinate_file_url) : undefined;
+
+        if (bomPath) {
+          setUploadedFilePaths({ bomPath, ...(coordPath ? { coordPath } : {}) });
+        }
+        setOriginalFileNames({
+          bomName: rawFileData.bom_file_name || undefined,
+          coordName: rawFileData.coordinate_file_name || undefined,
+        });
+      }
+
       // 플래그 해제
       setTimeout(() => {
         setSkipTempDataLoad(false);
@@ -1368,50 +1517,9 @@ export default function BomCoordinateIntegrated() {
       {/* Header */}
       <div className="mb-4">
         <div>
-          <h1 className="page-title">BOM/좌표 정리</h1>
+          <h1 className="page-title">{viewMode === 'create' ? '새로 만들기' : '보드별 BOM/좌표 정리'}</h1>
           <div className="flex justify-between items-center" style={{marginTop:'-2px',marginBottom:'-4px'}}>
             <p className="page-subtitle mb-0">BOM & Coordinate Management</p>
-            <div className="flex gap-2">
-              <Button
-                onClick={async () => {
-                  // 먼저 임시 데이터 삭제
-                  await clearTempData();
-                  // 플래그 설정하여 임시 데이터 로드 방지
-                  setSkipTempDataLoad(true);
-                  // 상태 완전 초기화
-                  handleReset();
-                  setEditingBoardId(null); // 편집 중인 보드 ID 초기화
-                  setViewMode('create');
-                  setStep('input');
-                  // 약간의 지연 후 플래그 해제 (다음 새로고침 시에는 복원 가능하도록)
-                  setTimeout(() => {
-                    setSkipTempDataLoad(false);
-                  }, 1000);
-                }}
-                className={`button-base ${
-                  viewMode === 'create' 
-                    ? 'bg-hansl-600 hover:bg-hansl-700 text-white' 
-                    : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                새로 만들기
-              </Button>
-              <Button
-                onClick={() => {
-                  setViewMode('list');
-                  setStep('input');
-                }}
-                className={`button-base ${
-                  viewMode === 'list' 
-                    ? 'bg-hansl-600 hover:bg-hansl-700 text-white' 
-                    : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                <Eye className="w-4 h-4 mr-2" />
-                보드별 BOM/좌표 정리
-              </Button>
-            </div>
           </div>
         </div>
       </div>
@@ -1442,7 +1550,6 @@ export default function BomCoordinateIntegrated() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center mb-4">
                     <div>
-                      <h3 className="page-title">보드별 BOM/좌표 정리</h3>
                       <p className="page-subtitle">검토대기 항목을 클릭하여 검토 및 최종 저장하세요.</p>
                   </div>
                   </div>
@@ -1453,6 +1560,9 @@ export default function BomCoordinateIntegrated() {
                           <TableRow className="h-6">
                             <TableHead className="w-[50px] text-center !py-1 !h-auto">
                               <span className="card-description">No</span>
+                            </TableHead>
+                            <TableHead className="w-[120px] !py-1 !h-auto">
+                              <span className="card-description">코드번호</span>
                             </TableHead>
                             <TableHead className="min-w-[200px] !py-1 !h-auto">
                               <span className="card-description">보드명</span>
@@ -1492,6 +1602,9 @@ export default function BomCoordinateIntegrated() {
                             >
                               <TableCell className="text-center py-1">
                                 <span className="card-subtitle">{index + 1}</span>
+                              </TableCell>
+                              <TableCell className="py-1">
+                                <span className="text-[11px] font-medium text-blue-700">{board.code_number || '-'}</span>
                               </TableCell>
                               <TableCell className="py-1">
                                 <span className="text-[11px] font-medium text-gray-900">{board.board_name}</span>
@@ -1551,7 +1664,7 @@ export default function BomCoordinateIntegrated() {
                         </TableBody>
                         <tfoot className="bg-gray-50 border-t">
                           <tr>
-                            <td colSpan={7} className="py-2 px-4">
+                            <td colSpan={8} className="py-2 px-4">
                               <span className="card-description">총 {savedBoards.length}개 항목</span>
                             </td>
                           </tr>
@@ -1873,6 +1986,31 @@ export default function BomCoordinateIntegrated() {
                   <div>
                   <h3 className="page-title">데이터 미리보기 <span className="text-xs font-medium text-gray-500 ml-3">{(metadata.boardName || '').trim().replace(/_\d{6}_정리본$/, '').replace(/_정리본$/, '').replace(/_\d{6}$/, '')}</span></h3>
                   <p className="page-subtitle">데이터 클릭 수정 후 저장 바랍니다.</p>
+                  {/* 업로드된 원본 파일 미리보기/다운로드 */}
+                  {uploadedFilePaths && (originalFileNames.bomName || originalFileNames.coordName) && (
+                    <div className="flex items-center gap-3 mt-1.5">
+                      {originalFileNames.bomName && (
+                        <button
+                          onClick={() => handleOriginalFilePreview('bom')}
+                          className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-hansl-600 transition-colors"
+                          title="클릭하여 원본 BOM 파일 열기"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span className="underline underline-offset-2">{originalFileNames.bomName}</span>
+                        </button>
+                      )}
+                      {originalFileNames.coordName && (
+                        <button
+                          onClick={() => handleOriginalFilePreview('coord')}
+                          className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-hansl-600 transition-colors"
+                          title="클릭하여 원본 좌표 파일 열기"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span className="underline underline-offset-2">{originalFileNames.coordName}</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
                   </div>
                 <div className="flex gap-2">
                 <Button 
@@ -1889,12 +2027,22 @@ export default function BomCoordinateIntegrated() {
                     <Link2 className="w-4 h-4 mr-2" />
                     {isMerged ? '합치기 해제' : '동일 항목 합치기'}
                   </Button>
-                  <Button 
-                    onClick={() => previewPanelRef.current?.handleReset()}
+                  <Button
+                    onClick={() => {
+                      handleReset();
+                      setViewMode('create');
+                    }}
                     className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
                   >
-                    <RotateCcw className="w-4 h-4 mr-2" />
+                    <X className="w-4 h-4 mr-2" />
                     초기화
+                  </Button>
+                  <Button
+                    onClick={() => previewPanelRef.current?.handleReset()}
+                    className="button-base border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    데이터 초기화
                   </Button>
                   <Button 
                     onClick={() => previewPanelRef.current?.handleSave()}

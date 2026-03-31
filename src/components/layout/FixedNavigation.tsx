@@ -190,11 +190,20 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
   const [purchaseListOpen, setPurchaseListOpen] = useState(
     pathname.startsWith('/purchase/list')
   )
+  const [bomMenuOpen, setBomMenuOpen] = useState(
+    pathname.startsWith('/bom-coordinate')
+  )
   const [searchParams] = useSearchParams()
 
   useEffect(() => {
     if (pathname.startsWith('/purchase/list')) {
       setPurchaseListOpen(true)
+    }
+  }, [pathname])
+
+  useEffect(() => {
+    if (pathname.startsWith('/bom-coordinate')) {
+      setBomMenuOpen(true)
     }
   }, [pathname])
 
@@ -206,15 +215,20 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
     { key: '연차', label: '연차' },
   ] as const
 
+  const bomSubItems = [
+    { key: 'new', label: '새로 만들기', href: '/bom-coordinate/new' },
+    { key: 'list', label: '보드별 정리', href: '/bom-coordinate/list' },
+  ] as const
+
   const menuItems = [
     { label: '대시보드', href: '/dashboard', icon: Home, roles: ['all'] },
     { label: '새 요청', href: '/purchase/new', icon: ShoppingCart, roles: ['all'] },
-    { label: '요청 목록', href: '/purchase/list', icon: FileText, roles: ['all'], hasSubmenu: true },
+    { label: '요청 목록', href: '/purchase/list', icon: FileText, roles: ['all'], hasSubmenu: 'purchase' as const },
     { label: '거래명세서 확인', href: '/transaction-statement', icon: FileCheck, roles: ['all'] },
     { label: '영수증', href: '/receipts', icon: Receipt, roles: ['superadmin', 'hr', 'lead buyer'] },
     { label: '업체 관리', href: '/vendor', icon: Building2, roles: ['all'] },
     { label: '직원 관리', href: '/employee', icon: Users, roles: ['all'] },
-    { label: 'BOM/좌표 정리', href: '/bom-coordinate', icon: Package, roles: ['all'] }
+    { label: 'BOM/좌표 정리', href: '/bom-coordinate', icon: Package, roles: ['all'], hasSubmenu: 'bom' as const }
   ]
 
   const filteredMenuItems = menuItems.filter(item => {
@@ -280,8 +294,8 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                   const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
                   const currentTab = searchParams.get('tab') || '발주/구매'
 
-                  // 요청 목록: 아코디언 메뉴
-                  if (item.hasSubmenu) {
+                  // 아코디언 서브메뉴
+                  if (item.hasSubmenu === 'purchase') {
                     return (
                       <li key={item.href}>
                         <button
@@ -333,6 +347,65 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                                   >
                                     <span className="flex-1">{sub.label}</span>
                                     {renderBadge(subBadge, isSubActive)}
+                                  </Link>
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        )}
+                      </li>
+                    )
+                  }
+
+                  if (item.hasSubmenu === 'bom') {
+                    return (
+                      <li key={item.href}>
+                        <button
+                          onClick={() => {
+                            if (!bomMenuOpen) {
+                              setBomMenuOpen(true)
+                              navigate('/bom-coordinate/new')
+                            } else {
+                              setBomMenuOpen(false)
+                            }
+                          }}
+                          className={cn(
+                            'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap w-full',
+                            isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
+                            isActive
+                              ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
+                              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                          )}
+                        >
+                          <div className="relative flex-shrink-0">
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          {isExpanded && (
+                            <>
+                              <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
+                              <ChevronDown className={cn(
+                                "w-3.5 h-3.5 transition-transform flex-shrink-0",
+                                bomMenuOpen ? "rotate-180" : ""
+                              )} />
+                            </>
+                          )}
+                        </button>
+                        {isExpanded && bomMenuOpen && (
+                          <ul className="mt-1 space-y-0.5">
+                            {bomSubItems.map((sub) => {
+                              const isSubActive = pathname === sub.href
+                              return (
+                                <li key={sub.key}>
+                                  <Link
+                                    to={sub.href}
+                                    className={cn(
+                                      'flex items-center h-8 pl-10 pr-3 rounded-lg transition-colors whitespace-nowrap text-[13px]',
+                                      isSubActive
+                                        ? 'bg-hansl-50 text-hansl-600 font-semibold'
+                                        : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
+                                    )}
+                                  >
+                                    <span className="flex-1">{sub.label}</span>
                                   </Link>
                                 </li>
                               )
@@ -465,7 +538,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
               const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
               const currentTab = searchParams.get('tab') || '발주/구매'
 
-              if (item.hasSubmenu) {
+              if (item.hasSubmenu === 'purchase') {
                 return (
                   <li key={item.href}>
                     <button
@@ -510,6 +583,59 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                               >
                                 <span className="flex-1">{sub.label}</span>
                                 {renderBadge(subBadge, isSubActive)}
+                              </Link>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
+                  </li>
+                )
+              }
+
+              if (item.hasSubmenu === 'bom') {
+                return (
+                  <li key={item.href}>
+                    <button
+                      onClick={() => {
+                        if (!bomMenuOpen) {
+                          setBomMenuOpen(true)
+                          navigate('/bom-coordinate/new')
+                        } else {
+                          setBomMenuOpen(false)
+                        }
+                      }}
+                      className={cn(
+                        'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors w-full',
+                        isActive
+                          ? 'bg-hansl-50 text-hansl-600 border-l-2 border-hansl-500'
+                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      )}
+                    >
+                      <Icon className="w-4 h-4" />
+                      <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
+                      <ChevronDown className={cn(
+                        "w-3.5 h-3.5 transition-transform",
+                        bomMenuOpen ? "rotate-180" : ""
+                      )} />
+                    </button>
+                    {bomMenuOpen && (
+                      <ul className="mt-1 space-y-0.5">
+                        {bomSubItems.map((sub) => {
+                          const isSubActive = pathname === sub.href
+                          return (
+                            <li key={sub.key}>
+                              <Link
+                                to={sub.href}
+                                onClick={onClose}
+                                className={cn(
+                                  'flex items-center h-9 pl-11 pr-4 rounded-lg transition-colors text-[13px]',
+                                  isSubActive
+                                    ? 'bg-hansl-50 text-hansl-600 font-semibold'
+                                    : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
+                                )}
+                              >
+                                <span className="flex-1">{sub.label}</span>
                               </Link>
                             </li>
                           )

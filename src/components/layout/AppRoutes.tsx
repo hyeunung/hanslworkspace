@@ -57,7 +57,9 @@ export default function AppRoutes() {
           <Route path="/support" element={<SupportMain />} />
           <Route path="/application" element={<ApplicationListMain />} />
           <Route path="/application/ai-service" element={<AiServiceApplicationForm />} />
-          <Route path="/bom-coordinate" element={<BomCoordinateMain />} />
+          <Route path="/bom-coordinate" element={<Navigate to="/bom-coordinate/new" replace />} />
+          <Route path="/bom-coordinate/new" element={<BomCoordinateMain />} />
+          <Route path="/bom-coordinate/list" element={<BomCoordinateMain />} />
           <Route path="/transaction-statement" element={<TransactionStatementMain />} />
           
           {/* 인증 관련 라우트 */}
