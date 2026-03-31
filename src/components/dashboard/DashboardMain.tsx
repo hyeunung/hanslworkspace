@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Clock, CheckCircle, ArrowRight, X, Package, Truck, ShoppingCart, Search, MessageCircle, Trash2, Car, CreditCard } from 'lucide-react'
+import { Clock, CheckCircle, ArrowRight, X, Package, Truck, ShoppingCart, Search, MessageCircle, Trash2, Car, CreditCard, CalendarDays } from 'lucide-react'
 
 // 모든 카드에서 사용하는 모달 (activeTab에 따라 다른 내용 표시)
 import PurchaseDetailModal from '@/components/purchase/PurchaseDetailModal'
@@ -88,6 +88,24 @@ export default function DashboardMain() {
   }>>([])
   const [statusNow, setStatusNow] = useState(() => new Date())
 
+  // 내일 예정 차량/카드
+  const [tomorrowVehicles, setTomorrowVehicles] = useState<Array<{
+    vehicle_info?: string
+    start_at: string
+    end_at: string
+    route?: string
+    requester?: { name?: string }
+    driver?: { name?: string }
+    [key: string]: unknown
+  }>>([])
+  const [tomorrowCards, setTomorrowCards] = useState<Array<{
+    card_number?: string
+    usage_category?: string
+    usage_date_start?: string
+    requester?: { name?: string }
+    [key: string]: unknown
+  }>>([])
+
   // 문의하기 관련 (superadmin용)
   const [inquiries, setInquiries] = useState<SupportInquiry[]>([])
   const [loadingInquiries, setLoadingInquiries] = useState(false)
@@ -124,18 +142,48 @@ export default function DashboardMain() {
   // 차량/카드 현황 데이터 로딩
   const loadStatusData = useCallback(async () => {
     try {
-      const { data: vReqs } = await supabase
-        .from('vehicle_requests')
-        .select('*, requester:employees!vehicle_requests_requester_id_fkey(name), driver:employees!vehicle_requests_driver_id_fkey(name)')
-        .eq('approval_status', 'approved')
-      setVehicleRequests(vReqs || [])
+      // 내일 날짜 계산 (한국시간 기준)
+      const kstNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+      const tomorrowKST = new Date(kstNow)
+      tomorrowKST.setDate(tomorrowKST.getDate() + 1)
+      const tomorrowStart = new Date(tomorrowKST.getFullYear(), tomorrowKST.getMonth(), tomorrowKST.getDate(), 0, 0, 0)
+      const tomorrowEnd = new Date(tomorrowKST.getFullYear(), tomorrowKST.getMonth(), tomorrowKST.getDate(), 23, 59, 59)
+      // UTC로 변환하여 DB 쿼리
+      const tomorrowStartUTC = tomorrowStart.toISOString()
+      const tomorrowEndUTC = tomorrowEnd.toISOString()
+      // 내일 날짜 문자열 (카드 usage_date_start 비교용, YYYY-MM-DD)
+      const tomorrowDateStr = `${tomorrowKST.getFullYear()}-${String(tomorrowKST.getMonth() + 1).padStart(2, '0')}-${String(tomorrowKST.getDate()).padStart(2, '0')}`
 
-      const { data: cUsages } = await supabase
-        .from('card_usages')
-        .select('*, requester:employees!card_usages_requester_id_fkey(name)')
-        .in('approval_status', ['approved', 'settled'])
-        .eq('card_returned', false)
-      setCardUsages(cUsages || [])
+      const [vReqsResult, cUsagesResult, tomorrowVResult, tomorrowCResult] = await Promise.all([
+        supabase
+          .from('vehicle_requests')
+          .select('*, requester:employees!vehicle_requests_requester_id_fkey(name), driver:employees!vehicle_requests_driver_id_fkey(name)')
+          .eq('approval_status', 'approved'),
+        supabase
+          .from('card_usages')
+          .select('*, requester:employees!card_usages_requester_id_fkey(name)')
+          .in('approval_status', ['approved', 'settled'])
+          .eq('card_returned', false),
+        // 내일 예정 차량: start_at이 내일 범위에 포함
+        supabase
+          .from('vehicle_requests')
+          .select('*, requester:employees!vehicle_requests_requester_id_fkey(name), driver:employees!vehicle_requests_driver_id_fkey(name)')
+          .eq('approval_status', 'approved')
+          .lte('start_at', tomorrowEndUTC)
+          .gte('end_at', tomorrowStartUTC),
+        // 내일 예정 카드: 내일이 사용 기간에 포함 (start <= 내일 AND end >= 내일)
+        supabase
+          .from('card_usages')
+          .select('*, requester:employees!card_usages_requester_id_fkey(name)')
+          .in('approval_status', ['approved', 'settled'])
+          .lte('usage_date_start', tomorrowDateStr)
+          .gte('usage_date_end', tomorrowDateStr),
+      ])
+
+      setVehicleRequests(vReqsResult.data || [])
+      setCardUsages(cUsagesResult.data || [])
+      setTomorrowVehicles(tomorrowVResult.data || [])
+      setTomorrowCards(tomorrowCResult.data || [])
     } catch (err) {
       logger.error('[DashboardMain] 차량/카드 현황 로딩 실패:', err)
     }
@@ -184,6 +232,46 @@ export default function DashboardMain() {
 
   const vehicleAwayCount = useMemo(() => DASHBOARD_VEHICLES.filter(v => vehicleStatusMap[v.label]?.status === "away").length, [vehicleStatusMap])
   const cardInUseCount = useMemo(() => DASHBOARD_CARDS.filter(c => cardStatusMap[c.value]?.inUse).length, [cardStatusMap])
+
+  // 내일 예정 차량 맵: 차량별 예정 정보
+  const tomorrowVehicleMap = useMemo(() => {
+    const map: Record<string, { driver: string; destination: string }> = {}
+    for (const v of DASHBOARD_VEHICLES) {
+      const req = tomorrowVehicles.find(r => r.vehicle_info?.startsWith(v.label))
+      if (req) {
+        map[v.label] = {
+          driver: req.driver?.name || req.requester?.name || "",
+          destination: req.route || "",
+        }
+      }
+    }
+    return map
+  }, [tomorrowVehicles])
+
+  // 내일 예정 카드 맵: 카드별 예정 정보
+  const tomorrowCardMap = useMemo(() => {
+    const map: Record<string, { user: string; category: string }> = {}
+    for (const card of DASHBOARD_CARDS) {
+      const usage = tomorrowCards.find(u => u.card_number === card.value)
+      if (usage) {
+        map[card.value] = {
+          user: usage.requester?.name || "-",
+          category: usage.usage_category || "",
+        }
+      }
+    }
+    return map
+  }, [tomorrowCards])
+
+  // 내일 날짜 표시용
+  const tomorrowLabel = useMemo(() => {
+    const kstNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+    const tomorrow = new Date(kstNow)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    return tomorrow.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })
+  }, [])
+
+  const hasTomorrowSchedule = Object.keys(tomorrowVehicleMap).length > 0 || Object.keys(tomorrowCardMap).length > 0
 
   const loadDashboardData = useCallback(async (showLoading = true, forceRefresh = false) => {
     if (!employee) {
@@ -796,6 +884,77 @@ export default function DashboardMain() {
             </CardContent>
           </Card>
         </div>
+
+        {/* 내일 예정 차량/카드 */}
+        {hasTomorrowSchedule && (
+          <div className="mb-4">
+            <Card className="border-purple-200 shadow-sm bg-purple-50/30">
+              <CardHeader className="h-10 px-4 bg-purple-50 border-b flex items-center">
+                <CardTitle className="section-title flex items-center gap-2 w-full">
+                  <CalendarDays className="w-3.5 h-3.5 text-purple-600" />
+                  <span className="text-purple-700">내일 예정</span>
+                  <span className="badge-stats bg-purple-100 text-purple-700 ml-1">
+                    {tomorrowLabel}
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-3">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  {/* 내일 예정 차량 */}
+                  {Object.keys(tomorrowVehicleMap).length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Car className="w-3 h-3 text-purple-500" />
+                        <span className="text-[10px] font-semibold text-purple-700">차량 배차 예정</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {DASHBOARD_VEHICLES.filter(v => tomorrowVehicleMap[v.label]).map(v => {
+                          const info = tomorrowVehicleMap[v.label]
+                          return (
+                            <div key={v.label} className="border border-purple-200 business-radius-card px-3 py-2 bg-white">
+                              <div className="flex items-center justify-between mb-0.5">
+                                <span className="text-[10px] font-semibold text-gray-900">{v.label}</span>
+                                <span className="badge-stats bg-purple-500 text-white">예정</span>
+                              </div>
+                              {info.driver && <p className="text-[9px] text-gray-600 truncate">{info.driver}</p>}
+                              <p className="text-[9px] text-gray-500 truncate">{info.destination}</p>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {/* 내일 예정 카드 */}
+                  {Object.keys(tomorrowCardMap).length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <CreditCard className="w-3 h-3 text-purple-500" />
+                        <span className="text-[10px] font-semibold text-purple-700">카드 사용 예정</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {DASHBOARD_CARDS.filter(c => tomorrowCardMap[c.value]).map(card => {
+                          const info = tomorrowCardMap[card.value]
+                          return (
+                            <div key={card.value} className="border border-purple-200 business-radius-card px-3 py-2 bg-white">
+                              <div className="flex items-center justify-between mb-0.5">
+                                <span className="text-[10px] font-semibold text-gray-900">
+                                  {card.label}
+                                  <span className="ml-1 text-[8px] font-normal text-gray-400">{card.number}</span>
+                                </span>
+                                <span className="badge-stats bg-purple-500 text-white">예정</span>
+                              </div>
+                              <p className="text-[9px] text-purple-600 truncate">{info.user} · {info.category}</p>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {/* 1. 승인 대기 (승인 권한자만 표시) */}

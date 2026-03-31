@@ -2329,14 +2329,17 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[110px]">출장코드</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[140px]">출장기간</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[76px]">요청자</th>
+                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[80px]">사용부서</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[100px]">동승자</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[125px]">출장지</th>
+                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[120px]">출장지/Project</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[90px]">카드신청</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[126px]">이동수단</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-right w-[88px]">예상비용</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[98px]">정산상태</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[76px]">정산제출자</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">출장목적</th>
+                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[150px]">사전메모</th>
                     {isAppAdmin && (
                       <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[40px]"></th>
                     )}
@@ -2397,12 +2400,14 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                           </div>
                         </td>
                         <td className="px-3 py-1.5 card-title whitespace-nowrap">{trip.requester?.name || "-"}</td>
+                        <td className="px-3 py-1.5 card-title whitespace-nowrap">{trip.request_department || "-"}</td>
                         <td className="px-3 py-1.5 card-title whitespace-normal break-keep">
                           {trip.companions && trip.companions.length > 0
                             ? trip.companions.map((c) => c.name).join(", ")
                             : "-"}
                         </td>
                         <td className="px-3 py-1.5 card-title truncate max-w-[120px]">{trip.trip_destination}</td>
+                        <td className="px-3 py-1.5 card-title truncate max-w-[120px]">{trip.project_name || "-"}</td>
                         <td className="px-3 py-1.5 whitespace-nowrap">
                           {trip.requested_card_number?.trim() || trip.linkedCard ? (
                             <div>
@@ -2476,6 +2481,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                           {trip.settlement_submitted_by || "-"}
                         </td>
                         <td className="px-3 py-1.5 card-title truncate max-w-[220px]">{trip.trip_purpose}</td>
+                        <td className="px-3 py-1.5 card-title truncate max-w-[150px]">{trip.precheck_note || "-"}</td>
                         {isAppAdmin && (
                           <td className="px-3 py-1.5 text-center">
                             <button

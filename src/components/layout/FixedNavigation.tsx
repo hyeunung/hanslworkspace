@@ -359,7 +359,11 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
 
                   if (item.hasSubmenu === 'bom') {
                     return (
-                      <li key={item.href}>
+                      <li
+                        key={item.href}
+                        onMouseEnter={() => { if (isExpanded) setBomMenuOpen(true) }}
+                        onMouseLeave={() => { if (!pathname.startsWith('/bom-coordinate')) setBomMenuOpen(false) }}
+                      >
                         <button
                           onClick={() => {
                             if (!bomMenuOpen) {

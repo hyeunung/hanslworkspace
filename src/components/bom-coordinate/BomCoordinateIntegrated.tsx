@@ -1604,7 +1604,7 @@ function dlFile() {
                                 <span className="card-subtitle">{index + 1}</span>
                               </TableCell>
                               <TableCell className="py-1">
-                                <span className="text-[11px] font-medium text-blue-700">{board.code_number || '-'}</span>
+                                <span className="text-[11px] font-medium text-gray-500">{board.code_number || '-'}</span>
                               </TableCell>
                               <TableCell className="py-1">
                                 <span className="text-[11px] font-medium text-gray-900">{board.board_name}</span>
