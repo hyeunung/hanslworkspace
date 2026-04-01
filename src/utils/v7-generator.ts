@@ -303,7 +303,23 @@ interface ParsedBOMItem {
   format: 'item_no' | 'grouped_designator';
 }
 
-async function parseBOMFile(file: File): Promise<ParsedBOMItem[]> {
+// AI 컬럼 매핑 타입 (Edge Function bom-column-classifier 응답)
+export interface AiColumnMap {
+  headerRow: number;
+  colMap: {
+    item: number;
+    ref: number;
+    qty: number;
+    part: number;
+    comment: number;
+    description: number;
+    footprint: number;
+  };
+  confidence: number;
+  reasoning?: string;
+}
+
+async function parseBOMFile(file: File, aiColMap?: AiColumnMap): Promise<ParsedBOMItem[]> {
   const arrayBuffer = await file.arrayBuffer();
   const data = new Uint8Array(arrayBuffer);
   
@@ -312,113 +328,133 @@ async function parseBOMFile(file: File): Promise<ParsedBOMItem[]> {
   const rows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
   
   const items: ParsedBOMItem[] = [];
-  
-  // 헤더 찾기
+
+  // 헤더 및 컬럼 매핑 결정
   let headerRow = -1;
   const colMap = { item: 0, ref: 1, qty: 2, part: 3, comment: -1, description: -1, footprint: -1 };
-  const itemKeywords = ['item', 'no', '#', 'line', 'ln'];
-  const refKeywords = ['reference', 'references', 'ref', 'refdes', 'designator', 'designators'];
-  const qtyKeywords = ['quantity', 'qty'];
-  const partKeywords = ['part', 'part number', 'value'];
-  const commentKeywords = ['comment'];
-  const descriptionKeywords = ['description', 'desc'];
-  const footprintKeywords = ['pcb footprint', 'footprint', 'package', 'partnumber'];
-  
-  for (let r = 0; r < Math.min(30, rows.length); r++) {
-    const row = rows[r];
-    if (!row) continue;
-    
-    const rowStr = row.map(c => String(c || '').toLowerCase()).join(' ');
-    if (refKeywords.some(kw => rowStr.includes(kw))) {
-      headerRow = r;
-      let partExplicitFound = false;
-      row.forEach((cell, idx) => {
-        const val = String(cell || '').toLowerCase().trim();
-        if (itemKeywords.some(kw => val === kw)) colMap.item = idx;
-        if (refKeywords.some(kw => val === kw)) colMap.ref = idx;
-        if (qtyKeywords.some(kw => val === kw)) colMap.qty = idx;
-        if (partKeywords.some(kw => val === kw)) {
-          colMap.part = idx;
-          partExplicitFound = true;
-        }
-        if (commentKeywords.some(kw => val === kw)) {
-          colMap.comment = idx;
-          // comment는 part/value 역할을 하는 경우가 많아 part로도 설정
-          if (!partExplicitFound) colMap.part = idx;
-        }
-        if (descriptionKeywords.some(kw => val === kw)) {
-          colMap.description = idx;
-          // description도 part/value 역할로 쓰일 수 있어, part가 comment로 잡히지 않았다면 fallback
-          if (!partExplicitFound && colMap.comment < 0) colMap.part = idx;
-        }
-        if (footprintKeywords.some(kw => val === kw)) colMap.footprint = idx;
-      });
-      break;
-    }
-  }
-  
-  // 2차: 헤더를 못 찾았거나 REF 칼럼을 명확히 못 찾은 경우, 데이터 패턴으로 판별
-  let refColumnFoundByKeyword = headerRow !== -1;
-  
-  if (headerRow === -1) {
-    logger.warn('헤더를 찾을 수 없습니다. 데이터 패턴으로 REF 칼럼 탐색...');
-    headerRow = 0; // 첫 행부터 데이터로 간주
-    refColumnFoundByKeyword = false;
-  }
-  
-  // REF 패턴: 알파벳 1~3자 + 숫자 (예: R1, C2, U3, IC1, JP1 등)
-  // 또는 쉼표/공백으로 구분된 여러 REF (예: R1, R2, R3)
-  // 또는 범위 표현 (예: R1~R10, C1-C5)
-  const isRefPattern = (value: string): boolean => {
-    if (!value || typeof value !== 'string') return false;
-    const trimmed = value.trim();
-    if (!trimmed) return false;
-    
-    // 단일 REF 패턴: A1, R12, IC3, JP1 등
-    const singleRefPattern = /^[A-Z]{1,3}\d+$/i;
-    // 여러 REF 패턴: R1, R2, R3 또는 R1 R2 R3
-    const multiRefPattern = /^[A-Z]{1,3}\d+([,.\s]+[A-Z]{1,3}\d+)*$/i;
-    // 범위 REF 패턴: R1~R10, C1-C5
-    const rangeRefPattern = /^[A-Z]{1,3}\d+[-~][A-Z]*\d+$/i;
-    
-    return singleRefPattern.test(trimmed) || multiRefPattern.test(trimmed) || rangeRefPattern.test(trimmed);
-  };
-  
-  // REF 칼럼을 키워드로 못 찾았으면 데이터 패턴으로 탐색
-  if (!refColumnFoundByKeyword || colMap.ref === 1) { // 기본값이면 패턴 분석 시도
-    const sampleRows = rows.slice(headerRow + 1, Math.min(headerRow + 20, rows.length));
-    const colScores: number[] = [];
-    
-    // 각 칼럼별로 REF 패턴 매칭 점수 계산
-    const maxCols = Math.max(...sampleRows.map(r => (r ? r.length : 0)));
-    for (let col = 0; col < maxCols; col++) {
-      let matchCount = 0;
-      let totalCount = 0;
-      
-      for (const row of sampleRows) {
-        if (!row || col >= row.length) continue;
-        const cellValue = String(row[col] || '').trim();
-        if (!cellValue) continue;
-        
-        totalCount++;
-        if (isRefPattern(cellValue)) {
-          matchCount++;
-        }
+
+  if (aiColMap) {
+    // ========== AI 컬럼 매핑 사용 (메인) ==========
+    headerRow = aiColMap.headerRow;
+    colMap.item = aiColMap.colMap.item;
+    colMap.ref = aiColMap.colMap.ref;
+    colMap.qty = aiColMap.colMap.qty;
+    colMap.part = aiColMap.colMap.part;
+    colMap.comment = aiColMap.colMap.comment;
+    colMap.description = aiColMap.colMap.description;
+    colMap.footprint = aiColMap.colMap.footprint;
+    logger.debug('🤖 AI 컬럼 매핑 적용:', { headerRow, colMap, confidence: aiColMap.confidence, reasoning: aiColMap.reasoning });
+
+    // 키워드 매핑으로 교차 검증 (로그만 남김, 결과는 AI 우선)
+    const keywordColMap = { item: 0, ref: 1, qty: 2, part: 3, comment: -1, description: -1, footprint: -1 };
+    let keywordHeaderRow = -1;
+    const refKeywordsForValidation = ['reference', 'references', 'ref', 'refdes', 'designator', 'designators'];
+    for (let r = 0; r < Math.min(30, rows.length); r++) {
+      const row = rows[r];
+      if (!row) continue;
+      const rowStr = row.map(c => String(c || '').toLowerCase()).join(' ');
+      if (refKeywordsForValidation.some(kw => rowStr.includes(kw))) {
+        keywordHeaderRow = r;
+        break;
       }
-      
-      // 매칭 비율 계산 (최소 3개 이상 데이터가 있어야 유효)
-      const score = totalCount >= 3 ? matchCount / totalCount : 0;
-      colScores.push(score);
     }
-    
-    // 가장 높은 점수의 칼럼을 REF로 설정 (60% 이상 매칭 시)
-    const maxScore = Math.max(...colScores);
-    if (maxScore >= 0.6) {
-      const bestRefCol = colScores.indexOf(maxScore);
-      logger.debug(`📊 데이터 패턴 분석: 칼럼 ${bestRefCol}을(를) REF로 판별 (매칭률: ${(maxScore * 100).toFixed(1)}%)`);
-      colMap.ref = bestRefCol;
-    } else {
-      logger.warn('📊 데이터 패턴으로도 REF 칼럼을 찾지 못함. 기본값(1) 사용.');
+    if (keywordHeaderRow !== -1 && keywordHeaderRow !== headerRow) {
+      logger.warn(`⚠️ AI headerRow(${headerRow}) ≠ 키워드 headerRow(${keywordHeaderRow}) — AI 결과 우선 사용`);
+    }
+  } else {
+    // ========== 기존 키워드 매핑 (폴백) ==========
+    const itemKeywords = ['item', 'no', '#', 'line', 'ln'];
+    const refKeywords = ['reference', 'references', 'ref', 'refdes', 'designator', 'designators'];
+    const qtyKeywords = ['quantity', 'qty'];
+    const partKeywords = ['part', 'part number', 'value'];
+    const commentKeywords = ['comment'];
+    const descriptionKeywords = ['description', 'desc'];
+    const footprintKeywords = ['pcb footprint', 'footprint', 'package', 'partnumber'];
+
+    for (let r = 0; r < Math.min(30, rows.length); r++) {
+      const row = rows[r];
+      if (!row) continue;
+
+      const rowStr = row.map(c => String(c || '').toLowerCase()).join(' ');
+      if (refKeywords.some(kw => rowStr.includes(kw))) {
+        headerRow = r;
+        let partExplicitFound = false;
+        row.forEach((cell, idx) => {
+          const val = String(cell || '').toLowerCase().trim();
+          if (itemKeywords.some(kw => val === kw)) colMap.item = idx;
+          if (refKeywords.some(kw => val === kw)) colMap.ref = idx;
+          if (qtyKeywords.some(kw => val === kw)) colMap.qty = idx;
+          if (partKeywords.some(kw => val === kw)) {
+            colMap.part = idx;
+            partExplicitFound = true;
+          }
+          if (commentKeywords.some(kw => val === kw)) {
+            colMap.comment = idx;
+            if (!partExplicitFound) colMap.part = idx;
+          }
+          if (descriptionKeywords.some(kw => val === kw)) {
+            colMap.description = idx;
+            if (!partExplicitFound && colMap.comment < 0) colMap.part = idx;
+          }
+          if (footprintKeywords.some(kw => val === kw)) colMap.footprint = idx;
+        });
+        break;
+      }
+    }
+
+    // 2차: 헤더를 못 찾았거나 REF 칼럼을 명확히 못 찾은 경우, 데이터 패턴으로 판별
+    let refColumnFoundByKeyword = headerRow !== -1;
+
+    if (headerRow === -1) {
+      logger.warn('헤더를 찾을 수 없습니다. 데이터 패턴으로 REF 칼럼 탐색...');
+      headerRow = 0;
+      refColumnFoundByKeyword = false;
+    }
+
+    const isRefPattern = (value: string): boolean => {
+      if (!value || typeof value !== 'string') return false;
+      const trimmed = value.trim();
+      if (!trimmed) return false;
+
+      const singleRefPattern = /^[A-Z]{1,3}\d+$/i;
+      const multiRefPattern = /^[A-Z]{1,3}\d+([,.\s]+[A-Z]{1,3}\d+)*$/i;
+      const rangeRefPattern = /^[A-Z]{1,3}\d+[-~][A-Z]*\d+$/i;
+
+      return singleRefPattern.test(trimmed) || multiRefPattern.test(trimmed) || rangeRefPattern.test(trimmed);
+    };
+
+    if (!refColumnFoundByKeyword || colMap.ref === 1) {
+      const sampleRows = rows.slice(headerRow + 1, Math.min(headerRow + 20, rows.length));
+      const colScores: number[] = [];
+
+      const maxCols = Math.max(...sampleRows.map(r => (r ? r.length : 0)));
+      for (let col = 0; col < maxCols; col++) {
+        let matchCount = 0;
+        let totalCount = 0;
+
+        for (const row of sampleRows) {
+          if (!row || col >= row.length) continue;
+          const cellValue = String(row[col] || '').trim();
+          if (!cellValue) continue;
+
+          totalCount++;
+          if (isRefPattern(cellValue)) {
+            matchCount++;
+          }
+        }
+
+        const score = totalCount >= 3 ? matchCount / totalCount : 0;
+        colScores.push(score);
+      }
+
+      const maxScore = Math.max(...colScores);
+      if (maxScore >= 0.6) {
+        const bestRefCol = colScores.indexOf(maxScore);
+        logger.debug(`📊 데이터 패턴 분석: 칼럼 ${bestRefCol}을(를) REF로 판별 (매칭률: ${(maxScore * 100).toFixed(1)}%)`);
+        colMap.ref = bestRefCol;
+      } else {
+        logger.warn('📊 데이터 패턴으로도 REF 칼럼을 찾지 못함. 기본값(1) 사용.');
+      }
     }
   }
   
@@ -533,26 +569,43 @@ async function parseCoordinateFile(file: File): Promise<ParsedCoordItem[]> {
   const arrayBuffer = await file.arrayBuffer();
   const items: ParsedCoordItem[] = [];
   
-  if (file.name.endsWith('.txt')) {
-    // 텍스트 파일 파싱
+  if (file.name.endsWith('.txt') || file.name.endsWith('.csv')) {
+    // 텍스트/CSV 파일 파싱
     const text = new TextDecoder('utf-8').decode(arrayBuffer);
     const lines = text.split('\n');
-    
+
+    // CSV 파싱: 따옴표 안의 쉼표를 무시하는 split
+    const splitCSVLine = (line: string): string[] => {
+      const cols: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') { inQuotes = !inQuotes; continue; }
+        if (ch === ',' && !inQuotes) { cols.push(current.trim()); current = ''; continue; }
+        current += ch;
+      }
+      cols.push(current.trim());
+      return cols;
+    };
+
     let headerFound = false;
+    let isCSV = false;
     const colMap = { ref: 0, x: 1, y: 2, rotation: 3, layer: 4 };
-    
+
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
-      
+
       // 헤더 찾기
       if (!headerFound) {
         const lower = trimmed.toLowerCase();
         if (lower.includes('refdes') || lower.includes('ref') || lower.includes('designator')) {
           headerFound = true;
-          // 탭 또는 공백으로 분리
-          const cols = trimmed.split(/\t|\s{2,}/).map(c => c.trim().replace(/"/g, ''));
-          logger.debug('📍 좌표 헤더 발견:', { cols });
+          // 구분자 감지: 따옴표+쉼표 CSV > 탭 > 공백
+          isCSV = trimmed.includes(',') && trimmed.includes('"');
+          const cols = isCSV ? splitCSVLine(trimmed) : trimmed.split(/\t|\s{2,}/).map(c => c.trim().replace(/"/g, ''));
+          logger.debug('📍 좌표 헤더 발견:', { cols, isCSV });
 
           cols.forEach((col, idx) => {
             const colLower = col.toLowerCase();
@@ -560,11 +613,11 @@ async function parseCoordinateFile(file: File): Promise<ParsedCoordItem[]> {
               colMap.ref = idx;
               logger.debug(`  - Ref 컬럼: ${idx} (${col})`);
             }
-            if (colLower.includes('locationx') || colLower === 'x' || (colLower === 'x' && idx === 1)) {
+            if (colLower.includes('locationx') || colLower.includes('pad-x') || colLower.includes('center-x') || colLower.includes('mid x') || colLower === 'x') {
               colMap.x = idx;
               logger.debug(`  - X 컬럼: ${idx} (${col})`);
             }
-            if (colLower.includes('locationy') || colLower === 'y' || (colLower === 'y' && idx === 2)) {
+            if (colLower.includes('locationy') || colLower.includes('pad-y') || colLower.includes('center-y') || colLower.includes('mid y') || colLower === 'y') {
               colMap.y = idx;
               logger.debug(`  - Y 컬럼: ${idx} (${col})`);
             }
@@ -583,10 +636,9 @@ async function parseCoordinateFile(file: File): Promise<ParsedCoordItem[]> {
         }
         continue;
       }
-      
+
       // 데이터 행 파싱
-      // 탭 또는 공백으로 분리 (큰 공백 우선)
-      const cols = trimmed.split(/\t|\s{2,}/).map(c => c.trim().replace(/"/g, ''));
+      const cols = isCSV ? splitCSVLine(trimmed) : trimmed.split(/\t|\s{2,}/).map(c => c.trim().replace(/"/g, ''));
       if (cols.length < 3) continue;
       
       const ref = (cols[colMap.ref] || '').trim().toUpperCase().replace(/"/g, '');
@@ -903,15 +955,16 @@ function buildGroupedBomNormalization(
 export async function processBOMAndCoordinates(
   bomFile: File,
   coordFile: File | null,
-  productionQuantity: number
+  productionQuantity: number,
+  aiColMap?: AiColumnMap
 ): Promise<ProcessedResult> {
   logger.debug('🚀 BOM/좌표 처리 시작...');
-  
+
   // 1. 학습 데이터 로드
   const learningData = await loadLearningData();
-  
+
   // 2. 파일 파싱
-  const parsedBOM = await parseBOMFile(bomFile);
+  const parsedBOM = await parseBOMFile(bomFile, aiColMap);
   const parsedCoord = coordFile ? await parseCoordinateFile(coordFile) : [];
 
   // Ref를 대문자로 정규화해 매핑 실패 방지

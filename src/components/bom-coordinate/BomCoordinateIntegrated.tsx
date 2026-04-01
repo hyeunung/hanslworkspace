@@ -20,11 +20,12 @@ import { cn } from '@/lib/utils';
 import GeneratedPreviewPanel, { type GeneratedPreviewPanelRef } from './GeneratedPreviewPanel';
 import CoordinatePreviewPanel from './CoordinatePreviewPanel';
 import BomDetailModal from './BomDetailModal';
-import { 
-  processBOMAndCoordinates, 
-  type BOMItem, 
+import {
+  processBOMAndCoordinates,
+  type BOMItem,
   type CoordinateItem,
   type ProcessedResult,
+  type AiColumnMap,
   sortBOMItems,
   sortCoordinateItems
 } from '@/utils/v7-generator';
@@ -575,15 +576,48 @@ export default function BomCoordinateIntegrated() {
         ...(fileInfo.coordFile ? { coordName: fileInfo.coordFile.name } : {})
       });
 
-      // 2. v7 엔진으로 BOM/좌표 처리 (학습 데이터 기반)
+      // 2. AI 컬럼 매핑 (BOM 파일 구조 자동 판별)
+      logger.debug('Classifying BOM columns with AI...');
+      setLoadingText('AI 컬럼 분석 중...');
+
+      let aiColMap: AiColumnMap | undefined;
+      try {
+        // BOM 파일에서 상위 30행 추출
+        const XLSX = await import('xlsx');
+        const bomArrayBuffer = await fileInfo.bomFile.arrayBuffer();
+        const bomData = new Uint8Array(bomArrayBuffer);
+        const workbook = XLSX.read(bomData, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const allRows = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, { header: 1 });
+        const sampleRows = allRows.slice(0, 30);
+
+        const { data: classifyResult, error: classifyError } = await supabase.functions.invoke(
+          'bom-column-classifier',
+          { body: { rows: sampleRows, fileName: fileInfo.bomFile.name } }
+        );
+
+        if (classifyError) {
+          logger.warn('AI 컬럼 분류 실패, 기존 키워드 매핑으로 진행:', { error: String(classifyError) });
+        } else if (classifyResult && !classifyResult.error) {
+          aiColMap = classifyResult as AiColumnMap;
+          logger.debug('🤖 AI 컬럼 매핑 결과:', { headerRow: aiColMap.headerRow, colMap: JSON.stringify(aiColMap.colMap), confidence: aiColMap.confidence });
+        } else {
+          logger.warn('AI 컬럼 분류 응답 오류, 기존 키워드 매핑으로 진행:', { error: String(classifyResult?.error) });
+        }
+      } catch (aiError) {
+        logger.warn('AI 컬럼 분류 중 예외 발생, 기존 키워드 매핑으로 진행:', { error: String(aiError) });
+      }
+
+      // 3. v7 엔진으로 BOM/좌표 처리 (학습 데이터 기반)
       logger.debug('Processing BOM with v7 engine...');
       setLoadingText('학습 데이터 기반 분석 중...');
-      
-      // v7-generator로 처리
+
+      // v7-generator로 처리 (AI 매핑 결과 전달, 없으면 기존 키워드 폴백)
       const processedData = await processBOMAndCoordinates(
         fileInfo.bomFile,
         fileInfo.coordFile,
-        metadata.productionQuantity
+        metadata.productionQuantity,
+        aiColMap
       );
 
       if (timer) clearInterval(timer);
