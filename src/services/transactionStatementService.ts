@@ -954,7 +954,7 @@ class TransactionStatementService {
           };
         });
 
-        // 수량 일치: received_quantity 우선, null이면 발주수량(quantity) fallback
+        // 수량 일치: 실제입고수량(received_quantity)만 사용 — 입고 전이면 불일치
         let all_quantities_matched = false;
 
         if (stmtItems.length > 0 && (statement.status === 'extracted' || statement.status === 'confirmed')) {
@@ -968,7 +968,8 @@ class TransactionStatementService {
             if (item.matched_item_id) {
               const info = itemInfoMap.get(Number(item.matched_item_id));
               if (info == null) return false;
-              const systemQty = info.received_quantity ?? info.quantity;
+              const systemQty = info.received_quantity;
+              if (systemQty == null) return false;
               return Number(systemQty) === ocrQty;
             }
 
@@ -991,7 +992,8 @@ class TransactionStatementService {
             const info = itemInfoMap.get(Number(selected.item_id));
             if (info == null) return false;
 
-            const systemQty = info.received_quantity ?? info.quantity;
+            const systemQty = info.received_quantity;
+            if (systemQty == null) return false;
             return Number(systemQty) === ocrQty;
           });
         }
@@ -1251,7 +1253,7 @@ class TransactionStatementService {
         })
       );
 
-      // 수량일치 여부 계산: 사용자 매칭(matched_item_id) 우선, 없으면 best candidate
+      // 수량일치 여부 계산: 실제입고수량(received_quantity)만 사용 — 입고 전이면 불일치
       if (statement.status === 'extracted' || statement.status === 'confirmed') {
         let allMatched = false;
         if (itemsWithMatch.length > 0) {
@@ -1263,10 +1265,9 @@ class TransactionStatementService {
 
             if (item.matched_item_id) {
               const freshItem = itemMap.get(Number(item.matched_item_id));
-              const systemQtyRaw = freshItem?.received_quantity ?? freshItem?.quantity;
-              const systemQty = Number(systemQtyRaw);
-              if (!Number.isFinite(systemQty)) return false;
-              return systemQty === ocrQty;
+              const systemQty = freshItem?.received_quantity;
+              if (systemQty == null) return false;
+              return Number(systemQty) === ocrQty;
             }
 
             const candidates = item.match_candidates || [];
@@ -1275,10 +1276,9 @@ class TransactionStatementService {
             const selected = candidates.reduce((a, b) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
 
             const freshItem = itemMap.get(Number(selected.item_id));
-            const systemQtyRaw = freshItem?.received_quantity ?? freshItem?.quantity;
-            const systemQty = Number(systemQtyRaw);
-            if (!Number.isFinite(systemQty)) return false;
-            return systemQty === ocrQty;
+            const systemQty = freshItem?.received_quantity;
+            if (systemQty == null) return false;
+            return Number(systemQty) === ocrQty;
           });
         }
         if (allMatched !== (statement.all_quantities_matched ?? false)) {
@@ -2128,7 +2128,7 @@ class TransactionStatementService {
           purchase_request_id: item.matched_purchase_id!,
           item_name: statementItem?.extracted_item_name || '추가 공정',
           specification: statementItem?.extracted_specification,
-          quantity: item.confirmed_quantity || 1,
+          quantity: item.confirmed_quantity ?? 1,
           unit_price_value: item.confirmed_unit_price,
           amount_value: item.confirmed_amount,
           accounting_received_date: request.accounting_received_date,
@@ -2272,7 +2272,9 @@ class TransactionStatementService {
 
           const requestedQuantityRaw = Number(existingItem?.quantity ?? 0);
           const requestedQuantity = Number.isFinite(requestedQuantityRaw) ? requestedQuantityRaw : 0;
-          const totalReceivedQuantity = newReceivedQuantity;
+          const existingReceivedRaw = Number(existingItem?.received_quantity ?? 0);
+          const existingReceived = Number.isFinite(existingReceivedRaw) ? existingReceivedRaw : 0;
+          const totalReceivedQuantity = existingReceived + newReceivedQuantity;
           const isFullyReceived = totalReceivedQuantity >= requestedQuantity;
           const deliveryStatus: 'pending' | 'partial' | 'received' = totalReceivedQuantity === 0
             ? 'pending'

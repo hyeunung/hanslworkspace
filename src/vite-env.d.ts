@@ -8,3 +8,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+// version-plugin에서 주입하는 전역 상수
+declare const __APP_VERSION__: string
+declare const __APP_BUILD_ID__: string
+declare const __APP_BUILD_TIME__: string

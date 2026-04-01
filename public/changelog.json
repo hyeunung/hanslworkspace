@@ -1,0 +1,22 @@
+[
+  {
+    "version": "0.2.0",
+    "date": "2026-04-01",
+    "title": "거래명세서·BOM 파싱 개선",
+    "changes": [
+      { "type": "fix", "text": "거래명세서 확인 탭에서 수량일치 미완료 항목이 체크되던 문제 수정" },
+      { "type": "improvement", "text": "BOM/좌표 정리 로직 개선: 새로운 스타일 파일 업로드 시 AI 감지 기반 파싱 지원" }
+    ]
+  },
+  {
+    "version": "0.1.0",
+    "date": "2026-04-01",
+    "title": "초기 버전",
+    "changes": [
+      { "type": "feature", "text": "구매 관리 시스템" },
+      { "type": "feature", "text": "거래명세서 관리" },
+      { "type": "feature", "text": "직원/거래처 관리" },
+      { "type": "feature", "text": "BOM 좌표 관리" }
+    ]
+  }
+]

@@ -1,0 +1,13 @@
+[
+  {
+    "version": "0.1.0",
+    "date": "2026-04-01",
+    "title": "초기 버전",
+    "changes": [
+      { "type": "feature", "text": "구매 관리 시스템" },
+      { "type": "feature", "text": "거래명세서 관리" },
+      { "type": "feature", "text": "직원/거래처 관리" },
+      { "type": "feature", "text": "BOM 좌표 관리" }
+    ]
+  }
+]

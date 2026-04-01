@@ -1510,8 +1510,8 @@ export default function StatementConfirmModal({
             ? ocrQtyRaw
             : (ocrQtyRaw !== '' ? Number(ocrQtyRaw) : undefined);
           const matchItem: MatchCandidate = bestMatchItem as MatchCandidate;
-          const sysQty: number = matchItem.quantity;
-          if (ocrQty !== undefined && !Number.isNaN(ocrQty) && isQuantityMatched(ocrQty, sysQty)) {
+          const sysQty = matchItem.received_quantity;
+          if (sysQty != null && ocrQty !== undefined && !Number.isNaN(ocrQty) && isQuantityMatched(ocrQty, sysQty)) {
             quantityMatchedCount++;
           } else {
             quantityMismatchedCount++;
@@ -5611,7 +5611,8 @@ export default function StatementConfirmModal({
                 const normalizedQty = typeof ocrQty === 'number'
                   ? ocrQty
                   : (ocrQty !== '' ? Number(ocrQty) : undefined);
-                return isQuantityMatched(normalizedQty, matchedSystem.quantity);
+                if (matchedSystem.received_quantity == null) return false;
+                return isQuantityMatched(normalizedQty, matchedSystem.received_quantity);
               }).length;
               const isItemNameAllMatched = totalCount > 0 && matchedNameCount === totalCount;
               const isQuantityAllMatched = totalCount > 0 && quantityMatchedCount === totalCount;

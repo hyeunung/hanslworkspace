@@ -97,6 +97,8 @@ export default function BomCoordinateIntegrated() {
     artwork_manager?: string;
     production_manager?: string;
     status?: 'pending' | 'completed';
+    mismatch_count?: number;
+    manual_count?: number;
   }>>([]);
   const [editingBoardId, setEditingBoardId] = useState<string | null>(null); // pending 상태 편집 중인 보드 ID
   const [loadingBoards, setLoadingBoards] = useState(false);
@@ -374,10 +376,25 @@ export default function BomCoordinateIntegrated() {
           .from('cad_drawings')
           .select('id, board_name, code_number, created_at, artwork_manager, production_manager, status')
           .order('created_at', { ascending: false });
-        
+
         if (error) throw error;
-        
-        setSavedBoards(boards || []);
+
+        // 불일치/수동확인 건수 조회
+        const { data: mismatchData } = await supabase.rpc('get_board_mismatch_counts');
+        const mismatchMap = new Map<string, { mismatch_count: number; manual_count: number }>();
+        if (mismatchData) {
+          for (const row of mismatchData) {
+            mismatchMap.set(row.cad_drawing_id, { mismatch_count: row.mismatch_count, manual_count: row.manual_count });
+          }
+        }
+
+        const boardsWithCounts = (boards || []).map((b: { id: string; board_name: string; code_number?: string; created_at: string; artwork_manager?: string; production_manager?: string; status?: string }) => ({
+          ...b,
+          mismatch_count: mismatchMap.get(b.id)?.mismatch_count ?? 0,
+          manual_count: mismatchMap.get(b.id)?.manual_count ?? 0,
+        }));
+
+        setSavedBoards(boardsWithCounts);
       } catch (error) {
         logger.error('Error loading saved boards:', error);
         toast.error('저장된 BOM 목록을 불러오는데 실패했습니다.');
@@ -1601,6 +1618,9 @@ function dlFile() {
                             <TableHead className="min-w-[200px] !py-1 !h-auto">
                               <span className="card-description">보드명</span>
                             </TableHead>
+                            <TableHead className="w-[80px] text-center !py-1 !h-auto">
+                              <span className="card-description">불일치</span>
+                            </TableHead>
                             <TableHead className="w-[100px] text-center !py-1 !h-auto">
                               <span className="card-description">아트웍 담당</span>
                             </TableHead>
@@ -1642,6 +1662,23 @@ function dlFile() {
                               </TableCell>
                               <TableCell className="py-1">
                                 <span className="text-[11px] font-medium text-gray-900">{board.board_name}</span>
+                              </TableCell>
+                              <TableCell className="text-center py-1">
+                                <div className="flex flex-col items-center gap-0.5">
+                                  {(board.mismatch_count ?? 0) > 0 && (
+                                    <Badge className="bg-red-100 text-red-700 hover:bg-red-100 text-[9px] px-1.5 py-0">
+                                      REF {board.mismatch_count}
+                                    </Badge>
+                                  )}
+                                  {(board.manual_count ?? 0) > 0 && (
+                                    <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100 text-[9px] px-1.5 py-0">
+                                      수동 {board.manual_count}
+                                    </Badge>
+                                  )}
+                                  {(board.mismatch_count ?? 0) === 0 && (board.manual_count ?? 0) === 0 && (
+                                    <span className="text-[10px] text-green-600">-</span>
+                                  )}
+                                </div>
                               </TableCell>
                               <TableCell className="text-center py-1">
                                 <span className="text-[10px] text-gray-600">{board.artwork_manager || '-'}</span>

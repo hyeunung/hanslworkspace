@@ -3,6 +3,7 @@ import { AuthProvider } from '@/contexts/AuthContext'
 import AuthGuard from '@/components/auth/AuthGuard'
 import DataInitializer from '@/components/auth/DataInitializer'
 import AppLayout from '@/components/layout/AppLayout'
+import UpdateNotificationModal from '@/components/common/UpdateNotificationModal'
 
 /**
  * 애플리케이션 최상위 컴포넌트
@@ -21,6 +22,7 @@ export default function App() {
           </DataInitializer>
         </AuthGuard>
       </AuthProvider>
+      <UpdateNotificationModal />
     </BrowserRouter>
   )
 }
