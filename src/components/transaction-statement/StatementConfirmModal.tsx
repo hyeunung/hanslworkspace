@@ -1124,8 +1124,10 @@ export default function StatementConfirmModal({
     } catch (error) {
       toast.error('데이터를 불러오는데 실패했습니다.');
     } finally {
-      if (isStaleRequest() || !isMountedRef.current) return;
-      setLoading(false);
+      const shouldSkipLoadingReset = isStaleRequest() || !isMountedRef.current;
+      if (!shouldSkipLoadingReset) {
+        setLoading(false);
+      }
     }
   }, [statement.id, supabase]);
 
@@ -2791,7 +2793,7 @@ export default function StatementConfirmModal({
       
       // 품목별 후보 업데이트
       if (statementWithItems) {
-        statementWithItems.items.forEach((ocrItem, index) => {
+        statementWithItems.items.forEach((ocrItem) => {
           const candidates: MatchCandidate[] = [];
           let maxSimilarity = 0;
           let comparedCount = 0;
@@ -2820,9 +2822,6 @@ export default function StatementConfirmModal({
               }
             });
           });
-          
-          if (index === 0) {
-          }
           
           candidates.sort((a, b) => b.score - a.score);
           newCandidates.set(ocrItem.id, candidates.slice(0, 5));
@@ -3666,14 +3665,15 @@ export default function StatementConfirmModal({
 
   // 거부
   const handleReject = async () => {
-    if (!confirm('이 거래명세서를 거부하시겠습니까?')) return;
+    const reason = prompt('거부 사유를 입력해주세요 (선택사항):');
+    if (reason === null) return; // 취소
 
     try {
       setSaving(true);
       setSavingAction('reject');
-      
-      const result = await transactionStatementService.rejectStatement(statement.id);
-      
+
+      const result = await transactionStatementService.rejectStatement(statement.id, reason.trim() || undefined);
+
       if (result.success) {
         toast.success('거래명세서가 거부되었습니다.');
         onClose();
@@ -4422,8 +4422,6 @@ export default function StatementConfirmModal({
                       const itemPO = normalizedSelectedPO
                         ? normalizedSelectedPO
                         : extractedInDb || '';
-                      if (rowIndex < 5) {
-                      }
                       // 매칭된 발주번호를 맨 앞에 추가 (추천 표시용)
                       const matchedPONumber = matchedSystem?.purchase_order_number || matchedSystem?.sales_order_number || '';
                       const rawOrderedPOs = Array.from(new Set(poCandidates));
@@ -4531,9 +4529,6 @@ export default function StatementConfirmModal({
                         const logKey = `${ocrItem.id}|${isSamePONumber ? 'same' : 'multi'}|${activePONumber}|${systemCandidates.length}`;
                         if (systemCandidateLogKeyRef.current !== logKey) {
                           systemCandidateLogKeyRef.current = logKey;
-                          const firstCandidate = systemCandidates[0];
-                          if (firstCandidate) {
-                          }
                         }
                       }
                       

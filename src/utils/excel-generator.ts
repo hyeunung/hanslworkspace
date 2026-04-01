@@ -122,7 +122,7 @@ function fillBOMSheet(
   // 그리고 31자 제한, 양끝 apostrophe 불가 등의 제약이 있어 시트명만 안전하게 치환
   const sanitizeWorksheetName = (name: string) => {
     const replaced = (name || '')
-      .replace(/[\*\?:\\\/\[\]]/g, '_')
+      .replace(/[\\/*?:[\]]/g, '_')
       .replace(/^'+|'+$/g, '')
       .trim();
     return (replaced || 'BOM').substring(0, 31);

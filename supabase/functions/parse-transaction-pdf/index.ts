@@ -438,6 +438,7 @@ items 각 항목:
     }
   }
   let normalized = normalizeParseResult(parsed, textContent)
+  normalized.items = deduplicateByContent(normalized.items)
 
   const expectedLineNumbers = await detectExpectedLineNumbersWithClaude(pdfBase64, apiKey, poScope).catch(() => [])
 
@@ -510,18 +511,34 @@ items 각 항목:
     normalized.items = mergeParsedItems(normalized.items, supplementalItems)
   }
 
+  // 모든 추출 패스가 끝난 후 최종 콘텐츠 기반 중복 제거 (공급자/공급받는자 사본 중복)
+  const preDedup = normalized.items.length
+  normalized.items = deduplicateByContent(normalized.items)
+  const removedByDedup = preDedup - normalized.items.length
+
+  // 중복 제거로 아이템이 줄어든 경우, expected count 검증을 조정
+  const adjustedExpectedCount = removedByDedup > 0
+    ? Math.min(expectedItemCount, normalized.items.length + Math.floor(removedByDedup * 0.1))
+    : expectedItemCount
+
   const missingExpectedLines = expectedLineNumbers.length > 0
     ? findMissingExpectedLineNumbers(normalized.items, expectedLineNumbers)
     : []
 
-  if (missingExpectedLines.length > 0) {
-    const missingPreview = missingExpectedLines.slice(0, 25).join(',')
+  // 중복 제거로 제거된 line_number는 missing에서 제외
+  const trulyMissingLines = missingExpectedLines.filter((lineNum) =>
+    !normalized.items.some((item) => item.line_number < lineNum) ||
+    lineNum <= getMaxLineNumber(normalized.items)
+  )
+
+  if (removedByDedup === 0 && trulyMissingLines.length > 0) {
+    const missingPreview = trulyMissingLines.slice(0, 25).join(',')
     throw new Error(
-      `Incomplete PDF extraction: expected_item_count=${expectedItemCount}, extracted_item_count=${normalized.items.length}, missing_lines=[${missingPreview}${missingExpectedLines.length > 25 ? ',...' : ''}]`
+      `Incomplete PDF extraction: expected_item_count=${expectedItemCount}, extracted_item_count=${normalized.items.length}, missing_lines=[${missingPreview}${trulyMissingLines.length > 25 ? ',...' : ''}]`
     )
   }
 
-  if (normalized.items.length < expectedItemCount) {
+  if (removedByDedup === 0 && normalized.items.length < adjustedExpectedCount) {
     throw new Error(
       `Incomplete PDF extraction: expected_item_count=${expectedItemCount}, extracted_item_count=${normalized.items.length}`
     )
@@ -1136,6 +1153,51 @@ ${knownLineText}
   } catch (_) {
     return []
   }
+}
+
+/**
+ * 공급자/공급받는자 사본 중복 제거.
+ * 동일한 (item_name, po_number, quantity, unit_price, amount)를 가진 아이템이
+ * 여러 개 있으면 line_number가 가장 작은 것(공급받는자 사본)만 남긴다.
+ */
+function deduplicateByContent(items: ParsedItem[]): ParsedItem[] {
+  const contentGroups = new Map<string, ParsedItem[]>()
+
+  for (const item of items) {
+    const key = [
+      (item.item_name || '').trim().toUpperCase(),
+      (item.po_number || '').trim().toUpperCase(),
+      item.quantity ?? '',
+      item.unit_price ?? '',
+      item.amount ?? 0,
+    ].join('|')
+
+    const group = contentGroups.get(key)
+    if (group) {
+      group.push(item)
+    } else {
+      contentGroups.set(key, [item])
+    }
+  }
+
+  const kept: ParsedItem[] = []
+  for (const group of contentGroups.values()) {
+    if (group.length === 1) {
+      kept.push(group[0])
+    } else {
+      // 같은 콘텐츠의 아이템들 중 가장 좋은 것 하나만 남김
+      // 우선순위: high confidence > lower line_number (공급받는자가 먼저 옴)
+      group.sort((a, b) => {
+        const confOrder = { high: 0, med: 1, low: 2 }
+        const confDiff = confOrder[a.confidence] - confOrder[b.confidence]
+        if (confDiff !== 0) return confDiff
+        return a.line_number - b.line_number
+      })
+      kept.push(group[0])
+    }
+  }
+
+  return kept.sort((a, b) => a.line_number - b.line_number)
 }
 
 function mergeParsedItems(base: ParsedItem[], incoming: ParsedItem[]): ParsedItem[] {

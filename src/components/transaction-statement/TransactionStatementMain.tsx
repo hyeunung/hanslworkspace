@@ -430,6 +430,7 @@ export default function TransactionStatementMain() {
         )
         .subscribe((status: string, err?: Error) => {
           if (err) {
+            logger.warn('[TransactionStatementMain] Realtime subscribe callback error:', { error: err });
           }
           if (status === 'SUBSCRIBED') {
             realtimeReconnectAttemptsRef.current = 0;
@@ -466,6 +467,15 @@ export default function TransactionStatementMain() {
   const renderStatusBadge = (status: TransactionStatementStatus, errorMessage?: string | null, statementMode?: StatementMode, statement?: TransactionStatement) => {
     const baseClass = "inline-flex items-center gap-1 business-radius-badge px-2 py-0.5 text-[10px] font-medium leading-tight";
     
+    const renderErrorReason = (reason: string | null | undefined) => {
+      if (!reason) return null;
+      return (
+        <p className="text-[9px] text-red-500 mt-0.5 max-w-[120px] truncate" title={reason}>
+          {reason}
+        </p>
+      );
+    };
+
     switch (status) {
       case 'pending':
         return (
@@ -504,20 +514,23 @@ export default function TransactionStatementMain() {
         );
       case 'rejected':
         return (
-          <span className={`${baseClass} bg-red-500 text-white`}>
-            <XCircle className="w-3 h-3" />
-            거부됨
-          </span>
+          <div className="flex flex-col items-center">
+            <span className={`${baseClass} bg-red-500 text-white`}>
+              <XCircle className="w-3 h-3" />
+              거부됨
+            </span>
+            {renderErrorReason(errorMessage)}
+          </div>
         );
       case 'failed':
         return (
-          <span
-            className={`${baseClass} bg-red-500 text-white`}
-            title={errorMessage || '처리 실패'}
-          >
-            <XCircle className="w-3 h-3" />
-            실패
-          </span>
+          <div className="flex flex-col items-center">
+            <span className={`${baseClass} bg-red-500 text-white`}>
+              <XCircle className="w-3 h-3" />
+              실패
+            </span>
+            {renderErrorReason(errorMessage || '처리 실패')}
+          </div>
         );
       default:
         return <span className={`${baseClass} bg-gray-500 text-white`}>{status}</span>;
@@ -596,7 +609,7 @@ export default function TransactionStatementMain() {
   const handleStartExtraction = async (e: React.MouseEvent, statement: TransactionStatement) => {
     e.stopPropagation();
     debugTargetStatementIdRef.current = statement.id;
-    const canExtract = ['pending', 'queued', 'failed'].includes(statement.status);
+    const canExtract = ['pending', 'queued', 'failed', 'rejected'].includes(statement.status);
     if (!canExtract || extractingIds.has(statement.id)) {
       toast.info('이미 처리 중이거나 완료된 건입니다.');
       return;
@@ -1034,9 +1047,9 @@ export default function TransactionStatementMain() {
                             </span>
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 text-center">
-                          {extractingIds.has(statement.id) 
-                            ? renderStatusBadge('processing') 
+                        <td className="px-3 py-1.5 text-center align-top pt-2.5">
+                          {extractingIds.has(statement.id)
+                            ? renderStatusBadge('processing')
                             : renderStatusBadge(statement.status, statement.extraction_error, statement.statement_mode, statement)}
                         </td>
                         <td className="px-3 py-2.5 text-center">
@@ -1133,14 +1146,14 @@ export default function TransactionStatementMain() {
                         </td>
                         <td className="px-3 py-2.5 text-center">
                           <div className="flex items-center justify-center gap-1">
-                {['pending', 'queued', 'failed'].includes(statement.status) && (
+                {['pending', 'queued', 'failed', 'rejected'].includes(statement.status) && (
                               <Button
                                 type="button"
                                 onClick={(e) => handleStartExtraction(e, statement)}
                                 disabled={extractingIds.has(statement.id)}
                                 className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
                               >
-                                {statement.status === 'failed' ? '재시도' : statement.status === 'queued' ? '다시 실행' : '추출 시작'}
+                                {statement.status === 'failed' || statement.status === 'rejected' ? '재추출' : statement.status === 'queued' ? '다시 실행' : '추출 시작'}
                               </Button>
                             )}
                             <button
@@ -1214,14 +1227,14 @@ export default function TransactionStatementMain() {
                       </p>
                     )}
                     <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-gray-100">
-                  {['pending', 'queued', 'failed'].includes(statement.status) && (
+                  {['pending', 'queued', 'failed', 'rejected'].includes(statement.status) && (
                         <Button
                           type="button"
                           onClick={(e) => handleStartExtraction(e, statement)}
                           disabled={extractingIds.has(statement.id)}
                           className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
                         >
-                          {statement.status === 'failed' ? '재시도' : statement.status === 'queued' ? '다시 실행' : '추출 시작'}
+                          {statement.status === 'failed' || statement.status === 'rejected' ? '재추출' : statement.status === 'queued' ? '다시 실행' : '추출 시작'}
                         </Button>
                       )}
                       <button

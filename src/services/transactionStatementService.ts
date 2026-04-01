@@ -697,7 +697,9 @@ class TransactionStatementService {
       if (shouldRetryViaQueue) {
         try {
           await this.queueStatementForRetry(statementId, resetBeforeExtract);
-        } catch (_) {}
+        } catch (queueError) {
+          logger.warn('[Service] Failed to queue statement retry:', queueError);
+        }
         void this.kickQueue().catch(() => {});
         return { success: true, queued: true, status: 'queued' as TransactionStatementStatus };
       }
@@ -726,7 +728,9 @@ class TransactionStatementService {
           })
           .eq('id', statementId)
           .in('status', ['pending', 'queued', 'processing', 'failed']);
-      } catch (_) {}
+      } catch (updateError) {
+        logger.warn('[Service] Failed to update failed statement status:', updateError);
+      }
       return {
         success: false,
         error: resolvedErrorMessage
@@ -2419,11 +2423,15 @@ class TransactionStatementService {
   /**
    * 거래명세서 거부
    */
-  async rejectStatement(statementId: string): Promise<{ success: boolean; error?: string }> {
+  async rejectStatement(statementId: string, reason?: string): Promise<{ success: boolean; error?: string }> {
     try {
+      const updateData: Record<string, unknown> = { status: 'rejected' };
+      if (reason) {
+        updateData.extraction_error = reason;
+      }
       const { error } = await this.supabase
         .from('transaction_statements')
-        .update({ status: 'rejected' })
+        .update(updateData)
         .eq('id', statementId);
 
       if (error) throw error;
