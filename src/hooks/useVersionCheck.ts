@@ -24,20 +24,22 @@ interface VersionCheckState {
   changelog: ChangelogEntry[]
   /** 업데이트 모달 표시 여부 */
   showModal: boolean
-  /** 모달 닫기 */
-  dismissUpdate: () => void
-  /** 새로고침으로 업데이트 적용 */
+  /** 새로고침이 필요한지 (탭 열어둔 채 감지된 경우) */
+  needsReload: boolean
+  /** 확인 또는 업데이트 적용 */
   applyUpdate: () => void
 }
 
 /** 폴링 주기 (5분) */
 const CHECK_INTERVAL = 5 * 60 * 1000
 
-/** localStorage 키 - 마지막으로 확인(dismiss 또는 본)한 빌드 ID */
+/** localStorage 키 */
 const SEEN_BUILD_KEY = 'hansl_seen_build_id'
+const SEEN_VERSION_KEY = 'hansl_seen_version'
 
 declare const __APP_BUILD_ID__: string
 declare const __APP_VERSION__: string
+declare const __APP_BUILD_TIME__: string
 
 /**
  * 새 버전 배포를 감지하고 업데이트 알림을 관리하는 훅
@@ -45,37 +47,50 @@ declare const __APP_VERSION__: string
  * 두 가지 시나리오를 모두 커버:
  * 1) 새로고침/재방문 시: localStorage의 "마지막 본 buildId"와 현재 buildId 비교
  * 2) 페이지 열어둔 채 새 배포: 폴링으로 서버 version.json의 buildId와 현재 buildId 비교
+ *
+ * changelog: "마지막으로 본 버전" 이후의 모든 변경사항을 누적 표시
+ * → 5번 업데이트 동안 미접속한 사용자도 놓친 변경사항을 전부 확인 가능
  */
 export function useVersionCheck(): VersionCheckState {
   const [hasUpdate, setHasUpdate] = useState(false)
   const [newVersion, setNewVersion] = useState<VersionInfo | null>(null)
   const [changelog, setChangelog] = useState<ChangelogEntry[]>([])
   const [showModal, setShowModal] = useState(false)
+  const [needsReload, setNeedsReload] = useState(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const currentBuildId = typeof __APP_BUILD_ID__ !== 'undefined' ? __APP_BUILD_ID__ : ''
   const currentVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0'
   const currentBuildTime = typeof __APP_BUILD_TIME__ !== 'undefined' ? __APP_BUILD_TIME__ : ''
 
-  /** changelog.json에서 변경사항 로드 */
-  const loadChangelog = useCallback(async (targetVersion: string) => {
+  /**
+   * changelog.json에서 변경사항 로드
+   * "마지막으로 본 버전(seenVersion)" 이후의 모든 항목을 표시
+   */
+  const loadChangelog = useCallback(async () => {
     try {
       const res = await fetch(`/changelog.json?t=${Date.now()}`, { cache: 'no-store' })
       if (!res.ok) return
       const entries: ChangelogEntry[] = await res.json()
-      const newEntries = entries.filter(e => e.version > currentVersion || e.version === targetVersion)
-      setChangelog(newEntries.length > 0 ? newEntries : entries.slice(0, 1))
+
+      // 마지막으로 본 버전 (localStorage에 저장된 값)
+      const seenVersion = localStorage.getItem(SEEN_VERSION_KEY) || '0.0.0'
+
+      // seenVersion보다 새로운 모든 항목 (놓친 업데이트 전부 포함)
+      const missedEntries = entries.filter(e => e.version > seenVersion)
+      setChangelog(missedEntries.length > 0 ? missedEntries : entries.slice(0, 1))
     } catch {
       // changelog 로드 실패는 무시
     }
-  }, [currentVersion])
+  }, [])
 
   /** 업데이트 모달 띄우기 */
-  const showUpdate = useCallback((version: VersionInfo) => {
+  const showUpdate = useCallback((version: VersionInfo, requiresReload: boolean) => {
     setNewVersion(version)
     setHasUpdate(true)
+    setNeedsReload(requiresReload)
     setShowModal(true)
-    loadChangelog(version.version)
+    loadChangelog()
   }, [loadChangelog])
 
   // ── 시나리오 1: 페이지 로드 시 "이전에 본 빌드"와 현재 빌드 비교 ──
@@ -84,19 +99,20 @@ export function useVersionCheck(): VersionCheckState {
 
     const seenBuildId = localStorage.getItem(SEEN_BUILD_KEY)
 
-    // 처음 방문이면 현재 빌드를 기록만 하고 끝
+    // 처음 방문이면 현재 빌드와 버전을 기록하고 끝
     if (!seenBuildId) {
       localStorage.setItem(SEEN_BUILD_KEY, currentBuildId)
+      localStorage.setItem(SEEN_VERSION_KEY, currentVersion)
       return
     }
 
-    // 이전에 본 빌드와 다르면 → 새 배포 후 재방문
+    // 이전에 본 빌드와 다르면 → 새 배포 후 재방문 (이미 최신 코드 로드됨, 새로고침 불필요)
     if (seenBuildId !== currentBuildId) {
       showUpdate({
         version: currentVersion,
         buildId: currentBuildId,
         buildTime: currentBuildTime,
-      })
+      }, false)
     }
   }, [currentBuildId, currentVersion, currentBuildTime, showUpdate])
 
@@ -108,8 +124,9 @@ export function useVersionCheck(): VersionCheckState {
 
       const remote: VersionInfo = await res.json()
 
+      // 탭 열어둔 채 새 배포 감지 → 새로고침 필요
       if (currentBuildId && remote.buildId && remote.buildId !== currentBuildId) {
-        showUpdate(remote)
+        showUpdate(remote, true)
       }
     } catch {
       // 네트워크 에러는 조용히 무시
@@ -138,27 +155,21 @@ export function useVersionCheck(): VersionCheckState {
     }
   }, [checkRemoteVersion])
 
-  const dismissUpdate = useCallback(() => {
-    setShowModal(false)
-    // dismiss 시 현재 빌드를 "본 것"으로 기록
-    if (currentBuildId) {
-      localStorage.setItem(SEEN_BUILD_KEY, currentBuildId)
-    }
-    // 폴링으로 감지된 원격 버전도 기록
-    if (newVersion?.buildId && newVersion.buildId !== currentBuildId) {
-      localStorage.setItem(SEEN_BUILD_KEY, newVersion.buildId)
-    }
-  }, [currentBuildId, newVersion])
-
   const applyUpdate = useCallback(() => {
-    // 업데이트 적용 시 새 빌드를 "본 것"으로 미리 기록
-    if (newVersion?.buildId) {
-      localStorage.setItem(SEEN_BUILD_KEY, newVersion.buildId)
-    } else if (currentBuildId) {
-      localStorage.setItem(SEEN_BUILD_KEY, currentBuildId)
+    // 현재 빌드 + 버전을 "본 것"으로 기록
+    const buildId = newVersion?.buildId || currentBuildId
+    const version = newVersion?.version || currentVersion
+    if (buildId) localStorage.setItem(SEEN_BUILD_KEY, buildId)
+    if (version) localStorage.setItem(SEEN_VERSION_KEY, version)
+
+    if (needsReload) {
+      // 탭 열어둔 채 감지 → 새로고침으로 새 코드 적용
+      window.location.reload()
+    } else {
+      // 재방문 → 이미 최신 코드, 모달만 닫기
+      setShowModal(false)
     }
-    window.location.reload()
-  }, [currentBuildId, newVersion])
+  }, [currentBuildId, currentVersion, newVersion, needsReload])
 
   return {
     hasUpdate,
@@ -166,7 +177,7 @@ export function useVersionCheck(): VersionCheckState {
     newVersion,
     changelog,
     showModal,
-    dismissUpdate,
+    needsReload,
     applyUpdate,
   }
 }
