@@ -28,7 +28,7 @@ export default function UpdateNotificationModal() {
 
   const isOpen = DEV_PREVIEW ? devOpen : showModal
   const version = DEV_PREVIEW
-    ? { version: '0.2.0', buildId: 'dev', buildTime: new Date().toISOString() }
+    ? { version: devChangelog[0]?.version || '0.0.0', buildId: 'dev', buildTime: new Date().toISOString() }
     : newVersion
   const changes = DEV_PREVIEW ? devChangelog : changelog
   const onApply = DEV_PREVIEW ? () => setDevOpen(false) : applyUpdate

@@ -110,22 +110,20 @@ export default function DashboardMain() {
   const [todayLeaves, setTodayLeaves] = useState<Array<{
     name: string | null
     type: string
-    position?: string | null
+    reason?: string | null
   }>>([])
   const [tomorrowLeaves, setTomorrowLeaves] = useState<Array<{
     name: string | null
     type: string
-    position?: string | null
+    reason?: string | null
   }>>([])
   const [todayTrips, setTodayTrips] = useState<Array<{
     requester_name: string
     trip_destination: string
-    position?: string | null
   }>>([])
   const [tomorrowTrips, setTomorrowTrips] = useState<Array<{
     requester_name: string
     trip_destination: string
-    position?: string | null
   }>>([])
 
   // 문의하기 관련 (superadmin용)
@@ -214,28 +212,28 @@ export default function DashboardMain() {
         // 금일 연차: start_date <= 오늘 AND end_date >= 오늘
         supabase
           .from('leave')
-          .select('name, type, position')
+          .select('name, type, reason')
           .eq('status', 'approved')
           .lte('start_date', todayStr)
           .gte('end_date', todayStr),
         // 내일 연차
         supabase
           .from('leave')
-          .select('name, type, position')
+          .select('name, type, reason')
           .eq('status', 'approved')
           .lte('start_date', tomorrowDateStr)
           .gte('end_date', tomorrowDateStr),
-        // 금일 출장: trip_start_date <= 오늘 AND trip_end_date >= 오늘
+        // 금일 출장
         supabase
           .from('business_trips')
-          .select('trip_destination, requester:employees!business_trips_requester_id_fkey(name, position)')
+          .select('trip_destination, requester:employees!business_trips_requester_id_fkey(name)')
           .eq('approval_status', 'approved')
           .lte('trip_start_date', todayStr)
           .gte('trip_end_date', todayStr),
         // 내일 출장
         supabase
           .from('business_trips')
-          .select('trip_destination, requester:employees!business_trips_requester_id_fkey(name, position)')
+          .select('trip_destination, requester:employees!business_trips_requester_id_fkey(name)')
           .eq('approval_status', 'approved')
           .lte('trip_start_date', tomorrowDateStr)
           .gte('trip_end_date', tomorrowDateStr),
@@ -244,19 +242,17 @@ export default function DashboardMain() {
       setTodayLeaves(todayLeaveResult.data || [])
       setTomorrowLeaves(tomorrowLeaveResult.data || [])
       setTodayTrips((todayTripResult.data || []).map((t: Record<string, unknown>) => {
-        const req = t.requester as { name?: string; position?: string } | null
+        const req = t.requester as { name?: string } | null
         return {
           requester_name: req?.name || '',
           trip_destination: t.trip_destination as string || '',
-          position: req?.position || null,
         }
       }))
       setTomorrowTrips((tomorrowTripResult.data || []).map((t: Record<string, unknown>) => {
-        const req = t.requester as { name?: string; position?: string } | null
+        const req = t.requester as { name?: string } | null
         return {
           requester_name: req?.name || '',
           trip_destination: t.trip_destination as string || '',
-          position: req?.position || null,
         }
       }))
     } catch (err) {
@@ -1049,7 +1045,7 @@ export default function DashboardMain() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-3">
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     {todayLeaves.map((leave, i) => (
                       <div key={`leave-${i}`} className="border border-gray-100 business-radius-card px-3 py-2 bg-gray-50/50">
                         <div className="flex items-center justify-between mb-0.5">
@@ -1058,7 +1054,7 @@ export default function DashboardMain() {
                             {leave.type === 'annual' ? '연차' : leave.type === 'half_am' ? '오전반차' : leave.type === 'half_pm' ? '오후반차' : leave.type === 'official' ? '공가' : '휴가'}
                           </span>
                         </div>
-                        <p className="text-[9px] text-gray-500 truncate">{leave.position || '　'}</p>
+                        <p className="text-[9px] text-gray-500 truncate">{leave.reason || '　'}</p>
                       </div>
                     ))}
                     {todayTrips.map((trip, i) => (
@@ -1090,7 +1086,7 @@ export default function DashboardMain() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-3">
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     {tomorrowLeaves.map((leave, i) => (
                       <div key={`leave-${i}`} className="border border-gray-100 business-radius-card px-3 py-2 bg-gray-50/50">
                         <div className="flex items-center justify-between mb-0.5">
@@ -1099,7 +1095,7 @@ export default function DashboardMain() {
                             {leave.type === 'annual' ? '연차' : leave.type === 'half_am' ? '오전반차' : leave.type === 'half_pm' ? '오후반차' : leave.type === 'official' ? '공가' : '휴가'}
                           </span>
                         </div>
-                        <p className="text-[9px] text-gray-500 truncate">{leave.position || '　'}</p>
+                        <p className="text-[9px] text-gray-500 truncate">{leave.reason || '　'}</p>
                       </div>
                     ))}
                     {tomorrowTrips.map((trip, i) => (
