@@ -260,8 +260,8 @@ export default function EmployeeFilters({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">전체</SelectItem>
-              <SelectItem value="active">활성</SelectItem>
-              <SelectItem value="inactive">비활성</SelectItem>
+              <SelectItem value="active">재직</SelectItem>
+              <SelectItem value="inactive">퇴사</SelectItem>
             </SelectContent>
           </Select>
         </div>

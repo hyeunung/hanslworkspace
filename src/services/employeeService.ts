@@ -229,8 +229,8 @@ class EmployeeService {
     }
   }
 
-  // 직원 활성화/비활성화 토글
-  async toggleEmployeeStatus(id: string): Promise<{ success: boolean; data?: Employee; error?: string }> {
+  // 직원 퇴사/복직 처리
+  async toggleEmployeeStatus(id: string, terminatedAt?: string): Promise<{ success: boolean; data?: Employee; error?: string }> {
     try {
       // 현재 상태 조회
       const { data: currentEmployee, error: selectError } = await this.supabase
@@ -245,9 +245,9 @@ class EmployeeService {
       const nextIsActive = !currentEmployee.is_active
       const { data, error } = await this.supabase
         .from('employees')
-        .update({ 
+        .update({
           is_active: nextIsActive,
-          terminated_at: nextIsActive ? null : new Date().toISOString()
+          terminated_at: nextIsActive ? null : (terminatedAt || new Date().toISOString())
         })
         .eq('id', id)
         .select()
@@ -258,9 +258,9 @@ class EmployeeService {
       return { success: true, data };
     } catch (error) {
       logger.error('직원 상태 변경 실패', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'
       };
     }
   }
@@ -358,7 +358,7 @@ class EmployeeService {
         '부서': employee.department || '',
         '직급': employee.position || '',
         '권한': this.getRoleDisplayName(employee.roles),
-        '상태': employee.is_active ? '활성' : '비활성',
+        '재직상태': employee.is_active ? '재직' : '퇴사',
         '등록일': employee.created_at ? new Date(employee.created_at).toLocaleDateString('ko-KR') : ''
       }));
 

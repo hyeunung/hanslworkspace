@@ -4,6 +4,13 @@ import { Employee, EmployeeUpsertData, PurchaseRole } from '@/types/purchase'
 import { parseRoles } from '@/utils/roleHelper'
 import { formatDate } from '@/utils/helpers'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -26,14 +33,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { 
-  MoreHorizontal, 
-  Edit, 
-  Trash2, 
+import {
+  MoreHorizontal,
+  Edit,
+  Trash2,
   Save,
   X,
-  ToggleLeft, 
-  ToggleRight,
 } from 'lucide-react'
 import { employeeService } from '@/services/employeeService'
 import { toast } from 'sonner'
@@ -117,26 +122,51 @@ export default function EmployeeTable({
   const [draft, setDraft] = useState<EmployeeDraft | null>(null)
   const [availableEmployeeColumns, setAvailableEmployeeColumns] = useState<Set<string> | null>(null)
 
-  const handleToggleStatus = async (employee: Employee) => {
+  // 퇴사 처리 다이얼로그 상태
+  const [terminateTarget, setTerminateTarget] = useState<Employee | null>(null)
+  const [terminateDate, setTerminateDate] = useState('')
+
+  const handleTerminate = (employee: Employee) => {
     if (!canManageEmployees) {
-      toast.error('상태 변경 권한이 없습니다.')
+      toast.error('퇴사 처리 권한이 없습니다.')
       return
     }
+
+    if (employee.is_active) {
+      // 퇴사: 날짜 입력 다이얼로그 열기
+      const today = new Date().toLocaleString('en-CA', { timeZone: 'Asia/Seoul' }).slice(0, 10)
+      setTerminateDate(today)
+      setTerminateTarget(employee)
+    } else {
+      // 복직: 바로 확인
+      if (!confirm(`'${employee.name}' 직원을 복직 처리하시겠습니까?`)) return
+      executeTerminateToggle(employee)
+    }
+  }
+
+  const executeTerminateToggle = async (employee: Employee, dateStr?: string) => {
     setLoadingId(employee.id)
     try {
-      const result = await employeeService.toggleEmployeeStatus(employee.id)
-      
+      const terminatedAt = dateStr ? new Date(dateStr + 'T00:00:00+09:00').toISOString() : undefined
+      const result = await employeeService.toggleEmployeeStatus(employee.id, terminatedAt)
+
       if (result.success) {
-        toast.success(`직원이 ${employee.is_active ? '비활성화' : '활성화'}되었습니다.`)
+        toast.success(employee.is_active ? `'${employee.name}' 직원이 퇴사 처리되었습니다.` : `'${employee.name}' 직원이 복직 처리되었습니다.`)
         onRefresh()
       } else {
-        toast.error(result.error || '상태 변경에 실패했습니다.')
+        toast.error(result.error || '처리에 실패했습니다.')
       }
     } catch (error) {
-      toast.error('상태 변경 중 오류가 발생했습니다.')
+      toast.error('처리 중 오류가 발생했습니다.')
     } finally {
       setLoadingId(null)
+      setTerminateTarget(null)
     }
+  }
+
+  const handleTerminateConfirm = () => {
+    if (!terminateTarget || !terminateDate) return
+    executeTerminateToggle(terminateTarget, terminateDate)
   }
 
   const handleDelete = async (employee: Employee) => {
@@ -351,8 +381,15 @@ export default function EmployeeTable({
     })
   }
 
+  // 퇴사자를 맨 아래로 정렬
+  const sortedByStatus: Employee[] = useMemo(() => {
+    const active = sortedData.filter((e) => e.is_active)
+    const terminated = sortedData.filter((e) => !e.is_active)
+    return [...active, ...terminated]
+  }, [sortedData])
+
   const displayRows: Employee[] = useMemo(() => {
-    if (!isCreating || editingRowId !== NEW_ROW_ID) return sortedData
+    if (!isCreating || editingRowId !== NEW_ROW_ID) return sortedByStatus
 
     const pseudo: Employee = {
       id: NEW_ROW_ID,
@@ -378,8 +415,8 @@ export default function EmployeeTable({
       remaining_annual_leave: draft?.remaining_annual_leave ? Number(draft.remaining_annual_leave) : 0,
     }
 
-    return [pseudo, ...sortedData]
-  }, [draft, editingRowId, isCreating, sortedData])
+    return [pseudo, ...sortedByStatus]
+  }, [draft, editingRowId, isCreating, sortedByStatus])
 
   const isEditingRow = (employeeId: string) => canManageEmployees && editingRowId === employeeId && !!draft
 
@@ -500,7 +537,7 @@ export default function EmployeeTable({
                     sortDirection={sortConfig.direction}
                     onSort={() => handleSort('is_active' as keyof Employee)}
                   >
-                    상태
+                    재직
                   </SortableHeader>
                 </TableHead>
                 <TableHead className="w-16 min-w-[50px]">작업</TableHead>
@@ -517,7 +554,7 @@ export default function EmployeeTable({
             </TableRow>
           ) : (
             displayRows.map((employee) => (
-              <TableRow key={employee.id}>
+              <TableRow key={employee.id} className={!employee.is_active ? 'bg-gray-50 opacity-60' : ''}>
                 <TableCell className="text-[11px] px-2 py-1.5">
                   {isEditingRow(employee.id) ? (
                     <Input
@@ -712,27 +749,32 @@ export default function EmployeeTable({
                       )}
                     </TableCell>
                     <TableCell className="px-2 py-1.5">
-                      {isEditingRow(employee.id) ? (
+                      {employee.id === NEW_ROW_ID ? (
+                        <span className="badge-stats text-[10px] px-1.5 py-0.5 bg-green-100 text-green-800">재직</span>
+                      ) : (
                         <Select
-                          value={draft?.is_active || 'true'}
-                          onValueChange={(value) => updateDraft('is_active', value as 'true' | 'false')}
+                          value={employee.is_active ? 'active' : 'terminated'}
+                          onValueChange={(value) => {
+                            const willTerminate = value === 'terminated'
+                            if (willTerminate === !employee.is_active) return
+                            handleTerminate(employee)
+                          }}
                         >
-                          <SelectTrigger className="!h-auto !min-h-[20px] !py-px !px-2 !text-[11px] business-radius-input border border-gray-300 bg-white text-gray-700">
-                            <SelectValue placeholder="상태" />
+                          <SelectTrigger className="!h-auto !min-h-[20px] !py-px !px-2 !text-[11px] !w-auto !min-w-[55px] business-radius-input border-0 bg-transparent hover:bg-gray-100 cursor-pointer">
+                            <div className="flex flex-col items-start">
+                              <span className={`badge-stats text-[10px] px-1.5 py-0.5 ${employee.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'}`}>
+                                {employee.is_active ? '재직' : '퇴사'}
+                              </span>
+                              {!employee.is_active && employee.terminated_at && (
+                                <span className="text-[9px] text-gray-400 mt-0.5">{formatDate(employee.terminated_at)}</span>
+                              )}
+                            </div>
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="true">활성</SelectItem>
-                            <SelectItem value="false">비활성</SelectItem>
+                            <SelectItem value="active">재직</SelectItem>
+                            <SelectItem value="terminated">퇴사</SelectItem>
                           </SelectContent>
                         </Select>
-                      ) : (
-                        <span
-                          className={`badge-stats text-[10px] px-1.5 py-0.5 ${
-                            employee.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
-                          }`}
-                        >
-                          {employee.is_active ? '활성' : '비활성'}
-                        </span>
                       )}
                     </TableCell>
                     <TableCell className="px-1 py-1.5">
@@ -770,20 +812,13 @@ export default function EmployeeTable({
                               <Edit className="mr-2 h-4 w-4" />
                               수정
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleToggleStatus(employee)}>
-                              {employee.is_active ? (
-                                <>
-                                  <ToggleLeft className="mr-2 h-4 w-4" />
-                                  비활성화
-                                </>
-                              ) : (
-                                <>
-                                  <ToggleRight className="mr-2 h-4 w-4" />
-                                  활성화
-                                </>
-                              )}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleDelete(employee)} className="text-red-600">
+                            <DropdownMenuItem
+                              onSelect={(e) => {
+                                e.preventDefault()
+                                handleDelete(employee)
+                              }}
+                              className="text-red-600"
+                            >
                               <Trash2 className="mr-2 h-4 w-4" />
                               삭제
                             </DropdownMenuItem>
@@ -815,9 +850,9 @@ export default function EmployeeTable({
                   <span>{employee.name}</span>
                   {canManageEmployees && (
                     <span
-                      className={`badge-stats ${employee.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}
+                      className={`badge-stats ${employee.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'}`}
                     >
-                      {employee.is_active ? '활성' : '비활성'}
+                      {employee.is_active ? '재직' : '퇴사'}
                     </span>
                   )}
                 </div>
@@ -955,20 +990,34 @@ export default function EmployeeTable({
                     } 
                   />
                   <MobileCardItem
-                    label="상태"
+                    label="재직상태"
                     value={
-                      isEditingRow(employee.id) ? (
-                        <Select value={draft?.is_active || 'true'} onValueChange={(value) => updateDraft('is_active', value as 'true' | 'false')}>
-                          <SelectTrigger className="!h-auto !min-h-[20px] !py-px !px-2 !text-[11px] business-radius-input border border-gray-300 bg-white text-gray-700">
-                            <SelectValue placeholder="상태" />
+                      employee.id === NEW_ROW_ID ? (
+                        <span className="badge-stats text-[10px] px-1.5 py-0.5 bg-green-100 text-green-800">재직</span>
+                      ) : (
+                        <Select
+                          value={employee.is_active ? 'active' : 'terminated'}
+                          onValueChange={(value) => {
+                            const willTerminate = value === 'terminated'
+                            if (willTerminate === !employee.is_active) return
+                            handleTerminate(employee)
+                          }}
+                        >
+                          <SelectTrigger className="!h-auto !min-h-[20px] !py-px !px-2 !text-[11px] !w-auto business-radius-input border-0 bg-transparent hover:bg-gray-100 cursor-pointer">
+                            <div className="flex items-center gap-1">
+                              <span className={`badge-stats text-[10px] px-1.5 py-0.5 ${employee.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'}`}>
+                                {employee.is_active ? '재직' : '퇴사'}
+                              </span>
+                              {!employee.is_active && employee.terminated_at && (
+                                <span className="text-[9px] text-gray-400">{formatDate(employee.terminated_at)}</span>
+                              )}
+                            </div>
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="true">활성</SelectItem>
-                            <SelectItem value="false">비활성</SelectItem>
+                            <SelectItem value="active">재직</SelectItem>
+                            <SelectItem value="terminated">퇴사</SelectItem>
                           </SelectContent>
                         </Select>
-                      ) : (
-                        employee.is_active ? '활성' : '비활성'
                       )
                     }
                   />
@@ -1095,14 +1144,6 @@ export default function EmployeeTable({
                           수정
                         </Button>
                         <Button
-                          className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 flex items-center gap-1"
-                          onClick={() => handleToggleStatus(employee)}
-                          disabled={loadingId === employee.id}
-                        >
-                          {employee.is_active ? <ToggleLeft className="w-4 h-4" /> : <ToggleRight className="w-4 h-4" />}
-                          상태
-                        </Button>
-                        <Button
                           className="button-base border border-red-200 bg-white text-red-600 hover:bg-red-50 flex items-center gap-1"
                           onClick={() => handleDelete(employee)}
                           disabled={loadingId === employee.id}
@@ -1119,6 +1160,44 @@ export default function EmployeeTable({
           ))
         )}
       </div>
+
+      {/* 퇴사 처리 다이얼로그 */}
+      <Dialog open={!!terminateTarget} onOpenChange={(open) => { if (!open) setTerminateTarget(null) }}>
+        <DialogContent className="sm:max-w-[360px]">
+          <DialogHeader>
+            <DialogTitle>퇴사 처리</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-gray-600">
+              <span className="font-medium text-gray-900">{terminateTarget?.name}</span> 직원을 퇴사 처리합니다.
+            </p>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">퇴사일</label>
+              <Input
+                type="date"
+                value={terminateDate}
+                onChange={(e) => setTerminateDate(e.target.value)}
+                className="business-radius-input border border-gray-300 bg-white text-gray-700"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+              onClick={() => setTerminateTarget(null)}
+            >
+              취소
+            </Button>
+            <Button
+              className="button-base bg-red-500 hover:bg-red-600 text-white"
+              onClick={handleTerminateConfirm}
+              disabled={!terminateDate || loadingId === terminateTarget?.id}
+            >
+              퇴사 처리
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

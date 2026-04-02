@@ -1107,10 +1107,10 @@ ${itemsText}`
     ? canEditAll  // 승인된 요청은 관리자만 삭제 가능 (lead buyer 제외)
     : (canEditAll || (purchase?.requester_name === currentUserName))  // 미승인도 lead buyer 제외
   
-  // 구매 권한 체크: superadmin + lead buyer만 (요청자 본인 제외)
-  const canPurchase = effectiveRoles.includes('superadmin') || 
-                     effectiveRoles.includes('lead buyer') || 
-                     effectiveRoles.includes('lead buyer')
+  // 구매 권한 체크: superadmin + lead buyer + hr (요청자 본인 제외)
+  const canPurchase = effectiveRoles.includes('superadmin') ||
+                     effectiveRoles.includes('lead buyer') ||
+                     effectiveRoles.includes('hr')
   
   // 입고 권한 체크 
   // 1. 관리자는 모든 건 입고 처리 가능
