@@ -323,6 +323,9 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
             <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide leading-none ml-[1px]">
               Purchase System
             </span>
+            <span className="text-[9px] text-gray-400 leading-none ml-[1px]">
+              v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''}
+            </span>
           </div>
 
           {/* 로고 오른쪽 알림 배지 */}
