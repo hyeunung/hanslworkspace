@@ -471,6 +471,7 @@ items 각 항목:
   if (tailRecovery.passes > 0) {
     extractionPasses += tailRecovery.passes
     normalized.items = mergeParsedItems(normalized.items, tailRecovery.items)
+    normalized.items = deduplicateByContent(normalized.items)
   }
 
   if (
@@ -1166,6 +1167,7 @@ function deduplicateByContent(items: ParsedItem[]): ParsedItem[] {
   for (const item of items) {
     const key = [
       (item.item_name || '').trim().toUpperCase(),
+      (item.specification || '').trim().toUpperCase(),
       (item.po_number || '').trim().toUpperCase(),
       item.quantity ?? '',
       item.unit_price ?? '',
