@@ -83,9 +83,17 @@ export async function generateBOMExcelFromTemplate(
     removeWorksheetIfExists('TOP');
     removeWorksheetIfExists('BOTTOM');
   } else {
-    // 좌표가 있으면 해당 시트만 채움 (없는 쪽은 템플릿 그대로일 수 있어 필요 시 추가로 제거 가능)
-    fillCoordinateSheet(workbook, 'TOP', topCoordinates || []);
-    fillCoordinateSheet(workbook, 'BOTTOM', bottomCoordinates || []);
+    // 좌표가 있는 시트만 채우고, 없는 쪽은 템플릿 시트 제거 (템플릿 잔존 데이터 방지)
+    if ((topCoordinates?.length || 0) > 0) {
+      fillCoordinateSheet(workbook, 'TOP', topCoordinates);
+    } else {
+      removeWorksheetIfExists('TOP');
+    }
+    if ((bottomCoordinates?.length || 0) > 0) {
+      fillCoordinateSheet(workbook, 'BOTTOM', bottomCoordinates);
+    } else {
+      removeWorksheetIfExists('BOTTOM');
+    }
   }
 
   // Blob으로 반환
