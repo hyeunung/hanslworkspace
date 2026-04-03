@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react'
 import { useVersionCheck } from '@/hooks/useVersionCheck'
 import {
   Dialog,
   DialogContent,
 } from '@/components/ui/dialog'
-import { ArrowUpRight, Check, Wrench, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 
 const typeConfig: Record<string, { dot: string; badge: string; label: string }> = {
   feature:     { dot: 'bg-blue-500',  badge: 'bg-blue-50 text-blue-700 border-blue-200',  label: '신규' },
@@ -13,25 +12,13 @@ const typeConfig: Record<string, { dot: string; badge: string; label: string }> 
   maintenance: { dot: 'bg-gray-400',  badge: 'bg-gray-50 text-gray-600 border-gray-200',  label: '유지보수' },
 }
 
-const DEV_PREVIEW = import.meta.env.DEV
-
 export default function UpdateNotificationModal() {
   const { showModal, newVersion, changelog, needsReload, applyUpdate } = useVersionCheck()
-  const [devOpen, setDevOpen] = useState(DEV_PREVIEW)
-  const [devChangelog, setDevChangelog] = useState<{ version: string; date: string; title: string; changes: { type: string; text: string }[] }[]>([])
 
-  useEffect(() => {
-    if (DEV_PREVIEW) {
-      fetch('/changelog.json').then(r => r.json()).then(setDevChangelog).catch(() => {})
-    }
-  }, [])
-
-  const isOpen = DEV_PREVIEW ? devOpen : showModal
-  const version = DEV_PREVIEW
-    ? { version: devChangelog[0]?.version || '0.0.0', buildId: 'dev', buildTime: new Date().toISOString() }
-    : newVersion
-  const changes = DEV_PREVIEW ? devChangelog : changelog
-  const onApply = DEV_PREVIEW ? () => setDevOpen(false) : applyUpdate
+  const isOpen = showModal
+  const version = newVersion
+  const changes = changelog
+  const onApply = applyUpdate
 
   if (!isOpen || !version) return null
 
@@ -110,7 +97,7 @@ export default function UpdateNotificationModal() {
             onClick={onApply}
             className="button-base bg-hansl-600 hover:bg-hansl-700 text-white transition-colors flex items-center gap-1"
           >
-            {(DEV_PREVIEW ? false : needsReload) ? (
+            {needsReload ? (
               <>
                 <RefreshCw className="w-3 h-3" />
                 업데이트
