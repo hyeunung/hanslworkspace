@@ -2,6 +2,7 @@
 import { useState, lazy, Suspense, useEffect, useCallback, useMemo, useTransition, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { usePurchaseMemory } from "@/hooks/usePurchaseMemory";
+import { useServerSearch } from "@/hooks/useServerSearch";
 import { useColumnSettings } from "@/hooks/useColumnSettings";
 import ColumnSettingsDropdown from "@/components/purchase/ColumnSettingsDropdown";
 import FastPurchaseTable from "@/components/purchase/FastPurchaseTable";
@@ -10,7 +11,7 @@ import { updatePurchaseInMemory, loadAllPurchaseData } from "@/services/purchase
 import { markPurchaseAsPaymentCompleted, markPurchaseAsReceived, isCacheValid, purchaseMemoryCache } from '@/stores/purchaseMemoryStore';
 import DeliveryDateWarningModal, { useDeliveryWarningCount } from "@/components/purchase/DeliveryDateWarningModal";
 
-import { Package, Info, AlertTriangle } from "lucide-react";
+import { Package, Info, AlertTriangle, Search } from "lucide-react";
 import { downloadPurchaseOrderExcel } from '@/utils/excelDownload';
 
 // Lazy load modal for better performance
@@ -536,6 +537,28 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     });
   }, [baseFilteredPurchases]);
 
+  // 서버 폴백 검색 (메모리 결과 0건일 때 자동 실행)
+  const { serverResults, isSearching, hasSearchedServer } = useServerSearch(
+    searchTerm,
+    tabFilteredPurchases.length,
+    activeTab
+  );
+
+  // 메모리 결과 + 서버 결과 병합
+  const displayPurchases = useMemo(() => {
+    if (serverResults.length === 0) return tabFilteredPurchases;
+
+    const memoryIds = new Set(tabFilteredPurchases.map(p => p.id));
+    const newFromServer = serverResults.filter(p => !memoryIds.has(p.id));
+
+    // 서버 결과에도 템플릿 타입 필터 적용
+    const filteredServer = newFromServer.filter(p => {
+      const t = p.po_template_type;
+      return !t || t === '발주/구매' || t === '일반';
+    });
+
+    return [...tabFilteredPurchases, ...filteredServer];
+  }, [tabFilteredPurchases, serverResults]);
 
   // 탭별 카운트 계산 및 캐싱
   useEffect(() => {
@@ -1060,15 +1083,26 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
                 <div className="w-8 h-8 border-2 border-hansl-500 border-t-transparent rounded-full animate-spin" />
                 <span className="ml-3 card-subtitle">로딩 중...</span>
               </div>
-            ) : tabFilteredPurchases.length === 0 ? (
+            ) : displayPurchases.length === 0 && isSearching ? (
+              <div className="flex items-center justify-center py-12">
+                <Search className="w-6 h-6 text-hansl-500 animate-pulse mr-3" />
+                <span className="card-subtitle">서버에서 추가 검색 중...</span>
+              </div>
+            ) : displayPurchases.length === 0 && searchTerm && hasSearchedServer ? (
+              <div className="text-center py-12">
+                <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">검색 결과가 없습니다</h3>
+                <p className="card-subtitle">전체 데이터를 검색했지만 일치하는 항목이 없습니다.</p>
+              </div>
+            ) : displayPurchases.length === 0 ? (
               <div className="text-center py-12">
                 <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">발주요청서가 없습니다</h3>
                 <p className="card-subtitle">새로운 발주요청서를 작성해보세요.</p>
               </div>
             ) : (
-              <FastPurchaseTable 
-                purchases={tabFilteredPurchases} 
+              <FastPurchaseTable
+                purchases={displayPurchases}
                 activeTab={activeTab}
                 currentUserRoles={currentUserRoles}
                 onRefresh={loadPurchases}
