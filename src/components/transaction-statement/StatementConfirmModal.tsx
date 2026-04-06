@@ -365,6 +365,23 @@ export default function StatementConfirmModal({
   // 각 OCR 품목별 매칭된 시스템 품목
   const [itemMatches, setItemMatches] = useState<Map<string, SystemPurchaseItem | null>>(new Map());
   
+  // 입고수량 초과 경고 모달 상태
+  interface DuplicateReceiptItem {
+    itemId: string;
+    extractedItemName: string;
+    matchedItemName: string;
+    orderQuantity: number;
+    existingReceived: number;
+    confirmQuantity: number;
+    resultQuantity: number;
+    checked: boolean; // true = 입고 처리 포함, false = 입고 스킵
+  }
+  const [duplicateReceiptWarning, setDuplicateReceiptWarning] = useState<{
+    open: boolean;
+    items: DuplicateReceiptItem[];
+    onProceed: ((skipItemIds: Set<string>) => void) | null;
+  }>({ open: false, items: [], onProceed: null });
+
   // 드롭다운 열림 상태
   const [openDropdowns, setOpenDropdowns] = useState<Set<string>>(new Set());
   const isDialogModal = false;
@@ -3214,7 +3231,7 @@ export default function StatementConfirmModal({
 
     statementWithItems.items.forEach((ocrItem) => {
       const current = itemMatches.get(ocrItem.id);
-      if (!current || current.received_quantity != null) return;
+      if (!current) return;
 
       const itemPO = isSamePONumber
         ? selectedPONumber
@@ -3223,7 +3240,7 @@ export default function StatementConfirmModal({
       if (systemItems.length === 0) return;
 
       const enriched = systemItems.find((sys) => sys.item_id === current.item_id);
-      if (enriched && enriched.received_quantity != null) {
+      if (enriched && enriched.received_quantity != null && enriched.received_quantity !== current.received_quantity) {
         nextMap.set(ocrItem.id, { ...current, received_quantity: enriched.received_quantity });
         didUpdate = true;
       }
@@ -3586,8 +3603,8 @@ export default function StatementConfirmModal({
     }
   };
 
-  // 수량일치 확인
-  const handleQuantityMatch = async () => {
+  // 수량일치 확인 — 실제 실행 (skip 대상 반영)
+  const executeQuantityMatch = async (skipReceiptItemIds?: Set<string>) => {
     if (!statementWithItems) return;
 
     try {
@@ -3615,6 +3632,7 @@ export default function StatementConfirmModal({
           matched_purchase_id: matched?.purchase_id,
           matched_item_id: matched?.item_id,
           confirmed_quantity: confirmedQuantity,
+          skip_receipt: skipReceiptItemIds?.has(item.id) || false,
         };
       });
 
@@ -3642,7 +3660,7 @@ export default function StatementConfirmModal({
         // 메모리 캐시에 입고 정보 동기화 (발주 상세모달에서 최신 데이터 표시)
         const receivedDate = statementWithItems.extracted_data?.actual_received_date || new Date().toISOString();
         for (const item of confirmItems) {
-          if (item.matched_purchase_id && item.matched_item_id && item.confirmed_quantity != null && item.confirmed_quantity > 0) {
+          if (item.matched_purchase_id && item.matched_item_id && item.confirmed_quantity != null && item.confirmed_quantity > 0 && !item.skip_receipt) {
             markItemAsReceived(item.matched_purchase_id, item.matched_item_id, receivedDate, item.confirmed_quantity);
           }
         }
@@ -3660,6 +3678,82 @@ export default function StatementConfirmModal({
         setSavingAction(null);
       }
     }
+  };
+
+  // 수량일치 확인 — 입고수량 초과 검증 후 실행
+  const handleQuantityMatch = async () => {
+    if (!statementWithItems) return;
+
+    const activeItems = statementWithItems.items.filter(item => !deletedOCRItemIds.has(item.id));
+
+    // 매칭된 ��목 중 입고 대상인 것만 추출
+    const itemsToCheck: { itemId: string; extractedItemName: string; matchedItemId: number; confirmedQty: number }[] = [];
+    for (const item of activeItems) {
+      const matched = itemMatches.get(item.id);
+      if (!matched?.item_id) continue;
+      const edited = editedOCRItems.get(item.id);
+      const confirmedQty = edited?.quantity !== undefined ? edited.quantity : (item.extracted_quantity ?? 1);
+      if (confirmedQty <= 0) continue;
+      itemsToCheck.push({
+        itemId: item.id,
+        extractedItemName: item.extracted_item_name || '(품목명 없음)',
+        matchedItemId: matched.item_id,
+        confirmedQty,
+      });
+    }
+
+    // DB에서 매��된 발주 품목의 최신 수량 조회
+    if (itemsToCheck.length > 0) {
+      const supabase = createClient();
+      const matchedIds = itemsToCheck.map(i => i.matchedItemId);
+      const { data: freshItems } = await supabase
+        .from('purchase_request_items')
+        .select('id, item_name, quantity, received_quantity')
+        .in('id', matchedIds);
+
+      if (freshItems) {
+        type FreshItem = { id: number; item_name: string | null; quantity: number | null; received_quantity: number | null };
+        const freshMap = new Map((freshItems as FreshItem[]).map(i => [i.id, i]));
+        const overflowItems: DuplicateReceiptItem[] = [];
+
+        for (const item of itemsToCheck) {
+          const fresh = freshMap.get(item.matchedItemId);
+          if (!fresh) continue;
+          const orderQty = Number(fresh.quantity) || 0;
+          const existingReceived = Number(fresh.received_quantity) || 0;
+          const resultQty = existingReceived + item.confirmedQty;
+
+          if (resultQty > orderQty && orderQty > 0) {
+            overflowItems.push({
+              itemId: item.itemId,
+              extractedItemName: item.extractedItemName,
+              matchedItemName: fresh.item_name || '',
+              orderQuantity: orderQty,
+              existingReceived,
+              confirmQuantity: item.confirmedQty,
+              resultQuantity: resultQty,
+              checked: false, // 기본: 입고 스킵 (이미 입고된 것으로 판단)
+            });
+          }
+        }
+
+        if (overflowItems.length > 0) {
+          // 경고 모달 표시 — 사용자 확인 후 진행
+          setDuplicateReceiptWarning({
+            open: true,
+            items: overflowItems,
+            onProceed: (skipItemIds: Set<string>) => {
+              setDuplicateReceiptWarning({ open: false, items: [], onProceed: null });
+              executeQuantityMatch(skipItemIds);
+            },
+          });
+          return;
+        }
+      }
+    }
+
+    // 초과 품목 없으면 바로 실행
+    await executeQuantityMatch();
   };
 
 
@@ -4033,6 +4127,106 @@ export default function StatementConfirmModal({
 
   return (
     <>
+      {/* 입고수량 초과 경고 모달 */}
+      {duplicateReceiptWarning.open && createPortal(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setDuplicateReceiptWarning({ open: false, items: [], onProceed: null })} />
+          <div className="relative bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[80vh] flex flex-col">
+            <div className="px-5 py-4 border-b">
+              <h3 className="text-sm font-semibold text-orange-700 flex items-center gap-2">
+                ⚠️ 입고수량 초과 경고
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                아래 품목은 이미 입고 처리되어 있어, 이대로 진행하면 입고수량이 요청수량을 초과합니다.<br/>
+                <strong>체크 해제된 품목은 입고수량 반영을 건너뜁니다.</strong>
+              </p>
+            </div>
+            <div className="overflow-y-auto flex-1 px-5 py-3">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-gray-500 border-b">
+                    <th className="pb-2 text-left w-8">
+                      <input
+                        type="checkbox"
+                        checked={duplicateReceiptWarning.items.every(i => i.checked)}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setDuplicateReceiptWarning(prev => ({
+                            ...prev,
+                            items: prev.items.map(i => ({ ...i, checked })),
+                          }));
+                        }}
+                        className="rounded"
+                      />
+                    </th>
+                    <th className="pb-2 text-left">품목</th>
+                    <th className="pb-2 text-right">요청</th>
+                    <th className="pb-2 text-right">기입고</th>
+                    <th className="pb-2 text-right">이번</th>
+                    <th className="pb-2 text-right">결과</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {duplicateReceiptWarning.items.map((item, idx) => (
+                    <tr key={item.itemId} className={`border-b last:border-0 ${item.checked ? '' : 'bg-gray-50 text-gray-400'}`}>
+                      <td className="py-2">
+                        <input
+                          type="checkbox"
+                          checked={item.checked}
+                          onChange={(e) => {
+                            setDuplicateReceiptWarning(prev => ({
+                              ...prev,
+                              items: prev.items.map((i, j) => j === idx ? { ...i, checked: e.target.checked } : i),
+                            }));
+                          }}
+                          className="rounded"
+                        />
+                      </td>
+                      <td className="py-2">
+                        <div className="font-medium truncate max-w-[180px]" title={item.extractedItemName}>
+                          {item.matchedItemName || item.extractedItemName}
+                        </div>
+                      </td>
+                      <td className="py-2 text-right">{item.orderQuantity}</td>
+                      <td className="py-2 text-right text-blue-600">{item.existingReceived}</td>
+                      <td className="py-2 text-right">+{item.confirmQuantity}</td>
+                      <td className="py-2 text-right font-bold text-red-600">{item.resultQuantity}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="px-5 py-3 border-t flex items-center justify-between gap-3">
+              <span className="text-xs text-gray-400">
+                {duplicateReceiptWarning.items.filter(i => !i.checked).length}건 입고 스킵
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDuplicateReceiptWarning({ open: false, items: [], onProceed: null })}
+                >
+                  취소
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const skipIds = new Set(
+                      duplicateReceiptWarning.items.filter(i => !i.checked).map(i => i.itemId)
+                    );
+                    duplicateReceiptWarning.onProceed?.(skipIds);
+                  }}
+                  className="bg-orange-600 hover:bg-orange-700 text-white"
+                >
+                  확인 후 진행
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* modal=false이므로 오버레이를 수동으로 추가 */}
       {isOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm" />

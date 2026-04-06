@@ -2258,7 +2258,7 @@ class TransactionStatementService {
 
         // 각 품목의 입고 처리를 병렬 실행
         const receiptItems = request.items.filter(
-          item => item.matched_item_id && item.confirmed_quantity !== undefined && item.confirmed_quantity !== null
+          item => item.matched_item_id && item.confirmed_quantity !== undefined && item.confirmed_quantity !== null && !item.skip_receipt
         );
 
         await Promise.all(receiptItems.map(async (item) => {

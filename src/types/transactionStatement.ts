@@ -240,6 +240,7 @@ export interface ConfirmItemRequest {
   confirmed_amount?: number;
   is_additional_item?: boolean;
   parent_item_id?: string;
+  skip_receipt?: boolean;
 }
 
 // 교정 저장 요청 타입

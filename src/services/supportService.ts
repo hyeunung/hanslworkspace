@@ -52,6 +52,7 @@ export type SupportInquiryPayload =
     }
   | {
       reason?: string
+      delete_target?: 'purchase' | 'statement'
       delete_type?: 'all' | 'items'
       delete_items?: {
         item_id: string
@@ -59,6 +60,8 @@ export type SupportInquiryPayload =
         item_name: string
         specification?: string | null
       }[]
+      statement_id?: string
+      statement_info?: string
     }
   | {
       items: {
@@ -319,7 +322,7 @@ class SupportService {
         .select('inquiry_type,inquiry_payload')
         .eq('id', inquiryId)
         .maybeSingle()
-      const meta = inquiryMeta as { inquiry_type?: string; inquiry_payload?: { items?: { item_id?: string }[] } } | null
+      const meta = inquiryMeta as { inquiry_type?: string; inquiry_payload?: { items?: { item_id?: string }[]; delete_target?: string; statement_id?: string } } | null
       const payloadItems = Array.isArray(meta?.inquiry_payload?.items)
         ? meta.inquiry_payload.items
         : []
@@ -339,8 +342,31 @@ class SupportService {
         return { success: true }
       }
 
+      // 거래명세서 삭제 요청인 경우: RPC 호출 전에 image_url 조회 (RPC에서 DB 삭제 후 조회 불가)
+      let statementImageUrl: string | null = null
+      if (inquiryType === 'delete' && meta?.inquiry_payload?.delete_target === 'statement' && meta?.inquiry_payload?.statement_id) {
+        const { data: stmt } = await this.supabase
+          .from('transaction_statements')
+          .select('image_url')
+          .eq('id', meta.inquiry_payload.statement_id)
+          .maybeSingle()
+        statementImageUrl = (stmt as { image_url?: string } | null)?.image_url || null
+      }
+
       const { error } = await this.supabase.rpc('resolve_inquiry', { p_inquiry_id: inquiryId })
       if (error) throw error
+
+      // 거래명세서 삭제 완료 후 Storage 파일 삭제
+      if (statementImageUrl) {
+        try {
+          const path = statementImageUrl.split('/receipt-images/')[1]
+          if (path) {
+            await this.supabase.storage.from('receipt-images').remove([path])
+          }
+        } catch (e) {
+          logger.warn('거래명세서 Storage 파일 삭제 실패 (DB 삭제는 완료):', e)
+        }
+      }
 
       // 상태 확인(비밀 없음): resolved로 실제 반영됐는지
       await this.supabase
@@ -745,6 +771,44 @@ class SupportService {
       return { success: true }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : '문의 삭제 실패' }
+    }
+  }
+
+  // 거래명세서 목록 조회 (삭제 요청 폼용)
+  async getStatementsForSupport(dateFrom?: string, dateTo?: string): Promise<{
+    success: boolean
+    data: Array<{
+      id: string
+      statement_code?: string
+      vendor_name?: string
+      statement_date?: string
+      uploaded_at: string
+      file_name?: string
+      total_amount?: number
+      grand_total?: number
+      status: string
+    }>
+    error?: string
+  }> {
+    try {
+      let query = this.supabase
+        .from('transaction_statements')
+        .select('id,statement_code,vendor_name,statement_date,uploaded_at,file_name,total_amount,grand_total,status')
+        .order('uploaded_at', { ascending: false })
+
+      if (dateFrom) {
+        query = query.gte('uploaded_at', dateFrom)
+      }
+      if (dateTo) {
+        query = query.lte('uploaded_at', dateTo + 'T23:59:59')
+      }
+
+      const { data, error } = await query
+      if (error) throw error
+
+      return { success: true, data: data || [] }
+    } catch (e) {
+      return { success: false, data: [], error: e instanceof Error ? e.message : '거래명세서 조회 실패' }
     }
   }
 }

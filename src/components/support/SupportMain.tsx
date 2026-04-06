@@ -153,6 +153,10 @@ export default function SupportMain() {
   const [currentUserName, setCurrentUserName] = useState<string>('')
   const [deleteType, setDeleteType] = useState<'all' | 'items'>('all')
   const [deleteItemIds, setDeleteItemIds] = useState<string[]>([])
+  const [deleteTarget, setDeleteTarget] = useState<'purchase' | 'statement'>('purchase')
+  const [statements, setStatements] = useState<Array<{ id: string; statement_code?: string; vendor_name?: string; statement_date?: string; uploaded_at: string; file_name?: string; total_amount?: number; grand_total?: number; status: string }>>([])
+  const [selectedStatement, setSelectedStatement] = useState<typeof statements[0] | null>(null)
+  const [searchingStatement, setSearchingStatement] = useState(false)
   const purchaseSelectLabel = inquiryType === 'delete' ? '삭제할 발주요청 선택' : '발주요청 선택'
   const messageLabel = inquiryType === 'delete' ? '삭제 사유' : '내용'
 
@@ -357,6 +361,7 @@ export default function SupportMain() {
   // 문의 유형 변경 시
   useEffect(() => {
     const needsPurchase = purchaseLinkedInquiryTypes.includes(inquiryType)
+      && !(inquiryType === 'delete' && deleteTarget === 'statement')
     if (needsPurchase) {
       setShowPurchaseSelect(true)
     } else {
@@ -372,7 +377,11 @@ export default function SupportMain() {
     setItemAddRows([])
     setDeleteType('all')
     setDeleteItemIds([])
-  }, [inquiryType])
+    if (inquiryType !== 'delete') {
+      setDeleteTarget('purchase')
+      setSelectedStatement(null)
+    }
+  }, [inquiryType, deleteTarget])
 
   // ✅ URL 파라미터 기반 진입 처리: /support?type=delivery_date_change&purchaseId=123&source=delivery-warning&returnTo=...
   useEffect(() => {
@@ -490,6 +499,26 @@ export default function SupportMain() {
     }
     
     setSearchingPurchase(false)
+  }
+
+  // 거래명세서 검색 (삭제 요청 > 거래명세서 선택 시)
+  useEffect(() => {
+    if (inquiryType !== 'delete' || deleteTarget !== 'statement') return
+    if (!dateRange?.from || !dateRange?.to) return
+    searchStatements()
+  }, [inquiryType, deleteTarget, dateRange?.from, dateRange?.to])
+
+  const searchStatements = async () => {
+    setSearchingStatement(true)
+    const startDate = dateRange?.from ? dateRange.from.toISOString().split('T')[0] : undefined
+    const endDate = dateRange?.to ? dateRange.to.toISOString().split('T')[0] : undefined
+    const result = await supportService.getStatementsForSupport(startDate, endDate)
+    if (result.success) {
+      setStatements(result.data)
+    } else {
+      toast.error(result.error || '거래명세서 조회 실패')
+    }
+    setSearchingStatement(false)
   }
 
   // 기본 기간: 최근 2개월
@@ -786,9 +815,14 @@ export default function SupportMain() {
       return
     }
     
-    const requiresPurchase = purchaseLinkedInquiryTypes.includes(inquiryType)
+    const isStatementDelete = inquiryType === 'delete' && deleteTarget === 'statement'
+    const requiresPurchase = purchaseLinkedInquiryTypes.includes(inquiryType) && !isStatementDelete
     if (requiresPurchase && !selectedPurchase) {
       toast.error('발주요청을 선택해주세요.')
+      return
+    }
+    if (isStatementDelete && !selectedStatement) {
+      toast.error('삭제할 거래명세서를 선택해주세요.')
       return
     }
 
@@ -991,7 +1025,20 @@ export default function SupportMain() {
     }
 
     if (inquiryType === 'delete') {
-      if (deleteType === 'items') {
+      if (deleteTarget === 'statement') {
+        // 거래명세서 삭제
+        const stmtInfo = selectedStatement
+          ? `거래명세서: ${selectedStatement.statement_code || selectedStatement.file_name || '-'}\n업체: ${selectedStatement.vendor_name || '-'}\n날짜: ${selectedStatement.statement_date || '-'}\n금액: ${selectedStatement.grand_total?.toLocaleString('ko-KR') ?? selectedStatement.total_amount?.toLocaleString('ko-KR') ?? '-'}`
+          : ''
+        inquiryPayload = {
+          reason: message.trim(),
+          delete_target: 'statement' as const,
+          delete_type: 'all' as const,
+          statement_id: selectedStatement?.id,
+          statement_info: stmtInfo,
+        }
+        summaryLines.push(`[거래명세서 삭제] ${selectedStatement?.statement_code || selectedStatement?.file_name || '-'} / ${selectedStatement?.vendor_name || '-'}`)
+      } else if (deleteType === 'items') {
         if (deleteItemIds.length === 0) {
           toast.error('삭제할 품목을 선택해주세요.')
           setLoading(false)
@@ -1006,12 +1053,12 @@ export default function SupportMain() {
             specification: targetItem?.specification ?? null,
           }
         })
-        inquiryPayload = { reason: message.trim(), delete_type: 'items' as const, delete_items: deleteItemsPayload }
+        inquiryPayload = { reason: message.trim(), delete_target: 'purchase' as const, delete_type: 'items' as const, delete_items: deleteItemsPayload }
         summaryLines.push(`[품목별 삭제] ${deleteItemsPayload.map(i =>
           `${i.line_number ?? '-'}번 ${i.item_name} (${i.specification || '-'})`
         ).join(', ')}`)
       } else {
-        inquiryPayload = { reason: message.trim(), delete_type: 'all' as const }
+        inquiryPayload = { reason: message.trim(), delete_target: 'purchase' as const, delete_type: 'all' as const }
         summaryLines.push('[발주 전체 삭제]')
       }
     }
@@ -1111,6 +1158,9 @@ ${itemsText}`;
       setPurchaseRequests([])
       setDateRange(undefined)
       setAttachments([])
+      setDeleteTarget('purchase')
+      setSelectedStatement(null)
+      setStatements([])
       // 목록 새로고침
       loadInquiries()
 
@@ -1678,19 +1728,32 @@ ${itemsText}`;
     }
 
     if (inquiry.inquiry_type === 'delete') {
-      const p = payload as { reason?: string; delete_type?: 'all' | 'items'; delete_items?: Array<{ item_id: string; line_number?: number | null; item_name: string; specification?: string | null }> }
-      if (!p.reason && !p.delete_type) return null
+      const p = payload as { reason?: string; delete_target?: 'purchase' | 'statement'; delete_type?: 'all' | 'items'; delete_items?: Array<{ item_id: string; line_number?: number | null; item_name: string; specification?: string | null }>; statement_id?: string; statement_info?: string }
+      if (!p.reason && !p.delete_type && !p.delete_target) return null
+
+      const isStatementDelete = p.delete_target === 'statement'
       const isItemDelete = p.delete_type === 'items'
       const deleteItems = Array.isArray(p.delete_items) ? p.delete_items : []
+
       return (
         <div>
-          <div className="flex items-center gap-2">
-            <span className="modal-value text-gray-700">삭제 유형:</span>
-            <span className={`badge-stats ${isItemDelete ? 'bg-orange-100 text-orange-800' : 'bg-red-100 text-red-800'}`}>
-              {isItemDelete ? '품목별 삭제' : '전체 삭제'}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="modal-value text-gray-700">삭제 대상:</span>
+            <span className={`badge-stats ${isStatementDelete ? 'bg-purple-100 text-purple-800' : 'bg-red-100 text-red-800'}`}>
+              {isStatementDelete ? '거래명세서' : '발주'}
             </span>
+            {!isStatementDelete && (
+              <span className={`badge-stats ${isItemDelete ? 'bg-orange-100 text-orange-800' : 'bg-red-100 text-red-800'}`}>
+                {isItemDelete ? '품목별 삭제' : '전체 삭제'}
+              </span>
+            )}
           </div>
-          {isItemDelete && deleteItems.length > 0 && (
+          {isStatementDelete && p.statement_info && (
+            <div className="mt-1">
+              <p className="text-gray-600 mt-0.5 whitespace-pre-wrap card-description">{p.statement_info}</p>
+            </div>
+          )}
+          {!isStatementDelete && isItemDelete && deleteItems.length > 0 && (
             <div className="mt-1 text-gray-600 space-y-0.5">
               <span className="modal-label text-gray-500">삭제 대상 품목:</span>
               {deleteItems.map((item, index: number) => (
@@ -1778,6 +1841,113 @@ ${itemsText}`;
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* 삭제 대상 선택 (발주 vs 거래명세서) */}
+                {inquiryType === 'delete' && (
+                  <div className="space-y-2 p-4 bg-gray-50 business-radius-card border border-gray-200">
+                    <div className="modal-section-title text-gray-900">삭제 대상 선택</div>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => { setDeleteTarget('purchase'); setSelectedStatement(null) }}
+                        className={`button-base border ${deleteTarget === 'purchase'
+                          ? 'border-blue-400 bg-blue-50 text-blue-700'
+                          : 'border-gray-300 bg-white text-gray-600'}`}
+                      >
+                        발주
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setDeleteTarget('statement'); setSelectedPurchase(null); setDeleteType('all'); setDeleteItemIds([]) }}
+                        className={`button-base border ${deleteTarget === 'statement'
+                          ? 'border-blue-400 bg-blue-50 text-blue-700'
+                          : 'border-gray-300 bg-white text-gray-600'}`}
+                      >
+                        거래명세서
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 거래명세서 선택 (삭제 요청 > 거래명세서) */}
+                {inquiryType === 'delete' && deleteTarget === 'statement' && (
+                  <div className="space-y-3 p-4 bg-gray-50 business-radius-card border border-gray-200">
+                    <div className="modal-section-title text-gray-900">삭제할 거래명세서 선택</div>
+
+                    <div>
+                      <label className="modal-label text-gray-600 mb-2 block">기간 선택</label>
+                      <DateRangePicker
+                        date={dateRange}
+                        onDateChange={setDateRange}
+                        placeholder="거래명세서 기간을 선택하세요"
+                        className="inline-grid w-fit"
+                        triggerClassName="button-base w-fit justify-start border border-gray-300 bg-white text-gray-700 business-radius-input !h-[28px] !py-0"
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="modal-label text-gray-600">
+                          거래명세서 선택 (총 {statements.length}건)
+                        </div>
+                        {searchingStatement && (
+                          <span className="badge-text text-gray-400">조회 중…</span>
+                        )}
+                      </div>
+                      <ReactSelect
+                        value={statements.map(s => ({
+                          value: s.id,
+                          label: `${s.statement_code || s.file_name || '-'} | ${s.vendor_name || '-'} | ${s.statement_date || format(new Date(s.uploaded_at), 'yyyy-MM-dd')}`,
+                          data: s,
+                          searchText: `${s.statement_code || ''} ${s.vendor_name || ''} ${s.file_name || ''}`.toLowerCase()
+                        })).find(option => option.value === selectedStatement?.id) || null}
+                        onChange={(option) => setSelectedStatement((option as { data?: typeof selectedStatement } | null)?.data || null)}
+                        options={statements.map(s => ({
+                          value: s.id,
+                          label: `${s.statement_code || s.file_name || '-'} | ${s.vendor_name || '-'} | ${s.statement_date || format(new Date(s.uploaded_at), 'yyyy-MM-dd')}`,
+                          data: s,
+                          searchText: `${s.statement_code || ''} ${s.vendor_name || ''} ${s.file_name || ''}`.toLowerCase()
+                        }))}
+                        placeholder="거래명세서 선택/검색"
+                        isSearchable
+                        isLoading={searchingStatement}
+                        noOptionsMessage={() => '일치하는 거래명세서가 없습니다'}
+                        filterOption={(option, inputValue) => {
+                          const keyword = inputValue.toLowerCase()
+                          const label = option.label.toLowerCase()
+                          const searchText = (option.data as { searchText?: string })?.searchText || ''
+                          return label.includes(keyword) || searchText.includes(keyword)
+                        }}
+                      />
+                      {!searchingStatement && statements.length === 0 && (
+                        <div className="card-description text-gray-500">
+                          선택한 기간 내 거래명세서가 없습니다.
+                        </div>
+                      )}
+
+                      {selectedStatement && (
+                        <div className="px-3 py-2 bg-white border border-gray-200 business-radius-card">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="card-title">{selectedStatement.statement_code || selectedStatement.file_name || '-'}</span>
+                            <span className="card-subtitle">{selectedStatement.vendor_name || '-'}</span>
+                            <span className="card-date">
+                              {selectedStatement.statement_date || format(new Date(selectedStatement.uploaded_at), 'yyyy-MM-dd')}
+                            </span>
+                            {(selectedStatement.grand_total ?? selectedStatement.total_amount) != null && (
+                              <span className="card-description text-gray-500">
+                                {(selectedStatement.grand_total ?? selectedStatement.total_amount)?.toLocaleString('ko-KR')}원
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="badge-text text-red-500 bg-red-50 border border-red-200 business-radius-card px-3 py-2">
+                      거래명세서와 모든 품목이 함께 삭제됩니다.
+                    </div>
+                  </div>
+                )}
 
                 {/* 발주요청 선택 */}
                 {showPurchaseSelect && (
@@ -2170,7 +2340,7 @@ ${itemsText}`;
                   </div>
                 )}
 
-                {inquiryType === 'delete' && selectedPurchase && (
+                {inquiryType === 'delete' && deleteTarget === 'purchase' && selectedPurchase && (
                   <div className="space-y-3 p-4 bg-gray-50 business-radius-card border border-gray-200">
                     <div className="modal-section-title text-gray-900">삭제 유형 선택</div>
                     <div className="flex gap-3">
