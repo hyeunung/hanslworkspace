@@ -120,10 +120,14 @@ export default function DashboardMain() {
   const [todayTrips, setTodayTrips] = useState<Array<{
     requester_name: string
     trip_destination: string
+    trip_purpose: string
+    companions: { id: string; name: string }[]
   }>>([])
   const [tomorrowTrips, setTomorrowTrips] = useState<Array<{
     requester_name: string
     trip_destination: string
+    trip_purpose: string
+    companions: { id: string; name: string }[]
   }>>([])
 
   // 문의하기 관련 (superadmin용)
@@ -226,14 +230,14 @@ export default function DashboardMain() {
         // 금일 출장
         supabase
           .from('business_trips')
-          .select('trip_destination, requester:employees!business_trips_requester_id_fkey(name)')
+          .select('trip_destination, trip_purpose, companions, requester:employees!business_trips_requester_id_fkey(name)')
           .eq('approval_status', 'approved')
           .lte('trip_start_date', todayStr)
           .gte('trip_end_date', todayStr),
         // 내일 출장
         supabase
           .from('business_trips')
-          .select('trip_destination, requester:employees!business_trips_requester_id_fkey(name)')
+          .select('trip_destination, trip_purpose, companions, requester:employees!business_trips_requester_id_fkey(name)')
           .eq('approval_status', 'approved')
           .lte('trip_start_date', tomorrowDateStr)
           .gte('trip_end_date', tomorrowDateStr),
@@ -243,16 +247,22 @@ export default function DashboardMain() {
       setTomorrowLeaves(tomorrowLeaveResult.data || [])
       setTodayTrips((todayTripResult.data || []).map((t: Record<string, unknown>) => {
         const req = t.requester as { name?: string } | null
+        const comps = (Array.isArray(t.companions) ? t.companions : []) as { id: string; name: string }[]
         return {
           requester_name: req?.name || '',
           trip_destination: t.trip_destination as string || '',
+          trip_purpose: t.trip_purpose as string || '',
+          companions: comps,
         }
       }))
       setTomorrowTrips((tomorrowTripResult.data || []).map((t: Record<string, unknown>) => {
         const req = t.requester as { name?: string } | null
+        const comps = (Array.isArray(t.companions) ? t.companions : []) as { id: string; name: string }[]
         return {
           requester_name: req?.name || '',
           trip_destination: t.trip_destination as string || '',
+          trip_purpose: t.trip_purpose as string || '',
+          companions: comps,
         }
       }))
     } catch (err) {
@@ -1060,10 +1070,15 @@ export default function DashboardMain() {
                     {todayTrips.map((trip, i) => (
                       <div key={`trip-${i}`} className="border border-purple-200 business-radius-card px-3 py-2 bg-purple-50/50">
                         <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[10px] font-semibold text-gray-900">{trip.requester_name}</span>
+                          <span className="text-[10px] font-semibold text-gray-900">
+                            {trip.requester_name}
+                            {trip.companions.length > 0 && (
+                              <span className="text-gray-400 font-normal">{' · '}{trip.companions.map(c => c.name).join(', ')}</span>
+                            )}
+                          </span>
                           <span className="badge-stats bg-purple-500 text-white">출장</span>
                         </div>
-                        <p className="text-[9px] text-purple-600 truncate">{trip.trip_destination}</p>
+                        <p className="text-[9px] text-purple-600 truncate">{trip.trip_destination}{trip.trip_purpose ? ` / ${trip.trip_purpose}` : ''}</p>
                       </div>
                     ))}
                   </div>
@@ -1101,10 +1116,15 @@ export default function DashboardMain() {
                     {tomorrowTrips.map((trip, i) => (
                       <div key={`trip-${i}`} className="border border-purple-200 business-radius-card px-3 py-2 bg-purple-50/50">
                         <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[10px] font-semibold text-gray-900">{trip.requester_name}</span>
+                          <span className="text-[10px] font-semibold text-gray-900">
+                            {trip.requester_name}
+                            {trip.companions.length > 0 && (
+                              <span className="text-gray-400 font-normal">{' · '}{trip.companions.map(c => c.name).join(', ')}</span>
+                            )}
+                          </span>
                           <span className="badge-stats bg-purple-500 text-white">출장</span>
                         </div>
-                        <p className="text-[9px] text-purple-600 truncate">{trip.trip_destination}</p>
+                        <p className="text-[9px] text-purple-600 truncate">{trip.trip_destination}{trip.trip_purpose ? ` / ${trip.trip_purpose}` : ''}</p>
                       </div>
                     ))}
                   </div>
