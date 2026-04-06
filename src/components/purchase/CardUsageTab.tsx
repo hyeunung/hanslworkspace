@@ -275,7 +275,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
   const unavailableCards = useMemo(() => {
     const inUse = new Set<string>();
     for (const u of usages) {
-      if (["approved", "settled"].includes(u.approval_status) && !u.card_returned) {
+      if (!u.card_returned && ["pending", "approved", "settled"].includes(u.approval_status)) {
         inUse.add(u.card_number);
       }
     }
@@ -1043,7 +1043,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                     const totalAmount = (u.receipts || []).reduce((sum, r) => sum + (r.total_amount || 0), 0);
                     const isOwner = currentUser?.id === u.requester_id;
                     const canUploadReceipt = (isOwner || isAppAdmin) && ["approved", "settled"].includes(u.approval_status) && !u.card_returned;
-                    const canReturn = canReturnCard && u.approval_status === "settled" && !u.card_returned;
+                    const canReturn = canReturnCard && u.approval_status === "settled" && !u.card_returned && !u.business_trip_id;
 
                     return (
                       <tr
