@@ -955,9 +955,11 @@ class TransactionStatementService {
         });
 
         // 수량 일치: 실제입고수량(received_quantity)만 사용 — 입고 전이면 불일치
-        let all_quantities_matched = false;
+        // 단, 사용자가 이미 수량일치 확인을 완료한 경우 해당 판정을 존중
+        const hasQuantityMatchConfirmed = Boolean((statement as Record<string, unknown>).quantity_match_confirmed_at);
+        let all_quantities_matched = hasQuantityMatchConfirmed && statement.all_quantities_matched === true;
 
-        if (stmtItems.length > 0 && (statement.status === 'extracted' || statement.status === 'confirmed')) {
+        if (!all_quantities_matched && stmtItems.length > 0 && (statement.status === 'extracted' || statement.status === 'confirmed')) {
           all_quantities_matched = stmtItems.every((item: StatementItemRow) => {
             const ocrRaw = item.confirmed_quantity ?? item.extracted_quantity;
             if (ocrRaw == null) return false;
@@ -1254,9 +1256,11 @@ class TransactionStatementService {
       );
 
       // 수량일치 여부 계산: 실제입고수량(received_quantity)만 사용 — 입고 전이면 불일치
+      // 단, 사용자가 이미 수량일치 확인을 완료한 경우 해당 판정을 존중
+      const hasQMConfirmed = Boolean((statement as Record<string, unknown>).quantity_match_confirmed_at);
       if (statement.status === 'extracted' || statement.status === 'confirmed') {
-        let allMatched = false;
-        if (itemsWithMatch.length > 0) {
+        let allMatched = hasQMConfirmed && statement.all_quantities_matched === true;
+        if (!allMatched && itemsWithMatch.length > 0) {
           allMatched = itemsWithMatch.every(item => {
             const ocrRaw = item.confirmed_quantity ?? item.extracted_quantity;
             if (ocrRaw == null) return false;
@@ -2244,7 +2248,11 @@ class TransactionStatementService {
       }));
 
       // 수량일치 시점에 실입고 정보 즉시 반영 (병렬)
-      if (request.actual_received_date) {
+      // actual_received_date가 누락된 경우 statement_date 또는 현재 날짜로 폴백
+      const effectiveReceivedDate = request.actual_received_date
+        || updatedStatement?.statement_date
+        || new Date().toISOString();
+      {
         const receiptByName = confirmerName || '알수없음';
         const updatedPurchaseIds = new Set<number>();
 
@@ -2289,7 +2297,7 @@ class TransactionStatementService {
             {
               seq: nextSeq,
               qty: newReceivedQuantity,
-              date: request.actual_received_date!,
+              date: effectiveReceivedDate,
               by: receiptByName
             }
           ];
@@ -2297,7 +2305,7 @@ class TransactionStatementService {
           const { error: purchaseError } = await this.supabase
             .from('purchase_request_items')
             .update({
-              actual_received_date: request.actual_received_date,
+              actual_received_date: effectiveReceivedDate,
               received_quantity: totalReceivedQuantity,
               is_received: isFullyReceived,
               delivery_status: deliveryStatus,
