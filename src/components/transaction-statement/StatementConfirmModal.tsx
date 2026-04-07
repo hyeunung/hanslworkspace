@@ -4769,7 +4769,25 @@ export default function StatementConfirmModal({
                   </thead>
                   <tbody>
                     {(() => {
-                      const visibleItems = statementWithItems.items.filter(item => !deletedOCRItemIds.has(item.id));
+                      const unsortedItems = statementWithItems.items.filter(item => !deletedOCRItemIds.has(item.id));
+                      // 구분선용 PO 번호: 사용자 선택 > OCR 추출 > 매칭된 시스템 PO (후보 검증 없이)
+                      const getGroupPO = (item: TransactionStatementItemWithMatch) => {
+                        const selected = itemPONumbers.get(item.id);
+                        if (selected) return normalizeOrderNumber(selected);
+                        const extracted = normalizeOrderNumber(item.extracted_po_number || '');
+                        if (extracted) return extracted;
+                        const matched = itemMatches.get(item.id);
+                        return matched?.purchase_order_number || matched?.sales_order_number || '';
+                      };
+                      // 다중발주: 같은 발주번호끼리 모이도록 정렬 (원본 순서 유지하며 그룹핑)
+                      const visibleItems = !isSamePONumber
+                        ? [...unsortedItems].sort((a, b) => {
+                            const poA = getGroupPO(a) || 'zzz';
+                            const poB = getGroupPO(b) || 'zzz';
+                            if (poA !== poB) return poA.localeCompare(poB);
+                            return 0;
+                          })
+                        : unsortedItems;
                       return visibleItems.map((ocrItem, rowIndex) => {
                       const getDisplayPOForItem = (item: TransactionStatementItemWithMatch) => getDisplayPOForMultiScope(item);
                       const matchedSystem = itemMatches.get(ocrItem.id);
@@ -4796,8 +4814,9 @@ export default function StatementConfirmModal({
                           ? [matchedPONumber, ...rawOrderedPOs.filter(po => po !== matchedPONumber)]
                           : rawOrderedPOs;
                       const nextItem = visibleItems[rowIndex + 1];
-                      const nextItemPO = nextItem ? getDisplayPOForItem(nextItem) : '';
-                      const isGroupEnd = !isSamePONumber && rowIndex < visibleItems.length - 1 && itemPO !== nextItemPO;
+                      const currentGroupPO = getGroupPO(ocrItem);
+                      const nextGroupPO = nextItem ? getGroupPO(nextItem) : '';
+                      const isGroupEnd = !isSamePONumber && rowIndex < visibleItems.length - 1 && currentGroupPO !== nextGroupPO;
                       const rowClassName = isGroupEnd
                         ? 'hover:bg-gray-50 border-b-2 border-gray-500'
                         : 'hover:bg-gray-50';

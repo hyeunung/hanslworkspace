@@ -297,7 +297,11 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                   // 아코디언 서브메뉴
                   if (item.hasSubmenu === 'purchase') {
                     return (
-                      <li key={item.href}>
+                      <li
+                        key={item.href}
+                        onMouseEnter={() => { if (isExpanded) setPurchaseListOpen(true) }}
+                        onMouseLeave={() => { if (!pathname.startsWith('/purchase/list')) setPurchaseListOpen(false) }}
+                      >
                         <button
                           onClick={() => {
                             if (!purchaseListOpen) {
@@ -322,6 +326,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                           {isExpanded && (
                             <>
                               <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
+                              {!purchaseListOpen && totalPurchaseBadge > 0 && renderBadge(totalPurchaseBadge, isActive)}
                               <ChevronDown className={cn(
                                 "w-3.5 h-3.5 transition-transform flex-shrink-0",
                                 purchaseListOpen ? "rotate-180" : ""
