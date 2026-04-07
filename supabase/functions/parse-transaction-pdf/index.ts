@@ -331,7 +331,7 @@ ${scopeHint ? `발주/수주 범위 힌트: ${scopeHint}` : ''}
 중복 제거 규칙 (중요):
 - PDF에 "거래명세서(공급받는자)"와 "거래명세서(공급자)" 사본이 동일 내용으로 중복될 수 있음
 - "거래명세서(공급자)" 섹션의 품목은 무시하고, "거래명세서(공급받는자)" 섹션만 사용
-- 동일한 품목이 반복되면 한 번만 포함할 것
+- 같은 품목명/금액이 여러 번 나오더라도 "거래명세서(공급받는자)" 본문의 서로 다른 행이면 모두 포함할 것
 
 추출 대상:
 1) statement_date (YYYY-MM-DD)
@@ -341,7 +341,7 @@ ${scopeHint ? `발주/수주 범위 힌트: ${scopeHint}` : ''}
 5) items 배열 — 모든 페이지에서 연속 순번으로 통합
 
 items 각 항목:
-- line_number: 거래명세서에 표기된 원본 순번 그대로 사용 (중간에 빠진 번호가 있을 수 있음, 임의로 재부여하지 말 것)
+- line_number: 위에서 아래로 읽은 행 순서 (첫 번째 품목 행=1, 두 번째=2, ...). 거래명세서에 인쇄된 품목 번호(예: 1,2,3...8)는 무시하고, 실제 테이블 행 순서대로 1부터 연번 부여
 - item_name: 품목명/품명
 - specification: 규격
 - quantity: 수량 (비어있으면 null)
@@ -357,6 +357,13 @@ items 각 항목:
 행 생략 금지:
 - 모든 품목 행을 빠짐없이 추출
 - 합계/소계/서명 등 푸터 행은 제외
+- ENIG(화학금도금), 필름, V-CUT, 네고, 잉크비, 운반비처럼 품목명 칸에 찍힌 행은 모두 item으로 반드시 포함
+- 품명 칸이 비어 있어도 금액(amount) 또는 세액(tax_amount)이 있으면 별도 item으로 포함 (직전 행 remark로 병합 금지)
+
+items 배열 순서 (매우 중요):
+- items 배열은 반드시 거래명세서 원본의 위에서 아래로 인쇄된 행 순서 그대로 반환할 것
+- 번호가 있는 행과 번호가 없는 행(ENIG, 필름, V-CUT 등)을 분리하거나 그룹핑하지 말 것
+- 예: 원본이 "1.PCB → ENIG → 2.PCB → ENIG" 순이면 items도 반드시 [PCB, ENIG, PCB, ENIG] 순서로 반환
 
 반드시 JSON만 응답하세요.`
 
@@ -438,23 +445,26 @@ items 각 항목:
     }
   }
   let normalized = normalizeParseResult(parsed, textContent)
-  normalized.items = deduplicateByContent(normalized.items)
+  normalized.items = deduplicateExactRows(normalized.items)
 
   const expectedLineNumbers = await detectExpectedLineNumbersWithClaude(pdfBase64, apiKey, poScope).catch(() => [])
+  const expected = await estimateExpectedItemsWithClaude(pdfBase64, apiKey, poScope).catch(() => ({
+    expectedItemCount: null as number | null,
+    maxLineNumber: null as number | null,
+  }))
 
+  const numberedExpectedCount = expectedLineNumbers.length > 0 ? expectedLineNumbers.length : null
+  const estimatedExpectedCount = expected.expectedItemCount
   let expectedItemCount: number | null = null
-  let expectedMaxLineNumber: number | null = null
-  if (expectedLineNumbers.length > 0) {
-    expectedItemCount = expectedLineNumbers.length
-    expectedMaxLineNumber = Math.max(...expectedLineNumbers)
+  if (numberedExpectedCount !== null && estimatedExpectedCount !== null) {
+    expectedItemCount = Math.max(numberedExpectedCount, estimatedExpectedCount)
   } else {
-    const expected = await estimateExpectedItemsWithClaude(pdfBase64, apiKey, poScope).catch(() => ({
-      expectedItemCount: null as number | null,
-      maxLineNumber: null as number | null,
-    }))
-    expectedItemCount = expected.expectedItemCount
-    expectedMaxLineNumber = expected.maxLineNumber
+    expectedItemCount = numberedExpectedCount ?? estimatedExpectedCount
   }
+
+  const expectedMaxLineNumber = expectedLineNumbers.length > 0
+    ? Math.max(...expectedLineNumbers)
+    : expected.maxLineNumber
 
   if (expectedItemCount === null) {
     throw new Error('Failed to estimate expected item count for PDF extraction')
@@ -471,7 +481,7 @@ items 각 항목:
   if (tailRecovery.passes > 0) {
     extractionPasses += tailRecovery.passes
     normalized.items = mergeParsedItems(normalized.items, tailRecovery.items)
-    normalized.items = deduplicateByContent(normalized.items)
+    normalized.items = deduplicateExactRows(normalized.items)
   }
 
   if (
@@ -512,9 +522,13 @@ items 각 항목:
     normalized.items = mergeParsedItems(normalized.items, supplementalItems)
   }
 
-  // 모든 추출 패스가 끝난 후 최종 콘텐츠 기반 중복 제거 (공급자/공급받는자 사본 중복)
+  // 모든 추출 패스가 끝난 후:
+  // 1) 완전 중복 제거
+  // 2) 공급자/공급받는자 사본에서 생기는 "라인번호가 일정 간격으로 반복되는 중복 블록" 제거
   const preDedup = normalized.items.length
-  normalized.items = deduplicateByContent(normalized.items)
+  normalized.items = deduplicateExactRows(normalized.items)
+  normalized.items = deduplicateShiftedCopy(normalized.items)
+  normalized.items = deduplicateExactRows(normalized.items)
   const removedByDedup = preDedup - normalized.items.length
 
   // 중복 제거로 아이템이 줄어든 경우, expected count 검증을 조정
@@ -532,22 +546,26 @@ items 각 항목:
     lineNum <= getMaxLineNumber(normalized.items)
   )
 
-  if (removedByDedup === 0 && trulyMissingLines.length > 0) {
+  if (trulyMissingLines.length > 0) {
     const missingPreview = trulyMissingLines.slice(0, 25).join(',')
     throw new Error(
       `Incomplete PDF extraction: expected_item_count=${expectedItemCount}, extracted_item_count=${normalized.items.length}, missing_lines=[${missingPreview}${trulyMissingLines.length > 25 ? ',...' : ''}]`
     )
   }
 
-  if (removedByDedup === 0 && normalized.items.length < adjustedExpectedCount) {
+  if (normalized.items.length < adjustedExpectedCount) {
     throw new Error(
       `Incomplete PDF extraction: expected_item_count=${expectedItemCount}, extracted_item_count=${normalized.items.length}`
     )
   }
 
+  const orderedItems = renumberItemsInDisplayOrder(normalized.items)
+  const finalExpectedItemCount = Math.max(expectedItemCount, orderedItems.length)
+
   return {
     ...normalized,
-    expected_item_count: expectedItemCount ?? undefined,
+    items: orderedItems,
+    expected_item_count: finalExpectedItemCount,
     expected_max_line_number: expectedMaxLineNumber ?? undefined,
     extraction_passes: extractionPasses,
   }
@@ -691,6 +709,7 @@ async function estimateExpectedItemsWithClaude(
               type: 'text',
               text: `이 PDF의 "거래명세서(공급받는자)" 기준 품목 행 개수를 추정하세요.
 공급자 사본/중복/합계/소계/푸터/서명/계좌 행은 제외하세요.
+ENIG(화학금도금), 필름, V-CUT, 네고, 잉크비, 운반비처럼 품목명 칸에 찍힌 행도 amount 또는 tax_amount가 있으면 품목 개수에 포함하세요.
 힌트: ${scopeHint}
 
 반드시 아래 JSON만 출력:
@@ -993,13 +1012,16 @@ async function extractItemsLineRangeWithClaude(
 - 공급자 사본/중복 제거
 - 합계/소계/푸터/서명/계좌 행 제외
 - 구간 외 행은 절대 포함 금지
+- ENIG(화학금도금), 필름, V-CUT, 네고, 잉크비처럼 품목명 칸에 찍힌 행도 amount 또는 tax_amount가 있으면 포함
+- 품목 행에 인쇄된 line_number가 없으면 line_number는 null로 반환
+- 품명 빈칸 금액행은 직전 행 remark로 합치지 말고 별도 item으로 유지
 - 힌트: ${scopeHint}
 
 반드시 JSON만 출력:
 {
   "items": [
     {
-      "line_number": 1,
+      "line_number": null,
       "item_name": "",
       "specification": null,
       "quantity": null,
@@ -1098,6 +1120,9 @@ async function extractMissingItemsWithClaude(
 - "거래명세서(공급받는자)"만 사용
 - 공급자 사본/중복 제거
 - 합계/소계/푸터/서명/계좌 행 제외
+- ENIG(화학금도금), 필름, V-CUT, 네고, 잉크비처럼 품목명 칸에 찍힌 행도 amount 또는 tax_amount가 있으면 포함
+- 품목 행에 인쇄된 line_number가 없으면 line_number는 null로 반환
+- 품명 빈칸 금액행은 직전 행 remark로 합치지 말고 별도 item으로 유지
 - 힌트: ${scopeHint}
 
 이미 확보된 line_number:
@@ -1109,7 +1134,7 @@ ${knownLineText}
 {
   "items": [
     {
-      "line_number": 1,
+      "line_number": null,
       "item_name": "",
       "specification": null,
       "quantity": null,
@@ -1150,7 +1175,7 @@ ${knownLineText}
         ? parsed
         : []
     const normalized = rawItems.map((item, idx) => normalizeParsedItem(item, idx + 1))
-    return normalized.filter((item) => !knownLines.includes(item.line_number))
+    return normalized
   } catch (_) {
     return []
   }
@@ -1158,66 +1183,134 @@ ${knownLineText}
 
 /**
  * 공급자/공급받는자 사본 중복 제거.
- * 동일한 (item_name, po_number, quantity, unit_price, amount)를 가진 아이템이
- * 여러 개 있으면 line_number가 가장 작은 것(공급받는자 사본)만 남긴다.
+ * line_number와 핵심 콘텐츠가 모두 같은 완전 중복만 제거한다.
+ * (같은 품목명/금액이라도 line_number가 다르면 실제 별도 행으로 유지)
  */
-function deduplicateByContent(items: ParsedItem[]): ParsedItem[] {
-  const contentGroups = new Map<string, ParsedItem[]>()
+function deduplicateExactRows(items: ParsedItem[]): ParsedItem[] {
+  const normalize = (value: unknown): string => String(value ?? '').trim().toUpperCase()
+  const grouped = new Map<string, ParsedItem[]>()
 
   for (const item of items) {
     const key = [
-      (item.item_name || '').trim().toUpperCase(),
-      (item.specification || '').trim().toUpperCase(),
-      (item.po_number || '').trim().toUpperCase(),
+      Number.isFinite(item.line_number) ? item.line_number : 0,
+      normalize(item.item_name),
+      normalize(item.specification),
+      normalize(item.po_number),
       item.quantity ?? '',
       item.unit_price ?? '',
       item.amount ?? 0,
+      item.tax_amount ?? '',
+      normalize(item.remark),
     ].join('|')
 
-    const group = contentGroups.get(key)
-    if (group) {
-      group.push(item)
+    const list = grouped.get(key)
+    if (list) {
+      list.push(item)
     } else {
-      contentGroups.set(key, [item])
+      grouped.set(key, [item])
     }
   }
 
   const kept: ParsedItem[] = []
-  for (const group of contentGroups.values()) {
+  for (const group of grouped.values()) {
     if (group.length === 1) {
       kept.push(group[0])
-    } else {
-      // 같은 콘텐츠의 아이템들 중 가장 좋은 것 하나만 남김
-      // 우선순위: high confidence > lower line_number (공급받는자가 먼저 옴)
-      group.sort((a, b) => {
-        const confOrder = { high: 0, med: 1, low: 2 }
-        const confDiff = confOrder[a.confidence] - confOrder[b.confidence]
-        if (confDiff !== 0) return confDiff
-        return a.line_number - b.line_number
-      })
-      kept.push(group[0])
+      continue
+    }
+    const best = group.reduce((acc, cur) => chooseBetterParsedItem(acc, cur))
+    kept.push(best)
+  }
+
+  return kept.sort((a, b) => {
+    if (a.line_number !== b.line_number) return a.line_number - b.line_number
+    return (a.item_name || '').localeCompare(b.item_name || '')
+  })
+}
+
+/**
+ * 공급자/공급받는자 사본이 함께 추출되면 동일 콘텐츠가 일정 라인 간격으로 반복된다.
+ * 가장 지지도가 높은 라인 간격(diff)을 찾아, 같은 콘텐츠의 후행 블록만 제거한다.
+ */
+function deduplicateShiftedCopy(items: ParsedItem[]): ParsedItem[] {
+  if (items.length < 10) return items
+
+  const byContent = new Map<string, number[]>()
+  for (const item of items) {
+    const line = Number.isFinite(item.line_number) ? item.line_number : 0
+    if (line <= 0) continue
+    const key = buildContentOnlyKey(item)
+    const lines = byContent.get(key)
+    if (lines) lines.push(line)
+    else byContent.set(key, [line])
+  }
+
+  const diffVotes = new Map<number, number>()
+  for (const lines of byContent.values()) {
+    const sorted = Array.from(new Set(lines)).sort((a, b) => a - b)
+    if (sorted.length < 2) continue
+    for (let i = 0; i < sorted.length; i += 1) {
+      for (let j = i + 1; j < sorted.length; j += 1) {
+        const diff = sorted[j] - sorted[i]
+        if (diff < 8 || diff > 200) continue
+        diffVotes.set(diff, (diffVotes.get(diff) || 0) + 1)
+      }
     }
   }
 
-  return kept.sort((a, b) => a.line_number - b.line_number)
+  let bestDiff = 0
+  let bestVotes = 0
+  for (const [diff, votes] of diffVotes.entries()) {
+    if (votes > bestVotes) {
+      bestDiff = diff
+      bestVotes = votes
+    }
+  }
+  const voteThreshold = Math.max(5, Math.floor(items.length * 0.18))
+  if (bestDiff <= 0 || bestVotes < voteThreshold) {
+    return items
+  }
+
+  const lineSetByContent = new Map<string, Set<number>>()
+  for (const item of items) {
+    const line = Number.isFinite(item.line_number) ? item.line_number : 0
+    if (line <= 0) continue
+    const key = buildContentOnlyKey(item)
+    const set = lineSetByContent.get(key) || new Set<number>()
+    set.add(line)
+    lineSetByContent.set(key, set)
+  }
+
+  const indexed = items.map((item, idx) => ({ item, idx }))
+  indexed.sort((a, b) => a.item.line_number - b.item.line_number)
+
+  const removeIndices = new Set<number>()
+  for (const entry of indexed) {
+    const line = Number.isFinite(entry.item.line_number) ? entry.item.line_number : 0
+    if (line <= bestDiff) continue
+    const key = buildContentOnlyKey(entry.item)
+    const lines = lineSetByContent.get(key)
+    if (!lines) continue
+    if (lines.has(line - bestDiff)) {
+      removeIndices.add(entry.idx)
+    }
+  }
+
+  if (removeIndices.size < 3) return items
+  return items.filter((_, idx) => !removeIndices.has(idx))
+}
+
+function renumberItemsInDisplayOrder(items: ParsedItem[]): ParsedItem[] {
+  return items.map((item, idx) => ({
+    ...item,
+    line_number: idx + 1,
+  }))
 }
 
 function mergeParsedItems(base: ParsedItem[], incoming: ParsedItem[]): ParsedItem[] {
-  const byLine = new Map<number, ParsedItem>()
   const byKey = new Map<string, ParsedItem>()
 
   const put = (item: ParsedItem) => {
     if (!item) return
-    if (Number.isFinite(item.line_number) && item.line_number > 0) {
-      const existing = byLine.get(item.line_number)
-      if (!existing) {
-        byLine.set(item.line_number, item)
-        return
-      }
-      byLine.set(item.line_number, chooseBetterParsedItem(existing, item))
-      return
-    }
-
     const key = buildItemMergeKey(item)
     const existing = byKey.get(key)
     if (!existing) {
@@ -1230,7 +1323,7 @@ function mergeParsedItems(base: ParsedItem[], incoming: ParsedItem[]): ParsedIte
   for (const item of base) put(item)
   for (const item of incoming) put(item)
 
-  return [...Array.from(byLine.values()), ...Array.from(byKey.values())].sort((a, b) => {
+  return [...Array.from(byKey.values())].sort((a, b) => {
     if (a.line_number !== b.line_number) return a.line_number - b.line_number
     return (a.item_name || '').localeCompare(b.item_name || '')
   })
@@ -1247,6 +1340,20 @@ function buildItemMergeKey(item: ParsedItem): string {
     item.amount ?? 0,
     item.tax_amount ?? '',
     safe(item.po_number),
+  ].join('|')
+}
+
+function buildContentOnlyKey(item: ParsedItem): string {
+  const safe = (v: unknown) => String(v ?? '').trim().toUpperCase()
+  return [
+    safe(item.item_name),
+    safe(item.specification),
+    item.quantity ?? '',
+    item.unit_price ?? '',
+    item.amount ?? 0,
+    item.tax_amount ?? '',
+    safe(item.po_number),
+    safe(item.remark),
   ].join('|')
 }
 

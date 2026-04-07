@@ -3,8 +3,46 @@ import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
+import * as XLSX from 'xlsx';
 
 type FileViewType = 'image' | 'pdf';
+
+async function openExcelPreview(fileUrl: string) {
+  const width = 1100;
+  const height = 800;
+  const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
+  const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
+  const win = window.open('', 'transaction-statement-viewer', `width=${width},height=${height},left=${left},top=${top}`);
+  if (!win) return;
+
+  win.document.write('<html><head><title>거래명세서 미리보기</title></head><body style="margin:0;padding:20px;font-family:sans-serif;background:#f9f9f9"><p>엑셀 파일 로딩 중...</p></body></html>');
+
+  try {
+    const response = await fetch(fileUrl);
+    if (!response.ok) throw new Error('파일 다운로드 실패');
+    const buffer = await response.arrayBuffer();
+    const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const html = XLSX.utils.sheet_to_html(sheet, { editable: false });
+
+    win.document.open();
+    win.document.write(`<!DOCTYPE html>
+<html><head><title>거래명세서 - ${sheetName}</title>
+<style>
+  body { margin: 0; padding: 16px; font-family: -apple-system, sans-serif; background: #fff; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  td, th { border: 1px solid #ddd; padding: 4px 8px; white-space: nowrap; }
+  th { background: #f5f5f5; font-weight: 600; }
+  tr:hover { background: #f0f7ff; }
+</style></head><body>${html}</body></html>`);
+    win.document.close();
+  } catch {
+    win.document.open();
+    win.document.write('<html><body style="margin:0;padding:40px;font-family:sans-serif;text-align:center"><h3>엑셀 파일을 불러올 수 없습니다.</h3><p>파일을 다운로드하여 확인해주세요.</p></body></html>');
+    win.document.close();
+  }
+}
 
 interface OpenStatementPreviewOptions {
   fileUrl: string;
@@ -23,12 +61,7 @@ export function openStatementPreview({ fileUrl, onOpenImageViewer }: OpenStateme
   const isPdf = urlPath.endsWith(".pdf");
 
   if (isExcel) {
-    const width = 1000;
-    const height = 800;
-    const left = Math.max(0, window.screenX + (window.outerWidth - width) / 2);
-    const top = Math.max(0, window.screenY + (window.outerHeight - height) / 2);
-    const viewerUrl = `https://docs.google.com/gview?url=${encodeURIComponent(fileUrl)}&embedded=true`;
-    window.open(viewerUrl, "transaction-statement-viewer", `width=${width},height=${height},left=${left},top=${top}`);
+    openExcelPreview(fileUrl);
     return;
   }
 

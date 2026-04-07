@@ -97,14 +97,8 @@ export default function UpdateNotificationModal() {
             onClick={onApply}
             className="button-base bg-hansl-600 hover:bg-hansl-700 text-white transition-colors flex items-center gap-1"
           >
-            {needsReload ? (
-              <>
-                <RefreshCw className="w-3 h-3" />
-                업데이트
-              </>
-            ) : (
-              '확인'
-            )}
+            <RefreshCw className="w-3 h-3" />
+            업데이트
           </button>
         </div>
       </DialogContent>

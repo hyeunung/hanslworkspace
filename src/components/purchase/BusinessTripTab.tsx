@@ -1562,12 +1562,6 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
         toast.error("출장 승인 후 정산 제출이 가능합니다.");
         return false;
       }
-      if (!hasSettlementData) {
-        if (hasCardRequest) {
-          toast.error("정산 제출 전 카드사용내역에 '+ 새 영수증 행'을 추가하고 사용처/품명/합계를 1건 이상 입력해주세요.");
-          return false;
-        }
-      }
       const filledExpenseRows = expenseRows.filter(
         (r) =>
           r.vendor_name.trim() ||
@@ -2337,6 +2331,9 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-right w-[88px]">예상비용</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[98px]">정산상태</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[76px]">정산제출자</th>
+                    {isAppAdmin && (
+                      <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[76px]">정산승인자</th>
+                    )}
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">출장목적</th>
                     {isAppAdmin && (
                       <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[40px]"></th>
@@ -2476,6 +2473,13 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                         <td className="px-3 py-1.5 card-title whitespace-nowrap">
                           {trip.settlement_submitted_by || "-"}
                         </td>
+                        {isAppAdmin && (
+                          <td className="px-3 py-1.5 card-title whitespace-nowrap">
+                            {trip.settlement_approved_by
+                              ? employees.find((e) => e.id === trip.settlement_approved_by)?.name || "-"
+                              : "-"}
+                          </td>
+                        )}
                         <td className="px-3 py-1.5 card-title truncate max-w-[220px]">{trip.trip_purpose}</td>
                         {isAppAdmin && (
                           <td className="px-3 py-1.5 text-center">

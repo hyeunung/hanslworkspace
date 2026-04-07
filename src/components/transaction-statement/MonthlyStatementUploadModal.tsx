@@ -144,7 +144,7 @@ export default function MonthlyStatementUploadModal({
         file,
         uploaderName || '알 수 없음',
         undefined,
-        undefined,
+        'multi',
         fileType
       );
 

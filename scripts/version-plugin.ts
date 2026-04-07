@@ -41,6 +41,15 @@ export function versionPlugin(): Plugin {
       }
     },
 
+    configureServer() {
+      // dev 서버 시작 시 public/version.json 생성 (HMR 재시작마다 갱신)
+      const publicDir = path.resolve(process.cwd(), 'public')
+      fs.writeFileSync(
+        path.join(publicDir, 'version.json'),
+        JSON.stringify(versionInfo, null, 2)
+      )
+    },
+
     writeBundle() {
       // 빌드 완료 후 dist/version.json 생성
       const outDir = path.resolve(process.cwd(), 'dist')

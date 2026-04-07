@@ -95,7 +95,7 @@ export function useVersionCheck(): VersionCheckState {
 
   // ── 시나리오 1: 페이지 로드 시 "이전에 본 빌드"와 현재 빌드 비교 ──
   useEffect(() => {
-    if (import.meta.env.DEV || !currentBuildId) return
+    if (!currentBuildId) return
 
     const seenBuildId = localStorage.getItem(SEEN_BUILD_KEY)
 

@@ -43,6 +43,9 @@ yarn-error.log*
 next-env.d.ts
 sample-data/
 
+# auto-generated
+public/version.json
+
 # sensitive files
 key/
 scripts/test-vision.js

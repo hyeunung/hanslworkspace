@@ -513,15 +513,18 @@ class TransactionStatementService {
   }
 
   /**
-   * 월말결제 파싱 Edge Function 호출 (비동기)
+   * 월말결제 파싱 Edge Function 호출 (비동기) - 일반 엔진(ocr-transaction-statement) 통합 사용
    */
   private async triggerMonthlyStatementParsing(statementId: string, fileUrl: string, fileType: string) {
     try {
-      await this.supabase.functions.invoke('parse-monthly-statement', {
+      await this.supabase.functions.invoke('ocr-transaction-statement', {
         body: {
           statementId,
+          imageUrl: fileUrl,
           fileUrl,
-          fileType
+          fileType,
+          mode: 'process_specific',
+          statement_mode: 'monthly'
         }
       });
     } catch (error) {

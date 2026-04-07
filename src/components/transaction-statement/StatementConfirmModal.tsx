@@ -314,13 +314,44 @@ function calculateCandidateScore(
   ocrQuantity: number | undefined | null,
   candidateItemName: string,
   candidateSpec?: string,
-  candidateQuantity?: number | null
+  candidateQuantity?: number | null,
+  candidateReceivedQuantity?: number | null
 ): number {
   const nameScore = calculateItemSimilarity(ocrItemName, candidateItemName, candidateSpec);
-  if (!ocrQuantity || !candidateQuantity) return nameScore;
-  if (ocrQuantity === candidateQuantity) return Math.min(100, nameScore + 20);
-  if (ocrQuantity <= candidateQuantity) return Math.min(100, nameScore + 10);
+  if (ocrQuantity === undefined || ocrQuantity === null) return nameScore;
+  const exactReferenceQuantity =
+    candidateReceivedQuantity !== undefined && candidateReceivedQuantity !== null
+      ? candidateReceivedQuantity
+      : candidateQuantity;
+  if (exactReferenceQuantity !== undefined && exactReferenceQuantity !== null && ocrQuantity === exactReferenceQuantity) {
+    return Math.min(100, nameScore + 20);
+  }
+  if (candidateQuantity !== undefined && candidateQuantity !== null && ocrQuantity <= candidateQuantity) {
+    return Math.min(100, nameScore + 10);
+  }
   return nameScore;
+}
+
+function calculateAutoMatchScore(
+  ocrItemName: string,
+  ocrQuantity: number | undefined | null,
+  candidateItemName: string,
+  candidateSpec?: string,
+  candidateQuantity?: number | null,
+  candidateReceivedQuantity?: number | null
+): number {
+  const baseScore = calculateItemSimilarity(ocrItemName, candidateItemName, candidateSpec);
+  if (ocrQuantity === undefined || ocrQuantity === null) return baseScore;
+
+  // 실입고수량 우선 비교, 없을 때만 요청수량 fallback
+  const exactReferenceQuantity =
+    candidateReceivedQuantity !== undefined && candidateReceivedQuantity !== null
+      ? candidateReceivedQuantity
+      : candidateQuantity;
+  if (exactReferenceQuantity !== undefined && exactReferenceQuantity !== null && ocrQuantity === exactReferenceQuantity) {
+    return Math.min(100, baseScore + 20);
+  }
+  return baseScore;
 }
 
 /**
@@ -346,6 +377,7 @@ export default function StatementConfirmModal({
   }, []);
 
   const [loading, setLoading] = useState(true);
+  const initialLoadDoneRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
   const [viewerImageUrl, setViewerImageUrl] = useState("");
@@ -548,17 +580,19 @@ export default function StatementConfirmModal({
   // 모든 품목의 발주/수주번호가 동일한지 확인
   const isSamePONumber = useMemo(() => {
     if (!statementWithItems?.items.length) return true;
+    // 월말결제는 항상 다중 발주
+    if (isMonthlyMode) return false;
     if (statementWithItems?.po_scope === 'single') return true;
     if (statementWithItems?.po_scope === 'multi') return false;
-    
+
     const poNumbers = statementWithItems.items
       .map(item => normalizeValidOrderNumber(item.extracted_po_number) || null)
       .filter(Boolean);
-    
+
     if (poNumbers.length === 0) return true;
-    
+
     return poNumbers.every(po => po === poNumbers[0]);
-  }, [statementWithItems]);
+  }, [statementWithItems, isMonthlyMode]);
 
   // 공통 발주/수주번호 (Case 1용)
   const commonPONumber = useMemo(() => {
@@ -850,6 +884,7 @@ export default function StatementConfirmModal({
         };
         
         // 초기 발주번호 설정 및 자동 매칭
+        const isMonthly = result.data.statement_mode === 'monthly';
         const initialPONumbers = new Map<string, string>();
         const initialMatches = new Map<string, SystemPurchaseItem | null>();
         result.data.items.forEach(item => {
@@ -917,10 +952,13 @@ export default function StatementConfirmModal({
                   ) || []).map(mapCandidateToSystemItem);
               
               for (const candidate of matchingCandidates) {
-                const score = calculateItemSimilarity(
+                const score = calculateAutoMatchScore(
                   item.extracted_item_name || '',
+                  item.extracted_quantity,
                   candidate.item_name,
-                  candidate.specification
+                  candidate.specification,
+                  candidate.quantity,
+                  candidate.received_quantity
                 );
                 if (score > bestScore && score >= MIN_AUTO_MATCH_SCORE) {
                   bestScore = score;
@@ -929,8 +967,25 @@ export default function StatementConfirmModal({
               }
             }
             
-            // 2. 발주번호가 없는 경우에만 보수적으로 fallback
-            if (!bestMatch && !poNumber && item.match_candidates && item.match_candidates.length > 0) {
+            // 2. 월말결제: 전체 후보에서 유사도 40% + 수량일치 보너스로 최선 매칭
+            //    일반: 발주번호 없을 때만 60% 이상 fallback
+            if (!bestMatch && isMonthly && item.match_candidates && item.match_candidates.length > 0) {
+              for (const candidate of item.match_candidates) {
+                const score = calculateAutoMatchScore(
+                  item.extracted_item_name || '',
+                  item.extracted_quantity,
+                  candidate.item_name,
+                  candidate.specification,
+                  candidate.quantity,
+                  candidate.received_quantity
+                );
+                if (score > bestScore && score >= MIN_AUTO_MATCH_SCORE) {
+                  bestScore = score;
+                  bestMatch = mapCandidateToSystemItem(candidate);
+                }
+              }
+            }
+            if (!bestMatch && !isMonthly && !poNumber && item.match_candidates && item.match_candidates.length > 0) {
               for (const candidate of item.match_candidates) {
                 const score = calculateItemSimilarity(item.extracted_item_name || '', candidate.item_name, candidate.specification);
                 if (score > bestScore && score >= 60) {
@@ -969,7 +1024,14 @@ export default function StatementConfirmModal({
                   ? recommendedPOItems
                   : candidatesForPO.map(mapCandidateToSystemItem);
                 for (const candidateItem of candidateItems) {
-                  const score = calculateItemSimilarity(item.extracted_item_name || '', candidateItem.item_name, candidateItem.specification);
+                  const score = calculateAutoMatchScore(
+                    item.extracted_item_name || '',
+                    item.extracted_quantity,
+                    candidateItem.item_name,
+                    candidateItem.specification,
+                    candidateItem.quantity,
+                    candidateItem.received_quantity
+                  );
                   if (score > bestItemScore && score >= MIN_AUTO_MATCH_SCORE) {
                     bestItemScore = score;
                     bestItem = candidateItem;
@@ -1010,7 +1072,14 @@ export default function StatementConfirmModal({
               let best: SystemPurchaseItem | null = null;
               let bestScore = -1;
               for (const candidate of candidates) {
-                const score = calculateItemSimilarity(item.extracted_item_name || '', candidate.item_name, candidate.specification);
+                const score = calculateAutoMatchScore(
+                  item.extracted_item_name || '',
+                  item.extracted_quantity,
+                  candidate.item_name,
+                  candidate.specification,
+                  candidate.quantity,
+                  candidate.received_quantity
+                );
                 if (score > bestScore && score >= MIN_AUTO_MATCH_SCORE) {
                   bestScore = score;
                   best = candidate;
@@ -1119,7 +1188,11 @@ export default function StatementConfirmModal({
           setSetMatchResult(null);
         }
 
-        if (nextSelectedPONumber) {
+        if (isMonthly) {
+          // 월말결제: 모든 발주번호의 시스템 품목을 hydrate
+          const uniquePOs = [...new Set(initialPONumbers.values())];
+          await Promise.all(uniquePOs.map(po => ensurePoItemsHydrated(po)));
+        } else if (nextSelectedPONumber) {
           await ensurePoItemsHydrated(nextSelectedPONumber, nextSelectedPurchaseId);
         }
         if (hydratedPoItemsMap.size > 0) {
@@ -1132,9 +1205,41 @@ export default function StatementConfirmModal({
           });
         }
 
+        // 월말결제: hydrate 후 매칭 안 된 품목 재시도 (PO 시스템 품목 기반)
+        if (isMonthly) {
+          result.data.items.forEach(item => {
+            if (finalMatches.get(item.id)) return; // 이미 매칭됨
+            const itemPO = initialPONumbers.get(item.id);
+            if (!itemPO) return;
+            const systemItems = getSystemItemsForPOLocal(itemPO);
+            if (systemItems.length === 0) return;
+
+            let bestMatch: SystemPurchaseItem | null = null;
+            let bestScore = -1;
+            for (const candidate of systemItems) {
+              const score = calculateAutoMatchScore(
+                item.extracted_item_name || '',
+                item.extracted_quantity,
+                candidate.item_name,
+                candidate.specification,
+                candidate.quantity,
+                candidate.received_quantity
+              );
+              if (score > bestScore && score >= MIN_AUTO_MATCH_SCORE) {
+                bestScore = score;
+                bestMatch = candidate;
+              }
+            }
+            if (bestMatch) {
+              finalMatches.set(item.id, bestMatch);
+            }
+          });
+        }
+
         setItemPONumbers(initialPONumbers);
         setItemMatches(finalMatches);
         setSelectedPONumber(nextSelectedPONumber);
+        initialLoadDoneRef.current = false; // 다음 useEffect에서 초기 매칭 보존
       } else {
         toast.error(result.error || '데이터를 불러오는데 실패했습니다.');
       }
@@ -1167,9 +1272,18 @@ export default function StatementConfirmModal({
   // 발주번호 변경 시 itemMatches 자동 동기화 + 매칭된 시스템 발주번호로 업데이트
   useEffect(() => {
     if (!statementWithItems || !isOpen) return;
-    
+
     // 아직 초기 로드 중이면 스킵
     if (loading) return;
+
+    // 월말결제: useEffect에서 매칭을 재계산하지 않음 (loadData에서 DB 매칭 사용)
+    if (isMonthlyMode) return;
+
+    // 초기 로드 직후 첫 실행은 스킵 (loadData에서 이미 올바른 매칭 설정됨)
+    if (!initialLoadDoneRef.current) {
+      initialLoadDoneRef.current = true;
+      return;
+    }
     
     const newMatches = new Map<string, SystemPurchaseItem | null>();
     const newPONumbers = new Map<string, string>(itemPONumbers);
@@ -1179,13 +1293,22 @@ export default function StatementConfirmModal({
     statementWithItems.items.forEach(ocrItem => {
       const currentMatch = itemMatches.get(ocrItem.id);
 
+      // 월말결제: 기존 매칭이 있으면 무조건 유지 (이미 입고 완료된 정산서이므로)
+      if (isMonthlyMode && currentMatch) {
+        newMatches.set(ocrItem.id, currentMatch);
+        return;
+      }
+
       // 현재 적용해야 할 발주번호
-      const poNumber = isSamePONumber 
-        ? selectedPONumber 
+      const poNumber = isSamePONumber
+        ? selectedPONumber
         : (itemPONumbers.get(ocrItem.id) || normalizeValidOrderNumber(ocrItem.extracted_po_number));
-      
+
       const rOcrLineNum = getOCRLineHint(ocrItem);
-      const isCurrentSamePO = !poNumber || currentMatch?.purchase_order_number === poNumber || currentMatch?.sales_order_number === poNumber;
+      const normalizedPO = poNumber ? normalizeOrderNumber(poNumber) : '';
+      const isCurrentSamePO = !poNumber ||
+        normalizeOrderNumber(currentMatch?.purchase_order_number || '') === normalizedPO ||
+        normalizeOrderNumber(currentMatch?.sales_order_number || '') === normalizedPO;
       const isCurrentSameLine = rOcrLineNum === null || currentMatch?.line_number == null || currentMatch.line_number === rOcrLineNum;
 
       // 현재 매칭이 발주/라인 기준으로 여전히 유효하면 유지
@@ -1223,7 +1346,14 @@ export default function StatementConfirmModal({
             ) || []).map(mapCandidateToSystemItem);
         
         for (const candidate of matchingCandidates) {
-          const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', candidate.item_name, candidate.specification);
+          const score = calculateAutoMatchScore(
+            ocrItem.extracted_item_name || '',
+            ocrItem.extracted_quantity,
+            candidate.item_name,
+            candidate.specification,
+            candidate.quantity,
+            candidate.received_quantity
+          );
           if (score > bestScore && score >= MIN_AUTO_MATCH_SCORE) {
             bestScore = score;
             bestMatch = candidate;
@@ -1231,8 +1361,25 @@ export default function StatementConfirmModal({
         }
       }
       
-      // 2. 발주번호가 없을 때만 fallback
-      if (!bestMatch && !poNumber && ocrItem.match_candidates) {
+      // 2. 월말결제: 전체 후보에서 유사도 40% + 수량일치 보너스
+      //    일반: 발주번호 없을 때만 60% fallback
+      if (!bestMatch && isMonthlyMode && ocrItem.match_candidates) {
+        for (const candidate of ocrItem.match_candidates) {
+          const score = calculateAutoMatchScore(
+            ocrItem.extracted_item_name || '',
+            ocrItem.extracted_quantity,
+            candidate.item_name,
+            candidate.specification,
+            candidate.quantity,
+            candidate.received_quantity
+          );
+          if (score > bestScore && score >= MIN_AUTO_MATCH_SCORE) {
+            bestScore = score;
+            bestMatch = mapCandidateToSystemItem(candidate);
+          }
+        }
+      }
+      if (!bestMatch && !isMonthlyMode && !poNumber && ocrItem.match_candidates) {
         for (const candidate of ocrItem.match_candidates) {
           const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', candidate.item_name, candidate.specification);
           if (score > bestScore && score >= 60) {
@@ -2461,7 +2608,14 @@ export default function StatementConfirmModal({
 
         if (!bestMatch) {
           systemItems.forEach((sysItem) => {
-            const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', sysItem.item_name, sysItem.specification);
+            const score = calculateAutoMatchScore(
+              ocrItem.extracted_item_name || '',
+              ocrItem.extracted_quantity,
+              sysItem.item_name,
+              sysItem.specification,
+              sysItem.quantity,
+              sysItem.received_quantity
+            );
             if (score > bestScore && score >= MIN_AUTO_MATCH_SCORE) {
               bestScore = score;
               bestMatch = sysItem;
@@ -2884,7 +3038,14 @@ export default function StatementConfirmModal({
 
           if (!bestMatch) {
             systemItems.forEach((sysItem) => {
-              const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', sysItem.item_name, sysItem.specification);
+              const score = calculateAutoMatchScore(
+                ocrItem.extracted_item_name || '',
+                ocrItem.extracted_quantity,
+                sysItem.item_name,
+                sysItem.specification,
+                sysItem.quantity,
+                sysItem.received_quantity
+              );
               if (score > bestScore && score >= MIN_AUTO_MATCH_SCORE) {
                 bestScore = score;
                 bestMatch = sysItem;
@@ -2973,7 +3134,14 @@ export default function StatementConfirmModal({
           ? systemItems
           : matchingCandidates.map(mapCandidateToSystemItem);
         candidatesForPO.forEach((candidate) => {
-          const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', candidate.item_name, candidate.specification);
+          const score = calculateAutoMatchScore(
+            ocrItem.extracted_item_name || '',
+            ocrItem.extracted_quantity,
+            candidate.item_name,
+            candidate.specification,
+            candidate.quantity,
+            candidate.received_quantity
+          );
           if (score > bestScore && score >= MIN_AUTO_MATCH_SCORE) {
             bestScore = score;
             bestMatch = candidate;
@@ -3394,8 +3562,9 @@ export default function StatementConfirmModal({
   
   
   // 입고수량 모드에서는 확정 버튼 비활성화 (lead_buyer 승인 불필요)
-  const isConfirmDisabled = saving || !statementWithItems || !canConfirm || isManagerConfirmed || isStatementConfirmed || isReceiptMode || !isQuantityMatchConfirmed;
-  const isQuantityMatchDisabled = saving || !statementWithItems || !canQuantityMatch || isQuantityMatchConfirmed || isStatementConfirmed;
+  // 월말결제 모드에서는 수량일치 불필요 → 바로 확정 가능
+  const isConfirmDisabled = saving || !statementWithItems || !canConfirm || isManagerConfirmed || isStatementConfirmed || isReceiptMode || (!isMonthlyMode && !isQuantityMatchConfirmed);
+  const isQuantityMatchDisabled = saving || !statementWithItems || !canQuantityMatch || isQuantityMatchConfirmed || isStatementConfirmed || isMonthlyMode;
   const isUtkDisabled = saving || !statementWithItems || !canUtkCheck || utkTargetPurchases.length === 0;
   const confirmButtonLabel = isManagerConfirmed || isStatementConfirmed ? '확정 완료' : '확정';
   const quantityMatchButtonLabel = isQuantityMatchConfirmed || isStatementConfirmed ? (isReceiptMode ? '완료' : '수량일치 완료') : '수량일치';
@@ -4320,13 +4489,15 @@ export default function StatementConfirmModal({
                 <div>
                   <p className="modal-label">발주 구분</p>
                   <p className="modal-value">
-                    {statementWithItems.po_scope === 'single'
-                      ? '단일 발주'
-                      : statementWithItems.po_scope === 'multi'
-                        ? '다중 발주'
-                        : isSamePONumber
-                          ? '단일 발주'
-                          : '다중 발주'}
+                    {isMonthlyMode
+                      ? '다중 발주'
+                      : statementWithItems.po_scope === 'single'
+                        ? '단일 발주'
+                        : statementWithItems.po_scope === 'multi'
+                          ? '다중 발주'
+                          : isSamePONumber
+                            ? '단일 발주'
+                            : '다중 발주'}
                   </p>
                 </div>
                 <div className="relative">
@@ -4657,7 +4828,8 @@ export default function StatementConfirmModal({
                             ocrItem.extracted_quantity,
                             candidate.item_name,
                             candidate.specification,
-                            candidate.quantity
+                            candidate.quantity,
+                            candidate.received_quantity
                           )
                         }));
                       const orderedSystemCandidates = [...scoredSystemCandidates].sort((a, b) => {
@@ -4672,7 +4844,7 @@ export default function StatementConfirmModal({
                       const ocrLineHint = getOCRLineHint(ocrItem);
                       const systemDisplayLineNumber = matchedSystem?.line_number ?? ocrLineHint ?? null;
                       const systemDisplayLineLabel = systemDisplayLineNumber !== null ? `${systemDisplayLineNumber}.` : '-';
-                      const ocrDisplayLineLabel = systemDisplayLineLabel;
+                      const ocrDisplayLineLabel = ocrItem.line_number != null ? `${ocrItem.line_number}.` : '-';
                       const ocrItemNameValue = ((getOCRItemValue(ocrItem, 'item_name') as string) || '').trim();
                       let effectiveSystemForNameMatch: SystemPurchaseItem | null = matchedSystem || null;
                       if (!effectiveSystemForNameMatch) {
@@ -4977,9 +5149,7 @@ export default function StatementConfirmModal({
                                           >
                                             <div className="flex items-center justify-between">
                                               <p className="text-[11px] font-normal text-gray-900" style={{ fontSize: '11px' }}>
-                                                {isSamePONumber
-                                                  ? getSystemItemNameSpecLabel(candidate, true)
-                                                  : getSystemItemLabel(candidate, true, ocrItem.extracted_item_name || undefined)}
+                                                {candidate.line_number != null ? `${candidate.line_number}. ` : ''}{candidate.item_name?.trim() || `품목 #${candidate.item_id}`}
                                               </p>
                                               <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                                                 score >= 80 ? 'bg-green-100 text-green-700' :
@@ -4989,7 +5159,10 @@ export default function StatementConfirmModal({
                                                 {Math.round(score)}%
                                               </span>
                                             </div>
-                                            <p className="text-[10px] text-gray-500">
+                                            {candidate.specification?.trim() && (
+                                              <p className="text-[10px] text-gray-500">{candidate.specification.trim()}</p>
+                                            )}
+                                            <p className="text-[10px] text-gray-400">
                                               요청/실제: {candidate.quantity ?? '-'} / {candidate.received_quantity ?? '-'}
                                             </p>
                                           </div>
@@ -5072,7 +5245,8 @@ export default function StatementConfirmModal({
                                               ocrItem.extracted_quantity,
                                               candidate.item_name,
                                               candidate.specification,
-                                              candidate.quantity
+                                              candidate.quantity,
+                                              candidate.received_quantity
                                             )
                                           }))
                                           .sort((a, b) => b.score - a.score)
@@ -5091,9 +5265,7 @@ export default function StatementConfirmModal({
                                             >
                                               <div className="flex items-center justify-between">
                                                 <p className="text-[11px] font-normal text-gray-900" style={{ fontSize: '11px' }}>
-                                                  {isSamePONumber
-                                                    ? getSystemItemNameSpecLabel(candidate, true)
-                                                    : getSystemItemLabel(candidate, true, ocrItem.extracted_item_name || undefined)}
+                                                  {candidate.line_number != null ? `${candidate.line_number}. ` : ''}{candidate.item_name?.trim() || `품목 #${candidate.item_id}`}
                                                 </p>
                                                 <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                                                   score >= 80 ? 'bg-green-100 text-green-700' :
@@ -5103,7 +5275,10 @@ export default function StatementConfirmModal({
                                                   {Math.round(score)}%
                                                 </span>
                                               </div>
-                                              <p className="text-[10px] text-gray-500">
+                                              {candidate.specification?.trim() && (
+                                                <p className="text-[10px] text-gray-500">{candidate.specification.trim()}</p>
+                                              )}
+                                              <p className="text-[10px] text-gray-400">
                                                 요청/실제: {candidate.quantity ?? '-'} / {candidate.received_quantity ?? '-'}
                                               </p>
                                             </div>
