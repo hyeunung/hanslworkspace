@@ -128,6 +128,12 @@ export const DONE_TAB_COLUMNS: ColumnInfo[] = [
     defaultVisible: true,
   },
   {
+    id: 'payment_schedule',
+    label: '지출예정일',
+    description: '업체 지출 예정일',
+    defaultVisible: true,
+  },
+  {
     id: 'purchase_progress',
     label: '구매진행',
     description: '구매 진행률',
@@ -210,6 +216,7 @@ export const COLUMN_GROUPS = [
       'contact_name',
       'delivery_request_date',
       'revised_delivery_date',
+      'payment_schedule',
     ] as DoneTabColumnId[],
   },
   {

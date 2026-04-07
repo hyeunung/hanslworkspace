@@ -808,6 +808,14 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
               </span>
             </td>
           )}
+          {/* 지출예정일 칼럼 */}
+          {isVisible('payment_schedule') && (
+            <td className={`px-2 py-1.5 card-title whitespace-nowrap ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>
+              <span className="block truncate" title={purchase.vendor_payment_schedule || ''}>
+                {purchase.vendor_payment_schedule || '-'}
+              </span>
+            </td>
+          )}
           {/* 구매진행 칼럼 */}
           {isVisible('purchase_progress') && activeTab !== 'purchase' && (
             <td className={`px-2 py-1.5 ${COMMON_COLUMN_CLASSES.status}`}>
@@ -1631,6 +1639,9 @@ const FastPurchaseTable = ({
           )}
           {isColumnVisible('sales_order_number') && (
             <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.salesOrderNumber}`}>수주번호</th>
+          )}
+          {isColumnVisible('payment_schedule') && (
+            <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left ${COMMON_COLUMN_CLASSES.paymentSchedule}`}>지출예정일</th>
           )}
           {isColumnVisible('purchase_progress') && (
             <th className={`px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap ${COMMON_COLUMN_CLASSES.status}`}>구매진행</th>

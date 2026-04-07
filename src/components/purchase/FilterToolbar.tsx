@@ -362,11 +362,14 @@ export default function FilterToolbar({
       if (isDateFilter) {
         finalCondition = 'equals'
       } else {
-        // 텍스트 필터는 'contains', 선택 필터는 'equals'
         const fieldConfig = FILTER_FIELDS.find(f => f.key === newFilter.field)
-        finalCondition = (fieldConfig?.type === 'select' || fieldConfig?.type === 'select_with_empty' || fieldConfig?.type === 'searchable_select') 
-          ? 'equals' 
-          : 'contains'
+        if (fieldConfig?.type === 'select' || fieldConfig?.type === 'select_with_empty' || fieldConfig?.type === 'searchable_select') {
+          finalCondition = 'equals'
+        } else if (fieldConfig?.type === 'number') {
+          finalCondition = 'equals'
+        } else {
+          finalCondition = 'contains'
+        }
       }
     }
     
@@ -977,6 +980,10 @@ export default function FilterToolbar({
                               ({DATE_FIELDS.find(df => df.value === filter.dateField)?.label})
                             </span>
                           )}
+                          {(() => {
+                            const condLabel = NUMBER_CONDITIONS.find(c => c.value === filter.condition)?.label
+                            return condLabel && filter.condition !== 'equals' ? ` ${condLabel}` : ''
+                          })()}
                           : {String(filter.value)}
                         </span>
                         <Button
@@ -1059,6 +1066,30 @@ export default function FilterToolbar({
                           </div>
 
                           {/* 날짜 값 입력 */}
+                          <div className="flex items-start">
+                            {renderValueInput()}
+                          </div>
+                        </div>
+                      ) : FILTER_FIELDS.find(f => f.key === newFilter.field)?.type === 'number' ? (
+                        /* 숫자 필터인 경우 - 조건 선택 + 값 입력 */
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="flex items-start">
+                            <Select
+                              value={newFilter.condition || 'equals'}
+                              onValueChange={(value) => setNewFilter(prev => ({ ...prev, condition: value as FilterCondition }))}
+                            >
+                              <SelectTrigger className="w-full button-base business-radius-button border border-gray-300 bg-white text-gray-700 [&>svg]:hidden text-center justify-center">
+                                <SelectValue placeholder="조건" className="text-center" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {NUMBER_CONDITIONS.map(cond => (
+                                  <SelectItem key={cond.value} value={cond.value}>
+                                    <span className="card-description">{cond.label}</span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                           <div className="flex items-start">
                             {renderValueInput()}
                           </div>
@@ -1262,6 +1293,10 @@ export default function FilterToolbar({
                   ({DATE_FIELDS.find(df => df.value === filter.dateField)?.label})
                 </span>
               )}
+              {(() => {
+                const condLabel = NUMBER_CONDITIONS.find(c => c.value === filter.condition)?.label
+                return condLabel && filter.condition !== 'equals' ? ` ${condLabel}` : ''
+              })()}
                   : {String(filter.value)}
               <Button
                 variant="ghost"

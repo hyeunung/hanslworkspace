@@ -26,6 +26,7 @@ export type DoneTabColumnId =
   | 'project_vendor'          // PJ업체
   | 'project_item'            // PJ ITEM
   | 'sales_order_number'      // 수주번호
+  | 'payment_schedule'        // 지출예정일
   | 'purchase_progress'       // 구매진행 (진행률)
   | 'receipt_progress';       // 입고진행 (진행률)
 

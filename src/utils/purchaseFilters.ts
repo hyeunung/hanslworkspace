@@ -254,6 +254,12 @@ export const applyAdvancedFilters = (
  * 필터 조건 체크 헬퍼 함수
  */
 const checkFilterCondition = (fieldValue: unknown, condition: string, value: string | number | Date): boolean => {
+  // '공란' 선택 시 빈 값 필터링
+  if (value === '공란') {
+    const isEmpty = !fieldValue || String(fieldValue).trim() === ''
+    return condition === 'not_equals' ? !isEmpty : isEmpty
+  }
+
   // null/undefined 체크
   if (fieldValue === null || fieldValue === undefined) {
     return condition === 'is_empty'
@@ -474,6 +480,21 @@ const getFieldValue = (purchase: Purchase, field: string): unknown => {
     return value === true ? '완료' : '대기'
   }
   
+  // 지출예정일 (vendors 테이블의 vendor_payment_schedule)
+  if (field === 'payment_schedule') {
+    return purchase.vendor_payment_schedule || null
+  }
+
+  // 거래명세서 입고일 (품목의 statement_received_date에서 가져옴)
+  if (field === 'statement_received_at') {
+    const items = purchase.purchase_request_items || []
+    // 첫 번째 품목의 statement_received_date 사용
+    for (const item of items) {
+      if (item.statement_received_date) return item.statement_received_date
+    }
+    return null
+  }
+
   // 담당자 이름
   if (field === 'contact_name') {
     return purchase.contact_name || null
