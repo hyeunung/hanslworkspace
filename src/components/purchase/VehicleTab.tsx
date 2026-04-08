@@ -274,7 +274,33 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setRequests((data as unknown as VehicleRequest[]) || []);
+      const list = (data as unknown as VehicleRequest[]) || [];
+
+      // 자동 복귀완료: end_at이 지난 approved 건을 returned로 변경
+      const now = new Date();
+      const expiredIds = list
+        .filter(
+          (r) =>
+            r.approval_status === "approved" &&
+            r.end_at &&
+            new Date(r.end_at) < now
+        )
+        .map((r) => r.id);
+
+      if (expiredIds.length > 0) {
+        await supabase
+          .from("vehicle_requests")
+          .update({ approval_status: "returned" })
+          .in("id", expiredIds);
+        // 로컬 상태도 반영
+        for (const item of list) {
+          if (expiredIds.includes(item.id)) {
+            item.approval_status = "returned";
+          }
+        }
+      }
+
+      setRequests(list);
     } catch (err) {
       logger.error("차량 요청 목록 조회 실패", err);
       toast.error("차량 요청 목록을 불러오지 못했습니다.");
@@ -533,6 +559,50 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
     }
   }, [supabase, currentUser, rejectTargetId, rejectReason, loadRequests]);
 
+  const handleReturn = useCallback(
+    async (requestId: number) => {
+      try {
+        const { error } = await supabase
+          .from("vehicle_requests")
+          .update({
+            approval_status: "returned",
+          })
+          .eq("id", requestId);
+
+        if (error) throw error;
+        toast.success("차량 복귀 처리되었습니다.");
+        loadRequests();
+        onBadgeRefresh?.();
+      } catch (err) {
+        logger.error("차량 복귀 처리 실패", err);
+        toast.error("복귀 처리에 실패했습니다.");
+      }
+    },
+    [supabase, loadRequests]
+  );
+
+  const handleCancelReturn = useCallback(
+    async (requestId: number) => {
+      try {
+        const { error } = await supabase
+          .from("vehicle_requests")
+          .update({
+            approval_status: "approved",
+          })
+          .eq("id", requestId);
+
+        if (error) throw error;
+        toast.success("복귀완료가 취소되었습니다.");
+        loadRequests();
+        onBadgeRefresh?.();
+      } catch (err) {
+        logger.error("복귀 취소 실패", err);
+        toast.error("복귀 취소에 실패했습니다.");
+      }
+    },
+    [supabase, loadRequests]
+  );
+
   const openRejectDialog = useCallback((requestId: number) => {
     setRejectTargetId(requestId);
     setRejectReason("");
@@ -544,6 +614,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
       pending: { text: "승인대기", cls: "bg-orange-500 text-white" },
       approved: { text: "승인완료", cls: "bg-green-500 text-white" },
       rejected: { text: "반려", cls: "bg-red-500 text-white" },
+      returned: { text: "복귀완료", cls: "bg-blue-500 text-white" },
     };
     const conf = map[status] || { text: status, cls: "bg-gray-100 text-gray-600" };
     return <span className={`badge-stats ${conf.cls}`}>{conf.text}</span>;
@@ -608,7 +679,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                 <div className="doc-form-cell-label">운행차량 <span className="required">*</span></div>
                 <div className="doc-select-container">
                   <ReactSelect
-                    options={COMPANY_VEHICLES}
+                    options={COMPANY_VEHICLES.filter((v) => vehicleStatusMap[v.label]?.status !== "away")}
                     value={formVehicle ? COMPANY_VEHICLES.find((v) => v.value === formVehicle) || null : null}
                     onChange={(opt) => setFormVehicle((opt as { value: string } | null)?.value || null)}
                     placeholder="차량 선택"
@@ -912,14 +983,14 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[68px]">
                       신청일
                     </th>
+                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[120px]">
+                      요청차량
+                    </th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[110px]">
                       출장코드
                     </th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[135px]">
                       운행일시
-                    </th>
-                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[120px]">
-                      요청차량
                     </th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[76px]">
                       요청자
@@ -984,12 +1055,73 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                               </div>
                             </PopoverContent>
                           </Popover>
+                        ) : (canApprove || req.requester_id === currentUser?.id) && req.approval_status === "approved" ? (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                onClick={(e) => e.stopPropagation()}
+                                className="badge-stats bg-green-500 text-white cursor-pointer hover:bg-green-600 transition-colors"
+                              >
+                                승인완료
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              className="w-auto p-2 border-gray-200 shadow-lg"
+                              align="start"
+                              side="bottom"
+                              sideOffset={4}
+                              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                            >
+                              <div className="flex gap-1.5">
+                                <Button
+                                  onClick={(e) => { e.stopPropagation(); handleReturn(req.id); }}
+                                  className="button-base bg-blue-500 hover:bg-blue-600 text-white"
+                                >
+                                  <Check className="w-3 h-3 mr-0.5" />
+                                  복귀완료
+                                </Button>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        ) : isAppAdmin && req.approval_status === "returned" ? (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                onClick={(e) => e.stopPropagation()}
+                                className="badge-stats bg-blue-500 text-white cursor-pointer hover:bg-blue-600 transition-colors"
+                              >
+                                복귀완료
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              className="w-auto p-2 border-gray-200 shadow-lg"
+                              align="start"
+                              side="bottom"
+                              sideOffset={4}
+                              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                            >
+                              <div className="flex gap-1.5">
+                                <Button
+                                  onClick={(e) => { e.stopPropagation(); handleCancelReturn(req.id); }}
+                                  className="button-base border border-orange-200 bg-white text-orange-600 hover:bg-orange-50"
+                                >
+                                  <X className="w-3 h-3 mr-0.5" />
+                                  복귀취소
+                                </Button>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
                         ) : (
                           getStatusBadge(req.approval_status)
                         )}
                       </td>
                       <td className="px-2 py-1.5 card-date whitespace-nowrap">
                         {req.created_at ? format(new Date(req.created_at), "MM/dd") : "-"}
+                      </td>
+                      <td className="px-2 py-1.5 card-title whitespace-nowrap truncate max-w-[100px]">
+                        {req.vehicle_info?.split(" ")[0] || "-"}
                       </td>
                       <td className="px-2 py-1.5 card-title whitespace-nowrap">
                         {req.business_trip?.trip_code || "-"}
@@ -1005,9 +1137,6 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                             </div>
                           </div>
                         ) : "-"}
-                      </td>
-                      <td className="px-2 py-1.5 card-title whitespace-nowrap truncate max-w-[100px]">
-                        {req.vehicle_info?.split(" ")[0] || "-"}
                       </td>
                       <td className="px-2 py-1.5 card-title whitespace-nowrap truncate max-w-[80px]">
                         {req.requester?.name || "-"}
