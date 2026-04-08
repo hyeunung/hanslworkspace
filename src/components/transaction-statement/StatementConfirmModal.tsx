@@ -4758,6 +4758,9 @@ export default function StatementConfirmModal({
                       </th>
                       
                       {/* 우측 컬럼 */}
+                      {!isSamePONumber && (
+                        <th className="p-1 text-left whitespace-nowrap modal-label">발주/수주번호</th>
+                      )}
                       <th className="p-1 text-left whitespace-nowrap modal-label">품목명 <span className="text-gray-400 font-normal">({statementWithItems.items.filter(i => !deletedOCRItemIds.has(i.id)).length}행)</span></th>
                       <th className="p-1 text-right whitespace-nowrap w-16 modal-label">수량</th>
                       {!isReceiptMode && (
@@ -4768,9 +4771,6 @@ export default function StatementConfirmModal({
                       )}
                       {isReceiptMode && (
                         <th className="p-1"></th>
-                      )}
-                      {!isSamePONumber && (
-                        <th className="p-1 text-left whitespace-nowrap modal-label">발주/수주번호</th>
                       )}
                       <th className="p-1 w-6"></th>
                     </tr>
@@ -5445,6 +5445,15 @@ export default function StatementConfirmModal({
                             </td>
                           )}
                           
+                          {/* 우측: OCR 발주/수주번호 (다중발주) */}
+                          {!isSamePONumber && (
+                            <td className="p-1 whitespace-nowrap">
+                              <span className="text-[10px] text-gray-400 font-medium">
+                                {normalizeValidOrderNumber(ocrItem.extracted_po_number) || ''}
+                              </span>
+                            </td>
+                          )}
+
                           {/* 우측: OCR 품목 (편집 가능) */}
                           <td className="p-1 whitespace-nowrap">
                             <div className="flex items-center gap-1">
@@ -5646,39 +5655,7 @@ export default function StatementConfirmModal({
                             <td className="p-1"></td>
                           )}
                           
-                          {/* Case 2: OCR 발주번호 표시 (편집 가능) */}
-                          {!isSamePONumber && (
-                            <td className="p-1 whitespace-nowrap">
-                              <div className="flex items-center gap-1">
-                                <input
-                                  type="text"
-                                  value={getOCRItemValue(ocrItem, 'po_number') as string}
-                                  onChange={(e) => {
-                                    const newValue = e.target.value;
-                                    lookupPairedOrderNumber(newValue);
-                                    handleEditOCRItem(ocrItem.id, 'po_number', newValue);
-                                  }}
-                                  className={`px-1.5 h-5 text-[10px] font-medium bg-white border business-radius focus:outline-none focus:ring-1 focus:ring-gray-400 text-gray-700 ${
-                                    isOCRItemEdited(ocrItem, 'po_number') 
-                                      ? 'border-orange-400 bg-orange-50' 
-                                      : 'border-gray-300'
-                                  }`}
-                                  style={{ fontSize: '11px', fontWeight: 500 }}
-                                  title={isOCRItemEdited(ocrItem, 'po_number') ? `원본: ${ocrItem.extracted_po_number}` : undefined}
-                                />
-                                {(() => {
-                                  const currentValue = getOCRItemValue(ocrItem, 'po_number') as string;
-                                  const pairedNumber = getPairedOrderNumberWithOverrides(currentValue);
-                                  if (!pairedNumber) return null;
-                                  return (
-                                    <span className="text-gray-400 text-[10px] font-normal" style={{ fontSize: '11px' }}>
-                                      {pairedNumber}
-                                    </span>
-                                  );
-                                })()}
-                              </div>
-                            </td>
-                          )}
+                          
                           {/* OCR 품목 삭제 버튼 */}
                           <td className="p-0.5 text-center w-6">
                             <button
@@ -5731,7 +5708,6 @@ export default function StatementConfirmModal({
                             }, 0)
                         )}`}
                         </td>
-                        {!isSamePONumber && <td className="p-1"></td>}
                         <td className="p-1"></td>
                       </tr>
                     )}
