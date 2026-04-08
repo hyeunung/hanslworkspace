@@ -411,7 +411,7 @@ export default function StatementConfirmModal({
   const [duplicateReceiptWarning, setDuplicateReceiptWarning] = useState<{
     open: boolean;
     items: DuplicateReceiptItem[];
-    onProceed: ((skipItemIds: Set<string>) => void) | null;
+    onProceed: ((skipItemIds: Set<string>) => void | Promise<void>) | null;
   }>({ open: false, items: [], onProceed: null });
 
   // 드롭다운 열림 상태
@@ -3911,9 +3911,9 @@ export default function StatementConfirmModal({
           setDuplicateReceiptWarning({
             open: true,
             items: overflowItems,
-            onProceed: (skipItemIds: Set<string>) => {
+            onProceed: async (skipItemIds: Set<string>) => {
               setDuplicateReceiptWarning({ open: false, items: [], onProceed: null });
-              executeQuantityMatch(skipItemIds);
+              await executeQuantityMatch(skipItemIds);
             },
           });
           return;
@@ -4307,7 +4307,7 @@ export default function StatementConfirmModal({
               </h3>
               <p className="text-xs text-gray-500 mt-1">
                 아래 품목은 이미 입고 처리되어 있어, 이대로 진행하면 입고수량이 요청수량을 초과합니다.<br/>
-                <strong>체크 해제된 품목은 입고수량 반영을 건너뜁니다.</strong>
+                <strong>체크한 품목만 입고수량에 반영됩니다.</strong> (이미 수동 입고 처리된 항목은 체크 해제된 상태로 두세요)
               </p>
             </div>
             <div className="overflow-y-auto flex-1 px-5 py-3">
@@ -4379,11 +4379,11 @@ export default function StatementConfirmModal({
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => {
+                  onClick={async () => {
                     const skipIds = new Set(
                       duplicateReceiptWarning.items.filter(i => !i.checked).map(i => i.itemId)
                     );
-                    duplicateReceiptWarning.onProceed?.(skipIds);
+                    await duplicateReceiptWarning.onProceed?.(skipIds);
                   }}
                   className="bg-orange-600 hover:bg-orange-700 text-white"
                 >
@@ -4415,8 +4415,12 @@ export default function StatementConfirmModal({
           data-debug={dialogDebugId}
           showCloseButton={false}
           onPointerDownOutside={(e) => {
-            if (isPurchaseDetailModalOpen || isImageViewerOpen) { e.preventDefault(); return; }
+            if (duplicateReceiptWarning.open) {
+              e.preventDefault();
+              return;
+            }
             const target = e.target as HTMLElement | null;
+            if (isPurchaseDetailModalOpen || isImageViewerOpen) { e.preventDefault(); return; }
             const isDropdownInteraction = Boolean(target?.closest('[data-ts-dropdown-panel="true"]'));
             if (isDropdownInteraction || openDropdowns.size > 0) {
               e.preventDefault();
@@ -4431,8 +4435,12 @@ export default function StatementConfirmModal({
             }
           }}
           onInteractOutside={(e) => {
-            if (isPurchaseDetailModalOpen || isImageViewerOpen) { e.preventDefault(); return; }
+            if (duplicateReceiptWarning.open) {
+              e.preventDefault();
+              return;
+            }
             const target = e.target as HTMLElement | null;
+            if (isPurchaseDetailModalOpen || isImageViewerOpen) { e.preventDefault(); return; }
             const isDropdownInteraction = Boolean(target?.closest('[data-ts-dropdown-panel="true"]'));
             if (isDropdownInteraction) {
               e.preventDefault();
