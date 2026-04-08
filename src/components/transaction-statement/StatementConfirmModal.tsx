@@ -4787,15 +4787,7 @@ export default function StatementConfirmModal({
                         const matched = itemMatches.get(item.id);
                         return matched?.purchase_order_number || matched?.sales_order_number || '';
                       };
-                      // 다중발주: 같은 발주번호끼리 모이도록 정렬 (원본 순서 유지하며 그룹핑)
-                      const visibleItems = !isSamePONumber
-                        ? [...unsortedItems].sort((a, b) => {
-                            const poA = getGroupPO(a) || 'zzz';
-                            const poB = getGroupPO(b) || 'zzz';
-                            if (poA !== poB) return poA.localeCompare(poB);
-                            return 0;
-                          })
-                        : unsortedItems;
+                      const visibleItems = unsortedItems;
                       return visibleItems.map((ocrItem, rowIndex) => {
                       const getDisplayPOForItem = (item: TransactionStatementItemWithMatch) => getDisplayPOForMultiScope(item);
                       const matchedSystem = itemMatches.get(ocrItem.id);
