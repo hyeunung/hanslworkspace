@@ -4863,7 +4863,7 @@ export default function StatementConfirmModal({
                       const ocrLineHint = getOCRLineHint(ocrItem);
                       const systemDisplayLineNumber = matchedSystem?.line_number ?? ocrLineHint ?? null;
                       const systemDisplayLineLabel = systemDisplayLineNumber !== null ? `${systemDisplayLineNumber}.` : '-';
-                      const ocrDisplayLineLabel = ocrItem.line_number != null ? `${ocrItem.line_number}.` : '-';
+                      const ocrDisplayLineLabel = ocrLineHint != null ? `${ocrLineHint}.` : '-';
                       const ocrItemNameValue = ((getOCRItemValue(ocrItem, 'item_name') as string) || '').trim();
                       let effectiveSystemForNameMatch: SystemPurchaseItem | null = matchedSystem || null;
                       if (!effectiveSystemForNameMatch) {
