@@ -206,7 +206,7 @@ export default function ShippingMain() {
                   <tr><td style="color:#666;width:60px;">업체명</td><td style="font-weight:600;">${SENDER_COMPANY}</td></tr>
                   <tr><td style="color:#666;">담당자</td><td>${sender?.name || ''}</td></tr>
                   <tr><td style="color:#666;">연락처</td><td>${sender?.phone || ''}</td></tr>
-                  <tr><td style="color:#666;">주소</td><td>${SENDER_ADDRESS}</td></tr>
+                  <tr><td style="color:#666;vertical-align:top;">주소</td><td>${SENDER_ADDRESS}</td></tr>
                 </table>
               </td>
               <td style="width:50%;vertical-align:top;padding-left:16px;border-left:1px solid #ddd;">
@@ -215,7 +215,7 @@ export default function ShippingMain() {
                   <tr><td style="color:#666;width:60px;">업체명</td><td style="font-weight:600;">${receiverCompany}</td></tr>
                   <tr><td style="color:#666;">담당자</td><td>${receiverContact}</td></tr>
                   <tr><td style="color:#666;">연락처</td><td>${receiverPhone}</td></tr>
-                  <tr><td style="color:#666;">주소</td><td>${receiverAddress}</td></tr>
+                  <tr><td style="color:#666;vertical-align:top;">주소</td><td>${receiverAddress}</td></tr>
                 </table>
               </td>
             </tr>
@@ -237,7 +237,7 @@ export default function ShippingMain() {
     const pages = Array.from({ length: printCount }, () =>
       `<div style="page-break-after:always;">
         ${labelHTML(false, '박스 부착용')}
-        <div style="border-top:2px dashed #999;margin:4px 0;text-align:center;font-size:10px;color:#999;">✂ 절취선</div>
+        <div style="border-top:2px dashed #999;margin:16px 0;"></div>
         ${labelHTML(true, '택배사 전달용')}
       </div>`
     ).join('')
@@ -245,7 +245,7 @@ export default function ShippingMain() {
     printWindow.document.write(`
       <!DOCTYPE html>
       <html><head>
-        <title>택배 라벨 인쇄</title>
+        <title> </title>
         <style>
           @page { margin: 10mm; size: A4; }
           body { margin:0; padding:0; font-family: 'Malgun Gothic', sans-serif; }
@@ -383,8 +383,8 @@ export default function ShippingMain() {
                 <Input value={selectedSender?.phone || ''} disabled />
               </div>
             </div>
-            <div className="grid grid-cols-[50px_1fr] items-center gap-2">
-              <Label className="text-[11px] !font-normal text-gray-500">주소</Label>
+            <div className="grid grid-cols-[50px_1fr] items-start gap-2">
+              <Label className="text-[11px] !font-normal text-gray-500 pt-1.5">주소</Label>
               <Input value={SENDER_ADDRESS} disabled />
             </div>
           </div>
@@ -473,8 +473,8 @@ export default function ShippingMain() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-[50px_1fr] items-center gap-2">
-              <Label className="text-[11px] !font-normal text-gray-500">주소</Label>
+            <div className="grid grid-cols-[50px_1fr] items-start gap-2">
+              <Label className="text-[11px] !font-normal text-gray-500 pt-1.5">주소</Label>
               <Input
                 value={receiverAddress}
                 onChange={(e) => { setReceiverAddress(e.target.value); if (receiverAddressId) { setReceiverAddressId(''); setIsNewReceiver(true) } }}
