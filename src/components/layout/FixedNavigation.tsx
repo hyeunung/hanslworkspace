@@ -12,7 +12,8 @@ import {
   Receipt,
   Package,
   FileEdit,
-  ChevronDown
+  ChevronDown,
+  Truck
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -220,15 +221,21 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
     { key: 'list', label: '보드별 정리', href: '/bom-coordinate/list' },
   ] as const
 
-  const menuItems = [
+  type MenuItem = {
+    label: string
+    href: string
+    icon: typeof Home
+    roles: string[]
+    hasSubmenu?: 'purchase' | 'bom'
+  }
+
+  const menuItems: Array<MenuItem> = [
     { label: '대시보드', href: '/dashboard', icon: Home, roles: ['all'] },
     { label: '새 요청', href: '/purchase/new', icon: ShoppingCart, roles: ['all'] },
     { label: '요청 목록', href: '/purchase/list', icon: FileText, roles: ['all'], hasSubmenu: 'purchase' as const },
     { label: '거래명세서 확인', href: '/transaction-statement', icon: FileCheck, roles: ['all'] },
     { label: '영수증', href: '/receipts', icon: Receipt, roles: ['superadmin', 'hr', 'lead buyer'] },
-    { label: '업체 관리', href: '/vendor', icon: Building2, roles: ['all'] },
-    { label: '직원 관리', href: '/employee', icon: Users, roles: ['all'] },
-    { label: 'BOM/좌표 정리', href: '/bom-coordinate', icon: Package, roles: ['all'], hasSubmenu: 'bom' as const }
+    { label: 'BOM/좌표 정리', href: '/bom-coordinate', icon: Package, roles: ['all'], hasSubmenu: 'bom' as const },
   ]
 
   const filteredMenuItems = menuItems.filter(item => {
@@ -461,8 +468,57 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
               </ul>
             </div>
 
-            {/* 신청서 관리 / 문의하기 버튼 - 하단 고정 */}
+            {/* 택배 + 관리 메뉴 + 신청서/문의 - 하단 고정 */}
             <div className="p-2 border-t border-gray-200 space-y-1">
+              <Link
+                to="/shipping"
+                className={cn(
+                  'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap',
+                  isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
+                  pathname === '/shipping' || pathname.startsWith('/shipping/')
+                    ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
+                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                )}
+              >
+                <div className="relative flex-shrink-0">
+                  <Truck className="w-4 h-4" />
+                </div>
+                {isExpanded && (
+                  <span className="text-sm font-medium flex-1">택배</span>
+                )}
+              </Link>
+              <div className="border-t border-gray-200 my-1" />
+              {isExpanded && (
+                <span className="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">관리</span>
+              )}
+              {[
+                { label: '업체 관리', href: '/vendor', icon: Building2 },
+                { label: '직원 관리', href: '/employee', icon: Users },
+              ].map((mgmtItem) => {
+                const MgmtIcon = mgmtItem.icon
+                const isMgmtActive = pathname === mgmtItem.href || pathname.startsWith(`${mgmtItem.href}/`)
+                return (
+                  <Link
+                    key={mgmtItem.href}
+                    to={mgmtItem.href}
+                    className={cn(
+                      'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap',
+                      isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
+                      isMgmtActive
+                        ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
+                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                    )}
+                  >
+                    <div className="relative flex-shrink-0">
+                      <MgmtIcon className="w-4 h-4" />
+                    </div>
+                    {isExpanded && (
+                      <span className="text-sm font-medium flex-1">{mgmtItem.label}</span>
+                    )}
+                  </Link>
+                )
+              })}
+              <div className="border-t border-gray-200 my-1" />
               <Link
                 to="/application"
                 className={cn(
@@ -674,8 +730,47 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
               )
             })}
           </ul>
-          {/* 신청서 관리 / 문의하기 버튼 - 하단 고정 */}
+          {/* 택배 + 관리 메뉴 + 신청서/문의 - 하단 고정 */}
           <div className="p-2 border-t border-gray-200 space-y-1">
+            <Link
+              to="/shipping"
+              onClick={onClose}
+              className={cn(
+                'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors',
+                pathname === '/shipping' || pathname.startsWith('/shipping/')
+                  ? 'bg-hansl-50 text-hansl-600 border-l-2 border-hansl-500'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+              )}
+            >
+              <Truck className="w-4 h-4" />
+              <span className="text-sm font-medium">택배</span>
+            </Link>
+            <div className="border-t border-gray-200 my-1" />
+            <span className="px-4 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">관리</span>
+            {[
+              { label: '업체 관리', href: '/vendor', icon: Building2 },
+              { label: '직원 관리', href: '/employee', icon: Users },
+            ].map((mgmtItem) => {
+              const MgmtIcon = mgmtItem.icon
+              const isMgmtActive = pathname === mgmtItem.href || pathname.startsWith(`${mgmtItem.href}/`)
+              return (
+                <Link
+                  key={mgmtItem.href}
+                  to={mgmtItem.href}
+                  onClick={onClose}
+                  className={cn(
+                    'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors',
+                    isMgmtActive
+                      ? 'bg-hansl-50 text-hansl-600 border-l-2 border-hansl-500'
+                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  )}
+                >
+                  <MgmtIcon className="w-4 h-4" />
+                  <span className="text-sm font-medium">{mgmtItem.label}</span>
+                </Link>
+              )
+            })}
+            <div className="border-t border-gray-200 my-1" />
             <Link
               to="/application"
               onClick={onClose}

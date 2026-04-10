@@ -13,6 +13,7 @@ import {
   Package,
   Receipt,
   MessageCircle,
+  Truck,
   FileEdit,
   ChevronDown
 } from 'lucide-react'
@@ -159,7 +160,7 @@ export default function Navigation({ role }: NavigationProps) {
     { key: '연차', label: '연차' },
   ] as const
 
-  const menuItems: Array<{
+  type MenuItem = {
     label: string
     href: string
     icon: typeof Home
@@ -167,14 +168,20 @@ export default function Navigation({ role }: NavigationProps) {
     badge?: number
     openInNewTab?: boolean
     hasSubmenu?: boolean
-  }> = [
+  }
+
+  type MenuSection = {
+    type: 'divider'
+    label: string
+  }
+
+  const menuItems: Array<MenuItem | MenuSection> = [
     { label: '대시보드', href: '/dashboard', icon: Home, roles: ['all'] },
+    { label: '택배', href: '/shipping', icon: Truck, roles: ['all'] },
     { label: '새 요청', href: '/purchase/new', icon: ShoppingCart, roles: ['all'] },
     { label: '요청 목록', href: '/purchase/list', icon: FileText, roles: ['all'], hasSubmenu: true },
     { label: '거래명세서 확인', href: '/transaction-statement', icon: FileCheck, roles: ['all'] },
     { label: '영수증', href: '/receipts', icon: Receipt, roles: ['superadmin', 'hr', 'lead buyer'] },
-    { label: '업체 관리', href: '/vendor', icon: Building2, roles: ['all'] },
-    { label: '직원 관리', href: '/employee', icon: Users, roles: ['all'] },
     { label: 'BOM/좌표 정리', href: '/bom-coordinate', icon: Package, roles: ['all'] },
     {
       label: '신청서 관리', href: '/application', icon: FileEdit, roles: ['all'],
@@ -183,10 +190,15 @@ export default function Navigation({ role }: NavigationProps) {
     {
       label: '문의하기', href: '/support', icon: MessageCircle, roles: ['all'],
       badge: pendingInquiryCount > 0 ? pendingInquiryCount : undefined
-    }
+    },
+    { type: 'divider', label: '관리' },
+    { label: '업체 관리', href: '/vendor', icon: Building2, roles: ['all'] },
+    { label: '직원 관리', href: '/employee', icon: Users, roles: ['all'] },
   ]
 
   const filteredMenuItems = menuItems.filter(item => {
+    if ('type' in item && item.type === 'divider') return true
+    if (!('href' in item)) return false
     if (item.roles.includes('all')) return true
     return item.roles.some(r => roles.includes(r))
   })
@@ -194,17 +206,27 @@ export default function Navigation({ role }: NavigationProps) {
   return (
     <nav className="w-64 bg-white border-r border-gray-200 min-h-[calc(100vh-73px)]">
       <ul className="p-4 space-y-2">
-        {filteredMenuItems.map((item) => {
-          const Icon = item.icon
-          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
-          const badge = item.badge
-          const openInNewTab = item.openInNewTab
+        {filteredMenuItems.map((item, index) => {
+          if ('type' in item && item.type === 'divider') {
+            return (
+              <li key={`divider-${index}`} className="pt-3">
+                <div className="border-t border-gray-200 mb-2" />
+                <span className="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">{item.label}</span>
+              </li>
+            )
+          }
+
+          const menuItem = item as MenuItem
+          const Icon = menuItem.icon
+          const isActive = pathname === menuItem.href || pathname.startsWith(`${menuItem.href}/`)
+          const badge = menuItem.badge
+          const openInNewTab = menuItem.openInNewTab
           const currentTab = searchParams.get('tab') || '발주/구매'
 
           // 요청 목록: 아코디언 메뉴
-          if (item.hasSubmenu) {
+          if (menuItem.hasSubmenu) {
             return (
-              <li key={item.href}>
+              <li key={menuItem.href}>
                 <button
                   onClick={() => {
                     if (!purchaseListOpen) {
@@ -222,7 +244,7 @@ export default function Navigation({ role }: NavigationProps) {
                   )}
                 >
                   <Icon className="w-5 h-5" />
-                  <span className="header-title flex-1 text-left">{item.label}</span>
+                  <span className="header-title flex-1 text-left">{menuItem.label}</span>
                   <ChevronDown className={cn(
                     "w-4 h-4 transition-transform",
                     purchaseListOpen ? "rotate-180" : ""
@@ -279,7 +301,7 @@ export default function Navigation({ role }: NavigationProps) {
                   </span>
                 )}
               </div>
-              <span className="header-title flex-1">{item.label}</span>
+              <span className="header-title flex-1">{menuItem.label}</span>
               {badge !== undefined && badge > 0 && (
                 <span className={cn(
                   "badge-stats",
@@ -291,10 +313,10 @@ export default function Navigation({ role }: NavigationProps) {
             </>
           )
           return (
-            <li key={item.href}>
+            <li key={menuItem.href}>
               {openInNewTab ? (
                 <a
-                  href={item.href}
+                  href={menuItem.href}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={linkClass}
@@ -302,7 +324,7 @@ export default function Navigation({ role }: NavigationProps) {
                   {content}
                 </a>
               ) : (
-                <Link to={item.href} className={linkClass}>
+                <Link to={menuItem.href} className={linkClass}>
                   {content}
                 </Link>
               )}

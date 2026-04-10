@@ -15,6 +15,7 @@ const BomCoordinateMain = lazy(() => import('@/components/bom-coordinate/BomCoor
 const TransactionStatementMain = lazy(() => import('@/components/transaction-statement/TransactionStatementMain'))
 const ApplicationListMain = lazy(() => import('@/components/application/ApplicationListMain'))
 const AiServiceApplicationForm = lazy(() => import('@/components/application/AiServiceApplicationForm'))
+const ShippingMain = lazy(() => import('@/components/shipping/ShippingMain'))
 const AuthConfirm = lazy(() => import('@/components/auth/AuthConfirm'))
 const ResetPassword = lazy(() => import('@/components/auth/ResetPassword'))
 
@@ -46,6 +47,7 @@ export default function AppRoutes() {
           
           {/* 메인 페이지들 */}
           <Route path="/dashboard" element={<DashboardMain />} />
+          <Route path="/shipping" element={<ShippingMain />} />
           <Route path="/purchase" element={<RequestListMain showEmailButton={false} />} />
           <Route path="/purchase/new" element={<PurchaseNewMain />} />
           <Route path="/purchase/list" element={<RequestListMain showEmailButton={false} />} />
