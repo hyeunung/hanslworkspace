@@ -753,6 +753,68 @@ Deno.serve(async (req)=>{
         statement_code: statementCode,
         uploaded_by_name: uploaderName
       };
+    } else if (type === 'business_trip_approved') {
+      console.log('✈️ [출장 알림] 출장 승인 → 요청자에게 카드 수령 알림');
+
+      const dataMap = data && typeof data === 'object' ? data : {};
+      const requesterEmail = dataMap['requester_email'] || '';
+      const tripCode = dataMap['trip_code'] || '';
+      const cardNumber = dataMap['card_number'] || '';
+
+      if (requesterEmail) {
+        const userToken = await getUserToken(supabase, requesterEmail);
+        if (userToken) {
+          targetTokens = [userToken];
+          targetEmails = [requesterEmail];
+          console.log(`  ✅ 요청자에게 알림: ${requesterEmail}`);
+        } else {
+          console.log(`  ❌ 요청자 FCM 토큰 없음: ${requesterEmail}`);
+        }
+      }
+
+      if (!title) title = '✈️ 출장 승인 완료';
+      if (!body) {
+        const parts = ['출장 신청이 승인되었습니다.'];
+        if (cardNumber) parts.push(`카드(${cardNumber})를 수령해 주세요.`);
+        if (tripCode) parts.push(`출장번호: ${tripCode}`);
+        body = parts.join('\n');
+      }
+
+      data = {
+        ...dataMap,
+        type: 'business_trip_approved',
+      };
+    } else if (type === 'card_usage_approved') {
+      console.log('💳 [카드 알림] 카드 사용 승인 → 요청자에게 알림');
+
+      const dataMap = data && typeof data === 'object' ? data : {};
+      const requesterEmail = dataMap['requester_email'] || '';
+      const cardNumber = dataMap['card_number'] || '';
+      const usageCategory = dataMap['usage_category'] || '';
+
+      if (requesterEmail) {
+        const userToken = await getUserToken(supabase, requesterEmail);
+        if (userToken) {
+          targetTokens = [userToken];
+          targetEmails = [requesterEmail];
+          console.log(`  ✅ 요청자에게 알림: ${requesterEmail}`);
+        } else {
+          console.log(`  ❌ 요청자 FCM 토큰 없음: ${requesterEmail}`);
+        }
+      }
+
+      if (!title) title = '💳 카드 사용 승인 완료';
+      if (!body) {
+        const parts = ['카드 사용 요청이 승인되었습니다.'];
+        if (cardNumber) parts.push(`카드: ${cardNumber}`);
+        if (usageCategory) parts.push(`용도: ${usageCategory}`);
+        body = parts.join('\n');
+      }
+
+      data = {
+        ...dataMap,
+        type: 'card_usage_approved',
+      };
     } else if (type === 'admin') {
       // 연차/출장 관리자 알림 - roles 기반
       console.log('📋 [연차/출장 알림] roles 기반 관리자 조회');

@@ -964,8 +964,7 @@ class TransactionStatementService {
 
         if (!all_quantities_matched && stmtItems.length > 0 && (statement.status === 'extracted' || statement.status === 'confirmed')) {
           all_quantities_matched = stmtItems.every((item: StatementItemRow) => {
-            const ocrRaw = item.confirmed_quantity ?? item.extracted_quantity;
-            if (ocrRaw == null) return false;
+            const ocrRaw = item.confirmed_quantity ?? item.extracted_quantity ?? 1;
             const ocrQty = Number(ocrRaw);
             if (!Number.isFinite(ocrQty)) return false;
 
@@ -1265,8 +1264,7 @@ class TransactionStatementService {
         let allMatched = hasQMConfirmed && statement.all_quantities_matched === true;
         if (!allMatched && itemsWithMatch.length > 0) {
           allMatched = itemsWithMatch.every(item => {
-            const ocrRaw = item.confirmed_quantity ?? item.extracted_quantity;
-            if (ocrRaw == null) return false;
+            const ocrRaw = item.confirmed_quantity ?? item.extracted_quantity ?? 1;
             const ocrQty = Number(ocrRaw);
             if (!Number.isFinite(ocrQty)) return false;
 
@@ -1365,7 +1363,7 @@ class TransactionStatementService {
       const isPartialNumber = !!(partialPOMatch || partialSOMatch);
       const datePrefix = partialPOMatch ? `F${partialPOMatch[2]}` : (partialSOMatch ? `HS${partialSOMatch[2]}` : '');
 
-      // ===== Phase 1: PO 번호 검색 + 품목명 검색 병렬 실행 =====
+      // ===== Phase 1: 발주/수주번호 우선 검색 =====
       const purchaseSelect = `
         id,
         purchase_order_number,
@@ -1392,9 +1390,43 @@ class TransactionStatementService {
             .limit(20)
         : Promise.resolve({ data: null });
 
-      // 품목명 검색 쿼리 (모든 검색어 동시 실행)
+      const [poResult, partialPoResult] = await Promise.all([poSearchPromise, partialPoPromise]);
+
+      // 1) 발주/수주번호 일치 후보를 최우선으로 누적
+      if (poResult.data) {
+        this.processPurchaseResults(
+          poResult.data,
+          candidateMap,
+          item,
+          statementVendorName,
+          normalizedNumber,
+          70,
+          '발주/수주번호 일치 (우선)',
+          0.35
+        );
+      }
+
+      // 발주/수주번호 후보가 확보되면 다른 발주로 확장 검색하지 않는다.
+      const hasStrictOrderCandidates = Boolean(normalizedNumber) && candidateMap.size > 0;
+      const shouldRunCrossOrderSearch = !hasStrictOrderCandidates;
+
+      // 1.5) 날짜 prefix만 있는 부분 번호는 보조 신호로 사용
+      if (!hasStrictOrderCandidates && candidateMap.size === 0 && partialPoResult.data) {
+        this.processPurchaseResults(
+          partialPoResult.data,
+          candidateMap,
+          item,
+          statementVendorName,
+          normalizedNumber,
+          30,
+          `날짜 일치 (${datePrefix})`,
+          0.4
+        );
+      }
+
+      // 2) 번호 기반 후보가 없을 때만 품목명 기반 확장 검색
       let itemNameSearchResults: ItemNameSearchResult[] = [];
-      if (item.extracted_item_name) {
+      if (shouldRunCrossOrderSearch && item.extracted_item_name) {
         const itemName = item.extracted_item_name.trim();
         const searchTermCandidates = [
           itemName,
@@ -1416,39 +1448,11 @@ class TransactionStatementService {
             .then((result: { data: PurchaseItemWithPurchase[] | null }) => ({ data: result.data, searchTerm }))
         );
 
-        // 모든 쿼리 동시 실행
-        const [poResult, partialPoResult, ...nameResults] = await Promise.all([
-          poSearchPromise,
-          partialPoPromise,
-          ...itemNamePromises
-        ]);
-
-        // 1. PO/SO 번호 결과 처리 (최우선)
-        if (poResult.data) {
-          this.processPurchaseResults(poResult.data, candidateMap, item, statementVendorName, normalizedNumber, 50, '발주/수주번호 일치', 0.3);
-        }
-
-        // 1.5. 부분 발주번호 결과 처리 (PO 매칭 없을 때만)
-        if (candidateMap.size === 0 && partialPoResult.data) {
-          this.processPurchaseResults(partialPoResult.data, candidateMap, item, statementVendorName, normalizedNumber, 30, `날짜 일치 (${datePrefix})`, 0.4);
-        }
-
-        // 2. 품목명 검색 결과 처리
-        itemNameSearchResults = nameResults;
-      } else {
-        // 품목명 없으면 PO 검색만 실행
-        const [poResult, partialPoResult] = await Promise.all([poSearchPromise, partialPoPromise]);
-
-        if (poResult.data) {
-          this.processPurchaseResults(poResult.data, candidateMap, item, statementVendorName, normalizedNumber, 50, '발주/수주번호 일치', 0.3);
-        }
-        if (candidateMap.size === 0 && partialPoResult.data) {
-          this.processPurchaseResults(partialPoResult.data, candidateMap, item, statementVendorName, normalizedNumber, 30, `날짜 일치 (${datePrefix})`, 0.4);
-        }
+        itemNameSearchResults = await Promise.all(itemNamePromises);
       }
 
       // 품목명 검색 결과 순서대로 처리 (중복 제거 및 early exit 유지)
-      for (const { data: byNameOrSpec, searchTerm } of itemNameSearchResults) {
+      for (const { data: byNameOrSpec } of itemNameSearchResults) {
         if (byNameOrSpec && byNameOrSpec.length > 0) {
           for (const purchaseItem of byNameOrSpec) {
             const key = `${purchaseItem.purchase?.id}-${purchaseItem.id}`;
@@ -1516,7 +1520,13 @@ class TransactionStatementService {
       // 3. 품목명 유사도 60% 이상인 고품질 후보가 없으면 거래처의 최근 발주에서 검색 (fallback)
       // 조건: 후보가 아예 없거나, 있더라도 점수가 낮으면(40점 미만) 추가 검색
       const hasHighQualityCandidate = Array.from(candidateMap.values()).some(c => c.score >= 40);
-      const needsFallback = candidateMap.size === 0 || !hasHighQualityCandidate;
+      const needsFallback = shouldRunCrossOrderSearch && (candidateMap.size === 0 || !hasHighQualityCandidate);
+
+      if (hasStrictOrderCandidates) {
+        logger.debug(
+          `🎯 발주/수주번호 우선 모드 적용: OCR번호=${normalizedNumber}, 후보=${candidateMap.size}개 (교차 발주 검색 생략)`
+        );
+      }
       
       if (needsFallback && statementVendorName) {
         logger.debug(`⚠️ 고품질 후보 없음 - 거래처 "${statementVendorName}"의 최근 발주에서 검색 시도 (현재 후보: ${candidateMap.size}개, 최고점: ${Math.max(...Array.from(candidateMap.values()).map(c => c.score), 0)}점)`);
@@ -1744,6 +1754,24 @@ class TransactionStatementService {
         if (item.extracted_quantity && purchaseItem.quantity) {
           if (item.extracted_quantity === purchaseItem.quantity) { score += 15; matchReasons.push(`수량 일치 (${item.extracted_quantity})`); }
           else if (item.extracted_quantity <= purchaseItem.quantity) { score += 5; matchReasons.push(`수량 (요청:${purchaseItem.quantity}, 입고:${item.extracted_quantity})`); }
+        }
+
+        // 발주번호 suffix로 라인번호가 추출된 경우(예: F20260209_003-14) 시스템 line_number와 교차 검증
+        const extractedPoLine = item.extracted_po_line_number;
+        if (
+          normalizedNumber &&
+          extractedPoLine !== undefined &&
+          extractedPoLine !== null &&
+          purchaseItem.line_number !== undefined &&
+          purchaseItem.line_number !== null
+        ) {
+          if (Number(extractedPoLine) === Number(purchaseItem.line_number)) {
+            score += 20;
+            matchReasons.push(`발주라인 일치 (${extractedPoLine})`);
+          } else {
+            score -= 5;
+            matchReasons.push(`발주라인 불일치 (OCR:${extractedPoLine}, 시스템:${purchaseItem.line_number})`);
+          }
         }
 
         candidateMap.set(key, {
@@ -2167,12 +2195,28 @@ class TransactionStatementService {
 
       // 2. 확정자(관리자) 확인 기록 + 합계금액 갱신
       const confirmedAt = new Date().toISOString();
+
+      // 월말결제/입고수량 모드는 수량일치 단계가 없으므로 확정 시 수량일치도 함께 처리
+      const { data: stmtData } = await this.supabase
+        .from('transaction_statements')
+        .select('statement_mode, all_quantities_matched')
+        .eq('id', request.statementId)
+        .single();
+
       const updateData: Record<string, unknown> = {
         manager_confirmed_at: confirmedAt,
         manager_confirmed_by: user?.id,
         manager_confirmed_by_name: confirmerName || null,
         all_amounts_matched: true
       };
+
+      // 수량일치가 아직 안 된 상태면 확정 시 함께 처리 (월말결제/입고수량)
+      if (stmtData && !stmtData.all_quantities_matched) {
+        updateData.all_quantities_matched = true;
+        updateData.quantity_match_confirmed_at = confirmedAt;
+        updateData.quantity_match_confirmed_by = user?.id;
+        updateData.quantity_match_confirmed_by_name = confirmerName || null;
+      }
       if (request.confirmed_grand_total !== undefined) {
         updateData.grand_total = request.confirmed_grand_total;
         updateData.total_amount = request.confirmed_grand_total;

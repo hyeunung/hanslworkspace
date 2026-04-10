@@ -603,18 +603,21 @@ export default function StatementConfirmModal({
       .find(Boolean) || null;
   }, [statementWithItems]);
 
-  // 거래처명 초기값 설정
+  // 거래처명 초기값 설정 (최초 1회만)
+  const vendorInitializedRef = useRef(false);
   useEffect(() => {
     if (!statementWithItems) return;
+    if (vendorInitializedRef.current) return;
     const initialVendor = statementWithItems.vendor_name || '';
-    if (initialVendor && !vendorInputValue) {
+    if (initialVendor) {
+      vendorInitializedRef.current = true;
       setVendorInputValue(initialVendor);
+      if (!autoVendorSelectionRef.current) {
+        autoVendorSelectionRef.current = true;
+        handleSelectVendor(initialVendor, { silent: true });
+      }
     }
-    if (initialVendor && !autoVendorSelectionRef.current) {
-      autoVendorSelectionRef.current = true;
-      handleSelectVendor(initialVendor, { silent: true });
-    }
-  }, [statementWithItems, vendorInputValue]);
+  }, [statementWithItems]);
 
   const normalizeStatementDate = (value?: string | null) => {
     if (!value) return '';
@@ -3860,7 +3863,17 @@ export default function StatementConfirmModal({
 
     const activeItems = statementWithItems.items.filter(item => !deletedOCRItemIds.has(item.id));
 
-    // 매칭된 ��목 중 입고 대상인 것만 추출
+    // 매칭 안 된 품목(수동 선택 필요) 체크
+    const unmatchedItems = activeItems.filter(item => !itemMatches.get(item.id)?.item_id);
+    if (unmatchedItems.length > 0) {
+      const names = unmatchedItems
+        .map(item => item.extracted_item_name || '(품목명 없음)')
+        .join(', ');
+      toast.error(`매칭되지 않은 품목이 ${unmatchedItems.length}건 있습니다. 수동 선택을 완료해주세요.\n(${names})`);
+      return;
+    }
+
+    // 매칭된 품목 중 입고 대상인 것만 추출
     const itemsToCheck: { itemId: string; extractedItemName: string; matchedItemId: number; confirmedQty: number }[] = [];
     for (const item of activeItems) {
       const matched = itemMatches.get(item.id);
@@ -4064,6 +4077,7 @@ export default function StatementConfirmModal({
     setIsIntegratedMatchDetailOpen(false);
     setOpenDropdowns(new Set());
     autoVendorSelectionRef.current = false;
+    vendorInitializedRef.current = false;
     systemCandidateLogKeyRef.current = null;
   };
 
@@ -4530,13 +4544,15 @@ export default function StatementConfirmModal({
                         // delay to allow click on dropdown
                         setTimeout(() => {
                           setVendorDropdownOpen(false);
-                          // 거래처명 즉시 DB 저장
-                          if (vendorInputValue.trim()) {
-                            supabase
-                              .from('transaction_statements')
-                              .update({ vendor_name: vendorInputValue.trim() })
-                              .eq('id', statement.id)
-                              .then(() => {});
+                          // 거래처명 즉시 DB 저장 (빈 값이면 삭제 처리)
+                          supabase
+                            .from('transaction_statements')
+                            .update({ vendor_name: vendorInputValue.trim() || null })
+                            .eq('id', statement.id)
+                            .then(() => {});
+                          // 빈 값이면 override도 초기화
+                          if (!vendorInputValue.trim()) {
+                            setOverrideVendorName('');
                           }
                         }, 200);
                       }}
@@ -4688,7 +4704,7 @@ export default function StatementConfirmModal({
                           <span className="modal-section-title text-gray-700">
                             OCR 추출 품목
                           </span>
-                          {isSamePONumber && (
+                          {isSamePONumber && allPONumberCandidates.length > 0 && (
                             <div className="relative flex items-center gap-1">
                               <button
                                 onClick={(e) => {

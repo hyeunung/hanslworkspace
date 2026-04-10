@@ -395,8 +395,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       case 'sales_order_number':
         return purchase.sales_order_number;
       case 'payment_schedule':
-        // vendor_payment_schedule은 vendors 테이블에 있음 - JOIN 필요
-        return '-';
+        return purchase.vendor_payment_schedule || '';
       case 'is_payment_completed':
         // 전체 구매 완료 상태
         return purchase.is_payment_completed ? '완료' : '대기';

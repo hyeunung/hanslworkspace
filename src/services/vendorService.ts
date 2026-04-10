@@ -140,11 +140,13 @@ class VendorService {
   async deleteVendor(id: number): Promise<{ success: boolean; error?: string }> {
     try {
       // 발주 요청과 연결된 업체인지 확인
-      const { data: purchaseRequests } = await this.supabase
+      const { data: purchaseRequests, error: purchaseRequestError } = await this.supabase
         .from('purchase_requests')
         .select('id')
         .eq('vendor_id', id)
         .limit(1);
+
+      if (purchaseRequestError) throw purchaseRequestError;
 
       if (purchaseRequests && purchaseRequests.length > 0) {
         // 발주 요청과 연결된 업체는 삭제 불가
@@ -153,6 +155,14 @@ class VendorService {
           error: '발주 요청과 연결된 업체는 삭제할 수 없습니다.'
         };
       } else {
+        // vendor_contacts가 남아 있으면 vendors 삭제가 FK 제약으로 실패하므로 먼저 정리한다.
+        const { error: contactDeleteError } = await this.supabase
+          .from('vendor_contacts')
+          .delete()
+          .eq('vendor_id', id);
+
+        if (contactDeleteError) throw contactDeleteError;
+
         // 연결된 데이터가 없으면 완전 삭제
         const { error } = await this.supabase
           .from('vendors')

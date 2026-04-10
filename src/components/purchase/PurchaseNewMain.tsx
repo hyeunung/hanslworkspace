@@ -68,6 +68,7 @@ export default function PurchaseNewMain() {
       const { data, error } = await supabase
         .from('cad_drawings')
         .select('id, board_name')
+        .eq('status', 'completed')
         .order('board_name');
       
       if (data && !error) {

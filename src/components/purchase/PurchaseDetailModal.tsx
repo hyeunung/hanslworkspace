@@ -44,6 +44,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
+import StatementImageViewer, { openStatementPreview } from '@/components/transaction-statement/StatementImageViewer'
 import { useConfirmDateAction } from '@/hooks/useConfirmDateAction'
 import { format as formatDateInput } from 'date-fns'
 import { AUTHORIZED_ROLES } from '@/constants/columnSettings'
@@ -183,6 +184,8 @@ function PurchaseDetailModal({
   // 거래명세서 관련 상태
   const [linkedStatements, setLinkedStatements] = useState<(TransactionStatement & { linked_line_numbers?: number[] })[]>([])
   const [linkedCardReceipts, setLinkedCardReceipts] = useState<LinkedCardReceipt[]>([])
+  const [isStatementViewerOpen, setIsStatementViewerOpen] = useState(false)
+  const [statementViewerUrl, setStatementViewerUrl] = useState('')
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
@@ -1853,17 +1856,14 @@ ${itemsText}`
     }
   }
 
-  // 거래명세서 이미지 보기 (새 창에서 열기)
   const handleViewStatementImage = (imageUrl: string) => {
-    const width = 1000
-    const height = 800
-    const left = (window.screen.width - width) / 2
-    const top = (window.screen.height - height) / 2
-    window.open(
-      imageUrl, 
-      '_blank', 
-      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
-    )
+    openStatementPreview({
+      fileUrl: imageUrl,
+      onOpenImageViewer: (viewerUrl) => {
+        setStatementViewerUrl(viewerUrl)
+        setIsStatementViewerOpen(true)
+      },
+    })
   }
 
   const resolveCardReceiptViewUrl = useCallback(async (receiptUrl: string) => {
@@ -6857,6 +6857,12 @@ ${itemsText}`
       </DialogContent>
       
     </Dialog>
+
+    <StatementImageViewer
+      isOpen={isStatementViewerOpen}
+      imageUrl={statementViewerUrl}
+      onClose={() => setIsStatementViewerOpen(false)}
+    />
     </>
   )
 }

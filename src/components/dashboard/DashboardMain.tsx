@@ -102,6 +102,7 @@ export default function DashboardMain() {
     card_number?: string
     usage_category?: string
     usage_date_start?: string
+    usage_date_end?: string
     requester?: { name?: string }
     [key: string]: unknown
   }>>([])
@@ -316,13 +317,19 @@ export default function DashboardMain() {
 
   // 내일 예정 차량 맵: 차량별 예정 정보
   const tomorrowVehicleMap = useMemo(() => {
-    const map: Record<string, { driver: string; destination: string }> = {}
+    const kstNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+    const todayStr = `${kstNow.getFullYear()}-${String(kstNow.getMonth() + 1).padStart(2, '0')}-${String(kstNow.getDate()).padStart(2, '0')}`
+    const map: Record<string, { driver: string; destination: string; inUse: boolean; endDate: string }> = {}
     for (const v of DASHBOARD_VEHICLES) {
       const req = tomorrowVehicles.find(r => r.vehicle_info?.startsWith(v.label))
       if (req) {
+        const startDate = req.start_at ? req.start_at.slice(0, 10) : ''
+        const endDate = req.end_at ? new Date(req.end_at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' }) : ''
         map[v.label] = {
           driver: req.driver?.name || req.requester?.name || "",
           destination: req.route || "",
+          inUse: startDate <= todayStr,
+          endDate,
         }
       }
     }
@@ -331,13 +338,19 @@ export default function DashboardMain() {
 
   // 내일 예정 카드 맵: 카드별 예정 정보
   const tomorrowCardMap = useMemo(() => {
-    const map: Record<string, { user: string; category: string }> = {}
+    const kstNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+    const todayStr = `${kstNow.getFullYear()}-${String(kstNow.getMonth() + 1).padStart(2, '0')}-${String(kstNow.getDate()).padStart(2, '0')}`
+    const map: Record<string, { user: string; category: string; inUse: boolean; endDate: string }> = {}
     for (const card of DASHBOARD_CARDS) {
       const usage = tomorrowCards.find(u => u.card_number === card.value)
       if (usage) {
+        const startDate = usage.usage_date_start || ''
+        const endDate = usage.usage_date_end ? new Date(usage.usage_date_end + 'T00:00:00').toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' }) : ''
         map[card.value] = {
           user: usage.requester?.name || "-",
           category: usage.usage_category || "",
+          inUse: startDate <= todayStr,
+          endDate,
         }
       }
     }
@@ -986,7 +999,7 @@ export default function DashboardMain() {
                     <div>
                       <div className="flex items-center gap-1.5 mb-2">
                         <Car className="w-3 h-3 text-purple-500" />
-                        <span className="text-[10px] font-semibold text-purple-700">차량 배차 예정</span>
+                        <span className="text-[10px] font-semibold text-purple-700">차량 배차</span>
                       </div>
                       <div className="grid grid-cols-3 gap-2">
                         {DASHBOARD_VEHICLES.filter(v => tomorrowVehicleMap[v.label]).map(v => {
@@ -994,8 +1007,13 @@ export default function DashboardMain() {
                           return (
                             <div key={v.label} className="border border-purple-200 business-radius-card px-3 py-2 bg-white">
                               <div className="flex items-center justify-between mb-0.5">
-                                <span className="text-[10px] font-semibold text-gray-900">{v.label}</span>
-                                <span className="badge-stats bg-purple-500 text-white">예정</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] font-semibold text-gray-900">{v.label}</span>
+                                  {info.endDate && <span className="text-[8px] text-gray-400">~{info.endDate}</span>}
+                                </div>
+                                <span className={`badge-stats text-white ${info.inUse ? 'bg-blue-500' : 'bg-purple-500'}`}>
+                                  {info.inUse ? '사용중' : '예정'}
+                                </span>
                               </div>
                               {info.driver && <p className="text-[9px] text-gray-600 truncate">{info.driver}</p>}
                               <p className="text-[9px] text-gray-500 truncate">{info.destination}</p>
@@ -1010,7 +1028,7 @@ export default function DashboardMain() {
                     <div>
                       <div className="flex items-center gap-1.5 mb-2">
                         <CreditCard className="w-3 h-3 text-purple-500" />
-                        <span className="text-[10px] font-semibold text-purple-700">카드 사용 예정</span>
+                        <span className="text-[10px] font-semibold text-purple-700">카드 사용</span>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         {DASHBOARD_CARDS.filter(c => tomorrowCardMap[c.value]).map(card => {
@@ -1018,11 +1036,16 @@ export default function DashboardMain() {
                           return (
                             <div key={card.value} className="border border-purple-200 business-radius-card px-3 py-2 bg-white">
                               <div className="flex items-center justify-between mb-0.5">
-                                <span className="text-[10px] font-semibold text-gray-900">
-                                  {card.label}
-                                  <span className="ml-1 text-[8px] font-normal text-gray-400">{card.number}</span>
+                                <div className="flex items-baseline gap-2">
+                                  <span className="text-[10px] font-semibold text-gray-900">
+                                    {card.label}
+                                    <span className="ml-1 text-[8px] font-normal text-gray-400">{card.number}</span>
+                                  </span>
+                                  {info.endDate && <span className="text-[8px] text-gray-400">~{info.endDate}</span>}
+                                </div>
+                                <span className={`badge-stats text-white ${info.inUse ? 'bg-blue-500' : 'bg-purple-500'}`}>
+                                  {info.inUse ? '사용중' : '예정'}
                                 </span>
-                                <span className="badge-stats bg-purple-500 text-white">예정</span>
                               </div>
                               <p className="text-[9px] text-purple-600 truncate">{info.user} · {info.category}</p>
                             </div>

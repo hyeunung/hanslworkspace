@@ -7,34 +7,33 @@ interface VendorFiltersProps {
   onCreateNew: () => void
 }
 
-export default function VendorFilters({ 
+export default function VendorFilters({
   onExport,
-  onCreateNew 
+  onCreateNew
 }: VendorFiltersProps) {
   return (
     <div className="space-y-4">
       {/* 상단 액션 버튼 */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
           <h2 className="page-title">업체 관리</h2>
           <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Vendors Management</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
-            variant="outline"
             onClick={onExport}
-            className="flex items-center gap-1 sm:gap-2 button-base business-radius-button border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+            className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 flex items-center gap-1"
           >
-            <Download className="w-3 h-3 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline badge-text">Excel 내보내기</span>
-            <span className="sm:hidden badge-text">Excel</span>
+            <Download className="w-4 h-4" />
+            <span className="hidden sm:inline text-[12px]">Excel 내보내기</span>
+            <span className="sm:hidden text-[12px]">Excel</span>
           </Button>
-          <Button 
+          <Button
             onClick={onCreateNew}
-            className="flex items-center gap-1 sm:gap-2 button-base business-radius-button bg-blue-500 text-white hover:bg-blue-600"
+            className="button-base bg-blue-500 hover:bg-blue-600 text-white flex items-center gap-1"
           >
-            <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
-            <span className="badge-text">업체 등록</span>
+            <Plus className="w-4 h-4" />
+            <span className="text-[12px]">업체 등록</span>
           </Button>
         </div>
       </div>

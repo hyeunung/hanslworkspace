@@ -461,10 +461,33 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
       toast.success("승인 처리되었습니다.");
       loadUsages();
       onBadgeRefresh?.();
+
+      // 요청자에게 푸시 알림 전송 (출장 연동 안된 건만)
+      const usage = usages.find((u) => u.id === id);
+      if (usage?.requester_id && !usage.business_trip_id) {
+        const { data: requester } = await supabase
+          .from("employees")
+          .select("email")
+          .eq("id", usage.requester_id)
+          .single();
+
+        if (requester?.email) {
+          supabase.functions.invoke("send_fcm_notification", {
+            body: {
+              type: "card_usage_approved",
+              data: {
+                requester_email: requester.email,
+                card_number: usage.card_number,
+                usage_category: usage.usage_category,
+              },
+            },
+          }).catch(() => {});
+        }
+      }
     } catch {
       toast.error("승인 처리에 실패했습니다.");
     }
-  }, [supabase, currentUser, loadUsages, onBadgeRefresh]);
+  }, [supabase, currentUser, loadUsages, onBadgeRefresh, usages]);
 
   const openRejectDialog = useCallback((id: number) => {
     setRejectTargetId(id);

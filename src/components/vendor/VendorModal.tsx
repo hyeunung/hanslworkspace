@@ -69,10 +69,10 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
 
   const onSubmit = async (data: VendorFormData) => {
     setIsSubmitting(true)
-    
+
     try {
       let result
-      
+
       if (mode === 'create') {
         result = await vendorService.createVendor(data)
       } else if (mode === 'edit' && vendor) {
@@ -108,9 +108,9 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="w-full max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{getTitle()}</DialogTitle>
+          <DialogTitle className="text-[14px] font-semibold text-gray-900">{getTitle()}</DialogTitle>
         </DialogHeader>
-        
+
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -122,16 +122,16 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
                 }}
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>업체명 *</FormLabel>
+                    <FormLabel className="text-[12px] font-medium text-gray-700">업체명 *</FormLabel>
                     <FormControl>
-                      <Input 
-                        {...field} 
+                      <Input
+                        {...field}
                         placeholder="업체명을 입력하세요"
-                        className="business-radius-input button-base border border-gray-300 bg-white text-gray-700"
+                        className="!h-auto !py-1 !px-2 !text-[12px] !min-h-[32px] business-radius-input border border-gray-300 bg-white text-gray-700"
                         disabled={isReadOnly}
                       />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-[10px]" />
                   </FormItem>
                 )}
               />
@@ -141,16 +141,16 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
                 name="vendor_phone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>전화번호</FormLabel>
+                    <FormLabel className="text-[12px] font-medium text-gray-700">전화번호</FormLabel>
                     <FormControl>
-                      <Input 
-                        {...field} 
+                      <Input
+                        {...field}
                         placeholder="02-1234-5678"
-                        className="business-radius-input button-base border border-gray-300 bg-white text-gray-700"
+                        className="!h-auto !py-1 !px-2 !text-[12px] !min-h-[32px] business-radius-input border border-gray-300 bg-white text-gray-700"
                         disabled={isReadOnly}
                       />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-[10px]" />
                   </FormItem>
                 )}
               />
@@ -160,16 +160,16 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
                 name="vendor_fax"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>팩스번호</FormLabel>
+                    <FormLabel className="text-[12px] font-medium text-gray-700">팩스번호</FormLabel>
                     <FormControl>
-                      <Input 
-                        {...field} 
+                      <Input
+                        {...field}
                         placeholder="02-1234-5679"
-                        className="business-radius-input button-base border border-gray-300 bg-white text-gray-700"
+                        className="!h-auto !py-1 !px-2 !text-[12px] !min-h-[32px] business-radius-input border border-gray-300 bg-white text-gray-700"
                         disabled={isReadOnly}
                       />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-[10px]" />
                   </FormItem>
                 )}
               />
@@ -179,16 +179,16 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
                 name="vendor_payment_schedule"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>결제조건</FormLabel>
+                    <FormLabel className="text-[12px] font-medium text-gray-700">결제조건</FormLabel>
                     <FormControl>
-                      <Input 
-                        {...field} 
+                      <Input
+                        {...field}
                         placeholder="월말결제, 현금결제 등"
-                        className="business-radius-input button-base border border-gray-300 bg-white text-gray-700"
+                        className="!h-auto !py-1 !px-2 !text-[12px] !min-h-[32px] business-radius-input border border-gray-300 bg-white text-gray-700"
                         disabled={isReadOnly}
                       />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-[10px]" />
                   </FormItem>
                 )}
               />
@@ -199,16 +199,16 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
               name="vendor_address"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>주소</FormLabel>
+                  <FormLabel className="text-[12px] font-medium text-gray-700">주소</FormLabel>
                   <FormControl>
-                    <Textarea 
-                      {...field} 
+                    <Textarea
+                      {...field}
                       placeholder="주소를 입력하세요"
-                      className="business-radius-input border border-gray-300 bg-white text-gray-700 card-description min-h-[64px]"
+                      className="!text-[12px] business-radius-input border border-gray-300 bg-white text-gray-700 min-h-[64px]"
                       disabled={isReadOnly}
                     />
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage className="text-[10px]" />
                 </FormItem>
               )}
             />
@@ -218,32 +218,32 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
               name="note"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>비고</FormLabel>
+                  <FormLabel className="text-[12px] font-medium text-gray-700">비고</FormLabel>
                   <FormControl>
-                    <Textarea 
-                      {...field} 
+                    <Textarea
+                      {...field}
                       placeholder="메모 사항을 입력하세요"
-                      className="business-radius-input border border-gray-300 bg-white text-gray-700 card-description min-h-[48px]"
+                      className="!text-[12px] business-radius-input border border-gray-300 bg-white text-gray-700 min-h-[48px]"
                       disabled={isReadOnly}
                     />
                   </FormControl>
-                  <FormMessage />
+                  <FormMessage className="text-[10px]" />
                 </FormItem>
               )}
             />
 
             {mode === 'view' && vendor && (
               <div className="pt-4 border-t">
-                <div className="grid grid-cols-2 gap-4 modal-subtitle">
-                  <div>
+                <div className="grid grid-cols-2 gap-4 text-[12px]">
+                  <div className="flex items-center gap-2">
                     <span className="text-gray-500">상태:</span>
-                    <span className={`ml-2 px-2 py-1 business-radius-badge badge-text bg-green-100 text-green-800`}>
+                    <span className="badge-stats text-[10px] px-1.5 py-0.5 bg-green-100 text-green-800">
                       활성
                     </span>
                   </div>
-                  <div>
+                  <div className="flex items-center gap-2">
                     <span className="text-gray-500">등록일:</span>
-                    <span className="ml-2">
+                    <span className="text-gray-700">
                       {vendor.created_at ? new Date(vendor.created_at).toLocaleDateString('ko-KR') : '-'}
                     </span>
                   </div>
@@ -254,9 +254,8 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
             <DialogFooter className="gap-2">
               <Button
                 type="button"
-                variant="outline"
                 onClick={onClose}
-                className="button-base business-radius-button border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
               >
                 {mode === 'view' ? '닫기' : '취소'}
               </Button>
@@ -264,9 +263,9 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  className="button-base business-radius-button bg-blue-500 text-white hover:bg-blue-600"
+                  className="button-base bg-blue-500 text-white hover:bg-blue-600"
                 >
-                  {isSubmitting 
+                  {isSubmitting
                     ? (mode === 'create' ? '등록 중...' : '수정 중...')
                     : (mode === 'create' ? '등록' : '수정')
                   }
