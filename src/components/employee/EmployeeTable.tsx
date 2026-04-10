@@ -623,7 +623,7 @@ export default function EmployeeTable({
                   )}
                 </TableCell>
                 {canManageEmployees && (
-                  <TableCell className="px-2 py-1.5">
+                  <TableCell className="text-[11px] px-2 py-1.5">
                     {isEditingRow(employee.id) ? (
                       <Input
                         value={draft?.personal_email || ''}
@@ -702,7 +702,7 @@ export default function EmployeeTable({
                       )}
                     </TableCell>
                     {/* 민감한 정보 */}
-                    <TableCell className="px-2 py-1.5">
+                    <TableCell className="text-[11px] px-2 py-1.5">
                       {isEditingRow(employee.id) ? (
                         <Input
                           value={draft?.bank_account || ''}
@@ -713,7 +713,7 @@ export default function EmployeeTable({
                         employee.bank_account || '-'
                       )}
                     </TableCell>
-                    <TableCell className="px-1 py-1.5">
+                    <TableCell className="text-[11px] px-1 py-1.5">
                       {isEditingRow(employee.id) ? (
                         <Input
                           value={draft?.adress || ''}
@@ -724,7 +724,7 @@ export default function EmployeeTable({
                         employee.adress || '-'
                       )}
                     </TableCell>
-                    <TableCell className="px-2 py-1.5">
+                    <TableCell className="text-[11px] px-2 py-1.5">
                       {isEditingRow(employee.id) ? (
                         <Select
                           value={draft?.roles || 'none'}
@@ -748,7 +748,7 @@ export default function EmployeeTable({
                         </span>
                       )}
                     </TableCell>
-                    <TableCell className="px-2 py-1.5">
+                    <TableCell className="text-[11px] px-2 py-1.5">
                       {employee.id === NEW_ROW_ID ? (
                         <span className="badge-stats text-[10px] px-1.5 py-0.5 bg-green-100 text-green-800">재직</span>
                       ) : (
