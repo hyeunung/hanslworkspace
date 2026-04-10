@@ -1701,20 +1701,34 @@ async function validateAndMatchVendor(
   return { matched: false, similarity: bestMatch?.similarity || 0 }
 }
 
+function normalizeVendorName(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/\(주\)|주식회사|㈜|co\.?|ltd\.?|inc\.?|corp\.?|company|컴퍼니/gi, "")
+    .replace(/\s+[가-힣]{2,4}$/g, (m) => /^[가-힣]{2,4}$/.test(m.trim()) ? "" : m)
+    .replace(/[^a-z0-9가-힣]/g, '')
+}
+
+function vendorLevenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
+  for (let i = 0; i <= m; i++) dp[i][0] = i
+  for (let j = 0; j <= n; j++) dp[0][j] = j
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : Math.min(dp[i-1][j-1], dp[i-1][j], dp[i][j-1]) + 1
+  return dp[m][n]
+}
+
 function calculateVendorSimilarity(a: string, b: string): number {
-  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9가-힣]/g, '')
-  const na = normalize(a)
-  const nb = normalize(b)
+  const na = normalizeVendorName(a)
+  const nb = normalizeVendorName(b)
 
   if (na === nb) return 100
   if (!na || !nb) return 0
   if (na.includes(nb) || nb.includes(na)) return 85
 
-  const longer = na.length >= nb.length ? na : nb
-  const shorter = na.length >= nb.length ? nb : na
-  let matches = 0
-  for (let i = 0; i < shorter.length; i++) {
-    if (longer.includes(shorter[i])) matches += 1
-  }
-  return Math.round((matches / longer.length) * 100)
+  const maxLen = Math.max(na.length, nb.length)
+  const dist = vendorLevenshtein(na, nb)
+  return Math.round(((maxLen - dist) / maxLen) * 100)
 }

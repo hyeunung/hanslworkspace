@@ -2486,6 +2486,11 @@ export default function StatementConfirmModal({
       }
     }
 
+    // poCandidate의 vendorName 폴백 (items가 비어있어도 candidate 자체에 vendorName이 있을 수 있음)
+    if (!vendorName && poCandidate?.vendorName) {
+      vendorName = poCandidate.vendorName;
+    }
+
     // 3. 없으면 기존 방식으로 fallback
     if (systemItems.length === 0) {
       systemItems = getSystemItemsForPO(poNumber);
@@ -6209,7 +6214,7 @@ export default function StatementConfirmModal({
                       key={`candidate-${idx}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleSelectGlobalPO(displayNumber);
+                        handleSelectGlobalPO(displayNumber, c.vendorName);
                         setPOSearchInput('');
                         setPOSearchResults([]);
                         toggleDropdown('global-po');

@@ -25,7 +25,7 @@ interface ParsedItem {
   unit_price: number;
   amount: number;
   tax_amount?: number;
-  po_number?: string;       // 비고에 있는 수주번호
+  po_number?: string;       // 행에서 추출한 발주/수주번호(열 위치 고정 아님)
   remark?: string;
   confidence: 'low' | 'med' | 'high';
 }
@@ -39,6 +39,18 @@ interface ParseResult {
   grand_total?: number;
   items: ParsedItem[];
   file_type: 'excel' | 'pdf' | 'image';
+}
+
+function resolveFileType(requestedType: string, fileUrl: string): 'excel' | 'pdf' | 'image' {
+  const normalizedType = (requestedType || '').toLowerCase().trim()
+  if (['excel', 'xlsx', 'xls', 'csv'].includes(normalizedType)) return 'excel'
+  if (normalizedType === 'pdf') return 'pdf'
+  if (normalizedType === 'image') return 'image'
+
+  const lowerUrl = (fileUrl || '').toLowerCase()
+  if (lowerUrl.endsWith('.xlsx') || lowerUrl.endsWith('.xls') || lowerUrl.endsWith('.csv')) return 'excel'
+  if (lowerUrl.endsWith('.pdf')) return 'pdf'
+  return 'image'
 }
 
 serve(async (req) => {
@@ -59,7 +71,8 @@ serve(async (req) => {
     const requestData = await req.json().catch(() => ({}))
     statementId = requestData.statementId || null
     const fileUrl: string = requestData.fileUrl || requestData.imageUrl || ''
-    const fileType: string = requestData.fileType || 'excel' // 'excel' | 'pdf' | 'image'
+    const requestedFileType: string = requestData.fileType || 'excel'
+    const fileType = resolveFileType(requestedFileType, fileUrl)
 
     if (!statementId || !fileUrl) {
       throw new Error('Missing statementId or fileUrl')
@@ -150,7 +163,18 @@ serve(async (req) => {
       throw new Error(`DB 업데이트 실패: ${updateError.message}`)
     }
 
-    // 7. 품목 저장
+    // 7. 기존 품목 초기화 후 재삽입
+    currentStage = 'db_clear_items'
+    const { error: clearItemsError } = await supabase
+      .from('transaction_statement_items')
+      .delete()
+      .eq('statement_id', statementId)
+
+    if (clearItemsError) {
+      console.error('Failed to clear previous items:', clearItemsError)
+      throw new Error(`기존 품목 초기화 실패: ${clearItemsError.message}`)
+    }
+
     currentStage = 'db_insert_items'
     if (parseResult.items.length > 0) {
       const itemsToInsert = parseResult.items.map((item, idx) => {
@@ -267,6 +291,10 @@ function parseExcelFile(buffer: ArrayBuffer): ParseResult {
   // 헤더에서 컬럼 매핑
   const header = rows[headerRowIdx] || []
   const colMap = detectColumns(header)
+  const inferredPoColumn = detectPoNumberColumn(rows, headerRowIdx, colMap)
+  if (inferredPoColumn >= 0) {
+    colMap.poNumber = inferredPoColumn
+  }
 
   console.log(`[parseExcel] Header at row ${headerRowIdx}:`, header.slice(0, 10))
   console.log(`[parseExcel] Column mapping:`, colMap)
@@ -297,7 +325,9 @@ function parseExcelFile(buffer: ArrayBuffer): ParseResult {
     const lineNum = colMap.lineNumber >= 0 ? row[colMap.lineNumber] : ''
     const modelName = colMap.modelName >= 0 ? String(row[colMap.modelName] || '').trim() : ''
     const amount = colMap.amount >= 0 ? row[colMap.amount] : 0
-    const poNumber = colMap.poNumber >= 0 ? String(row[colMap.poNumber] || '').trim() : ''
+    const quantityRaw = colMap.quantity >= 0 ? row[colMap.quantity] : ''
+    const unitPriceRaw = colMap.unitPrice >= 0 ? row[colMap.unitPrice] : ''
+    const poRaw = colMap.poNumber >= 0 ? String(row[colMap.poNumber] || '').trim() : ''
     const spec = colMap.specification >= 0 ? String(row[colMap.specification] || '').trim() : ''
     const remark = colMap.remark >= 0 ? String(row[colMap.remark] || '').trim() : ''
 
@@ -317,14 +347,25 @@ function parseExcelFile(buffer: ArrayBuffer): ParseResult {
     if (Number.isNaN(num) || num <= 0) continue
 
     const parsedAmount = parseAmount(amount)
+    const parsedQuantity = parsePositiveNumber(quantityRaw) || 1
+    const parsedUnitPrice = parsePositiveNumber(unitPriceRaw) || (parsedAmount > 0 ? parsedAmount : 0)
+    const poNumber = normalizeOrderNumber(
+      extractOrderToken(poRaw) ||
+      extractOrderToken(remark) ||
+      extractOrderToken(spec) ||
+      extractOrderToken(modelName)
+    )
+    const finalAmount = parsedAmount > 0
+      ? parsedAmount
+      : (parsedQuantity > 0 && parsedUnitPrice > 0 ? parsedQuantity * parsedUnitPrice : 0)
 
     items.push({
       line_number: num,
       item_name: modelName,
       specification: spec || undefined,
-      quantity: 1, // 월말결제 엑셀은 보통 수량 1
-      unit_price: parsedAmount,
-      amount: parsedAmount,
+      quantity: parsedQuantity,
+      unit_price: parsedUnitPrice,
+      amount: finalAmount,
       po_number: poNumber || undefined,
       remark: remark || undefined,
       confidence: 'high' // 파싱은 정확도가 높음
@@ -349,6 +390,8 @@ function parseExcelFile(buffer: ArrayBuffer): ParseResult {
 function detectColumns(header: any[]): {
   lineNumber: number;
   modelName: number;
+  quantity: number;
+  unitPrice: number;
   amount: number;
   poNumber: number;
   specification: number;
@@ -357,6 +400,8 @@ function detectColumns(header: any[]): {
   const result = {
     lineNumber: -1,
     modelName: -1,
+    quantity: -1,
+    unitPrice: -1,
     amount: -1,
     poNumber: -1,
     specification: -1,
@@ -372,11 +417,21 @@ function detectColumns(header: any[]): {
     if (col.includes('모델') || col.includes('품목') || col.includes('품명') || col.includes('내역') || col.includes('description')) {
       result.modelName = i
     }
+    if (col.includes('수량') || col.includes('qty') || col.includes('quantity')) {
+      result.quantity = i
+    }
+    if (col.includes('단가') || col.includes('unitprice') || col.includes('price')) {
+      result.unitPrice = i
+    }
     if (col.includes('금액') || col.includes('amount') || col.includes('금 액')) {
       result.amount = i
     }
+    if (col.includes('발주') || col.includes('수주') || col.includes('po') || col.includes('so')) {
+      result.poNumber = i
+    }
     if (col.includes('비고') || col.includes('remark') || col.includes('note')) {
-      result.poNumber = i // 비고에 수주번호가 들어가 있음
+      if (result.remark === -1) result.remark = i
+      if (result.poNumber === -1) result.poNumber = i
     }
     if (col.includes('규격') || col.includes('프레임') || col.includes('size') || col.includes('spec') || col.includes('두께')) {
       result.specification = i
@@ -386,10 +441,100 @@ function detectColumns(header: any[]): {
   // 기본값 (샘플 기준: 번호=0, 모델명=1, 금액=6, 비고=7)
   if (result.lineNumber === -1) result.lineNumber = 0
   if (result.modelName === -1) result.modelName = 1
+  if (result.quantity === -1) result.quantity = 2
+  if (result.unitPrice === -1) result.unitPrice = 5
   if (result.amount === -1) result.amount = 6
+  if (result.remark === -1) result.remark = Math.max(result.amount + 1, 7)
   if (result.poNumber === -1) result.poNumber = 7
 
   return result
+}
+
+function detectPoNumberColumn(
+  rows: any[][],
+  headerRowIdx: number,
+  colMap: {
+    lineNumber: number;
+    modelName: number;
+    amount: number;
+    poNumber: number;
+    specification: number;
+    remark: number;
+  }
+): number {
+  const scores = new Map<number, number>()
+  const sampleEnd = Math.min(rows.length, headerRowIdx + 140)
+
+  for (let i = headerRowIdx + 1; i < sampleEnd; i++) {
+    const row = rows[i] || []
+    if (!row.length) continue
+
+    const lineNumRaw = colMap.lineNumber >= 0 ? row[colMap.lineNumber] : ''
+    const lineNum = Number(lineNumRaw)
+    if (!Number.isFinite(lineNum) || lineNum <= 0) continue
+
+    for (let colIdx = 0; colIdx < row.length; colIdx++) {
+      if (colIdx === colMap.lineNumber || colIdx === colMap.modelName) continue
+      const token = extractOrderToken(row[colIdx])
+      if (!token) continue
+      scores.set(colIdx, (scores.get(colIdx) || 0) + 1)
+    }
+  }
+
+  const ranked = Array.from(scores.entries()).sort((a, b) => b[1] - a[1])
+  if (ranked.length === 0) return colMap.poNumber
+
+  const [bestColumn, hitCount] = ranked[0]
+  const currentHits = scores.get(colMap.poNumber) || 0
+  if (currentHits >= hitCount && currentHits > 0) return colMap.poNumber
+  if (hitCount >= 2) return bestColumn
+  return colMap.poNumber
+}
+
+function extractOrderToken(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  const normalized = String(value).toUpperCase().replace(/\s+/g, '')
+  const match = normalized.match(
+    /(F\d{8}[_-]\d{1,3}(?:[-_]\d{1,3})?|HS\d{6}[-_]\d{1,2}(?:[-_]\d{1,3})?)/
+  )
+  return match?.[1] || ''
+}
+
+function normalizeOrderNumber(raw: string): string {
+  if (!raw) return ''
+  const normalized = raw.toUpperCase().replace(/\s+/g, '')
+
+  const poWithLine = normalized.match(/^(F\d{8})[_-](\d{1,3})[-_](\d{1,3})$/)
+  if (poWithLine) {
+    const [, prefix, num] = poWithLine
+    return `${prefix}_${num.padStart(3, '0')}`
+  }
+
+  const soWithLine = normalized.match(/^(HS\d{6})[-_](\d{1,2})[-_](\d{1,3})$/)
+  if (soWithLine) {
+    const [, prefix, num] = soWithLine
+    return `${prefix}-${num.padStart(2, '0')}`
+  }
+
+  const po = normalized.match(/^(F\d{8})[_-](\d{1,3})$/)
+  if (po) {
+    const [, prefix, num] = po
+    return `${prefix}_${num.padStart(3, '0')}`
+  }
+
+  const so = normalized.match(/^(HS\d{6})[-_](\d{1,2})$/)
+  if (so) {
+    const [, prefix, num] = so
+    return `${prefix}-${num.padStart(2, '0')}`
+  }
+
+  return normalized
+}
+
+function parsePositiveNumber(value: unknown): number | null {
+  const parsed = parseAmount(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return null
+  return parsed
 }
 
 function parseAmount(value: any): number {
@@ -511,6 +656,53 @@ async function matchItemsToSystem(
 
     if (!cleanName) continue
 
+    // 1) 발주/수주번호가 있으면 해당 발주 범위에서 우선 매칭
+    const normalizedPo = normalizeOrderNumber(item.po_number || '')
+    if (normalizedPo) {
+      const { data: poRequests } = await supabase
+        .from('purchase_requests')
+        .select('id')
+        .or(`purchase_order_number.eq.${normalizedPo},sales_order_number.eq.${normalizedPo}`)
+        .limit(10)
+
+      const purchaseIds = (poRequests || []).map((row: { id: number }) => row.id)
+      if (purchaseIds.length > 0) {
+        const { data: scopedItems } = await supabase
+          .from('purchase_request_items')
+          .select('id, item_name, specification, quantity, purchase_request_id, vendor_name')
+          .in('purchase_request_id', purchaseIds)
+          .limit(200)
+
+        if (scopedItems && scopedItems.length > 0) {
+          const ranked = scopedItems
+            .map((candidate: any) => {
+              const itemScore = calculateTextSimilarity(cleanName, candidate.item_name || '')
+              const specScore = calculateTextSimilarity(cleanName, candidate.specification || '')
+              const nameScore = Math.max(itemScore, specScore)
+              const quantityScore = (
+                item.quantity && candidate.quantity && Number(item.quantity) === Number(candidate.quantity)
+              )
+                ? 20
+                : 0
+              return { candidate, score: nameScore + quantityScore }
+            })
+            .sort((a: { score: number }, b: { score: number }) => b.score - a.score)
+
+          const bestScoped = ranked[0]
+          if (bestScoped && bestScoped.score >= 40) {
+            results.push({
+              lineNumber: item.line_number,
+              matchedPurchaseId: bestScoped.candidate.purchase_request_id,
+              matchedItemId: bestScoped.candidate.id,
+              matchedVendorName: bestScoped.candidate.vendor_name || null
+            })
+            continue
+          }
+        }
+      }
+    }
+
+    // 2) 발주번호가 없거나 범위 매칭 실패 시 품목명/규격 기반 검색
     // specification에서 ILIKE 검색
     const { data: specMatches } = await supabase
       .from('purchase_request_items')
@@ -592,25 +784,53 @@ async function validateAndMatchVendor(
   return { matched: false, similarity: bestMatch?.similarity || 0 }
 }
 
+function normalizeVendorName(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/\(주\)|주식회사|㈜|co\.?|ltd\.?|inc\.?|corp\.?|company|컴퍼니/gi, "")
+    .replace(/\s+[가-힣]{2,4}$/g, (m) => /^[가-힣]{2,4}$/.test(m.trim()) ? "" : m)
+    .replace(/[^a-z0-9가-힣]/g, '')
+}
+
+function vendorLevenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
+  for (let i = 0; i <= m; i++) dp[i][0] = i
+  for (let j = 0; j <= n; j++) dp[0][j] = j
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : Math.min(dp[i-1][j-1], dp[i-1][j], dp[i][j-1]) + 1
+  return dp[m][n]
+}
+
 function calculateVendorSimilarity(a: string, b: string): number {
-  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9가-힣]/g, '')
-  const na = normalize(a)
-  const nb = normalize(b)
+  const na = normalizeVendorName(a)
+  const nb = normalizeVendorName(b)
 
   if (na === nb) return 100
+  if (!na || !nb) return 0
   if (na.includes(nb) || nb.includes(na)) return 85
 
-  // 간단한 문자 일치율
-  const longer = na.length > nb.length ? na : nb
-  const shorter = na.length > nb.length ? nb : na
-  if (longer.length === 0) return 0
+  const maxLen = Math.max(na.length, nb.length)
+  const dist = vendorLevenshtein(na, nb)
+  return Math.round(((maxLen - dist) / maxLen) * 100)
+}
 
-  let matches = 0
-  for (let i = 0; i < shorter.length; i++) {
-    if (longer.includes(shorter[i])) matches++
+function calculateTextSimilarity(a: string, b: string): number {
+  const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9가-힣]/g, '')
+  const left = normalize(a)
+  const right = normalize(b)
+  if (!left || !right) return 0
+  if (left === right) return 100
+  if (left.includes(right) || right.includes(left)) return 85
+
+  const longer = left.length >= right.length ? left : right
+  const shorter = left.length >= right.length ? right : left
+  let hit = 0
+  for (const ch of shorter) {
+    if (longer.includes(ch)) hit += 1
   }
-
-  return Math.round((matches / longer.length) * 100)
+  return Math.round((hit / longer.length) * 100)
 }
 
 // ========== 큐 처리 ==========
