@@ -230,7 +230,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
   const [rejectReason, setRejectReason] = useState("");
 
   // Vendors for receipt merchant selection
-  const [vendors, setVendors] = useState<{ id: number; vendor_name: string }[]>([]);
+  const [vendors, setVendors] = useState<{ id: number; vendor_name: string; vendor_alias?: string }[]>([]);
 
   // Receipt modal
   const [receiptModalUsage, setReceiptModalUsage] = useState<CardUsage | null>(null);
@@ -356,7 +356,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
     const loadVendors = async () => {
       const { data } = await supabase
         .from("vendors")
-        .select("id, vendor_name")
+        .select("id, vendor_name, vendor_alias")
         .order("vendor_name");
       if (data) setVendors(data);
     };
@@ -1391,7 +1391,14 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                   formatCreateLabel={(input: string) => `"${input}" 신규 등록`}
                   value={receiptMerchant ? { label: receiptMerchant, value: receiptMerchant } : null}
                   onChange={(opt) => setReceiptMerchant(opt?.value || "")}
-                  options={vendors.map((v) => ({ label: v.vendor_name, value: v.vendor_name }))}
+                  options={vendors.map((v) => ({ label: v.vendor_name, value: v.vendor_name, alias: v.vendor_alias }))}
+                  filterOption={(option, inputValue) => {
+                    if (!inputValue) return true;
+                    const search = inputValue.toLowerCase();
+                    if (option.label.toLowerCase().includes(search)) return true;
+                    const alias = (option.data as { alias?: string }).alias;
+                    return alias ? alias.toLowerCase().includes(search) : false;
+                  }}
                   styles={reactSelectStyles}
                   menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                   menuPosition="fixed"

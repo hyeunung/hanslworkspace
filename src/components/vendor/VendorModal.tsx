@@ -37,6 +37,7 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
   const form = useForm<VendorFormData>({
     defaultValues: {
       vendor_name: '',
+      vendor_alias: '',
       vendor_phone: '',
       vendor_fax: '',
       vendor_payment_schedule: '',
@@ -49,6 +50,7 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
     if (vendor && isOpen) {
       form.reset({
         vendor_name: vendor.vendor_name || '',
+        vendor_alias: vendor.vendor_alias || '',
         vendor_phone: vendor.vendor_phone || '',
         vendor_fax: vendor.vendor_fax || '',
         vendor_payment_schedule: vendor.vendor_payment_schedule || '',
@@ -58,6 +60,7 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
     } else if (!vendor && isOpen) {
       form.reset({
         vendor_name: '',
+        vendor_alias: '',
         vendor_phone: '',
         vendor_fax: '',
         vendor_payment_schedule: '',
@@ -127,6 +130,25 @@ export default function VendorModal({ isOpen, onClose, vendor, onSave, mode }: V
                       <Input
                         {...field}
                         placeholder="업체명을 입력하세요"
+                        className="!h-auto !py-1 !px-2 !text-[12px] !min-h-[32px] business-radius-input border border-gray-300 bg-white text-gray-700"
+                        disabled={isReadOnly}
+                      />
+                    </FormControl>
+                    <FormMessage className="text-[10px]" />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="vendor_alias"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-[12px] font-medium text-gray-700">참조명</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder="영문명, 약칭 등"
                         className="!h-auto !py-1 !px-2 !text-[12px] !min-h-[32px] business-radius-input border border-gray-300 bg-white text-gray-700"
                         disabled={isReadOnly}
                       />

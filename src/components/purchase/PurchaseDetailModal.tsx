@@ -5411,10 +5411,18 @@ ${itemsText}`
                       <span className="modal-label">업체명</span>
                       {isEditing ? (
                         <ReactSelect
-                          options={vendors.map(v => ({ 
-                            value: v.id.toString(), 
-                            label: v.vendor_name 
+                          options={vendors.map(v => ({
+                            value: v.id.toString(),
+                            label: v.vendor_name,
+                            alias: v.vendor_alias
                           }))}
+                          filterOption={(option, inputValue) => {
+                            if (!inputValue) return true;
+                            const search = inputValue.toLowerCase();
+                            if (option.label.toLowerCase().includes(search)) return true;
+                            const alias = (option.data as { alias?: string }).alias;
+                            return alias ? alias.toLowerCase().includes(search) : false;
+                          }}
                           value={editedPurchase?.vendor_id ? {
                             value: editedPurchase.vendor_id.toString(),
                             label: editedPurchase.vendor_name || vendors.find(v => v.id === editedPurchase.vendor_id)?.vendor_name || ''

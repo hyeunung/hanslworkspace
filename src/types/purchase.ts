@@ -10,6 +10,7 @@ export interface VendorContact extends BaseEntity {
 
 export interface Vendor extends BaseEntity {
   vendor_name: string
+  vendor_alias?: string
   vendor_phone?: string
   vendor_fax?: string
   vendor_payment_schedule?: string
@@ -26,6 +27,7 @@ export interface VendorFilters {
 
 export interface VendorFormData {
   vendor_name: string
+  vendor_alias?: string
   vendor_phone?: string
   vendor_fax?: string
   vendor_payment_schedule?: string

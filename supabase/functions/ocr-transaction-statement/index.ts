@@ -2431,7 +2431,7 @@ async function validateAndMatchVendor(
 
   const { data: vendors, error } = await supabase
     .from("vendors")
-    .select("id, vendor_name")
+    .select("id, vendor_name, vendor_alias")
     .limit(500)
 
   if (error || !vendors || vendors.length === 0) {
@@ -2441,7 +2441,11 @@ async function validateAndMatchVendor(
   let bestMatch: { vendor_id: number; vendor_name: string; similarity: number } | null = null
 
   for (const vendor of vendors) {
-    const similarity = calculateVendorSimilarity(extractedVendorName, vendor.vendor_name)
+    let similarity = calculateVendorSimilarity(extractedVendorName, vendor.vendor_name)
+    if (vendor.vendor_alias) {
+      const aliasSimilarity = calculateVendorSimilarity(extractedVendorName, vendor.vendor_alias)
+      similarity = Math.max(similarity, aliasSimilarity)
+    }
     if (!bestMatch || similarity > bestMatch.similarity) {
       bestMatch = {
         vendor_id: vendor.id,
@@ -2473,7 +2477,7 @@ async function findVendorInText(
 
   const { data: vendors, error } = await supabase
     .from("vendors")
-    .select("id, vendor_name")
+    .select("id, vendor_name, vendor_alias")
     .limit(500)
 
   if (error || !vendors || vendors.length === 0) {
@@ -2491,32 +2495,38 @@ async function findVendorInText(
     | null = null
 
   for (const vendor of vendors) {
-    const normalizedVendor = normalizeVendorText(vendor.vendor_name || "")
-    if (!normalizedVendor || normalizedVendor.length < 2) continue
+    // vendor_name과 vendor_alias 모두 매칭 시도
+    const namesToCheck = [vendor.vendor_name]
+    if (vendor.vendor_alias) namesToCheck.push(vendor.vendor_alias)
 
-    for (const line of textLines) {
-      const normalizedLine = normalizeVendorText(line)
-      if (!normalizedLine) continue
+    for (const nameToCheck of namesToCheck) {
+      const normalizedVendor = normalizeVendorText(nameToCheck || "")
+      if (!normalizedVendor || normalizedVendor.length < 2) continue
 
-      if (normalizedLine.includes(normalizedVendor)) {
-        if (!bestMatch || 100 > bestMatch.similarity) {
+      for (const line of textLines) {
+        const normalizedLine = normalizeVendorText(line)
+        if (!normalizedLine) continue
+
+        if (normalizedLine.includes(normalizedVendor)) {
+          if (!bestMatch || 100 > bestMatch.similarity) {
+            bestMatch = {
+              vendor_id: vendor.id,
+              vendor_name: vendor.vendor_name,
+              matched_text: line,
+              similarity: 100,
+            }
+          }
+          break
+        }
+
+        const similarity = calculateVendorSimilarity(line, nameToCheck)
+        if (similarity >= 70 && (!bestMatch || similarity > bestMatch.similarity)) {
           bestMatch = {
             vendor_id: vendor.id,
             vendor_name: vendor.vendor_name,
             matched_text: line,
-            similarity: 100,
+            similarity,
           }
-        }
-        break
-      }
-
-      const similarity = calculateVendorSimilarity(line, vendor.vendor_name)
-      if (similarity >= 70 && (!bestMatch || similarity > bestMatch.similarity)) {
-        bestMatch = {
-          vendor_id: vendor.id,
-          vendor_name: vendor.vendor_name,
-          matched_text: line,
-          similarity,
         }
       }
     }

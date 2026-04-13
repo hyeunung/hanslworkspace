@@ -69,9 +69,18 @@ export async function serverSearchPurchases(
       .limit(SERVER_SEARCH_LIMIT)
       .abortSignal(abortSignal!)
 
-    const [headerResult, itemResult] = await Promise.all([
+    // 3. vendor_alias 검색 → vendor_id로 발주 조회
+    const aliasSearchPromise = supabase
+      .from('vendors')
+      .select('id')
+      .ilike('vendor_alias', `%${term}%`)
+      .limit(50)
+      .abortSignal(abortSignal!)
+
+    const [headerResult, itemResult, aliasResult] = await Promise.all([
       headerSearchPromise,
       itemSearchPromise,
+      aliasSearchPromise,
     ])
 
     if (abortSignal?.aborted) return []
@@ -86,7 +95,26 @@ export async function serverSearchPurchases(
     const headerData = processRawData((headerResult.data as RawPurchase[]) || [])
     const headerIds = new Set(headerData.map((p) => p.id))
 
-    // 3. 품목 검색으로 찾은 purchase_request_id 중 헤더 검색에 없는 것만 추가 조회
+    // vendor_alias 매칭된 업체의 발주 추가 조회
+    let aliasData: Purchase[] = []
+    if (aliasResult.data && aliasResult.data.length > 0) {
+      const aliasVendorIds = aliasResult.data.map((v: { id: number }) => v.id)
+      const { data: aliaspurchases } = await supabase
+        .from('purchase_requests')
+        .select(FULL_SELECT)
+        .in('vendor_id', aliasVendorIds)
+        .order('request_date', { ascending: false })
+        .limit(SERVER_SEARCH_LIMIT)
+
+      if (aliaspurchases) {
+        aliasData = processRawData((aliaspurchases as RawPurchase[]).filter(
+          (p: RawPurchase) => !headerIds.has((p as unknown as Purchase).id)
+        ))
+        aliasData.forEach((p) => headerIds.add(p.id))
+      }
+    }
+
+    // 품목 검색으로 찾은 purchase_request_id 중 헤더 검색에 없는 것만 추가 조회
     let itemParentData: Purchase[] = []
     if (itemResult.data && itemResult.data.length > 0) {
       const itemParentIds = [
@@ -113,8 +141,8 @@ export async function serverSearchPurchases(
       }
     }
 
-    // 4. 결과 병합 (중복 제거)
-    const merged = [...headerData, ...itemParentData]
+    // 결과 병합 (중복 제거)
+    const merged = [...headerData, ...aliasData, ...itemParentData]
     logger.info(`[ServerSearch] Found ${merged.length} results for "${term}"`)
 
     return merged

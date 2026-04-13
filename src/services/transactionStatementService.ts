@@ -1534,14 +1534,16 @@ class TransactionStatementService {
         // 거래처명으로 vendor_id 찾기
         const { data: vendors } = await this.supabase
           .from('vendors')
-          .select('id, vendor_name')
+          .select('id, vendor_name, vendor_alias')
           .limit(100);
 
         if (vendors) {
-          // 유사도 높은 거래처 찾기
-          const matchedVendors = vendors.filter((v: { id: number; vendor_name: string }) => 
-            this.calculateVendorSimilarity(statementVendorName, v.vendor_name) >= 70
-          );
+          // 유사도 높은 거래처 찾기 (vendor_alias도 비교)
+          const matchedVendors = vendors.filter((v: { id: number; vendor_name: string; vendor_alias?: string }) => {
+            const nameSimilarity = this.calculateVendorSimilarity(statementVendorName, v.vendor_name);
+            const aliasSimilarity = v.vendor_alias ? this.calculateVendorSimilarity(statementVendorName, v.vendor_alias) : 0;
+            return Math.max(nameSimilarity, aliasSimilarity) >= 70;
+          });
 
           if (matchedVendors.length > 0) {
             const vendorIds = matchedVendors.map((v: { id: number; vendor_name: string }) => v.id);

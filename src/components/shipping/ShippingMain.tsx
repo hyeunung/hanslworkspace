@@ -182,37 +182,75 @@ export default function ShippingMain() {
     }
   }
 
-  // 인쇄
-  const handlePrint = useCallback(() => {
+  // 인쇄 (저장 → label_code 포함하여 인쇄)
+  const handlePrint = useCallback(async () => {
     if (!senderEmployeeId) { toast.error('보내는 사람을 선택해주세요.'); return }
     if (!receiverCompany || !receiverContact || !receiverAddress) { toast.error('받는 사람 정보를 입력해주세요.'); return }
 
+    // 1. 먼저 저장하여 label_code 획득
+    let addrId = receiverAddressId
+    if (!addrId && receiverCompany && receiverContact) {
+      const result = await shippingService.createAddress(
+        { company_name: receiverCompany, contact_name: receiverContact, phone: receiverPhone, address: receiverAddress },
+        employee?.id
+      )
+      if (result.success && result.data) {
+        addrId = result.data.id
+        setAddresses(prev => [...prev, result.data!])
+        setReceiverAddressId(addrId)
+        setIsNewReceiver(false)
+        toast.success('새 업체가 주소록에 자동 등록되었습니다.')
+      }
+    }
+
+    let labelCode = ''
+    if (addrId) {
+      const res = await shippingService.createLabel({
+        sender_employee_id: senderEmployeeId,
+        receiver_address_id: addrId,
+        delivery_type: deliveryType,
+        product_name: productName,
+        item_value: itemValue ? Number(itemValue) : null,
+        delivery_point: deliveryPoint,
+        notes,
+        print_count: printCount,
+      }, employee?.id)
+      if (res.success && res.data) {
+        setLabels(prev => [res.data!, ...prev])
+        labelCode = res.data.label_code || ''
+      }
+    }
+
+    // 2. 인쇄
     const sender = selectedSender
     const printWindow = window.open('', '_blank', 'width=800,height=1000')
     if (!printWindow) { toast.error('팝업이 차단되었습니다.'); return }
 
     const labelHTML = (showValue: boolean, title: string) => `
-      <div style="border:2px solid #333;padding:20px;margin-bottom:4px;page-break-inside:avoid;height:calc(50vh - 30px);box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-          <div style="font-size:12px;font-weight:600;color:#333;">${deliveryPoint ? `배송지점: ${deliveryPoint}` : ''}</div>
-          <div style="font-size:10px;color:#888;">${title}</div>
+      <div style="border:2pt solid #333;padding:15pt;margin-bottom:3pt;page-break-inside:avoid;height:130mm;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6pt;">
+          <div style="font-size:9pt;font-weight:600;color:#333;">${deliveryPoint ? `배송지점: ${deliveryPoint}` : ''}</div>
+          <div style="display:flex;align-items:center;gap:8pt;">
+            <div style="font-size:8pt;font-weight:600;color:#333;font-family:monospace;">${labelCode}</div>
+            <div style="font-size:7pt;color:#888;">${title}</div>
+          </div>
         </div>
         <div style="flex:1;display:flex;flex-direction:column;justify-content:center;">
-          <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <table style="width:100%;border-collapse:collapse;font-size:10pt;">
             <tr>
-              <td style="width:50%;vertical-align:top;padding-right:16px;">
-                <div style="font-weight:bold;font-size:16px;margin-bottom:12px;border-bottom:2px solid #333;padding-bottom:4px;">보내는 사람</div>
-                <table style="width:100%;font-size:13px;line-height:1.8;">
-                  <tr><td style="color:#666;width:60px;">업체명</td><td style="font-weight:600;">${SENDER_COMPANY}</td></tr>
+              <td style="width:50%;vertical-align:top;padding-right:12pt;">
+                <div style="font-weight:bold;font-size:12pt;margin-bottom:9pt;border-bottom:2pt solid #333;padding-bottom:3pt;">보내는 사람</div>
+                <table style="width:100%;font-size:10pt;line-height:2;">
+                  <tr><td style="color:#666;width:45pt;">업체명</td><td style="font-weight:600;">${SENDER_COMPANY}</td></tr>
                   <tr><td style="color:#666;">담당자</td><td>${sender?.name || ''}</td></tr>
                   <tr><td style="color:#666;">연락처</td><td>${sender?.phone || ''}</td></tr>
                   <tr><td style="color:#666;vertical-align:top;">주소</td><td>${SENDER_ADDRESS}</td></tr>
                 </table>
               </td>
-              <td style="width:50%;vertical-align:top;padding-left:16px;border-left:1px solid #ddd;">
-                <div style="font-weight:bold;font-size:16px;margin-bottom:12px;border-bottom:2px solid #333;padding-bottom:4px;">받는 사람</div>
-                <table style="width:100%;font-size:13px;line-height:1.8;">
-                  <tr><td style="color:#666;width:60px;">업체명</td><td style="font-weight:600;">${receiverCompany}</td></tr>
+              <td style="width:50%;vertical-align:top;padding-left:12pt;border-left:1pt solid #ddd;">
+                <div style="font-weight:bold;font-size:12pt;margin-bottom:9pt;border-bottom:2pt solid #333;padding-bottom:3pt;">받는 사람</div>
+                <table style="width:100%;font-size:10pt;line-height:2;">
+                  <tr><td style="color:#666;width:45pt;">업체명</td><td style="font-weight:600;">${receiverCompany}</td></tr>
                   <tr><td style="color:#666;">담당자</td><td>${receiverContact}</td></tr>
                   <tr><td style="color:#666;">연락처</td><td>${receiverPhone}</td></tr>
                   <tr><td style="color:#666;vertical-align:top;">주소</td><td>${receiverAddress}</td></tr>
@@ -220,15 +258,13 @@ export default function ShippingMain() {
               </td>
             </tr>
           </table>
-          <div style="margin-top:16px;border-top:1px solid #ddd;padding-top:12px;">
-            <div style="font-size:13px;line-height:1.8;">
-              <table style="font-size:13px;line-height:1.8;">
-                <tr><td style="color:#666;width:70px;">배송타입</td><td>${deliveryType}</td></tr>
-                <tr><td style="color:#666;">품명</td><td>${productName}</td></tr>
-                ${showValue ? `<tr><td style="color:#666;">물품가액</td><td>${itemValue ? Number(itemValue).toLocaleString() + '원' : ''}</td></tr>` : ''}
-                ${notes ? `<tr><td style="color:#666;">비고</td><td>${notes}</td></tr>` : ''}
-              </table>
-            </div>
+          <div style="margin-top:12pt;border-top:1pt solid #ddd;padding-top:9pt;">
+            <table style="font-size:10pt;line-height:2;">
+              <tr><td style="color:#666;width:55pt;">배송타입</td><td>${deliveryType}</td></tr>
+              <tr><td style="color:#666;">품명</td><td>${productName}</td></tr>
+              ${showValue ? `<tr><td style="color:#666;">물품가액</td><td>${itemValue ? Number(itemValue).toLocaleString() + '원' : ''}</td></tr>` : ''}
+              ${notes ? `<tr><td style="color:#666;">비고</td><td>${notes}</td></tr>` : ''}
+            </table>
           </div>
         </div>
       </div>
@@ -237,7 +273,7 @@ export default function ShippingMain() {
     const pages = Array.from({ length: printCount }, () =>
       `<div style="page-break-after:always;">
         ${labelHTML(false, '박스 부착용')}
-        <div style="border-top:2px dashed #999;margin:16px 0;"></div>
+        <div style="border-top:2pt dashed #999;margin:5mm 0;"></div>
         ${labelHTML(true, '택배사 전달용')}
       </div>`
     ).join('')
@@ -248,48 +284,18 @@ export default function ShippingMain() {
         <title> </title>
         <style>
           @page { margin: 10mm; size: A4; }
-          body { margin:0; padding:0; font-family: 'Malgun Gothic', sans-serif; }
-          @media print { div[style*="page-break-after"] { page-break-after: always; } }
+          body { margin:0; padding:0; font-family: 'Malgun Gothic', sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          * { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+          @media print {
+            body { zoom: 1 !important; transform-origin: top left; }
+            div[style*="page-break-after"] { page-break-after: always; }
+          }
         </style>
       </head><body>${pages}</body></html>
     `)
     printWindow.document.close()
     printWindow.focus()
     setTimeout(() => printWindow.print(), 300)
-
-    // 발송 기록 저장 (신규 업체면 주소록에 자동 등록 후 저장)
-    const saveLabel = async () => {
-      let addrId = receiverAddressId
-      if (!addrId && receiverCompany && receiverContact) {
-        const result = await shippingService.createAddress(
-          { company_name: receiverCompany, contact_name: receiverContact, phone: receiverPhone, address: receiverAddress },
-          employee?.id
-        )
-        if (result.success && result.data) {
-          addrId = result.data.id
-          setAddresses(prev => [...prev, result.data!])
-          setReceiverAddressId(addrId)
-          setIsNewReceiver(false)
-          toast.success('새 업체가 주소록에 자동 등록되었습니다.')
-        }
-      }
-      if (addrId) {
-        const res = await shippingService.createLabel({
-          sender_employee_id: senderEmployeeId,
-          receiver_address_id: addrId,
-          delivery_type: deliveryType,
-          product_name: productName,
-          item_value: itemValue ? Number(itemValue) : null,
-          delivery_point: deliveryPoint,
-          notes,
-          print_count: printCount,
-        }, employee?.id)
-        if (res.success && res.data) {
-          setLabels(prev => [res.data!, ...prev])
-        }
-      }
-    }
-    saveLabel()
   }, [senderEmployeeId, selectedSender, receiverCompany, receiverContact, receiverPhone, receiverAddress, receiverAddressId, deliveryType, productName, itemValue, deliveryPoint, notes, printCount, employee])
 
   // 발송 기록 삭제
@@ -310,6 +316,7 @@ export default function ShippingMain() {
     if (!historySearch) return labels
     const q = historySearch.toLowerCase()
     return labels.filter((l: any) =>
+      l.label_code?.toLowerCase().includes(q) ||
       l.receiver_address?.company_name?.toLowerCase().includes(q) ||
       l.receiver_address?.contact_name?.toLowerCase().includes(q) ||
       l.sender_employee?.name?.toLowerCase().includes(q) ||
@@ -564,6 +571,7 @@ export default function ShippingMain() {
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-10 bg-gray-50" style={{ boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)' }}>
                 <tr>
+                  <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">코드</th>
                   <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[45px]">배송</th>
                   <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[45px]">날짜</th>
                   <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">지점</th>
@@ -597,6 +605,7 @@ export default function ShippingMain() {
                       setNotes(label.notes || '')
                     }}
                   >
+                    <td className="px-2 py-1.5 font-mono text-[10px] text-gray-500">{label.label_code}</td>
                     <td className="px-2 py-1.5">
                       <span className={cn(
                         "px-1.5 py-0.5 rounded text-[10px]",

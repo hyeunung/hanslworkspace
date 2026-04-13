@@ -159,7 +159,7 @@ export default function PurchaseNewMain() {
     loadEmployees();
   }, [employeeName, user]);
 
-  const [vendors, setVendors] = useState<{ id: number; vendor_name: string }[]>([]);
+  const [vendors, setVendors] = useState<{ id: number; vendor_name: string; vendor_alias?: string }[]>([]);
   const [contacts, setContacts] = useState<{ id: number; contact_name: string; contact_email: string; contact_phone: string; position: string }[]>([]);
   const [vendor, setVendor] = useState("");
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
@@ -1252,7 +1252,14 @@ export default function PurchaseNewMain() {
                 <div>
                   <Label className="mb-0.5 block text-[10px] sm:text-xs">업체명<span className="text-red-500 ml-0.5">*</span></Label>
                   <ReactSelect
-                      options={vendors.map(v => ({ value: v.id.toString(), label: v.vendor_name }))}
+                      options={vendors.map(v => ({ value: v.id.toString(), label: v.vendor_name, alias: v.vendor_alias }))}
+                      filterOption={(option, inputValue) => {
+                        if (!inputValue) return true;
+                        const search = inputValue.toLowerCase();
+                        if (option.label.toLowerCase().includes(search)) return true;
+                        const alias = (option.data as { alias?: string }).alias;
+                        return alias ? alias.toLowerCase().includes(search) : false;
+                      }}
                       value={vendors.find(v => v.id.toString() === vendor) ? { value: vendor, label: vendors.find(v => v.id.toString() === vendor)?.vendor_name } : null}
                       onChange={(option) => {
                         const opt = option as { value: string; label: string } | null;

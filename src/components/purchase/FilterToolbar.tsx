@@ -58,6 +58,7 @@ interface FilterToolbarProps {
   onSearchChange: (search: string) => void
   availableEmployees?: string[]
   availableVendors?: string[]
+  vendorAliasMap?: Record<string, string>
   availableContacts?: string[]
   availablePaymentSchedules?: string[]
   children?: React.ReactNode // 칼럼 설정 버튼 등 추가 요소
@@ -299,6 +300,7 @@ export default function FilterToolbar({
   onSearchChange,
   availableEmployees = [],
   availableVendors = [],
+  vendorAliasMap = {},
   availableContacts = [],
   availablePaymentSchedules = [],
   children
@@ -487,10 +489,16 @@ export default function FilterToolbar({
             placeholder = "담당자"
           }
 
-          // 검색으로 옵션 필터링
-          const filteredOptions = options.filter(option =>
-            option.toLowerCase().includes(searchValue.toLowerCase())
-          )
+          // 검색으로 옵션 필터링 (업체는 alias도 매칭)
+          const filteredOptions = options.filter(option => {
+            if (option.toLowerCase().includes(searchValue.toLowerCase())) return true
+            if (fieldConfig.key === 'vendor_name') {
+              return Object.entries(vendorAliasMap).some(
+                ([alias, name]) => name === option && alias.includes(searchValue.toLowerCase())
+              )
+            }
+            return false
+          })
 
           return (
             <Popover onOpenChange={(open) => {

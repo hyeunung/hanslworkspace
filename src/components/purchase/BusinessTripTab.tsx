@@ -434,7 +434,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
   const [settlementLoading, setSettlementLoading] = useState(false);
   const [settlementSaving, setSettlementSaving] = useState(false);
   const [expenseRows, setExpenseRows] = useState<ExpenseFormRow[]>([]);
-  const [vendors, setVendors] = useState<{ id: number; vendor_name: string }[]>([]);
+  const [vendors, setVendors] = useState<{ id: number; vendor_name: string; vendor_alias?: string }[]>([]);
   const [mileageRows, setMileageRows] = useState<MileageFormRow[]>([]);
   const [allowanceRows, setAllowanceRows] = useState<AllowanceFormRow[]>([]);
   const [receiptViewerRowKey, setReceiptViewerRowKey] = useState<string | null>(null);
@@ -631,10 +631,10 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     try {
       const { data, error } = await supabase
         .from("vendors")
-        .select("id, vendor_name")
+        .select("id, vendor_name, vendor_alias")
         .order("vendor_name");
       if (error) throw error;
-      setVendors((data || []) as { id: number; vendor_name: string }[]);
+      setVendors((data || []) as { id: number; vendor_name: string; vendor_alias?: string }[]);
     } catch (err) {
       logger.error("업체 목록 조회 실패", err);
     }
@@ -2935,7 +2935,14 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                                   )
                                 )
                               }
-                              options={vendors.map((v) => ({ label: v.vendor_name, value: v.vendor_name }))}
+                              options={vendors.map((v) => ({ label: v.vendor_name, value: v.vendor_name, alias: v.vendor_alias }))}
+                              filterOption={(option, inputValue) => {
+                                if (!inputValue) return true;
+                                const search = inputValue.toLowerCase();
+                                if (option.label.toLowerCase().includes(search)) return true;
+                                const alias = (option.data as { alias?: string }).alias;
+                                return alias ? alias.toLowerCase().includes(search) : false;
+                              }}
                               styles={{
                                 ...reactSelectStyles,
                                 placeholder: (base: Record<string, unknown>) => ({

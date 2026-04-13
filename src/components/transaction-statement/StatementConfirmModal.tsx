@@ -2682,7 +2682,7 @@ export default function StatementConfirmModal({
       const { data: vendors, error } = await supabase
         .from('vendors')
         .select('id, vendor_name')
-        .ilike('vendor_name', `%${searchValue}%`)
+        .or(`vendor_name.ilike.%${searchValue}%,vendor_alias.ilike.%${searchValue}%`)
         .limit(10);
       
       if (error) throw error;

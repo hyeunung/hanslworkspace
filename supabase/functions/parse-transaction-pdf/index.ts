@@ -1670,7 +1670,7 @@ async function validateAndMatchVendor(
 
   const { data: vendors, error } = await supabase
     .from('vendors')
-    .select('id, vendor_name')
+    .select('id, vendor_name, vendor_alias')
     .limit(500)
 
   if (error || !vendors || vendors.length === 0) {
@@ -1679,7 +1679,11 @@ async function validateAndMatchVendor(
 
   let bestMatch: { vendor_id: number; vendor_name: string; similarity: number } | null = null
   for (const vendor of vendors) {
-    const similarity = calculateVendorSimilarity(extractedVendorName, vendor.vendor_name)
+    let similarity = calculateVendorSimilarity(extractedVendorName, vendor.vendor_name)
+    if (vendor.vendor_alias) {
+      const aliasSimilarity = calculateVendorSimilarity(extractedVendorName, vendor.vendor_alias)
+      similarity = Math.max(similarity, aliasSimilarity)
+    }
     if (!bestMatch || similarity > bestMatch.similarity) {
       bestMatch = {
         vendor_id: vendor.id,

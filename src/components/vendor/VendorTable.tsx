@@ -110,6 +110,9 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                     {/* 업체명 */}
                     <TableCell className="text-[11px] font-medium text-gray-900 px-2 py-1.5">
                       {vendor.vendor_name}
+                      {vendor.vendor_alias && (
+                        <span className="text-[10px] text-gray-400 ml-1">({vendor.vendor_alias})</span>
+                      )}
                     </TableCell>
                     {/* 담당자 수 */}
                     <TableCell className="text-center px-1 py-1.5">
@@ -208,7 +211,12 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
             <MobileCard key={vendor.id}>
               <MobileCardHeader>
                 <div className="flex justify-between items-center">
-                  <span className="text-[13px] font-medium text-gray-900">{vendor.vendor_name}</span>
+                  <span className="text-[13px] font-medium text-gray-900">
+                    {vendor.vendor_name}
+                    {vendor.vendor_alias && (
+                      <span className="text-[11px] text-gray-400 ml-1">({vendor.vendor_alias})</span>
+                    )}
+                  </span>
                   <span className="badge-stats text-[10px] px-1.5 py-0.5 border border-gray-300 bg-white text-gray-600">
                     담당자 {vendor.vendor_contacts?.length || 0}명
                   </span>

@@ -55,6 +55,7 @@ export default function VendorMain() {
     return vendors.filter((vendor) => {
       const vendorFieldsMatch = [
         vendor.vendor_name,
+        vendor.vendor_alias,
         vendor.vendor_phone,
         vendor.vendor_fax,
         vendor.vendor_address,

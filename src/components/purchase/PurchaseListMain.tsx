@@ -63,6 +63,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   const [searchTerm, setSearchTerm] = useState('');
   const [availableEmployees, setAvailableEmployees] = useState<string[]>([]);
   const [availableVendors, setAvailableVendors] = useState<string[]>([]);
+  const [vendorAliasMap, setVendorAliasMap] = useState<Record<string, string>>({});
   const [availableContacts, setAvailableContacts] = useState<string[]>([]);
   const [availablePaymentSchedules, setAvailablePaymentSchedules] = useState<string[]>([]);
   
@@ -276,14 +277,22 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
           setAvailableEmployees(employeeNames as string[]);
         }
 
-        // 업체 목록 (vendors 테이블)
+        // 업체 목록 (vendors 테이블) - vendor_alias도 검색 대상에 포함
         const { data: vendors } = await supabase
           .from('vendors')
-          .select('vendor_name');
-        
+          .select('vendor_name, vendor_alias');
+
         if (vendors) {
           const vendorNames = [...new Set(vendors.map((v: { vendor_name: string }) => v.vendor_name).filter(Boolean))];
           setAvailableVendors(vendorNames as string[]);
+          // alias → vendor_name 매핑 (alias 검색 시 vendor_name으로 필터링)
+          const aliasMap: Record<string, string> = {};
+          vendors.forEach((v: { vendor_name: string; vendor_alias?: string }) => {
+            if (v.vendor_alias) {
+              aliasMap[v.vendor_alias.toLowerCase()] = v.vendor_name;
+            }
+          });
+          setVendorAliasMap(aliasMap);
         }
 
         // 담당자 목록 (vendor_contacts 테이블)
@@ -916,6 +925,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
           onSearchChange={setSearchTerm}
           availableEmployees={availableEmployees}
           availableVendors={availableVendors}
+          vendorAliasMap={vendorAliasMap}
           availableContacts={availableContacts}
           availablePaymentSchedules={availablePaymentSchedules}
         >

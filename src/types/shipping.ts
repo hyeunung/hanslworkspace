@@ -21,6 +21,7 @@ export interface ShippingAddressFormData {
 // 택배 발송 기록
 export interface ShippingLabel {
   id: string
+  label_code: string | null
   sender_employee_id: string
   receiver_address_id: string
   delivery_type: '택배' | '퀵'

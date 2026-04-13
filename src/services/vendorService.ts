@@ -21,6 +21,7 @@ class VendorService {
       if (filters?.search) {
         query = query.or(`
           vendor_name.ilike.%${filters.search}%,
+          vendor_alias.ilike.%${filters.search}%,
           vendor_phone.ilike.%${filters.search}%,
           vendor_fax.ilike.%${filters.search}%,
           vendor_address.ilike.%${filters.search}%
@@ -217,8 +218,9 @@ class VendorService {
       if (error) throw error;
 
       // Excel 형식에 맞게 데이터 변환
-      const exportData = (data || []).map((vendor: { vendor_name: string; vendor_phone?: string; vendor_fax?: string; vendor_payment_schedule?: string; vendor_address?: string; note?: string; created_at?: string }) => ({
+      const exportData = (data || []).map((vendor: { vendor_name: string; vendor_alias?: string; vendor_phone?: string; vendor_fax?: string; vendor_payment_schedule?: string; vendor_address?: string; note?: string; created_at?: string }) => ({
         '업체명': vendor.vendor_name,
+        '참조명': vendor.vendor_alias || '',
         '전화번호': vendor.vendor_phone || '',
         '팩스번호': vendor.vendor_fax || '',
         '결제조건': vendor.vendor_payment_schedule || '',
