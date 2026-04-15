@@ -135,8 +135,13 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       ['superadmin', 'ceo', 'lead buyer', 'raw_material_manager', 'consumable_manager', 'purchase_manager', 'hr'].includes(role)
     );
     
+    // 승인 권한자는 pending 탭에서 전체 항목을 봐야 함
+    const hasApprovalRole = currentUserRoles.some((role: string) =>
+      ['superadmin', 'ceo', 'middle_manager', 'final_approver', 'raw_material_manager', 'consumable_manager'].includes(role)
+    );
+
     const result = {
-      pending: roleCase === 3 ? 'all' : currentUserName,
+      pending: hasApprovalRole ? 'all' : currentUserName,
       purchase: hasManagerRole ? 'all' : (roleCase === 3 ? 'all' : currentUserName),
       receipt: (hasHrRole || hasPurchaseManagerRole) ? 'all' : (roleCase === 3 ? 'all' : currentUserName),
       done: 'all' // 전체 항목 탭은 항상 모든 항목 표시

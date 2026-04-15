@@ -58,35 +58,35 @@ export const filterByTab = (
           return false
         }
 
-        // 1. 카테고리별 관리자 먼저 체크 (특정 항목만 보기)
-        if (userRoles.includes('consumable_manager')) {
-          // 구매 요청만 볼 수 있음
-          if (purchase.payment_category !== '구매 요청') {
-            return false
-          }
-        }
-
-        if (userRoles.includes('raw_material_manager')) {
-          // 발주만 볼 수 있음
-          if (purchase.payment_category !== '발주') {
-            return false
-          }
-        }
-
-        // 2. 전체 권한자 체크 (superadmin과 ceo만)
+        // 1. 전체 권한자 체크 (superadmin과 ceo만)
         if (userRoles.includes('superadmin') ||
             userRoles.includes('ceo')) {
-          logger.debug('🔥 App Admin detected! Showing all items for:', { purchase_order_number: purchase.purchase_order_number });
           return true
         }
 
-        // 3. middle_manager는 중간승인 대기 항목만
+        // 2. middle_manager는 중간승인 대기 항목만
         if (userRoles.includes('middle_manager')) {
           const middleStatus = purchase.middle_manager_status
           const isMiddlePending = !middleStatus || middleStatus === 'pending' || middleStatus === '대기'
           return isMiddlePending
         }
-        
+
+        // 3. final_approver는 최종승인 대기 항목
+        if (userRoles.includes('final_approver')) {
+          return purchase.middle_manager_status === 'approved' &&
+                 purchase.final_manager_status === 'pending'
+        }
+
+        // 4. 카테고리별 관리자: 자기 카테고리의 최종승인 대기 항목만
+        if (userRoles.includes('raw_material_manager') && purchase.payment_category === '발주') {
+          return purchase.middle_manager_status === 'approved' &&
+                 purchase.final_manager_status === 'pending'
+        }
+        if (userRoles.includes('consumable_manager') && purchase.payment_category === '구매 요청') {
+          return purchase.middle_manager_status === 'approved' &&
+                 purchase.final_manager_status === 'pending'
+        }
+
         // 4. 일반 직원은 본인이 요청한 항목만
         return purchase.requester_name === currentUser?.name
       })
@@ -569,14 +569,16 @@ export const filterPendingApprovals = (
              purchase.final_manager_status === 'pending'
     }
     
-    // 카테고리별 관리자
+    // 카테고리별 관리자: 자기 카테고리의 최종승인 대기만
     if (userRoles.includes('consumable_manager')) {
-      return purchase.payment_category === '구매 요청' && 
-             purchase.middle_manager_status === 'pending'
+      return purchase.payment_category === '구매 요청' &&
+             purchase.middle_manager_status === 'approved' &&
+             purchase.final_manager_status === 'pending'
     }
     if (userRoles.includes('raw_material_manager')) {
-      return purchase.payment_category === '발주' && 
-             purchase.middle_manager_status === 'pending'
+      return purchase.payment_category === '발주' &&
+             purchase.middle_manager_status === 'approved' &&
+             purchase.final_manager_status === 'pending'
     }
     
     return false
@@ -647,6 +649,10 @@ export const countPendingApprovalsForSidebarBadge = (
 
     if (hasMiddleManager && isMiddlePending) return true
     if (hasFinalApprover && isFinalPending) return true
+
+    // 카테고리 관리자는 최종 승인 대기만 카운트
+    if (hasRawMaterialManager && purchase.payment_category === '발주' && isFinalPending) return true
+    if (hasConsumableManager && purchase.payment_category === '구매 요청' && isFinalPending) return true
 
     return false
   }).length

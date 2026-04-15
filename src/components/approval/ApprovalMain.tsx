@@ -63,7 +63,7 @@ export default function ApprovalMain() {
       setLoading(true)
       
       // 승인 권한이 있는지 확인
-      const approvalRoles = ['middle_manager', 'final_approver', 'ceo', 'superadmin']
+      const approvalRoles = ['middle_manager', 'final_approver', 'ceo', 'superadmin', 'raw_material_manager', 'consumable_manager']
       const hasApprovalRole = currentUserRoles.some((role: string) => approvalRoles.includes(role))
 
       if (!hasApprovalRole) {
@@ -79,7 +79,7 @@ export default function ApprovalMain() {
       if (!activeTab) {
         if (currentUserRoles.includes('middle_manager')) {
           setActiveTab('middle')
-        } else if (currentUserRoles.some(role => ['final_approver', 'ceo', 'superadmin'].includes(role))) {
+        } else if (currentUserRoles.some(role => ['final_approver', 'ceo', 'superadmin', 'raw_material_manager', 'consumable_manager'].includes(role))) {
           setActiveTab('final')
         }
       }
@@ -120,63 +120,83 @@ export default function ApprovalMain() {
 
   const calculateTabCounts = (purchases: PurchaseRequestWithDetails[], employeeData: { roles?: string | string[] | null }): TabCounts => {
     const counts = { middle: 0, final: 0 }
-    
-    // roles 처리
+
     const roles = parseRoles(employeeData.roles)
-    
+    const hasRawMaterialManager = roles.includes('raw_material_manager')
+    const hasConsumableManager = roles.includes('consumable_manager')
+
     purchases.forEach(purchase => {
       // 1차 승인 대기 (중간관리자)
-      if (purchase.middle_manager_status === 'pending' && 
+      if (purchase.middle_manager_status === 'pending' &&
           roles.includes('middle_manager')) {
         counts.middle++
       }
-      
-      // 최종 승인 대기 (최종승인자/CEO/superadmin)
-      if (purchase.middle_manager_status === 'approved' && 
-          purchase.final_manager_status === 'pending' &&
-          roles.some((role: string) => ['final_approver', 'ceo', 'superadmin'].includes(role))) {
-        counts.final++
+
+      // 최종 승인 대기
+      if (purchase.middle_manager_status === 'approved' &&
+          purchase.final_manager_status === 'pending') {
+        // 일반 최종승인자/CEO/superadmin
+        if (roles.some((role: string) => ['final_approver', 'ceo', 'superadmin'].includes(role))) {
+          counts.final++
+        }
+        // 카테고리별 관리자 - 자기 카테고리만 카운트
+        else if (hasRawMaterialManager && purchase.payment_category === '발주') {
+          counts.final++
+        }
+        else if (hasConsumableManager && purchase.payment_category === '구매 요청') {
+          counts.final++
+        }
       }
-      
-      // 구매 처리 대기는 제거 (hanslwebapp에서는 별도 탭)
     })
-    
+
     return counts
   }
 
   const getFilteredApprovals = (): PurchaseRequestWithDetails[] => {
     if (!employee) return []
 
-    // roles 처리
     const roles = parseRoles(employee.roles)
-    
+    const hasRawMaterialManager = roles.includes('raw_material_manager')
+    const hasConsumableManager = roles.includes('consumable_manager')
+    const isCategoryOnly = (hasRawMaterialManager || hasConsumableManager) &&
+      !roles.some((r: string) => ['middle_manager', 'final_approver', 'ceo', 'superadmin'].includes(r))
+
     let filtered: PurchaseRequestWithDetails[] = []
-    
-    // activeTab이 설정되어 있으면 해당 탭의 승인만 표시
+
     if (activeTab === 'middle') {
-      // 1차 승인 대기
-      filtered = approvals.filter(approval => 
+      filtered = approvals.filter(approval =>
         approval.middle_manager_status === 'pending'
       )
     } else if (activeTab === 'final') {
-      // 최종 승인 대기
-      filtered = approvals.filter(approval => 
-        approval.middle_manager_status === 'approved' && 
+      filtered = approvals.filter(approval =>
+        approval.middle_manager_status === 'approved' &&
         approval.final_manager_status === 'pending'
       )
+      // 카테고리 관리자는 자기 카테고리만
+      if (isCategoryOnly) {
+        filtered = filtered.filter(approval => {
+          if (hasRawMaterialManager && approval.payment_category === '발주') return true
+          if (hasConsumableManager && approval.payment_category === '구매 요청') return true
+          return false
+        })
+      }
     } else {
-      // activeTab이 null이면 권한에 따라 자동으로 필터링
       if (roles.includes('middle_manager')) {
-        // 1차 승인 대기
-        filtered = approvals.filter(approval => 
+        filtered = approvals.filter(approval =>
           approval.middle_manager_status === 'pending'
         )
       } else if (roles.some((role: string) => ['final_approver', 'ceo', 'superadmin'].includes(role))) {
-        // 최종 승인 대기
-        filtered = approvals.filter(approval => 
-          approval.middle_manager_status === 'approved' && 
+        filtered = approvals.filter(approval =>
+          approval.middle_manager_status === 'approved' &&
           approval.final_manager_status === 'pending'
         )
+      } else if (isCategoryOnly) {
+        filtered = approvals.filter(approval => {
+          if (approval.middle_manager_status !== 'approved' || approval.final_manager_status !== 'pending') return false
+          if (hasRawMaterialManager && approval.payment_category === '발주') return true
+          if (hasConsumableManager && approval.payment_category === '구매 요청') return true
+          return false
+        })
       }
     }
 
@@ -223,7 +243,7 @@ export default function ApprovalMain() {
             middle_manager_status: 'rejected'
           }
         }
-      } else if (roles.some((r: string) => ['final_approver', 'ceo', 'superadmin'].includes(r))) {
+      } else if (roles.some((r: string) => ['final_approver', 'ceo', 'superadmin', 'raw_material_manager', 'consumable_manager'].includes(r))) {
         // 최종 승인
         if (action === 'approve') {
           updateData = {
@@ -232,12 +252,10 @@ export default function ApprovalMain() {
         } else {
           updateData = {
             final_manager_status: 'rejected',
-            // 최종 승인자가 반려하면 중간 승인도 함께 반려
             middle_manager_status: 'rejected'
           }
         }
       } else {
-        // 권한이 없는 경우
         throw new Error('승인 권한이 없습니다')
       }
 
@@ -286,14 +304,13 @@ export default function ApprovalMain() {
         updateData = {
           middle_manager_status: 'approved'
         }
-      } else if (roles.some((r: string) => ['final_approver', 'ceo', 'superadmin'].includes(r))) {
+      } else if (roles.some((r: string) => ['final_approver', 'ceo', 'superadmin', 'raw_material_manager', 'consumable_manager'].includes(r))) {
         updateData = {
           final_manager_status: 'approved'
         }
       } else {
         throw new Error('승인 권한이 없습니다')
       }
-
 
       // 일괄 업데이트 실행 - ID를 Number로 변환
       const { error } = await supabase
@@ -391,7 +408,7 @@ export default function ApprovalMain() {
               )
             }
             
-            if (roles.some((role: string) => ['final_approver', 'ceo', 'superadmin'].includes(role))) {
+            if (roles.some((role: string) => ['final_approver', 'ceo', 'superadmin', 'raw_material_manager', 'consumable_manager'].includes(role))) {
               tabs.push(
                 <button
                   key="final"
