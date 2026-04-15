@@ -890,6 +890,7 @@ export default function StatementConfirmModal({
         const isMonthly = result.data.statement_mode === 'monthly';
         const initialPONumbers = new Map<string, string>();
         const initialMatches = new Map<string, SystemPurchaseItem | null>();
+        const usedSystemItemIds = new Set<number>(); // 이미 다른 행에 매칭된 item_id 제외용
         result.data.items.forEach(item => {
           // 추출된 발주번호 설정 (시스템 형식으로 정규화)
           const poNumber = normalizeValidOrderNumber(item.extracted_po_number);
@@ -922,6 +923,7 @@ export default function StatementConfirmModal({
               received_quantity: mi?.received_quantity,
               vendor_name: item.matched_purchase.vendor_name
             });
+            usedSystemItemIds.add(item.matched_item_id!);
           } else {
             // 자동 매칭: 해당 발주번호의 후보 중에서 가장 유사한 품목 찾기
             let bestMatch: SystemPurchaseItem | null = null;
@@ -937,15 +939,15 @@ export default function StatementConfirmModal({
                 c.line_number === ocrLineNum
               );
               const directLineMatch =
-                itemsForPO.find((systemItem) => systemItem.line_number === ocrLineNum) ||
-                (lineMatchCandidate ? mapCandidateToSystemItem(lineMatchCandidate) : null);
+                itemsForPO.find((systemItem) => systemItem.line_number === ocrLineNum && !usedSystemItemIds.has(systemItem.item_id)) ||
+                (lineMatchCandidate && !usedSystemItemIds.has(lineMatchCandidate.item_id) ? mapCandidateToSystemItem(lineMatchCandidate) : null);
 
               if (directLineMatch) {
                 bestMatch = directLineMatch;
                 bestScore = 100;
               }
             }
-            
+
             // 1. 라인넘버로 못 찾으면 같은 발주번호 내에서만 유사도 매칭
             if (!bestMatch && poNumber) {
               const matchingCandidates: SystemPurchaseItem[] = itemsForPO.length > 0
@@ -955,6 +957,7 @@ export default function StatementConfirmModal({
                   ) || []).map(mapCandidateToSystemItem);
               
               for (const candidate of matchingCandidates) {
+                if (usedSystemItemIds.has(candidate.item_id)) continue;
                 const score = calculateAutoMatchScore(
                   item.extracted_item_name || '',
                   item.extracted_quantity,
@@ -969,11 +972,12 @@ export default function StatementConfirmModal({
                 }
               }
             }
-            
+
             // 2. 월말결제: 전체 후보에서 유사도 40% + 수량일치 보너스로 최선 매칭
             //    일반: 발주번호 없을 때만 60% 이상 fallback
             if (!bestMatch && isMonthly && item.match_candidates && item.match_candidates.length > 0) {
               for (const candidate of item.match_candidates) {
+                if (usedSystemItemIds.has(candidate.item_id)) continue;
                 const score = calculateAutoMatchScore(
                   item.extracted_item_name || '',
                   item.extracted_quantity,
@@ -990,6 +994,7 @@ export default function StatementConfirmModal({
             }
             if (!bestMatch && !isMonthly && !poNumber && item.match_candidates && item.match_candidates.length > 0) {
               for (const candidate of item.match_candidates) {
+                if (usedSystemItemIds.has(candidate.item_id)) continue;
                 const score = calculateItemSimilarity(item.extracted_item_name || '', candidate.item_name, candidate.specification);
                 if (score > bestScore && score >= 60) {
                   bestScore = score;
@@ -1017,7 +1022,7 @@ export default function StatementConfirmModal({
                 let bestItemScore = -1;
                 const recommendedLineNum = getOCRLineHint(item);
                 if (recommendedLineNum !== null) {
-                  const directLineMatch = recommendedPOItems.find((systemItem) => systemItem.line_number === recommendedLineNum);
+                  const directLineMatch = recommendedPOItems.find((systemItem) => systemItem.line_number === recommendedLineNum && !usedSystemItemIds.has(systemItem.item_id));
                   if (directLineMatch) {
                     bestItem = directLineMatch;
                     bestItemScore = 100;
@@ -1027,6 +1032,7 @@ export default function StatementConfirmModal({
                   ? recommendedPOItems
                   : candidatesForPO.map(mapCandidateToSystemItem);
                 for (const candidateItem of candidateItems) {
+                  if (usedSystemItemIds.has(candidateItem.item_id)) continue;
                   const score = calculateAutoMatchScore(
                     item.extracted_item_name || '',
                     item.extracted_quantity,
@@ -1042,12 +1048,14 @@ export default function StatementConfirmModal({
                 }
                 if (bestItem) {
                   initialMatches.set(item.id, bestItem);
+                  usedSystemItemIds.add(bestItem.item_id);
                 }
               }
             }
             
             if (!initialMatches.has(item.id)) {
               initialMatches.set(item.id, bestMatch);
+              if (bestMatch) usedSystemItemIds.add(bestMatch.item_id);
             }
           }
         });
@@ -1059,9 +1067,10 @@ export default function StatementConfirmModal({
             const itemsForPO = getSystemItemsForPOLocal(itemPO);
             const itemLineNum = getOCRLineHint(item);
             if (itemLineNum !== null && itemsForPO.length > 0) {
-              const directLineMatch = itemsForPO.find((systemItem) => systemItem.line_number === itemLineNum);
+              const directLineMatch = itemsForPO.find((systemItem) => systemItem.line_number === itemLineNum && !usedSystemItemIds.has(systemItem.item_id));
               if (directLineMatch) {
                 initialMatches.set(item.id, directLineMatch);
+                usedSystemItemIds.add(directLineMatch.item_id);
                 return;
               }
             }
@@ -1075,6 +1084,7 @@ export default function StatementConfirmModal({
               let best: SystemPurchaseItem | null = null;
               let bestScore = -1;
               for (const candidate of candidates) {
+                if (usedSystemItemIds.has(candidate.item_id)) continue;
                 const score = calculateAutoMatchScore(
                   item.extracted_item_name || '',
                   item.extracted_quantity,
@@ -1088,7 +1098,10 @@ export default function StatementConfirmModal({
                   best = candidate;
                 }
               }
-              if (best) initialMatches.set(item.id, best);
+              if (best) {
+                initialMatches.set(item.id, best);
+                usedSystemItemIds.add(best.item_id);
+              }
             }
           }
         });
@@ -1290,6 +1303,7 @@ export default function StatementConfirmModal({
     
     const newMatches = new Map<string, SystemPurchaseItem | null>();
     const newPONumbers = new Map<string, string>(itemPONumbers);
+    const reUsedSystemItemIds = new Set<number>(); // 이미 다른 행에 매칭된 item_id 제외용
     let hasMatchChanges = false;
     let hasPOChanges = false;
 
@@ -1299,6 +1313,7 @@ export default function StatementConfirmModal({
       // 월말결제: 기존 매칭이 있으면 무조건 유지 (이미 입고 완료된 정산서이므로)
       if (isMonthlyMode && currentMatch) {
         newMatches.set(ocrItem.id, currentMatch);
+        reUsedSystemItemIds.add(currentMatch.item_id);
         return;
       }
 
@@ -1315,11 +1330,12 @@ export default function StatementConfirmModal({
       const isCurrentSameLine = rOcrLineNum === null || currentMatch?.line_number == null || currentMatch.line_number === rOcrLineNum;
 
       // 현재 매칭이 발주/라인 기준으로 여전히 유효하면 유지
-      if (currentMatch && isCurrentSamePO && isCurrentSameLine) {
+      if (currentMatch && isCurrentSamePO && isCurrentSameLine && !reUsedSystemItemIds.has(currentMatch.item_id)) {
         newMatches.set(ocrItem.id, currentMatch);
+        reUsedSystemItemIds.add(currentMatch.item_id);
         return;
       }
-      
+
       // 새로운 매칭 찾기
       let bestMatch: SystemPurchaseItem | null = null;
       let bestScore = -1;
@@ -1332,14 +1348,14 @@ export default function StatementConfirmModal({
           c.line_number === rOcrLineNum
         );
         const directLineMatch =
-          systemItemsForPO.find((systemItem) => systemItem.line_number === rOcrLineNum) ||
-          (lineMatchC ? mapCandidateToSystemItem(lineMatchC) : null);
+          systemItemsForPO.find((systemItem) => systemItem.line_number === rOcrLineNum && !reUsedSystemItemIds.has(systemItem.item_id)) ||
+          (lineMatchC && !reUsedSystemItemIds.has(lineMatchC.item_id) ? mapCandidateToSystemItem(lineMatchC) : null);
         if (directLineMatch) {
           bestMatch = directLineMatch;
           bestScore = 100;
         }
       }
-      
+
       // 1. 라인넘버로 못 찾으면 같은 발주번호 내에서만 유사도 매칭
       if (!bestMatch && poNumber) {
         const matchingCandidates: SystemPurchaseItem[] = systemItemsForPO.length > 0
@@ -1347,8 +1363,9 @@ export default function StatementConfirmModal({
           : (ocrItem.match_candidates?.filter(c =>
               c.purchase_order_number === poNumber || c.sales_order_number === poNumber
             ) || []).map(mapCandidateToSystemItem);
-        
+
         for (const candidate of matchingCandidates) {
+          if (reUsedSystemItemIds.has(candidate.item_id)) continue;
           const score = calculateAutoMatchScore(
             ocrItem.extracted_item_name || '',
             ocrItem.extracted_quantity,
@@ -1363,11 +1380,12 @@ export default function StatementConfirmModal({
           }
         }
       }
-      
+
       // 2. 월말결제: 전체 후보에서 유사도 40% + 수량일치 보너스
       //    일반: 발주번호 없을 때만 60% fallback
       if (!bestMatch && isMonthlyMode && ocrItem.match_candidates) {
         for (const candidate of ocrItem.match_candidates) {
+          if (reUsedSystemItemIds.has(candidate.item_id)) continue;
           const score = calculateAutoMatchScore(
             ocrItem.extracted_item_name || '',
             ocrItem.extracted_quantity,
@@ -1384,6 +1402,7 @@ export default function StatementConfirmModal({
       }
       if (!bestMatch && !isMonthlyMode && !poNumber && ocrItem.match_candidates) {
         for (const candidate of ocrItem.match_candidates) {
+          if (reUsedSystemItemIds.has(candidate.item_id)) continue;
           const score = calculateItemSimilarity(ocrItem.extracted_item_name || '', candidate.item_name, candidate.specification);
           if (score > bestScore && score >= 60) {
             bestScore = score;
@@ -1395,7 +1414,8 @@ export default function StatementConfirmModal({
       const normalizedBestMatch =
         isSameSystemPurchaseItem(currentMatch, bestMatch) ? (currentMatch ?? null) : bestMatch;
       newMatches.set(ocrItem.id, normalizedBestMatch);
-      
+      if (normalizedBestMatch) reUsedSystemItemIds.add(normalizedBestMatch.item_id);
+
       // 매칭된 시스템 품목의 발주번호로 표시 번호 업데이트 (OCR 오류 수정)
       if (normalizedBestMatch) {
         const matchedPO = normalizedBestMatch.purchase_order_number || normalizedBestMatch.sales_order_number || '';
@@ -4637,7 +4657,7 @@ export default function StatementConfirmModal({
                       <th colSpan={isReceiptMode ? (isSamePONumber ? 4 : 5) : (isSamePONumber ? 5 : 6)} className="border-r-2 border-gray-300 p-2 text-left w-[45%]">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="modal-section-title text-gray-700">시스템 발주품목</span>
-                          {isSamePONumber && allPONumberCandidates.length > 0 && (
+                          {isSamePONumber && (
                             <div className="relative flex items-center gap-1">
                               <button
                                 onClick={(e) => {
@@ -4704,7 +4724,7 @@ export default function StatementConfirmModal({
                           <span className="modal-section-title text-gray-700">
                             OCR 추출 품목
                           </span>
-                          {isSamePONumber && allPONumberCandidates.length > 0 && (
+                          {isSamePONumber && (
                             <div className="relative flex items-center gap-1">
                               <button
                                 onClick={(e) => {
