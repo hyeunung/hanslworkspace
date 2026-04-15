@@ -394,11 +394,12 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
           <button
             type="button"
             onClick={() => navigate('/attendance')}
-            className="inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-gray-50 transition-colors"
-            title="출퇴근 관리"
-            aria-label="출퇴근 관리"
+            className="group inline-flex items-center justify-center h-9 rounded-lg hover:bg-gray-50 transition-all duration-200 px-2"
+            title="근태 현황"
+            aria-label="근태 현황"
           >
-            <Clock className="w-4 h-4 text-gray-500" />
+            <Clock className="w-4 h-4 text-gray-500 group-hover:hidden" />
+            <span className="hidden group-hover:inline text-xs font-medium text-gray-600">근태 현황</span>
           </button>
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-gray-700">
