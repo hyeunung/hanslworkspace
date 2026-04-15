@@ -1,5 +1,19 @@
 [
   {
+    "version": "0.4.3",
+    "date": "2026-04-15",
+    "title": "출퇴근 관리 페이지 신규 추가",
+    "changes": [
+      { "type": "feature", "text": "출퇴근 관리 페이지 신규 추가 (헤더 시계 아이콘 클릭으로 접근)" },
+      { "type": "feature", "text": "날짜별 전 직원 출퇴근 현황 조회 (직원명, 부서, 출퇴근시간, 상태, 비고)" },
+      { "type": "feature", "text": "출퇴근 시간/상태/비고 인라인 수정 기능 (hr, superadmin 전용)" },
+      { "type": "feature", "text": "상태 필터, 직원명 검색, 날짜 이동 기능" },
+      { "type": "feature", "text": "출장/연차/공가 등 출근 미기록 상태 배지 표시" },
+      { "type": "improvement", "text": "Flutter 앱과 동일한 상태 배지 색상 적용" },
+      { "type": "fix", "text": "퇴사자 출퇴근 기록 목록에서 제외" }
+    ]
+  },
+  {
     "version": "0.4.2",
     "date": "2026-04-15",
     "title": "거래명세서 단일발주 발주번호 수동 검색 복원",

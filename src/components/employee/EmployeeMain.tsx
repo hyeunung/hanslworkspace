@@ -116,19 +116,19 @@ export default function EmployeeMain() {
     }
     try {
       const result = await employeeService.getEmployeesForExport()
-      
+
       if (result.success && result.data) {
         // XLSX를 사용할 때만 동적으로 import
         const XLSX = await import('xlsx')
-        
+
         const ws = XLSX.utils.json_to_sheet(result.data)
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, '직원 목록')
-        
+
         // 파일명에 현재 날짜 추가
         const today = new Date().toISOString().slice(0, 10)
         const filename = `직원_목록_${today}.xlsx`
-        
+
         XLSX.writeFile(wb, filename)
         toast.success('Excel 파일이 다운로드되었습니다.')
       } else {
@@ -186,7 +186,7 @@ export default function EmployeeMain() {
             </div>
           </div>
         </div>
-        
+
         <EmployeeTable
           employees={filteredEmployees}
           onRefresh={loadEmployees}

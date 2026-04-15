@@ -16,6 +16,7 @@ const TransactionStatementMain = lazy(() => import('@/components/transaction-sta
 const ApplicationListMain = lazy(() => import('@/components/application/ApplicationListMain'))
 const AiServiceApplicationForm = lazy(() => import('@/components/application/AiServiceApplicationForm'))
 const ShippingMain = lazy(() => import('@/components/shipping/ShippingMain'))
+const AttendancePage = lazy(() => import('@/components/employee/AttendancePage'))
 const AuthConfirm = lazy(() => import('@/components/auth/AuthConfirm'))
 const ResetPassword = lazy(() => import('@/components/auth/ResetPassword'))
 
@@ -55,6 +56,7 @@ export default function AppRoutes() {
           <Route path="/purchase/requests/:id" element={<PurchaseDetailMain />} />
           <Route path="/vendor" element={<VendorMain />} />
           <Route path="/employee" element={<EmployeeMain />} />
+          <Route path="/attendance" element={<AttendancePage />} />
           <Route path="/receipts" element={<ReceiptsMain />} />
           <Route path="/support" element={<SupportMain />} />
           <Route path="/application" element={<ApplicationListMain />} />

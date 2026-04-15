@@ -2,7 +2,7 @@
 
 import { useNavigate } from 'react-router-dom'
 import { createClient } from '@/lib/supabase/client'
-import { User, Menu, MessageCircle, FileText, FileCheck, FileEdit } from 'lucide-react'
+import { User, Menu, MessageCircle, FileText, FileCheck, FileEdit, Clock } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supportService } from '@/services/supportService'
 import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
@@ -391,6 +391,15 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
         
         {/* 사용자 정보 */}
         <div className="hidden sm:flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => navigate('/attendance')}
+            className="inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-gray-50 transition-colors"
+            title="출퇴근 관리"
+            aria-label="출퇴근 관리"
+          >
+            <Clock className="w-4 h-4 text-gray-500" />
+          </button>
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-gray-700">
               {user?.name || '사용자'}

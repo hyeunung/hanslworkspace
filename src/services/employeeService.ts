@@ -391,6 +391,94 @@ class EmployeeService {
     return roles.map((value) => roleNames[value] || value).join(', ')
   }
 
+  // 출퇴근 기록 조회
+  async getAttendanceRecords(startDate: string, endDate: string): Promise<{ success: boolean; data?: Array<{
+    id: number
+    employee_id: string
+    employee_name: string | null
+    date: string
+    clock_in: string | null
+    clock_out: string | null
+    status: string | null
+    remarks: string | null
+    note: string | null
+    user_email: string | null
+    created_at: string | null
+    updated_at: string | null
+    department: string | null
+  }>; error?: string }> {
+    try {
+      // 출퇴근 기록과 직원 부서 정보를 병렬 조회
+      const [attendanceResult, employeesResult] = await Promise.all([
+        this.supabase
+          .from('attendance_records')
+          .select('*')
+          .gte('date', startDate)
+          .lte('date', endDate)
+          .order('date', { ascending: false })
+          .order('employee_name', { ascending: true }),
+        this.supabase
+          .from('employees')
+          .select('id, department, is_active'),
+      ])
+
+      if (attendanceResult.error) throw attendanceResult.error;
+
+      // employee_id → { department, is_active } 매핑
+      const empMap = new Map<string, { department: string | null; is_active: boolean }>()
+      if (employeesResult.data) {
+        for (const emp of employeesResult.data) {
+          empMap.set(emp.id, { department: emp.department, is_active: emp.is_active })
+        }
+      }
+
+      // 퇴사자(is_active=false) 제외
+      const dataWithDept = (attendanceResult.data || [])
+        .filter((record) => {
+          const emp = empMap.get(record.employee_id)
+          return !emp || emp.is_active
+        })
+        .map((record) => ({
+          ...record,
+          department: empMap.get(record.employee_id)?.department || null,
+        }))
+
+      return { success: true, data: dataWithDept };
+    } catch (error) {
+      logger.error('출퇴근 기록 조회 실패', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'
+      };
+    }
+  }
+
+  // 출퇴근 기록 수정 (시간/상태/비고)
+  async updateAttendanceRecord(
+    id: number,
+    updates: { clock_in?: string | null; clock_out?: string | null; status?: string | null; remarks?: string | null }
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { error } = await this.supabase
+        .from('attendance_records')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+
+      if (error) throw error;
+
+      return { success: true };
+    } catch (error) {
+      logger.error('출퇴근 기록 수정 실패', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'
+      };
+    }
+  }
+
   // 권한 체크 함수
   async checkPermission(userId: string, requiredRoles: string[]): Promise<{ success: boolean; hasPermission?: boolean; error?: string }> {
     try {
