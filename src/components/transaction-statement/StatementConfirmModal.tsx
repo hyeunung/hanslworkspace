@@ -1114,6 +1114,7 @@ export default function StatementConfirmModal({
         let nextSelectedPONumber = firstPO;
         let nextSelectedPurchaseId: number | null = null;
         let finalMatches = new Map(initialMatches);
+        let bestMatchVendorName = '';
 
         // 세트 매칭 실행 (Case 1: 모든 품목이 같은 발주번호일 때)
         // 발주번호가 동일한지 확인
@@ -1147,7 +1148,8 @@ export default function StatementConfirmModal({
                 nextSelectedPONumber = bestPO;
               }
               nextSelectedPurchaseId = setMatchResponse.data.bestMatch.purchase_id;
-              
+              bestMatchVendorName = setMatchResponse.data.bestMatch.vendor_name || '';
+
               // 세트 매칭 결과로 품목들 자동 매칭
               const autoMatchedItems = new Map<string, SystemPurchaseItem | null>();
               
@@ -1255,6 +1257,37 @@ export default function StatementConfirmModal({
         setItemPONumbers(initialPONumbers);
         setItemMatches(finalMatches);
         setSelectedPONumber(nextSelectedPONumber);
+
+        // 세트 매칭 결과에서 거래처명을 알 수 있으면 자동 설정/교정
+        // (거래처명이 비어있거나, OCR이 잘못 추출한 경우 발주번호 기준으로 교정)
+        if (!vendorInitializedRef.current) {
+          let autoVendorName = bestMatchVendorName;
+          // match_candidates에서 가져오기 (첫 번째 매칭 품목의 vendor_name)
+          if (!autoVendorName) {
+            for (const item of result.data.items) {
+              const candidate = item.match_candidates?.find(
+                c => c.purchase_order_number === nextSelectedPONumber || c.sales_order_number === nextSelectedPONumber
+              );
+              if (candidate?.vendor_name) {
+                autoVendorName = candidate.vendor_name;
+                break;
+              }
+            }
+          }
+          // 발주번호 기준 거래처명이 확인되었고, DB에 없거나 다르면 교정
+          if (autoVendorName && autoVendorName !== (result.data.vendor_name || '')) {
+            vendorInitializedRef.current = true;
+            setVendorInputValue(autoVendorName);
+            setOverrideVendorName(autoVendorName);
+            // DB에도 저장
+            supabase
+              .from('transaction_statements')
+              .update({ vendor_name: autoVendorName })
+              .eq('id', statement.id)
+              .then(() => {});
+          }
+        }
+
         initialLoadDoneRef.current = false; // 다음 useEffect에서 초기 매칭 보존
       } else {
         toast.error(result.error || '데이터를 불러오는데 실패했습니다.');
@@ -2611,9 +2644,16 @@ export default function StatementConfirmModal({
       });
     }
 
-    // 거래처명 업데이트
+    // 거래처명 업데이트 (발주번호에서 조회된 거래처명으로 자동 설정)
     if (vendorName) {
       setVendorInputValue(vendorName);
+      setOverrideVendorName(vendorName);
+      // DB에도 거래처명 저장
+      supabase
+        .from('transaction_statements')
+        .update({ vendor_name: vendorName })
+        .eq('id', statement.id)
+        .then(() => {});
     }
 
     // 자동 매칭 수행

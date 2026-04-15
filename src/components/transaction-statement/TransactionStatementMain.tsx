@@ -401,6 +401,7 @@ export default function TransactionStatementMain() {
                 payload.new?.quantity_match_confirmed_at !== payload.old?.quantity_match_confirmed_at ||
                 payload.new?.manager_confirmed_at !== payload.old?.manager_confirmed_at ||
                 payload.new?.all_quantities_matched !== payload.old?.all_quantities_matched;
+              const vendorChanged = payload.new?.vendor_name !== payload.old?.vendor_name;
 
               if (statusChanged && changedId && newStatus && ['extracted', 'failed', 'confirmed', 'rejected'].includes(newStatus)) {
                 optimisticReextractIdsRef.current.delete(changedId);
@@ -412,7 +413,7 @@ export default function TransactionStatementMain() {
                 });
               }
 
-              if (statusChanged || amountChanged || confirmChanged) {
+              if (statusChanged || amountChanged || confirmChanged || vendorChanged) {
                 loadStatements();
 
                 if (

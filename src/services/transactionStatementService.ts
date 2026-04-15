@@ -957,7 +957,7 @@ class TransactionStatementService {
           };
         });
 
-        // 수량 일치: 실제입고수량(received_quantity)만 사용 — 입고 전이면 불일치
+        // 수량 일치: OCR 추출 수량과 실입고수량(received_quantity)이 동일하면 체크
         // 단, 사용자가 이미 수량일치 확인을 완료한 경우 해당 판정을 존중
         const hasQuantityMatchConfirmed = Boolean((statement as Record<string, unknown>).quantity_match_confirmed_at);
         let all_quantities_matched = hasQuantityMatchConfirmed && statement.all_quantities_matched === true;
@@ -968,7 +968,7 @@ class TransactionStatementService {
             const ocrQty = Number(ocrRaw);
             if (!Number.isFinite(ocrQty)) return false;
 
-            // matched_item_id가 있으면 직접 사용 (후보 목록에 없을 수 있음)
+            // matched_item_id가 있으면 DB에서 최신 received_quantity 조회
             if (item.matched_item_id) {
               const info = itemInfoMap.get(Number(item.matched_item_id));
               if (info == null) return false;
@@ -977,7 +977,7 @@ class TransactionStatementService {
               return Number(systemQty) === ocrQty;
             }
 
-            // matched_item_id가 없으면 후보에서 best score로 선택
+            // matched_item_id가 없으면 후보에서 best score로 선택하고 후보의 received_quantity 직접 사용
             const candidates = item.match_candidates_data;
             if (!Array.isArray(candidates) || candidates.length === 0) return false;
 
@@ -993,10 +993,9 @@ class TransactionStatementService {
               selected = candidates.reduce((a: MatchCandidate, b: MatchCandidate) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
             }
 
+            // 1순위: itemInfoMap에서 최신 received_quantity 조회
             const info = itemInfoMap.get(Number(selected.item_id));
-            if (info == null) return false;
-
-            const systemQty = info.received_quantity;
+            const systemQty = info?.received_quantity ?? selected.received_quantity ?? null;
             if (systemQty == null) return false;
             return Number(systemQty) === ocrQty;
           });
@@ -1281,7 +1280,7 @@ class TransactionStatementService {
             const selected = candidates.reduce((a, b) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
 
             const freshItem = itemMap.get(Number(selected.item_id));
-            const systemQty = freshItem?.received_quantity;
+            const systemQty = freshItem?.received_quantity ?? selected.received_quantity ?? null;
             if (systemQty == null) return false;
             return Number(systemQty) === ocrQty;
           });
@@ -2630,12 +2629,17 @@ class TransactionStatementService {
           for (const purchase of byNumber) {
             // 거래처 유사도 체크
             const sysVendorName = purchase.vendor?.vendor_name || '';
-            const vendorSimilarity = statementVendorName 
+            const vendorSimilarity = statementVendorName
               ? this.calculateVendorSimilarity(statementVendorName, sysVendorName)
               : 100;
-            
-            // 거래처 유사도 70% 미만이면 스킵 (거래처 다르면 후보 제외)
-            if (vendorSimilarity < 50) {
+
+            // 발주번호가 정확히 일치하는 경우 거래처 필터 무시 (OCR이 거래처를 잘못 추출한 경우 대비)
+            const poExactMatch =
+              normalizeOrderNumber(purchase.purchase_order_number || '') === normalizedNumber ||
+              normalizeOrderNumber(purchase.sales_order_number || '') === normalizedNumber;
+
+            // 발주번호 불일치 + 거래처 유사도 50% 미만이면 스킵
+            if (!poExactMatch && vendorSimilarity < 50) {
               logger.debug(`❌ 세트 매칭 - 거래처 불일치로 제외: "${statementVendorName}" vs "${sysVendorName}" (${vendorSimilarity}%)`);
               continue;
             }
