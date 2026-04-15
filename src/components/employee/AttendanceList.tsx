@@ -113,8 +113,11 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
   // 기본 날짜: 오늘 (KST)
   const getToday = () => {
     const now = new Date()
-    const kstNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
-    return kstNow.toISOString().split('T')[0]
+    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000)
+    const yyyy = kstNow.getUTCFullYear()
+    const mm = String(kstNow.getUTCMonth() + 1).padStart(2, '0')
+    const dd = String(kstNow.getUTCDate()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}`
   }
 
   const [selectedDate, setSelectedDate] = useState(getToday())
