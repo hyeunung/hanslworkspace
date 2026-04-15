@@ -1902,27 +1902,49 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
           }
         }
       }
+      // 양승진: 정산 제출 시 자동 승인 처리
+      const isAutoApproveTarget = mode === "submitted" && (settlementTrip.requester?.name === "양승진");
+      const now = new Date().toISOString();
+
       const { error: tripUpdateError } = await supabase
         .from("business_trips")
         .update({
-          settlement_status: mode,
+          settlement_status: isAutoApproveTarget ? "approved" : mode,
           settlement_submitted_by: mode === "submitted" ? (currentUser?.name || null) : null,
-          settlement_submitted_at: mode === "submitted" ? new Date().toISOString() : null,
-          settlement_approved_by: null,
-          settlement_approved_at: null,
+          settlement_submitted_at: mode === "submitted" ? now : null,
+          settlement_approved_by: isAutoApproveTarget ? (currentUser?.id || null) : null,
+          settlement_approved_at: isAutoApproveTarget ? now : null,
           settlement_rejection_reason: null,
         })
         .eq("id", settlementTrip.id);
       if (tripUpdateError) throw tripUpdateError;
+
+      // 자동 승인 시 카드 반납 처리
+      if (isAutoApproveTarget && settlementTrip.linkedCard?.id) {
+        const { error: cardError } = await supabase
+          .from("card_usages")
+          .update({
+            card_returned: true,
+            card_returned_at: now,
+            card_returned_by: currentUser?.id || null,
+            approval_status: "returned",
+          })
+          .eq("id", settlementTrip.linkedCard.id);
+        if (cardError) {
+          logger.warn("자동 정산승인 - 카드 반납 처리 실패", { cardError });
+        }
+      }
 
       // 정산 제출 시 발주가 자동생성되므로 구매 목록 캐시 무효화
       if (mode === "submitted") {
         invalidatePurchaseMemoryCache();
       }
       toast.success(
-        mode === "submitted"
-          ? "정산이 제출되었습니다. (영수증/발주 자동생성)"
-          : "정산 임시저장 완료"
+        isAutoApproveTarget
+          ? "정산이 자동 승인되었습니다. (영수증/발주 자동생성)"
+          : mode === "submitted"
+            ? "정산이 제출되었습니다. (영수증/발주 자동생성)"
+            : "정산 임시저장 완료"
       );
       closeSettlementModal();
       loadTrips();
