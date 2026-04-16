@@ -522,19 +522,11 @@ items 배열 순서 (매우 중요):
     normalized.items = mergeParsedItems(normalized.items, supplementalItems)
   }
 
-  // 모든 추출 패스가 끝난 후:
-  // 1) 완전 중복 제거
-  // 2) 공급자/공급받는자 사본에서 생기는 "라인번호가 일정 간격으로 반복되는 중복 블록" 제거
-  const preDedup = normalized.items.length
+  // 모든 추출 패스가 끝난 후: 완전 중복(동일 line_number + 동일 내용)만 제거
+  // 공급자 사본 중복은 프롬프트에서 "공급받는자만 사용"으로 처리
   normalized.items = deduplicateExactRows(normalized.items)
-  normalized.items = deduplicateShiftedCopy(normalized.items)
-  normalized.items = deduplicateExactRows(normalized.items)
-  const removedByDedup = preDedup - normalized.items.length
 
-  // 중복 제거로 아이템이 줄어든 경우, expected count 검증을 조정
-  const adjustedExpectedCount = removedByDedup > 0
-    ? Math.min(expectedItemCount, normalized.items.length + Math.floor(removedByDedup * 0.1))
-    : expectedItemCount
+  const adjustedExpectedCount = expectedItemCount
 
   const missingExpectedLines = expectedLineNumbers.length > 0
     ? findMissingExpectedLineNumbers(normalized.items, expectedLineNumbers)
@@ -1706,11 +1698,15 @@ async function validateAndMatchVendor(
 }
 
 function normalizeVendorName(s: string): string {
-  return s
+  const result = s
     .toLowerCase()
-    .replace(/\(주\)|주식회사|㈜|co\.?|ltd\.?|inc\.?|corp\.?|company|컴퍼니/gi, "")
-    .replace(/\s+[가-힣]{2,4}$/g, (m) => /^[가-힣]{2,4}$/.test(m.trim()) ? "" : m)
+    .replace(/\(주\)|주식회사|㈜|co\.?|ltd\.?|inc\.?|corp\.?/gi, "")
     .replace(/[^a-z0-9가-힣]/g, '')
+  // 정규화 결과가 비어있으면 원본에서 특수문자만 제거한 값 사용
+  if (!result) {
+    return s.toLowerCase().replace(/[^a-z0-9가-힣]/g, '')
+  }
+  return result
 }
 
 function vendorLevenshtein(a: string, b: string): number {
