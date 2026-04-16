@@ -406,10 +406,11 @@ class EmployeeService {
     created_at: string | null
     updated_at: string | null
     department: string | null
+    position: string | null
   }>; error?: string }> {
     try {
-      // 출퇴근 기록과 직원 부서 정보를 병렬 조회
-      const [attendanceResult, employeesResult] = await Promise.all([
+      // 출퇴근 기록, 직원 정보, 승인된 연차/출장을 병렬 조회
+      const [attendanceResult, employeesResult, leaveResult, tripResult] = await Promise.all([
         this.supabase
           .from('attendance_records')
           .select('*')
@@ -419,29 +420,122 @@ class EmployeeService {
           .order('employee_name', { ascending: true }),
         this.supabase
           .from('employees')
-          .select('id, department, is_active'),
+          .select('id, department, is_active, email, position'),
+        // 승인된 연차/반차/공가 조회 (해당 날짜 범위에 걸치는 것)
+        this.supabase
+          .from('leave')
+          .select('user_email, type, start_date, end_date, status')
+          .eq('status', 'approved')
+          .lte('start_date', endDate)
+          .gte('end_date', startDate),
+        // 승인된 출장 조회 (해당 날짜 범위에 걸치는 것)
+        this.supabase
+          .from('business_trips')
+          .select('requester_id, trip_start_date, trip_end_date, approval_status')
+          .eq('approval_status', 'approved')
+          .lte('trip_start_date', endDate)
+          .gte('trip_end_date', startDate),
       ])
 
       if (attendanceResult.error) throw attendanceResult.error;
 
-      // employee_id → { department, is_active } 매핑
-      const empMap = new Map<string, { department: string | null; is_active: boolean }>()
+      // employee_id → { department, is_active, email, position } 매핑
+      const empMap = new Map<string, { department: string | null; is_active: boolean; email: string | null; position: string | null }>()
       if (employeesResult.data) {
         for (const emp of employeesResult.data) {
-          empMap.set(emp.id, { department: emp.department, is_active: emp.is_active })
+          empMap.set(emp.id, { department: emp.department, is_active: emp.is_active, email: emp.email, position: emp.position })
         }
       }
 
-      // 퇴사자(is_active=false) 제외
-      const dataWithDept = (attendanceResult.data || [])
-        .filter((record) => {
+      // 연차/반차/공가: user_email → 해당 날짜의 leave type 매핑
+      const leaveTypeMap = new Map<string, string>() // key: "email|date" → leave type
+      if (leaveResult.data) {
+        for (const leave of leaveResult.data) {
+          // 날짜 범위 내 각 날짜에 대해 매핑
+          const start = new Date(leave.start_date + 'T00:00:00')
+          const end = new Date(leave.end_date + 'T00:00:00')
+          const queryStart = new Date(startDate + 'T00:00:00')
+          const queryEnd = new Date(endDate + 'T00:00:00')
+          const from = start > queryStart ? start : queryStart
+          const to = end < queryEnd ? end : queryEnd
+          for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+            const dateStr = d.toISOString().split('T')[0]
+            const key = `${leave.user_email}|${dateStr}`
+            // leave type → 근태 상태 변환
+            const statusMap: Record<string, string> = {
+              'annual': '연차',
+              'half_am': '오전반차',
+              'half_pm': '오후반차',
+              'official': '공가',
+            }
+            leaveTypeMap.set(key, statusMap[leave.type] || leave.type)
+          }
+        }
+      }
+
+      // 출장: requester_id → 해당 날짜 매핑
+      const tripSet = new Set<string>() // key: "employee_id|date"
+      if (tripResult.data) {
+        for (const trip of tripResult.data) {
+          if (!trip.requester_id) continue
+          const start = new Date(trip.trip_start_date + 'T00:00:00')
+          const end = new Date(trip.trip_end_date + 'T00:00:00')
+          const queryStart = new Date(startDate + 'T00:00:00')
+          const queryEnd = new Date(endDate + 'T00:00:00')
+          const from = start > queryStart ? start : queryStart
+          const to = end < queryEnd ? end : queryEnd
+          for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+            const dateStr = d.toISOString().split('T')[0]
+            tripSet.add(`${trip.requester_id}|${dateStr}`)
+          }
+        }
+      }
+
+      // 퇴사자(is_active=false) 제외 + 연차/출장 상태 반영
+      const attendanceData = attendanceResult.data || []
+      const dataWithDept = attendanceData
+        .filter((record: { employee_id: string }) => {
           const emp = empMap.get(record.employee_id)
           return !emp || emp.is_active
         })
-        .map((record) => ({
-          ...record,
-          department: empMap.get(record.employee_id)?.department || null,
-        }))
+        .map((record: { employee_id: string; date: string; status: string | null; clock_in: string | null; clock_out: string | null; [key: string]: unknown }) => {
+          const emp = empMap.get(record.employee_id)
+          let status = record.status
+          const position = emp?.position || null
+
+          // 출근 기록이 있는데 상태가 '출근 전'이면 시간 기반 자동 계산
+          if (record.clock_in && (!status || status === '출근 전')) {
+            const inTime = (record.clock_in as string).slice(0, 5)
+            const lateThreshold = position === '아르바이트' ? '09:00' : '08:30'
+            if (record.clock_out) {
+              status = '퇴근'
+            } else {
+              status = inTime <= lateThreshold ? '정상 출근' : '지각'
+            }
+          }
+
+          // 출근 기록 없고 상태 미입력/출근 전인 경우 연차/출장 확인
+          if (!record.clock_in && (!status || status === '출근 전')) {
+            // 출장 확인 (employee_id 기준)
+            if (tripSet.has(`${record.employee_id}|${record.date}`)) {
+              status = '출장'
+            }
+            // 연차/반차/공가 확인 (email 기준)
+            if (emp?.email) {
+              const leaveStatus = leaveTypeMap.get(`${emp.email}|${record.date}`)
+              if (leaveStatus) {
+                status = leaveStatus
+              }
+            }
+          }
+
+          return {
+            ...record,
+            status,
+            department: emp?.department || null,
+            position,
+          }
+        })
 
       return { success: true, data: dataWithDept };
     } catch (error) {

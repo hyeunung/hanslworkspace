@@ -1,5 +1,6 @@
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import { employeeService } from '@/services/employeeService'
 import { useTableSort } from '@/hooks/useTableSort'
 import { SortableHeader } from '@/components/ui/sortable-header'
@@ -41,6 +42,7 @@ interface AttendanceRecord {
   created_at: string | null
   updated_at: string | null
   department: string | null
+  position: string | null
 }
 
 const STATUS_OPTIONS = ['정상 출근', '지각', '퇴근', '오전반차']
@@ -123,6 +125,7 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [hasLoaded, setHasLoaded] = useState(false)
+  const supabase = useMemo(() => createClient(), [])
 
   // 인라인 편집 상태
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -133,7 +136,7 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
   const [isSaving, setIsSaving] = useState(false)
 
   // 데이터 조회
-  const loadRecords = async () => {
+  const loadRecords = useCallback(async () => {
     if (!selectedDate) return
 
     setLoading(true)
@@ -150,19 +153,25 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
       setLoading(false)
       setHasLoaded(true)
     }
-  }
+  }, [selectedDate])
 
-  // 최초 마운트 시 로드
+  // 최초 마운트 + 날짜 변경 시 로드
   useEffect(() => {
     loadRecords()
-  }, [])
+  }, [loadRecords])
 
-  // 날짜 변경 시 재조회
+  // 실시간 구독: attendance_records 변경 시 자동 갱신
   useEffect(() => {
-    if (hasLoaded) {
-      loadRecords()
+    const channel = supabase
+      .channel('attendance-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance_records' }, () => {
+        void loadRecords()
+      })
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
     }
-  }, [selectedDate])
+  }, [supabase, loadRecords])
 
   // 클라이언트 사이드 필터링
   const filteredRecords = useMemo(() => {
@@ -225,6 +234,15 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
     setEditingId(null)
   }
 
+  // 출근 시간 기반 상태 자동 계산 (정규직 08:30, 아르바이트 09:00)
+  const calcStatus = (clockIn: string | null, clockOut: string | null, position: string | null): string => {
+    if (!clockIn) return '출근 전'
+    const inTime = clockIn.slice(0, 5)
+    const lateThreshold = position === '아르바이트' ? '09:00' : '08:30'
+    if (clockOut) return '퇴근'
+    return inTime <= lateThreshold ? '정상 출근' : '지각'
+  }
+
   // 인라인 편집 저장
   const saveEdit = async (record: AttendanceRecord) => {
     setIsSaving(true)
@@ -237,11 +255,17 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
       if (editClockOut !== (record.clock_out?.slice(0, 5) || '')) {
         updates.clock_out = editClockOut ? `${editClockOut}:00` : null
       }
-      if (editStatus !== (record.status || '')) {
-        updates.status = editStatus || null
-      }
       if (editRemarks !== (record.remarks || '')) {
         updates.remarks = editRemarks || null
+      }
+
+      // 시간이 변경되면 상태 자동 계산 (수동 상태 선택보다 시간 기반 자동 계산 우선)
+      if ('clock_in' in updates || 'clock_out' in updates) {
+        const finalClockIn = 'clock_in' in updates ? updates.clock_in : record.clock_in
+        const finalClockOut = 'clock_out' in updates ? updates.clock_out : record.clock_out
+        updates.status = calcStatus(finalClockIn ?? null, finalClockOut ?? null, record.position)
+      } else if (editStatus !== (record.status || '')) {
+        updates.status = editStatus || null
       }
 
       if (Object.keys(updates).length === 0) {
