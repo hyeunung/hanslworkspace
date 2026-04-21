@@ -56,7 +56,7 @@ const MANAGER_DEPARTMENT_MAP: Record<string, string[]> = {
   "개발3팀_manager": ["개발3팀"],
   "CAD_manager": ["CAD"],
   "연구소_manager": ["연구소"],
-  "경영지원팀_manager": ["경영지원팀"],
+  "경영팀_manager": ["경영팀"],
   "기획팀_manager": ["기획팀"],
 };
 
