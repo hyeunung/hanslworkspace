@@ -158,21 +158,21 @@ export const ProductAcceptanceCertificate: React.FC<ProductAcceptanceCertificate
             <PartyBlock
               title="인도자"
               data={supplier}
-              extraRow={shipping_date ? { label: '출고일자', value: shipping_date } : undefined}
+              extraRow={{ label: '출고일자', value: shipping_date ?? '' }}
             />
             {recipients.map((r, i) => (
               <PartyBlock
                 key={i}
                 title={multipleReceivers ? `인수자 ${i + 1}` : '인수자'}
                 data={r}
-                extraRow={receiving_date ? { label: '입고일자', value: receiving_date } : undefined}
+                extraRow={{ label: '입고일자', value: receiving_date ?? '' }}
               />
             ))}
           </div>
         )
       })()}
 
-      {/* 품목 테이블 (품명/규격은 내용에 따라 동적 폭, 숫자 열은 내용에 맞게 타이트) */}
+      {/* 품목 테이블 (단가/공급가액/세액 당분간 숨김) */}
       <table className="w-full border-collapse text-[11px]" style={{ tableLayout: 'auto' }}>
         <thead>
           <tr className="bg-gray-100">
@@ -181,9 +181,6 @@ export const ProductAcceptanceCertificate: React.FC<ProductAcceptanceCertificate
             <Th nowrap>규격</Th>
             <Th nowrap>수량</Th>
             <Th nowrap>단위</Th>
-            <Th nowrap>단가</Th>
-            <Th nowrap>공급가액</Th>
-            <Th nowrap>세액</Th>
             <Th fill>비고</Th>
           </tr>
         </thead>
@@ -195,35 +192,11 @@ export const ProductAcceptanceCertificate: React.FC<ProductAcceptanceCertificate
               <Td nowrap>{it.specification ?? ''}</Td>
               <Td align="right" nowrap>{formatNumber(it.quantity)}</Td>
               <Td align="center" nowrap>{it.unit ?? ''}</Td>
-              <Td align="right" nowrap>{formatNumber(it.unit_price)}</Td>
-              <Td align="right" nowrap>{formatNumber(it.supply_amount)}</Td>
-              <Td align="right" nowrap>{formatNumber(it.tax_amount)}</Td>
               <Td>{it.remark ?? ''}</Td>
             </tr>
           ))}
         </tbody>
-        <tfoot>
-          <tr className="bg-gray-50 font-semibold">
-            <Td colSpan={6} align="right">합 계</Td>
-            <Td align="right">{formatNumber(totalSupply)}</Td>
-            <Td align="right">{formatNumber(totalTax)}</Td>
-            <Td>&nbsp;</Td>
-          </tr>
-        </tfoot>
       </table>
-
-      {/* 합계 금액 박스 */}
-      <div className="mt-3 border-2 border-gray-900 px-3 py-2 flex items-center justify-between text-sm">
-        <span className="font-bold tracking-wider">총 금 액 (VAT 포함)</span>
-        <div className="flex items-baseline gap-3">
-          <span className="text-gray-600 text-[11px]">
-            一金 {toKoreanAmount(totalAmount)} 원整
-          </span>
-          <span className="font-bold text-lg">
-            ₩ {formatNumber(totalAmount)}
-          </span>
-        </div>
-      </div>
 
       {/* 비고 */}
       {note && (
@@ -232,21 +205,19 @@ export const ProductAcceptanceCertificate: React.FC<ProductAcceptanceCertificate
         </div>
       )}
 
-      {/* 인수 담당자 — 총금액 아래 적당한 여백 두고 우측 정렬 */}
-      {receiver_name && (
-        <div
-          className="flex justify-end items-center gap-3 text-[12px] text-gray-800"
-          style={{ marginTop: '20mm' }}
+      {/* 인수 담당자 서명란 — 비어있어도 서명선은 항상 표시 */}
+      <div
+        className="flex justify-end items-center gap-3 text-[12px] text-gray-800"
+        style={{ marginTop: '20mm' }}
+      >
+        <span className="text-gray-600">인수 담당자 :</span>
+        <span
+          className="font-semibold inline-block text-center"
+          style={{ minWidth: '140px', paddingBottom: '2px', borderBottom: '1px solid #374151' }}
         >
-          <span className="text-gray-600">인수 담당자 :</span>
-          <span
-            className="font-semibold inline-block text-center"
-            style={{ minWidth: '140px', paddingBottom: '2px', borderBottom: '1px solid #374151' }}
-          >
-            {receiver_name}
-          </span>
-        </div>
-      )}
+          {receiver_name || '\u00A0'}
+        </span>
+      </div>
     </div>
     </>
   )
