@@ -3,7 +3,7 @@ import { Search, Plus, Printer, Star, ChevronDown, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import { shippingService } from '@/services/shippingService'
-import { ShippingAddress, ShippingLabelFormData, SENDER_COMPANY, SENDER_ADDRESS } from '@/types/shipping'
+import { ShippingAddress, ShippingLabelFormData, SENDER_COMPANY, SENDER_ADDRESS, formatContactDisplay, hasHonorificSuffix } from '@/types/shipping'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -41,7 +41,8 @@ export default function ShippingMain() {
 
   // 받는 사람 직접 입력 (신규 업체용)
   const [receiverCompany, setReceiverCompany] = useState('')
-  const [receiverContact, setReceiverContact] = useState('')
+  const [receiverContactName, setReceiverContactName] = useState('') // 이름
+  const [receiverContactTitle, setReceiverContactTitle] = useState('') // 직함
   const [receiverPhone, setReceiverPhone] = useState('')
   const [receiverAddress, setReceiverAddress] = useState('')
   const [isNewReceiver, setIsNewReceiver] = useState(false)
@@ -116,7 +117,9 @@ export default function ShippingMain() {
     const q = receiverSearch.toLowerCase()
     return addresses.filter(a =>
       a.company_name.toLowerCase().includes(q) ||
-      a.contact_name.toLowerCase().includes(q) ||
+      (a.contact_name_only || a.contact_name || '').toLowerCase().includes(q) ||
+      (a.contact_title || '').toLowerCase().includes(q) ||
+      (a.contact_memo || '').toLowerCase().includes(q) ||
       a.phone?.includes(q) ||
       a.address.toLowerCase().includes(q)
     )
@@ -142,9 +145,10 @@ export default function ShippingMain() {
 
   const handleSelectReceiver = (addr: ShippingAddress) => {
     setReceiverAddressId(addr.id)
-    setReceiverSearch(`${addr.company_name} - ${addr.contact_name}`)
+    setReceiverSearch(`${addr.company_name} - ${formatContactDisplay(addr)}`)
     setReceiverCompany(addr.company_name)
-    setReceiverContact(addr.contact_name)
+    setReceiverContactName(addr.contact_name_only || addr.contact_name || '')
+    setReceiverContactTitle(addr.contact_title || '')
     setReceiverPhone(addr.phone || '')
     setReceiverAddress(addr.address)
     setIsNewReceiver(false)
@@ -155,7 +159,8 @@ export default function ShippingMain() {
     setReceiverAddressId('')
     setReceiverSearch('')
     setReceiverCompany('')
-    setReceiverContact('')
+    setReceiverContactName('')
+    setReceiverContactTitle('')
     setReceiverPhone('')
     setReceiverAddress('')
     setIsNewReceiver(true)
@@ -163,18 +168,24 @@ export default function ShippingMain() {
 
   // 새업체 등록
   const handleRegisterNewAddress = async () => {
-    if (!receiverCompany || !receiverContact || !receiverAddress) {
+    if (!receiverCompany || !receiverContactName || !receiverAddress) {
       toast.error('업체명, 담당자, 주소는 필수입니다.')
       return
     }
     const result = await shippingService.createAddress(
-      { company_name: receiverCompany, contact_name: receiverContact, phone: receiverPhone, address: receiverAddress },
+      {
+        company_name: receiverCompany,
+        contact_name_only: receiverContactName,
+        contact_title: receiverContactTitle,
+        phone: receiverPhone,
+        address: receiverAddress,
+      },
       employee?.id
     )
     if (result.success && result.data) {
       setAddresses(prev => [...prev, result.data!])
       setReceiverAddressId(result.data.id)
-      setReceiverSearch(`${result.data.company_name} - ${result.data.contact_name}`)
+      setReceiverSearch(`${result.data.company_name} - ${formatContactDisplay(result.data)}`)
       setIsNewReceiver(false)
       toast.success('새 업체가 주소록에 등록되었습니다.')
     } else {
@@ -185,13 +196,19 @@ export default function ShippingMain() {
   // 인쇄 (저장 → label_code 포함하여 인쇄)
   const handlePrint = useCallback(async () => {
     if (!senderEmployeeId) { toast.error('보내는 사람을 선택해주세요.'); return }
-    if (!receiverCompany || !receiverContact || !receiverAddress) { toast.error('받는 사람 정보를 입력해주세요.'); return }
+    if (!receiverCompany || !receiverContactName || !receiverAddress) { toast.error('받는 사람 정보를 입력해주세요.'); return }
 
     // 1. 먼저 저장하여 label_code 획득
     let addrId = receiverAddressId
-    if (!addrId && receiverCompany && receiverContact) {
+    if (!addrId && receiverCompany && receiverContactName) {
       const result = await shippingService.createAddress(
-        { company_name: receiverCompany, contact_name: receiverContact, phone: receiverPhone, address: receiverAddress },
+        {
+          company_name: receiverCompany,
+          contact_name_only: receiverContactName,
+          contact_title: receiverContactTitle,
+          phone: receiverPhone,
+          address: receiverAddress,
+        },
         employee?.id
       )
       if (result.success && result.data) {
@@ -251,7 +268,7 @@ export default function ShippingMain() {
                 <div style="font-weight:bold;font-size:12pt;margin-bottom:9pt;border-bottom:2pt solid #333;padding-bottom:3pt;">받는 사람</div>
                 <table style="width:100%;font-size:10pt;line-height:2;">
                   <tr><td style="color:#666;width:45pt;">업체명</td><td style="font-weight:600;">${receiverCompany}</td></tr>
-                  <tr><td style="color:#666;">담당자</td><td>${receiverContact}</td></tr>
+                  <tr><td style="color:#666;">담당자</td><td>${receiverContactName ? `${[receiverContactName, receiverContactTitle].filter(Boolean).join(' ')}님` : ''}</td></tr>
                   <tr><td style="color:#666;">연락처</td><td>${receiverPhone}</td></tr>
                   <tr><td style="color:#666;vertical-align:top;">주소</td><td>${receiverAddress}</td></tr>
                 </table>
@@ -296,7 +313,7 @@ export default function ShippingMain() {
     printWindow.document.close()
     printWindow.focus()
     setTimeout(() => printWindow.print(), 300)
-  }, [senderEmployeeId, selectedSender, receiverCompany, receiverContact, receiverPhone, receiverAddress, receiverAddressId, deliveryType, productName, itemValue, deliveryPoint, notes, printCount, employee])
+  }, [senderEmployeeId, selectedSender, receiverCompany, receiverContactName, receiverContactTitle, receiverPhone, receiverAddress, receiverAddressId, deliveryType, productName, itemValue, deliveryPoint, notes, printCount, employee])
 
   // 발송 기록 삭제
   const handleDeleteLabel = async (e: React.MouseEvent, labelId: number) => {
@@ -319,6 +336,8 @@ export default function ShippingMain() {
       l.label_code?.toLowerCase().includes(q) ||
       l.receiver_address?.company_name?.toLowerCase().includes(q) ||
       l.receiver_address?.contact_name?.toLowerCase().includes(q) ||
+      l.receiver_address?.contact_name_only?.toLowerCase().includes(q) ||
+      l.receiver_address?.contact_title?.toLowerCase().includes(q) ||
       l.sender_employee?.name?.toLowerCase().includes(q) ||
       l.product_name?.toLowerCase().includes(q)
     )
@@ -441,7 +460,7 @@ export default function ShippingMain() {
                       <div className="flex items-center gap-2">
                         {addr.is_favorite && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />}
                         <span className="font-medium">{addr.company_name}</span>
-                        <span className="text-gray-500">{addr.contact_name}</span>
+                        <span className="text-gray-500">{formatContactDisplay(addr)}</span>
                         <span className="text-gray-400">{addr.phone}</span>
                       </div>
                       <div className="text-[10px] text-gray-400 mt-0.5 truncate">{addr.address}</div>
@@ -463,11 +482,60 @@ export default function ShippingMain() {
               </div>
               <div className="grid grid-cols-[50px_1fr] items-center gap-2">
                 <Label className="text-[11px] !font-normal text-gray-500">담당자</Label>
-                <Input
-                  value={receiverContact}
-                  onChange={(e) => { setReceiverContact(e.target.value); if (receiverAddressId) { setReceiverAddressId(''); setIsNewReceiver(true) } }}
-                  placeholder="담당자"
-                />
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div className="relative">
+                    <Input
+                      value={receiverContactName}
+                      onChange={(e) => { setReceiverContactName(e.target.value); if (receiverAddressId) { setReceiverAddressId(''); setIsNewReceiver(true) } }}
+                      placeholder="이름"
+                      className={cn(hasHonorificSuffix(receiverContactName) && "border-red-400 focus:border-red-500")}
+                    />
+                    {hasHonorificSuffix(receiverContactName) && (
+                      <div className="absolute left-0 top-full mt-2 z-20 animate-in fade-in slide-in-from-top-1">
+                        <div className="absolute -top-[5px] left-4 w-2.5 h-2.5 rotate-45 bg-amber-50 border-l border-t border-amber-400" />
+                        <div className="relative border border-amber-400 bg-amber-50 px-3 py-2 shadow-md whitespace-nowrap">
+                          <div className="flex items-start gap-1.5">
+                            <span className="text-amber-600 text-[11px] leading-tight">⚠️</span>
+                            <div>
+                              <p className="text-[11px] font-semibold text-amber-700 leading-tight">
+                                '님'은 자동 부여됩니다
+                              </p>
+                              <p className="text-[10px] text-amber-600 leading-tight mt-0.5">
+                                현재 상태로 인쇄 시 <b>'{receiverContactName}님'</b>으로 표기됩니다.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <Input
+                      value={receiverContactTitle}
+                      onChange={(e) => { setReceiverContactTitle(e.target.value); if (receiverAddressId) { setReceiverAddressId(''); setIsNewReceiver(true) } }}
+                      placeholder="직함"
+                      className={cn(hasHonorificSuffix(receiverContactTitle) && "border-red-400 focus:border-red-500")}
+                    />
+                    {hasHonorificSuffix(receiverContactTitle) && (
+                      <div className="absolute left-0 top-full mt-2 z-20 animate-in fade-in slide-in-from-top-1">
+                        <div className="absolute -top-[5px] left-4 w-2.5 h-2.5 rotate-45 bg-amber-50 border-l border-t border-amber-400" />
+                        <div className="relative border border-amber-400 bg-amber-50 px-3 py-2 shadow-md whitespace-nowrap">
+                          <div className="flex items-start gap-1.5">
+                            <span className="text-amber-600 text-[11px] leading-tight">⚠️</span>
+                            <div>
+                              <p className="text-[11px] font-semibold text-amber-700 leading-tight">
+                                '님'은 자동 부여됩니다
+                              </p>
+                              <p className="text-[10px] text-amber-600 leading-tight mt-0.5">
+                                현재 상태로 인쇄 시 <b>'{receiverContactTitle}님'</b>으로 표기됩니다.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -620,7 +688,9 @@ export default function ShippingMain() {
                     <td className="px-2 py-1.5 card-title">{label.delivery_point}</td>
                     <td className="px-2 py-1.5 card-title">{label.sender_employee?.name}</td>
                     <td className="px-2 py-1.5 card-title">{label.receiver_address?.company_name}</td>
-                    <td className="px-2 py-1.5 card-title">{label.receiver_address?.contact_name}</td>
+                    <td className="px-2 py-1.5 card-title">
+                      {label.receiver_address ? formatContactDisplay(label.receiver_address) : ''}
+                    </td>
                     <td className="px-2 py-1.5 card-title">{label.receiver_address?.phone}</td>
                     <td className="px-2 py-1.5 card-title truncate max-w-[150px]">{label.product_name}</td>
                     <td className="px-2 py-1.5 card-title">{label.item_value ? `₩${Number(label.item_value).toLocaleString()}` : ''}</td>

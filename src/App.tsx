@@ -1,9 +1,10 @@
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from '@/contexts/AuthContext'
 import AuthGuard from '@/components/auth/AuthGuard'
 import DataInitializer from '@/components/auth/DataInitializer'
 import AppLayout from '@/components/layout/AppLayout'
 import UpdateNotificationModal from '@/components/common/UpdateNotificationModal'
+import ProductAcceptanceCertificatePreview from '@/components/receipts/ProductAcceptanceCertificatePreview'
 
 /**
  * 애플리케이션 최상위 컴포넌트
@@ -15,13 +16,24 @@ import UpdateNotificationModal from '@/components/common/UpdateNotificationModal
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <AuthGuard>
-          <DataInitializer>
-            <AppLayout />
-          </DataInitializer>
-        </AuthGuard>
-      </AuthProvider>
+      <Routes>
+        {/* 공개 프리뷰 라우트 (AuthGuard 바깥) */}
+        <Route path="/preview/acceptance" element={<ProductAcceptanceCertificatePreview />} />
+
+        {/* 그 외 모든 경로: 기존 인증 흐름 */}
+        <Route
+          path="/*"
+          element={
+            <AuthProvider>
+              <AuthGuard>
+                <DataInitializer>
+                  <AppLayout />
+                </DataInitializer>
+              </AuthGuard>
+            </AuthProvider>
+          }
+        />
+      </Routes>
       <UpdateNotificationModal />
     </BrowserRouter>
   )
