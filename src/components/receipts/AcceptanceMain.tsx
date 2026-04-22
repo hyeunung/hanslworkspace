@@ -332,6 +332,9 @@ export default function AcceptanceMain() {
   // 미리보기 불가 사유 (버튼 아래 말풍선)
   const [previewError, setPreviewError] = useState<string | null>(null)
 
+  // 미리보기 세션 카운터 (버튼 재클릭 시 새창 강제 재오픈)
+  const [previewSession, setPreviewSession] = useState(0)
+
   // ---- 미리보기: 저장하지 않고 현재 폼 상태로 인수증 뷰 렌더 ----
   const handlePreview = () => {
     const { ok, cleanedRecipients, cleanedItems, error } = validateForm()
@@ -341,6 +344,12 @@ export default function AcceptanceMain() {
       return
     }
     setPreviewError(null)
+    // 기존 미리보기 창 닫기
+    if (previewWinRef.current && !previewWinRef.current.closed) {
+      try { previewWinRef.current.close() } catch {}
+    }
+    previewWinRef.current = null
+    setPreviewSession((s) => s + 1) // key 변경으로 NewWindow 강제 remount
 
     const selEmp = employees.find((e) => e.id === supplierEmployeeId)
     // 인수자는 폼 입력 값을 그대로 가상 주소로 변환
@@ -487,6 +496,10 @@ export default function AcceptanceMain() {
     setReceiverName('')
     setNote('')
     setItems([emptyItem(1)])
+    // 인수자 주소록 검색/드롭다운 상태도 함께 초기화
+    setRecipientSearches({})
+    setOpenDropdownIdx(null)
+    setPreviewError(null)
   }
 
   const handleDelete = async (id: string) => {
@@ -1132,9 +1145,7 @@ export default function AcceptanceMain() {
                 <th className="px-2 py-1 text-left">규격</th>
                 <th className="px-2 py-1 w-16">수량</th>
                 <th className="px-2 py-1 w-14">단위</th>
-                <th className="px-2 py-1 w-20">단가</th>
-                <th className="px-2 py-1 w-24">공급가액</th>
-                <th className="px-2 py-1 w-20">세액</th>
+                {/* 단가/공급가액/세액: 당분간 숨김 (필요 시 복원) */}
                 <th className="px-2 py-1 text-left">비고</th>
                 <th className="px-2 py-1 w-10"></th>
               </tr>
@@ -1171,27 +1182,7 @@ export default function AcceptanceMain() {
                         placeholder="EA"
                       />
                     </td>
-                    <td className="px-1">
-                      <Input
-                        type="number"
-                        value={it.unit_price ?? ''}
-                        onChange={(e) => updateItem(idx, { unit_price: e.target.value === '' ? null : Number(e.target.value) })}
-                      />
-                    </td>
-                    <td className="px-1">
-                      <Input
-                        type="number"
-                        value={it.supply_amount}
-                        onChange={(e) => updateItem(idx, { supply_amount: Number(e.target.value) || 0 })}
-                      />
-                    </td>
-                    <td className="px-1">
-                      <Input
-                        type="number"
-                        value={it.tax_amount}
-                        onChange={(e) => updateItem(idx, { tax_amount: Number(e.target.value) || 0 })}
-                      />
-                    </td>
+                    {/* 단가/공급가액/세액: 당분간 숨김 (필요 시 복원) */}
                     <td className="px-1">
                       <Input
                         value={it.remark ?? ''}
@@ -1213,16 +1204,7 @@ export default function AcceptanceMain() {
                   </tr>
                 ))}
               </tbody>
-              <tfoot className="bg-gray-50 font-semibold">
-                <tr>
-                  <td colSpan={6} className="px-2 py-2 text-right">합계</td>
-                  <td className="px-2 py-2 text-right">{totalSupply.toLocaleString('ko-KR')}</td>
-                  <td className="px-2 py-2 text-right">{totalTax.toLocaleString('ko-KR')}</td>
-                  <td colSpan={2} className="px-2 py-2 text-right">
-                    총: ₩ {totalAmount.toLocaleString('ko-KR')}
-                  </td>
-                </tr>
-              </tfoot>
+              {/* 합계 footer: 단가/공급가액/세액 숨김 상태에서는 비활성 */}
             </table>
           </div>
         </div>
@@ -1350,9 +1332,10 @@ export default function AcceptanceMain() {
         </div>
       </section>
 
-      {/* 인쇄 미리보기 — 별도 창으로 렌더 */}
+      {/* 인쇄 미리보기 — 별도 창으로 렌더 (미리보기 세션마다 remount) */}
       {printTarget && (
         <NewWindow
+          key={`${printTarget.id}-${previewSession}`}
           title={`제품 인수증 · ${printTarget.document_number}`}
           features="width=1000,height=1100"
           onClose={() => {

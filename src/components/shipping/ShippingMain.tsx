@@ -166,13 +166,13 @@ export default function ShippingMain() {
     setIsNewReceiver(true)
   }
 
-  // 새업체 등록
+  // 새업체 등록 (스마트 upsert: 동일 (회사+이름+주소) 있으면 직함/전화만 업데이트)
   const handleRegisterNewAddress = async () => {
     if (!receiverCompany || !receiverContactName || !receiverAddress) {
       toast.error('업체명, 담당자, 주소는 필수입니다.')
       return
     }
-    const result = await shippingService.createAddress(
+    const result = await shippingService.upsertAddressByCompanyAndContact(
       {
         company_name: receiverCompany,
         contact_name_only: receiverContactName,
@@ -183,11 +183,14 @@ export default function ShippingMain() {
       employee?.id
     )
     if (result.success && result.data) {
-      setAddresses(prev => [...prev, result.data!])
+      setAddresses(prev => {
+        const exists = prev.some(a => a.id === result.data!.id)
+        return exists ? prev.map(a => a.id === result.data!.id ? result.data! : a) : [...prev, result.data!]
+      })
       setReceiverAddressId(result.data.id)
       setReceiverSearch(`${result.data.company_name} - ${formatContactDisplay(result.data)}`)
       setIsNewReceiver(false)
-      toast.success('새 업체가 주소록에 등록되었습니다.')
+      toast.success(result.mode === 'updated' ? '기존 주소록이 업데이트되었습니다.' : '새 주소록 항목이 등록되었습니다.')
     } else {
       toast.error(result.error || '등록 실패')
     }
@@ -198,10 +201,10 @@ export default function ShippingMain() {
     if (!senderEmployeeId) { toast.error('보내는 사람을 선택해주세요.'); return }
     if (!receiverCompany || !receiverContactName || !receiverAddress) { toast.error('받는 사람 정보를 입력해주세요.'); return }
 
-    // 1. 먼저 저장하여 label_code 획득
-    let addrId = receiverAddressId
-    if (!addrId && receiverCompany && receiverContactName) {
-      const result = await shippingService.createAddress(
+    // 1. 주소록 스마트 upsert (회사+이름+주소 일치 시 직함/전화 업데이트, 다르면 신규 추가)
+    let addrId = ''
+    if (receiverCompany && receiverContactName) {
+      const result = await shippingService.upsertAddressByCompanyAndContact(
         {
           company_name: receiverCompany,
           contact_name_only: receiverContactName,
@@ -213,10 +216,18 @@ export default function ShippingMain() {
       )
       if (result.success && result.data) {
         addrId = result.data.id
-        setAddresses(prev => [...prev, result.data!])
+        setAddresses(prev => {
+          const exists = prev.some(a => a.id === result.data!.id)
+          return exists ? prev.map(a => a.id === result.data!.id ? result.data! : a) : [...prev, result.data!]
+        })
         setReceiverAddressId(addrId)
         setIsNewReceiver(false)
-        toast.success('새 업체가 주소록에 자동 등록되었습니다.')
+        if (result.mode === 'created') {
+          toast.success('새 주소록 항목이 자동 등록되었습니다.')
+        }
+      } else if (result.error) {
+        toast.error(`주소록 저장 실패: ${result.error}`)
+        return
       }
     }
 
