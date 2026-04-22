@@ -74,7 +74,7 @@ function SelectContent({
       <SelectPrimitive.Content
         data-slot="select-content"
         className={cn(
-          "relative z-50 max-h-(--radix-select-content-available-height) min-w-[8rem]",
+          "relative z-50 max-h-[min(320px,var(--radix-select-content-available-height))] min-w-[8rem]",
           "bg-white border border-gray-200 rounded-professional shadow-professional-lg",
           "text-gray-800 overflow-x-hidden overflow-y-auto",
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
@@ -95,7 +95,7 @@ function SelectContent({
           className={cn(
             "p-1",
             position === "popper" &&
-              "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1"
+              "w-full min-w-[var(--radix-select-trigger-width)] scroll-my-1"
           )}
         >
           {children}

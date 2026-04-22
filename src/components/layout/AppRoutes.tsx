@@ -16,6 +16,7 @@ const TransactionStatementMain = lazy(() => import('@/components/transaction-sta
 const ApplicationListMain = lazy(() => import('@/components/application/ApplicationListMain'))
 const AiServiceApplicationForm = lazy(() => import('@/components/application/AiServiceApplicationForm'))
 const ShippingMain = lazy(() => import('@/components/shipping/ShippingMain'))
+const AcceptanceMain = lazy(() => import('@/components/receipts/AcceptanceMain'))
 const AttendancePage = lazy(() => import('@/components/employee/AttendancePage'))
 const AuthConfirm = lazy(() => import('@/components/auth/AuthConfirm'))
 const ResetPassword = lazy(() => import('@/components/auth/ResetPassword'))
@@ -49,6 +50,7 @@ export default function AppRoutes() {
           {/* 메인 페이지들 */}
           <Route path="/dashboard" element={<DashboardMain />} />
           <Route path="/shipping" element={<ShippingMain />} />
+          <Route path="/shipping/acceptance" element={<AcceptanceMain />} />
           <Route path="/purchase" element={<RequestListMain showEmailButton={false} />} />
           <Route path="/purchase/new" element={<PurchaseNewMain />} />
           <Route path="/purchase/list" element={<RequestListMain showEmailButton={false} />} />

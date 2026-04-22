@@ -3,7 +3,12 @@ export interface ShippingAddress {
   id: string
   company_name: string
   contact_name: string
+  contact_name_only: string | null
+  contact_title: string | null
+  contact_memo: string | null
   phone: string | null
+  mobile: string | null
+  email: string | null
   address: string
   is_favorite: boolean
   created_at: string
@@ -13,9 +18,28 @@ export interface ShippingAddress {
 
 export interface ShippingAddressFormData {
   company_name: string
-  contact_name: string
+  contact_name_only: string
+  contact_title?: string
+  contact_memo?: string
   phone: string
-  address: string
+  mobile?: string
+  email?: string
+  address?: string
+}
+
+// 직함 표기용 헬퍼: "박민호 선임님" 또는 "박민호님" (직함이 없어도 '님' 부여)
+export function formatContactDisplay(addr: Pick<ShippingAddress, 'contact_name' | 'contact_name_only' | 'contact_title' | 'contact_memo'>): string {
+  const name = addr.contact_name_only || addr.contact_name || ''
+  if (!name) return ''
+  const titleWithNim = addr.contact_title ? ` ${addr.contact_title}님` : '님'
+  const memo = addr.contact_memo ? ` (${addr.contact_memo})` : ''
+  return `${name}${titleWithNim}${memo}`.trim()
+}
+
+/** 직함 칸에 '님'이 들어갔는지 검사 (UI에서 자동으로 '님'을 붙여주므로 중복 방지용) */
+export function hasHonorificSuffix(title: string | null | undefined): boolean {
+  if (!title) return false
+  return /님/.test(title)
 }
 
 // 택배 발송 기록
