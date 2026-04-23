@@ -354,10 +354,11 @@ export default function FilterToolbar({
     })
   }
 
-  const handleApplyFilter = () => {
+  const handleApplyFilter = (overrideValue?: string | number | Date) => {
     const isDateFilter = newFilter.field === 'date_range' || newFilter.field === 'date_month'
     const requiresDateField = isDateFilter && !newFilter.dateField
-    
+    const effectiveValue = overrideValue !== undefined ? overrideValue : newFilter.value
+
     // 조건이 없으면 자동으로 기본 조건 설정
     let finalCondition = newFilter.condition
     if (!finalCondition) {
@@ -374,17 +375,19 @@ export default function FilterToolbar({
         }
       }
     }
-    
-    if (newFilter.field && finalCondition !== undefined && newFilter.value !== undefined && newFilter.value !== '' && !requiresDateField) {
+
+    if (newFilter.field && finalCondition !== undefined && effectiveValue !== undefined && effectiveValue !== '' && !requiresDateField) {
       const filter: FilterRule = {
         id: newFilter.id!,
         field: newFilter.field,
         condition: finalCondition,
-        value: newFilter.value,
+        value: effectiveValue,
         label: newFilter.label!,
         dateField: newFilter.dateField // 날짜 필드 정보 포함
       }
-      onFiltersChange([...activeFilters, filter])
+      // 같은 필드의 기존 필터는 교체 (중복 방지 — 특히 requester_name 같은 equals 필터)
+      const withoutSameField = activeFilters.filter(f => f.field !== newFilter.field)
+      onFiltersChange([...withoutSameField, filter])
       setNewFilter({})
       setIsFilterOpen(false)
     }
@@ -544,6 +547,7 @@ export default function FilterToolbar({
                           onClick={() => {
                             setNewFilter(prev => ({ ...prev, value: option }))
                             setSearchValue('')
+                            handleApplyFilter(option) // 선택 즉시 필터 적용
                           }}
                           className="w-full justify-start p-2 h-auto hover:bg-gray-100 text-left"
                         >
@@ -1111,7 +1115,7 @@ export default function FilterToolbar({
 
                       <div className="flex gap-2">
                         <Button
-                          onClick={handleApplyFilter}
+                          onClick={() => handleApplyFilter()}
                           disabled={
                             !newFilter.field || 
                             newFilter.value === '' ||

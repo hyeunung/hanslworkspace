@@ -143,7 +143,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     const result = {
       pending: hasApprovalRole ? 'all' : currentUserName,
       purchase: hasManagerRole ? 'all' : (roleCase === 3 ? 'all' : currentUserName),
-      receipt: (hasHrRole || hasPurchaseManagerRole) ? 'all' : (roleCase === 3 ? 'all' : currentUserName),
+      receipt: 'all', // 입고현황은 요청자 고급필터로 제어
       done: 'all' // 전체 항목 탭은 항상 모든 항목 표시
     };
     
@@ -244,6 +244,28 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
       setSelectedEmployee(defaultEmp);
     }
   }, [activeTab, defaultEmployeeByTab]);
+
+  // 입고현황 탭 진입 시 비관리자는 요청자=본인 필터 자동 추가 (관리자는 전체)
+  useEffect(() => {
+    if (activeTab !== 'receipt' || !currentUserName) return;
+
+    const isReceiptFullAccess = currentUserRoles.some((role: string) =>
+      ['superadmin', 'ceo', 'hr', 'raw_material_manager', 'consumable_manager', 'purchase_manager'].includes(role)
+    );
+    if (isReceiptFullAccess) return;
+
+    setActiveFilters(prev => {
+      // 함수형 업데이트 내부에서 최신 상태로 dedupe (Strict Mode double-invoke 방지)
+      if (prev.some(f => f.field === 'requester_name')) return prev;
+      return [...prev, {
+        id: `auto_requester_${Date.now()}`,
+        field: 'requester_name',
+        condition: 'equals',
+        value: currentUserName,
+        label: '요청자'
+      }];
+    });
+  }, [activeTab, currentUserName, currentUserRoles]);
 
   // 캐시 상태 확인 및 필요시 데이터 새로고침
   useEffect(() => {
