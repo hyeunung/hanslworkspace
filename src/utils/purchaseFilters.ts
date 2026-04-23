@@ -122,29 +122,13 @@ export const filterByTab = (
     }
     
     case 'receipt': {
-      // 입고 현황 탭: 입고 대기중인 항목들
-      // hr 권한이 있으면 모든 항목 볼 수 있음
-      const hasHrRole = userRoles.includes('hr')
-      const hasManagerRole = userRoles.some((role: string) => 
-        ['superadmin', 'ceo', 'raw_material_manager', 'consumable_manager', 'purchase_manager'].includes(role)
-      )
-      
+      // 입고 현황 탭: 입고 대기중인 항목들 (권한 무관, UI 요청자 필터로 제어)
       return purchases.filter(purchase => {
         if (purchase.is_received) return false
-        
-        // hr 권한이 있으면 모든 항목 표시
-        if (hasHrRole || hasManagerRole) {
-          const isSeonJin = (purchase.progress_type || '').includes('선진행')
-          const finalApproved = purchase.final_manager_status === 'approved'
-          return isSeonJin || finalApproved
-        }
-        
-        // lead buyer와 일반 사용자는 본인이 요청한 항목만
+
         const isSeonJin = (purchase.progress_type || '').includes('선진행')
         const finalApproved = purchase.final_manager_status === 'approved'
-        const isRequester = purchase.requester_name === currentUser?.name
-        
-        return (isSeonJin || finalApproved) && isRequester
+        return isSeonJin || finalApproved
       })
     }
     
@@ -519,10 +503,21 @@ export const calculateTabCounts = (
   allPurchases: Purchase[],
   currentUser: Employee | null
 ): Record<TabType, number> => {
+  // 입고현황 뱃지 카운트: 비관리자는 본인 기본 뷰(요청자=본인) 기준으로 계산
+  // (실제 필터링은 요청자 고급필터가 단일 소스; 뱃지 표시만 일관성 맞춤)
+  const userRoles = parseRoles(currentUser?.roles)
+  const receiptFullAccess = userRoles.some(role =>
+    ['superadmin', 'ceo', 'hr', 'raw_material_manager', 'consumable_manager', 'purchase_manager'].includes(role)
+  )
+  const receiptAll = filterByTab(allPurchases, 'receipt', currentUser)
+  const receiptCount = receiptFullAccess
+    ? receiptAll.length
+    : receiptAll.filter(p => p.requester_name === currentUser?.name).length
+
   return {
     pending: filterByTab(allPurchases, 'pending', currentUser).length,
     purchase: filterByTab(allPurchases, 'purchase', currentUser).length,
-    receipt: filterByTab(allPurchases, 'receipt', currentUser).length,
+    receipt: receiptCount,
     done: filterByTab(allPurchases, 'done', currentUser).length
   }
 }
@@ -833,7 +828,7 @@ export const applyAllFilters = (
   if (options.tab) {
     filtered = filterByTab(filtered, options.tab, currentUser)
   }
-  
+
   // 2. 직원 필터
   if (options.employeeName) {
     filtered = filterByEmployee(filtered, options.employeeName, currentUser)
