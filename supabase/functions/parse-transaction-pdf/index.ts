@@ -2,6 +2,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 // @ts-ignore - Deno runtime imports
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4'
+// @ts-ignore - Deno runtime imports
+import { PDFDocument, degrees } from "https://esm.sh/pdf-lib@1.17.1"
 
 declare const Deno: {
   env: {
@@ -115,10 +117,22 @@ serve(async (req) => {
     )
 
     currentStage = 'download_file'
-    const fileBuffer = await downloadFile(fileUrl)
+    let fileBuffer = await downloadFile(fileUrl)
 
     currentStage = 'encode_pdf'
-    const pdfBase64 = arrayBufferToBase64(fileBuffer)
+    let pdfBase64 = arrayBufferToBase64(fileBuffer)
+
+    currentStage = 'detect_rotation'
+    const rotationAngle = await detectPdfRotation(pdfBase64, anthropicApiKey).catch(() => 0)
+
+    if (rotationAngle !== 0) {
+      currentStage = 'apply_rotation'
+      fileBuffer = await rotatePdfBuffer(fileBuffer, rotationAngle)
+      pdfBase64 = arrayBufferToBase64(fileBuffer)
+
+      currentStage = 'upload_corrected'
+      await uploadCorrectedPdfToStorage(supabase, fileUrl, fileBuffer)
+    }
 
     currentStage = 'claude_extract'
     const parseResult = await extractWithClaude(pdfBase64, anthropicApiKey, poScope)
@@ -302,6 +316,95 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
     binary += String.fromCharCode(bytes[i])
   }
   return btoa(binary)
+}
+
+// PDF 첫 페이지 텍스트 방향을 판별. Haiku로 가볍게 호출.
+// 반환값은 "본문이 정상 방향이 되도록 추가로 회전해야 하는 시계방향 각도".
+async function detectPdfRotation(pdfBase64: string, apiKey: string): Promise<0 | 90 | 180 | 270> {
+  const prompt = `이 PDF 첫 페이지의 본문 텍스트(특히 한글)가 사용자가 정상적으로 읽을 수 있는 방향이 되려면 시계방향(clockwise)으로 추가 회전이 필요합니까?
+- 이미 정방향이면 0
+- 텍스트가 왼쪽으로 누워(상단이 왼쪽)있으면 90
+- 거꾸로(상단이 아래) 있으면 180
+- 텍스트가 오른쪽으로 누워(상단이 오른쪽) 있으면 270
+
+답은 0, 90, 180, 270 중 하나의 숫자만. 다른 텍스트 절대 포함 금지.`
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 16,
+      temperature: 0,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: {
+                type: 'base64',
+                media_type: 'application/pdf',
+                data: pdfBase64,
+              },
+            },
+            { type: 'text', text: prompt },
+          ],
+        },
+      ],
+    }),
+  })
+
+  if (!response.ok) return 0
+
+  const result = await response.json()
+  const text = (result?.content || [])
+    .filter((b: any) => b?.type === 'text')
+    .map((b: any) => b?.text || '')
+    .join('')
+    .trim()
+
+  const m = text.match(/\b(0|90|180|270)\b/)
+  if (!m) return 0
+  const angle = parseInt(m[1], 10)
+  if (angle === 90 || angle === 180 || angle === 270) return angle
+  return 0
+}
+
+// pdf-lib로 모든 페이지의 /Rotate를 누적 회전. 표준 PDF 메타데이터라 Claude PDF 렌더러가 존중.
+async function rotatePdfBuffer(buffer: ArrayBuffer, angle: number): Promise<ArrayBuffer> {
+  const pdfDoc = await PDFDocument.load(buffer, { updateMetadata: false })
+  const pages = pdfDoc.getPages()
+  for (const page of pages) {
+    const current = page.getRotation().angle || 0
+    const next = (((current + angle) % 360) + 360) % 360
+    page.setRotation(degrees(next))
+  }
+  const bytes = await pdfDoc.save()
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+}
+
+// Storage public/sign URL에서 bucket/path를 추출해 PDF를 덮어쓴다.
+async function uploadCorrectedPdfToStorage(
+  supabase: any,
+  fileUrl: string,
+  buffer: ArrayBuffer
+): Promise<void> {
+  const m = fileUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/([^/]+)\/(.+?)(?:\?.*)?$/)
+  if (!m) throw new Error(`Cannot parse storage URL: ${fileUrl}`)
+  const bucket = decodeURIComponent(m[1])
+  const path = decodeURIComponent(m[2])
+  const { error } = await supabase.storage
+    .from(bucket)
+    .upload(path, new Uint8Array(buffer), {
+      contentType: 'application/pdf',
+      upsert: true,
+    })
+  if (error) throw new Error(`Storage upload failed: ${error.message}`)
 }
 
 function sanitizeForJsonb(text: string): string {

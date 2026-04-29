@@ -2479,10 +2479,46 @@ class TransactionStatementService {
   }
 
   /**
-   * 거래명세서 거부
+   * 거래명세서 거부 — audit log에 거부자/시각/사유를 함께 기록한다.
    */
   async rejectStatement(statementId: string, reason?: string): Promise<{ success: boolean; error?: string }> {
     try {
+      const { data: { user } } = await this.supabase.auth.getUser();
+
+      let actorName: string | null = null;
+      if (user?.id) {
+        const { data: emp } = await this.supabase
+          .from('employees')
+          .select('name')
+          .eq('id', user.id)
+          .maybeSingle();
+        actorName = (emp as { name?: string } | null)?.name || null;
+      }
+
+      const { data: prev } = await this.supabase
+        .from('transaction_statements')
+        .select('status')
+        .eq('id', statementId)
+        .single();
+      const previousStatus = (prev as { status?: string } | null)?.status || null;
+
+      // Audit log를 update 직전에 먼저 INSERT —
+      // 그래야 직후 status update가 fire하는 DB fallback 트리거가
+      // 2초 dedup 윈도우로 자동 INSERT를 스킵해서, actor 정보 있는 1행만 남는다.
+      await this.supabase
+        .from('transaction_statement_audit_logs')
+        .insert({
+          statement_id: statementId,
+          action: 'rejected',
+          previous_status: previousStatus,
+          new_status: 'rejected',
+          reason: reason || null,
+          actor_id: user?.id || null,
+          actor_name: actorName,
+          actor_email: user?.email || null,
+          source: 'web_reject_button',
+        });
+
       const updateData: Record<string, unknown> = { status: 'rejected' };
       if (reason) {
         updateData.extraction_error = reason;
