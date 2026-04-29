@@ -1155,7 +1155,7 @@ ${itemsText}`
         .from('purchase_requests')
         .select(`
           *,
-          vendors:vendor_id(id, vendor_name, is_active),
+          vendors:vendor_id(id, vendor_name),
           purchase_request_items(*),
           contact:contact_id(id, contact_name, contact_email, contact_phone, position)
         `)
@@ -2278,7 +2278,7 @@ ${itemsText}`
         .from('purchase_requests')
         .select(`
           *,
-          vendors:vendor_id(id, vendor_name, is_active),
+          vendors:vendor_id(id, vendor_name),
           purchase_request_items(*),
           contact:contact_id(id, contact_name, contact_email, contact_phone, position)
         `)
