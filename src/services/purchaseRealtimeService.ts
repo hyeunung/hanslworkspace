@@ -333,9 +333,20 @@ class PurchaseRealtimeService {
       logger.error('❌ [Realtime] 품목 로드 실패:', error)
     }
 
+    // await 동안 캐시가 교체/갱신되었을 수 있으므로 재확인 (중복 추가 방지)
+    if (!purchaseMemoryCache.allPurchases) {
+      logger.warn('⚠️ [Realtime] 품목 로드 후 캐시 없음, 추가 생략:', { id: record.id })
+      return
+    }
+    if (purchaseMemoryCache.allPurchases.some(p => p.id === record.id)) {
+      logger.info('⚠️ [Realtime] 품목 로드 중 캐시에 이미 추가됨, 업데이트로 처리:', { id: record.id })
+      this.handlePurchaseUpdate(record)
+      return
+    }
+
     // 배열 맨 앞에 추가 (최신 항목)
     purchaseMemoryCache.allPurchases = [newPurchase, ...purchaseMemoryCache.allPurchases]
-    
+
     logger.info('✅ [Realtime] 새 발주서 추가됨:', { id: record.id })
   }
 
