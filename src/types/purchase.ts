@@ -223,6 +223,9 @@ export interface PurchaseRequest {
   vendor_payment_schedule?: string | null
   contact_name?: string | null
   contact_id?: number | null
+
+  // 무상샘플 여부 (true면 _S suffix, 단가/금액 0)
+  is_free_sample?: boolean
 }
 
 export interface PurchaseRequestWithDetails extends PurchaseRequest {
@@ -384,6 +387,7 @@ export interface Purchase {
   final_manager_rejection_reason?: string;
   created_at?: string;
   updated_at?: string;
+  is_free_sample?: boolean;
   
   // JOIN된 items (purchase_request_items 테이블)
   purchase_request_items?: PurchaseRequestItem[];

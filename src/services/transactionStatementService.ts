@@ -513,6 +513,308 @@ class TransactionStatementService {
   }
 
   /**
+   * 무상샘플 거래명세서 업로드
+   * - is_free_sample=true 로 저장 → 트리거가 자동으로 _S suffix 부여
+   * - statement_mode='default' (기존 OCR 파이프라인 그대로 사용)
+   * - OCR 추출 후 별도 호출로 자동 발주 생성 (autoCreatePurchaseFromFreeSample)
+   */
+  async uploadFreeSampleStatement(
+    file: File,
+    uploaderName: string,
+    actualReceiptDate?: Date,
+    fileType: StatementFileType = 'image'
+  ): Promise<{ success: boolean; data?: { statementId: string; imageUrl: string; fileType: StatementFileType }; error?: string }> {
+    try {
+      const uploadFile = fileType === 'image' ? await this.prepareOcrImage(file) : file;
+      const ext = uploadFile.name.split('.').pop()?.toLowerCase() || 'bin';
+      const uuid = crypto.randomUUID();
+      const fileName = `${uuid}.${ext}`;
+      const storagePath = `Transaction Statement/${fileName}`;
+
+      const { error: uploadError } = await this.supabase
+        .storage
+        .from('receipt-images')
+        .upload(storagePath, uploadFile, {
+          contentType: uploadFile.type || 'application/octet-stream',
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = this.supabase
+        .storage
+        .from('receipt-images')
+        .getPublicUrl(storagePath);
+
+      const imageUrl = urlData.publicUrl;
+      const { data: { user } } = await this.supabase.auth.getUser();
+
+      const actualReceiptDateIso = actualReceiptDate ? dateToISOString(actualReceiptDate) : null;
+      const extractedData: Record<string, unknown> = { file_type: fileType };
+      if (actualReceiptDateIso) {
+        extractedData.actual_received_date = actualReceiptDateIso;
+      }
+
+      const { data: statement, error: dbError } = await this.supabase
+        .from('transaction_statements')
+        .insert({
+          image_url: imageUrl,
+          file_name: file.name,
+          uploaded_by: user?.id,
+          uploaded_by_name: uploaderName,
+          uploaded_by_email: user?.email,
+          status: 'queued',
+          queued_at: new Date().toISOString(),
+          is_free_sample: true,
+          extracted_data: extractedData
+        })
+        .select()
+        .single();
+
+      if (dbError) {
+        logger.error('[Upload FreeSample] DB insert 실패:', dbError);
+        throw new Error(`DB 저장 실패: ${dbError.message} (code: ${dbError.code})`);
+      }
+
+      logger.debug('[Upload FreeSample] 성공:', { statementId: statement.id, statement_code: statement.statement_code });
+
+      return {
+        success: true,
+        data: { statementId: statement.id, imageUrl, fileType }
+      };
+    } catch (error) {
+      logger.error('Upload free sample statement error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '업로드 중 오류가 발생했습니다.'
+      };
+    }
+  }
+
+  /**
+   * 무상샘플 발주 자동 생성
+   * - 거래명세서 OCR 추출 완료 후 호출
+   * - vendor_name → vendors 테이블 lookup → vendor_id 매칭
+   * - purchase_requests INSERT (F{YYYYMMDD}_{NNN}_S 패턴, is_free_sample=true)
+   * - purchase_request_items INSERT (단가/금액 0, is_received=true)
+   * - transaction_statement_items.matched_purchase_id 연결
+   * - transaction_statements status='confirmed'
+   *
+   * @returns purchaseId (생성 성공 시) 또는 error
+   */
+  async autoCreatePurchaseFromFreeSample(
+    statementId: string
+  ): Promise<{ success: boolean; data?: { purchaseId: number; purchaseOrderNumber: string }; error?: string }> {
+    try {
+      const { data: statement, error: stErr } = await this.supabase
+        .from('transaction_statements')
+        .select('id, vendor_name, uploaded_by, uploaded_by_name, uploaded_by_email, is_free_sample, status, extracted_data')
+        .eq('id', statementId)
+        .single();
+
+      if (stErr || !statement) {
+        return { success: false, error: '거래명세서를 찾을 수 없습니다.' };
+      }
+
+      if (!statement.is_free_sample) {
+        return { success: false, error: '무상샘플이 아닌 거래명세서입니다.' };
+      }
+
+      const { data: items, error: itemsErr } = await this.supabase
+        .from('transaction_statement_items')
+        .select('id, line_number, extracted_item_name, extracted_specification, extracted_quantity, extracted_remark')
+        .eq('statement_id', statementId)
+        .order('line_number', { ascending: true });
+
+      if (itemsErr) {
+        return { success: false, error: '품목 조회 실패' };
+      }
+
+      if (!items || items.length === 0) {
+        return { success: false, error: '추출된 품목이 없습니다. OCR 추출을 먼저 완료해주세요.' };
+      }
+
+      // 거래처 매칭
+      const vendorName = (statement.vendor_name || '').trim();
+      if (!vendorName) {
+        return { success: false, error: '거래명세서에서 거래처명을 추출하지 못했습니다.' };
+      }
+
+      // 거래처명 또는 별칭에서 매칭 (정확히 일치 우선)
+      const escaped = vendorName.replace(/[%,]/g, '');
+      const { data: vendors, error: vErr } = await this.supabase
+        .from('vendors')
+        .select('id, vendor_name, vendor_alias')
+        .or(`vendor_name.eq.${escaped},vendor_alias.eq.${escaped},vendor_name.ilike.%${escaped}%,vendor_alias.ilike.%${escaped}%`)
+        .limit(1);
+
+      if (vErr || !vendors || vendors.length === 0) {
+        return {
+          success: false,
+          error: `거래처 "${vendorName}"를 찾을 수 없습니다. 거래처를 먼저 등록해주세요.`
+        };
+      }
+
+      const vendorId = vendors[0].id;
+
+      // 발주번호 생성: F{YYYYMMDD}_{NNN}_S
+      const today = new Date();
+      const koreaTime = new Date(today.getTime() + (9 * 60 * 60 * 1000));
+      const dateStr = koreaTime.toISOString().slice(0, 10).replace(/-/g, '');
+      const prefix = `F${dateStr}_`;
+
+      const { data: existingOrders } = await this.supabase
+        .from('purchase_requests')
+        .select('purchase_order_number')
+        .like('purchase_order_number', `${prefix}%`)
+        .order('purchase_order_number', { ascending: false });
+
+      let maxSequence = 0;
+      if (existingOrders) {
+        for (const o of existingOrders) {
+          const parts = (o.purchase_order_number || '').split('_');
+          if (parts.length >= 2) {
+            const seq = parseInt(parts[1], 10);
+            if (!isNaN(seq) && seq > maxSequence) maxSequence = seq;
+          }
+        }
+      }
+
+      const nextNumber = maxSequence + 1;
+      const purchaseOrderNumber = `${prefix}${String(nextNumber).padStart(3, '0')}_S`;
+      const requestDate = koreaTime.toISOString().slice(0, 10);
+      const receivedDate = (statement.extracted_data as Record<string, unknown> | null)?.actual_received_date as string | undefined;
+
+      const { data: createdPr, error: prErr } = await this.supabase
+        .from('purchase_requests')
+        .insert({
+          purchase_order_number: purchaseOrderNumber,
+          requester_name: statement.uploaded_by_name || '시스템',
+          requester_id: statement.uploaded_by || null,
+          vendor_id: vendorId,
+          request_date: requestDate,
+          request_type: '원자재',
+          progress_type: '입고 완료',
+          payment_category: '발주',
+          po_template_type: '일반',
+          currency: 'KRW',
+          unit_price_currency: 'KRW',
+          total_amount: 0,
+          is_payment_completed: false,
+          middle_manager_status: 'approved',
+          final_manager_status: 'approved',
+          is_po_generated: true,
+          is_received: true,
+          is_free_sample: true,
+        })
+        .select('id, purchase_order_number')
+        .single();
+
+      if (prErr || !createdPr) {
+        logger.error('[FreeSample] purchase_requests insert 실패:', prErr);
+        return { success: false, error: `발주 생성 실패: ${prErr?.message || '알 수 없음'}` };
+      }
+
+      const purchaseId = createdPr.id as number;
+
+      // purchase_request_items 생성
+      type FreeSampleItemRow = {
+        line_number: number | null;
+        extracted_item_name: string | null;
+        extracted_specification: string | null;
+        extracted_quantity: number | null;
+        extracted_remark: string | null;
+        id: string;
+      };
+      const itemRows = (items as FreeSampleItemRow[]).map((it, idx: number) => ({
+        purchase_request_id: purchaseId,
+        line_number: it.line_number || (idx + 1),
+        item_name: it.extracted_item_name || '(품목명 없음)',
+        specification: it.extracted_specification || null,
+        quantity: it.extracted_quantity || 0,
+        unit: 'EA',
+        unit_price: 0,
+        unit_price_value: 0,
+        unit_price_currency: 'KRW',
+        amount: 0,
+        amount_value: 0,
+        amount_currency: 'KRW',
+        remark: it.extracted_remark || '무상샘플',
+        is_received: true,
+        received_quantity: it.extracted_quantity || 0,
+        received_date: receivedDate || requestDate,
+        accounting_received_date: receivedDate || requestDate,
+        delivery_status: 'received',
+      }));
+
+      const { data: createdItems, error: itemsInsertErr } = await this.supabase
+        .from('purchase_request_items')
+        .insert(itemRows)
+        .select('id, line_number');
+
+      if (itemsInsertErr) {
+        logger.error('[FreeSample] purchase_request_items insert 실패:', itemsInsertErr);
+        // 롤백: 발주 삭제
+        await this.supabase.from('purchase_requests').delete().eq('id', purchaseId);
+        return { success: false, error: `품목 생성 실패: ${itemsInsertErr.message}` };
+      }
+
+      // transaction_statement_items에 matched_purchase_id 연결
+      if (createdItems && createdItems.length > 0) {
+        const typedCreated = createdItems as Array<{ id: number; line_number: number | null }>;
+        for (const stItem of items as FreeSampleItemRow[]) {
+          const matched = typedCreated.find(ci => ci.line_number === (stItem.line_number || 0));
+          if (matched) {
+            await this.supabase
+              .from('transaction_statement_items')
+              .update({
+                matched_purchase_id: purchaseId,
+                matched_item_id: matched.id,
+                match_method: 'free_sample_auto',
+                match_confidence: 'high',
+                is_confirmed: true,
+                confirmed_quantity: stItem.extracted_quantity || 0,
+                confirmed_unit_price: 0,
+                confirmed_amount: 0,
+              })
+              .eq('id', stItem.id);
+          }
+        }
+      }
+
+      // 거래명세서 상태를 confirmed로 변경
+      await this.supabase
+        .from('transaction_statements')
+        .update({
+          status: 'confirmed',
+          confirmed_at: new Date().toISOString(),
+          confirmed_by: statement.uploaded_by || null,
+          all_quantities_matched: true,
+          all_amounts_matched: true,
+          quantity_match_confirmed_at: new Date().toISOString(),
+          manager_confirmed_at: new Date().toISOString(),
+        })
+        .eq('id', statementId);
+
+      logger.debug('[FreeSample] 발주 자동 생성 완료:', { purchaseId, purchaseOrderNumber });
+
+      return {
+        success: true,
+        data: {
+          purchaseId,
+          purchaseOrderNumber,
+        }
+      };
+    } catch (error) {
+      logger.error('Auto create purchase from free sample error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '발주 자동 생성 중 오류가 발생했습니다.'
+      };
+    }
+  }
+
+  /**
    * 월말결제 파싱 Edge Function 호출 (비동기) - 일반 엔진(ocr-transaction-statement) 통합 사용
    */
   private async triggerMonthlyStatementParsing(statementId: string, fileUrl: string, fileType: string) {
