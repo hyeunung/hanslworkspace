@@ -23,7 +23,8 @@ import {
   ChevronDown,
   Package,
   ChevronsUpDown,
-  Check
+  Check,
+  Gift
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -62,6 +63,7 @@ import type {
 import StatementUploadModal from "./StatementUploadModal";
 import ReceiptQuantityUploadModal from "./ReceiptQuantityUploadModal";
 import MonthlyStatementUploadModal from "./MonthlyStatementUploadModal";
+import FreeSampleUploadModal from "./FreeSampleUploadModal";
 import StatementConfirmModal from "./StatementConfirmModal";
 import StatementImageViewer, { openStatementPreview } from "./StatementImageViewer";
 import PurchaseDetailModal from "@/components/purchase/PurchaseDetailModal";
@@ -105,6 +107,7 @@ export default function TransactionStatementMain() {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isReceiptUploadModalOpen, setIsReceiptUploadModalOpen] = useState(false); // 입고수량 업로드 모달
   const [isMonthlyUploadModalOpen, setIsMonthlyUploadModalOpen] = useState(false); // 월말결제 업로드 모달
+  const [isFreeSampleUploadModalOpen, setIsFreeSampleUploadModalOpen] = useState(false); // 무상샘플 업로드 모달
   const [selectedStatement, setSelectedStatement] = useState<TransactionStatement | null>(null);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
@@ -711,6 +714,58 @@ export default function TransactionStatementMain() {
     }
   };
 
+  // 무상샘플 업로드 성공 후 처리 - OCR + 자동 발주 생성
+  const handleFreeSampleUploadSuccess = async (statementId: string, imageUrl: string, fileType?: 'excel' | 'pdf' | 'image') => {
+    setIsFreeSampleUploadModalOpen(false);
+    await loadStatements();
+    setExtractingIds(prev => new Set(prev).add(statementId));
+
+    try {
+      toast.loading('무상샘플 OCR 추출 중... (약 10~30초 소요)', { id: `extraction-${statementId}` });
+
+      const result = await transactionStatementService.extractStatementData(
+        statementId,
+        imageUrl,
+        false,
+        fileType
+      );
+
+      if (result.success && !result.queued) {
+        toast.loading('발주 자동 생성 중...', { id: `extraction-${statementId}` });
+
+        const purchaseResult = await transactionStatementService.autoCreatePurchaseFromFreeSample(statementId);
+
+        if (purchaseResult.success && purchaseResult.data) {
+          toast.success(
+            `무상샘플 등록 완료. 발주번호: ${purchaseResult.data.purchaseOrderNumber}`,
+            { id: `extraction-${statementId}` }
+          );
+        } else {
+          toast.warning(
+            `OCR은 완료되었으나 발주 자동 생성 실패: ${purchaseResult.error || '알 수 없음'}`,
+            { id: `extraction-${statementId}`, duration: 8000 }
+          );
+        }
+        loadStatements();
+      } else if (result.queued) {
+        toast.info('처리 대기열에 등록되었습니다. 처리 완료 후 자동 발주가 생성됩니다.', { id: `extraction-${statementId}` });
+        loadStatements();
+      } else {
+        toast.error(result.error || 'OCR 추출에 실패했습니다.', { id: `extraction-${statementId}` });
+        loadStatements();
+      }
+    } catch (error) {
+      toast.error('무상샘플 처리 중 오류가 발생했습니다.', { id: `extraction-${statementId}` });
+      loadStatements();
+    } finally {
+      setExtractingIds(prev => {
+        const next = new Set(prev);
+        next.delete(statementId);
+        return next;
+      });
+    }
+  };
+
   // 업로드 성공 후 처리 - 자동으로 OCR 시작
   const handleUploadSuccess = async (statementId: string, imageUrl: string, fileType?: 'excel' | 'pdf' | 'image') => {
     setIsUploadModalOpen(false);
@@ -846,12 +901,19 @@ export default function TransactionStatementMain() {
                   <Package className="w-4 h-4 mr-2 text-orange-600" />
                   입고수량 업로드
                 </DropdownMenuItem>
-                <DropdownMenuItem 
+                <DropdownMenuItem
                   onClick={() => setIsMonthlyUploadModalOpen(true)}
                   className="text-[12px] py-2 cursor-pointer"
                 >
                   <FileCheck className="w-4 h-4 mr-2 text-emerald-600" />
                   거래명세서(월말결제)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setIsFreeSampleUploadModalOpen(true)}
+                  className="text-[12px] py-2 cursor-pointer"
+                >
+                  <Gift className="w-4 h-4 mr-2 text-purple-600" />
+                  무상샘플 업로드
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1038,11 +1100,13 @@ export default function TransactionStatementMain() {
                         <td className="px-3 py-2.5">
                           <div className="flex items-center justify-center h-full">
                             <span className={`inline-flex items-center gap-1 business-radius-badge px-2 py-0.5 text-[10px] font-medium leading-tight ${
+                              statement.is_free_sample ? 'bg-purple-500 text-white' :
                               statement.statement_mode === 'monthly' ? 'bg-emerald-500 text-white' :
                               statement.statement_mode === 'receipt' ? 'bg-orange-500 text-white' :
                               'bg-green-500 text-white'
                             }`}>
-                              {statement.statement_mode === 'monthly' ? '월말결제' :
+                              {statement.is_free_sample ? '무상샘플' :
+                               statement.statement_mode === 'monthly' ? '월말결제' :
                                statement.statement_mode === 'receipt' ? '입고수량' :
                                '일반'}
                             </span>
@@ -1277,6 +1341,13 @@ export default function TransactionStatementMain() {
           toast.success('월말결제 거래명세서 업로드 완료. 파싱 처리 중...');
           await loadStatements();
         }}
+      />
+
+      {/* 무상샘플 업로드 모달 */}
+      <FreeSampleUploadModal
+        isOpen={isFreeSampleUploadModalOpen}
+        onClose={() => setIsFreeSampleUploadModalOpen(false)}
+        onSuccess={handleFreeSampleUploadSuccess}
       />
 
       {/* 확인/수정/확정 모달 */}

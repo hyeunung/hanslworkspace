@@ -479,6 +479,14 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
             {purchase.purchase_request_items && purchase.purchase_request_items.length > 1 && (
               <span className="text-gray-500 ml-0.5">({purchase.purchase_request_items.length})</span>
             )}
+            {purchase.is_free_sample && (
+              <span
+                className="ml-1 inline-flex items-center px-1 py-0.5 text-[9px] font-semibold rounded bg-purple-100 text-purple-700 align-middle"
+                title="무상샘플"
+              >
+                샘플
+              </span>
+            )}
           </span>
         </div>
         </td>

@@ -72,6 +72,8 @@ export interface TransactionStatement {
   all_quantities_matched?: boolean;
   // 목록 조회 시 계산된 금액 일치 여부 (OCR합계 == 시스템합계)
   all_amounts_matched?: boolean;
+  // 무상샘플 여부 (true면 발주 자동 생성, _S suffix)
+  is_free_sample?: boolean;
 }
 
 // 거래명세서 품목 타입
