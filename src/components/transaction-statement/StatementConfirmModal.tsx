@@ -447,6 +447,10 @@ export default function StatementConfirmModal({
   // 삭제된 행 추적 (OCR 품목 ID / 시스템 품목 item_id)
   const [deletedOCRItemIds, setDeletedOCRItemIds] = useState<Set<string>>(new Set());
   const [deletedSystemItemIds, setDeletedSystemItemIds] = useState<Set<number>>(new Set());
+
+  // 행 단위 무상샘플 처리 상태 (OCR item id → 새로 생성된 _S 발주 정보)
+  const [freeSampleProcessedItems, setFreeSampleProcessedItems] = useState<Map<string, { purchaseId: number; itemId: number; purchaseOrderNumber: string }>>(new Map());
+  const [processingFreeSampleIds, setProcessingFreeSampleIds] = useState<Set<string>>(new Set());
   
   // 매칭 상세 정보 팝업
   const [matchDetailPopup, setMatchDetailPopup] = useState<{
@@ -496,9 +500,6 @@ export default function StatementConfirmModal({
     loadCurrencies();
   }, [statementWithItems, itemMatches, supabase, statement.id]);
   
-  // 통합 매칭 상세 팝업 (발주번호 전체 매칭 내역)
-  const [isIntegratedMatchDetailOpen, setIsIntegratedMatchDetailOpen] = useState(false);
-  
   // 거래처 인라인 검색 상태
   const [vendorInputValue, setVendorInputValue] = useState('');
   const [vendorSearchResults, setVendorSearchResults] = useState<Array<{ id: number; name: string; english_name?: string }>>([]);
@@ -537,7 +538,8 @@ export default function StatementConfirmModal({
     setOpenDropdowns(new Set());
     setVendorDropdownOpen(false);
     setMatchDetailPopup(null);
-    setIsIntegratedMatchDetailOpen(false);
+    setFreeSampleProcessedItems(new Map());
+    setProcessingFreeSampleIds(new Set());
   }, [isOpen, statement.id]);
 
   // 모달 닫힐 때 디바운스 타이머 정리
@@ -3459,6 +3461,83 @@ export default function StatementConfirmModal({
     });
   };
 
+  // "샘플" 버튼 — 다중발주 거래명세서 내 단일 행을 무상샘플로 분리 처리
+  // - 사용자가 미리 수정한 품목명/수량을 그대로 사용
+  // - 새 _S 발주를 생성하고 해당 OCR 행을 매칭 완료 처리
+  const handleProcessFreeSample = async (ocrItem: TransactionStatementItemWithMatch) => {
+    if (processingFreeSampleIds.has(ocrItem.id) || freeSampleProcessedItems.has(ocrItem.id)) return;
+
+    const itemName = ((getOCRItemValue(ocrItem, 'item_name') as string) || '').trim();
+    const qtyRaw = getOCRItemValue(ocrItem, 'quantity');
+    const quantity = typeof qtyRaw === 'number' ? qtyRaw : Number(qtyRaw) || 1;
+    const specification = (ocrItem.extracted_specification || '').trim() || null;
+    const remark = (ocrItem.extracted_remark || '').trim() || null;
+
+    if (!itemName) {
+      toast.error('품목명을 먼저 입력해주세요.');
+      return;
+    }
+
+    setProcessingFreeSampleIds(prev => {
+      const next = new Set(prev);
+      next.add(ocrItem.id);
+      return next;
+    });
+
+    try {
+      const result = await transactionStatementService.createSingleItemFreeSamplePurchase({
+        statementId: statement.id,
+        statementItemId: ocrItem.id,
+        itemName,
+        specification,
+        quantity,
+        remark,
+      });
+
+      if (!result.success || !result.data) {
+        toast.error(result.error || '무상샘플 처리에 실패했습니다.');
+        return;
+      }
+
+      const { purchaseId, itemId, purchaseOrderNumber } = result.data;
+
+      setFreeSampleProcessedItems(prev => {
+        const next = new Map(prev);
+        next.set(ocrItem.id, { purchaseId, itemId, purchaseOrderNumber });
+        return next;
+      });
+
+      // 매칭 완료 처리: 합성 SystemPurchaseItem 으로 itemMatches 채우기 → 확정/수량일치 통과
+      const syntheticSystemItem: SystemPurchaseItem = {
+        purchase_id: purchaseId,
+        item_id: itemId,
+        purchase_order_number: purchaseOrderNumber,
+        item_name: itemName,
+        specification: specification || undefined,
+        quantity,
+        received_quantity: 0,
+        unit_price: 0,
+        amount: 0,
+      };
+      setItemMatches(prev => {
+        const next = new Map(prev);
+        next.set(ocrItem.id, syntheticSystemItem);
+        return next;
+      });
+
+      toast.success(`무상샘플 발주 ${purchaseOrderNumber} 생성 완료`);
+    } catch (error) {
+      logger.error('무상샘플 처리 오류:', error);
+      toast.error('무상샘플 처리 중 오류가 발생했습니다.');
+    } finally {
+      setProcessingFreeSampleIds(prev => {
+        const next = new Set(prev);
+        next.delete(ocrItem.id);
+        return next;
+      });
+    }
+  };
+
   useEffect(() => {
     if (!statementWithItems || itemMatches.size === 0) return;
 
@@ -4118,6 +4197,8 @@ export default function StatementConfirmModal({
     setEditedOCRItems(new Map());
     setItemPONumbers(new Map());
     setItemMatches(new Map());
+    setFreeSampleProcessedItems(new Map());
+    setProcessingFreeSampleIds(new Set());
     setSelectedPONumber('');
     setSetMatchResult(null);
     setManuallySelectedPO(false);
@@ -4134,7 +4215,6 @@ export default function StatementConfirmModal({
     setVendorDropdownOpen(false);
     setOverrideVendorName(null);
     setMatchDetailPopup(null);
-    setIsIntegratedMatchDetailOpen(false);
     setOpenDropdowns(new Set());
     autoVendorSelectionRef.current = false;
     vendorInitializedRef.current = false;
@@ -4998,32 +5078,25 @@ export default function StatementConfirmModal({
                         }
                       }
                       
-                      // 발주/수주 번호 일치 여부 계산 (첫 행에서만 사용)
-                      const normalizedSelectedPONumber = selectedPONumber
-                        ? normalizeOrderNumber(selectedPONumber)
-                        : '';
-                      const pairedOrderNumber = selectedPONumber
-                        ? getPairedOrderNumber(selectedPONumber)
-                        : undefined;
-                      const normalizedPairedOrderNumber = pairedOrderNumber
-                        ? normalizeOrderNumber(pairedOrderNumber)
-                        : '';
-                      const totalItemCount = statementWithItems.items.filter(i => !deletedOCRItemIds.has(i.id)).length;
-                      const extractedOrderNumbers = statementWithItems.items
-                        .map(item => getOCRItemValue(item, 'po_number') as string)
-                        .filter(Boolean)
-                        .map(value => normalizeOrderNumber(value));
-                      const hasOrderNumberMatch =
-                        !!normalizedSelectedPONumber &&
-                        extractedOrderNumbers.some(
-                          value =>
-                            value === normalizedSelectedPONumber ||
-                            (normalizedPairedOrderNumber && value === normalizedPairedOrderNumber)
-                        );
-                      const isFirstRow = rowIndex === 0;
-                      
+                      const isFreeSampleProcessed = freeSampleProcessedItems.has(ocrItem.id);
+                      // 시스템 발주품목 영역 셀 개수 (다중발주이면 +1, 입고모드 5/6, 일반 4/5)
+                      const systemColCount = isReceiptMode
+                        ? (isSamePONumber ? 4 : 5)
+                        : (isSamePONumber ? 5 : 6);
+
                       return (
                         <tr key={ocrItem.id} className={rowClassName}>
+                          {isFreeSampleProcessed ? (
+                            /* 무상샘플 처리된 행: 시스템 발주품목 영역을 "-" 단일 셀로 대체 */
+                            <td
+                              colSpan={systemColCount}
+                              className="border-r-2 border-gray-300 p-1 text-center text-[11px] text-gray-400"
+                              title={`무상샘플 발주 ${freeSampleProcessedItems.get(ocrItem.id)?.purchaseOrderNumber} 으로 분리 처리됨`}
+                            >
+                              -
+                            </td>
+                          ) : (
+                          <>
                           {/* Case 2: 발주번호 컬럼 */}
                           {!isSamePONumber && (
                             <td className="p-1 whitespace-nowrap">
@@ -5503,29 +5576,39 @@ export default function StatementConfirmModal({
                               </button>
                             )}
                           </td>
-                          
-                          {/* 중앙: 발주/수주 번호 일치 상태 (첫 행에만 rowSpan으로 세로 중앙 표시) */}
-                          {isFirstRow && (
-                            <td 
-                              className="border-r-2 border-gray-300 px-2 py-1 text-center bg-blue-50/30 cursor-pointer hover:bg-blue-100/50 transition-colors"
-                              rowSpan={totalItemCount}
-                              style={{ verticalAlign: 'middle' }}
-                              onClick={() => setIsIntegratedMatchDetailOpen(true)}
-                              title="클릭하여 상세 내역 보기"
-                            >
-                              <div className="flex flex-col items-center justify-center">
-                                <span className={`text-[11px] font-bold ${
-                                  hasOrderNumberMatch ? 'text-green-600' : 'text-gray-500'
-                                }`}>
-                                  {hasOrderNumberMatch ? '발주/수주 번호 일치' : '발주/수주 번호 불일치'}
-                                </span>
-                                <span className="text-[8px] text-blue-500 underline mt-0.5">
-                                  상세보기
-                                </span>
-                              </div>
-                            </td>
+                          </>
                           )}
-                          
+
+                          {/* 중앙: 샘플 버튼 (모든 행) */}
+                          <td
+                            className="border-r-2 border-gray-300 px-1 py-1 bg-blue-50/30 align-middle"
+                          >
+                            <div className="flex items-center justify-end gap-1">
+                              {freeSampleProcessedItems.has(ocrItem.id) ? (
+                                <span
+                                  className="inline-block px-1 h-5 text-[10px] font-medium text-purple-700 leading-5"
+                                  title={`무상샘플 발주 ${freeSampleProcessedItems.get(ocrItem.id)?.purchaseOrderNumber} 생성됨`}
+                                >
+                                  완료
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleProcessFreeSample(ocrItem)}
+                                  disabled={processingFreeSampleIds.has(ocrItem.id)}
+                                  className="inline-flex items-center justify-center px-1 h-5 text-[10px] font-medium bg-white border border-purple-300 rounded hover:bg-purple-50 text-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  title="이 행을 단독 무상샘플 발주(_S)로 분리 등록"
+                                >
+                                  {processingFreeSampleIds.has(ocrItem.id) ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    '샘플'
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+
                           {/* 우측: OCR 발주/수주번호 (다중발주) */}
                           {!isSamePONumber && (
                             <td className="p-1 whitespace-nowrap">
@@ -6000,205 +6083,6 @@ export default function StatementConfirmModal({
         </Dialog>
       )}
 
-      {/* 통합 매칭 상세 팝업 (발주번호 전체 매칭 내역) */}
-      <Dialog open={isIntegratedMatchDetailOpen} onOpenChange={setIsIntegratedMatchDetailOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-[14px] font-semibold text-gray-800">
-              매칭 상세 내역
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-2">
-            {/* 통합 매칭률 표시 */}
-            {(() => {
-              const selectedCandidate = allPONumberCandidates.find(
-                c => c.poNumber === selectedPONumber || c.salesOrderNumber === selectedPONumber
-              );
-              // 표시용 점수 사용 (실제 품목 유사도, 최대 100%)
-              const totalMatchScore = Math.min(100, selectedCandidate?.displayScore ?? selectedCandidate?.setMatchScore ?? 0);
-              const matchedCount = selectedCandidate?.matchedItemCount ?? 0;
-              const totalCount = statementWithItems?.items.length ?? 0;
-              const normalizedSelectedPONumber = selectedPONumber
-                ? normalizeOrderNumber(selectedPONumber)
-                : '';
-              const pairedOrderNumber = selectedPONumber
-                ? getPairedOrderNumber(selectedPONumber)
-                : undefined;
-              const normalizedPairedOrderNumber = pairedOrderNumber
-                ? normalizeOrderNumber(pairedOrderNumber)
-                : '';
-              const extractedOrderNumbers = (statementWithItems?.items ?? [])
-                .map(item => getOCRItemValue(item, 'po_number') as string)
-                .filter(Boolean)
-                .map(value => normalizeOrderNumber(value));
-              const isOrderNumberMatched =
-                !!normalizedSelectedPONumber &&
-                extractedOrderNumbers.some(
-                  value =>
-                    value === normalizedSelectedPONumber ||
-                    (normalizedPairedOrderNumber && value === normalizedPairedOrderNumber)
-                );
-              const matchedNameCount = (statementWithItems?.items ?? []).filter(ocrItem => {
-                const matchedSystem = itemMatches.get(ocrItem.id);
-                if (!matchedSystem) return false;
-                const similarity = calculateItemSimilarity(
-                  (getOCRItemValue(ocrItem, 'item_name') as string) || '',
-                  matchedSystem.item_name,
-                  matchedSystem.specification
-                );
-                return similarity >= 40; // 최소 40점 이상
-              }).length;
-              const quantityMatchedCount = (statementWithItems?.items ?? []).filter(ocrItem => {
-                const matchedSystem = itemMatches.get(ocrItem.id);
-                if (!matchedSystem) return false;
-                const ocrQty = getOCRItemValue(ocrItem, 'quantity') as number | string;
-                const normalizedQty = typeof ocrQty === 'number'
-                  ? ocrQty
-                  : (ocrQty !== '' ? Number(ocrQty) : undefined);
-                if (matchedSystem.received_quantity == null) return false;
-                return isQuantityMatched(normalizedQty, matchedSystem.received_quantity);
-              }).length;
-              const isItemNameAllMatched = totalCount > 0 && matchedNameCount === totalCount;
-              const isQuantityAllMatched = totalCount > 0 && quantityMatchedCount === totalCount;
-              
-              return (
-                <>
-                  <div className="flex items-center justify-center gap-3 p-4 bg-gray-50 rounded-lg">
-                    <span className={`text-3xl font-bold ${
-                      totalMatchScore >= 80 ? 'text-green-600' :
-                      totalMatchScore >= 50 ? 'text-yellow-600' :
-                      'text-gray-500'
-                    }`}>
-                      {totalMatchScore}%
-                    </span>
-                    <div className="text-left">
-                      <p className="text-[12px] font-medium text-gray-700">
-                        발주번호: {selectedPONumber || '미선택'}
-                      </p>
-                      <p className="text-[11px] text-gray-500">
-                        {matchedCount}/{totalCount}개 품목 매칭됨
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* 매칭 체크 요약 */}
-                  <div className="grid grid-cols-1 gap-2 rounded-lg border border-gray-200 p-3">
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-gray-600">발주/수주번호 매칭</span>
-                      <span className={`font-medium ${isOrderNumberMatched ? 'text-green-600' : 'text-red-600'}`}>
-                        {isOrderNumberMatched ? '✅ 일치' : '❌ 불일치'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-gray-600">품목명 매칭</span>
-                      <span className={`font-medium ${isItemNameAllMatched ? 'text-green-600' : 'text-red-600'}`}>
-                        {isItemNameAllMatched ? `✅ 모두 일치 (${matchedNameCount}/${totalCount})` : `❌ 불일치 (${matchedNameCount}/${totalCount})`}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-gray-600">수량 매칭</span>
-                      <span className={`font-medium ${isQuantityAllMatched ? 'text-green-600' : 'text-red-600'}`}>
-                        {isQuantityAllMatched ? `✅ 모두 일치 (${quantityMatchedCount}/${totalCount})` : `❌ 불일치 (${quantityMatchedCount}/${totalCount})`}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* 품목별 매칭 상세 */}
-                  <div className="space-y-2">
-                    <p className="text-[11px] font-semibold text-gray-600">품목별 매칭 상세:</p>
-                    <div className="max-h-[250px] overflow-y-auto space-y-2">
-                      {statementWithItems?.items.map((ocrItem) => {
-                        const matchedSystem = itemMatches.get(ocrItem.id);
-                        const similarity = matchedSystem 
-                          ? calculateItemSimilarity(
-                              (getOCRItemValue(ocrItem, 'item_name') as string) || '', 
-                              matchedSystem.item_name, 
-                              matchedSystem.specification
-                            )
-                          : 0;
-                        const isMatched = similarity >= 40; // 최소 40점 이상
-                        
-                        // 수량 일치 여부
-                        const ocrQtyRaw = getOCRItemValue(ocrItem, 'quantity') as number | string;
-                        const ocrQty = typeof ocrQtyRaw === 'number'
-                          ? ocrQtyRaw
-                          : (ocrQtyRaw !== '' ? Number(ocrQtyRaw) : undefined);
-                        const sysQty = matchedSystem?.quantity;
-                        const qtyMatched = isQuantityMatched(ocrQty, sysQty);
-                        const qtyLevel = getQuantityMatchLevel(ocrQty, sysQty);
-                        
-                        return (
-                          <div 
-                            key={ocrItem.id} 
-                            className={`p-2 rounded-lg border ${
-                              isMatched && qtyMatched ? 'bg-green-50 border-green-200' : 
-                              isMatched ? 'bg-yellow-50 border-yellow-200' :
-                              'bg-gray-50 border-gray-200'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[11px] font-medium text-gray-800 truncate">
-                                  {ocrItem.extracted_item_name || '-'}
-                                </p>
-                                <p className="text-[10px] text-gray-500">
-                                  → {matchedSystem?.item_name || '미매칭'}
-                                </p>
-                              </div>
-                              <span className={`text-[10px] px-2 py-0.5 rounded font-medium ml-2 ${
-                                similarity >= 85 ? 'bg-green-100 text-green-700' :
-                                similarity >= 60 ? 'bg-yellow-100 text-yellow-700' :
-                                similarity >= 40 ? 'bg-orange-100 text-orange-700' :
-                                'bg-red-100 text-red-600'
-                              }`}>
-                                {isMatched ? `${Math.round(similarity)}%` : '미매칭'}
-                              </span>
-                            </div>
-                            {/* 수량 비교 */}
-                            {isMatched && (
-                              <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-gray-100">
-                                <span className="text-[10px] text-gray-500">수량:</span>
-                                <span className="text-[10px] font-medium text-gray-700">
-                                  OCR {ocrQty ?? '-'}개
-                                </span>
-                                <span className="text-[10px] text-gray-400">vs</span>
-                                <span className="text-[10px] font-medium text-gray-700">
-                                  시스템 {sysQty ?? '-'}개
-                                </span>
-                                <span className={`text-[9px] px-1.5 py-0.5 rounded ${
-                                  qtyMatched ? 'bg-green-100 text-green-700' :
-                                  qtyLevel === 'partial' ? 'bg-yellow-100 text-yellow-700' :
-                                  'bg-red-100 text-red-700'
-                                }`}>
-                                  {qtyMatched ? '✅ 일치' : 
-                                   qtyLevel === 'partial' ? '⚠️ 부분입고' : 
-                                   '❌ 불일치'}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-          
-          <DialogFooter>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setIsIntegratedMatchDetailOpen(false)}
-              className="text-[11px]"
-            >
-              닫기
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       
 
