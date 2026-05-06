@@ -102,6 +102,25 @@ type PriceChangePayloadItem = {
   new_amount?: number | null
 }
 
+type ItemAddRow = {
+  id: string
+  itemName: string
+  specification: string
+  quantity: string
+  unit: string
+  unitPrice: string
+  remark: string
+}
+
+type ItemAddPayloadItem = {
+  item_name: string
+  specification?: string | null
+  quantity: number
+  unit: string
+  unit_price: number
+  remark?: string | null
+}
+
 // Extended item type used during editing with stable keys and temp IDs
 type EditablePurchaseItem = PurchaseRequestItem & {
   stableKey?: string
@@ -175,6 +194,7 @@ function PurchaseDetailModal({
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState<Date | undefined>()
   const [quantityChangeRows, setQuantityChangeRows] = useState<QuantityChangeRow[]>([])
   const [priceChangeRows, setPriceChangeRows] = useState<PriceChangeRow[]>([])
+  const [itemAddRows, setItemAddRows] = useState<ItemAddRow[]>([])
   const [isSendingModify, setIsSendingModify] = useState(false)
   const textMeasureCanvasRef = useRef<HTMLCanvasElement | null>(null)
   
@@ -268,6 +288,7 @@ function PurchaseDetailModal({
       setRequestedDeliveryDate(undefined)
       setQuantityChangeRows([])
       setPriceChangeRows([])
+      setItemAddRows([])
     }
   }, [isModifyRequestOpen])
 
@@ -278,7 +299,10 @@ function PurchaseDetailModal({
     if (modifyInquiryType === 'price_change' && priceChangeRows.length === 0) {
       setPriceChangeRows([{ id: createRowId(), itemId: '', changeType: 'unit_price', newValue: '' }])
     }
-  }, [modifyInquiryType, quantityChangeRows.length, priceChangeRows.length])
+    if (modifyInquiryType === 'item_add' && itemAddRows.length === 0) {
+      setItemAddRows([{ id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '' }])
+    }
+  }, [modifyInquiryType, quantityChangeRows.length, priceChangeRows.length, itemAddRows.length])
 
   const handleModifyPopoverWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     if (event.currentTarget.scrollHeight > event.currentTarget.clientHeight) {
@@ -310,6 +334,7 @@ function PurchaseDetailModal({
     { value: 'delivery_date_change', label: '입고일 변경 요청' },
     { value: 'quantity_change', label: '수량 변경 요청' },
     { value: 'price_change', label: '단가/합계 금액 변경 요청' },
+    { value: 'item_add', label: '품목 추가 요청' },
     { value: 'modify', label: '수정 요청' },
     { value: 'delete', label: '삭제 요청' }
   ]
@@ -324,6 +349,7 @@ function PurchaseDetailModal({
       case 'delivery_date_change': return '입고일 변경 요청'
       case 'quantity_change': return '수량 변경 요청'
       case 'price_change': return '단가/합계 금액 변경 요청'
+      case 'item_add': return '품목 추가 요청'
       case 'modify': return '수정 요청'
       case 'delete': return '삭제 요청'
       default: return type
@@ -468,7 +494,8 @@ function PurchaseDetailModal({
 
   // 수정요청 전송
   const handleSendModifyRequest = async () => {
-    if (!modifyInquiryType || !modifyMessage.trim()) {
+    const messageOptionalTypes = ['item_add']
+    if (!modifyInquiryType || (!modifyMessage.trim() && !messageOptionalTypes.includes(modifyInquiryType))) {
       toast.error('모든 필드를 입력해주세요.')
       return
     }
@@ -627,6 +654,51 @@ function PurchaseDetailModal({
         inquiryPayload = { items: itemsPayload }
       }
 
+      if (modifyInquiryType === 'item_add') {
+        const activeRows = itemAddRows.filter(row => row.itemName.trim() || row.quantity.trim())
+        if (activeRows.length === 0) {
+          toast.error('추가할 품목을 입력해주세요.')
+          setIsSendingModify(false)
+          return
+        }
+
+        const itemsPayload: ItemAddPayloadItem[] = []
+        for (const row of activeRows) {
+          if (!row.itemName.trim()) {
+            toast.error('품목명을 입력해주세요.')
+            setIsSendingModify(false)
+            return
+          }
+          const quantity = Number(row.quantity)
+          if (!row.quantity.trim() || !Number.isFinite(quantity) || quantity <= 0) {
+            toast.error('수량을 올바르게 입력해주세요.')
+            setIsSendingModify(false)
+            return
+          }
+          const unitPrice = Number(normalizeNumericInput(row.unitPrice))
+          if (!row.unitPrice.trim() || !Number.isFinite(unitPrice) || unitPrice < 0) {
+            toast.error('단가를 올바르게 입력해주세요.')
+            setIsSendingModify(false)
+            return
+          }
+
+          itemsPayload.push({
+            item_name: row.itemName.trim(),
+            specification: row.specification.trim() || null,
+            quantity,
+            unit: row.unit.trim() || 'EA',
+            unit_price: unitPrice,
+            remark: row.remark.trim() || null,
+          })
+          const amount = quantity * unitPrice
+          summaryLines.push(
+            `${row.itemName.trim()} (${row.specification.trim() || '-'}) ${quantity}${row.unit || 'EA'} × ${unitPrice.toLocaleString('ko-KR')} = ${amount.toLocaleString('ko-KR')}`
+          )
+        }
+
+        inquiryPayload = { items: itemsPayload }
+      }
+
       if (modifyInquiryType === 'delete') {
         inquiryPayload = { reason: modifyMessage.trim() }
       }
@@ -642,14 +714,18 @@ function PurchaseDetailModal({
 품목:
 ${itemsText}`
 
-      const messageSections = [modifyMessage.trim()]
+      const messageSections: string[] = []
+      if (modifyMessage.trim()) {
+        messageSections.push(modifyMessage.trim())
+      }
       if (summaryLines.length > 0) {
         messageSections.push(`[요청 상세]\n${summaryLines.join('\n')}`)
       }
       if (purchaseInfo) {
         messageSections.push(`[관련 발주 정보]\n${purchaseInfo}`)
       }
-      const finalMessage = messageSections.join('\n\n')
+      const subjectFallback = getInquiryTypeLabel(modifyInquiryType) || modifyInquiryType
+      const finalMessage = messageSections.join('\n\n') || subjectFallback
 
       const purchaseIdValue = Number(purchase.id)
       const purchaseRequestId = Number.isFinite(purchaseIdValue) ? purchaseIdValue : undefined
@@ -673,6 +749,7 @@ ${itemsText}`
         setRequestedDeliveryDate(undefined)
         setQuantityChangeRows([])
         setPriceChangeRows([])
+        setItemAddRows([])
       } else {
         toast.error(result.error || '수정 요청 전송 중 오류가 발생했습니다.')
       }
@@ -732,6 +809,23 @@ ${itemsText}`
 
   const removePriceRow = (rowId: string) => {
     setPriceChangeRows(prev => prev.filter(row => row.id !== rowId))
+  }
+
+  const addItemAddRow = () => {
+    setItemAddRows(prev => [
+      ...prev,
+      { id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '' }
+    ])
+  }
+
+  const updateItemAddRow = (rowId: string, updates: Partial<ItemAddRow>) => {
+    setItemAddRows(prev =>
+      prev.map(row => row.id === rowId ? { ...row, ...updates } : row)
+    )
+  }
+
+  const removeItemAddRow = (rowId: string) => {
+    setItemAddRows(prev => prev.filter(row => row.id !== rowId))
   }
 
   // 메모리 캐시 동기화는 useEffect에서 처리
@@ -6764,9 +6858,93 @@ ${itemsText}`
                       </div>
                     )}
 
+                    {modifyInquiryType === 'item_add' && (
+                      <div className="space-y-3 p-3 bg-gray-50 business-radius-card border border-gray-200">
+                        <div className="modal-section-title text-gray-900">품목 추가 요청</div>
+                        <div className="space-y-2">
+                          {itemAddRows.map((row) => (
+                            <div key={row.id} className="flex flex-col lg:flex-row lg:items-center gap-2">
+                              <div className="flex-[2] min-w-0">
+                                <Input
+                                  type="text"
+                                  value={row.itemName}
+                                  onChange={(e) => updateItemAddRow(row.id, { itemName: e.target.value })}
+                                  placeholder="품목명 *"
+                                  className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                                />
+                              </div>
+                              <div className="flex-[2] min-w-0">
+                                <Input
+                                  type="text"
+                                  value={row.specification}
+                                  onChange={(e) => updateItemAddRow(row.id, { specification: e.target.value })}
+                                  placeholder="규격"
+                                  className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                                />
+                              </div>
+                              <div className="flex-[1] min-w-0">
+                                <Input
+                                  type="number"
+                                  value={row.quantity}
+                                  onChange={(e) => updateItemAddRow(row.id, { quantity: e.target.value })}
+                                  placeholder="수량 *"
+                                  className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                                  min={1}
+                                />
+                              </div>
+                              <div className="flex-[1] min-w-0">
+                                <Input
+                                  type="text"
+                                  value={row.unit}
+                                  onChange={(e) => updateItemAddRow(row.id, { unit: e.target.value })}
+                                  placeholder="단위"
+                                  className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                                />
+                              </div>
+                              <div className="flex-[1.5] min-w-0">
+                                <Input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={formatNumericInput(row.unitPrice)}
+                                  onChange={(e) => updateItemAddRow(row.id, { unitPrice: normalizeNumericInput(e.target.value) })}
+                                  placeholder="단가 *"
+                                  className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                                />
+                              </div>
+                              <div className="flex-[1.5] min-w-0">
+                                <Input
+                                  type="text"
+                                  value={row.remark}
+                                  onChange={(e) => updateItemAddRow(row.id, { remark: e.target.value })}
+                                  placeholder="비고"
+                                  className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeItemAddRow(row.id)}
+                                className="button-action-danger shrink-0"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 mr-1" />
+                                삭제
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={addItemAddRow}
+                          className="button-action-secondary"
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1" />
+                          품목 추가
+                        </button>
+                      </div>
+                    )}
+
                     <div>
                       <label className="block modal-label text-gray-700 mb-1">
-                        내용 <span className="text-red-500">*</span>
+                        내용 {modifyInquiryType !== 'item_add' && <span className="text-red-500">*</span>}
                       </label>
                       <div className="relative" onWheel={(e) => e.stopPropagation()}>
                         <Textarea
