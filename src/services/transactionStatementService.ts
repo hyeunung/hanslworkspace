@@ -815,6 +815,175 @@ class TransactionStatementService {
   }
 
   /**
+   * 다중발주 거래명세서 내 단일 행을 무상샘플 발주로 분리 생성
+   * - 사용자가 비교 화면 행에서 "샘플" 버튼을 누르면 호출
+   * - 사용자가 직접 수정한 품목명/수량을 인자로 전달
+   * - F{YYYYMMDD}_{NNN}_S 발주 1건 생성 + 1품목 생성 (단가/금액 0)
+   * - 해당 transaction_statement_items 행에 matched_purchase_id/matched_item_id 연결
+   * - is_received=false 로 둠 → 사용자가 "수량일치" 클릭 시 일반 플로우가 입고 처리
+   */
+  async createSingleItemFreeSamplePurchase(params: {
+    statementId: string;
+    statementItemId: string;
+    itemName: string;
+    specification: string | null;
+    quantity: number;
+    remark: string | null;
+  }): Promise<{ success: boolean; data?: { purchaseId: number; itemId: number; purchaseOrderNumber: string }; error?: string }> {
+    const { statementId, statementItemId, itemName, specification, quantity, remark } = params;
+    try {
+      const { data: statement, error: stErr } = await this.supabase
+        .from('transaction_statements')
+        .select('id, vendor_name, uploaded_by, uploaded_by_name, uploaded_by_email, extracted_data')
+        .eq('id', statementId)
+        .single();
+
+      if (stErr || !statement) {
+        return { success: false, error: '거래명세서를 찾을 수 없습니다.' };
+      }
+
+      const vendorName = (statement.vendor_name || '').trim();
+      if (!vendorName) {
+        return { success: false, error: '거래명세서에서 거래처명을 추출하지 못했습니다.' };
+      }
+
+      const escaped = vendorName.replace(/[%,]/g, '');
+      const { data: vendors, error: vErr } = await this.supabase
+        .from('vendors')
+        .select('id, vendor_name, vendor_alias')
+        .or(`vendor_name.eq.${escaped},vendor_alias.eq.${escaped},vendor_name.ilike.%${escaped}%,vendor_alias.ilike.%${escaped}%`)
+        .limit(1);
+
+      if (vErr || !vendors || vendors.length === 0) {
+        return {
+          success: false,
+          error: `거래처 "${vendorName}"를 찾을 수 없습니다. 거래처를 먼저 등록해주세요.`
+        };
+      }
+
+      const vendorId = vendors[0].id;
+
+      // 발주번호 생성: F{YYYYMMDD}_{NNN}_S
+      const today = new Date();
+      const koreaTime = new Date(today.getTime() + (9 * 60 * 60 * 1000));
+      const dateStr = koreaTime.toISOString().slice(0, 10).replace(/-/g, '');
+      const prefix = `F${dateStr}_`;
+
+      const { data: existingOrders } = await this.supabase
+        .from('purchase_requests')
+        .select('purchase_order_number')
+        .like('purchase_order_number', `${prefix}%`)
+        .order('purchase_order_number', { ascending: false });
+
+      let maxSequence = 0;
+      if (existingOrders) {
+        for (const o of existingOrders) {
+          const parts = (o.purchase_order_number || '').split('_');
+          if (parts.length >= 2) {
+            const seq = parseInt(parts[1], 10);
+            if (!isNaN(seq) && seq > maxSequence) maxSequence = seq;
+          }
+        }
+      }
+
+      const nextNumber = maxSequence + 1;
+      const purchaseOrderNumber = `${prefix}${String(nextNumber).padStart(3, '0')}_S`;
+      const requestDate = koreaTime.toISOString().slice(0, 10);
+
+      const { data: createdPr, error: prErr } = await this.supabase
+        .from('purchase_requests')
+        .insert({
+          purchase_order_number: purchaseOrderNumber,
+          requester_name: statement.uploaded_by_name || '시스템',
+          requester_id: statement.uploaded_by || null,
+          vendor_id: vendorId,
+          request_date: requestDate,
+          request_type: '원자재',
+          progress_type: '발주 진행중',
+          payment_category: '발주',
+          po_template_type: '일반',
+          currency: 'KRW',
+          unit_price_currency: 'KRW',
+          total_amount: 0,
+          is_payment_completed: false,
+          middle_manager_status: 'approved',
+          final_manager_status: 'approved',
+          is_po_generated: true,
+          is_received: false,
+          is_free_sample: true,
+        })
+        .select('id, purchase_order_number')
+        .single();
+
+      if (prErr || !createdPr) {
+        logger.error('[FreeSampleRow] purchase_requests insert 실패:', prErr);
+        return { success: false, error: `발주 생성 실패: ${prErr?.message || '알 수 없음'}` };
+      }
+
+      const purchaseId = createdPr.id as number;
+      const safeQuantity = Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+      const safeItemName = itemName?.trim() || '(품목명 없음)';
+
+      const { data: createdItem, error: itemInsertErr } = await this.supabase
+        .from('purchase_request_items')
+        .insert({
+          purchase_request_id: purchaseId,
+          line_number: 1,
+          item_name: safeItemName,
+          specification: specification || null,
+          quantity: safeQuantity,
+          unit: 'EA',
+          unit_price: 0,
+          unit_price_value: 0,
+          unit_price_currency: 'KRW',
+          amount: 0,
+          amount_value: 0,
+          amount_currency: 'KRW',
+          remark: remark || '무상샘플',
+          is_received: false,
+          delivery_status: 'pending',
+        })
+        .select('id')
+        .single();
+
+      if (itemInsertErr || !createdItem) {
+        logger.error('[FreeSampleRow] purchase_request_items insert 실패:', itemInsertErr);
+        await this.supabase.from('purchase_requests').delete().eq('id', purchaseId);
+        return { success: false, error: `품목 생성 실패: ${itemInsertErr?.message || '알 수 없음'}` };
+      }
+
+      const newItemId = createdItem.id as number;
+
+      const { error: stItemErr } = await this.supabase
+        .from('transaction_statement_items')
+        .update({
+          matched_purchase_id: purchaseId,
+          matched_item_id: newItemId,
+          match_method: 'free_sample_row',
+          match_confidence: 'high',
+        })
+        .eq('id', statementItemId);
+
+      if (stItemErr) {
+        logger.warn('[FreeSampleRow] transaction_statement_items 매칭 업데이트 실패:', stItemErr);
+      }
+
+      logger.debug('[FreeSampleRow] 단일행 무상샘플 발주 생성 완료:', { purchaseId, purchaseOrderNumber, newItemId });
+
+      return {
+        success: true,
+        data: { purchaseId, itemId: newItemId, purchaseOrderNumber }
+      };
+    } catch (error) {
+      logger.error('Create single item free sample purchase error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : '무상샘플 처리 중 오류가 발생했습니다.'
+      };
+    }
+  }
+
+  /**
    * 월말결제 파싱 Edge Function 호출 (비동기) - 일반 엔진(ocr-transaction-statement) 통합 사용
    */
   private async triggerMonthlyStatementParsing(statementId: string, fileUrl: string, fileType: string) {
