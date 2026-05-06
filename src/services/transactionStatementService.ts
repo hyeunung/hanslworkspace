@@ -847,21 +847,61 @@ class TransactionStatementService {
         return { success: false, error: '거래명세서에서 거래처명을 추출하지 못했습니다.' };
       }
 
-      const escaped = vendorName.replace(/[%,]/g, '');
-      const { data: vendors, error: vErr } = await this.supabase
-        .from('vendors')
-        .select('id, vendor_name, vendor_alias')
-        .or(`vendor_name.eq.${escaped},vendor_alias.eq.${escaped},vendor_name.ilike.%${escaped}%,vendor_alias.ilike.%${escaped}%`)
-        .limit(1);
+      // 거래처 검색: .or() 대신 개별 쿼리로 처리 (괄호 등 특수문자 파싱 에러 방지)
+      let vendorId: number | null = null;
 
-      if (vErr || !vendors || vendors.length === 0) {
+      // 1) 정확히 일치하는 거래처명
+      const { data: exactMatch } = await this.supabase
+        .from('vendors')
+        .select('id')
+        .eq('vendor_name', vendorName)
+        .limit(1);
+      if (exactMatch && exactMatch.length > 0) {
+        vendorId = exactMatch[0].id;
+      }
+
+      // 2) 별칭으로 일치
+      if (!vendorId) {
+        const { data: aliasMatch } = await this.supabase
+          .from('vendors')
+          .select('id')
+          .eq('vendor_alias', vendorName)
+          .limit(1);
+        if (aliasMatch && aliasMatch.length > 0) {
+          vendorId = aliasMatch[0].id;
+        }
+      }
+
+      // 3) 부분 일치 (vendor_name)
+      if (!vendorId) {
+        const { data: partialMatch } = await this.supabase
+          .from('vendors')
+          .select('id')
+          .ilike('vendor_name', `%${vendorName}%`)
+          .limit(1);
+        if (partialMatch && partialMatch.length > 0) {
+          vendorId = partialMatch[0].id;
+        }
+      }
+
+      // 4) 부분 일치 (vendor_alias)
+      if (!vendorId) {
+        const { data: aliasPartialMatch } = await this.supabase
+          .from('vendors')
+          .select('id')
+          .ilike('vendor_alias', `%${vendorName}%`)
+          .limit(1);
+        if (aliasPartialMatch && aliasPartialMatch.length > 0) {
+          vendorId = aliasPartialMatch[0].id;
+        }
+      }
+
+      if (!vendorId) {
         return {
           success: false,
           error: `거래처 "${vendorName}"를 찾을 수 없습니다. 거래처를 먼저 등록해주세요.`
         };
       }
-
-      const vendorId = vendors[0].id;
 
       // 발주번호 생성: F{YYYYMMDD}_{NNN}_S
       const today = new Date();
