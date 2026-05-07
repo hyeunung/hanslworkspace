@@ -25,6 +25,17 @@ const PROXY_DISPLAY_NAME: Record<'pending_executive' | 'pending_ceo', string> = 
   pending_ceo: '정영수',        // 대표이사
 }
 
+// status에 따라 자동 표기되는 수신
+const RECIPIENT_BY_STATUS: Record<'pending_manager' | 'pending_executive' | 'pending_ceo' | 'approved', string> = {
+  pending_manager: '경영팀 팀장',
+  pending_executive: '전무이사',
+  pending_ceo: '대표이사',
+  approved: '(주)한슬 임직원',
+}
+
+// 최종승인 후 발신 표기 (작성자 본인 이름 대신 직책자로 노출)
+const APPROVED_SENDER_DISPLAY = '대표이사 정영수'
+
 /**
  * A4 공문 영역만 새 창으로 복제해 인쇄.
  * @media print 방식은 부모 positioning 컨텍스트 때문에 백지가 나오는 케이스가 있어
@@ -190,7 +201,18 @@ export default function OfficialDocumentView({ doc, approvers, currentUser, onEd
     },
   ]
 
-  const senderLine = `${doc.sender_department ? doc.sender_department + ' ' : ''}${doc.sender_name}`.trim()
+  const isApproved = doc.approval_status === 'approved'
+  const isRejected = doc.approval_status === 'rejected'
+
+  // 수신: status별 자동 치환. rejected는 작성 시 입력값 그대로 노출(폴백).
+  const displayRecipient = isRejected
+    ? doc.recipient
+    : RECIPIENT_BY_STATUS[doc.approval_status as keyof typeof RECIPIENT_BY_STATUS] ?? doc.recipient
+
+  // 발신: 최종승인 후엔 직책자 표기, 그 외엔 작성자 본인 정보
+  const senderLine = isApproved
+    ? APPROVED_SENDER_DISPLAY
+    : `${doc.sender_department ? doc.sender_department + ' ' : ''}${doc.sender_name}`.trim()
 
   return (
     <div className="space-y-3">
@@ -369,7 +391,7 @@ export default function OfficialDocumentView({ doc, approvers, currentUser, onEd
         <div className="space-y-4 text-[13px] text-gray-900">
           <div className="flex gap-2">
             <span className="font-semibold text-gray-700 w-12 shrink-0">수신</span>
-            <span>{doc.recipient}</span>
+            <span>{displayRecipient}</span>
           </div>
 
           <div
@@ -383,6 +405,13 @@ export default function OfficialDocumentView({ doc, approvers, currentUser, onEd
           <div className="whitespace-pre-wrap leading-relaxed pt-2" style={{ minHeight: '180px' }}>
             {doc.body}
           </div>
+
+          {/* 결재 진행 중일 때만 노출. 최종승인 후엔 사라짐 */}
+          {!isApproved && !isRejected && (
+            <div className="text-center pt-6 text-[13px] text-gray-700">
+              상기 내용에 대한 결재 부탁드립니다.
+            </div>
+          )}
 
           <div className="text-right pt-12 text-[13px] text-gray-900">
             <div className="font-semibold">{senderLine || '—'}</div>
