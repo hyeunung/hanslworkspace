@@ -161,7 +161,7 @@ export default function OfficialDocumentForm({
           className="flex shrink-0"
           style={{ width: 200, border: '1px solid #c0c0c0' }}
         >
-          {(['담당자', '전무', '대표이사'] as const).map((role, idx, arr) => (
+          {(['경영팀', '전무이사', '대표이사'] as const).map((role, idx, arr) => (
             <div
               key={role}
               className="flex-1"
