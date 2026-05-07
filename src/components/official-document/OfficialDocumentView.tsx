@@ -225,14 +225,13 @@ export default function OfficialDocumentView({ doc, approvers, currentUser, onEd
         </div>
       </div>
 
-      {/* A4 문서 */}
+      {/* A4 문서 — lg+에서는 mm 단위 실측, 모바일에서는 픽셀 기반 패딩으로 가독성 확보 */}
       <div
-        className="official-doc-print bg-white shadow-sm mx-auto print:shadow-none"
+        className="official-doc-print bg-white shadow-sm mx-auto print:shadow-none px-4 py-5 lg:px-[18mm] lg:py-[20mm]"
         style={{
           width: '210mm',
           maxWidth: '100%',
           border: '1px solid #c0c0c0',
-          padding: '20mm 18mm',
           fontFamily: "'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif",
         }}
       >
