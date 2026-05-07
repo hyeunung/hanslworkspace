@@ -37,7 +37,6 @@ export default function OfficialDocumentForm({
   const isEditMode = !!editingDoc
 
   const [docNumber, setDocNumber] = useState(editingDoc?.doc_number ?? '')
-  const [recipient, setRecipient] = useState(editingDoc?.recipient ?? '(주)한슬 임직원')
   const [subject, setSubject] = useState(editingDoc?.subject ?? '')
   const [body, setBody] = useState(editingDoc?.body ?? '')
   const [submitting, setSubmitting] = useState(false)
@@ -94,7 +93,6 @@ export default function OfficialDocumentForm({
   const allRequiredFilled =
     !loadingUser &&
     senderName.trim() &&
-    recipient.trim() &&
     subject.trim() &&
     body.trim()
 
@@ -113,7 +111,9 @@ export default function OfficialDocumentForm({
         sender_name: senderName.trim(),
         sender_department: senderDepartment.trim() || null,
         doc_number: docNumber.trim() || null,
-        recipient: recipient.trim(),
+        // 수신은 더 이상 작성 시점에 입력하지 않음. 화면 표시는 status에 따라 자동 결정됨.
+        // DB NOT NULL 제약 충족용으로 최종 표기값을 그대로 저장.
+        recipient: '(주)한슬 임직원',
         subject: subject.trim(),
         body: body.trim(),
       }
@@ -192,20 +192,6 @@ export default function OfficialDocumentForm({
               placeholder={loadingUser ? '로딩 중...' : '발신자 선택'}
               searchPlaceholder="이름 또는 부서 검색..."
               emptyText="검색 결과가 없습니다."
-            />
-          </div>
-        </div>
-
-        <div className="doc-form-row">
-          <div className="doc-form-cell">
-            <div className="doc-form-cell-label">
-              수신 <span className="required">*</span>
-            </div>
-            <Input
-              value={recipient}
-              onChange={(e) => setRecipient(e.target.value)}
-              placeholder="예: ○○주식회사 대표이사"
-              className="doc-form-input"
             />
           </div>
         </div>
