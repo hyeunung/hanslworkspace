@@ -271,9 +271,9 @@ export default function OfficialDocumentMain() {
           </p>
         </div>
 
-        <div className="flex gap-4 items-start">
-          {/* 좌측 영역: 새 공문 작성 버튼(권한자만) + 공문 목록 */}
-          <aside className="w-96 shrink-0 space-y-2">
+        <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-start">
+          {/* 좌측 영역(모바일은 상단 풀폭, lg+ 좌측 사이드): 새 공문 작성 버튼(권한자만) + 공문 목록 */}
+          <aside className="w-full lg:w-96 lg:shrink-0 space-y-2">
             {canCreate && (
               <div>
                 <Button
@@ -352,7 +352,7 @@ export default function OfficialDocumentMain() {
           </aside>
 
           {/* 우측 디테일 */}
-          <main className="flex-1 min-w-0">
+          <main className="flex-1 min-w-0 w-full">
             {mode === 'create' && (
               <OfficialDocumentForm
                 senderUser={senderUser}
