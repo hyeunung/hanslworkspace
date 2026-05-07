@@ -403,7 +403,9 @@ export default function OfficialDocumentView({ doc, approvers, currentUser, onEd
           </div>
 
           <div className="whitespace-pre-wrap leading-relaxed pt-2" style={{ minHeight: '180px' }}>
-            {doc.body}
+            {/* 본문 끝에 사용자가 직접 타이핑해둔 "상기 내용에 대한 결재 부탁드립니다." 류 문구는
+                시스템에서 자동 노출하므로 표시 시점에 제거해 중복을 방지한다. */}
+            {doc.body.replace(/\s*상기\s*내용에?\s*대한\s*결재\s*부탁드립니다\.?\s*$/, '')}
           </div>
 
           {/* 결재 진행 중일 때만 노출. 최종승인 후엔 사라짐 */}
