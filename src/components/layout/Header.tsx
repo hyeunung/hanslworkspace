@@ -2,7 +2,7 @@
 
 import { useNavigate } from 'react-router-dom'
 import { createClient } from '@/lib/supabase/client'
-import { User, Menu, MessageCircle, FileText, FileCheck, FileEdit, Clock } from 'lucide-react'
+import { User, Menu, MessageCircle, FileText, FileCheck, FileEdit, Clock, ScrollText } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supportService } from '@/services/supportService'
 import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
@@ -330,12 +330,24 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
             </span>
           </div>
 
+          {/* 공문 페이지 진입 버튼 (항상 표시) */}
+          <button
+            type="button"
+            onClick={() => navigate('/official-document')}
+            className="group ml-3 inline-flex items-center justify-center h-9 rounded-lg hover:bg-gray-50 transition-colors px-2 min-w-[36px]"
+            title="공문"
+            aria-label="공문 페이지 열기"
+          >
+            <ScrollText className="w-4 h-4 text-gray-600 group-hover:hidden" />
+            <span className="hidden group-hover:inline text-xs font-medium text-gray-600">공문</span>
+          </button>
+
           {/* 로고 오른쪽 알림 배지 */}
           {pendingInquiryCount > 0 && (
             <button
               type="button"
               onClick={() => navigate('/support')}
-              className="relative ml-3 inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-gray-50 transition-colors"
+              className="relative ml-2 inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-gray-50 transition-colors"
               title="미처리 문의 보기"
               aria-label={`문의 알림 ${pendingInquiryCount}건`}
             >
