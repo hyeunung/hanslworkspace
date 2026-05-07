@@ -166,7 +166,10 @@ export default function OfficialDocumentMain() {
     return docs.filter((d) => d.approval_status === 'approved')
   }, [docs, isPrivilegedViewer])
 
-  // 최초 로드 시: 가장 최근 최종결재(대표이사) 완료된 공문을 기본 표시
+  // 최초 로드 시 자동 선택:
+  // - 결재 권한자(hr/superadmin/middle_manager/final_approver/ceo): 결재 진행 중 공문 우선,
+  //   없으면 가장 최근 최종결재 완료 공문
+  // - 그 외: 가장 최근 최종결재(대표이사) 완료된 공문
   const initialSelectedRef = useRef(false)
   useEffect(() => {
     if (initialSelectedRef.current) return
@@ -175,6 +178,19 @@ export default function OfficialDocumentMain() {
       initialSelectedRef.current = true
       return
     }
+
+    // 결재 진행 중(pending_*) 공문 — 권한자에게만 의미 있음
+    const pendingDocs = isPrivilegedViewer
+      ? visibleDocs
+          .filter((d) =>
+            ['pending_manager', 'pending_executive', 'pending_ceo'].includes(d.approval_status)
+          )
+          .sort(
+            (a, b) =>
+              new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          )
+      : []
+
     const mostRecentApproved = visibleDocs
       .filter((d) => d.approval_status === 'approved' && d.ceo_approved_at)
       .sort(
@@ -182,12 +198,14 @@ export default function OfficialDocumentMain() {
           new Date(b.ceo_approved_at as string).getTime() -
           new Date(a.ceo_approved_at as string).getTime()
       )[0]
-    if (mostRecentApproved) {
-      setSelectedId(mostRecentApproved.id)
+
+    const target = pendingDocs[0] ?? mostRecentApproved
+    if (target) {
+      setSelectedId(target.id)
       setMode('view')
     }
     initialSelectedRef.current = true
-  }, [loading, visibleDocs])
+  }, [loading, visibleDocs, isPrivilegedViewer])
 
   const selectedDoc = useMemo(
     () => visibleDocs.find((d) => d.id === selectedId) ?? null,
