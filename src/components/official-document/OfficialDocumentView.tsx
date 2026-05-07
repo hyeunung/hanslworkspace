@@ -182,13 +182,13 @@ export default function OfficialDocumentView({ doc, approvers, currentUser, onEd
     approvedAt: string | null
   }> = [
     {
-      label: '담당자',
+      label: '경영팀',
       step: 'pending_manager',
       approvedBy: doc.manager_approved_by,
       approvedAt: doc.manager_approved_at,
     },
     {
-      label: '전무',
+      label: '전무이사',
       step: 'pending_executive',
       approvedBy: doc.executive_approved_by,
       approvedAt: doc.executive_approved_at,
