@@ -47,11 +47,11 @@ export default function OfficialDocumentMain() {
 
   const senderUser = useMemo(
     () =>
-      user
+      user && employee
         ? {
-            id: user.id,
-            name: employee?.name ?? '',
-            department: employee?.department ?? null,
+            id: employee.id,
+            name: employee.name ?? '',
+            department: employee.department ?? null,
           }
         : null,
     [user, employee]
@@ -280,12 +280,14 @@ export default function OfficialDocumentMain() {
     <div className="min-h-screen bg-gray-50">
       <div className="w-full max-w-none mx-0 px-3 sm:px-4 lg:px-5 pb-6">
         <div className="mb-4">
-          <h1 className="page-title text-gray-900">공문</h1>
+          <h1 className="page-title text-gray-900">
+            {selectedDoc && selectedDoc.approval_status !== 'approved' ? '품의서' : '공문'}
+          </h1>
           <p
             className="page-subtitle text-gray-600 mt-1"
             style={{ marginTop: '-2px', marginBottom: '-4px' }}
           >
-            Official Document
+            {selectedDoc && selectedDoc.approval_status !== 'approved' ? 'Proposal' : 'Official Document'}
           </p>
         </div>
 
@@ -401,11 +403,11 @@ export default function OfficialDocumentMain() {
                 doc={selectedDoc}
                 approvers={approvers}
                 currentUser={
-                  user
+                  user && employee
                     ? {
-                        id: user.id,
+                        id: employee.id,
                         roles: currentUserRoles,
-                        name: employee?.name ?? '',
+                        name: employee.name ?? '',
                       }
                     : null
                 }

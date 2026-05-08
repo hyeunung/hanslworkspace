@@ -35,6 +35,7 @@ export default function OfficialDocumentForm({
   onCancel,
 }: Props) {
   const isEditMode = !!editingDoc
+  const isApprovedDoc = editingDoc?.approval_status === 'approved'
 
   const [docNumber, setDocNumber] = useState(editingDoc?.doc_number ?? '')
   const [subject, setSubject] = useState(editingDoc?.subject ?? '')
@@ -135,8 +136,8 @@ export default function OfficialDocumentForm({
   return (
     <div className="doc-form">
       <div className="doc-form-header">
-        <h1>공 문</h1>
-        <div className="doc-subtitle">Official Document</div>
+        <h1>{isApprovedDoc ? '공 문' : '품 의 서'}</h1>
+        <div className="doc-subtitle">{isApprovedDoc ? 'Official Document' : 'Proposal'}</div>
       </div>
 
       {/* 문서번호 / 시행일자 + 결재란 */}

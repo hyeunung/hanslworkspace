@@ -160,8 +160,8 @@ export default function OfficialDocumentApprovedModal() {
           doc={current}
           approvers={approvers}
           currentUser={
-            user
-              ? { id: user.id, roles: currentUserRoles, name: employee?.name ?? '' }
+            user && employee
+              ? { id: employee.id, roles: currentUserRoles, name: employee.name ?? '' }
               : null
           }
           onUpdated={(next) => {
