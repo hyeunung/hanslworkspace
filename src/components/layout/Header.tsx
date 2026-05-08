@@ -8,6 +8,7 @@ import { supportService } from '@/services/supportService'
 import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
 import { countPendingApprovalsForSidebarBadge } from '@/utils/purchaseFilters'
 import { parseRoles } from '@/utils/roleHelper'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface HeaderProps {
   user: {
@@ -41,11 +42,12 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
   const [pendingApplicationCount, setPendingApplicationCount] = useState(0)
   const [otherPendingCount, setOtherPendingCount] = useState(0)
   const { allPurchases } = usePurchaseMemory()
+  const { currentUserId } = useAuth()
 
   const roles = parseRoles(user?.roles)
   const isAdmin = roles.includes('superadmin')
   const isApplicationApprover = roles.includes('superadmin') || roles.includes('hr')
-  const canSeeStatementBadge = roles.includes('superadmin') || roles.includes('lead buyer')
+  const isLeadBuyer = roles.includes('lead buyer')
   const purchaseOnlyCount = useMemo(
     () => countPendingApprovalsForSidebarBadge(allPurchases, user?.roles),
     [allPurchases, user?.roles]
@@ -183,18 +185,36 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
     }
   }, [isAdmin])
 
+  // 거래명세서 배지 카운트 - 역할별로 쿼리가 다름 (FixedNavigation과 동일 규칙)
+  // - superadmin: status IN ('failed','rejected')
+  // - lead buyer: status='extracted' 전체
+  // - 담당자(uploaded_by=본인): status='extracted' AND quantity_match_confirmed_at IS NULL
   useEffect(() => {
-    if (!canSeeStatementBadge) return
+    if (!isAdmin && !isLeadBuyer && !currentUserId) {
+      setPendingStatementCount(0)
+      return
+    }
     const supabase = createClient()
     let cancelled = false
     let subscription: ReturnType<ReturnType<typeof createClient>['channel']> | null = null
 
     const loadPendingStatements = async () => {
-      const { count } = await supabase
+      let query = supabase
         .from('transaction_statements')
         .select('id', { count: 'exact', head: true })
-        .eq('status', 'extracted')
 
+      if (isAdmin) {
+        query = query.in('status', ['failed', 'rejected'])
+      } else if (isLeadBuyer) {
+        query = query.eq('status', 'extracted')
+      } else {
+        query = query
+          .eq('uploaded_by', currentUserId)
+          .eq('status', 'extracted')
+          .is('quantity_match_confirmed_at', null)
+      }
+
+      const { count } = await query
       if (!cancelled && typeof count === 'number') {
         setPendingStatementCount(count)
       }
@@ -221,7 +241,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
       cancelled = true
       if (subscription) supabase.removeChannel(subscription)
     }
-  }, [canSeeStatementBadge])
+  }, [isAdmin, isLeadBuyer, currentUserId])
 
   const loadOtherPendingCounts = useCallback(async () => {
     try {
@@ -357,7 +377,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
               </span>
             </button>
           )}
-          {canSeeStatementBadge && pendingStatementCount > 0 && (
+          {pendingStatementCount > 0 && (
             <button
               type="button"
               onClick={() => navigate('/transaction-statement')}
