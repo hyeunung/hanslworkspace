@@ -41,7 +41,7 @@ const APPROVED_SENDER_DISPLAY = '대표이사 정영수'
  * @media print 방식은 부모 positioning 컨텍스트 때문에 백지가 나오는 케이스가 있어
  * 새 창 + 스타일시트 복제 방식으로 격리한다.
  */
-function printOfficialDoc() {
+function printOfficialDoc(printTitle: string) {
   const docEl = document.querySelector('.official-doc-print') as HTMLElement | null
   if (!docEl) {
     toast.error('인쇄할 공문을 찾을 수 없습니다.')
@@ -67,7 +67,7 @@ function printOfficialDoc() {
 <html lang="ko">
   <head>
     <meta charset="UTF-8">
-    <title>공문 인쇄</title>
+    <title>${printTitle}</title>
     ${stylesheetLinks.map((h) => `<link rel="stylesheet" href="${h}">`).join('\n    ')}
     <style>${inlineStyles}</style>
     <style>
@@ -237,7 +237,7 @@ export default function OfficialDocumentView({ doc, approvers, currentUser, onEd
           )}
           <button
             type="button"
-            onClick={() => printOfficialDoc()}
+            onClick={() => printOfficialDoc(isApproved ? '공문 인쇄' : '품의서 인쇄')}
             className="inline-flex items-center gap-1 text-[11px] text-gray-600 hover:text-gray-900"
             title="인쇄"
           >
@@ -259,10 +259,10 @@ export default function OfficialDocumentView({ doc, approvers, currentUser, onEd
       >
         <div className="text-center pb-4 mb-4" style={{ borderBottom: '2px solid #333' }}>
           <h1 className="text-[22px] font-bold text-gray-900" style={{ letterSpacing: '0.4em' }}>
-            공 문
+            {isApproved ? '공 문' : '품 의 서'}
           </h1>
           <div className="text-[10px] text-gray-400 mt-1" style={{ letterSpacing: '0.08em' }}>
-            Official Document
+            {isApproved ? 'Official Document' : 'Proposal'}
           </div>
         </div>
 
