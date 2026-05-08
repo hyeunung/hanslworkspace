@@ -34,7 +34,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
   const navigate = useNavigate()
   const location = useLocation()
   const pathname = location.pathname
-  const { employee } = useAuth()
+  const { currentUserId } = useAuth()
   const { badgeCounts } = useRequestBadgeCounts()
 
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
@@ -44,7 +44,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
   const roles = parseRoles(role)
   const isAdmin = roles.includes('superadmin')
   const isApplicationApprover = roles.includes('superadmin') || roles.includes('hr')
-  const canSeeStatementBadge = roles.includes('superadmin') || roles.includes('lead buyer')
+  const isLeadBuyer = roles.includes('lead buyer')
 
   // 총 배지 합계 (접힌 상태에서 아이콘에 표시)
   const totalPurchaseBadge = Object.values(badgeCounts).reduce((a, b) => a + b, 0)
@@ -120,18 +120,38 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
   const supportBadge = pendingInquiryCount
   const statementBadge = pendingStatementCount
 
+  // 거래명세서 배지 카운트 - 역할별로 쿼리가 다름 (우선순위: superadmin > lead buyer > 담당자)
+  // - superadmin: status IN ('failed','rejected') (빨간색만)
+  // - lead buyer: status='extracted' 전체
+  // - 담당자(uploaded_by=본인): status='extracted' AND quantity_match_confirmed_at IS NULL
   useEffect(() => {
-    if (!canSeeStatementBadge) return
+    // 어떤 분기에도 해당 안 되면 배지 자체 비활성
+    if (!isAdmin && !isLeadBuyer && !currentUserId) {
+      setPendingStatementCount(0)
+      return
+    }
     const supabase = createClient()
     let cancelled = false
     let subscription: ReturnType<ReturnType<typeof createClient>['channel']> | null = null
 
     const loadPendingStatements = async () => {
-      const { count } = await supabase
+      let query = supabase
         .from('transaction_statements')
         .select('id', { count: 'exact', head: true })
-        .eq('status', 'extracted')
 
+      if (isAdmin) {
+        query = query.in('status', ['failed', 'rejected'])
+      } else if (isLeadBuyer) {
+        query = query.eq('status', 'extracted')
+      } else {
+        // 담당자: 본인이 업로드 + 확인필요 + 수량일치 미완료
+        query = query
+          .eq('uploaded_by', currentUserId)
+          .eq('status', 'extracted')
+          .is('quantity_match_confirmed_at', null)
+      }
+
+      const { count } = await query
       if (!cancelled && typeof count === 'number') {
         setPendingStatementCount(count)
       }
@@ -158,7 +178,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
       cancelled = true
       if (subscription) supabase.removeChannel(subscription)
     }
-  }, [canSeeStatementBadge])
+  }, [isAdmin, isLeadBuyer, currentUserId])
 
   // hr, superadmin: 신청서 승인 대기 개수
   useEffect(() => {
@@ -460,12 +480,12 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                       >
                         <div className="relative flex-shrink-0">
                           <Icon className="w-4 h-4" />
-                          {!isExpanded && item.href === '/transaction-statement' && canSeeStatementBadge && renderIconBadge(statementBadge)}
+                          {!isExpanded && item.href === '/transaction-statement' && statementBadge > 0 && renderIconBadge(statementBadge)}
                         </div>
                         {isExpanded && (
                           <>
                             <span className="text-sm font-medium flex-1">{item.label}</span>
-                            {item.href === '/transaction-statement' && canSeeStatementBadge && statementBadge > 0 && (
+                            {item.href === '/transaction-statement' && statementBadge > 0 && (
                               <span className={cn(
                                 "text-[11px] font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center",
                                 isActive ? "bg-hansl-200 text-hansl-700" : "bg-red-100 text-red-700"

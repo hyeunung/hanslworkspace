@@ -1320,12 +1320,15 @@ class TransactionStatementService {
   }): Promise<{ success: boolean; data?: TransactionStatement[]; count?: number; error?: string }> {
     try {
       // items에서 매칭된 purchase_id + 캐시된 매칭후보 데이터도 함께 조회
+      // 정렬: status DESC로 'confirmed'(c)가 최하위로 가게 함 → 확인필요/처리중 등 미확정이 항상 위로 노출
+      // (현재 상태값 set: pending/queued/processing/extracted/confirmed/rejected/failed — 모두 'c' 보다 알파벳 뒤)
       let query = this.supabase
         .from('transaction_statements')
         .select(`
           *,
           items:transaction_statement_items(matched_purchase_id,matched_item_id,extracted_quantity,confirmed_quantity,extracted_amount,match_candidates_data)
         `, { count: 'exact' })
+        .order('status', { ascending: false })
         .order('uploaded_at', { ascending: false })
         .order('statement_date', { ascending: false, nullsFirst: true });
 
@@ -1345,12 +1348,12 @@ class TransactionStatementService {
         query = query.or(`statement_code.ilike.%${filters.search}%,vendor_name.ilike.%${filters.search}%,file_name.ilike.%${filters.search}%`);
       }
 
-      if (filters?.limit) {
+      // offset이 있으면 range로 처리(한쪽만 사용), 없으면 limit만 적용
+      if (typeof filters?.offset === 'number' && filters.offset > 0) {
+        const pageSize = filters.limit ?? 50;
+        query = query.range(filters.offset, filters.offset + pageSize - 1);
+      } else if (filters?.limit) {
         query = query.limit(filters.limit);
-      }
-
-      if (filters?.offset) {
-        query = query.range(filters.offset, filters.offset + (filters.limit || 20) - 1);
       }
 
       const { data, count, error } = await query;
