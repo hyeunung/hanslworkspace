@@ -93,30 +93,35 @@ export function useVersionCheck(): VersionCheckState {
     loadChangelog()
   }, [loadChangelog])
 
-  // ── 시나리오 1: 페이지 로드 시 "이전에 본 빌드"와 현재 빌드 비교 ──
+  // ── 시나리오 1: 페이지 로드 시 "이전에 본 버전"과 현재 버전 비교 ──
+  // 버전이 바뀐 경우에만 모달 노출. 고스트 패치(같은 버전, 새 buildId)는 조용히 통과.
   useEffect(() => {
-    if (!currentBuildId) return
+    if (!currentVersion) return
 
-    const seenBuildId = localStorage.getItem(SEEN_BUILD_KEY)
+    const seenVersion = localStorage.getItem(SEEN_VERSION_KEY)
 
-    // 처음 방문이면 현재 빌드와 버전을 기록하고 끝
-    if (!seenBuildId) {
+    // 처음 방문이면 현재 빌드/버전을 기록하고 끝
+    if (!seenVersion) {
       localStorage.setItem(SEEN_BUILD_KEY, currentBuildId)
       localStorage.setItem(SEEN_VERSION_KEY, currentVersion)
       return
     }
 
-    // 이전에 본 빌드와 다르면 → 새 배포 후 재방문 (이미 최신 코드 로드됨, 새로고침 불필요)
-    if (seenBuildId !== currentBuildId) {
+    // 버전이 다르면 → 새 배포 후 재방문 (이미 최신 코드 로드됨, 새로고침 불필요)
+    if (seenVersion !== currentVersion) {
       showUpdate({
         version: currentVersion,
         buildId: currentBuildId,
         buildTime: currentBuildTime,
       }, false)
+    } else if (currentBuildId) {
+      // 같은 버전이지만 buildId가 바뀐 고스트 패치 → 모달 없이 seenBuildId만 갱신
+      localStorage.setItem(SEEN_BUILD_KEY, currentBuildId)
     }
   }, [currentBuildId, currentVersion, currentBuildTime, showUpdate])
 
   // ── 시나리오 2: 페이지 열어둔 채 폴링으로 서버 새 빌드 감지 ──
+  // 버전이 바뀐 경우에만 새로고침 모달 노출. 고스트 패치는 무시.
   const checkRemoteVersion = useCallback(async () => {
     try {
       const res = await fetch(`/version.json?t=${Date.now()}`, { cache: 'no-store' })
@@ -124,14 +129,13 @@ export function useVersionCheck(): VersionCheckState {
 
       const remote: VersionInfo = await res.json()
 
-      // 탭 열어둔 채 새 배포 감지 → 새로고침 필요
-      if (currentBuildId && remote.buildId && remote.buildId !== currentBuildId) {
+      if (currentVersion && remote.version && remote.version !== currentVersion) {
         showUpdate(remote, true)
       }
     } catch {
       // 네트워크 에러는 조용히 무시
     }
-  }, [currentBuildId, showUpdate])
+  }, [currentVersion, showUpdate])
 
   useEffect(() => {
     if (import.meta.env.DEV) return
