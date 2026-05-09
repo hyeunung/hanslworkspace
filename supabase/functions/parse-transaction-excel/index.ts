@@ -4,6 +4,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4'
 // @ts-ignore - Deno runtime imports
 import * as XLSX from 'https://esm.sh/xlsx@0.18.5'
+import { extractOrderNumber, normalizeOrderNumber } from '../_shared/order-number.ts'
+import { validateAndMatchVendor } from '../_shared/vendor-matching.ts'
+import { matchTransactionItems } from '../_shared/transaction-matching.ts'
 
 declare const Deno: {
   env: {
@@ -47,6 +50,7 @@ interface ParseResult {
   total_amount?: number;
   tax_amount?: number;
   grand_total?: number;
+  po_number?: string;
   items: ParsedItem[];
   file_type: 'excel';
 }
@@ -57,6 +61,7 @@ interface StatementMetadata {
   total_amount?: number;
   tax_amount?: number;
   grand_total?: number;
+  po_number?: string;
 }
 
 interface ColumnMap {
@@ -69,13 +74,6 @@ interface ColumnMap {
   taxAmount: number;
   poNumber: number;
   remark: number;
-}
-
-interface MatchResult {
-  lineNumber: number;
-  matchedPurchaseId: number | null;
-  matchedItemId: number | null;
-  matchedVendorName: string | null;
 }
 
 serve(async (req) => {
@@ -133,7 +131,20 @@ serve(async (req) => {
     const parseResult = parseExcelFile(fileBuffer)
 
     currentStage = 'match_items'
-    const matchedItems = await matchItemsToSystem(supabase, parseResult.items)
+    const matchedItems = await matchTransactionItems(
+      supabase,
+      parseResult.items.map((it) => ({
+        line_number: it.line_number,
+        item_name: it.item_name,
+        specification: it.specification,
+        quantity: it.quantity ?? null,
+        po_number: it.po_number,
+      })),
+      {
+        headerPoNumber: parseResult.po_number,
+        extractedVendorName: parseResult.vendor_name,
+      },
+    )
 
     currentStage = 'match_vendor'
     let validatedVendorName: string | null = null
@@ -195,9 +206,9 @@ serve(async (req) => {
           extracted_po_number: item.po_number || null,
           extracted_remark: item.remark || null,
           match_confidence: item.confidence,
-          matched_purchase_id: matched?.matchedPurchaseId || null,
-          matched_item_id: matched?.matchedItemId || null,
-          match_method: matched ? 'item_similarity' : null,
+          matched_purchase_id: matched?.matchedPurchaseId ?? null,
+          matched_item_id: matched?.matchedItemId ?? null,
+          match_method: matched?.matchMethod ?? null,
         }
       })
 
@@ -351,6 +362,7 @@ function parseExcelFile(buffer: ArrayBuffer): ParseResult {
     total_amount: totalAmount || undefined,
     tax_amount: taxAmount,
     grand_total: grandTotal || undefined,
+    po_number: metadata.po_number,
     items,
     file_type: 'excel',
   }
@@ -462,6 +474,7 @@ function extractStatementMetadata(rows: any[][], headerRowIndex: number): Statem
   let totalAmount: number | undefined
   let taxAmount: number | undefined
   let grandTotal: number | undefined
+  let poNumber: string | undefined
 
   const scanLimit = Math.min(rows.length, Math.max(headerRowIndex + 40, 40))
   for (let i = 0; i < scanLimit; i++) {
@@ -478,6 +491,14 @@ function extractStatementMetadata(rows: any[][], headerRowIndex: number): Statem
     if (!vendorName) {
       const vendor = extractVendorNameFromRow(normalizedCells)
       if (vendor) vendorName = vendor
+    }
+
+    // 헤더 PO 는 표 헤더(headerRowIndex) 위쪽 영역만 스캔. 표 내부 데이터 행이 잡히지 않도록.
+    if (!poNumber && i < headerRowIndex) {
+      const headerPo = extractOrderNumber(rowText)
+      if (headerPo && (rowLower.includes('발주') || rowLower.includes('수주') || rowLower.includes('po') || rowLower.includes('order'))) {
+        poNumber = headerPo
+      }
     }
 
     const rowNumbers = extractNumbersFromText(rowText)
@@ -504,6 +525,7 @@ function extractStatementMetadata(rows: any[][], headerRowIndex: number): Statem
     total_amount: totalAmount,
     tax_amount: taxAmount,
     grand_total: grandTotal,
+    po_number: poNumber,
   }
 }
 
@@ -713,152 +735,3 @@ function extractNumbersFromText(text: string): number[] {
     .filter((num) => Number.isFinite(num))
 }
 
-function extractOrderNumber(text: string): string | null {
-  if (!text) return null
-  const normalized = text.toUpperCase().replace(/\s+/g, '')
-
-  const exactPo = normalized.match(/F\d{8}[_-]\d{1,3}/g)
-  if (exactPo?.length) return normalizeOrderNumber(exactPo[0])
-
-  const exactSo = normalized.match(/HS\d{6}[-_]\d{1,2}/g)
-  if (exactSo?.length) return normalizeOrderNumber(exactSo[0])
-
-  return null
-}
-
-function normalizeOrderNumber(input: string): string {
-  const normalized = input.toUpperCase().replace(/\s+/g, '')
-
-  const poMatch = normalized.match(/^(F\d{8})[_-](\d{1,3})$/)
-  if (poMatch) {
-    return `${poMatch[1]}_${poMatch[2].padStart(3, '0')}`
-  }
-
-  const soMatch = normalized.match(/^(HS\d{6})[-_](\d{1,2})$/)
-  if (soMatch) {
-    return `${soMatch[1]}-${soMatch[2].padStart(2, '0')}`
-  }
-
-  return ''
-}
-
-async function matchItemsToSystem(
-  supabase: any,
-  items: ParsedItem[]
-): Promise<MatchResult[]> {
-  const results: MatchResult[] = []
-
-  for (const item of items) {
-    const nameForSearch = sanitizeText(item.item_name || item.specification || '')
-      .replace(/\s*\(TOP\/BOT\)\s*/gi, '')
-      .replace(/\s*\(TOP\)\s*/gi, '')
-      .replace(/\s*\(BOT\)\s*/gi, '')
-      .replace(/\s*\[.*?\]\s*/g, '')
-      .trim()
-
-    if (!nameForSearch) continue
-
-    const { data: specMatches } = await supabase
-      .from('purchase_request_items')
-      .select('id, item_name, specification, purchase_request_id, vendor_name')
-      .ilike('specification', `%${nameForSearch}%`)
-      .limit(10)
-
-    const { data: nameMatches } = await supabase
-      .from('purchase_request_items')
-      .select('id, item_name, specification, purchase_request_id, vendor_name')
-      .ilike('item_name', `%${nameForSearch}%`)
-      .limit(10)
-
-    const allMatches = [...(specMatches || []), ...(nameMatches || [])]
-    const uniqueMatches = [...new Map(allMatches.map((m: any) => [m.id, m])).values()]
-    if (!uniqueMatches.length) continue
-
-    const bestMatch = uniqueMatches[0]
-    results.push({
-      lineNumber: item.line_number,
-      matchedPurchaseId: bestMatch.purchase_request_id || null,
-      matchedItemId: bestMatch.id || null,
-      matchedVendorName: bestMatch.vendor_name || null,
-    })
-  }
-
-  return results
-}
-
-async function validateAndMatchVendor(
-  supabase: any,
-  extractedVendorName: string
-): Promise<{ matched: boolean; vendor_name?: string; vendor_id?: number; similarity: number }> {
-  if (!extractedVendorName) {
-    return { matched: false, similarity: 0 }
-  }
-
-  const { data: vendors, error } = await supabase
-    .from('vendors')
-    .select('id, vendor_name, vendor_alias')
-    .limit(500)
-
-  if (error || !vendors || vendors.length === 0) {
-    return { matched: false, similarity: 0 }
-  }
-
-  let bestMatch: { vendor_id: number; vendor_name: string; similarity: number } | null = null
-  for (const vendor of vendors) {
-    let similarity = calculateVendorSimilarity(extractedVendorName, vendor.vendor_name)
-    if (vendor.vendor_alias) {
-      const aliasSimilarity = calculateVendorSimilarity(extractedVendorName, vendor.vendor_alias)
-      similarity = Math.max(similarity, aliasSimilarity)
-    }
-    if (!bestMatch || similarity > bestMatch.similarity) {
-      bestMatch = {
-        vendor_id: vendor.id,
-        vendor_name: vendor.vendor_name,
-        similarity
-      }
-    }
-  }
-
-  if (bestMatch && bestMatch.similarity >= 60) {
-    return {
-      matched: true,
-      vendor_name: bestMatch.vendor_name,
-      vendor_id: bestMatch.vendor_id,
-      similarity: bestMatch.similarity
-    }
-  }
-
-  return { matched: false, similarity: bestMatch?.similarity || 0 }
-}
-
-function normalizeVendorName(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/\(주\)|주식회사|㈜|co\.?|ltd\.?|inc\.?|corp\.?|company|컴퍼니/gi, "")
-    .replace(/\s+[가-힣]{2,4}$/g, (m) => /^[가-힣]{2,4}$/.test(m.trim()) ? "" : m)
-    .replace(/[^a-z0-9가-힣]/g, '')
-}
-
-function vendorLevenshtein(a: string, b: string): number {
-  const m = a.length, n = b.length
-  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
-  for (let i = 0; i <= m; i++) dp[i][0] = i
-  for (let j = 0; j <= n; j++) dp[0][j] = j
-  for (let i = 1; i <= m; i++)
-    for (let j = 1; j <= n; j++)
-      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : Math.min(dp[i-1][j-1], dp[i-1][j], dp[i][j-1]) + 1
-  return dp[m][n]
-}
-
-function calculateVendorSimilarity(a: string, b: string): number {
-  const na = normalizeVendorName(a)
-  const nb = normalizeVendorName(b)
-
-  if (na === nb) return 100
-  if (!na || !nb) return 0
-  if (na.includes(nb) || nb.includes(na)) return 85
-
-  const maxLen = Math.max(na.length, nb.length)
-  const dist = vendorLevenshtein(na, nb)
-  return Math.round(((maxLen - dist) / maxLen) * 100)
-}
