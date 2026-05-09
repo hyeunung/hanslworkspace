@@ -4,6 +4,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4'
 // @ts-ignore - Deno runtime imports
 import { PDFDocument, degrees } from "https://esm.sh/pdf-lib@1.17.1"
+import { extractOrderNumber, parseOrderNumberWithLine } from '../_shared/order-number.ts'
+import { validateAndMatchVendor } from '../_shared/vendor-matching.ts'
+import { matchTransactionItems } from '../_shared/transaction-matching.ts'
 
 declare const Deno: {
   env: {
@@ -54,13 +57,6 @@ interface ParseResult {
   expected_item_count?: number;
   expected_max_line_number?: number;
   extraction_passes?: number;
-}
-
-interface MatchResult {
-  lineNumber: number;
-  matchedPurchaseId: number | null;
-  matchedItemId: number | null;
-  matchedVendorName: string | null;
 }
 
 serve(async (req) => {
@@ -138,7 +134,20 @@ serve(async (req) => {
     const parseResult = await extractWithClaude(pdfBase64, anthropicApiKey, poScope)
 
     currentStage = 'match_items'
-    const matchedItems = await matchItemsToSystem(supabase, parseResult.items)
+    const matchedItems = await matchTransactionItems(
+      supabase,
+      parseResult.items.map((it) => ({
+        line_number: it.line_number,
+        item_name: it.item_name,
+        specification: it.specification,
+        quantity: it.quantity ?? null,
+        po_number: it.po_number,
+        po_line_number: it.po_line_number ?? null,
+      })),
+      {
+        extractedVendorName: parseResult.vendor_name,
+      },
+    )
 
     currentStage = 'match_vendor'
     let validatedVendorName: string | null = null
@@ -202,9 +211,9 @@ serve(async (req) => {
           extracted_po_line_number: item.po_line_number ?? null,
           extracted_remark: item.remark || null,
           match_confidence: item.confidence,
-          matched_purchase_id: matched?.matchedPurchaseId || null,
-          matched_item_id: matched?.matchedItemId || null,
-          match_method: matched ? 'item_similarity' : null,
+          matched_purchase_id: matched?.matchedPurchaseId ?? null,
+          matched_item_id: matched?.matchedItemId ?? null,
+          match_method: matched?.matchMethod ?? null,
         }
       })
 
@@ -1623,215 +1632,3 @@ function parseNullableAmount(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function extractOrderNumber(text: string): string | null {
-  if (!text) return null
-  const normalized = text.toUpperCase().replace(/\s+/g, '')
-
-  const exactPo = normalized.match(/F\d{8}[_-]\d{1,3}/g)
-  if (exactPo?.length) return normalizeOrderNumber(exactPo[0])
-
-  const exactSo = normalized.match(/HS\d{6}[-_]\d{1,2}/g)
-  if (exactSo?.length) return normalizeOrderNumber(exactSo[0])
-
-  return null
-}
-
-function parseOrderNumberWithLine(input: string): { base: string; lineNumber: number | null } | null {
-  const normalized = input.toUpperCase().replace(/\s+/g, '')
-
-  // F20260121_001-07 → base=F20260121_001, lineNumber=7
-  const poWithLine = normalized.match(/^(F\d{8})[_-](\d{1,3})[-_](\d{1,3})$/)
-  if (poWithLine) {
-    return {
-      base: `${poWithLine[1]}_${poWithLine[2].padStart(3, '0')}`,
-      lineNumber: parseInt(poWithLine[3], 10),
-    }
-  }
-
-  // F20260121_001 → base=F20260121_001, lineNumber=null
-  const poOnly = normalized.match(/^(F\d{8})[_-](\d{1,3})$/)
-  if (poOnly) {
-    return {
-      base: `${poOnly[1]}_${poOnly[2].padStart(3, '0')}`,
-      lineNumber: null,
-    }
-  }
-
-  // HS260109-03-01 → base=HS260109-03, lineNumber=1
-  const soWithLine = normalized.match(/^(HS\d{6})[-_](\d{1,2})[-_](\d{1,3})$/)
-  if (soWithLine) {
-    return {
-      base: `${soWithLine[1]}-${soWithLine[2].padStart(2, '0')}`,
-      lineNumber: parseInt(soWithLine[3], 10),
-    }
-  }
-
-  // HS260109-03 → base=HS260109-03, lineNumber=null
-  const soOnly = normalized.match(/^(HS\d{6})[-_](\d{1,2})$/)
-  if (soOnly) {
-    return {
-      base: `${soOnly[1]}-${soOnly[2].padStart(2, '0')}`,
-      lineNumber: null,
-    }
-  }
-
-  return null
-}
-
-function normalizeOrderNumber(input: string): string {
-  return parseOrderNumberWithLine(input)?.base || ''
-}
-
-async function matchItemsToSystem(
-  supabase: any,
-  items: ParsedItem[]
-): Promise<MatchResult[]> {
-  const results: MatchResult[] = []
-
-  const poGroups = new Map<string, ParsedItem[]>()
-  for (const item of items) {
-    if (item.po_number) {
-      const list = poGroups.get(item.po_number) || []
-      list.push(item)
-      poGroups.set(item.po_number, list)
-    }
-  }
-
-  const purchaseCache = new Map<string, { purchaseId: number; vendorName: string; items: any[] } | null>()
-
-  for (const [poNumber] of poGroups) {
-    if (purchaseCache.has(poNumber)) continue
-    const { data } = await supabase
-      .from('purchase_requests')
-      .select(`
-        id,
-        purchase_order_number,
-        sales_order_number,
-        vendor:vendors(vendor_name),
-        items:purchase_request_items(id, line_number, item_name, specification, quantity)
-      `)
-      .or(`purchase_order_number.eq.${poNumber},sales_order_number.eq.${poNumber}`)
-      .limit(1)
-
-    const purchase = data?.[0]
-    if (purchase) {
-      purchaseCache.set(poNumber, {
-        purchaseId: purchase.id,
-        vendorName: (purchase.vendor as any)?.vendor_name || '',
-        items: purchase.items || [],
-      })
-    } else {
-      purchaseCache.set(poNumber, null)
-    }
-  }
-
-  for (const item of items) {
-    if (!item.po_number) continue
-
-    const purchase = purchaseCache.get(item.po_number)
-    if (!purchase) continue
-
-    if (item.po_line_number != null) {
-      const matched = purchase.items.find((i: any) => i.line_number === item.po_line_number)
-      if (matched) {
-        results.push({
-          lineNumber: item.line_number,
-          matchedPurchaseId: purchase.purchaseId,
-          matchedItemId: matched.id,
-          matchedVendorName: purchase.vendorName,
-        })
-        continue
-      }
-    }
-
-    results.push({
-      lineNumber: item.line_number,
-      matchedPurchaseId: purchase.purchaseId,
-      matchedItemId: null,
-      matchedVendorName: purchase.vendorName,
-    })
-  }
-
-  return results
-}
-
-async function validateAndMatchVendor(
-  supabase: any,
-  extractedVendorName: string
-): Promise<{ matched: boolean; vendor_name?: string; vendor_id?: number; similarity: number }> {
-  if (!extractedVendorName) {
-    return { matched: false, similarity: 0 }
-  }
-
-  const { data: vendors, error } = await supabase
-    .from('vendors')
-    .select('id, vendor_name, vendor_alias')
-    .limit(500)
-
-  if (error || !vendors || vendors.length === 0) {
-    return { matched: false, similarity: 0 }
-  }
-
-  let bestMatch: { vendor_id: number; vendor_name: string; similarity: number } | null = null
-  for (const vendor of vendors) {
-    let similarity = calculateVendorSimilarity(extractedVendorName, vendor.vendor_name)
-    if (vendor.vendor_alias) {
-      const aliasSimilarity = calculateVendorSimilarity(extractedVendorName, vendor.vendor_alias)
-      similarity = Math.max(similarity, aliasSimilarity)
-    }
-    if (!bestMatch || similarity > bestMatch.similarity) {
-      bestMatch = {
-        vendor_id: vendor.id,
-        vendor_name: vendor.vendor_name,
-        similarity
-      }
-    }
-  }
-
-  if (bestMatch && bestMatch.similarity >= 60) {
-    return {
-      matched: true,
-      vendor_name: bestMatch.vendor_name,
-      vendor_id: bestMatch.vendor_id,
-      similarity: bestMatch.similarity
-    }
-  }
-
-  return { matched: false, similarity: bestMatch?.similarity || 0 }
-}
-
-function normalizeVendorName(s: string): string {
-  const result = s
-    .toLowerCase()
-    .replace(/\(주\)|주식회사|㈜|co\.?|ltd\.?|inc\.?|corp\.?/gi, "")
-    .replace(/[^a-z0-9가-힣]/g, '')
-  // 정규화 결과가 비어있으면 원본에서 특수문자만 제거한 값 사용
-  if (!result) {
-    return s.toLowerCase().replace(/[^a-z0-9가-힣]/g, '')
-  }
-  return result
-}
-
-function vendorLevenshtein(a: string, b: string): number {
-  const m = a.length, n = b.length
-  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
-  for (let i = 0; i <= m; i++) dp[i][0] = i
-  for (let j = 0; j <= n; j++) dp[0][j] = j
-  for (let i = 1; i <= m; i++)
-    for (let j = 1; j <= n; j++)
-      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] : Math.min(dp[i-1][j-1], dp[i-1][j], dp[i][j-1]) + 1
-  return dp[m][n]
-}
-
-function calculateVendorSimilarity(a: string, b: string): number {
-  const na = normalizeVendorName(a)
-  const nb = normalizeVendorName(b)
-
-  if (na === nb) return 100
-  if (!na || !nb) return 0
-  if (na.includes(nb) || nb.includes(na)) return 85
-
-  const maxLen = Math.max(na.length, nb.length)
-  const dist = vendorLevenshtein(na, nb)
-  return Math.round(((maxLen - dist) / maxLen) * 100)
-}

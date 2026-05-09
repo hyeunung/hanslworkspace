@@ -4,6 +4,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 // @ts-ignore - Deno runtime imports
 import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts"
+import { matchTransactionItems } from "../_shared/transaction-matching.ts"
 
 declare const Deno: {
   env: {
@@ -440,12 +441,31 @@ serve(async (req) => {
       throw new Error(`DB update failed: ${updateError.message}`)
     }
 
+    currentStage = "match_items"
+    const matchInputs = finalItems.map((item, idx) => {
+      const lineNumber = item.line_number || idx + 1
+      const inferredInfo = inferredPoMap.get(lineNumber)
+      const effectivePo = inferredInfo?.inferred_po_number || normalizeOrderToken(item.po_number || "") || null
+      return {
+        line_number: lineNumber,
+        item_name: item.item_name,
+        specification: item.specification,
+        quantity: item.quantity ?? null,
+        po_number: effectivePo,
+        po_line_number: item.po_line_number ?? null,
+      }
+    })
+    const matchedItems = await matchTransactionItems(supabase, matchInputs, {
+      extractedVendorName: resolvedVendor.vendorName || extractionResult.vendor_name,
+    })
+
     currentStage = "db_insert_items"
     if (finalItems.length > 0) {
       const itemsToInsert = finalItems.map((item, idx) => {
         const lineNumber = item.line_number || idx + 1
         const inferredInfo = inferredPoMap.get(lineNumber)
         const normalizedPo = normalizeOrderToken(item.po_number || "")
+        const matched = matchedItems.find((m) => m.lineNumber === lineNumber)
 
         return {
           statement_id: statementId,
@@ -464,6 +484,9 @@ serve(async (req) => {
           inferred_po_source: inferredInfo?.inferred_po_source || null,
           inferred_po_confidence: inferredInfo?.inferred_po_confidence ?? null,
           inferred_po_group_id: inferredInfo?.inferred_po_group_id || null,
+          matched_purchase_id: matched?.matchedPurchaseId ?? null,
+          matched_item_id: matched?.matchedItemId ?? null,
+          match_method: matched?.matchMethod ?? null,
         }
       })
 
@@ -1798,10 +1821,9 @@ function normalizeItemRecord(raw: any, fallbackLineNumber: number): ExtractedIte
 
   const lineNumber = parseLineNumber(raw?.line_number) || fallbackLineNumber
 
-  // 수량이 비어 있는 품목은 기본 1개로 취급한다.
-  if (quantity === null) {
-    quantity = 1
-  }
+  // 수량이 비어 있는 품목은 null 그대로 둔다.
+  // (월말결제 등에서 수량 컬럼 자체가 없는 경우 1로 강제 채우면 잘못된 데이터가 생성됨.)
+  // 다운스트림에서 quantity가 null인 행은 입고/매칭 보너스 점수에서 자연스럽게 제외된다.
 
   return {
     line_number: lineNumber,
