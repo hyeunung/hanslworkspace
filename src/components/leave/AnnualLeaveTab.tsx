@@ -21,6 +21,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { parseRoles } from "@/utils/roleHelper";
 import { employeeService } from "@/services/employeeService";
 import type { Employee } from "@/types/purchase";
+import LeaveCalendar from "@/components/leave/LeaveCalendar";
 import {
   RefreshCw,
   Trash2,
@@ -98,6 +99,8 @@ export default function AnnualLeaveTab({ onBadgeRefresh }: AnnualLeaveTabProps) 
   // ── 상태 ──
   const [myLeaves, setMyLeaves] = useState<LeaveRecord[]>([]);
   const [allLeaves, setAllLeaves] = useState<LeaveRecord[]>([]);
+  // business_trips 테이블에서 가져온 출장(달력 전용, 테이블에는 노출 안 함)
+  const [bizTrips, setBizTrips] = useState<LeaveRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<LeaveRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -144,20 +147,87 @@ export default function AnnualLeaveTab({ onBadgeRefresh }: AnnualLeaveTabProps) 
   }, [roles]);
 
   // ── 내 연차 목록 조회 (superadmin/hr은 선택된 직원의 연차 조회) ──
+  // 본인(또는 선택된 직원) user_email 기준 + 출장자 배열에 이름이 포함된 동행 출장 기록도 합쳐서 조회
   const loadMyLeaves = useCallback(async () => {
     if (!targetEmail) return;
     try {
-      const { data, error } = await supabase
+      const targetName = displayedEmployee?.name || null;
+
+      const ownQuery = supabase
         .from("leave")
         .select("*")
-        .eq("user_email", targetEmail)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      setMyLeaves(data || []);
+        .eq("user_email", targetEmail);
+
+      const coTravelerQuery = targetName
+        ? supabase
+            .from("leave")
+            .select("*")
+            .in("type", ["biztrip", "biztrip_migrated"])
+            .contains("출장자", [targetName])
+            .neq("user_email", targetEmail)
+        : null;
+
+      const [ownRes, coRes] = await Promise.all([
+        ownQuery,
+        coTravelerQuery ?? Promise.resolve({ data: [], error: null }),
+      ]);
+      if (ownRes.error) throw ownRes.error;
+      if (coRes.error) throw coRes.error;
+
+      // id 기준 dedupe 후 created_at desc 정렬
+      const map = new Map<number, LeaveRecord>();
+      for (const r of (ownRes.data || []) as LeaveRecord[]) map.set(r.id, r);
+      for (const r of (coRes.data || []) as LeaveRecord[]) {
+        if (!map.has(r.id)) map.set(r.id, r);
+      }
+      const merged = Array.from(map.values()).sort((a, b) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tb - ta;
+      });
+      setMyLeaves(merged);
     } catch (err) {
       logger.error("연차 목록 조회 실패", err);
     }
-  }, [targetEmail, supabase]);
+  }, [targetEmail, displayedEmployee?.name, supabase]);
+
+  // ── business_trips 조회 (신규 출장 시스템 — 달력에만 합쳐 표시) ──
+  // travelers 배열에 사용자 이름이 포함된 출장을 모두 가져온다 (본인 신청 + 동행자로 등록된 건 모두).
+  const loadBizTrips = useCallback(async () => {
+    const name = displayedEmployee?.name;
+    const eid = displayedEmployee?.id;
+    if (!name || !eid) {
+      setBizTrips([]);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from("business_trips")
+        .select(
+          "id, requester_id, requester_name, trip_start_date, trip_end_date, trip_purpose, project_name, approval_status, travelers, created_at"
+        )
+        .contains("travelers", [name]);
+      if (error) throw error;
+      const converted: LeaveRecord[] = (data || []).map((bt: Record<string, unknown>) => {
+        const isOwn = String(bt.requester_id) === String(eid);
+        return {
+          // 음수 id를 사용해서 leave 테이블의 id와 충돌 방지 (1 ~ N → -1 ~ -N)
+          id: -Number(bt.id),
+          user_email: isOwn ? targetEmail : `_co:${bt.requester_id}`,
+          name: (bt.requester_name as string) || null,
+          type: "biztrip",
+          start_date: bt.trip_start_date as string,
+          end_date: bt.trip_end_date as string,
+          reason: ((bt.trip_purpose as string) || (bt.project_name as string) || null),
+          status: bt.approval_status as string,
+          created_at: bt.created_at as string,
+        };
+      });
+      setBizTrips(converted);
+    } catch (err) {
+      logger.error("출장(business_trips) 조회 실패", err);
+    }
+  }, [displayedEmployee?.name, displayedEmployee?.id, targetEmail, supabase]);
 
   // ── 직원 목록 조회 (superadmin/hr 전용) ──
   useEffect(() => {
@@ -215,9 +285,9 @@ export default function AnnualLeaveTab({ onBadgeRefresh }: AnnualLeaveTabProps) 
   // ── 데이터 로드 ──
   const loadData = useCallback(async () => {
     setLoading(true);
-    await Promise.all([loadMyLeaves(), loadAllLeaves()]);
+    await Promise.all([loadMyLeaves(), loadAllLeaves(), loadBizTrips()]);
     setLoading(false);
-  }, [loadMyLeaves, loadAllLeaves]);
+  }, [loadMyLeaves, loadAllLeaves, loadBizTrips]);
 
   useEffect(() => {
     if (currentUserEmail) loadData();
@@ -356,6 +426,26 @@ export default function AnnualLeaveTab({ onBadgeRefresh }: AnnualLeaveTabProps) 
   const displayLeaves = viewMode === "my" ? filteredMyLeaves : filteredApprovalLeaves;
   const isMyView = viewMode === "my";
 
+  // 달력에는 연도 필터를 적용하지 않음 — 달력 자체 월 네비게이션이 있어서 과거/미래 모두 봐야 함
+  // "내 연차" 뷰에서는 leave 테이블 + business_trips 테이블의 출장도 합쳐서 표시
+  const calendarLeaves = useMemo(() => {
+    if (viewMode === "my") return [...myLeaves, ...bizTrips];
+    if (!hasApprovalRole) return [];
+    return allLeaves.filter((l) => {
+      if (l.user_email === currentUserEmail) return false;
+      const requesterRoles = l._requesterRoles || [];
+      const isRequesterSuperAdmin = requesterRoles.includes("superadmin");
+      if (isSuperAdmin) return true;
+      if (isAdmin) return !isRequesterSuperAdmin;
+      if (isManager) {
+        if (requesterRoles.includes("admin") || isRequesterSuperAdmin) return false;
+        if (requesterRoles.some((r: string) => r.endsWith("_manager"))) return false;
+        return approvalDepartments.includes(l.department || "");
+      }
+      return false;
+    });
+  }, [viewMode, myLeaves, bizTrips, allLeaves, currentUserEmail, hasApprovalRole, isSuperAdmin, isAdmin, isManager, approvalDepartments]);
+
   // 직원 선택 드롭다운 옵션 (superadmin/hr 전용)
   const employeeOptions = useMemo<ComboboxOption[]>(() => {
     return employees.map((e) => ({
@@ -437,9 +527,10 @@ export default function AnnualLeaveTab({ onBadgeRefresh }: AnnualLeaveTabProps) 
         </Button>
       </div>
 
-      {/* 테이블 */}
+      {/* 테이블 + 달력 (좌/우 분할, 작은 화면은 세로 stack) */}
       <span className="text-[11px] font-medium text-gray-400">{currentYear}</span>
-      <Card className="overflow-hidden border border-gray-200 w-full max-w-full">
+      <div className="flex flex-col lg:flex-row gap-3 w-full">
+      <Card className="overflow-hidden border border-gray-200 flex-1 min-w-0 lg:w-1/2">
         <CardContent className="p-0">
           {loading ? (
             <div className="flex items-center justify-center py-12">
@@ -596,6 +687,12 @@ export default function AnnualLeaveTab({ onBadgeRefresh }: AnnualLeaveTabProps) 
           )}
         </CardContent>
       </Card>
+
+      {/* 달력 (Flutter 달력탭 스타일) */}
+      <div className="lg:w-1/2 min-h-[520px] lg:min-h-0 lg:max-h-[70vh]">
+        <LeaveCalendar leaves={calendarLeaves} currentUserEmail={currentUserEmail} />
+      </div>
+      </div>
 
       {/* 삭제 확인 다이얼로그 */}
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
