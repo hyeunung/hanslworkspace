@@ -16,8 +16,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import { useAuth } from "@/contexts/AuthContext";
 import { parseRoles } from "@/utils/roleHelper";
+import { employeeService } from "@/services/employeeService";
+import type { Employee } from "@/types/purchase";
 import {
   RefreshCw,
   Trash2,
@@ -101,17 +104,33 @@ export default function AnnualLeaveTab({ onBadgeRefresh }: AnnualLeaveTabProps) 
   const [rejectTarget, setRejectTarget] = useState<LeaveRecord | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
-  // ── 연차 정보 ──
-  const remainingLeave = employee?.remaining_annual_leave ?? 0;
-  const grantedLeave = employee?.annual_leave_granted_current_year ?? 0;
-  const usedLeave = employee?.used_annual_leave ?? 0;
-
   // ── 권한 체크 (모바일과 동일) ──
   const roles = useMemo(() => parseRoles(employee?.roles), [employee?.roles]);
   const isSuperAdmin = roles.includes("superadmin");
   const isAdmin = roles.includes("admin");
+  const isHr = roles.includes("hr");
   const isManager = roles.some((r: string) => r.endsWith("_manager"));
   const hasApprovalRole = isSuperAdmin || isAdmin || isManager;
+  // superadmin/hr은 "내 연차" 뷰에서 다른 직원의 연차도 조회 가능
+  const canViewOtherLeaves = isSuperAdmin || isHr;
+
+  // ── 다른 직원 조회용 상태 ──
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [selectedEmployeeEmail, setSelectedEmployeeEmail] = useState<string>("");
+
+  // 현재 조회 대상 이메일 (선택된 직원 우선, 없으면 본인)
+  const targetEmail = selectedEmployeeEmail || currentUserEmail || "";
+  const isViewingOther = !!selectedEmployeeEmail && selectedEmployeeEmail !== currentUserEmail;
+
+  // 조회 대상 직원의 연차 정보 (본인이면 useAuth, 타인이면 employees 목록에서 조회)
+  const displayedEmployee = useMemo(() => {
+    if (!isViewingOther) return employee;
+    return employees.find((e) => e.email === selectedEmployeeEmail) || null;
+  }, [isViewingOther, employee, employees, selectedEmployeeEmail]);
+
+  const remainingLeave = displayedEmployee?.remaining_annual_leave ?? 0;
+  const grantedLeave = displayedEmployee?.annual_leave_granted_current_year ?? 0;
+  const usedLeave = displayedEmployee?.used_annual_leave ?? 0;
 
   // 매니저의 승인 가능 부서 목록
   const approvalDepartments = useMemo(() => {
@@ -124,20 +143,36 @@ export default function AnnualLeaveTab({ onBadgeRefresh }: AnnualLeaveTabProps) 
     return depts;
   }, [roles]);
 
-  // ── 내 연차 목록 조회 ──
+  // ── 내 연차 목록 조회 (superadmin/hr은 선택된 직원의 연차 조회) ──
   const loadMyLeaves = useCallback(async () => {
+    if (!targetEmail) return;
     try {
       const { data, error } = await supabase
         .from("leave")
         .select("*")
-        .eq("user_email", currentUserEmail)
+        .eq("user_email", targetEmail)
         .order("created_at", { ascending: false });
       if (error) throw error;
       setMyLeaves(data || []);
     } catch (err) {
       logger.error("연차 목록 조회 실패", err);
     }
-  }, [currentUserEmail, supabase]);
+  }, [targetEmail, supabase]);
+
+  // ── 직원 목록 조회 (superadmin/hr 전용) ──
+  useEffect(() => {
+    if (!canViewOtherLeaves) return;
+    let cancelled = false;
+    (async () => {
+      const res = await employeeService.getEmployees({ is_active: true });
+      if (!cancelled && res.success && res.data) {
+        setEmployees(res.data);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewOtherLeaves]);
 
   // ── 전체 연차 목록 조회 (승인자용 - employees 별도 조회 후 매핑) ──
   const loadAllLeaves = useCallback(async () => {
@@ -321,11 +356,34 @@ export default function AnnualLeaveTab({ onBadgeRefresh }: AnnualLeaveTabProps) 
   const displayLeaves = viewMode === "my" ? filteredMyLeaves : filteredApprovalLeaves;
   const isMyView = viewMode === "my";
 
+  // 직원 선택 드롭다운 옵션 (superadmin/hr 전용)
+  const employeeOptions = useMemo<ComboboxOption[]>(() => {
+    return employees.map((e) => ({
+      value: e.email,
+      label: `${e.department ? e.department + " " : ""}${e.name}`.trim(),
+      primary: e.name + (e.email === currentUserEmail ? " (나)" : ""),
+      secondary: e.department || undefined,
+    }));
+  }, [employees, currentUserEmail]);
+
   return (
     <div className="space-y-3">
       {/* 상단: 연차 정보 + 탭 전환 + 새로고침 */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-4 flex-1">
+          {/* 직원 선택 드롭다운 (superadmin/hr 전용, 내 연차 뷰에서만) */}
+          {canViewOtherLeaves && isMyView && (
+            <div className="w-[200px]">
+              <Combobox
+                options={employeeOptions}
+                value={targetEmail}
+                onValueChange={(v) => setSelectedEmployeeEmail(v)}
+                placeholder="직원 선택..."
+                searchPlaceholder="이름/부서 검색..."
+                emptyText="검색 결과 없음"
+              />
+            </div>
+          )}
           {/* 내 연차 정보 */}
           <div className="flex items-center gap-4 text-xs">
             <span className="text-gray-500">부여 <strong className="text-gray-900">{grantedLeave}일</strong></span>
@@ -516,10 +574,10 @@ export default function AnnualLeaveTab({ onBadgeRefresh }: AnnualLeaveTabProps) 
                           {leave.reason || "-"}
                         </td>
 
-                        {/* 내 연차: 취소 버튼 */}
+                        {/* 내 연차: 취소 버튼 (본인 연차만) */}
                         {isMyView && (
                           <td className="px-3 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
-                            {leave.status === "pending" && (
+                            {leave.status === "pending" && isOwnLeave && (
                               <button
                                 onClick={() => setDeleteTarget(leave)}
                                 className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500 transition-colors"

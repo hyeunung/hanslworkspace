@@ -104,9 +104,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } else {
         setLoading(false)
       }
-      if (!initialLoadComplete) {
-        setInitialLoadComplete(true)
+      // ref는 동기적으로 즉시 갱신해서, 뒤따라오는 onAuthStateChange(SIGNED_IN/TOKEN_REFRESHED)가
+      // foreground 분기로 들어가 loading=true를 다시 토글하지 않도록 한다.
+      if (!initialLoadCompleteRef.current) {
         initialLoadCompleteRef.current = true
+        setInitialLoadComplete(true)
       }
     }
   }
@@ -115,10 +117,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const isBackground = options?.background ?? true
     await loadAuthData({ background: isBackground })
   }
-
-  useEffect(() => {
-    initialLoadCompleteRef.current = initialLoadComplete
-  }, [initialLoadComplete])
 
   useEffect(() => {
     loadAuthData({ background: false })

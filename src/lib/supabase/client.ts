@@ -56,6 +56,14 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here</pre>
   }
 
   // 정상적인 클라이언트 생성 및 캐싱
-  supabaseClient = createBrowserClient(supabaseUrl, supabaseAnonKey)
+  // 세션을 localStorage에 영구 저장 (브라우저 재시작/미리보기 재실행 시에도 유지)
+  supabaseClient = createBrowserClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    },
+  })
   return supabaseClient
 }
