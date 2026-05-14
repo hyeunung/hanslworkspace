@@ -1,7 +1,6 @@
-import { ReactNode, useEffect } from 'react'
+import { ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { logger } from '@/lib/logger'
 import LoginMain from '@/components/auth/LoginMain'
 interface AuthGuardProps {
   children: ReactNode
@@ -45,6 +44,6 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     )
   }
 
-  // 인증 완료 - 자식 컴포넌트 렌더링
-  return <>{children}</>
+  // 미인증 상태(로그아웃 직후 포함) - 로그인 화면 표시
+  return <LoginMain />
 }
