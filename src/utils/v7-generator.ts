@@ -502,7 +502,10 @@ async function parseBOMFile(file: File, aiColMap?: AiColumnMap): Promise<ParsedB
 
       const comment = colMap.comment >= 0 ? String(row[colMap.comment] || '').trim() : '';
       const description = colMap.description >= 0 ? String(row[colMap.description] || '').trim() : '';
-      const part = (comment || description || String(row[colMap.part] || '')).trim();
+      const partFromPartCol = colMap.part >= 0 ? String(row[colMap.part] || '').trim() : '';
+      // 우선순위: comment(별도 부품값 컬럼) → part(분류기 지정) → description(fallback)
+      // 이전엔 description 이 part 보다 먼저였어서 description 채워진 행에서 긴 영문 설명이 품명으로 들어가던 버그
+      const part = (comment || partFromPartCol || description).trim();
       const footprint = colMap.footprint >= 0 ? String(row[colMap.footprint] || '').trim() : '';
 
       items.push({
