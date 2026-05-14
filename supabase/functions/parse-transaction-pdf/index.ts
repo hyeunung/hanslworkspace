@@ -14,6 +14,11 @@ declare const Deno: {
   };
 };
 
+// @ts-ignore - EdgeRuntime is provided by Supabase Edge Functions runtime
+declare const EdgeRuntime: {
+  waitUntil(promise: Promise<unknown>): void;
+};
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -64,14 +69,9 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  let statementId: string | null = null
-  let supabaseUrl = ''
-  let supabaseServiceKey = ''
-  let currentStage = 'init'
-
   try {
-    supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
-    supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || ''
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
     const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY') || ''
 
     if (!supabaseUrl || !supabaseServiceKey) {
@@ -84,7 +84,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     const requestData: ParseRequest = await req.json().catch(() => ({}))
 
-    statementId = requestData.statementId || null
+    const statementId = requestData.statementId || null
     const fileUrl = requestData.fileUrl || requestData.imageUrl || ''
     const mode: ParseMode = requestData.mode || 'process_specific'
 
@@ -95,7 +95,6 @@ serve(async (req) => {
       throw new Error('Missing statementId or fileUrl')
     }
 
-    currentStage = 'read_existing'
     const { data: existingStatement } = await supabase
       .from('transaction_statements')
       .select('extracted_data, po_scope')
@@ -105,13 +104,70 @@ serve(async (req) => {
     const preservedActualReceivedDate = (existingStatement?.extracted_data as any)?.actual_received_date || null
     const poScope = existingStatement?.po_scope as ('single' | 'multi' | null)
 
-    currentStage = 'reset_statement'
     await resetStatementForProcessing(
       supabase,
       statementId,
       preservedActualReceivedDate
     )
 
+    // Hand off the heavy work to the background so the HTTP response can
+    // return immediately and never hit the 150s idle timeout.
+    EdgeRuntime.waitUntil(
+      processExtractionInBackground({
+        supabaseUrl,
+        supabaseServiceKey,
+        anthropicApiKey,
+        statementId,
+        fileUrl,
+        poScope,
+        preservedActualReceivedDate,
+      })
+    )
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        queued: true,
+        status: 'processing',
+        statementId,
+        message: 'Extraction running in background. Subscribe to transaction_statements realtime updates for completion.',
+      }),
+      { status: 202, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch (error: any) {
+    const errorMessage = error?.message || 'Unknown error'
+    return new Response(
+      JSON.stringify({ error: errorMessage }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+})
+
+interface BackgroundExtractionArgs {
+  supabaseUrl: string;
+  supabaseServiceKey: string;
+  anthropicApiKey: string;
+  statementId: string;
+  fileUrl: string;
+  poScope: 'single' | 'multi' | null;
+  preservedActualReceivedDate: string | null;
+}
+
+async function processExtractionInBackground(args: BackgroundExtractionArgs): Promise<void> {
+  const {
+    supabaseUrl,
+    supabaseServiceKey,
+    anthropicApiKey,
+    statementId,
+    fileUrl,
+    poScope,
+    preservedActualReceivedDate,
+  } = args
+
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+  let currentStage = 'background_init'
+
+  try {
     currentStage = 'download_file'
     let fileBuffer = await downloadFile(fileUrl)
 
@@ -225,45 +281,25 @@ serve(async (req) => {
         throw new Error(`Failed to insert transaction_statement_items: ${itemsError.message}`)
       }
     }
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        statementId,
-        status: 'extracted',
-        itemCount: parseResult.items.length,
-        vendor_name: validatedVendorName || parseResult.vendor_name || null,
-        result: parseResult,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
   } catch (error: any) {
     const errorMessage = `[stage:${currentStage}] ${error?.message || 'Unknown error'}`
-    if (statementId && supabaseUrl && supabaseServiceKey) {
-      try {
-        const supabase = createClient(supabaseUrl, supabaseServiceKey)
-        await supabase
-          .from('transaction_statements')
-          .update({
-            status: 'failed',
-            extraction_error: errorMessage,
-            processing_finished_at: new Date().toISOString(),
-            last_error_at: new Date().toISOString(),
-            retry_count: 0,
-            locked_by: null,
-          })
-          .eq('id', statementId)
-      } catch (_) {
-        // no-op
-      }
+    try {
+      await supabase
+        .from('transaction_statements')
+        .update({
+          status: 'failed',
+          extraction_error: errorMessage,
+          processing_finished_at: new Date().toISOString(),
+          last_error_at: new Date().toISOString(),
+          retry_count: 0,
+          locked_by: null,
+        })
+        .eq('id', statementId)
+    } catch (_) {
+      // no-op
     }
-
-    return new Response(
-      JSON.stringify({ error: errorMessage }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
   }
-})
+}
 
 async function resetStatementForProcessing(
   supabase: any,
@@ -487,7 +523,7 @@ items 배열 순서 (매우 중요):
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 8000,
       temperature: 0,
       messages: [
@@ -559,11 +595,14 @@ items 배열 순서 (매우 중요):
   let normalized = normalizeParseResult(parsed, textContent)
   normalized.items = deduplicateExactRows(normalized.items)
 
-  const expectedLineNumbers = await detectExpectedLineNumbersWithClaude(pdfBase64, apiKey, poScope).catch(() => [])
-  const expected = await estimateExpectedItemsWithClaude(pdfBase64, apiKey, poScope).catch(() => ({
-    expectedItemCount: null as number | null,
-    maxLineNumber: null as number | null,
-  }))
+  // 두 호출 모두 PDF 전체 스캔이고 서로 의존성이 없어 병렬화 (Sonnet 호출 1회분 ≈ 25-35s 절약)
+  const [expectedLineNumbers, expected] = await Promise.all([
+    detectExpectedLineNumbersWithClaude(pdfBase64, apiKey, poScope).catch(() => [] as number[]),
+    estimateExpectedItemsWithClaude(pdfBase64, apiKey, poScope).catch(() => ({
+      expectedItemCount: null as number | null,
+      maxLineNumber: null as number | null,
+    })),
+  ])
 
   const numberedExpectedCount = expectedLineNumbers.length > 0 ? expectedLineNumbers.length : null
   const estimatedExpectedCount = expected.expectedItemCount
@@ -730,7 +769,7 @@ async function repairJsonWithClaude(rawContent: string, apiKey: string): Promise
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       temperature: 0,
       messages: [
@@ -794,7 +833,7 @@ async function estimateExpectedItemsWithClaude(
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 512,
       temperature: 0,
       messages: [
@@ -874,7 +913,7 @@ async function detectExpectedLineNumbersWithClaude(
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2048,
       temperature: 0,
       messages: [
@@ -1093,7 +1132,7 @@ async function extractItemsLineRangeWithClaude(
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 3072,
       temperature: 0,
       messages: [
@@ -1202,7 +1241,7 @@ async function extractMissingItemsWithClaude(
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       temperature: 0,
       messages: [

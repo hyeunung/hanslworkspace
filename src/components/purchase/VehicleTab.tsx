@@ -1084,7 +1084,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                               </div>
                             </PopoverContent>
                           </Popover>
-                        ) : isAppAdmin && req.approval_status === "returned" ? (
+                        ) : canApprove && req.approval_status === "returned" ? (
                           <Popover>
                             <PopoverTrigger asChild>
                               <button
