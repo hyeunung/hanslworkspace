@@ -124,7 +124,7 @@ serve(async (req) => {
     supabaseUrl = Deno.env.get("SUPABASE_URL") || ""
     supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
     const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY") || ""
-    const anthropicModel = Deno.env.get("ANTHROPIC_MODEL") || "claude-sonnet-4-20250514"
+    const anthropicModel = Deno.env.get("ANTHROPIC_MODEL") || "claude-sonnet-4-6"
 
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set")
@@ -843,7 +843,7 @@ function getExifRotation(buffer: ArrayBuffer): number {
  * AI 기반 문서 방향 감지 (EXIF가 없는 이미지용 - 스캐너, PNG 등)
  * "몇 도 돌려야 하나" 대신 "문서 위쪽이 어느 방향인지"를 물어서 방향 혼동을 방지
  */
-async function detectImageOrientationByAI(base64Image: string, apiKey: string, mediaType: "image/png" | "image/jpeg" = "image/jpeg", model = "claude-sonnet-4-20250514"): Promise<number> {
+async function detectImageOrientationByAI(base64Image: string, apiKey: string, mediaType: "image/png" | "image/jpeg" = "image/jpeg", model = "claude-sonnet-4-6"): Promise<number> {
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -915,7 +915,7 @@ async function detectImageOrientationByAI(base64Image: string, apiKey: string, m
  * - AI 비전으로 문서 제목 위치를 판단하여 회전 각도 결정
  * - EXIF는 참고용으로만 기록 (이미지 라이브러리가 자동 적용할 수 있으므로 직접 사용 안 함)
  */
-async function detectImageOrientation(base64Image: string, apiKey: string, mediaType: "image/png" | "image/jpeg" = "image/jpeg", model = "claude-sonnet-4-20250514", imageBuffer?: ArrayBuffer): Promise<{ degrees: number; source: "exif" | "ai" | "none"; exifHint?: number }> {
+async function detectImageOrientation(base64Image: string, apiKey: string, mediaType: "image/png" | "image/jpeg" = "image/jpeg", model = "claude-sonnet-4-6", imageBuffer?: ArrayBuffer): Promise<{ degrees: number; source: "exif" | "ai" | "none"; exifHint?: number }> {
   // EXIF는 참고용으로만 기록
   let exifHint = 0
   if (imageBuffer && mediaType === "image/jpeg") {
