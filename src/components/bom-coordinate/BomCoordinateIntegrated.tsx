@@ -210,12 +210,14 @@ export default function BomCoordinateIntegrated() {
   // 임시 데이터 저장
   const saveTempData = (userId: string) => {
     if (!processedResult || !userId) return;
-    
+
     try {
       const tempData = {
         step,
         metadata,
         processedResult,
+        uploadedFilePaths,
+        originalFileNames,
         savedAt: new Date().toISOString()
       };
       localStorage.setItem(getTempStorageKey(userId), JSON.stringify(tempData));
@@ -279,6 +281,12 @@ export default function BomCoordinateIntegrated() {
       setStep(tempData.step);
       setMetadata(tempData.metadata);
       setProcessedResult(restoredResult);
+      if (tempData.uploadedFilePaths) {
+        setUploadedFilePaths(tempData.uploadedFilePaths);
+      }
+      if (tempData.originalFileNames) {
+        setOriginalFileNames(tempData.originalFileNames);
+      }
       setViewMode('create');
       logger.debug('✅ 임시 데이터 복원됨');
     } catch (error) {
@@ -820,30 +828,32 @@ export default function BomCoordinateIntegrated() {
       }
 
       // 2. 원본 파일 정보 저장 (bom_raw_files)
-      // NOTE: bom_raw_files 스키마가 coordinate_file_* NOT NULL이라
-      // 좌표 파일 미업로드(BOM-only) 케이스에선 raw file 저장을 건너뜀.
-      if (fileInfo.bomFile && fileInfo.coordFile && uploadedFilePaths?.bomPath && uploadedFilePaths?.coordPath) {
+      // BOM만 업로드된 경우 좌표 필드는 null 로 저장 (스키마가 NULLABLE).
+      if (fileInfo.bomFile && uploadedFilePaths?.bomPath) {
         let bomFileUrl = '';
-        let coordFileUrl = '';
+        let coordFileUrl: string | null = null;
 
         // Storage에서 Signed URL 생성 (1년 유효)
         const { data: bomUrlData } = await supabase.storage
           .from('bom-files')
           .createSignedUrl(uploadedFilePaths.bomPath, 60 * 60 * 24 * 365);
-
-        const { data: coordUrlData } = await supabase.storage
-          .from('bom-files')
-          .createSignedUrl(uploadedFilePaths.coordPath, 60 * 60 * 24 * 365);
-
         if (bomUrlData?.signedUrl) bomFileUrl = bomUrlData.signedUrl;
-        if (coordUrlData?.signedUrl) coordFileUrl = coordUrlData.signedUrl;
+
+        if (uploadedFilePaths.coordPath) {
+          const { data: coordUrlData } = await supabase.storage
+            .from('bom-files')
+            .createSignedUrl(uploadedFilePaths.coordPath, 60 * 60 * 24 * 365);
+          if (coordUrlData?.signedUrl) coordFileUrl = coordUrlData.signedUrl;
+        }
+
+        const coordFileName = fileInfo.coordFile?.name ?? null;
 
         // bom_raw_files에 저장 (기존 데이터가 있으면 업데이트, 없으면 삽입)
         const { data: existingRawFile } = await supabase
           .from('bom_raw_files')
           .select('id')
           .eq('cad_drawing_id', cadDrawingId)
-          .single();
+          .maybeSingle();
 
         if (existingRawFile) {
           const { error: updateRawError } = await supabase
@@ -852,7 +862,7 @@ export default function BomCoordinateIntegrated() {
               bom_file_url: bomFileUrl,
               coordinate_file_url: coordFileUrl,
               bom_file_name: fileInfo.bomFile.name,
-              coordinate_file_name: fileInfo.coordFile.name,
+              coordinate_file_name: coordFileName,
               uploaded_by: user.email || user.id
             })
             .eq('id', existingRawFile.id);
@@ -866,7 +876,7 @@ export default function BomCoordinateIntegrated() {
               bom_file_url: bomFileUrl,
               coordinate_file_url: coordFileUrl,
               bom_file_name: fileInfo.bomFile.name,
-              coordinate_file_name: fileInfo.coordFile.name,
+              coordinate_file_name: coordFileName,
               uploaded_by: user.email || user.id
             });
 
@@ -956,6 +966,7 @@ export default function BomCoordinateIntegrated() {
       setStep('input');
       setFileInfo({ bomFile: null, coordFile: null });
       setOriginalFileNames({});
+      setUploadedFilePaths(null);
       setMetadata({
         boardName: '',
         artworkManager: '',
@@ -998,7 +1009,15 @@ export default function BomCoordinateIntegrated() {
     setIsMerged(false);
     // 새로 만들기 시 임시 데이터 로드 방지 플래그 설정
     setSkipTempDataLoad(true);
-    // 초기화 시에는 임시 데이터 유지 (저장/24시간 경과만 삭제)
+    // 초기화 시 localStorage 임시 데이터를 동기적으로 제거 → 새로고침/페이지 이동해도 이전 미리보기가 다시 뜨지 않음
+    // clearTempData()는 async 라서 사용자가 바로 "새로 만들기" 등 navigation 트리거 시 race 발생, 동기 삭제로 보장
+    try {
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith('bom_temp_data_'))
+        .forEach((k) => localStorage.removeItem(k));
+    } catch (e) {
+      logger.warn('임시 데이터 동기 삭제 실패:', { error: String(e) });
+    }
   };
 
   // 원본 파일 미리보기 (Office Online Viewer 활용)
@@ -1332,6 +1351,10 @@ function dlFile() {
       setLoading(true);
       setLoadingText('데이터를 불러오는 중...');
 
+      // 이전 보드의 원본 파일 상태가 남아 다른 보드 미리보기에 누수되는 것을 막기 위해 초기화
+      setUploadedFilePaths(null);
+      setOriginalFileNames({});
+
       // 1. 보드 정보 가져오기
       const { data: boardInfo, error: boardError } = await supabase
         .from('cad_drawings')
@@ -1402,7 +1425,7 @@ function dlFile() {
 
       logger.debug('Loaded coordinates:', { count: convertedCoords.length });
       logger.debug('Sample coord:', { coord: convertedCoords[0] });
-      
+
       // 임시 데이터 삭제 (DB에서 새로 로드한 데이터를 사용하도록)
       await clearTempData();
       setSkipTempDataLoad(true); // 임시 데이터 로드 방지
@@ -1431,10 +1454,9 @@ function dlFile() {
         .from('bom_raw_files')
         .select('bom_file_url, coordinate_file_url, bom_file_name, coordinate_file_name')
         .eq('cad_drawing_id', boardId)
-        .single();
+        .maybeSingle();
 
       if (rawFileData) {
-        // URL에서 Storage 경로 추출
         const extractPath = (url: string) => {
           const match = url.split('/bom-files/')[1]?.split('?')[0];
           return match ? decodeURIComponent(match) : undefined;
