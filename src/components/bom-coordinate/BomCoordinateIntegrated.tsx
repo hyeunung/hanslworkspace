@@ -1438,6 +1438,8 @@ function dlFile() {
           topCoordinates: convertedCoords.filter((c) => ((c.layer || '') as string).toUpperCase().includes('TOP')),
           bottomCoordinates: convertedCoords.filter((c) => ((c.layer || '') as string).toUpperCase().includes('BOT')),
           coordinates: convertedCoords,
+          // 좌표가 한 건도 없으면 BOM-only 보드로 간주 → "REF 불일치", "좌표에 없음" 같은 좌표 기반 경고 미표시
+          coordinatesProvided: convertedCoords.length > 0,
           summary: {
             totalItems: convertedBOMItems.length,
             manualRequiredCount: 0,
