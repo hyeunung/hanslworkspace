@@ -916,13 +916,16 @@ async function detectImageOrientationByAI(base64Image: string, apiKey: string, m
  * - EXIF는 참고용으로만 기록 (이미지 라이브러리가 자동 적용할 수 있으므로 직접 사용 안 함)
  */
 async function detectImageOrientation(base64Image: string, apiKey: string, mediaType: "image/png" | "image/jpeg" = "image/jpeg", model = "claude-sonnet-4-20250514", imageBuffer?: ArrayBuffer): Promise<{ degrees: number; source: "exif" | "ai" | "none"; exifHint?: number }> {
-  // EXIF는 참고용으로만 기록
+  // 1) EXIF 우선 (휴대폰 카메라는 EXIF 회전 정보가 정확함)
   let exifHint = 0
   if (imageBuffer && mediaType === "image/jpeg") {
     exifHint = getExifRotation(imageBuffer)
+    if (exifHint > 0) {
+      return { degrees: exifHint, source: "exif", exifHint }
+    }
   }
 
-  // AI 비전으로 실제 이미지 내용을 보고 방향 판단
+  // 2) EXIF 없으면 (스캐너 / PNG 등) AI 비전 fallback
   const aiRotation = await detectImageOrientationByAI(base64Image, apiKey, mediaType, model)
   if (aiRotation > 0) {
     return { degrees: aiRotation, source: "ai", exifHint }
