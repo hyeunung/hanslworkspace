@@ -91,7 +91,7 @@ export default function TransactionStatementMain() {
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("extracted");
+  const [statusFilter, setStatusFilter] = useState<string>("not_confirmed");
   const [dateFilter, setDateFilter] = useState("");
   const [totalCount, setTotalCount] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
@@ -985,6 +985,7 @@ export default function TransactionStatementMain() {
             </SelectTrigger>
             <SelectContent className="min-w-[100px]">
               <SelectItem value="all" className="text-[12px] py-1.5">전체 상태</SelectItem>
+              <SelectItem value="not_confirmed" className="text-[12px] py-1.5">확정되지 않은 항목</SelectItem>
               <SelectItem value="pending" className="text-[12px] py-1.5">대기중</SelectItem>
               <SelectItem value="queued" className="text-[12px] py-1.5">대기열</SelectItem>
               <SelectItem value="extracted" className="text-[12px] py-1.5">확인필요</SelectItem>

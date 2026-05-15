@@ -1333,7 +1333,12 @@ class TransactionStatementService {
         .order('statement_date', { ascending: false, nullsFirst: true });
 
       if (filters?.status && filters.status !== 'all') {
-        query = query.eq('status', filters.status);
+        if (filters.status === 'not_confirmed') {
+          // 확정됨(confirmed)이 아닌 모든 항목
+          query = query.neq('status', 'confirmed');
+        } else {
+          query = query.eq('status', filters.status);
+        }
       }
 
       if (filters?.dateFrom) {
