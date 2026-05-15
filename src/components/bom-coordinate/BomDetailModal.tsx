@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 // native table 태그 사용 (sticky header 지원을 위해)
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, Download } from 'lucide-react';
+import { Loader2, Download, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
   generateBOMExcelFromTemplate, 
@@ -33,9 +33,17 @@ interface BoardData {
   bottomCoordinates: CoordinateItem[];
 }
 
+interface RawFileInfo {
+  bomPath?: string;
+  coordPath?: string;
+  bomName?: string;
+  coordName?: string;
+}
+
 export default function BomDetailModal({ boardId, isOpen, onClose }: BomDetailModalProps) {
   const [loading, setLoading] = useState(false);
   const [boardData, setBoardData] = useState<BoardData | null>(null);
+  const [rawFile, setRawFile] = useState<RawFileInfo>({});
   const [downloading, setDownloading] = useState(false);
   
   const supabase = createClient();
@@ -48,7 +56,9 @@ export default function BomDetailModal({ boardId, isOpen, onClose }: BomDetailMo
 
   const loadBoardData = async () => {
     if (!boardId) return;
-    
+
+    // 이전 보드 상태 누수 방지: 새 보드 로딩 직전에 초기화
+    setRawFile({});
     setLoading(true);
     try {
       // 보드 정보 가져오기
@@ -132,12 +142,91 @@ export default function BomDetailModal({ boardId, isOpen, onClose }: BomDetailMo
         topCoordinates: topCoords,
         bottomCoordinates: bottomCoords,
       });
+
+      // 원본 파일 정보 로드 (bom_raw_files) — "데이터 미리보기" 의 파일 버튼과 동일하게 표시/다운로드
+      const { data: rawFileData } = await supabase
+        .from('bom_raw_files')
+        .select('bom_file_url, coordinate_file_url, bom_file_name, coordinate_file_name')
+        .eq('cad_drawing_id', boardId)
+        .maybeSingle();
+      if (rawFileData) {
+        const extractPath = (url: string) => {
+          const m = url.split('/bom-files/')[1]?.split('?')[0];
+          return m ? decodeURIComponent(m) : undefined;
+        };
+        setRawFile({
+          bomPath: rawFileData.bom_file_url ? extractPath(rawFileData.bom_file_url) : undefined,
+          coordPath: rawFileData.coordinate_file_url ? extractPath(rawFileData.coordinate_file_url) : undefined,
+          bomName: rawFileData.bom_file_name || undefined,
+          coordName: rawFileData.coordinate_file_name || undefined,
+        });
+      } else {
+        setRawFile({});
+      }
     } catch (error) {
       logger.error('Error loading board data', error);
       toast.error('데이터를 불러오는데 실패했습니다.');
     } finally {
       setLoading(false);
     }
+  };
+
+  // 원본 BOM/좌표 파일 미리보기 + 다운로드 (BomCoordinateIntegrated 의 handleOriginalFilePreview 와 동일 패턴)
+  const handleOriginalFilePreview = async (type: 'bom' | 'coord') => {
+    const path = type === 'bom' ? rawFile.bomPath : rawFile.coordPath;
+    if (!path) return;
+    const { data } = await supabase.storage.from('bom-files').createSignedUrl(path, 60 * 30);
+    if (!data?.signedUrl) {
+      toast.error('파일 URL 생성에 실패했습니다.');
+      return;
+    }
+    const ext = path.split('.').pop()?.toLowerCase();
+    const fileName = type === 'bom' ? rawFile.bomName : rawFile.coordName;
+    const isExcel = ext === 'xlsx' || ext === 'xls';
+    const isText = ext === 'csv' || ext === 'txt';
+
+    const toolbarStyle = `
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f3f4f6; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+.toolbar .filename { font-size: 13px; font-weight: 500; color: #374151; }
+.toolbar button { padding: 6px 16px; font-size: 12px; font-weight: 500; color: #fff; background: #2563eb; border: none; border-radius: 6px; cursor: pointer; }
+.toolbar button:hover { background: #1d4ed8; }`;
+    const downloadScript = `
+function dlFile() {
+  const a = document.createElement('a');
+  a.href = '${data.signedUrl}';
+  a.download = '${fileName || 'file'}';
+  a.click();
+}`;
+
+    let html: string;
+    if (isText) {
+      const res = await fetch(data.signedUrl);
+      const text = await res.text();
+      const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${fileName || '파일 미리보기'}</title>
+<style>${toolbarStyle}
+pre { padding: 16px; font-size: 12px; line-height: 1.6; white-space: pre-wrap; word-break: break-all; overflow: auto; height: calc(100vh - 45px); background: #fff; margin: 0; }
+</style></head><body>
+<div class="toolbar"><span class="filename">${fileName || ''}</span><button onclick="dlFile()">다운로드</button></div>
+<pre>${escaped}</pre>
+<script>${downloadScript}</script></body></html>`;
+    } else {
+      const previewSrc = isExcel
+        ? `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(data.signedUrl)}`
+        : data.signedUrl;
+      html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${fileName || '파일 미리보기'}</title>
+<style>${toolbarStyle}
+iframe { width: 100%; height: calc(100vh - 45px); border: 0; }
+</style></head><body>
+<div class="toolbar"><span class="filename">${fileName || ''}</span><button onclick="dlFile()">다운로드</button></div>
+<iframe src="${previewSrc}"></iframe>
+<script>${downloadScript}</script></body></html>`;
+    }
+
+    const blob = new Blob([html], { type: 'text/html' });
+    window.open(URL.createObjectURL(blob), '_blank');
   };
 
   const handleDownloadExcel = async () => {
@@ -220,6 +309,31 @@ export default function BomDetailModal({ boardId, isOpen, onClose }: BomDetailMo
                   <span>Artwork: {boardData.artwork_manager || '-'}</span>
                   <span>생산: {boardData.production_manager || '-'}</span>
                   <span>수량: {boardData.production_quantity}</span>
+                </div>
+              )}
+              {/* 업로드된 원본 파일 미리보기/다운로드 — 데이터 미리보기 화면과 동일 */}
+              {(rawFile.bomName || rawFile.coordName) && (
+                <div className="flex items-center gap-3 mt-1.5">
+                  {rawFile.bomName && (
+                    <button
+                      onClick={() => handleOriginalFilePreview('bom')}
+                      className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-hansl-600 transition-colors"
+                      title="클릭하여 원본 BOM 파일 열기/다운로드"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span className="underline underline-offset-2">{rawFile.bomName}</span>
+                    </button>
+                  )}
+                  {rawFile.coordName && (
+                    <button
+                      onClick={() => handleOriginalFilePreview('coord')}
+                      className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-hansl-600 transition-colors"
+                      title="클릭하여 원본 좌표 파일 열기/다운로드"
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      <span className="underline underline-offset-2">{rawFile.coordName}</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
