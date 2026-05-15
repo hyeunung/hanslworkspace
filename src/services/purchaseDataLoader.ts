@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
-import { purchaseMemoryCache, calculateMemoryUsage } from '@/stores/purchaseMemoryStore'
+import { purchaseMemoryCache, calculateMemoryUsage, notifyCacheListeners } from '@/stores/purchaseMemoryStore'
 import { logger } from '@/lib/logger'
 import type { Purchase, PurchaseRequestItem } from '@/types/purchase'
 
@@ -98,13 +98,17 @@ export async function loadAllPurchaseData(userId?: string): Promise<void> {
       loadedCount: processedData.length,
       memoryUsage: calculateMemoryUsage(processedData)
     }
-    
+
+    // 캐시 채움을 구독자(usePurchaseMemory 등)에게 알려 loading 상태 해제
+    notifyCacheListeners()
+
     logger.info(`[PurchaseDataLoader] Loaded ${processedData.length} purchase records into memory`)
-    
+
   } catch (error) {
     logger.error('[PurchaseDataLoader] Failed to load purchase data:', error)
     purchaseMemoryCache.error = error instanceof Error ? error.message : 'Unknown error'
     purchaseMemoryCache.isLoading = false
+    notifyCacheListeners()
     throw error
   }
 }
