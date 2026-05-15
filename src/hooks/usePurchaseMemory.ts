@@ -47,11 +47,15 @@ export function usePurchaseMemory() {
     // 캐시 리스너 등록 - DB 변경 시에만 호출됨
     const unsubscribe = addCacheListener(handleCacheUpdate)
 
-    // 초기 동기화 (첫 마운트 시, 이미 캐시가 있는 경우)
-    if (purchaseMemoryCache.allPurchases && purchases.length === 0) {
+    // 초기 동기화: 리스너 등록 직후 현재 캐시 상태를 한 번 더 확인.
+    // (mount 직전~직후에 loadAllPurchaseData가 끝나 notifyCacheListeners를 호출했더라도
+    //  listener 등록 이전이면 누락될 수 있으므로 명시적 재동기화)
+    if (purchaseMemoryCache.allPurchases) {
       setPurchases([...purchaseMemoryCache.allPurchases])
       setLoading(false)
       lastFetchRef.current = purchaseMemoryCache.lastFetch
+    } else if (purchaseMemoryCache.isLoading) {
+      setLoading(true)
     }
 
     return () => {
