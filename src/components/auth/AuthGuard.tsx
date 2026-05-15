@@ -1,7 +1,6 @@
-import { ReactNode, useEffect } from 'react'
+import { ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { logger } from '@/lib/logger'
 import LoginMain from '@/components/auth/LoginMain'
 interface AuthGuardProps {
   children: ReactNode
@@ -22,7 +21,18 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const publicAuthPaths = ['/auth/confirm', '/auth/reset-password']
   const isPublicAuthPath = publicAuthPaths.includes(location.pathname)
 
-  // 인증 상태 확인 중 - 간단한 로딩만 표시
+  // 인증이 필요 없는 경로는 그대로 통과 (loading 여부와 무관)
+  if (isPublicAuthPath) {
+    return <>{children}</>
+  }
+
+  // 이미 인증된 사용자가 있으면 백그라운드 refresh로 loading=true가 와도 children 유지
+  // (AppLayout이 unmount되어 자식 컴포넌트 state가 날아가는 것을 방지)
+  if (user && employee) {
+    return <>{children}</>
+  }
+
+  // 초기 인증 확인 중
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -34,16 +44,6 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     )
   }
 
-  // 인증이 필요 없는 경로는 그대로 통과
-  if (isPublicAuthPath) {
-    return <>{children}</>
-  }
-
-  // 인증되지 않은 경우
-  if (!user || !employee) {
-    return <LoginMain />
-  }
-
-  // 인증 완료 - 자식 컴포넌트 렌더링
-  return <>{children}</>
+  // 미인증 상태(로그아웃 직후 포함) - 로그인 화면 표시
+  return <LoginMain />
 }

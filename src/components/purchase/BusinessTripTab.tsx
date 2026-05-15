@@ -38,6 +38,7 @@ import { invalidatePurchaseMemoryCache } from '@/stores/purchaseMemoryStore';
 const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "superadmin"];
 const HIGH_AMOUNT_APPROVER_ROLES = ["final_approver", "ceo", "superadmin"];
 const SETTLEMENT_APPROVER_ROLES = ["hr", "lead buyer", "superadmin"];
+const TRIP_PERIOD_EDITOR_ROLES = ["hr", "superadmin"];
 
 const COMPANY_CARDS = [
   { label: "출장용", number: "5914", value: "출장용 5914" },
@@ -473,6 +474,28 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     [roles]
   );
 
+  const canEditTripPeriod = useMemo(
+    () => roles.some((r) => TRIP_PERIOD_EDITOR_ROLES.includes(r)),
+    [roles]
+  );
+
+  const [editingTripPeriodId, setEditingTripPeriodId] = useState<number | null>(null);
+  const [editingTripStartDate, setEditingTripStartDate] = useState("");
+  const [editingTripEndDate, setEditingTripEndDate] = useState("");
+  const [savingTripPeriod, setSavingTripPeriod] = useState(false);
+
+  const startEditTripPeriod = useCallback((trip: BusinessTrip) => {
+    setEditingTripPeriodId(trip.id);
+    setEditingTripStartDate(trip.trip_start_date || "");
+    setEditingTripEndDate(trip.trip_end_date || "");
+  }, []);
+
+  const cancelEditTripPeriod = useCallback(() => {
+    setEditingTripPeriodId(null);
+    setEditingTripStartDate("");
+    setEditingTripEndDate("");
+  }, []);
+
   const companionOptions = useMemo(
     () =>
       employees
@@ -839,6 +862,38 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     resetRequestForm,
     supabase,
   ]);
+
+  const handleSaveTripPeriod = useCallback(async (tripId: number) => {
+    if (!editingTripStartDate || !editingTripEndDate) {
+      toast.error("시작일과 종료일을 모두 입력해주세요.");
+      return;
+    }
+    if (editingTripStartDate > editingTripEndDate) {
+      toast.error("종료일은 시작일 이후여야 합니다.");
+      return;
+    }
+    try {
+      setSavingTripPeriod(true);
+      const { error } = await supabase
+        .from("business_trips")
+        .update({
+          trip_start_date: editingTripStartDate,
+          trip_end_date: editingTripEndDate,
+        })
+        .eq("id", tripId);
+      if (error) throw error;
+      toast.success("출장기간이 수정되었습니다.");
+      setEditingTripPeriodId(null);
+      setEditingTripStartDate("");
+      setEditingTripEndDate("");
+      loadTrips();
+    } catch (err) {
+      logger.error("출장기간 수정 실패", err);
+      toast.error("출장기간 수정에 실패했습니다.");
+    } finally {
+      setSavingTripPeriod(false);
+    }
+  }, [editingTripStartDate, editingTripEndDate, loadTrips, supabase]);
 
   const handleDeleteTrip = useCallback(async (tripId: number) => {
     try {
@@ -2432,10 +2487,50 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                         </td>
                         <td className="px-3 py-1.5 card-title whitespace-nowrap">{trip.trip_code}</td>
                         <td className="px-3 py-1.5 whitespace-nowrap">
-                          <div className="text-[11px] font-medium text-gray-900">
-                            {trip.trip_start_date ? format(new Date(trip.trip_start_date), "MM/dd") : "-"} ~{" "}
-                            {trip.trip_end_date ? format(new Date(trip.trip_end_date), "MM/dd") : "-"}
-                          </div>
+                          {editingTripPeriodId === trip.id ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="date"
+                                value={editingTripStartDate}
+                                onChange={(e) => setEditingTripStartDate(e.target.value)}
+                                className="h-[24px] text-[11px] border border-[#d2d2d7] rounded px-1 bg-white"
+                              />
+                              <span className="text-[11px] text-gray-500">~</span>
+                              <input
+                                type="date"
+                                value={editingTripEndDate}
+                                onChange={(e) => setEditingTripEndDate(e.target.value)}
+                                className="h-[24px] text-[11px] border border-[#d2d2d7] rounded px-1 bg-white"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleSaveTripPeriod(trip.id)}
+                                disabled={savingTripPeriod}
+                                className="text-green-600 hover:text-green-700 disabled:opacity-50 ml-0.5"
+                                title="저장"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEditTripPeriod}
+                                disabled={savingTripPeriod}
+                                className="text-gray-400 hover:text-red-500 disabled:opacity-50"
+                                title="취소"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div
+                              className={`text-[11px] font-medium text-gray-900 ${canEditTripPeriod ? "cursor-pointer hover:text-blue-600" : ""}`}
+                              onClick={() => canEditTripPeriod && startEditTripPeriod(trip)}
+                              title={canEditTripPeriod ? "클릭하여 수정" : undefined}
+                            >
+                              {trip.trip_start_date ? format(new Date(trip.trip_start_date), "MM/dd") : "-"} ~{" "}
+                              {trip.trip_end_date ? format(new Date(trip.trip_end_date), "MM/dd") : "-"}
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-1.5 card-title whitespace-nowrap">{trip.requester?.name || "-"}</td>
                         <td className="px-3 py-1.5 card-title whitespace-normal break-keep">

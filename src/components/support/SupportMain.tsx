@@ -167,7 +167,20 @@ export default function SupportMain() {
   const [returnTo, setReturnTo] = useState<string | null>(null)
 
   const createRowId = () => `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-  
+
+  // 문의 유형 선택 시 해당 타입의 첫 행 자동 생성 (사용자가 "품목 추가" 버튼을 안 눌러도 바로 입력 가능)
+  useEffect(() => {
+    if (inquiryType === 'quantity_change' && quantityChangeRows.length === 0) {
+      setQuantityChangeRows([{ id: createRowId(), itemId: '', newQuantity: '' }])
+    }
+    if (inquiryType === 'price_change' && priceChangeRows.length === 0) {
+      setPriceChangeRows([{ id: createRowId(), itemId: '', changeType: 'unit_price', newValue: '' }])
+    }
+    if (inquiryType === 'item_add' && itemAddRows.length === 0) {
+      setItemAddRows([{ id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '' }])
+    }
+  }, [inquiryType, quantityChangeRows.length, priceChangeRows.length, itemAddRows.length])
+
   // 문의 목록 관련
   const [inquiries, setInquiries] = useState<SupportInquiry[]>([])
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null)

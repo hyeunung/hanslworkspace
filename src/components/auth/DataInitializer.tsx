@@ -117,45 +117,31 @@ export default function DataInitializer({ children }: DataInitializerProps) {
     }
   }, [employee?.id])
 
-  // 데이터 로딩 중 - 로고 포함된 로딩 화면
-  // 단, 데이터가 이미 메모리에 있으면 로딩 화면을 표시하지 않음
-  if (dataLoading && !hasDataInCache) {
-    return (
-      <>
-        <InitialLoadingScreen />
-        {/* InitialLoadingScreen이 1.5초 후 사라져도 children은 렌더링 */}
-        {children}
-      </>
-    )
-  }
-  
-  // 데이터가 이미 있으면 로딩 상태를 해제하고 children 렌더링
-  if (dataLoading && hasDataInCache) {
-    // 상태 업데이트는 useEffect에서 처리되므로 여기서는 children만 렌더링
-    return <>{children}</>
-  }
-
-  // 데이터 로딩 실패
-  if (dataError) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <div className="w-6 h-6 text-red-600">⚠</div>
+  // children은 항상 동일한 fragment 위치(index 0)에 두어 React reconciliation이
+  // remount하지 않도록 한다. 로딩 화면/에러 화면은 그 뒤에 조건부 오버레이로 추가.
+  // (이전 구현은 로딩 상태에 따라 children의 fragment 인덱스가 바뀌어, 데이터 로드 완료 시
+  //  AppLayout 전체가 unmount → remount 되며 자식 컴포넌트 state가 모두 날아감)
+  return (
+    <>
+      {children}
+      {dataLoading && !hasDataInCache && <InitialLoadingScreen />}
+      {dataError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <div className="w-6 h-6 text-red-600">⚠</div>
+            </div>
+            <h2 className="text-lg font-semibold text-gray-800 mb-2">데이터 로딩 실패</h2>
+            <p className="text-sm text-gray-600 mb-4">{dataError}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
+            >
+              새로고침
+            </button>
           </div>
-          <h2 className="text-lg font-semibold text-gray-800 mb-2">데이터 로딩 실패</h2>
-          <p className="text-sm text-gray-600 mb-4">{dataError}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
-          >
-            새로고침
-          </button>
         </div>
-      </div>
-    )
-  }
-
-  // 데이터 로딩 완료 - 메인 앱 렌더링
-  return <>{children}</>
+      )}
+    </>
+  )
 }

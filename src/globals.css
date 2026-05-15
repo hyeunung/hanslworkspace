@@ -1241,3 +1241,5 @@ input[type="number"] {
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
 }
+
+/* 공문 인쇄는 새 창에서 처리 (printOfficialDoc) — 기존 페이지 컨텍스트의 fixed/relative 부모 충돌 회피 */

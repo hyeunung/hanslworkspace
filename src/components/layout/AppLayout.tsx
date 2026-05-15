@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import Header from '@/components/layout/Header'
 import FixedNavigation from '@/components/layout/FixedNavigation'
 import AppRoutes from '@/components/layout/AppRoutes'
+import OfficialDocumentApprovedModal from '@/components/official-document/OfficialDocumentApprovedModal'
 
 /**
  * 인증된 사용자를 위한 메인 애플리케이션 레이아웃
@@ -16,6 +17,9 @@ export default function AppLayout() {
 
   return (
     <div style={{ position: 'relative', minHeight: '100vh', backgroundColor: '#f9fafb' }}>
+      {/* 워크스페이스 진입 시 미확인 최종 결재 공문 자동 알림 */}
+      <OfficialDocumentApprovedModal />
+
       {/* 고정 헤더 */}
       <Header
         user={employee}

@@ -18,6 +18,7 @@ const AiServiceApplicationForm = lazy(() => import('@/components/application/AiS
 const ShippingMain = lazy(() => import('@/components/shipping/ShippingMain'))
 const AcceptanceMain = lazy(() => import('@/components/receipts/AcceptanceMain'))
 const AttendancePage = lazy(() => import('@/components/employee/AttendancePage'))
+const OfficialDocumentMain = lazy(() => import('@/components/official-document/OfficialDocumentMain'))
 const AuthConfirm = lazy(() => import('@/components/auth/AuthConfirm'))
 const ResetPassword = lazy(() => import('@/components/auth/ResetPassword'))
 
@@ -67,6 +68,7 @@ export default function AppRoutes() {
           <Route path="/bom-coordinate/new" element={<BomCoordinateMain />} />
           <Route path="/bom-coordinate/list" element={<BomCoordinateMain />} />
           <Route path="/transaction-statement" element={<TransactionStatementMain />} />
+          <Route path="/official-document" element={<OfficialDocumentMain />} />
           
           {/* 인증 관련 라우트 */}
           <Route path="/auth/confirm" element={<AuthConfirm />} />

@@ -91,10 +91,16 @@ export default function TransactionStatementMain() {
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("not_confirmed");
   const [dateFilter, setDateFilter] = useState("");
   const [totalCount, setTotalCount] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
+
+  // 무한스크롤: 한 번에 50개씩 로드, sentinel이 보이면 +50씩 로드
+  const PAGE_SIZE = 50;
+  const [loadedCount, setLoadedCount] = useState(PAGE_SIZE);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
   
   // 서브 탭 상태 (거래명세서 / 입고수량)
   const [activeTab, setActiveTab] = useState<'default' | 'receipt'>('default');
@@ -235,11 +241,12 @@ export default function TransactionStatementMain() {
       if (showLoading) {
         setLoading(true);
       }
+      // loadedCount만큼 가져옴(무한스크롤 누적). 새 fetch 때마다 0~loadedCount 전체를 갱신.
       const result = await transactionStatementService.getStatements({
         status: statusFilter !== 'all' ? statusFilter : undefined,
         dateFrom: dateFilter || undefined,
         search: searchTerm || undefined,
-        limit: 50
+        limit: loadedCount
       });
 
       if (result.success) {
@@ -302,12 +309,40 @@ export default function TransactionStatementMain() {
       if (showLoading) {
         setLoading(false);
       }
+      setIsLoadingMore(false);
     }
+  }, [statusFilter, dateFilter, searchTerm, loadedCount]);
+
+  // 필터 변경 시 무한스크롤 상태 초기화 (loadedCount를 PAGE_SIZE로 리셋)
+  useEffect(() => {
+    setLoadedCount(PAGE_SIZE);
   }, [statusFilter, dateFilter, searchTerm]);
 
   useEffect(() => {
     loadStatements(true);
   }, [loadStatements]);
+
+  // IntersectionObserver: sentinel이 보이면 다음 페이지 로드
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+    if (!sentinel) return;
+    if (loading) return;
+    if (statements.length >= totalCount) return; // 더 가져올 게 없음
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry.isIntersecting && !isLoadingMore && statements.length < totalCount) {
+          setIsLoadingMore(true);
+          setLoadedCount((prev) => prev + PAGE_SIZE);
+        }
+      },
+      { rootMargin: '200px' }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loading, isLoadingMore, statements.length, totalCount]);
 
   // Realtime 이벤트 누락 대비: 처리중 건이 있을 때 주기적으로 서버 상태 동기화
   useEffect(() => {
@@ -950,6 +985,7 @@ export default function TransactionStatementMain() {
             </SelectTrigger>
             <SelectContent className="min-w-[100px]">
               <SelectItem value="all" className="text-[12px] py-1.5">전체 상태</SelectItem>
+              <SelectItem value="not_confirmed" className="text-[12px] py-1.5">확정되지 않은 항목</SelectItem>
               <SelectItem value="pending" className="text-[12px] py-1.5">대기중</SelectItem>
               <SelectItem value="queued" className="text-[12px] py-1.5">대기열</SelectItem>
               <SelectItem value="extracted" className="text-[12px] py-1.5">확인필요</SelectItem>
@@ -1313,6 +1349,28 @@ export default function TransactionStatementMain() {
                   </div>
                 ))}
               </div>
+
+              {/* 무한스크롤 sentinel - 보이면 다음 페이지 로드 */}
+              {statements.length < totalCount && (
+                <div
+                  ref={loadMoreSentinelRef}
+                  className="py-4 flex items-center justify-center text-[11px] text-gray-400"
+                >
+                  {isLoadingMore ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      더 불러오는 중...
+                    </span>
+                  ) : (
+                    <span>스크롤하여 더 보기</span>
+                  )}
+                </div>
+              )}
+              {statements.length >= totalCount && totalCount > PAGE_SIZE && (
+                <div className="py-4 text-center text-[11px] text-gray-400">
+                  모두 불러왔습니다 ({totalCount}건)
+                </div>
+              )}
             </>
           )}
         </CardContent>

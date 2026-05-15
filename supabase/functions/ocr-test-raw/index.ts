@@ -15,7 +15,7 @@ serve(async (req) => {
 
   try {
     const anthropicApiKey = Deno.env.get("ANTHROPIC_API_KEY") || ""
-    const anthropicModel = Deno.env.get("ANTHROPIC_MODEL") || "claude-sonnet-4-20250514"
+    const anthropicModel = Deno.env.get("ANTHROPIC_MODEL") || "claude-sonnet-4-6"
     if (!anthropicApiKey) throw new Error("ANTHROPIC_API_KEY not set")
 
     const { imageUrl } = await req.json()

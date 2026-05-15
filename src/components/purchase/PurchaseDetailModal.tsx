@@ -33,6 +33,7 @@ import {
   Image as ImageIcon,
   FileCheck,
   ListPlus,
+  ImagePlus,
   ExternalLink
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -51,7 +52,7 @@ import { AUTHORIZED_ROLES } from '@/constants/columnSettings'
 import ReactSelect, { type CSSObjectWithLabel } from 'react-select'
 import transactionStatementService from '@/services/transactionStatementService'
 import type { TransactionStatement } from '@/types/transactionStatement'
-import { supportService, type SupportInquiryPayload, type SupportInquiryType } from '@/services/supportService'
+import { supportService, type SupportInquiryPayload, type SupportInquiryType, type SupportAttachment } from '@/services/supportService'
 
 interface PurchaseDetailModalProps {
   purchaseId: number | null
@@ -195,6 +196,11 @@ function PurchaseDetailModal({
   const [quantityChangeRows, setQuantityChangeRows] = useState<QuantityChangeRow[]>([])
   const [priceChangeRows, setPriceChangeRows] = useState<PriceChangeRow[]>([])
   const [itemAddRows, setItemAddRows] = useState<ItemAddRow[]>([])
+  const [deleteType, setDeleteType] = useState<'all' | 'items'>('all')
+  const [deleteItemIds, setDeleteItemIds] = useState<string[]>([])
+  const [modifyAttachments, setModifyAttachments] = useState<SupportAttachment[]>([])
+  const [uploadingModifyImage, setUploadingModifyImage] = useState(false)
+  const modifyFileInputRef = useRef<HTMLInputElement>(null)
   const [isSendingModify, setIsSendingModify] = useState(false)
   const textMeasureCanvasRef = useRef<HTMLCanvasElement | null>(null)
   
@@ -289,6 +295,9 @@ function PurchaseDetailModal({
       setQuantityChangeRows([])
       setPriceChangeRows([])
       setItemAddRows([])
+      setDeleteType('all')
+      setDeleteItemIds([])
+      setModifyAttachments([])
     }
   }, [isModifyRequestOpen])
 
@@ -494,7 +503,7 @@ function PurchaseDetailModal({
 
   // 수정요청 전송
   const handleSendModifyRequest = async () => {
-    const messageOptionalTypes = ['item_add']
+    const messageOptionalTypes = ['quantity_change', 'price_change', 'item_add', 'delivery_date_change']
     if (!modifyInquiryType || (!modifyMessage.trim() && !messageOptionalTypes.includes(modifyInquiryType))) {
       toast.error('모든 필드를 입력해주세요.')
       return
@@ -700,7 +709,38 @@ function PurchaseDetailModal({
       }
 
       if (modifyInquiryType === 'delete') {
-        inquiryPayload = { reason: modifyMessage.trim() }
+        if (deleteType === 'items') {
+          if (deleteItemIds.length === 0) {
+            toast.error('삭제할 품목을 선택해주세요.')
+            setIsSendingModify(false)
+            return
+          }
+          const deleteItemsPayload = deleteItemIds.map(itemId => {
+            const targetItem = selectedPurchaseItems.find((item: PurchaseRequestItem) => String(item.id) === itemId)
+            return {
+              item_id: itemId,
+              line_number: targetItem?.line_number ?? null,
+              item_name: targetItem?.item_name ?? '',
+              specification: targetItem?.specification ?? null,
+            }
+          })
+          inquiryPayload = {
+            reason: modifyMessage.trim(),
+            delete_target: 'purchase' as const,
+            delete_type: 'items' as const,
+            delete_items: deleteItemsPayload
+          }
+          summaryLines.push(`[품목별 삭제] ${deleteItemsPayload.map(i =>
+            `${i.line_number ?? '-'}번 ${i.item_name} (${i.specification || '-'})`
+          ).join(', ')}`)
+        } else {
+          inquiryPayload = {
+            reason: modifyMessage.trim(),
+            delete_target: 'purchase' as const,
+            delete_type: 'all' as const
+          }
+          summaryLines.push('[발주 전체 삭제]')
+        }
       }
 
       let purchaseInfo = ''
@@ -737,7 +777,7 @@ ${itemsText}`
         purchase_request_id: purchaseRequestId,
         purchase_info: purchaseInfo,
         purchase_order_number: purchase.purchase_order_number,
-        attachments: [],
+        attachments: modifyAttachments,
         inquiry_payload: inquiryPayload
       })
 
@@ -750,6 +790,9 @@ ${itemsText}`
         setQuantityChangeRows([])
         setPriceChangeRows([])
         setItemAddRows([])
+        setDeleteType('all')
+        setDeleteItemIds([])
+        setModifyAttachments([])
       } else {
         toast.error(result.error || '수정 요청 전송 중 오류가 발생했습니다.')
       }
@@ -826,6 +869,52 @@ ${itemsText}`
 
   const removeItemAddRow = (rowId: string) => {
     setItemAddRows(prev => prev.filter(row => row.id !== rowId))
+  }
+
+  // 수정요청 첨부파일 핸들러
+  const handleModifyImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    if (modifyAttachments.length >= 5) {
+      toast.error('첨부파일은 최대 5개까지 가능합니다.')
+      return
+    }
+
+    const file = files[0]
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('파일 크기는 5MB 이하만 가능합니다.')
+      return
+    }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('이미지 파일만 첨부 가능합니다.')
+      return
+    }
+
+    setUploadingModifyImage(true)
+    const result = await supportService.uploadAttachment(file)
+
+    if (result.success && result.data) {
+      setModifyAttachments(prev => [...prev, result.data!])
+      toast.success('이미지가 첨부되었습니다.')
+    } else {
+      toast.error(result.error || '이미지 업로드 실패')
+    }
+
+    setUploadingModifyImage(false)
+
+    if (modifyFileInputRef.current) {
+      modifyFileInputRef.current.value = ''
+    }
+  }
+
+  const handleRemoveModifyAttachment = async (index: number) => {
+    const attachment = modifyAttachments[index]
+    await supportService.deleteAttachment(attachment.path)
+    setModifyAttachments(prev => prev.filter((_, i) => i !== index))
+    toast.success('첨부파일이 삭제되었습니다.')
   }
 
   // 메모리 캐시 동기화는 useEffect에서 처리
@@ -6942,18 +7031,173 @@ ${itemsText}`
                       </div>
                     )}
 
+                    {modifyInquiryType === 'delete' && (
+                      <div className="space-y-3 p-3 bg-gray-50 business-radius-card border border-gray-200">
+                        <div className="modal-section-title text-gray-900">삭제 유형 선택</div>
+                        <div className="flex gap-3">
+                          <button
+                            type="button"
+                            onClick={() => { setDeleteType('all'); setDeleteItemIds([]) }}
+                            className={`button-base border ${deleteType === 'all'
+                              ? 'border-red-400 bg-red-50 text-red-700'
+                              : 'border-gray-300 bg-white text-gray-600'}`}
+                          >
+                            발주 전체 삭제
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteType('items')}
+                            className={`button-base border ${deleteType === 'items'
+                              ? 'border-red-400 bg-red-50 text-red-700'
+                              : 'border-gray-300 bg-white text-gray-600'}`}
+                          >
+                            품목별 삭제
+                          </button>
+                        </div>
+
+                        {deleteType === 'items' && selectedPurchaseItems.length > 0 && (
+                          <div className="space-y-1.5 mt-2">
+                            <div className="modal-label text-gray-600">삭제할 품목 선택</div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (deleteItemIds.length === selectedPurchaseItems.length) {
+                                    setDeleteItemIds([])
+                                  } else {
+                                    setDeleteItemIds(selectedPurchaseItems.map((item: PurchaseRequestItem) => String(item.id)))
+                                  }
+                                }}
+                                className="button-base border border-gray-300 bg-white text-gray-600"
+                              >
+                                {deleteItemIds.length === selectedPurchaseItems.length ? '전체 해제' : '전체 선택'}
+                              </button>
+                              {deleteItemIds.length > 0 && (
+                                <span className="badge-text text-red-600">{deleteItemIds.length}개 선택됨</span>
+                              )}
+                            </div>
+                            {selectedPurchaseItems.map((item: PurchaseRequestItem, index: number) => {
+                              const itemId = String(item.id)
+                              const isChecked = deleteItemIds.includes(itemId)
+                              return (
+                                <label
+                                  key={itemId}
+                                  className={`flex items-center gap-2 px-3 py-2 border business-radius-card cursor-pointer transition-colors ${
+                                    isChecked
+                                      ? 'border-red-300 bg-red-50'
+                                      : 'border-gray-200 bg-white hover:bg-gray-50'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => {
+                                      setDeleteItemIds(prev =>
+                                        isChecked
+                                          ? prev.filter(id => id !== itemId)
+                                          : [...prev, itemId]
+                                      )
+                                    }}
+                                    className="w-3.5 h-3.5 accent-red-500"
+                                  />
+                                  <span className="card-description text-gray-400">{item.line_number ?? index + 1}.</span>
+                                  <span className="card-description">{item.item_name}</span>
+                                  {item.specification && (
+                                    <span className="card-description text-gray-500">({item.specification})</span>
+                                  )}
+                                  <span className="card-description text-gray-500">- {item.quantity}개</span>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        {deleteType === 'all' && (
+                          <div className="badge-text text-red-500 bg-red-50 border border-red-200 business-radius-card px-3 py-2">
+                            발주요청과 모든 품목이 함께 삭제됩니다.
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div>
                       <label className="block modal-label text-gray-700 mb-1">
-                        내용 {modifyInquiryType !== 'item_add' && <span className="text-red-500">*</span>}
+                        {modifyInquiryType === 'delete' ? '삭제 사유' : '내용'}{' '}
+                        {modifyInquiryType !== 'item_add' && <span className="text-red-500">*</span>}
                       </label>
                       <div className="relative" onWheel={(e) => e.stopPropagation()}>
                         <Textarea
                           value={modifyMessage}
                           onChange={(e) => setModifyMessage(e.target.value)}
                           className="business-radius-input min-h-20 text-[11px]"
-                          placeholder="문의 내용을 자세히 입력해주세요"
+                          placeholder={modifyInquiryType === 'delete' ? '삭제 사유를 입력해주세요' : '문의 내용을 자세히 입력해주세요'}
                         />
                       </div>
+                    </div>
+
+                    {/* 사진 첨부 영역 */}
+                    <div>
+                      <label className="block modal-label text-gray-700 mb-2">
+                        사진 첨부 <span className="badge-text text-gray-400">(선택, 최대 5개)</span>
+                      </label>
+
+                      {modifyAttachments.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {modifyAttachments.map((attachment, index) => (
+                            <div key={index} className="relative group">
+                              <img
+                                src={attachment.url}
+                                alt={attachment.name}
+                                className="w-20 h-20 object-cover business-radius-card border border-gray-200"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveModifyAttachment(index)}
+                                className="button-base absolute -top-2 -right-2 bg-red-500 text-white business-radius-badge opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="삭제"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                              <p className="text-[10px] text-gray-500 mt-1 truncate w-20 text-center">
+                                {attachment.name}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {modifyAttachments.length < 5 && (
+                        <div className="flex items-center gap-2">
+                          <input
+                            ref={modifyFileInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleModifyImageSelect}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => modifyFileInputRef.current?.click()}
+                            disabled={uploadingModifyImage}
+                            className="button-action-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {uploadingModifyImage ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                업로드 중...
+                              </>
+                            ) : (
+                              <>
+                                <ImagePlus className="w-3.5 h-3.5" />
+                                사진 추가
+                              </>
+                            )}
+                          </button>
+                          <span className="badge-text text-gray-400">
+                            {modifyAttachments.length}/5
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex justify-end gap-2">
@@ -6965,10 +7209,10 @@ ${itemsText}`
                       >
                         취소
                       </Button>
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         onClick={handleSendModifyRequest}
-                        disabled={isSendingModify}
+                        disabled={isSendingModify || uploadingModifyImage}
                         className="button-base bg-blue-500 hover:bg-blue-600 text-white"
                       >
                         {isSendingModify ? '전송 중...' : '요청 전송'}
