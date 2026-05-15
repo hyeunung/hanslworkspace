@@ -2198,6 +2198,11 @@ function dlFile() {
                         ⚠️ 수동 작성: {processedResult.processedData?.bomItems?.filter((item: { isManualRequired?: boolean }) => item.isManualRequired).length}
                       </span>
                     )}
+                    {(processedResult.processedData?.bomItems?.filter((item: BOMItem) => item.itemType === '데이터 없음' || (item.itemName || '').includes('데이터 없음')).length ?? 0) > 0 && (
+                      <span className="badge-stats bg-red-100 text-red-700 border border-red-200">
+                        데이터 없음: {processedResult.processedData?.bomItems?.filter((item: BOMItem) => item.itemType === '데이터 없음' || (item.itemName || '').includes('데이터 없음')).length}
+                      </span>
+                    )}
                     {processedResult?.processedData?.coordinatesProvided !== false && mismatchCount > 0 && (
                       <span className="badge-stats bg-red-100 text-red-700 border border-red-200">
                         REF 불일치: {mismatchCount}
@@ -2223,6 +2228,11 @@ function dlFile() {
                     {(processedResult.processedData?.bomItems?.filter((item: { isManualRequired?: boolean }) => item.isManualRequired).length ?? 0) > 0 && (
                       <span className="badge-stats bg-yellow-100 text-yellow-700 border border-yellow-300">
                         ⚠️ 수동 작성: {processedResult.processedData?.bomItems?.filter((item: { isManualRequired?: boolean }) => item.isManualRequired).length}
+                      </span>
+                    )}
+                    {(processedResult.processedData?.bomItems?.filter((item: BOMItem) => item.itemType === '데이터 없음' || (item.itemName || '').includes('데이터 없음')).length ?? 0) > 0 && (
+                      <span className="badge-stats bg-red-100 text-red-700 border border-red-200">
+                        데이터 없음: {processedResult.processedData?.bomItems?.filter((item: BOMItem) => item.itemType === '데이터 없음' || (item.itemName || '').includes('데이터 없음')).length}
                       </span>
                     )}
                     {processedResult?.processedData?.coordinatesProvided !== false && missingInBom > 0 && (
