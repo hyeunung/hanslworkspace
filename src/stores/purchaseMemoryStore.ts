@@ -587,14 +587,23 @@ export const markBulkExpenditureSet = (purchaseId: number | string, expenditureD
 type CacheUpdateListener = () => void
 const cacheListeners = new Set<CacheUpdateListener>()
 
+// 캐시 변경 시퀀스 번호 (useSyncExternalStore용)
+// notifyCacheListeners 호출 시 무조건 먼저 증가 → snapshot getter가 항상 새 값을 보게 함
+let cacheVersion = 0
+export const getCacheVersion = () => cacheVersion
+
 // 리스너 등록 (Realtime 서비스에서 호출)
 export const addCacheListener = (listener: CacheUpdateListener): (() => void) => {
   cacheListeners.add(listener)
-  return () => cacheListeners.delete(listener)
+  return () => {
+    cacheListeners.delete(listener)
+  }
 }
 
 // 모든 리스너에게 변경 알림 (Realtime 서비스에서 호출)
 export const notifyCacheListeners = () => {
+  // 리스너 호출 전에 버전을 먼저 증가시켜 snapshot 비교가 정확하게 동작하도록 함
+  cacheVersion += 1
   cacheListeners.forEach(listener => {
     try {
       listener()
