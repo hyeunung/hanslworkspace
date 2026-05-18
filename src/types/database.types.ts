@@ -1040,7 +1040,7 @@ export type Database = {
           rejection_reason: string | null
           request_corporate_card: boolean
           request_department: string
-          requested_card_number: string | null
+          requested_card_number: string[] | null
           requester_id: string | null
           settlement_approved_at: string | null
           settlement_approved_by: string | null
@@ -1067,7 +1067,7 @@ export type Database = {
           rejection_reason?: string | null
           request_corporate_card?: boolean
           request_department: string
-          requested_card_number?: string | null
+          requested_card_number?: string[] | null
           requester_id?: string | null
           settlement_approved_at?: string | null
           settlement_approved_by?: string | null
@@ -1094,7 +1094,7 @@ export type Database = {
           rejection_reason?: string | null
           request_corporate_card?: boolean
           request_department?: string
-          requested_card_number?: string | null
+          requested_card_number?: string[] | null
           requester_id?: string | null
           settlement_approved_at?: string | null
           settlement_approved_by?: string | null

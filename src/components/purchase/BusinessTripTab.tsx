@@ -209,7 +209,7 @@ interface BusinessTrip {
   transport_type: "company_vehicle" | "public_transport" | "private_car" | "other";
   requested_vehicle_info: string | null;
   request_corporate_card: boolean;
-  requested_card_number: string | null;
+  requested_card_number: string[] | null;
   expected_total_amount: number;
   precheck_note: string | null;
   approval_status: string;
@@ -226,6 +226,7 @@ interface BusinessTrip {
   updated_at: string;
   requester?: { name: string; department: string | null } | null;
   linkedCard?: CardUsageLink | null;
+  linkedCards?: CardUsageLink[];
   linkedVehicle?: VehicleUsageLink | null;
 }
 
@@ -418,7 +419,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
   const [formCompanions, setFormCompanions] = useState<CompanionOption[]>([]);
   const [formTransportType, setFormTransportType] = useState<BusinessTrip["transport_type"]>("public_transport");
   const [formTransportDetail, setFormTransportDetail] = useState<string>("");
-  const [formCardNumber, setFormCardNumber] = useState<string | null>(null);
+  const [formCardNumbers, setFormCardNumbers] = useState<string[]>([]);
   const [formExpectedAmount, setFormExpectedAmount] = useState("");
   const [formPrecheckNote, setFormPrecheckNote] = useState("");
   const [vehicleSchedules, setVehicleSchedules] = useState<VehicleScheduleRow[]>([]);
@@ -597,7 +598,8 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
         supabase
           .from("card_usages")
           .select("id, business_trip_id, card_number, approval_status, card_returned")
-          .in("business_trip_id", tripIds),
+          .in("business_trip_id", tripIds)
+          .order("id", { ascending: true }),
         supabase
           .from("vehicle_requests")
           .select("id, business_trip_id, vehicle_info, approval_status")
@@ -607,10 +609,12 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
       if (cardError) throw cardError;
       if (vehicleError) throw vehicleError;
 
-      const cardMap = new Map<number, CardUsageLink>();
+      const cardMap = new Map<number, CardUsageLink[]>();
       ((cardLinks || []) as CardUsageLink[]).forEach((c) => {
-        if (c.business_trip_id && !cardMap.has(c.business_trip_id)) {
-          cardMap.set(c.business_trip_id, c as CardUsageLink);
+        if (c.business_trip_id) {
+          const list = cardMap.get(c.business_trip_id) || [];
+          list.push(c as CardUsageLink);
+          cardMap.set(c.business_trip_id, list);
         }
       });
 
@@ -622,11 +626,15 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
       });
 
       setTrips(
-        baseTrips.map((t) => ({
-          ...t,
-          linkedCard: cardMap.get(t.id) || null,
-          linkedVehicle: vehicleMap.get(t.id) || null,
-        }))
+        baseTrips.map((t) => {
+          const cards = cardMap.get(t.id) || [];
+          return {
+            ...t,
+            linkedCards: cards,
+            linkedCard: cards[0] || null,
+            linkedVehicle: vehicleMap.get(t.id) || null,
+          };
+        })
       );
     } catch (err) {
       logger.error("출장 목록 조회 실패", err);
@@ -703,7 +711,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     [trips]
   );
   const cardRequestedCount = useMemo(
-    () => trips.filter((t) => Boolean(t.requested_card_number?.trim()) || Boolean(t.linkedCard)).length,
+    () => trips.filter((t) => Boolean(t.requested_card_number?.length) || Boolean(t.linkedCards?.length)).length,
     [trips]
   );
   const vehicleRequestedCount = useMemo(
@@ -724,7 +732,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     setFormCompanions([]);
     setFormTransportType("public_transport");
     setFormTransportDetail("");
-    setFormCardNumber(null);
+    setFormCardNumbers([]);
     setFormExpectedAmount("");
     setFormPrecheckNote("");
   }, [currentUser?.department]);
@@ -798,8 +806,8 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
               : formTransportType === "private_car"
                 ? "자차"
                 : formTransportDetail.trim().split(" ")[0] || null,
-        request_corporate_card: Boolean(formCardNumber),
-        requested_card_number: formCardNumber,
+        request_corporate_card: formCardNumbers.length > 0,
+        requested_card_number: formCardNumbers.length > 0 ? formCardNumbers : null,
         expected_total_amount: toNumber(formExpectedAmount),
         precheck_note: formPrecheckNote.trim() || null,
       }).select("id").single();
@@ -846,7 +854,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
   }, [
     currentUser?.id,
     employees,
-    formCardNumber,
+    formCardNumbers,
     formTransportDetail,
     formCompanions,
     formDateRange,
@@ -1064,7 +1072,8 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
       if (error) throw error;
 
       const trip = trips.find((t) => t.id === settlementApproveTargetId);
-      if (trip?.linkedCard?.id) {
+      const cardIdsToReturn = (trip?.linkedCards || []).map((c) => c.id);
+      if (cardIdsToReturn.length > 0) {
         const { error: cardError } = await supabase
           .from("card_usages")
           .update({
@@ -1073,7 +1082,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
             card_returned_by: currentUser?.id || null,
             approval_status: "returned",
           })
-          .eq("id", trip.linkedCard.id);
+          .in("id", cardIdsToReturn);
         if (cardError) {
           logger.warn("카드 반납 처리 실패 (정산 승인은 완료)", { cardError });
         }
@@ -1268,7 +1277,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
             })()
           : mobileReceiptRows.length > 0
             ? mobileReceiptRows
-            : (trip.requested_card_number?.trim() || trip.linkedCard)
+            : (trip.requested_card_number?.length || trip.linkedCard)
               ? [createEmptyExpense(trip)]
               : []
       );
@@ -1633,7 +1642,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
   }, [supabase]);
 
   const saveSettlement = useCallback(async (mode: "draft" | "submitted"): Promise<boolean> => {
-    const hasCardRequest = Boolean(settlementTrip?.requested_card_number?.trim()) || Boolean(settlementTrip?.linkedCard);
+    const hasCardRequest = Boolean(settlementTrip?.requested_card_number?.length) || Boolean(settlementTrip?.linkedCard);
     if (!settlementTrip) return false;
     if (mode === "submitted") {
       if (settlementTrip.approval_status !== "approved") {
@@ -1975,7 +1984,8 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
       if (tripUpdateError) throw tripUpdateError;
 
       // 자동 승인 시 카드 반납 처리
-      if (isAutoApproveTarget && settlementTrip.linkedCard?.id) {
+      const autoReturnCardIds = (settlementTrip.linkedCards || []).map((c) => c.id);
+      if (isAutoApproveTarget && autoReturnCardIds.length > 0) {
         const { error: cardError } = await supabase
           .from("card_usages")
           .update({
@@ -1984,7 +1994,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
             card_returned_by: currentUser?.id || null,
             approval_status: "returned",
           })
-          .eq("id", settlementTrip.linkedCard.id);
+          .in("id", autoReturnCardIds);
         if (cardError) {
           logger.warn("자동 정산승인 - 카드 반납 처리 실패", { cardError });
         }
@@ -2048,11 +2058,9 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     return <span className={`badge-stats ${c.cls}`}>{c.text}</span>;
   };
 
-  const getCardStatusText = (trip: BusinessTrip) => {
-    const hasCardRequest = Boolean(trip.requested_card_number?.trim()) || Boolean(trip.linkedCard);
-    if (!hasCardRequest) return "-";
-    if (!trip.linkedCard) return "생성대기";
-    if (trip.linkedCard.card_returned) return "반납완료";
+  const getCardUsageStatusText = (link?: CardUsageLink | null) => {
+    if (!link) return "생성대기";
+    if (link.card_returned) return "반납완료";
     const map: Record<string, string> = {
       pending: "승인대기",
       approved: "사용승인",
@@ -2060,7 +2068,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
       returned: "반납완료",
       rejected: "반려",
     };
-    return map[trip.linkedCard.approval_status] || trip.linkedCard.approval_status;
+    return map[link.approval_status] || link.approval_status;
   };
 
   const getTransportLabel = (trip: BusinessTrip) => {
@@ -2319,12 +2327,13 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                 <div className="doc-form-cell-label">출장카드 선택</div>
                 <div className="doc-select-container">
                   <ReactSelect
+                    isMulti
                     options={COMPANY_CARDS}
-                    value={formCardNumber ? COMPANY_CARDS.find((c) => c.value === formCardNumber) || null : null}
-                    onChange={(opt) => setFormCardNumber((opt as { value: string } | null)?.value || null)}
+                    value={COMPANY_CARDS.filter((c) => formCardNumbers.includes(c.value))}
+                    onChange={(opts) => setFormCardNumbers(((opts || []) as unknown as { value: string }[]).map((o) => o.value))}
                       formatOptionLabel={(option) => formatCompanyCardOptionLabel(option as CompanyCardOption)}
                       getOptionLabel={(option) => formatCompanyCardOptionLabel(option as CompanyCardOption)}
-                    placeholder="선택"
+                    placeholder="선택 (복수 선택 가능)"
                     isSearchable={false}
                     styles={reactSelectStyles}
                     menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
@@ -2540,21 +2549,32 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                         </td>
                         <td className="px-3 py-1.5 card-title truncate max-w-[120px]">{trip.trip_destination}</td>
                         <td className="px-3 py-1.5 whitespace-nowrap">
-                          {trip.requested_card_number?.trim() || trip.linkedCard ? (
-                            <div>
-                              <div className="card-title">
-                                {(() => {
-                                  const raw = trip.linkedCard?.card_number || trip.requested_card_number || "";
-                                  const parts = raw.trim().split(/\s+/);
-                                  if (parts.length >= 2) return <>{parts[0]}<span className="text-gray-400"> ({parts.slice(1).join(" ")})</span></>;
-                                  return parts[0] || "-";
-                                })()}
+                          {(() => {
+                            const cardValues = trip.requested_card_number?.length
+                              ? trip.requested_card_number
+                              : (trip.linkedCards || []).map((c) => c.card_number);
+                            if (cardValues.length === 0) {
+                              return <span className="card-description">미신청</span>;
+                            }
+                            return (
+                              <div className="flex flex-col gap-1">
+                                {cardValues.map((cardValue, idx) => {
+                                  const link = (trip.linkedCards || []).find((c) => c.card_number === cardValue);
+                                  const parts = cardValue.trim().split(/\s+/);
+                                  return (
+                                    <div key={`${cardValue}-${idx}`}>
+                                      <div className="card-title">
+                                        {parts.length >= 2
+                                          ? <>{parts[0]}<span className="text-gray-400"> ({parts.slice(1).join(" ")})</span></>
+                                          : (parts[0] || "-")}
+                                      </div>
+                                      <div className="card-description">{getCardUsageStatusText(link)}</div>
+                                    </div>
+                                  );
+                                })}
                               </div>
-                              <div className="card-description">{getCardStatusText(trip)}</div>
-                            </div>
-                          ) : (
-                            <span className="card-description">미신청</span>
-                          )}
+                            );
+                          })()}
                         </td>
                         <td className="px-3 py-1.5 whitespace-nowrap">
                           {trip.transport_type === "company_vehicle" ? (
@@ -2834,12 +2854,13 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
               <div className="col-span-1">
                 <Label className="modal-label mb-1.5 block text-[11px]">출장카드 선택</Label>
                 <ReactSelect
+                  isMulti
                   options={COMPANY_CARDS}
-                  value={formCardNumber ? COMPANY_CARDS.find((c) => c.value === formCardNumber) || null : null}
-                  onChange={(opt) => setFormCardNumber((opt as { value: string } | null)?.value || null)}
+                  value={COMPANY_CARDS.filter((c) => formCardNumbers.includes(c.value))}
+                  onChange={(opts) => setFormCardNumbers(((opts || []) as unknown as { value: string }[]).map((o) => o.value))}
                   formatOptionLabel={(option) => formatCompanyCardOptionLabel(option as CompanyCardOption)}
                   getOptionLabel={(option) => formatCompanyCardOptionLabel(option as CompanyCardOption)}
-                  placeholder="선택"
+                  placeholder="선택 (복수 선택 가능)"
                   isSearchable={false}
                   styles={reactSelectStyles}
                   menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
@@ -2966,7 +2987,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
               </div>
 
               {/* 카드사용내역 - 법인카드 신청한 경우에만 표시 */}
-              {(settlementTrip.requested_card_number?.trim() || settlementTrip.linkedCard) && (
+              {(settlementTrip.requested_card_number?.length || settlementTrip.linkedCard) && (
       <div className="border business-radius-card">
                 <div className="px-3 py-2 border-b bg-gray-50 flex items-center justify-between">
                   <h3 className="section-title text-gray-800">카드사용내역</h3>
