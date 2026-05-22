@@ -37,7 +37,7 @@ import { invalidatePurchaseMemoryCache } from '@/stores/purchaseMemoryStore';
 
 const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "superadmin"];
 const HIGH_AMOUNT_APPROVER_ROLES = ["final_approver", "ceo", "superadmin"];
-const SETTLEMENT_APPROVER_ROLES = ["hr", "lead buyer", "superadmin"];
+const SETTLEMENT_APPROVER_ROLES = ["hr", "superadmin", "final_approver"];
 const TRIP_PERIOD_EDITOR_ROLES = ["hr", "superadmin"];
 
 const COMPANY_CARDS = [
