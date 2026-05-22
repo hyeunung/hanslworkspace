@@ -35,7 +35,7 @@ import { ko } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
 
 const CARD_APPROVER_ROLES = ["superadmin"];
-const CARD_RETURN_ROLES = ["lead buyer", "superadmin"];
+const CARD_RETURN_ROLES = ["hr", "superadmin", "final_approver"];
 
 const COMPANY_CARDS = [
   { label: "공용1", number: "8967", value: "공용1 8967" },
@@ -1066,7 +1066,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                     const totalAmount = (u.receipts || []).reduce((sum, r) => sum + (r.total_amount || 0), 0);
                     const isOwner = currentUser?.id === u.requester_id;
                     const canUploadReceipt = (isOwner || isAppAdmin) && ["approved", "settled"].includes(u.approval_status) && !u.card_returned;
-                    const canReturn = canReturnCard && u.approval_status === "settled" && !u.card_returned && !u.business_trip_id;
+                    const canReturn = canReturnCard && ["approved", "settled"].includes(u.approval_status) && !u.card_returned && !u.business_trip_id;
 
                     return (
                       <tr
@@ -1097,7 +1097,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                                 </Button>
                               </PopoverContent>
                             </Popover>
-                          ) : u.approval_status === "settled" && canReturn ? (
+                          ) : canReturn ? (
                             <Popover>
                               <PopoverTrigger asChild>
                                 <button className="badge-stats bg-blue-500 text-white cursor-pointer hover:bg-blue-600">
