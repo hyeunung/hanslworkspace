@@ -138,7 +138,8 @@ class PurchaseService {
       const purchasesWithDetails = (Array.isArray(data) ? data : []).map(purchase => ({
         ...purchase,
         items: purchase.purchase_request_items || [],
-        vendor: purchase.vendor || { id: 0, vendor_name: '알 수 없음' },
+        // 출장/카드 경비 자동발주는 vendor_id 가 없음 → vendor_name 텍스트(사용처명)로 표시
+        vendor: purchase.vendor || { id: 0, vendor_name: purchase.vendor_name || '알 수 없음' },
         vendor_contacts: purchase.vendor_contacts || []
       })) as PurchaseRequestWithDetails[];
 
@@ -165,7 +166,7 @@ class PurchaseService {
       const purchaseWithDetails = {
         ...(data || {}),
         items: (data && 'items' in data) ? data.items || [] : [],
-        vendor: (data && 'vendor' in data) ? data.vendor || { id: 0, vendor_name: '알 수 없음' } : { id: 0, vendor_name: '알 수 없음' },
+        vendor: (data && 'vendor' in data) ? data.vendor || { id: 0, vendor_name: (data && 'vendor_name' in data ? data.vendor_name : null) || '알 수 없음' } : { id: 0, vendor_name: '알 수 없음' },
         vendor_contacts: (data && 'vendor_contacts' in data) ? data.vendor_contacts || [] : []
       } as PurchaseRequestWithDetails;
 

@@ -229,8 +229,8 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
   const [rejectTargetId, setRejectTargetId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
-  // Vendors for receipt merchant selection
-  const [vendors, setVendors] = useState<{ id: number; vendor_name: string; vendor_alias?: string }[]>([]);
+  // 경비 사용처 (영수증 사용처 선택용 — vendors 거래처 마스터와 분리)
+  const [expensePlaces, setExpensePlaces] = useState<{ id: number; place_name: string }[]>([]);
 
   // Receipt modal
   const [receiptModalUsage, setReceiptModalUsage] = useState<CardUsage | null>(null);
@@ -351,16 +351,16 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
     init();
   }, [supabase, loadUsages]);
 
-  // 업체 목록 로드 (영수증 사용처 선택용)
+  // 경비 사용처 목록 로드 (영수증 사용처 선택용)
   useEffect(() => {
-    const loadVendors = async () => {
+    const loadExpensePlaces = async () => {
       const { data } = await supabase
-        .from("vendors")
-        .select("id, vendor_name, vendor_alias")
-        .order("vendor_name");
-      if (data) setVendors(data);
+        .from("trip_expense_places")
+        .select("id, place_name")
+        .order("place_name");
+      if (data) setExpensePlaces(data);
     };
-    loadVendors();
+    loadExpensePlaces();
   }, [supabase]);
 
   // Scroll fix for ReactSelect in dialogs
@@ -548,27 +548,27 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
     return `${prefix}${String(nextNumber).padStart(3, "0")}`;
   }, [supabase]);
 
-  // 업체 조회 또는 자동 생성
-  const findOrCreateVendor = useCallback(async (merchantName: string): Promise<number> => {
-    const trimmed = merchantName.trim();
-    // 기존 업체 검색
+  // 경비 사용처 조회 또는 자동 생성 (trip_expense_places — vendors 거래처 마스터와 분리)
+  const findOrCreatePlace = useCallback(async (placeName: string): Promise<number> => {
+    const trimmed = placeName.trim();
+    // 기존 사용처 검색
     const { data: existing } = await supabase
-      .from("vendors")
+      .from("trip_expense_places")
       .select("id")
-      .eq("vendor_name", trimmed)
+      .eq("place_name", trimmed)
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (existing) return existing.id;
 
-    // 신규 업체 자동 등록
+    // 신규 사용처 자동 등록
     const { data: created, error } = await supabase
-      .from("vendors")
-      .insert({ vendor_name: trimmed })
+      .from("trip_expense_places")
+      .insert({ place_name: trimmed })
       .select("id")
       .single();
 
-    if (error || !created) throw error || new Error("업체 생성 실패");
+    if (error || !created) throw error || new Error("경비 사용처 생성 실패");
     return created.id;
   }, [supabase]);
 
@@ -595,7 +595,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
 
         // 업체별로 발주 생성
         for (const [merchantName, merchantReceipts] of Object.entries(receiptsByMerchant)) {
-          const vendorId = await findOrCreateVendor(merchantName);
+          const placeId = await findOrCreatePlace(merchantName);
           const poNumber = await generatePurchaseOrderNumber();
           const totalAmount = merchantReceipts.reduce((sum, r) => sum + (r.total_amount || 0), 0);
 
@@ -607,7 +607,8 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
               purchase_order_number: poNumber,
               requester_id: usage.requester_id,
               requester_name: usage.requester?.name || "",
-              vendor_id: vendorId,
+              vendor_id: null,
+              trip_expense_place_id: placeId,
               vendor_name: merchantName,
               request_type: requestType,
               progress_type: "일반",
@@ -674,7 +675,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
       logger.error("카드 반납 처리 실패", err);
       toast.error("카드 반납 처리에 실패했습니다.");
     }
-  }, [supabase, currentUser, usages, loadUsages, onBadgeRefresh, findOrCreateVendor, generatePurchaseOrderNumber]);
+  }, [supabase, currentUser, usages, loadUsages, onBadgeRefresh, findOrCreatePlace, generatePurchaseOrderNumber]);
 
   const openReceiptModal = useCallback((usage: CardUsage) => {
     setReceiptModalUsage(usage);
@@ -733,6 +734,11 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
         });
         if (insertError) throw insertError;
       }
+
+      // 입력된 사용처를 trip_expense_places 에 자동 등록 (드롭다운 후보 누적)
+      await supabase
+        .from("trip_expense_places")
+        .upsert({ place_name: receiptMerchant.trim() }, { onConflict: "place_name", ignoreDuplicates: true });
 
       if (receiptModalUsage.approval_status === "approved") {
         await supabase
@@ -1391,14 +1397,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                   formatCreateLabel={(input: string) => `"${input}" 신규 등록`}
                   value={receiptMerchant ? { label: receiptMerchant, value: receiptMerchant } : null}
                   onChange={(opt) => setReceiptMerchant(opt?.value || "")}
-                  options={vendors.map((v) => ({ label: v.vendor_name, value: v.vendor_name, alias: v.vendor_alias }))}
-                  filterOption={(option, inputValue) => {
-                    if (!inputValue) return true;
-                    const search = inputValue.toLowerCase();
-                    if (option.label.toLowerCase().includes(search)) return true;
-                    const alias = (option.data as { alias?: string }).alias;
-                    return alias ? alias.toLowerCase().includes(search) : false;
-                  }}
+                  options={expensePlaces.map((p) => ({ label: p.place_name, value: p.place_name }))}
                   styles={reactSelectStyles}
                   menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                   menuPosition="fixed"
