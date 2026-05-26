@@ -300,6 +300,14 @@ function fillCoordinateSheet(
     return;
   }
 
+  // 🧹 템플릿에 미리 박혀있는 더미 데이터 행 제거
+  // (Row 1 = 헤더, Row 2 = 구분선; 이 둘은 유지)
+  // 템플릿의 R3~ 더미 데이터가 새 데이터보다 많은 경우 잔존하는 사고 방지
+  const lastRowNumber = sheet.lastRow?.number ?? 0;
+  if (lastRowNumber > 2) {
+    sheet.spliceRows(3, lastRowNumber - 2);
+  }
+
   // Row 2부터 데이터 입력 (Row 1은 헤더)
   // 연속된 동일 종류는 첫 번째만 표시
   let prevType = '';
