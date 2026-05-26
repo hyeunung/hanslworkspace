@@ -350,10 +350,20 @@ export function isCoordValue(value: string): boolean {
   return /^-?\d+(\.\d+)?$/.test(value.trim());
 }
 
-const LAYER_VALUES = new Set(['TOP', 'BOTTOM', 'T', 'B', 'BOT']);
+// EDA 툴별 layer 표기 다양:
+//  - 단순: TOP/BOTTOM/T/B/BOT
+//  - Altium: TopLayer/BottomLayer
+//  - 일부 툴: Top Side / Bottom Side
+// 부분 매칭으로 처리 (포함 여부)
 export function isLayerValue(value: string): boolean {
   if (!value || typeof value !== 'string') return false;
-  return LAYER_VALUES.has(value.trim().toUpperCase());
+  const u = value.trim().toUpperCase();
+  if (!u) return false;
+  // 정확 매칭
+  if (u === 'TOP' || u === 'BOTTOM' || u === 'T' || u === 'B' || u === 'BOT') return true;
+  // 부분 매칭 (TopLayer, BottomLayer, Top Side 등)
+  if (u.includes('TOP') || u.includes('BOT')) return true;
+  return false;
 }
 
 const ROTATION_VALUES = new Set([0, 45, 90, 135, 180, 225, 270, 315, 360]);
