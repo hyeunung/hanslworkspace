@@ -272,7 +272,7 @@ const Utils = {
   normalizeType(typeVal: string): string {
     if (!typeVal) return '';
     const normalized = typeVal.trim();
-    
+
     const typeMapping: Record<string, string> = {
       'TP/DIP': 'TEST POINT/DIP',
       'TP/SMD': 'TEST POINT/SMD',
@@ -286,10 +286,137 @@ const Utils = {
       'DIOODE(SMD)': 'DIODE(SMD)',
       'X-TAL': 'X-TAL(SMD)',
     };
-    
+
     return typeMapping[normalized] || normalized;
   },
 };
+
+// ============================================================
+// 데이터 패턴 검증 함수 (컬럼 매핑 결과 검증용)
+// ============================================================
+
+// 단일 ref 패턴 (R23, C17)
+const SINGLE_REF_PATTERN = /^[A-Z]{1,3}\d+$/i;
+// 다중 ref (R1,R2,R3 / C17, C18, C19 / J9 J11)
+const MULTI_REF_PATTERN = /^[A-Z]{1,3}\d+([,.;\s/]+[A-Z]{1,3}\d+)+$/i;
+// 범위 ref (R1-R10, C1~C5)
+const RANGE_REF_PATTERN = /^[A-Z]{1,3}\d+[-~][A-Z]*\d+$/i;
+
+export function isRefPattern(value: string): boolean {
+  if (!value || typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return SINGLE_REF_PATTERN.test(trimmed) ||
+         MULTI_REF_PATTERN.test(trimmed) ||
+         RANGE_REF_PATTERN.test(trimmed);
+}
+
+// 수량값: 양의 정수 (소수점 0 허용: 1, 1.0)
+export function isQtyValue(value: string): boolean {
+  if (!value || typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  const m = /^(\d{1,4})(?:\.0+)?$/.exec(trimmed);
+  if (!m) return false;
+  const n = parseInt(m[1], 10);
+  return n >= 1 && n <= 9999;
+}
+
+// 단조 증가 정수 (이전 값 + 1)
+export function isMonotonicItemNum(value: string, prev: number | null): { ok: boolean; n: number | null } {
+  if (!value || typeof value !== 'string') return { ok: false, n: null };
+  const trimmed = value.trim();
+  const m = /^(\d{1,5})(?:\.0+)?$/.exec(trimmed);
+  if (!m) return { ok: false, n: null };
+  const n = parseInt(m[1], 10);
+  if (prev === null) return { ok: n >= 1, n };
+  return { ok: n === prev + 1, n };
+}
+
+// Footprint 같은 구조적 패턴 (R1608, C3225, SOIC8, 0603 등)
+const FOOTPRINT_PATTERN = /^([RCL]?\d{4}|\d{4}|SOIC\d*|TQFP\d*|LQFP\d*|QFP\d*|SOT\d+|SOD\d+|DIP\d*|DPAK|SOP\d*|0603|0805|1005|1206|1608|2012|3216|3225|BGA\d*|TSSOP\d*)/i;
+export function isFootprintValue(value: string): boolean {
+  if (!value || typeof value !== 'string') return false;
+  return FOOTPRINT_PATTERN.test(value.trim());
+}
+
+export function hasLetters(value: string): boolean {
+  return /[A-Za-z]/.test(value || '');
+}
+
+// 좌표 검증
+export function isCoordValue(value: string): boolean {
+  if (!value || typeof value !== 'string') return false;
+  return /^-?\d+(\.\d+)?$/.test(value.trim());
+}
+
+const LAYER_VALUES = new Set(['TOP', 'BOTTOM', 'T', 'B', 'BOT']);
+export function isLayerValue(value: string): boolean {
+  if (!value || typeof value !== 'string') return false;
+  return LAYER_VALUES.has(value.trim().toUpperCase());
+}
+
+const ROTATION_VALUES = new Set([0, 45, 90, 135, 180, 225, 270, 315, 360]);
+export function isRotationValue(value: string): boolean {
+  if (!value || typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return false;
+  const n = ((parseFloat(trimmed) % 360) + 360) % 360;
+  for (const r of ROTATION_VALUES) {
+    if (Math.abs(n - r) < 0.5) return true;
+  }
+  return n >= 0 && n < 360; // 자유로운 회전각도 일단 통과
+}
+
+// 컬럼의 셀들에 대해 검사 함수 매칭 비율 계산
+function columnMatchRate(
+  rows: (string | number | null | undefined)[][],
+  colIdx: number,
+  predicate: (v: string) => boolean
+): { rate: number; nonEmpty: number } {
+  let matchCount = 0;
+  let nonEmpty = 0;
+  for (const row of rows) {
+    if (!row || colIdx < 0 || colIdx >= row.length) continue;
+    const cellValue = String(row[colIdx] ?? '').trim();
+    if (!cellValue) continue;
+    nonEmpty++;
+    if (predicate(cellValue)) matchCount++;
+  }
+  if (nonEmpty < 3) return { rate: 0, nonEmpty };
+  return { rate: matchCount / nonEmpty, nonEmpty };
+}
+
+// ============================================================
+// 파싱 에러 클래스
+// ============================================================
+
+export interface ParseDiagnostics {
+  fileName: string;
+  headerRow: number;
+  colMap?: Record<string, number>;
+  scores?: Record<string, number>;
+  reason: string;
+  sampleRows?: (string | number | null | undefined)[][];
+}
+
+export class BomParseError extends Error {
+  diagnostics: ParseDiagnostics;
+  constructor(message: string, diagnostics: ParseDiagnostics) {
+    super(message);
+    this.name = 'BomParseError';
+    this.diagnostics = diagnostics;
+  }
+}
+
+export class CoordParseError extends Error {
+  diagnostics: ParseDiagnostics;
+  constructor(message: string, diagnostics: ParseDiagnostics) {
+    super(message);
+    this.name = 'CoordParseError';
+    this.diagnostics = diagnostics;
+  }
+}
 
 // ============================================================
 // BOM 파싱
@@ -319,194 +446,125 @@ export interface AiColumnMap {
   reasoning?: string;
 }
 
-async function parseBOMFile(file: File, aiColMap?: AiColumnMap): Promise<ParsedBOMItem[]> {
+export async function parseBOMFile(file: File, aiColMap?: AiColumnMap): Promise<ParsedBOMItem[]> {
   const arrayBuffer = await file.arrayBuffer();
   const data = new Uint8Array(arrayBuffer);
-  
+
   const workbook = XLSX.read(data, { type: 'array' });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
-  
-  const items: ParsedBOMItem[] = [];
+  const rows = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, { header: 1 });
 
-  // 헤더 및 컬럼 매핑 결정
-  let headerRow = -1;
-  const colMap = { item: 0, ref: 1, qty: 2, part: 3, comment: -1, description: -1, footprint: -1 };
+  // AI 컬럼 매핑은 필수. 없으면 즉시 에러.
+  if (!aiColMap) {
+    throw new BomParseError(
+      'AI 컬럼 분류기 응답이 없습니다. 자동 인식을 진행할 수 없습니다.',
+      {
+        fileName: file.name,
+        headerRow: -1,
+        reason: 'no_ai_classification',
+        sampleRows: rows.slice(0, 5),
+      },
+    );
+  }
 
-  if (aiColMap) {
-    // ========== AI 컬럼 매핑 사용 (메인) ==========
-    headerRow = aiColMap.headerRow;
-    colMap.item = aiColMap.colMap.item;
-    colMap.ref = aiColMap.colMap.ref;
-    colMap.qty = aiColMap.colMap.qty;
-    colMap.part = aiColMap.colMap.part;
-    colMap.comment = aiColMap.colMap.comment;
-    colMap.description = aiColMap.colMap.description;
-    colMap.footprint = aiColMap.colMap.footprint;
-    logger.debug('🤖 AI 컬럼 매핑 적용:', { headerRow, colMap, confidence: aiColMap.confidence, reasoning: aiColMap.reasoning });
+  const headerRow = aiColMap.headerRow;
+  const colMap = {
+    item: aiColMap.colMap.item,
+    ref: aiColMap.colMap.ref,
+    qty: aiColMap.colMap.qty,
+    part: aiColMap.colMap.part,
+    comment: aiColMap.colMap.comment,
+    description: aiColMap.colMap.description,
+    footprint: aiColMap.colMap.footprint,
+  };
+  logger.debug('🤖 AI 컬럼 매핑 적용:', { headerRow, colMap, confidence: aiColMap.confidence, reasoning: aiColMap.reasoning });
 
-    // 키워드 매핑으로 교차 검증 (로그만 남김, 결과는 AI 우선)
-    const keywordColMap = { item: 0, ref: 1, qty: 2, part: 3, comment: -1, description: -1, footprint: -1 };
-    let keywordHeaderRow = -1;
-    const refKeywordsForValidation = ['reference', 'references', 'ref', 'refdes', 'designator', 'designators'];
-    for (let r = 0; r < Math.min(30, rows.length); r++) {
-      const row = rows[r];
-      if (!row) continue;
-      const rowStr = row.map(c => String(c || '').toLowerCase()).join(' ');
-      if (refKeywordsForValidation.some(kw => rowStr.includes(kw))) {
-        keywordHeaderRow = r;
-        break;
-      }
-    }
-    if (keywordHeaderRow !== -1 && keywordHeaderRow !== headerRow) {
-      logger.warn(`⚠️ AI headerRow(${headerRow}) ≠ 키워드 headerRow(${keywordHeaderRow}) — AI 결과 우선 사용`);
-    }
-  } else {
-    // ========== 기존 키워드 매핑 (폴백) ==========
-    const itemKeywords = ['item', 'no', '#', 'line', 'ln'];
-    const refKeywords = ['reference', 'references', 'ref', 'refdes', 'designator', 'designators'];
-    const qtyKeywords = ['quantity', 'qty'];
-    const partKeywords = ['part', 'part number', 'value'];
-    const commentKeywords = ['comment'];
-    const descriptionKeywords = ['description', 'desc'];
-    const footprintKeywords = ['pcb footprint', 'footprint', 'package', 'partnumber'];
+  // 데이터 기반 검증
+  const sampleRowsForValidation = rows.slice(headerRow + 1, Math.min(headerRow + 21, rows.length));
 
-    for (let r = 0; r < Math.min(30, rows.length); r++) {
-      const row = rows[r];
-      if (!row) continue;
+  // REF 컬럼은 필수 — 미지정 또는 매칭률 부족 시 에러
+  if (colMap.ref < 0) {
+    throw new BomParseError(
+      'REF/Designator 컬럼이 식별되지 않았습니다.',
+      { fileName: file.name, headerRow, colMap, reason: 'no_ref_column', sampleRows: rows.slice(0, 5) },
+    );
+  }
+  const refResult = columnMatchRate(sampleRowsForValidation, colMap.ref, isRefPattern);
+  if (refResult.nonEmpty < 3 || refResult.rate < 0.6) {
+    throw new BomParseError(
+      `REF 컬럼이 잘못 인식되었습니다 (매칭률 ${(refResult.rate * 100).toFixed(0)}%).`,
+      {
+        fileName: file.name,
+        headerRow,
+        colMap,
+        scores: { ref: refResult.rate },
+        reason: 'ref_validation_failed',
+        sampleRows: rows.slice(0, 5),
+      },
+    );
+  }
 
-      const rowStr = row.map(c => String(c || '').toLowerCase()).join(' ');
-      if (refKeywords.some(kw => rowStr.includes(kw))) {
-        headerRow = r;
-        let partExplicitFound = false;
-        row.forEach((cell, idx) => {
-          const val = String(cell || '').toLowerCase().trim();
-          if (itemKeywords.some(kw => val === kw)) colMap.item = idx;
-          if (refKeywords.some(kw => val === kw)) colMap.ref = idx;
-          if (qtyKeywords.some(kw => val === kw)) colMap.qty = idx;
-          if (partKeywords.some(kw => val === kw)) {
-            colMap.part = idx;
-            partExplicitFound = true;
-          }
-          if (commentKeywords.some(kw => val === kw)) {
-            colMap.comment = idx;
-            if (!partExplicitFound) colMap.part = idx;
-          }
-          if (descriptionKeywords.some(kw => val === kw)) {
-            colMap.description = idx;
-            if (!partExplicitFound && colMap.comment < 0) colMap.part = idx;
-          }
-          if (footprintKeywords.some(kw => val === kw)) colMap.footprint = idx;
-        });
-        break;
-      }
-    }
-
-    // 2차: 헤더를 못 찾았거나 REF 칼럼을 명확히 못 찾은 경우, 데이터 패턴으로 판별
-    let refColumnFoundByKeyword = headerRow !== -1;
-
-    if (headerRow === -1) {
-      logger.warn('헤더를 찾을 수 없습니다. 데이터 패턴으로 REF 칼럼 탐색...');
-      headerRow = 0;
-      refColumnFoundByKeyword = false;
-    }
-
-    const isRefPattern = (value: string): boolean => {
-      if (!value || typeof value !== 'string') return false;
-      const trimmed = value.trim();
-      if (!trimmed) return false;
-
-      const singleRefPattern = /^[A-Z]{1,3}\d+$/i;
-      const multiRefPattern = /^[A-Z]{1,3}\d+([,.\s]+[A-Z]{1,3}\d+)*$/i;
-      const rangeRefPattern = /^[A-Z]{1,3}\d+[-~][A-Z]*\d+$/i;
-
-      return singleRefPattern.test(trimmed) || multiRefPattern.test(trimmed) || rangeRefPattern.test(trimmed);
-    };
-
-    if (!refColumnFoundByKeyword || colMap.ref === 1) {
-      const sampleRows = rows.slice(headerRow + 1, Math.min(headerRow + 20, rows.length));
-      const colScores: number[] = [];
-
-      const maxCols = Math.max(...sampleRows.map(r => (r ? r.length : 0)));
-      for (let col = 0; col < maxCols; col++) {
-        let matchCount = 0;
-        let totalCount = 0;
-
-        for (const row of sampleRows) {
-          if (!row || col >= row.length) continue;
-          const cellValue = String(row[col] || '').trim();
-          if (!cellValue) continue;
-
-          totalCount++;
-          if (isRefPattern(cellValue)) {
-            matchCount++;
-          }
-        }
-
-        const score = totalCount >= 3 ? matchCount / totalCount : 0;
-        colScores.push(score);
-      }
-
-      const maxScore = Math.max(...colScores);
-      if (maxScore >= 0.6) {
-        const bestRefCol = colScores.indexOf(maxScore);
-        logger.debug(`📊 데이터 패턴 분석: 칼럼 ${bestRefCol}을(를) REF로 판별 (매칭률: ${(maxScore * 100).toFixed(1)}%)`);
-        colMap.ref = bestRefCol;
-      } else {
-        logger.warn('📊 데이터 패턴으로도 REF 칼럼을 찾지 못함. 기본값(1) 사용.');
-      }
+  // QTY 검증 (소프트 — 약하면 경고만)
+  let qtyRate = 0;
+  if (colMap.qty >= 0) {
+    qtyRate = columnMatchRate(sampleRowsForValidation, colMap.qty, isQtyValue).rate;
+    if (qtyRate < 0.5) {
+      logger.warn(`⚠️ Qty 컬럼 검증 약함 (매칭률 ${(qtyRate * 100).toFixed(0)}%). refs 개수로 fallback될 수 있음.`);
     }
   }
-  
-  // BOM 포맷 감지: (A) 기존 Item/No 기반 vs (B) Designator 그룹핑 기반
-  const headerCellsLower = headerRow >= 0 ? (rows[headerRow] || []).map(c => String(c || '').toLowerCase().trim()) : [];
-  const hasDesignatorHeader = headerCellsLower.includes('designator') || headerCellsLower.includes('designators');
-  const hasGroupedFields = (colMap.comment >= 0 || colMap.description >= 0) && colMap.qty >= 0;
-  const sampleRowsForDetect = rows.slice(headerRow + 1, Math.min(headerRow + 21, rows.length));
-  const itemNonEmptyCount = colMap.item >= 0
-    ? sampleRowsForDetect.filter(r => r && String(r[colMap.item] || '').trim().length > 0).length
-    : 0;
-  const itemNumericCount = colMap.item >= 0
-    ? sampleRowsForDetect.filter(r => r && /^\d+$/.test(String(r[colMap.item] || '').trim())).length
-    : 0;
-  const itemNumericRate = itemNonEmptyCount > 0 ? itemNumericCount / itemNonEmptyCount : 0;
-  const multiRefRate = colMap.ref >= 0
-    ? (sampleRowsForDetect.filter(r => {
-        const v = r && colMap.ref < r.length ? String(r[colMap.ref] || '') : '';
-        return v.includes(',') || v.includes(' ,');
-      }).length / Math.max(1, sampleRowsForDetect.length))
-    : 0;
 
-  const isGroupedDesignatorFormat =
-    hasGroupedFields &&
-    (hasDesignatorHeader || multiRefRate >= 0.2) &&
-    (itemNonEmptyCount === 0 || itemNumericRate < 0.3);
+  // Footprint 검증 (소프트 — 약하면 경고만)
+  if (colMap.footprint >= 0) {
+    const fpRate = columnMatchRate(sampleRowsForValidation, colMap.footprint, isFootprintValue).rate;
+    if (fpRate < 0.4) {
+      logger.warn(`⚠️ Footprint 컬럼 검증 약함 (매칭률 ${(fpRate * 100).toFixed(0)}%).`);
+    }
+  }
 
+  logger.debug('✅ 컬럼 매핑 검증 통과:', { refRate: refResult.rate, qtyRate });
+
+  // 포맷 판별 (데이터 기반):
+  // - item 컬럼이 매핑되어 있고 그 컬럼의 값들이 30% 이상 양의 정수면 ModeA (item_no)
+  // - 그 외(item 미매핑 또는 정수 비율 낮음) ModeB (grouped_designator)
+  // ⛔ 컬럼 이름 (Designator/Comment/Description 헤더 단어) 일절 참고하지 않음
+  let isGroupedDesignatorFormat = true;
+  if (colMap.item >= 0) {
+    const itemResult = columnMatchRate(
+      sampleRowsForValidation,
+      colMap.item,
+      (v) => /^\d+(?:\.0+)?$/.test(v.trim()),
+    );
+    isGroupedDesignatorFormat = itemResult.rate < 0.3;
+    logger.debug(`📊 포맷 판별: item 컬럼 정수율 ${(itemResult.rate * 100).toFixed(0)}% → ${isGroupedDesignatorFormat ? 'ModeB(grouped)' : 'ModeA(item_no)'}`);
+  } else {
+    logger.debug('📊 포맷 판별: item 컬럼 미매핑 → ModeB(grouped)');
+  }
+
+  const items: ParsedBOMItem[] = [];
   let currentItem: ParsedBOMItem | null = null;
-  
+
   if (isGroupedDesignatorFormat) {
     // ModeB: 각 row가 이미 1개 품목 (Designator에 REF list)
     for (let r = headerRow + 1; r < rows.length; r++) {
       const row = rows[r];
       if (!row || row.length === 0) continue;
 
-      const reference = String(row[colMap.ref] || '').trim();
+      const reference = String(row[colMap.ref] ?? '').trim();
       if (!reference) continue;
       if (reference.startsWith('_')) continue;
 
-      const refs = Utils.parseRefs(reference).filter(ref => !Utils.isTP(ref));
+      const refs = Utils.parseRefs(reference).filter((ref) => !Utils.isTP(ref));
       if (refs.length === 0) continue;
 
-      const quantityStr = String(row[colMap.qty] || '').trim();
+      const quantityStr = colMap.qty >= 0 ? String(row[colMap.qty] ?? '').trim() : '';
       const qty = parseInt(quantityStr) || refs.length;
 
-      const comment = colMap.comment >= 0 ? String(row[colMap.comment] || '').trim() : '';
-      const description = colMap.description >= 0 ? String(row[colMap.description] || '').trim() : '';
-      const partFromPartCol = colMap.part >= 0 ? String(row[colMap.part] || '').trim() : '';
-      // 우선순위: comment(별도 부품값 컬럼) → part(분류기 지정) → description(fallback)
-      // 이전엔 description 이 part 보다 먼저였어서 description 채워진 행에서 긴 영문 설명이 품명으로 들어가던 버그
+      const comment = colMap.comment >= 0 ? String(row[colMap.comment] ?? '').trim() : '';
+      const description = colMap.description >= 0 ? String(row[colMap.description] ?? '').trim() : '';
+      const partFromPartCol = colMap.part >= 0 ? String(row[colMap.part] ?? '').trim() : '';
+      // 우선순위: comment → part → description
       const part = (comment || partFromPartCol || description).trim();
-      const footprint = colMap.footprint >= 0 ? String(row[colMap.footprint] || '').trim() : '';
+      const footprint = colMap.footprint >= 0 ? String(row[colMap.footprint] ?? '').trim() : '';
 
       items.push({
         quantity: qty,
@@ -517,24 +575,25 @@ async function parseBOMFile(file: File, aiColMap?: AiColumnMap): Promise<ParsedB
       });
     }
   } else {
-    // ModeA: 기존 Item/No 기반 (기존 로직 유지)
+    // ModeA: Item/No 기반 (Item번호 한 줄 + 후속 ref 연속 줄)
     for (let r = headerRow + 1; r < rows.length; r++) {
       const row = rows[r];
       if (!row || row.length === 0) continue;
 
-      const itemNum = String(row[colMap.item] || '').trim();
-      const reference = String(row[colMap.ref] || '').trim();
-      const quantity = String(row[colMap.qty] || '').trim();
-      const part = String(row[colMap.part] || '').trim();
-      const footprint = colMap.footprint >= 0 ? String(row[colMap.footprint] || '').trim() : '';
+      const itemNum = colMap.item >= 0 ? String(row[colMap.item] ?? '').trim() : '';
+      const reference = String(row[colMap.ref] ?? '').trim();
+      const quantity = colMap.qty >= 0 ? String(row[colMap.qty] ?? '').trim() : '';
+      const part = colMap.part >= 0 ? String(row[colMap.part] ?? '').trim() : '';
+      const footprint = colMap.footprint >= 0 ? String(row[colMap.footprint] ?? '').trim() : '';
 
       if (reference.startsWith('_')) continue;
 
-      if (itemNum && /^\d+$/.test(itemNum)) {
+      // .xls의 1.0/2.0 같은 형식도 정수로 인정
+      if (itemNum && /^\d+(?:\.0+)?$/.test(itemNum)) {
         if (currentItem && currentItem.refs.length > 0) {
           items.push(currentItem);
         }
-        const refs = Utils.parseRefs(reference).filter(ref => !Utils.isTP(ref));
+        const refs = Utils.parseRefs(reference).filter((ref) => !Utils.isTP(ref));
         currentItem = {
           quantity: parseInt(quantity) || refs.length,
           refs,
@@ -543,7 +602,7 @@ async function parseBOMFile(file: File, aiColMap?: AiColumnMap): Promise<ParsedB
           format: 'item_no',
         };
       } else if (currentItem && reference) {
-        const additionalRefs = Utils.parseRefs(reference).filter(ref => !Utils.isTP(ref));
+        const additionalRefs = Utils.parseRefs(reference).filter((ref) => !Utils.isTP(ref));
         currentItem.refs.push(...additionalRefs);
       }
     }
@@ -552,7 +611,22 @@ async function parseBOMFile(file: File, aiColMap?: AiColumnMap): Promise<ParsedB
       items.push(currentItem);
     }
   }
-  
+
+  // 0건 결과 가드 — 검증을 통과했음에도 0건이면 실제 데이터에 문제가 있는 것
+  if (items.length === 0) {
+    throw new BomParseError(
+      'BOM 항목을 1개도 추출하지 못했습니다. 파일 구조를 확인해주세요.',
+      {
+        fileName: file.name,
+        headerRow,
+        colMap,
+        scores: { ref: refResult.rate, qty: qtyRate },
+        reason: 'zero_items',
+        sampleRows: rows.slice(0, 5),
+      },
+    );
+  }
+
   return items;
 }
 
@@ -568,150 +642,183 @@ interface ParsedCoordItem {
   layer: string;
 }
 
+// 텍스트/CSV 파일을 2D 셀 배열로 변환 (구분자 자동 감지)
+function splitTextToRows(text: string): string[][] {
+  const lines = text.split(/\r?\n/);
+
+  const splitCSV = (line: string): string[] => {
+    const cols: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQuotes = !inQuotes; continue; }
+      if (ch === ',' && !inQuotes) { cols.push(current.trim()); current = ''; continue; }
+      current += ch;
+    }
+    cols.push(current.trim());
+    return cols;
+  };
+  const splitTab = (line: string) => line.split('\t').map(c => c.trim().replace(/^"|"$/g, ''));
+  const splitWS = (line: string) => line.split(/\s{2,}/).map(c => c.trim().replace(/^"|"$/g, ''));
+
+  // 비어있지 않은 라인 중 후반부 샘플로 분리자 평가 (일관된 열 수를 주는 것 선택)
+  const sample = lines.filter(l => l.trim().length > 0).slice(5, 30);
+  const candidates = [
+    { name: 'csv', split: splitCSV },
+    { name: 'tab', split: splitTab },
+    { name: 'ws', split: splitWS },
+  ];
+
+  let best = candidates[0];
+  let bestScore = 0;
+  for (const cand of candidates) {
+    const counts = sample.map(l => cand.split(l).length);
+    if (counts.length === 0) continue;
+    const maxCount = Math.max(...counts);
+    if (maxCount < 3) continue;
+    const consistent = counts.filter(c => c === maxCount).length;
+    const score = maxCount * consistent;
+    if (score > bestScore) {
+      bestScore = score;
+      best = cand;
+    }
+  }
+
+  return lines.map(l => (l.trim() ? best.split(l) : []));
+}
+
 async function parseCoordinateFile(file: File): Promise<ParsedCoordItem[]> {
   const arrayBuffer = await file.arrayBuffer();
-  const items: ParsedCoordItem[] = [];
-  
+
+  // 1. 입력 형식에 무관하게 2D 셀 배열로 변환
+  let rows: string[][];
   if (file.name.endsWith('.txt') || file.name.endsWith('.csv')) {
-    // 텍스트/CSV 파일 파싱
     const text = new TextDecoder('utf-8').decode(arrayBuffer);
-    const lines = text.split('\n');
-
-    // CSV 파싱: 따옴표 안의 쉼표를 무시하는 split
-    const splitCSVLine = (line: string): string[] => {
-      const cols: string[] = [];
-      let current = '';
-      let inQuotes = false;
-      for (let i = 0; i < line.length; i++) {
-        const ch = line[i];
-        if (ch === '"') { inQuotes = !inQuotes; continue; }
-        if (ch === ',' && !inQuotes) { cols.push(current.trim()); current = ''; continue; }
-        current += ch;
-      }
-      cols.push(current.trim());
-      return cols;
-    };
-
-    let headerFound = false;
-    let isCSV = false;
-    const colMap = { ref: 0, x: 1, y: 2, rotation: 3, layer: 4 };
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      // 헤더 찾기
-      if (!headerFound) {
-        const lower = trimmed.toLowerCase();
-        if (lower.includes('refdes') || lower.includes('ref') || lower.includes('designator')) {
-          headerFound = true;
-          // 구분자 감지: 따옴표+쉼표 CSV > 탭 > 공백
-          isCSV = trimmed.includes(',') && trimmed.includes('"');
-          const cols = isCSV ? splitCSVLine(trimmed) : trimmed.split(/\t|\s{2,}/).map(c => c.trim().replace(/"/g, ''));
-          logger.debug('📍 좌표 헤더 발견:', { cols, isCSV });
-
-          cols.forEach((col, idx) => {
-            const colLower = col.toLowerCase();
-            if (colLower.includes('ref') || colLower.includes('designator')) {
-              colMap.ref = idx;
-              logger.debug(`  - Ref 컬럼: ${idx} (${col})`);
-            }
-            if (colLower.includes('locationx') || colLower.includes('pad-x') || colLower.includes('center-x') || colLower.includes('mid x') || colLower === 'x') {
-              colMap.x = idx;
-              logger.debug(`  - X 컬럼: ${idx} (${col})`);
-            }
-            if (colLower.includes('locationy') || colLower.includes('pad-y') || colLower.includes('center-y') || colLower.includes('mid y') || colLower === 'y') {
-              colMap.y = idx;
-              logger.debug(`  - Y 컬럼: ${idx} (${col})`);
-            }
-            if (colLower.includes('rotation') || colLower.includes('angle') || colLower.includes('rot')) {
-              colMap.rotation = idx;
-              logger.debug(`  - Rotation 컬럼: ${idx} (${col})`);
-            }
-            if (colLower.includes('layer') || colLower.includes('side')) {
-              colMap.layer = idx;
-              logger.debug(`  - Layer 컬럼: ${idx} (${col})`);
-            }
-          });
-
-          logger.debug('📍 최종 컬럼 매핑:', { colMap });
-          continue;
-        }
-        continue;
-      }
-
-      // 데이터 행 파싱
-      const cols = isCSV ? splitCSVLine(trimmed) : trimmed.split(/\t|\s{2,}/).map(c => c.trim().replace(/"/g, ''));
-      if (cols.length < 3) continue;
-      
-      const ref = (cols[colMap.ref] || '').trim().toUpperCase().replace(/"/g, '');
-      if (!ref || Utils.isTP(ref) || /^\d+$/.test(ref)) continue; // 숫자만 있는 REF 제외
-      
-      const x = parseFloat(cols[colMap.x] || '0');
-      const y = parseFloat(cols[colMap.y] || '0');
-      const rotation = parseFloat(cols[colMap.rotation] || '0');
-      const layerStr = (cols[colMap.layer] || '').toUpperCase().replace(/"/g, '');
-      const layer = layerStr.includes('BOT') ? 'BOTTOM' : 'TOP';
-      
-      items.push({
-        ref,
-        x,
-        y,
-        rotation,
-        layer,
-      });
-    }
-    
-    logger.debug(`📍 파싱된 좌표: ${items.length}개`);
-    if (items.length > 0) {
-      logger.debug('📍 첫 번째 좌표 샘플:', { sample: items[0] });
-    }
+    rows = splitTextToRows(text);
   } else {
-    // 엑셀 파일 파싱
     const data = new Uint8Array(arrayBuffer);
     const workbook = XLSX.read(data, { type: 'array' });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
-    
-    let headerRow = -1;
-    const colMap = { ref: 0, x: 3, y: 4, rotation: 5, layer: 2 };
-    
-    for (let r = 0; r < Math.min(10, rows.length); r++) {
-      const row = rows[r];
-      if (!row) continue;
-      
-      const rowStr = row.map(c => String(c || '').toLowerCase()).join(' ');
-      if (rowStr.includes('ref') || rowStr.includes('designator')) {
-        headerRow = r;
-        row.forEach((cell, idx) => {
-          const val = String(cell || '').toLowerCase().trim();
-          if (val.includes('ref') || val.includes('designator')) colMap.ref = idx;
-          if (val.includes('locationx') || val === 'x') colMap.x = idx;
-          if (val.includes('locationy') || val === 'y') colMap.y = idx;
-          if (val.includes('rotation') || val.includes('angle')) colMap.rotation = idx;
-          if (val.includes('layer') || val.includes('side')) colMap.layer = idx;
-        });
-        break;
-      }
-    }
-    
-    for (let r = headerRow + 1; r < rows.length; r++) {
-      const row = rows[r];
-      if (!row) continue;
-      
-      const ref = String(row[colMap.ref] || '').trim().toUpperCase();
-      if (!ref || Utils.isTP(ref) || /^\d+$/.test(ref)) continue; // 숫자만 있는 REF 제외
-      
-      items.push({
-        ref,
-        x: parseFloat(String(row[colMap.x])) || 0,
-        y: parseFloat(String(row[colMap.y])) || 0,
-        rotation: parseFloat(String(row[colMap.rotation])) || 0,
-        layer: String(row[colMap.layer] || '').toUpperCase().includes('BOT') ? 'BOTTOM' : 'TOP',
-      });
+    const rawRows = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, { header: 1 });
+    rows = rawRows.map(r => (r ?? []).map(c => String(c ?? '').trim()));
+  }
+
+  // 2. 데이터 시작 행 검출 (셀 중 하나라도 ref 패턴인 첫 행)
+  let dataStart = -1;
+  for (let r = 0; r < rows.length; r++) {
+    if (!rows[r]) continue;
+    if (rows[r].some(cell => isRefPattern(cell))) {
+      dataStart = r;
+      break;
     }
   }
-  
+  if (dataStart < 0) {
+    throw new CoordParseError(
+      '좌표 파일에서 데이터 영역을 찾지 못했습니다. (Reference 패턴 셀이 없음)',
+      { fileName: file.name, headerRow: -1, reason: 'no_data_region', sampleRows: rows.slice(0, 10) },
+    );
+  }
+
+  // 3. 각 컬럼을 데이터로 점수화
+  const dataRows = rows.slice(dataStart, Math.min(dataStart + 50, rows.length));
+  const numCols = Math.max(0, ...dataRows.map(r => r?.length ?? 0));
+
+  type ColScore = { ref: number; coord: number; rotation: number; layer: number };
+  const colScores: ColScore[] = [];
+  for (let c = 0; c < numCols; c++) {
+    colScores.push({
+      ref: columnMatchRate(dataRows, c, isRefPattern).rate,
+      coord: columnMatchRate(dataRows, c, isCoordValue).rate,
+      rotation: columnMatchRate(dataRows, c, isRotationValue).rate,
+      layer: columnMatchRate(dataRows, c, isLayerValue).rate,
+    });
+  }
+
+  // 4. 역할 그리디 배정
+  const assigned = new Set<number>();
+
+  // ref: 가장 높은 refScore (필수, ≥0.6)
+  let refCol = -1;
+  let bestRefScore = 0;
+  for (let c = 0; c < numCols; c++) {
+    if (colScores[c].ref > bestRefScore) {
+      bestRefScore = colScores[c].ref;
+      refCol = c;
+    }
+  }
+  if (refCol < 0 || bestRefScore < 0.6) {
+    throw new CoordParseError(
+      `좌표 파일의 REF 컬럼이 식별되지 않았습니다 (최고 매칭률 ${(bestRefScore * 100).toFixed(0)}%).`,
+      { fileName: file.name, headerRow: dataStart - 1, reason: 'ref_validation_failed', sampleRows: rows.slice(0, 10) },
+    );
+  }
+  assigned.add(refCol);
+
+  // x, y: 좌표 패턴 매칭률 ≥0.7인 컬럼 중 인덱스 순서로 (EDA 툴 관행: x 먼저)
+  const numericCols: number[] = [];
+  for (let c = 0; c < numCols; c++) {
+    if (assigned.has(c)) continue;
+    if (colScores[c].coord >= 0.7) numericCols.push(c);
+  }
+  const xCol = numericCols[0] ?? -1;
+  const yCol = numericCols[1] ?? -1;
+  if (xCol >= 0) assigned.add(xCol);
+  if (yCol >= 0) assigned.add(yCol);
+
+  // rotation: 회전각 매칭률이 가장 높은 잔여 숫자 컬럼
+  let rotCol = -1;
+  let bestRot = 0;
+  for (let c = 0; c < numCols; c++) {
+    if (assigned.has(c)) continue;
+    if (colScores[c].coord >= 0.7 && colScores[c].rotation > bestRot) {
+      bestRot = colScores[c].rotation;
+      rotCol = c;
+    }
+  }
+  if (rotCol >= 0 && bestRot >= 0.5) {
+    assigned.add(rotCol);
+  } else {
+    rotCol = -1;
+  }
+
+  // layer: TOP/BOTTOM 멤버십 매칭률이 가장 높은 잔여 텍스트 컬럼
+  let layerCol = -1;
+  let bestLayer = 0;
+  for (let c = 0; c < numCols; c++) {
+    if (assigned.has(c)) continue;
+    if (colScores[c].layer > bestLayer) {
+      bestLayer = colScores[c].layer;
+      layerCol = c;
+    }
+  }
+  if (bestLayer < 0.5) layerCol = -1;
+
+  logger.debug('📍 좌표 컬럼 매핑 (데이터 기반):', {
+    refCol, xCol, yCol, rotCol, layerCol, dataStart,
+    refScore: bestRefScore, rotScore: bestRot, layerScore: bestLayer,
+  });
+
+  // 5. 데이터 행 파싱
+  const items: ParsedCoordItem[] = [];
+  for (let r = dataStart; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row) continue;
+
+    const ref = (row[refCol] || '').toUpperCase();
+    if (!ref || Utils.isTP(ref) || /^\d+$/.test(ref)) continue;
+    if (!isRefPattern(ref)) continue;
+
+    const x = xCol >= 0 ? parseFloat(row[xCol] || '0') || 0 : 0;
+    const y = yCol >= 0 ? parseFloat(row[yCol] || '0') || 0 : 0;
+    const rotation = rotCol >= 0 ? parseFloat(row[rotCol] || '0') || 0 : 0;
+    const layerStr = layerCol >= 0 ? (row[layerCol] || '').toUpperCase() : 'TOP';
+    const layer = layerStr.includes('BOT') ? 'BOTTOM' : 'TOP';
+
+    items.push({ ref, x, y, rotation, layer });
+  }
+
+  logger.debug(`📍 파싱된 좌표: ${items.length}개`);
   return items;
 }
 

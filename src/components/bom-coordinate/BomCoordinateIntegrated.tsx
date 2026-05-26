@@ -22,6 +22,8 @@ import CoordinatePreviewPanel from './CoordinatePreviewPanel';
 import BomDetailModal from './BomDetailModal';
 import {
   processBOMAndCoordinates,
+  BomParseError,
+  CoordParseError,
   type BOMItem,
   type CoordinateItem,
   type ProcessedResult,
@@ -601,13 +603,12 @@ export default function BomCoordinateIntegrated() {
         ...(fileInfo.coordFile ? { coordName: fileInfo.coordFile.name } : {})
       });
 
-      // 2. AI 컬럼 매핑 (BOM 파일 구조 자동 판별)
+      // 2. AI 컬럼 매핑 (BOM 파일 구조 자동 판별) — 실패 시 명확한 에러
       logger.debug('Classifying BOM columns with AI...');
       setLoadingText('AI 컬럼 분석 중...');
 
-      let aiColMap: AiColumnMap | undefined;
-      try {
-        // BOM 파일에서 상위 30행 추출
+      let aiColMap: AiColumnMap;
+      {
         const XLSX = await import('xlsx');
         const bomArrayBuffer = await fileInfo.bomFile.arrayBuffer();
         const bomData = new Uint8Array(bomArrayBuffer);
@@ -622,22 +623,23 @@ export default function BomCoordinateIntegrated() {
         );
 
         if (classifyError) {
-          logger.warn('AI 컬럼 분류 실패, 기존 키워드 매핑으로 진행:', { error: String(classifyError) });
-        } else if (classifyResult && !classifyResult.error) {
-          aiColMap = classifyResult as AiColumnMap;
-          logger.debug('🤖 AI 컬럼 매핑 결과:', { headerRow: aiColMap.headerRow, colMap: JSON.stringify(aiColMap.colMap), confidence: aiColMap.confidence });
-        } else {
-          logger.warn('AI 컬럼 분류 응답 오류, 기존 키워드 매핑으로 진행:', { error: String(classifyResult?.error) });
+          throw new Error(`AI 컬럼 분류기 호출에 실패했습니다: ${String(classifyError)}`);
         }
-      } catch (aiError) {
-        logger.warn('AI 컬럼 분류 중 예외 발생, 기존 키워드 매핑으로 진행:', { error: String(aiError) });
+        if (!classifyResult || (classifyResult as { error?: unknown }).error) {
+          throw new Error(`AI 컬럼 분류기 응답 오류: ${String((classifyResult as { error?: unknown } | undefined)?.error ?? 'unknown')}`);
+        }
+        aiColMap = classifyResult as AiColumnMap;
+        logger.debug('🤖 AI 컬럼 매핑 결과:', {
+          headerRow: aiColMap.headerRow,
+          colMap: JSON.stringify(aiColMap.colMap),
+          confidence: aiColMap.confidence,
+        });
       }
 
       // 3. v7 엔진으로 BOM/좌표 처리 (학습 데이터 기반)
       logger.debug('Processing BOM with v7 engine...');
-      setLoadingText('학습 데이터 기반 분석 중...');
+      setLoadingText('데이터 기반 검증 및 정리 중...');
 
-      // v7-generator로 처리 (AI 매핑 결과 전달, 없으면 기존 키워드 폴백)
       const processedData = await processBOMAndCoordinates(
         fileInfo.bomFile,
         fileInfo.coordFile,
@@ -650,11 +652,20 @@ export default function BomCoordinateIntegrated() {
       setProgress(100);
       setLoadingText('완료!');
 
-      if (!processedData || !processedData.bomItems) {
-        throw new Error('BOM 처리 결과가 올바르지 않습니다.');
+      // 0건 가드 — 빈 배열도 잡아냄
+      if (!processedData || !Array.isArray(processedData.bomItems) || processedData.bomItems.length === 0) {
+        throw new BomParseError(
+          'BOM 항목을 1개도 추출하지 못했습니다. 파일 형식을 확인해주세요.',
+          {
+            fileName: fileInfo.bomFile.name,
+            headerRow: aiColMap.headerRow,
+            colMap: aiColMap.colMap as unknown as Record<string, number>,
+            reason: 'zero_items_after_processing',
+          },
+        );
       }
 
-      // 3. 결과 데이터 구조화 (임시 ID 부여)
+      // 결과 데이터 구조화 (임시 ID 부여)
       const resultWithId = {
         cadDrawingId: `cad_${Date.now()}`,
         processedData: {
@@ -668,23 +679,43 @@ export default function BomCoordinateIntegrated() {
       };
 
       setProcessedResult(resultWithId);
-      
+
       // 100% 완료 표시를 사용자가 볼 수 있도록 약간의 지연 후 화면 전환
       await new Promise(resolve => setTimeout(resolve, 500));
-      
-      toast.success('BOM 분석 및 정리가 완료되었습니다.');
+
+      toast.success(`BOM 분석 및 정리가 완료되었습니다. (${processedData.bomItems.length}개 항목)`);
       setStep('preview');
 
     } catch (error: unknown) {
       logger.error('Processing error:', error);
-      const msg = `처리 중 오류가 발생했습니다: ${error instanceof Error ? error.message : error}`;
-      setErrorMessage(msg);
-      
+
+      let userMsg: string;
+      if (error instanceof BomParseError) {
+        const diag = error.diagnostics;
+        const reasonText: Record<string, string> = {
+          no_ai_classification: 'AI 컬럼 분류기 응답이 없습니다.',
+          no_ref_column: 'BOM 파일에서 Reference 컬럼이 식별되지 않았습니다.',
+          ref_validation_failed: `BOM의 Reference 컬럼이 잘못 인식되었습니다 (매칭률 ${((diag.scores?.ref ?? 0) * 100).toFixed(0)}%).`,
+          zero_items: 'BOM 항목을 1개도 추출하지 못했습니다.',
+          zero_items_after_processing: 'BOM 항목을 1개도 추출하지 못했습니다.',
+        };
+        userMsg = reasonText[diag.reason] ?? error.message;
+        userMsg += ' BOM 파일 구조를 확인해주세요.';
+        toast.error(userMsg);
+      } else if (error instanceof CoordParseError) {
+        userMsg = `좌표 파일 처리 실패: ${error.message}`;
+        toast.error(userMsg);
+      } else {
+        userMsg = `처리 중 오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`;
+        toast.error(userMsg);
+      }
+      setErrorMessage(userMsg);
+
       if (timer) clearInterval(timer);
       if (textTimer) clearInterval(textTimer);
-      
+
       setUploading(false);
-      setStep('input'); 
+      setStep('input');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       // 성공 시에는 위에서 clearInterval 등을 처리했음
@@ -728,6 +759,12 @@ export default function BomCoordinateIntegrated() {
   const handleSaveBOM = async (items: BOMItem[]) => {
     if (!processedResult?.cadDrawingId) return;
     if (isSaving) return;
+
+    // 빈 BOM 저장 차단 — DB에 빈 보드가 만들어지는 사고 방지
+    if (!Array.isArray(items) || items.length === 0) {
+      toast.error('저장할 BOM 항목이 없습니다. 파일을 다시 확인해주세요.');
+      return;
+    }
 
     setIsSaving(true);
 
