@@ -176,6 +176,61 @@ describe('parseBOMFile: B260526_002 (6-col Altium grouped)', () => {
   });
 });
 
+describe('parseBOMFile: B260527_001 (MIPI 4-col, 같은 사고 케이스)', () => {
+  // 헤더: Name | Quantity | Designator | Footprint — B260526_001과 동일 포맷
+  const aiColMap: AiColumnMap = {
+    headerRow: 0,
+    colMap: {
+      item: -1,
+      ref: 2,
+      qty: 1,
+      part: 0,
+      comment: -1,
+      description: -1,
+      footprint: 3,
+    },
+    confidence: 0.95,
+  };
+
+  it('22개 항목 추출 (ModeB)', async () => {
+    const file = loadFixture('B260527_001_MIPI.xlsx');
+    const items = await parseBOMFile(file, aiColMap);
+    expect(items.length).toBe(22);
+    expect(items[0].format).toBe('grouped_designator');
+  });
+
+  it('21개 ref를 가진 행 (C1, C2, ... C34) 정상 파싱', async () => {
+    const file = loadFixture('B260527_001_MIPI.xlsx');
+    const items = await parseBOMFile(file, aiColMap);
+    const bigRow = items.find((it) => it.refs.length === 21);
+    expect(bigRow).toBeDefined();
+    expect(bigRow!.part).toContain('0.1uF/16V');
+  });
+});
+
+describe('parseBOMFile: B260527_002 (MOMA_B2 4-col, 같은 사고 케이스)', () => {
+  const aiColMap: AiColumnMap = {
+    headerRow: 0,
+    colMap: {
+      item: -1,
+      ref: 2,
+      qty: 1,
+      part: 0,
+      comment: -1,
+      description: -1,
+      footprint: 3,
+    },
+    confidence: 0.95,
+  };
+
+  it('34개 항목 추출 (ModeB)', async () => {
+    const file = loadFixture('B260527_002_MOMA_B2.xlsx');
+    const items = await parseBOMFile(file, aiColMap);
+    expect(items.length).toBe(34);
+    expect(items[0].format).toBe('grouped_designator');
+  });
+});
+
 describe('parseBOMFile: B260203_001 (5-col ModeA, leading metadata)', () => {
   // 헤더: Item | Reference | Quantity | Part | PCB Footprint (실제 헤더는 row 12 = idx 11)
   const aiColMap: AiColumnMap = {
