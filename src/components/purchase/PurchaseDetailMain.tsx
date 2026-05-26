@@ -37,7 +37,7 @@ export default function PurchaseDetailMain() {
         setPurchase({
           ...data,
           items: data.purchase_request_items || [],
-          vendor: data.vendors || { id: 0, vendor_name: '알 수 없음' },
+          vendor: data.vendors || { id: 0, vendor_name: data.vendor_name || '알 수 없음' },
           vendor_contacts: []
         } as PurchaseRequestWithDetails)
       }

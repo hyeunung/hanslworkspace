@@ -584,7 +584,8 @@ export type Database = {
           total_amount: number | null
           unit_price_currency: string
           updated_at: string | null
-          vendor_id: number
+          trip_expense_place_id: number | null
+          vendor_id: number | null
           vendor_name: string | null
         }
         Insert: {
@@ -626,7 +627,8 @@ export type Database = {
           total_amount?: number | null
           unit_price_currency: string
           updated_at?: string | null
-          vendor_id: number
+          trip_expense_place_id?: number | null
+          vendor_id?: number | null
           vendor_name?: string | null
         }
         Update: {
@@ -668,7 +670,8 @@ export type Database = {
           total_amount?: number | null
           unit_price_currency?: string
           updated_at?: string | null
-          vendor_id?: number
+          trip_expense_place_id?: number | null
+          vendor_id?: number | null
           vendor_name?: string | null
         }
         Relationships: [
@@ -693,7 +696,32 @@ export type Database = {
             referencedRelation: "vendors"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "purchase_requests_trip_expense_place_id_fkey"
+            columns: ["trip_expense_place_id"]
+            isOneToOne: false
+            referencedRelation: "trip_expense_places"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      trip_expense_places: {
+        Row: {
+          created_at: string
+          id: number
+          place_name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          place_name: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          place_name?: string
+        }
+        Relationships: []
       }
       support_inquires: {
         Row: {

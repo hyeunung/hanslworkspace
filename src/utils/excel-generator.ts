@@ -163,6 +163,11 @@ function fillBOMSheet(
 
   // === Row 8~: BOM 데이터 ===
   const dataStartRow = 8;
+
+  // 🧹 템플릿의 BOM 시트에 더미 행이 박혀있을 경우 대비한 안전망
+  // (fillCoordinateSheet와 동일 패턴. 현재 BOM 템플릿엔 더미가 없지만 미래 방어용.)
+  const bomTemplateLastRow = bomSheet.lastRow?.number ?? 0;
+  const bomNewDataLastRow = dataStartRow + Math.max(0, bomItems.length - 1);
   
   // 테두리 스타일
   const border: Partial<ExcelJS.Borders> = {
@@ -280,6 +285,17 @@ function fillBOMSheet(
     
     row.commit();
   });
+
+  // 🧹 새 데이터 마지막 행 이후로 템플릿 더미가 남아 있으면 셀 값 + 스타일(테두리/폰트 등) 모두 초기화
+  for (let r = bomNewDataLastRow + 1; r <= bomTemplateLastRow; r++) {
+    const dummyRow = bomSheet.getRow(r);
+    for (let c = 1; c <= 10; c++) {
+      const cell = dummyRow.getCell(c);
+      cell.value = null;
+      cell.style = {}; // 테두리/배경/폰트 모두 제거 — 빈 셀로 완전히 깨끗
+    }
+    dummyRow.commit();
+  }
 }
 
 // ============================================================
@@ -300,10 +316,16 @@ function fillCoordinateSheet(
     return;
   }
 
+  // 🧹 템플릿에 미리 박혀있는 더미 데이터 행 제거
+  // ExcelJS의 spliceRows()는 이 템플릿에서 무시되는 케이스가 있음 (검증됨).
+  // 안전책: 새 데이터를 다 쓴 뒤, 나머지 잔여 행의 모든 셀을 명시적으로 null로 비움.
+  const templateLastRow = sheet.lastRow?.number ?? 0;
+  const newDataLastRow = 2 + Math.max(0, coordinates.length - 1);
+
   // Row 2부터 데이터 입력 (Row 1은 헤더)
   // 연속된 동일 종류는 첫 번째만 표시
   let prevType = '';
-  
+
   coordinates.forEach((coord, index) => {
     const row = sheet.getRow(2 + index);
     
@@ -358,6 +380,18 @@ function fillCoordinateSheet(
 
     row.commit();
   });
+
+  // 🧹 새 데이터 마지막 행 이후로 템플릿 더미가 남아 있으면 셀 값 + 스타일(테두리/폰트 등) 모두 초기화
+  // (spliceRows()가 워크북 내부 row 객체를 안 지우는 경우 안전망)
+  for (let r = newDataLastRow + 1; r <= templateLastRow; r++) {
+    const dummyRow = sheet.getRow(r);
+    for (let c = 1; c <= 8; c++) {
+      const cell = dummyRow.getCell(c);
+      cell.value = null;
+      cell.style = {}; // 테두리/배경/폰트 모두 제거 — 빈 셀로 완전히 깨끗
+    }
+    dummyRow.commit();
+  }
 }
 
 // ============================================================

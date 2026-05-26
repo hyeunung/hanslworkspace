@@ -37,7 +37,7 @@ import { invalidatePurchaseMemoryCache } from '@/stores/purchaseMemoryStore';
 
 const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "superadmin"];
 const HIGH_AMOUNT_APPROVER_ROLES = ["final_approver", "ceo", "superadmin"];
-const SETTLEMENT_APPROVER_ROLES = ["hr", "lead buyer", "superadmin"];
+const SETTLEMENT_APPROVER_ROLES = ["hr", "superadmin", "final_approver"];
 const TRIP_PERIOD_EDITOR_ROLES = ["hr", "superadmin"];
 
 const COMPANY_CARDS = [
@@ -436,7 +436,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
   const [settlementLoading, setSettlementLoading] = useState(false);
   const [settlementSaving, setSettlementSaving] = useState(false);
   const [expenseRows, setExpenseRows] = useState<ExpenseFormRow[]>([]);
-  const [vendors, setVendors] = useState<{ id: number; vendor_name: string; vendor_alias?: string }[]>([]);
+  const [expensePlaces, setExpensePlaces] = useState<{ id: number; place_name: string }[]>([]);
   const [mileageRows, setMileageRows] = useState<MileageFormRow[]>([]);
   const [allowanceRows, setAllowanceRows] = useState<AllowanceFormRow[]>([]);
   const [receiptViewerRowKey, setReceiptViewerRowKey] = useState<string | null>(null);
@@ -569,6 +569,51 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     }
   }, [availableCompanyVehicles, formTransportDetail, formTransportType]);
 
+  // 선택한 출장 기간과 겹치는 다른 출장에서 이미 사용 중인 법인카드 → 선택 불가
+  // Map<카드값, 충돌 기간 라벨>
+  const unavailableCardInfo = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!selectedTripRange) return map;
+    const { from: windowStart, to: windowEnd } = selectedTripRange;
+
+    for (const trip of trips) {
+      if (trip.approval_status === "rejected") continue;
+      const cards = trip.requested_card_number;
+      if (!cards || cards.length === 0) continue;
+      if (!trip.trip_start_date || !trip.trip_end_date) continue;
+
+      const tripStart = new Date(`${trip.trip_start_date}T00:00:00`);
+      const tripEnd = new Date(`${trip.trip_end_date}T23:59:59`);
+      if (Number.isNaN(tripStart.getTime()) || Number.isNaN(tripEnd.getTime())) continue;
+      if (!(tripStart <= windowEnd && tripEnd >= windowStart)) continue;
+
+      const periodLabel = `${trip.trip_start_date.slice(5).replace("-", "/")}~${trip.trip_end_date.slice(5).replace("-", "/")}`;
+      for (const card of cards) {
+        if (card && !map.has(card)) map.set(card, periodLabel);
+      }
+    }
+    return map;
+  }, [trips, selectedTripRange]);
+
+  const renderCardOptionLabel = useCallback(
+    (option: CompanyCardOption, meta?: { context?: string }) => {
+      const base = formatCompanyCardOptionLabel(option);
+      const conflict = unavailableCardInfo.get(option.value);
+      return conflict && meta?.context === "menu" ? `${base} · 사용중 ${conflict}` : base;
+    },
+    [unavailableCardInfo]
+  );
+
+  // 출장 기간 변경 등으로 이미 선택한 카드가 사용 중이 되면 자동 해제
+  useEffect(() => {
+    if (formCardNumbers.length === 0) return;
+    const blocked = formCardNumbers.filter((v) => unavailableCardInfo.has(v));
+    if (blocked.length > 0) {
+      setFormCardNumbers((prev) => prev.filter((v) => !unavailableCardInfo.has(v)));
+      toast.warning(`선택한 출장 기간에 사용 중인 카드가 해제되었습니다: ${blocked.join(", ")}`);
+    }
+  }, [unavailableCardInfo, formCardNumbers]);
+
   const loadTrips = useCallback(async () => {
     try {
       setLoading(true);
@@ -658,16 +703,16 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     }
   }, [supabase]);
 
-  const loadVendors = useCallback(async () => {
+  const loadExpensePlaces = useCallback(async () => {
     try {
       const { data, error } = await supabase
-        .from("vendors")
-        .select("id, vendor_name, vendor_alias")
-        .order("vendor_name");
+        .from("trip_expense_places")
+        .select("id, place_name")
+        .order("place_name");
       if (error) throw error;
-      setVendors((data || []) as { id: number; vendor_name: string; vendor_alias?: string }[]);
+      setExpensePlaces((data || []) as { id: number; place_name: string }[]);
     } catch (err) {
-      logger.error("업체 목록 조회 실패", err);
+      logger.error("경비 사용처 목록 조회 실패", err);
     }
   }, [supabase]);
 
@@ -694,8 +739,8 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     loadTrips();
     loadEmployees();
     loadCurrentUser();
-    loadVendors();
-  }, [loadTrips, loadEmployees, loadCurrentUser, loadVendors]);
+    loadExpensePlaces();
+  }, [loadTrips, loadEmployees, loadCurrentUser, loadExpensePlaces]);
 
   const sortedTrips = useMemo(() => {
     return [...trips].sort((a, b) => {
@@ -769,6 +814,11 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     }
     if (formTransportType === "other" && !formTransportDetail.trim()) {
       toast.error("기타 이동수단 내용을 입력해주세요.");
+      return;
+    }
+    const conflictCards = formCardNumbers.filter((v) => unavailableCardInfo.has(v));
+    if (conflictCards.length > 0) {
+      toast.error(`이미 같은 기간에 사용 중인 카드가 있습니다: ${conflictCards.join(", ")}`);
       return;
     }
 
@@ -855,6 +905,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     currentUser?.id,
     employees,
     formCardNumbers,
+    unavailableCardInfo,
     formTransportDetail,
     formCompanions,
     formDateRange,
@@ -1619,25 +1670,25 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     return `${prefix}${String(maxSequence + 1).padStart(3, "0")}`;
   }, [supabase]);
 
-  // 업체 조회 또는 자동 생성
-  const findOrCreateVendor = useCallback(async (merchantName: string): Promise<number> => {
-    const trimmed = merchantName.trim();
+  // 경비 사용처 조회 또는 자동 생성 (trip_expense_places — vendors 거래처 마스터와 분리)
+  const findOrCreatePlace = useCallback(async (placeName: string): Promise<number> => {
+    const trimmed = placeName.trim();
     const { data: existing } = await supabase
-      .from("vendors")
+      .from("trip_expense_places")
       .select("id")
-      .eq("vendor_name", trimmed)
+      .eq("place_name", trimmed)
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (existing) return existing.id;
 
     const { data: created, error } = await supabase
-      .from("vendors")
-      .insert({ vendor_name: trimmed })
+      .from("trip_expense_places")
+      .insert({ place_name: trimmed })
       .select("id")
       .single();
 
-    if (error || !created) throw error || new Error("업체 생성 실패");
+    if (error || !created) throw error || new Error("경비 사용처 생성 실패");
     return created.id;
   }, [supabase]);
 
@@ -1689,6 +1740,19 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
           r.existingReceipts.length > 0 ||
           r.newReceiptFiles.length > 0
       );
+
+      // 입력된 경비 사용처를 trip_expense_places 에 자동 등록 (드롭다운 후보 누적)
+      const placeNamesToRegister = [
+        ...new Set(expenseRowsForSave.map((r) => r.vendor_name.trim()).filter(Boolean)),
+      ];
+      if (placeNamesToRegister.length > 0) {
+        await supabase
+          .from("trip_expense_places")
+          .upsert(
+            placeNamesToRegister.map((name) => ({ place_name: name })),
+            { onConflict: "place_name", ignoreDuplicates: true }
+          );
+      }
 
       const expensePayload = expenseRowsForSave.map((r, i) => ({
           business_trip_id: settlementTrip.id,
@@ -1910,7 +1974,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
           const requesterName = settlementTrip.requester?.name || currentUser?.name || "";
 
           for (const [merchantName, merchantExpenses] of Object.entries(expensesByMerchant)) {
-            const vendorId = await findOrCreateVendor(merchantName);
+            const placeId = await findOrCreatePlace(merchantName);
             const poNumber = await generatePurchaseOrderNumber();
             const totalAmount = merchantExpenses.reduce((sum, r) => sum + (r.total_amount || 0), 0);
 
@@ -1921,7 +1985,8 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                 purchase_order_number: poNumber,
                 requester_id: settlementTrip.requester_id,
                 requester_name: requesterName,
-                vendor_id: vendorId,
+                vendor_id: null,
+                trip_expense_place_id: placeId,
                 vendor_name: merchantName,
                 request_type: "소모품",
                 progress_type: "일반",
@@ -2032,7 +2097,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     currentUser?.name,
     settlementTrip,
     supabase,
-    findOrCreateVendor,
+    findOrCreatePlace,
     generatePurchaseOrderNumber,
   ]);
 
@@ -2331,8 +2396,9 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                     options={COMPANY_CARDS}
                     value={COMPANY_CARDS.filter((c) => formCardNumbers.includes(c.value))}
                     onChange={(opts) => setFormCardNumbers(((opts || []) as unknown as { value: string }[]).map((o) => o.value))}
-                      formatOptionLabel={(option) => formatCompanyCardOptionLabel(option as CompanyCardOption)}
+                      formatOptionLabel={(option, meta) => renderCardOptionLabel(option as CompanyCardOption, meta)}
                       getOptionLabel={(option) => formatCompanyCardOptionLabel(option as CompanyCardOption)}
+                      isOptionDisabled={(option) => unavailableCardInfo.has((option as CompanyCardOption).value)}
                     placeholder="선택 (복수 선택 가능)"
                     isSearchable={false}
                     styles={reactSelectStyles}
@@ -2858,8 +2924,9 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                   options={COMPANY_CARDS}
                   value={COMPANY_CARDS.filter((c) => formCardNumbers.includes(c.value))}
                   onChange={(opts) => setFormCardNumbers(((opts || []) as unknown as { value: string }[]).map((o) => o.value))}
-                  formatOptionLabel={(option) => formatCompanyCardOptionLabel(option as CompanyCardOption)}
+                  formatOptionLabel={(option, meta) => renderCardOptionLabel(option as CompanyCardOption, meta)}
                   getOptionLabel={(option) => formatCompanyCardOptionLabel(option as CompanyCardOption)}
+                  isOptionDisabled={(option) => unavailableCardInfo.has((option as CompanyCardOption).value)}
                   placeholder="선택 (복수 선택 가능)"
                   isSearchable={false}
                   styles={reactSelectStyles}
@@ -3073,14 +3140,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                                   )
                                 )
                               }
-                              options={vendors.map((v) => ({ label: v.vendor_name, value: v.vendor_name, alias: v.vendor_alias }))}
-                              filterOption={(option, inputValue) => {
-                                if (!inputValue) return true;
-                                const search = inputValue.toLowerCase();
-                                if (option.label.toLowerCase().includes(search)) return true;
-                                const alias = (option.data as { alias?: string }).alias;
-                                return alias ? alias.toLowerCase().includes(search) : false;
-                              }}
+                              options={expensePlaces.map((p) => ({ label: p.place_name, value: p.place_name }))}
                               styles={{
                                 ...reactSelectStyles,
                                 placeholder: (base: Record<string, unknown>) => ({
