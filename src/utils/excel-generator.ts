@@ -301,17 +301,15 @@ function fillCoordinateSheet(
   }
 
   // 🧹 템플릿에 미리 박혀있는 더미 데이터 행 제거
-  // (Row 1 = 헤더, Row 2 = 구분선; 이 둘은 유지)
-  // 템플릿의 R3~ 더미 데이터가 새 데이터보다 많은 경우 잔존하는 사고 방지
-  const lastRowNumber = sheet.lastRow?.number ?? 0;
-  if (lastRowNumber > 2) {
-    sheet.spliceRows(3, lastRowNumber - 2);
-  }
+  // ExcelJS의 spliceRows()는 이 템플릿에서 무시되는 케이스가 있음 (검증됨).
+  // 안전책: 새 데이터를 다 쓴 뒤, 나머지 잔여 행의 모든 셀을 명시적으로 null로 비움.
+  const templateLastRow = sheet.lastRow?.number ?? 0;
+  const newDataLastRow = 2 + Math.max(0, coordinates.length - 1);
 
   // Row 2부터 데이터 입력 (Row 1은 헤더)
   // 연속된 동일 종류는 첫 번째만 표시
   let prevType = '';
-  
+
   coordinates.forEach((coord, index) => {
     const row = sheet.getRow(2 + index);
     
@@ -366,6 +364,16 @@ function fillCoordinateSheet(
 
     row.commit();
   });
+
+  // 🧹 새 데이터 마지막 행 이후로 템플릿 더미가 남아 있으면 명시적으로 비움
+  // (spliceRows()가 워크북 내부 row 객체를 안 지우는 경우 안전망)
+  for (let r = newDataLastRow + 1; r <= templateLastRow; r++) {
+    const dummyRow = sheet.getRow(r);
+    for (let c = 1; c <= 8; c++) {
+      dummyRow.getCell(c).value = null;
+    }
+    dummyRow.commit();
+  }
 }
 
 // ============================================================
