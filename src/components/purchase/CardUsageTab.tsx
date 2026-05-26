@@ -34,7 +34,7 @@ import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
 
-const CARD_APPROVER_ROLES = ["superadmin"];
+const CARD_APPROVER_ROLES = ["superadmin", "hr"];
 const CARD_RETURN_ROLES = ["hr", "superadmin", "final_approver"];
 
 const COMPANY_CARDS = [
@@ -73,6 +73,7 @@ interface CardUsage {
   card_returned: boolean;
   card_returned_at: string | null;
   card_returned_by: string | null;
+  card_usage_code: string | null;
   created_at: string | null;
   updated_at: string | null;
   requester?: { name: string; department: string | null } | null;
@@ -1053,7 +1054,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                   <tr>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[72px]">상태</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[58px]">신청일</th>
-                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[102px]">출장코드</th>
+                    <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[128px]">출장/카드사용 코드</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[90px]">카드</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[76px]">요청자</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[90px]">사용용도</th>
@@ -1127,7 +1128,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                           {u.created_at ? format(new Date(u.created_at), "MM/dd") : "-"}
                         </td>
                         <td className="px-3 py-1.5 card-title whitespace-nowrap">
-                          {u.business_trip?.trip_code || "-"}
+                          {u.business_trip?.trip_code || u.card_usage_code || "-"}
                         </td>
                         <td className="px-3 py-1.5 card-title whitespace-nowrap">
                           {u.card_number ? <>{u.card_number.split(" ")[0]}<span className="text-gray-400"> ({u.card_number.split(" ")[1]})</span></> : "-"}
@@ -1598,8 +1599,8 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                   <span className="modal-value">{detailUsage.card_number}</span>
                 </div>
                 <div>
-                  <span className="modal-label block">출장코드</span>
-                  <span className="modal-value">{detailUsage.business_trip?.trip_code || "-"}</span>
+                  <span className="modal-label block">출장/카드사용 코드</span>
+                  <span className="modal-value">{detailUsage.business_trip?.trip_code || detailUsage.card_usage_code || "-"}</span>
                 </div>
                 <div>
                   <span className="modal-label block">요청자</span>

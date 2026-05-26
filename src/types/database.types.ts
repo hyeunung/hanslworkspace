@@ -1293,6 +1293,7 @@ export type Database = {
           card_returned: boolean
           card_returned_at: string | null
           card_returned_by: string | null
+          card_usage_code: string | null
           created_at: string | null
           description: string | null
           id: number
@@ -1313,6 +1314,7 @@ export type Database = {
           card_returned?: boolean
           card_returned_at?: string | null
           card_returned_by?: string | null
+          card_usage_code?: string | null
           created_at?: string | null
           description?: string | null
           id?: never
@@ -1333,6 +1335,7 @@ export type Database = {
           card_returned?: boolean
           card_returned_at?: string | null
           card_returned_by?: string | null
+          card_usage_code?: string | null
           created_at?: string | null
           description?: string | null
           id?: never
