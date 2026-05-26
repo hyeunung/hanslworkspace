@@ -163,6 +163,11 @@ function fillBOMSheet(
 
   // === Row 8~: BOM 데이터 ===
   const dataStartRow = 8;
+
+  // 🧹 템플릿의 BOM 시트에 더미 행이 박혀있을 경우 대비한 안전망
+  // (fillCoordinateSheet와 동일 패턴. 현재 BOM 템플릿엔 더미가 없지만 미래 방어용.)
+  const bomTemplateLastRow = bomSheet.lastRow?.number ?? 0;
+  const bomNewDataLastRow = dataStartRow + Math.max(0, bomItems.length - 1);
   
   // 테두리 스타일
   const border: Partial<ExcelJS.Borders> = {
@@ -280,6 +285,15 @@ function fillBOMSheet(
     
     row.commit();
   });
+
+  // 🧹 새 데이터 마지막 행 이후로 템플릿 더미가 남아 있으면 명시적으로 비움
+  for (let r = bomNewDataLastRow + 1; r <= bomTemplateLastRow; r++) {
+    const dummyRow = bomSheet.getRow(r);
+    for (let c = 1; c <= 10; c++) {
+      dummyRow.getCell(c).value = null;
+    }
+    dummyRow.commit();
+  }
 }
 
 // ============================================================
