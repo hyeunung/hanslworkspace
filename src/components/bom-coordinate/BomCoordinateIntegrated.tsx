@@ -55,6 +55,10 @@ interface ProcessedResultState {
   id?: string;
   cadDrawingId?: string;
   isEditMode?: boolean;
+  /** 미리보기용 코드번호 — handleProcess 단계에서 미리 계산. 실제 저장 시 generateCodeNumber 재호출(race condition 회피). */
+  previewCodeNumber?: string;
+  /** 저장 완료 후 확정된 코드번호 */
+  codeNumber?: string;
   processedData: {
     bomItems: BOMItem[];
     topCoordinates: CoordinateItem[];
@@ -665,9 +669,18 @@ export default function BomCoordinateIntegrated() {
         );
       }
 
+      // 미리보기용 코드번호 미리 계산 (실패해도 미리보기는 진행)
+      let previewCodeNumber: string | undefined;
+      try {
+        previewCodeNumber = await generateCodeNumber();
+      } catch (e) {
+        logger.warn('미리보기 코드번호 생성 실패 (계속 진행):', { error: String(e) });
+      }
+
       // 결과 데이터 구조화 (임시 ID 부여)
       const resultWithId = {
         cadDrawingId: `cad_${Date.now()}`,
+        previewCodeNumber,
         processedData: {
           bomItems: processedData.bomItems,
           topCoordinates: processedData.topCoordinates,
@@ -1395,7 +1408,7 @@ function dlFile() {
       // 1. 보드 정보 가져오기
       const { data: boardInfo, error: boardError } = await supabase
         .from('cad_drawings')
-        .select('id, board_name, artwork_manager, production_manager, production_quantity, status')
+        .select('id, board_name, code_number, artwork_manager, production_manager, production_quantity, status')
         .eq('id', boardId)
         .single();
       
@@ -1470,6 +1483,7 @@ function dlFile() {
       setProcessedResult({
         cadDrawingId: boardId, // 편집 시 저장에 필요
         isEditMode: true,      // 편집 모드 플래그 (pending → completed)
+        codeNumber: (boardInfo as { code_number?: string }).code_number, // 기존 보드의 코드번호 표시
         processedData: {
           bomItems: convertedBOMItems,
           topCoordinates: convertedCoords.filter((c) => ((c.layer || '') as string).toUpperCase().includes('TOP')),
@@ -2116,7 +2130,18 @@ function dlFile() {
               {/* 제목 / 부제 + 버튼 */}
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3 mb-4">
                   <div>
-                  <h3 className="page-title">데이터 미리보기 <span className="text-xs font-medium text-gray-500 ml-3">{(metadata.boardName || '').trim().replace(/_\d{6}_정리본$/, '').replace(/_정리본$/, '').replace(/_\d{6}$/, '')}</span></h3>
+                  <h3 className="page-title">
+                    데이터 미리보기
+                    {(processedResult.codeNumber || processedResult.previewCodeNumber) && (
+                      <span className="inline-flex items-center px-2 py-0.5 ml-3 rounded text-xs font-semibold bg-hansl-50 text-hansl-700 border border-hansl-200">
+                        {processedResult.codeNumber || processedResult.previewCodeNumber}
+                        {!processedResult.codeNumber && (
+                          <span className="ml-1 text-[10px] font-normal text-gray-500">(저장 예정)</span>
+                        )}
+                      </span>
+                    )}
+                    <span className="text-xs font-medium text-gray-500 ml-3">{(metadata.boardName || '').trim().replace(/_\d{6}_정리본$/, '').replace(/_정리본$/, '').replace(/_\d{6}$/, '')}</span>
+                  </h3>
                   <p className="page-subtitle">데이터 클릭 수정 후 저장 바랍니다.</p>
                   {/* 업로드된 원본 파일 미리보기/다운로드 */}
                   {uploadedFilePaths && (originalFileNames.bomName || originalFileNames.coordName) && (
