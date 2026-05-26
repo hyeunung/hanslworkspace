@@ -286,11 +286,13 @@ function fillBOMSheet(
     row.commit();
   });
 
-  // 🧹 새 데이터 마지막 행 이후로 템플릿 더미가 남아 있으면 명시적으로 비움
+  // 🧹 새 데이터 마지막 행 이후로 템플릿 더미가 남아 있으면 셀 값 + 스타일(테두리/폰트 등) 모두 초기화
   for (let r = bomNewDataLastRow + 1; r <= bomTemplateLastRow; r++) {
     const dummyRow = bomSheet.getRow(r);
     for (let c = 1; c <= 10; c++) {
-      dummyRow.getCell(c).value = null;
+      const cell = dummyRow.getCell(c);
+      cell.value = null;
+      cell.style = {}; // 테두리/배경/폰트 모두 제거 — 빈 셀로 완전히 깨끗
     }
     dummyRow.commit();
   }
@@ -379,12 +381,14 @@ function fillCoordinateSheet(
     row.commit();
   });
 
-  // 🧹 새 데이터 마지막 행 이후로 템플릿 더미가 남아 있으면 명시적으로 비움
+  // 🧹 새 데이터 마지막 행 이후로 템플릿 더미가 남아 있으면 셀 값 + 스타일(테두리/폰트 등) 모두 초기화
   // (spliceRows()가 워크북 내부 row 객체를 안 지우는 경우 안전망)
   for (let r = newDataLastRow + 1; r <= templateLastRow; r++) {
     const dummyRow = sheet.getRow(r);
     for (let c = 1; c <= 8; c++) {
-      dummyRow.getCell(c).value = null;
+      const cell = dummyRow.getCell(c);
+      cell.value = null;
+      cell.style = {}; // 테두리/배경/폰트 모두 제거 — 빈 셀로 완전히 깨끗
     }
     dummyRow.commit();
   }
