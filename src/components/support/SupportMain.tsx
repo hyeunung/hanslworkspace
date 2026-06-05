@@ -1583,35 +1583,15 @@ ${itemsText}`;
         return
       }
 
-      // 1) 문의 기록 보존: support_inquires에서 purchase_request_id만 null로 변경
-      const { error: inquiryUpdateError } = await supabase
-        .from('support_inquires')
-        .update({ purchase_request_id: null })
-        .eq('purchase_request_id', purchaseIdForDelete)
+      // soft delete: RPC로 deleted_at 마킹 (cascade 트리거가 품목+_D 처리, RLS 우회). 발주/품목/문의 기록 모두 DB 보존
+      const { error: softDeleteError } = await supabase
+        .rpc('soft_delete_purchase_order', { p_id: purchaseIdForDelete })
+      if (softDeleteError) throw softDeleteError
 
-      if (inquiryUpdateError) {
-        // 여기서 막지 않고 계속 진행하면 FK로 삭제가 실패할 수 있어 중단하는 편이 안전
-        throw inquiryUpdateError
-      }
-
-      // 2) 품목 삭제
-      const { error: itemsError } = await supabase
-        .from('purchase_request_items')
-        .delete()
-        .eq('purchase_request_id', purchaseIdForDelete)
-      if (itemsError) throw itemsError
-
-      // 3) 발주요청 삭제
-      const { error: requestError } = await supabase
-        .from('purchase_requests')
-        .delete()
-        .eq('id', purchaseIdForDelete)
-      if (requestError) throw requestError
-
-      // 4) 메모리 캐시 즉시 반영
+      // 메모리 캐시 즉시 반영
       removePurchaseFromMemory(purchaseIdForDelete)
 
-      toast.success('발주요청이 삭제되었습니다. (문의 기록은 보존됩니다)')
+      toast.success('발주요청이 삭제되었습니다.')
 
       // UI 정리
       setDeleteConfirmOpen(false)

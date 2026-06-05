@@ -206,7 +206,7 @@ export default function StatementImageViewer({
       if (!response.ok) throw new Error(`fetch 실패: ${response.status} ${response.statusText}`);
 
       const blob = await response.blob();
-      const bitmap = await createImageBitmap(blob);
+      const bitmap = await createImageBitmap(blob, { imageOrientation: 'none' });
 
       let rotatedBlob: Blob;
       try {

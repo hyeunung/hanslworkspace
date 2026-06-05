@@ -2762,11 +2762,10 @@ ${itemsText}`
       // 삭제된 항목들 처리
       logger.debug('[handleSave] Step 3: 삭제된 항목 처리 시작')
       if (deletedItemIds.length > 0) {
+        // RPC(soft_delete_purchase_items)로 보관 처리: RLS SELECT 정책이 deleted_at 직접 쓰기를 막으므로
+        // SECURITY DEFINER RPC로 우회 (+ 남은 품목 line_number 재정렬 트리거)
         const deleteResult = await withTimeout(
-          supabase
-            .from('purchase_request_items')
-            .delete()
-            .in('id', deletedItemIds),
+          supabase.rpc('soft_delete_purchase_items', { p_item_ids: deletedItemIds.map(Number) }),
           STEP_TIMEOUT_MS
         ) as { error: { message: string } | null }
         const deleteError = deleteResult?.error
@@ -2785,14 +2784,12 @@ ${itemsText}`
           deletedItemIds: deletedItemIds
         })
 
-        // 발주기본정보 삭제
+        // 발주기본정보 보관(soft delete): RPC로 deleted_at 마킹 (cascade 트리거가 품목+_D 처리, RLS 우회)
         const { error: requestDeleteError } = await supabase
-          .from('purchase_requests')
-          .delete()
-          .eq('id', purchase.id)
+          .rpc('soft_delete_purchase_order', { p_id: Number(purchase.id) })
 
         if (requestDeleteError) {
-          logger.error('발주기본정보 삭제 실패', requestDeleteError)
+          logger.error('발주기본정보 보관 처리 실패', requestDeleteError)
           throw requestDeleteError
         }
 
@@ -2900,7 +2897,7 @@ ${itemsText}`
             amount_currency: purchase.currency || 'KRW',
             remark: item.remark || null,
             link: item.link && String(item.link).trim() ? String(item.link).trim() : null,
-            line_number: item.line_number || editedItems.indexOf(item) + 1,
+            line_number: index + 1,
             created_at: new Date().toISOString()
           };
           

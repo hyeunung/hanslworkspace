@@ -18,7 +18,8 @@ import {
   ExternalLink,
   Search,
   RefreshCw,
-  Trash2
+  Trash2,
+  Plus
 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -379,6 +380,7 @@ export default function StatementConfirmModal({
   const [loading, setLoading] = useState(true);
   const initialLoadDoneRef = useRef(false);
   const [saving, setSaving] = useState(false);
+  const [isAddingRow, setIsAddingRow] = useState(false);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
   const [viewerImageUrl, setViewerImageUrl] = useState("");
   const [savingAction, setSavingAction] = useState<'confirm' | 'quantity-match' | 'reject' | 'utk' | null>(null);
@@ -3538,6 +3540,59 @@ export default function StatementConfirmModal({
     }
   };
 
+  // 수동 행 추가 함수 (시스템 발주 품목에서 행 추가)
+  const handleAddManualRow = useCallback(async () => {
+    if (!statementWithItems) return;
+    
+    try {
+      setIsAddingRow(true);
+      
+      const activeItems = statementWithItems.items.filter(item => !deletedOCRItemIds.has(item.id));
+      const nextLineNumber = activeItems.length > 0 
+        ? Math.max(...activeItems.map(item => item.line_number || 0)) + 1 
+        : 1;
+
+      const { data: newItem, error } = await supabase
+        .from('transaction_statement_items')
+        .insert({
+          statement_id: statement.id,
+          line_number: nextLineNumber,
+          extracted_item_name: '수동 추가 품목',
+          extracted_quantity: 1,
+          extracted_unit_price: 0,
+          extracted_amount: 0,
+          is_confirmed: false,
+          is_additional_item: false
+        })
+        .select('*')
+        .single();
+
+      if (error) {
+        toast.error(`행 추가에 실패했습니다: ${error.message}`);
+        return;
+      }
+
+      if (newItem) {
+        setStatementWithItems(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            items: [...prev.items, {
+              ...newItem,
+              match_candidates: []
+            }]
+          };
+        });
+        toast.success('새 행이 추가되었습니다. 수동으로 품목을 매칭해 주세요.');
+      }
+    } catch (err) {
+      logger.error('Error adding manual row:', err);
+      toast.error('행 추가 중 오류가 발생했습니다.');
+    } finally {
+      setIsAddingRow(false);
+    }
+  }, [statementWithItems, deletedOCRItemIds, statement.id, supabase]);
+
   useEffect(() => {
     if (!statementWithItems || itemMatches.size === 0) return;
 
@@ -3578,6 +3633,7 @@ export default function StatementConfirmModal({
   const isManagerConfirmed = Boolean(statementWithItems?.manager_confirmed_at);
   const isQuantityMatchConfirmed = Boolean(statementWithItems?.quantity_match_confirmed_at);
   const isStatementConfirmed = statementWithItems?.status === 'confirmed';
+  const isEditDisabled = saving || loading || isStatementConfirmed || isManagerConfirmed;
   const canUtkCheck = currentUserRoles.some((role) => UTK_AUTHORIZED_ROLES.includes(role));
 
   const utkTargetPurchases = useMemo(() => {
@@ -4184,8 +4240,12 @@ export default function StatementConfirmModal({
   const handleOpenOriginalImage = () => {
     const fileUrl = statementWithItems?.image_url || statement.image_url;
     if (!fileUrl) return;
+    const updatedAt = statementWithItems?.updated_at || statement.updated_at;
+    const fileUrlWithCacheBuster = fileUrl 
+      ? `${fileUrl}${fileUrl.includes('?') ? '&' : '?'}t=${updatedAt ? new Date(updatedAt).getTime() : Date.now()}`
+      : '';
     openStatementPreview({
-      fileUrl,
+      fileUrl: fileUrlWithCacheBuster,
       onOpenImageViewer: (viewerImageUrl) => {
         setViewerImageUrl(viewerImageUrl);
         setIsImageViewerOpen(true);
@@ -5841,40 +5901,75 @@ export default function StatementConfirmModal({
                     });
                     })()}
                     
-                    {/* 합계 행 - 입고수량 모드에서는 숨김 */}
-                    {!isReceiptMode && (
-                      <tr className="bg-gray-50 font-medium border-t border-gray-100">
-                        <td colSpan={isSamePONumber ? 4 : 5} className="p-1 text-right text-gray-600">
-                          시스템 합계
-                        </td>
-                        <td className="border-r-2 border-gray-300 p-1 text-right text-gray-900">
-                        {`${getTotalsCurrencySymbol()}${formatAmount(
-                          Array.from(itemMatches.values())
-                            .filter((item): item is SystemPurchaseItem => !!item && !deletedSystemItemIds.has(item.item_id))
-                            .reduce((sum, item) => sum + (getSystemAmount(item) || 0), 0)
-                        )}`}
-                        </td>
-                        <td className="border-r-2 border-gray-300 p-1 bg-blue-50/50"></td>
-                        <td colSpan={isSamePONumber ? 4 : 5} className="p-1 text-right text-gray-600">
-                          OCR 합계
-                          {editedOCRItems.size > 0 && (
-                            <span className="ml-1 text-[9px] text-orange-600">(수정됨)</span>
-                          )}
-                        </td>
-                        <td className="p-1 text-right text-gray-900">
-                        {`${getTotalsCurrencySymbol()}${formatAmount(
-                          statementWithItems.items
-                            .filter(item => !deletedOCRItemIds.has(item.id))
-                            .reduce((sum, item) => {
-                              const edited = editedOCRItems.get(item.id);
-                              const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
-                              return sum + amount;
-                            }, 0)
-                        )}`}
-                        </td>
-                        <td className="p-1"></td>
-                      </tr>
-                    )}
+                    {/* 합계 또는 조작 행 */}
+                    <tr className="bg-gray-50 font-medium border-t border-gray-100">
+                      {/* 좌측 시스템 영역 */}
+                      <td colSpan={isSamePONumber ? 4 : 5} className="p-1 text-gray-600">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            {!isEditDisabled && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAddManualRow();
+                                }}
+                                disabled={isAddingRow}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 rounded transition-colors ml-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="수동 매칭을 위해 새로운 행을 추가합니다"
+                              >
+                                {isAddingRow ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <Plus className="w-3 h-3" />
+                                )}
+                                <span>{isAddingRow ? '추가 중...' : '행 추가'}</span>
+                              </button>
+                            )}
+                          </div>
+                          {!isReceiptMode && <span className="font-medium">시스템 합계</span>}
+                        </div>
+                      </td>
+                      
+                      {!isReceiptMode ? (
+                        <>
+                          <td className="border-r-2 border-gray-300 p-1 text-right text-gray-900">
+                          {`${getTotalsCurrencySymbol()}${formatAmount(
+                            Array.from(itemMatches.values())
+                              .filter((item): item is SystemPurchaseItem => !!item && !deletedSystemItemIds.has(item.item_id))
+                              .reduce((sum, item) => sum + (getSystemAmount(item) || 0), 0)
+                          )}`}
+                          </td>
+                          <td className="border-r-2 border-gray-300 p-1 bg-blue-50/50"></td>
+                          <td colSpan={isSamePONumber ? 4 : 5} className="p-1 text-right text-gray-600">
+                            OCR 합계
+                            {editedOCRItems.size > 0 && (
+                              <span className="ml-1 text-[9px] text-orange-600">(수정됨)</span>
+                            )}
+                          </td>
+                          <td className="p-1 text-right text-gray-900">
+                          {`${getTotalsCurrencySymbol()}${formatAmount(
+                            statementWithItems.items
+                              .filter(item => !deletedOCRItemIds.has(item.id))
+                              .reduce((sum, item) => {
+                                const edited = editedOCRItems.get(item.id);
+                                const amount = edited?.amount !== undefined ? edited.amount : (item.extracted_amount || 0);
+                                return sum + amount;
+                              }, 0)
+                          )}`}
+                          </td>
+                          <td className="p-1"></td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="border-r-2 border-gray-300 p-1 text-right text-gray-900">-</td>
+                          <td className="border-r-2 border-gray-300 p-1 bg-blue-50/50"></td>
+                          <td colSpan={isSamePONumber ? 4 : 5} className="p-1 text-right text-gray-600">-</td>
+                          <td className="p-1 text-right text-gray-900">-</td>
+                          <td className="p-1"></td>
+                        </>
+                      )}
+                    </tr>
                   </tbody>
                 </table>
               </div>

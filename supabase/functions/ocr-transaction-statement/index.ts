@@ -232,16 +232,25 @@ serve(async (req) => {
           // imagescript rotate()는 반시계방향 기준이므로, 시계방향 각도를 변환
           // 예: 시계방향 90도 필요 → rotate(360-90=270) → 내부 270 반시계 = 시계방향 90도
           const rotatedImage = decodedImage.rotate(360 - (rotationDegrees % 360))
-          const rotatedPngBytes = await rotatedImage.encode(1)
-          const rotatedBase64 = uint8ArrayToBase64(rotatedPngBytes)
+          
+          const storagePath = imageUrl.split("/receipt-images/")[1]?.split("?")[0]
+          const isJpg = storagePath ? (storagePath.toLowerCase().endsWith(".jpg") || storagePath.toLowerCase().endsWith(".jpeg")) : false
+          
+          const rotatedBytes = isJpg
+            ? await rotatedImage.encodeJPEG(85)
+            : await rotatedImage.encode(1)
+            
+          const contentType = isJpg ? "image/jpeg" : "image/png"
+          const rotatedBase64 = uint8ArrayToBase64(rotatedBytes)
+          
           preparedImage = {
             ...preparedImage,
             base64Image: rotatedBase64,
             width: rotatedImage.width,
             height: rotatedImage.height,
             rotated: true,
-            rotatedPngBytes,
-            mediaType: "image/png",
+            rotatedPngBytes: rotatedBytes, // 호환성을 위해 프로퍼티 이름 유지
+            mediaType: contentType,
           }
           perfDebug.processed_width = rotatedImage.width
           perfDebug.processed_height = rotatedImage.height
@@ -249,13 +258,12 @@ serve(async (req) => {
 
           currentStage = "upload_rotated_image"
           try {
-            const storagePath = imageUrl.split("/receipt-images/")[1]?.split("?")[0]
             if (storagePath) {
               const decodedPath = decodeURIComponent(storagePath)
               const { error: uploadErr } = await supabase.storage
                 .from("receipt-images")
-                .upload(decodedPath, rotatedPngBytes, {
-                  contentType: "image/png",
+                .upload(decodedPath, rotatedBytes, {
+                  contentType: contentType,
                   upsert: true,
                 })
               if (uploadErr) {
@@ -839,12 +847,19 @@ function getExifRotation(buffer: ArrayBuffer): number {
   return 0
 }
 
-/**
- * AI 기반 문서 방향 감지 (EXIF가 없는 이미지용 - 스캐너, PNG 등)
- * "몇 도 돌려야 하나" 대신 "문서 위쪽이 어느 방향인지"를 물어서 방향 혼동을 방지
- */
-async function detectImageOrientationByAI(base64Image: string, apiKey: string, mediaType: "image/png" | "image/jpeg" = "image/jpeg", model = "claude-sonnet-4-6"): Promise<number> {
+async function detectImageOrientationByAI(
+  base64Image: string,
+  apiKey: string,
+  mediaType: "image/png" | "image/jpeg" = "image/jpeg",
+  model = "claude-sonnet-4-6",
+  exifHint = 0
+): Promise<number> {
   try {
+    let exifHintText = ""
+    if (exifHint > 0) {
+      exifHintText = `\n참고로 파일의 EXIF 메타데이터에 기록된 회전 정보는 시계방향 ${exifHint}도 회전입니다. 다만 폰 센서 에러나 촬영 각도 때문에 이 메타데이터가 실제 텍스트 방향과 맞지 않을 수 있으므로, 참고만 하되 반드시 실제 한국어 글자의 읽기 흐름을 보고 검증하십시오.`
+    }
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -870,15 +885,14 @@ async function detectImageOrientationByAI(base64Image: string, apiKey: string, m
               },
               {
                 type: "text",
-                text: `이 이미지는 한국어 거래명세서/영수증 등의 문서입니다.
-문서의 제목("거래명세서", "거래명세표" 등)이 이미지에서 어느 위치에 있는지 판단하세요.
+                text: `이 이미지는 한국어 거래명세서/영수증 문서입니다. 이미지 속 한글 텍스트들의 실제 방향(사람이 눈으로 똑바로 읽을 수 있는 정방향)을 기준으로, 문서의 위쪽(머리)이 이미지 상에서 어느 쪽에 위치해 있는지 시각적으로 판단하세요.${exifHintText}
 
-- 제목이 이미지 위쪽에 있으면 → "top" (정상 방향)
-- 제목이 이미지 오른쪽에 있으면 → "right" (시계 90도 회전 필요)
-- 제목이 이미지 아래쪽에 있으면 → "bottom" (180도 회전 필요)
-- 제목이 이미지 왼쪽에 있으면 → "left" (반시계 90도 = 시계 270도 회전 필요)
+- 글자들이 똑바로 서 있어서 정상적으로 읽을 수 있음 (문서 위쪽이 이미지 위쪽) → "top"
+- 글자들이 오른쪽으로 누워 있어서 고개를 오른쪽으로 돌려야 읽을 수 있음 (문서 위쪽이 이미지 오른쪽) → "right" (시계방향 90도 회전 필요)
+- 글자들이 거꾸로 뒤집혀 있음 (문서 위쪽이 이미지 아래쪽) → "bottom" (180도 회전 필요)
+- 글자들이 왼쪽으로 누워 있어서 고개를 왼쪽으로 돌려야 읽을 수 있음 (문서 위쪽이 이미지 왼쪽) → "left" (반시계방향 90도 = 시계방향 270도 회전 필요)
 
-반드시 JSON만 응답: {"title_position": "top" 또는 "right" 또는 "bottom" 또는 "left"}`,
+반드시 아래 JSON 형식으로만 응답하세요: {"title_position": "top" | "right" | "bottom" | "left"}`
               },
             ],
           },
@@ -912,23 +926,30 @@ async function detectImageOrientationByAI(base64Image: string, apiKey: string, m
 
 /**
  * 이미지 방향 감지
- * - AI 비전으로 문서 제목 위치를 판단하여 회전 각도 결정
- * - EXIF는 참고용으로만 기록 (이미지 라이브러리가 자동 적용할 수 있으므로 직접 사용 안 함)
+ * - 항상 AI 비전으로 문서 내 텍스트의 실제 시각적 방향을 읽어 판단함
+ * - EXIF는 보조 힌트용으로만 기록 및 AI 프롬프트에 활용
  */
-async function detectImageOrientation(base64Image: string, apiKey: string, mediaType: "image/png" | "image/jpeg" = "image/jpeg", model = "claude-sonnet-4-6", imageBuffer?: ArrayBuffer): Promise<{ degrees: number; source: "exif" | "ai" | "none"; exifHint?: number }> {
-  // 1) EXIF 우선 (휴대폰 카메라는 EXIF 회전 정보가 정확함)
+async function detectImageOrientation(
+  base64Image: string,
+  apiKey: string,
+  mediaType: "image/png" | "image/jpeg" = "image/jpeg",
+  model = "claude-sonnet-4-6",
+  imageBuffer?: ArrayBuffer
+): Promise<{ degrees: number; source: "exif" | "ai" | "none"; exifHint?: number }> {
   let exifHint = 0
   if (imageBuffer && mediaType === "image/jpeg") {
     exifHint = getExifRotation(imageBuffer)
-    if (exifHint > 0) {
-      return { degrees: exifHint, source: "exif", exifHint }
-    }
   }
 
-  // 2) EXIF 없으면 (스캐너 / PNG 등) AI 비전 fallback
-  const aiRotation = await detectImageOrientationByAI(base64Image, apiKey, mediaType, model)
+  // EXIF 메타데이터가 오류일 수 있으므로 항상 AI 비전으로 실제 텍스트 방향을 판정합니다.
+  const aiRotation = await detectImageOrientationByAI(base64Image, apiKey, mediaType, model, exifHint)
   if (aiRotation > 0) {
     return { degrees: aiRotation, source: "ai", exifHint }
+  }
+
+  // AI가 0도(회전 불필요)로 판정했으나 EXIF에 회전 힌트가 있다면, AI 판정의 예외적 실패 가능성을 대비해 fallback 적용
+  if (aiRotation === 0 && exifHint > 0) {
+    return { degrees: exifHint, source: "exif", exifHint }
   }
 
   return { degrees: 0, source: "none", exifHint }
