@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/client'
 import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { logger } from '@/lib/logger'
 import { parseRoles } from '@/utils/roleHelper'
+import { removePurchaseFromMemory, removeItemFromMemory } from '@/stores/purchaseMemoryStore'
 
 export interface SupportAttachment {
   url: string
@@ -319,10 +320,10 @@ class SupportService {
     try {
       const { data: inquiryMeta } = await this.supabase
         .from('support_inquires')
-        .select('inquiry_type,inquiry_payload')
+        .select('inquiry_type,inquiry_payload,purchase_request_id')
         .eq('id', inquiryId)
         .maybeSingle()
-      const meta = inquiryMeta as { inquiry_type?: string; inquiry_payload?: { items?: { item_id?: string }[]; delete_target?: string; statement_id?: string } } | null
+      const meta = inquiryMeta as { inquiry_type?: string; purchase_request_id?: number | string | null; inquiry_payload?: { items?: { item_id?: string }[]; delete_target?: string; delete_type?: string; delete_items?: { item_id?: string | number }[]; statement_id?: string } } | null
       const payloadItems = Array.isArray(meta?.inquiry_payload?.items)
         ? meta.inquiry_payload.items
         : []
@@ -355,6 +356,21 @@ class SupportService {
 
       const { error } = await this.supabase.rpc('resolve_inquiry', { p_inquiry_id: inquiryId })
       if (error) throw error
+
+      // 삭제 완료 시 메모리 캐시 정리 (resolve는 서버 RPC라 클라 메모리 캐시가 자동 갱신되지 않음 → 발주가 화면에 남는 문제 방지)
+      if (inquiryType === 'delete' && meta?.inquiry_payload?.delete_target !== 'statement' && meta?.purchase_request_id != null) {
+        const prid = meta.purchase_request_id
+        if (meta?.inquiry_payload?.delete_type === 'items') {
+          // 품목별 삭제: 삭제된 품목만 캐시에서 제거 (line_number 재정렬은 다음 로드 시 동기화)
+          const delItems = Array.isArray(meta?.inquiry_payload?.delete_items) ? meta.inquiry_payload.delete_items : []
+          delItems.forEach((it) => {
+            if (it?.item_id != null) removeItemFromMemory(prid, it.item_id)
+          })
+        } else {
+          // 발주 전체 삭제: 발주를 캐시에서 즉시 제거
+          removePurchaseFromMemory(prid)
+        }
+      }
 
       // 거래명세서 삭제 완료 후 Storage 파일 삭제
       if (statementImageUrl) {
@@ -630,13 +646,12 @@ class SupportService {
     }
   }
 
-  // 발주요청 품목 삭제
+  // 발주요청 품목 삭제(보관): RPC(soft_delete_purchase_items)로 deleted_at 마킹.
+  // RLS SELECT 정책이 deleted_at 쓰기를 막으므로 SECURITY DEFINER RPC로 우회 + 남은 품목 line_number 재정렬(트리거)
   async deletePurchaseRequestItem(itemId: string): Promise<{ success: boolean; error?: string }> {
     try {
       const { error } = await this.supabase
-        .from('purchase_request_items')
-        .delete()
-        .eq('id', itemId)
+        .rpc('soft_delete_purchase_items', { p_item_ids: [Number(itemId)] })
 
       if (error) throw error
       return { success: true }
@@ -645,54 +660,26 @@ class SupportService {
     }
   }
 
-  // 발주요청 전체 삭제
+  // 발주요청 전체 삭제(보관): RPC(soft_delete_purchase_order)로 deleted_at 마킹.
+  // cascade 트리거가 품목 보관 + 발주번호/수주번호 _D 처리. RLS 우회 위해 SECURITY DEFINER RPC 사용.
   async deletePurchaseRequest(requestId: string): Promise<{ success: boolean; error?: string }> {
     try {
-      // 먼저 관련 품목들 삭제
-      const { data: deletedItems, error: itemsError } = await this.supabase
-        .from('purchase_request_items')
-        .delete()
-        .eq('purchase_request_id', requestId)
-        .select()
+      const { error } = await this.supabase
+        .rpc('soft_delete_purchase_order', { p_id: Number(requestId) })
 
-      if (itemsError) {
-        logger.error('[deletePurchaseRequest] 품목 삭제 실패', itemsError, {
+      if (error) {
+        logger.error('[deletePurchaseRequest] 발주요청 보관 처리 실패', error, {
           requestId,
-          error: itemsError
+          error
         })
-        throw itemsError
+        throw error
       }
 
-      logger.debug('[deletePurchaseRequest] 품목 삭제 성공', {
-        requestId,
-        deletedItemsCount: deletedItems?.length || 0
-      })
-
-      // 발주요청 삭제
-      const { data: deletedRequest, error: requestError } = await this.supabase
-        .from('purchase_requests')
-        .delete()
-        .eq('id', requestId)
-        .select()
-
-      if (requestError) {
-        logger.error('[deletePurchaseRequest] 발주요청 삭제 실패', requestError, {
-          requestId,
-          error: requestError,
-          note: '품목은 이미 삭제되었지만 발주요청은 삭제되지 않았습니다.'
-        })
-        throw requestError
-      }
-
-      logger.debug('[deletePurchaseRequest] 발주요청 삭제 성공', {
-        requestId,
-        deletedRequest: deletedRequest?.[0]
-      })
-
+      logger.debug('[deletePurchaseRequest] 발주요청 보관(soft delete) 성공', { requestId })
       return { success: true }
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : '발주요청 삭제 실패'
-      logger.error('[deletePurchaseRequest] 전체 삭제 실패', e instanceof Error ? e : undefined, {
+      logger.error('[deletePurchaseRequest] 보관 처리 실패', e instanceof Error ? e : undefined, {
         requestId,
         error: errorMessage
       })

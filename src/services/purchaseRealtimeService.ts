@@ -356,6 +356,12 @@ class PurchaseRealtimeService {
   private handlePurchaseUpdate(record: Record<string, unknown> | null): void {
     if (!record) return
 
+    // soft delete: deleted_at이 채워진 UPDATE는 보관 처리 → 캐시에서 제거
+    if (record.deleted_at) {
+      this.handlePurchaseDelete(record)
+      return
+    }
+
     const updated = updatePurchaseInMemory(record.id as number, (purchase) => ({
       ...purchase,
       ...(record as unknown as Partial<Purchase>),
@@ -437,6 +443,11 @@ class PurchaseRealtimeService {
     if (!record) {
       logger.warn('⚠️ [Realtime] 품목 업데이트 실패 - record 없음')
       return false
+    }
+
+    // soft delete: deleted_at이 채워진 UPDATE는 보관 처리 → 캐시에서 제거
+    if (record.deleted_at) {
+      return this.handleItemDelete(record)
     }
 
     // purchase_request_id가 있으면 직접 업데이트

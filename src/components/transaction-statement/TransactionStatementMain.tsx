@@ -610,8 +610,11 @@ export default function TransactionStatementMain() {
       statement.status === 'queued' ||
       statement.status === 'failed'
     ) {
+      const fileUrlWithCacheBuster = statement.image_url 
+        ? `${statement.image_url}${statement.image_url.includes('?') ? '&' : '?'}t=${statement.updated_at ? new Date(statement.updated_at).getTime() : Date.now()}`
+        : '';
       openStatementPreview({
-        fileUrl: statement.image_url,
+        fileUrl: fileUrlWithCacheBuster,
         onOpenImageViewer: (viewerImageUrl) => {
           setViewerImageUrl(viewerImageUrl);
           setIsImageViewerOpen(true);
@@ -633,10 +636,13 @@ export default function TransactionStatementMain() {
   };
 
   // 파일 뷰어 열기 (이미지/PDF는 내장 뷰어, 엑셀은 Google Docs Viewer 새 창)
-  const handleViewImage = (e: React.MouseEvent, imageUrl: string) => {
+  const handleViewImage = (e: React.MouseEvent, imageUrl: string, updatedAt?: string) => {
     e.stopPropagation();
+    const fileUrlWithCacheBuster = imageUrl 
+      ? `${imageUrl}${imageUrl.includes('?') ? '&' : '?'}t=${updatedAt ? new Date(updatedAt).getTime() : Date.now()}`
+      : '';
     openStatementPreview({
-      fileUrl: imageUrl,
+      fileUrl: fileUrlWithCacheBuster,
       onOpenImageViewer: (viewerImageUrl) => {
         setViewerImageUrl(viewerImageUrl);
         setIsImageViewerOpen(true);
@@ -1258,7 +1264,7 @@ export default function TransactionStatementMain() {
                               </Button>
                             )}
                             <button
-                              onClick={(e) => handleViewImage(e, statement.image_url)}
+                              onClick={(e) => handleViewImage(e, statement.image_url, statement.updated_at)}
                               className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
                               title="이미지 보기"
                             >
@@ -1339,7 +1345,7 @@ export default function TransactionStatementMain() {
                         </Button>
                       )}
                       <button
-                        onClick={(e) => handleViewImage(e, statement.image_url)}
+                        onClick={(e) => handleViewImage(e, statement.image_url, statement.updated_at)}
                         className="button-base px-2 py-1 text-[10px] border border-gray-200 text-gray-600 hover:bg-gray-50"
                       >
                         <ImageIcon className="w-3 h-3 mr-1" />

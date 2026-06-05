@@ -1175,32 +1175,7 @@ const FastPurchaseTable = ({
         purchaseId: purchaseToDelete.id
       });
 
-      // 모든 아이템 삭제
-      logger.info('🗑️ [handleConfirmDelete] 품목 삭제 시작', {
-        purchaseId: purchaseToDelete.id
-      });
-      
-      const { data: deletedItems, error: itemsError } = await supabase
-        .from('purchase_request_items')
-        .delete()
-        .eq('purchase_request_id', purchaseToDelete.id)
-        .select();
-
-      if (itemsError) {
-        logger.error('❌ [handleConfirmDelete] 아이템 삭제 중 오류 발생', itemsError, {
-          code: itemsError.code,
-          message: itemsError.message,
-          details: itemsError.details,
-          hint: itemsError.hint,
-          purchaseId: purchaseToDelete.id
-        });
-        throw itemsError;
-      }
-
-      logger.info('✅ [handleConfirmDelete] 품목 삭제 완료', {
-        purchaseId: purchaseToDelete.id,
-        deletedItemsCount: deletedItems?.length || 0
-      });
+      // 품목은 발주 보관(soft delete) 시 cascade 트리거가 함께 처리하므로 여기서 별도 삭제하지 않음
 
       // ID를 숫자로 변환하여 사용
       const purchaseIdForDelete = typeof purchaseToDelete.id === 'string' 
@@ -1215,80 +1190,8 @@ const FastPurchaseTable = ({
         throw new Error('발주요청 ID가 유효하지 않습니다.');
       }
 
-      // support_inquires 테이블에서 해당 purchase_request_id를 참조하는 레코드 처리
-      // Foreign key constraint를 해결하기 위해 먼저 참조를 제거해야 함
-      // ⚠️ 중요: 문의 기록(support_inquires)은 삭제하지 않고, purchase_request_id만 null로 업데이트
-      logger.info('🗑️ [handleConfirmDelete] support_inquires 관련 레코드 처리 시작 (문의 기록 보존)', {
-        purchaseId: purchaseIdForDelete
-      });
-      
-      let inquiriesUpdated = false;
-      let inquiriesCount = 0;
-      
-      try {
-        const { data: relatedInquiries, error: inquiriesCheckError } = await supabase
-          .from('support_inquires')
-          .select('id, purchase_order_number')
-          .eq('purchase_request_id', purchaseIdForDelete);
-
-        if (inquiriesCheckError) {
-          logger.warn('[handleConfirmDelete] support_inquires 조회 실패 (무시하고 계속 진행)', {
-            error: inquiriesCheckError,
-            purchaseId: purchaseIdForDelete
-          });
-        } else if (relatedInquiries && relatedInquiries.length > 0) {
-          inquiriesCount = relatedInquiries.length;
-          logger.info('🗑️ [handleConfirmDelete] support_inquires 레코드 업데이트 필요 (문의 기록 보존)', {
-            purchaseId: purchaseIdForDelete,
-            inquiriesCount: relatedInquiries.length,
-            inquiryIds: relatedInquiries.map((i: { id: string | number }) => i.id),
-            note: '문의 기록은 삭제하지 않고 purchase_request_id만 null로 업데이트합니다.'
-          });
-          
-          // support_inquires에서 purchase_request_id를 null로 업데이트 (레코드 보존)
-          // 문의 기록은 보존하되, 삭제되는 발주요청과의 연결만 제거
-          const { data: updatedInquiries, error: inquiriesUpdateError } = await supabase
-            .from('support_inquires')
-            .update({ purchase_request_id: null })
-            .eq('purchase_request_id', purchaseIdForDelete)
-            .select();
-
-          if (inquiriesUpdateError) {
-            logger.error('❌ [handleConfirmDelete] support_inquires 업데이트 실패', {
-              error: inquiriesUpdateError,
-              purchaseId: purchaseIdForDelete,
-              code: inquiriesUpdateError.code,
-              message: inquiriesUpdateError.message,
-              details: inquiriesUpdateError.details
-            });
-            // 업데이트 실패 시 삭제도 실패할 수 있으므로 에러를 던짐
-            throw new Error(`문의 기록(${relatedInquiries.length}개)의 참조를 제거하지 못했습니다. 삭제를 중단합니다.`);
-          } else {
-            inquiriesUpdated = true;
-            logger.info('✅ [handleConfirmDelete] support_inquires 업데이트 완료 (문의 기록 보존)', {
-              purchaseId: purchaseIdForDelete,
-              updatedCount: updatedInquiries?.length || relatedInquiries.length,
-              updatedInquiryIds: updatedInquiries?.map((i: { id: string | number }) => i.id) || relatedInquiries.map((i: { id: string | number }) => i.id),
-              note: '문의 기록은 그대로 보존되었고, purchase_request_id만 null로 변경되었습니다.'
-            });
-            
-            // 업데이트 후 DB 동기화를 위해 잠시 대기
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-        } else {
-          logger.info('✅ [handleConfirmDelete] support_inquires 관련 레코드 없음', {
-            purchaseId: purchaseIdForDelete
-          });
-        }
-      } catch (inquiriesError) {
-        logger.error('❌ [handleConfirmDelete] support_inquires 처리 중 예외 발생', {
-          error: inquiriesError,
-          purchaseId: purchaseIdForDelete
-        });
-        // 예외가 발생하면 삭제를 중단
-        toast.error(`문의 기록 처리 중 오류가 발생했습니다: ${inquiriesError instanceof Error ? inquiriesError.message : '알 수 없는 오류'}`);
-        throw inquiriesError;
-      }
+      // soft delete에서는 발주 행을 보존(deleted_at 마킹)하므로 FK 위반이 없어
+      // support_inquires의 purchase_request_id 링크를 끊을 필요가 없음 (문의-발주 연결 유지)
 
       // 발주요청 삭제
       logger.info('🗑️ [handleConfirmDelete] 발주기본정보 삭제 시작', {
@@ -1297,11 +1200,9 @@ const FastPurchaseTable = ({
         idValue: purchaseToDelete.id
       });
       
-      // select() 없이 삭제 시도 (409 오류 방지)
+      // 발주요청 보관(soft delete): RPC로 deleted_at 마킹 (cascade 트리거가 품목 보관 + 발주번호/수주번호 _D 처리, RLS 우회)
       const { error: requestError } = await supabase
-        .from('purchase_requests')
-        .delete()
-        .eq('id', purchaseIdForDelete);
+        .rpc('soft_delete_purchase_order', { p_id: purchaseIdForDelete });
 
       if (requestError) {
         logger.error('❌ [handleConfirmDelete] 발주요청 삭제 중 오류 발생', requestError, {
@@ -1334,10 +1235,9 @@ const FastPurchaseTable = ({
         return;
       }
 
-      logger.info('✅ [handleConfirmDelete] 발주기본정보 삭제 완료', {
+      logger.info('✅ [handleConfirmDelete] 발주요청 보관 처리 완료', {
         purchaseId: purchaseIdForDelete,
-        originalId: purchaseToDelete.id,
-        inquiriesPreserved: inquiriesUpdated ? `${inquiriesCount}개 문의 기록 보존됨` : '문의 기록 없음'
+        originalId: purchaseToDelete.id
       });
 
       // 🚀 메모리 캐시에서 즉시 삭제 (구매완료 등과 동일한 패턴)
@@ -1355,12 +1255,7 @@ const FastPurchaseTable = ({
         });
       }
 
-      // 삭제 성공 메시지 (문의 기록 보존 여부 포함)
-      if (inquiriesUpdated && inquiriesCount > 0) {
-        toast.success(`발주요청이 삭제되었습니다. (${inquiriesCount}개의 문의 기록은 보존되었습니다)`);
-      } else {
-        toast.success("발주요청 내역이 삭제되었습니다.");
-      }
+      toast.success("발주요청 내역이 삭제되었습니다.");
       
       // 삭제 완료 후 모달 닫기 (상세 모달과 삭제 확인 다이얼로그 모두 닫기)
       setIsModalOpen(false);
