@@ -300,9 +300,12 @@ export default function DashboardMain() {
   }, [vehicleRequests, statusNow])
 
   const cardStatusMap = useMemo(() => {
+    const kstNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+    const todayStr = `${kstNow.getFullYear()}-${String(kstNow.getMonth() + 1).padStart(2, '0')}-${String(kstNow.getDate()).padStart(2, '0')}`
+
     const map: Record<string, { inUse: boolean; user: string; category: string }> = {}
     for (const card of DASHBOARD_CARDS) {
-      const active = cardUsages.find(u => u.card_number === card.value)
+      const active = cardUsages.find(u => u.card_number === card.value && todayStr >= u.usage_date_start)
       if (active) {
         map[card.value] = { inUse: true, user: active.requester?.name || "-", category: active.usage_category || "" }
       } else {

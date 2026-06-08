@@ -191,7 +191,7 @@ export default function LeaveCalendar({ leaves, currentUserEmail }: LeaveCalenda
                     className="text-[10px] font-bold leading-[1.1] truncate rounded-sm px-1 py-px text-white"
                     style={{ backgroundColor: BLUE_TYPES.has(e.type) ? COLOR_BLUE : COLOR_GREEN }}
                   >
-                    {SHORT_LABEL[e.type] || e.type}
+                    {e.name ? `${e.name} ${SHORT_LABEL[e.type] || e.type}` : SHORT_LABEL[e.type] || e.type}
                   </span>
                 ))}
                 {evs.length > 2 && (
@@ -225,8 +225,9 @@ export default function LeaveCalendar({ leaves, currentUserEmail }: LeaveCalenda
                     {SHORT_LABEL[e.type] || e.type}
                   </span>
                   <span className="text-gray-900 font-semibold shrink-0">{fmtRange(e)}</span>
+                  <span className="text-gray-900 font-bold shrink-0">{e.name || "이름없음"}</span>
                   {isCoTraveler && (
-                    <span className="text-gray-700 font-medium shrink-0">· 동행({e.name || ""})</span>
+                    <span className="text-gray-500 font-medium shrink-0">(동행)</span>
                   )}
                   {e.reason && (
                     <span className="text-gray-700 truncate">· {e.reason}</span>
