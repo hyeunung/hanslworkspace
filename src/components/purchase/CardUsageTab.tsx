@@ -800,12 +800,16 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
   };
 
   const cardStatusMap = useMemo(() => {
+    const kstNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+    const todayStr = `${kstNow.getFullYear()}-${String(kstNow.getMonth() + 1).padStart(2, '0')}-${String(kstNow.getDate()).padStart(2, '0')}`;
+
     const map: Record<string, { inUse: boolean; user: string; category: string }> = {};
     for (const card of COMPANY_CARDS) {
       const activeUsage = usages.find(
         u => u.card_number === card.value
           && ["approved", "settled"].includes(u.approval_status)
           && !u.card_returned
+          && todayStr >= u.usage_date_start
       );
       if (activeUsage) {
         map[card.value] = {
