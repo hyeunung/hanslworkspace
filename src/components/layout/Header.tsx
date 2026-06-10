@@ -330,25 +330,30 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
 
         {/* 로고 */}
         <div className="flex items-center">
-          <img
-            src="/logo_symbol.svg"
-            alt="HANSL Logo"
-            className="w-14 h-14"
-            style={{ objectFit: 'contain' }}
-          />
-          <div className="ml-3 leading-none flex flex-col items-start">
-            <div className="flex items-baseline gap-1.5 mb-0.5">
-              <h1 className="text-[30px] font-bold text-gray-600 leading-none">
-                HANSL
-              </h1>
-              <span className="text-[10px] text-gray-400 leading-none">
-                v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''}
+          <a
+            href="https://hansl-workspace.com"
+            className="flex items-center hover:opacity-80 transition-opacity"
+          >
+            <img
+              src="/logo_symbol.svg"
+              alt="HANSL Logo"
+              className="w-14 h-14"
+              style={{ objectFit: 'contain' }}
+            />
+            <div className="ml-3 leading-none flex flex-col items-start">
+              <div className="flex items-baseline gap-1.5 mb-0.5">
+                <h1 className="text-[30px] font-bold text-gray-600 leading-none">
+                  HANSL
+                </h1>
+                <span className="text-[10px] text-gray-400 leading-none">
+                  v{typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''}
+                </span>
+              </div>
+              <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide leading-none ml-[1px]">
+                Purchase System
               </span>
             </div>
-            <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide leading-none ml-[1px]">
-              Purchase System
-            </span>
-          </div>
+          </a>
 
           {/* 공문 페이지 진입 버튼 (항상 표시) */}
           <button

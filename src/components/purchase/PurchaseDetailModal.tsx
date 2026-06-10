@@ -2005,7 +2005,7 @@ ${itemsText}`
 
       const purchaseVendorKey = normalizeText(purchaseRow?.vendor_name)
       const scopedRows = purchaseVendorKey
-        ? (receiptRows || []).filter((row) => normalizeText(row.merchant_name) === purchaseVendorKey)
+        ? (receiptRows || []).filter((row: any) => normalizeText(row.merchant_name) === purchaseVendorKey)
         : (receiptRows || [])
 
       const uniqueByUrl = new Map<string, {
@@ -2034,7 +2034,7 @@ ${itemsText}`
 
       setLinkedCardReceipts([...uniqueByUrl.values()] as LinkedCardReceipt[])
     } catch (error) {
-      logger.warn('[PurchaseDetailModal] 카드 영수증 로드 실패:', error)
+      logger.warn('[PurchaseDetailModal] 카드 영수증 로드 실패:', { error })
       setLinkedCardReceipts([])
     }
   }
