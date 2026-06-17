@@ -1892,6 +1892,7 @@ class TransactionStatementService {
         ? this.supabase
             .from('purchase_requests')
             .select(purchaseSelect)
+            .is('deleted_at', null)
             .or(`purchase_order_number.eq.${normalizedNumber},sales_order_number.eq.${normalizedNumber}`)
             .limit(10)
         : Promise.resolve({ data: null });
@@ -1901,6 +1902,7 @@ class TransactionStatementService {
         ? this.supabase
             .from('purchase_requests')
             .select(purchaseSelect)
+            .is('deleted_at', null)
             .or(`purchase_order_number.ilike.${datePrefix}%,sales_order_number.ilike.${datePrefix}%`)
             .limit(20)
         : Promise.resolve({ data: null });
@@ -1958,6 +1960,8 @@ class TransactionStatementService {
               id, line_number, item_name, specification, quantity, received_quantity, unit_price_value, amount_value,
               purchase:purchase_requests!inner(id, purchase_order_number, sales_order_number, vendor:vendors(vendor_name))
             `)
+            .is('deleted_at', null)
+            .is('purchase.deleted_at', null)
             .or(`item_name.ilike.%${searchTerm}%,specification.ilike.%${searchTerm}%`)
             .limit(50)
             .then((result: { data: PurchaseItemWithPurchase[] | null }) => ({ data: result.data, searchTerm }))
@@ -2076,6 +2080,7 @@ class TransactionStatementService {
                 vendor:vendors(vendor_name),
                 items:purchase_request_items(id, line_number, item_name, specification, quantity, received_quantity, unit_price_value, amount_value)
               `)
+              .is('deleted_at', null)
               .in('vendor_id', vendorIds)
               .gte('created_at', threeMonthsAgo.toISOString())
               .order('created_at', { ascending: false })
@@ -3174,6 +3179,7 @@ class TransactionStatementService {
             vendor:vendors(vendor_name),
             items:purchase_request_items(id, line_number, item_name, specification, quantity, received_quantity, unit_price_value)
           `)
+          .is('deleted_at', null)
           .or(`purchase_order_number.eq.${normalizedNumber},sales_order_number.eq.${normalizedNumber}`)
           .limit(5);
 
@@ -3252,6 +3258,7 @@ class TransactionStatementService {
           vendor:vendors(vendor_name),
           items:purchase_request_items(id, line_number, item_name, specification, quantity, received_quantity, unit_price_value)
         `)
+        .is('deleted_at', null)
         .gte('created_at', threeMonthsAgo.toISOString())
         .order('created_at', { ascending: false })
         .limit(100);

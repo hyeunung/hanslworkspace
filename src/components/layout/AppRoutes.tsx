@@ -21,6 +21,7 @@ const AttendancePage = lazy(() => import('@/components/employee/AttendancePage')
 const OfficialDocumentMain = lazy(() => import('@/components/official-document/OfficialDocumentMain'))
 const AuthConfirm = lazy(() => import('@/components/auth/AuthConfirm'))
 const ResetPassword = lazy(() => import('@/components/auth/ResetPassword'))
+const SystemActivityLogsPage = lazy(() => import('@/components/logs/SystemActivityLogsPage'))
 
 /**
  * 애플리케이션 라우팅 컴포넌트
@@ -60,6 +61,7 @@ export default function AppRoutes() {
           <Route path="/vendor" element={<VendorMain />} />
           <Route path="/employee" element={<EmployeeMain />} />
           <Route path="/attendance" element={<AttendancePage />} />
+          <Route path="/logs" element={<SystemActivityLogsPage />} />
           <Route path="/receipts" element={<ReceiptsMain />} />
           <Route path="/support" element={<SupportMain />} />
           <Route path="/application" element={<ApplicationListMain />} />

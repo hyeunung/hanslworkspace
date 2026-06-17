@@ -1,5 +1,14 @@
 [
   {
+    "version": "0.6.7",
+    "date": "2026-06-10",
+    "title": "헤더 로고 및 텍스트 클릭 시 홈화면 이동 지원",
+    "changes": [
+      { "type": "feature", "text": "좌측 상단의 로고 이미지 및 HANSL, Purchase System 텍스트 클릭 시 홈화면(hansl-workspace.com)으로 바로 이동하도록 개선" },
+      { "type": "improvement", "text": "로고 영역 마우스 호버 시 투명도 조절 효과 추가로 시각적 피드백 제공" }
+    ]
+  },
+  {
     "version": "0.6.5",
     "date": "2026-05-18",
     "title": "출장신청 시 법인카드 복수 선택 지원",

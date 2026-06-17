@@ -34,7 +34,8 @@ import {
   FileCheck,
   ListPlus,
   ImagePlus,
-  ExternalLink
+  ExternalLink,
+  Undo
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -1524,17 +1525,26 @@ ${itemsText}`
         ? memoryPurchase.items 
         : (memoryPurchase.purchase_request_items || []));
       
+      // 로컬 상태의 삭제된 항목 유지 및 병합
+      const currentDeletedItems = (purchase.items || purchase.purchase_request_items || []).filter(item => item.deleted_at);
+      const uniqueDeletedItems = currentDeletedItems.filter(delItem => !normalizedItems.some(actItem => actItem.id === delItem.id));
+      const mergedItems = [...normalizedItems, ...uniqueDeletedItems].sort((a, b) => {
+        const la = a?.line_number ?? 999999;
+        const lb = b?.line_number ?? 999999;
+        return la - lb;
+      });
+
       const updatedPurchase = {
         ...purchase,
         ...memoryPurchase,
         id: String(memoryPurchase.id),
-        items: normalizedItems,
-        purchase_request_items: normalizedItems
+        items: mergedItems,
+        purchase_request_items: mergedItems
       } as PurchaseRequestWithDetails;
 
       setPurchase(updatedPurchase);
       setEditedPurchase(updatedPurchase);
-      setEditedItems(normalizedItems.length > 0 ? normalizedItems : []);
+      setEditedItems(mergedItems.length > 0 ? mergedItems : []);
     }
   }, [allPurchases, lastFetch, isEditing, isSaving]); // isEditing, isSaving 의존성 추가
 
@@ -1550,12 +1560,21 @@ ${itemsText}`
         ? memoryPurchase.items 
         : (memoryPurchase.purchase_request_items || []));
       
+      // 로컬 상태의 삭제된 항목 유지 및 병합
+      const currentDeletedItems = (purchase?.items || purchase?.purchase_request_items || []).filter(item => item.deleted_at);
+      const uniqueDeletedItems = currentDeletedItems.filter(delItem => !normalizedItems.some(actItem => actItem.id === delItem.id));
+      const mergedItems = [...normalizedItems, ...uniqueDeletedItems].sort((a, b) => {
+        const la = a?.line_number ?? 999999;
+        const lb = b?.line_number ?? 999999;
+        return la - lb;
+      });
+
       const updatedPurchase = {
         ...memoryPurchase,
         id: String(memoryPurchase.id),
         is_po_generated: false,
-        items: normalizedItems,
-        purchase_request_items: normalizedItems,
+        items: mergedItems,
+        purchase_request_items: mergedItems,
         vendor: {
           id: memoryPurchase.vendor_id,
           vendor_name: memoryPurchase.vendor_name || '알 수 없음',
@@ -1568,7 +1587,7 @@ ${itemsText}`
 
       setPurchase(updatedPurchase);
       setEditedPurchase(updatedPurchase);
-      setEditedItems(normalizedItems.length > 0 ? normalizedItems : []);
+      setEditedItems(mergedItems.length > 0 ? mergedItems : []);
     }
   }, [isOpen, purchaseId, allPurchases, isEditing, isSaving]); // isEditing, isSaving 의존성 추가
   
@@ -1951,6 +1970,10 @@ ${itemsText}`
         setPurchase(purchaseData)
         setEditedPurchase(purchaseData)
         setEditedItems(memoryPurchase.items || [])
+        // 🚀 background로 DB 데이터 로드하여 soft-deleted items 및 담당자 정보 갱신
+        refreshModalDataWithLock().catch(err => {
+          logger.error('Failed to load detail background data', err)
+        })
       } else {
         // 메모리에 없으면 기존 방식으로 로드
         loadPurchaseDetail(purchaseId.toString())
@@ -2633,7 +2656,9 @@ ${itemsText}`
       logger.debug('[handleSave] Step 1: 발주 기본 정보 업데이트 시작')
       
       // 발주 기본 정보 업데이트
-      const totalAmount = editedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
+      const totalAmount = editedItems
+        .filter(item => !item.deleted_at)
+        .reduce((sum, item) => sum + (item.amount_value || 0), 0)
       
       // contact_id 결정: 우선순위 1. editedPurchase.contact_id 2. vendor_contacts[0].id 3. null
       let contactId = null
@@ -2778,7 +2803,8 @@ ${itemsText}`
       logger.debug('[handleSave] Step 3 완료')
 
       // 모든 품목이 삭제된 경우 발주기본정보도 삭제
-      if (editedItems.length === 0) {
+      const activeItems = editedItems.filter(item => !item.deleted_at)
+      if (activeItems.length === 0) {
         logger.info('🚀 모든 품목이 삭제되어 발주기본정보도 삭제합니다', {
           purchaseId: purchase.id,
           deletedItemIds: deletedItemIds
@@ -2828,6 +2854,9 @@ ${itemsText}`
       // ✅ DB statement timeout/락 경합을 줄이기 위해 순차 처리 (Promise.all 제거)
       for (let index = 0; index < editedItems.length; index++) {
         const item = editedItems[index]
+        if (item.deleted_at) {
+          continue
+        }
         const itemTimeoutMs = 60000
         // 필수 필드 검증
         if (!item.item_name || !item.item_name.trim()) {
@@ -2871,6 +2900,7 @@ ${itemsText}`
                 amount_currency: purchase.currency || 'KRW',
                 remark: item.remark || null,
                 link: item.link && String(item.link).trim() ? String(item.link).trim() : null,
+                deleted_at: null,
                 updated_at: new Date().toISOString()
               })
               .eq('id', numericItemId),
@@ -2897,7 +2927,7 @@ ${itemsText}`
             amount_currency: purchase.currency || 'KRW',
             remark: item.remark || null,
             link: item.link && String(item.link).trim() ? String(item.link).trim() : null,
-            line_number: index + 1,
+            line_number: item.line_number,
             created_at: new Date().toISOString()
           };
           
@@ -3179,7 +3209,6 @@ ${itemsText}`
         })
         .map((item, idx) => ({
           ...item,
-          line_number: idx + 1,
           stableKey: item.stableKey ?? makeStableKey(item, idx)
         }))
 
@@ -3191,20 +3220,38 @@ ${itemsText}`
     const item = editedItems[index]
     if (item.id) {
       setDeletedItemIds([...deletedItemIds, item.id])
-    }
-    const newItems: EditablePurchaseItem[] = editedItems
-      .filter((_, i) => i !== index)
-      .sort((a, b) => {
-        const lineA = a.line_number || 999999;
-        const lineB = b.line_number || 999999;
-        return lineA - lineB;
-      })
-      .map((it, idx) => ({
-        ...it,
-        line_number: idx + 1,
-        stableKey: it.stableKey ?? makeStableKey(it, idx)
+      setEditedItems(prev => prev.map((it, i) => {
+        if (i === index) {
+          return {
+            ...it,
+            deleted_at: new Date().toISOString()
+          }
+        }
+        return it
       }))
-    setEditedItems(newItems)
+    } else {
+      setEditedItems(prev => prev.filter((_, i) => i !== index).map((it, idx) => ({
+        ...it,
+        stableKey: it.stableKey ?? makeStableKey(it, idx)
+      })))
+    }
+  }
+
+  const handleRestoreItem = (index: number) => {
+    const item = editedItems[index]
+    if (item.id) {
+      setDeletedItemIds(prev => prev.filter(id => id !== item.id))
+      setEditedItems(prev => prev.map((it, i) => {
+        if (i === index) {
+          const { deleted_at, ...rest } = it
+          return {
+            ...rest,
+            deleted_at: undefined
+          }
+        }
+        return it
+      }))
+    }
   }
 
   // 구매완료 처리 함수
@@ -3698,10 +3745,10 @@ ${itemsText}`
       if (!Number.isNaN(purchaseIdNumber)) {
         onOptimisticUpdate?.(purchaseIdNumber, prev => {
           const allItems = prev.purchase_request_items || [];
-          const pendingItems = allItems.filter(item => !item.is_payment_completed);
+          const pendingItems = allItems.filter(item => !item.is_payment_completed && !item.deleted_at);
           
           const updatedItems = allItems.map(item => 
-            !item.is_payment_completed 
+            !item.is_payment_completed && !item.deleted_at
               ? { ...item, is_payment_completed: true, payment_completed_at: new Date().toISOString() }
               : item
           );
@@ -3710,7 +3757,7 @@ ${itemsText}`
             ...prev,
             purchase_request_items: updatedItems,
             items: prev.items ? updatedItems : prev.items,
-            is_payment_completed: updatedItems.every(item => item.is_payment_completed)
+            is_payment_completed: updatedItems.every(item => item.deleted_at || item.is_payment_completed)
           }
         })
       }
@@ -3719,7 +3766,7 @@ ${itemsText}`
     try {
       // 🚀 미완료 품목만 필터링 (이미 구매완료된 품목 제외)
       const allItems = purchase.purchase_request_items || [];
-      const pendingItems = allItems.filter(item => !item.is_payment_completed);
+      const pendingItems = allItems.filter(item => !item.is_payment_completed && !item.deleted_at);
       
       if (pendingItems.length === 0) {
         toast.info('모든 품목이 이미 구매완료되었습니다.');
@@ -4004,10 +4051,10 @@ ${itemsText}`
       if (!Number.isNaN(purchaseIdNumber)) {
         onOptimisticUpdate?.(purchaseIdNumber, prev => {
           const allItems = prev.purchase_request_items || [];
-          const pendingItems = allItems.filter(item => !item.is_statement_received);
+          const pendingItems = allItems.filter(item => !item.is_statement_received && !item.deleted_at);
           
           const updatedItems = allItems.map(item => 
-            !item.is_statement_received 
+            !item.is_statement_received && !item.deleted_at
               ? { 
                   ...item, 
                   is_statement_received: true, 
@@ -4022,7 +4069,7 @@ ${itemsText}`
             ...prev,
             purchase_request_items: updatedItems,
             items: prev.items ? updatedItems : prev.items,
-            is_statement_received: updatedItems.every(item => item.is_statement_received),
+            is_statement_received: updatedItems.every(item => item.deleted_at || item.is_statement_received),
             statement_received_at: selectedDateIso
           }
         })
@@ -4032,7 +4079,7 @@ ${itemsText}`
     try {
       // 🚀 미완료 품목만 필터링 (이미 거래명세서 확인된 품목 제외)
       const allItems = purchase.purchase_request_items || [];
-      const pendingItems = allItems.filter(item => !item.is_statement_received);
+      const pendingItems = allItems.filter(item => !item.is_statement_received && !item.deleted_at);
       
       if (pendingItems.length === 0) {
         toast.info('모든 품목의 거래명세서가 이미 확인되었습니다.');
@@ -4101,7 +4148,7 @@ ${itemsText}`
     try {
       // 🚀 미완료 품목만 필터링 (이미 입고완료된 품목 제외)
       const allItems = purchase.purchase_request_items || [];
-      const pendingItems = allItems.filter(item => !item.is_received);
+      const pendingItems = allItems.filter(item => !item.is_received && !item.deleted_at);
       
       const applyOptimisticUpdate = () => {
         if (!Number.isNaN(purchaseIdNumber)) {
@@ -4133,12 +4180,14 @@ ${itemsText}`
               return item
             })
 
+            const allReceived = updatedItems.length > 0 && updatedItems.every(item => item.is_received || item.deleted_at)
+
             return {
               ...prev,
               items: updatedItems,
               purchase_request_items: updatedRequestItems,
-              is_received: true,
-              received_at: new Date().toISOString(),
+              is_received: allReceived,
+              received_at: allReceived ? new Date().toISOString() : prev.received_at,
               updated_at: new Date().toISOString()
             }
           })
@@ -4187,7 +4236,7 @@ ${itemsText}`
           return item
         }) || []
         const total = updatedItems.length
-        const completed = updatedItems.filter(item => item.is_received).length
+        const completed = updatedItems.filter(item => item.is_received || item.deleted_at).length
         const allReceived = total > 0 && completed === total
         
         return {
@@ -4283,7 +4332,13 @@ ${itemsText}`
 
   const renderItemRow = (item: EditablePurchaseItem, index: number, dragProps?: SortableRenderProps, rowKey?: string) => {
     const stableKey = rowKey || item?.stableKey || getSortableId(item, index)
-    const rowClass = `px-2 sm:px-3 py-1 border-b border-gray-50 hover:bg-gray-50/50 relative overflow-visible w-fit ${isEditing ? 'pl-7 sm:pl-8' : ''} ${dragProps?.isDragging ? 'shadow-lg ring-2 ring-blue-200 bg-white' : ''}`
+    const isDeleted = !!item.deleted_at
+    const isRowEditing = isEditing && !isDeleted
+    const canRowPurchase = canPurchase && !isDeleted
+    const canRowReceiptCheck = canReceiptCheck && !isDeleted
+    const canRowReceiveItems = canReceiveItems && !isDeleted
+
+    const rowClass = `px-2 sm:px-3 py-1 border-b border-gray-50 hover:bg-gray-50/50 relative overflow-visible w-fit ${isRowEditing ? 'pl-7 sm:pl-8' : ''} ${dragProps?.isDragging ? 'shadow-lg ring-2 ring-blue-200 bg-white' : ''} ${isDeleted ? 'line-through text-gray-400 opacity-50 bg-gray-50/20' : ''}`
     const rowProps: React.HTMLAttributes<HTMLDivElement> & { ref?: (element: HTMLElement | null) => void; key?: string } = {
       className: rowClass,
       key: stableKey
@@ -4293,7 +4348,7 @@ ${itemsText}`
 
     return (
       <div {...rowProps}>
-        {isEditing && dragProps && (
+        {isRowEditing && dragProps && (
           <button
             className="absolute left-1 top-2 sm:top-3 text-gray-400 hover:text-gray-600 p-1 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-200"
             {...dragProps.attributes}
@@ -4313,7 +4368,7 @@ ${itemsText}`
           </div>
           {/* 품목명 */}
           <div className="min-w-0 relative overflow-visible flex items-center">
-            {isEditing ? (
+            {isRowEditing ? (
               <Input
                 value={item.item_name}
                 onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
@@ -4353,7 +4408,7 @@ ${itemsText}`
           
           {/* 규격 */}
           <div className="min-w-0 relative overflow-visible flex items-center w-full">
-            {isEditing ? (
+            {isRowEditing ? (
               <Input
                 value={item.specification}
                 onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
@@ -4393,7 +4448,7 @@ ${itemsText}`
           
           {/* 수량 */}
           <div className="text-center min-w-0 flex items-center justify-center">
-            {isEditing ? (
+            {isRowEditing ? (
               (activeTab === 'receipt' || activeTab === 'done') ? (
                 <div className="flex flex-col items-center gap-0.5 w-full">
                   <Input
@@ -4461,7 +4516,7 @@ ${itemsText}`
           
           {/* 단가 */}
           <div className="text-right min-w-0 flex items-center justify-end">
-            {isEditing ? (
+            {isRowEditing ? (
               <Input
                 type="number"
                 value={item.unit_price_value ?? 0}
@@ -4482,7 +4537,7 @@ ${itemsText}`
           
           {/* 합계 (수동 입력 가능) */}
           <div className="text-right min-w-0 flex items-center justify-end">
-            {isEditing ? (
+            {isRowEditing ? (
               <Input
                 type="number"
                 value={item.amount_value || 0}
@@ -4503,7 +4558,7 @@ ${itemsText}`
           {/* 세액 - 발주 카테고리인 경우 모든 탭에서 표시 */}
           {purchase?.payment_category === '발주' && (
             <div className="text-right min-w-0 flex items-center justify-end">
-              <span className={isEditing ? "modal-subtitle" : "modal-value"}>
+              <span className={isRowEditing ? "modal-subtitle" : "modal-value"}>
                 {activeTab === 'done' && !canViewFinancialInfo 
                   ? '-' 
                   : formatMoney(item.tax_amount_value || 0, getItemDisplayCurrency(item))}
@@ -4513,7 +4568,7 @@ ${itemsText}`
           
           {/* 링크 */}
           <div className="text-center min-w-0 flex items-center justify-center">
-            {isEditing ? (
+            {isRowEditing ? (
               <Input
                 value={item.link || ''}
                 onChange={(e) => handleItemChange(index, 'link', e.target.value)}
@@ -4539,7 +4594,7 @@ ${itemsText}`
           
           {/* 비고 */}
           <div className="min-w-0 flex justify-center items-center text-center relative overflow-visible" style={{ width: '150px', maxWidth: '150px', minWidth: '150px' }}>
-            {isEditing ? (
+            {isRowEditing ? (
               <Input
                 value={item.remark || ''}
                 disabled={!canEditAll && !canEditLimited}
@@ -4586,22 +4641,35 @@ ${itemsText}`
           {activeTab !== 'pending' && (
             <div className="text-center flex justify-center items-center">
               {isEditing ? (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => handleRemoveItem(index)}
-                  className="text-red-600 hover:bg-red-50 rounded-lg p-1 h-6 w-6"
-                  disabled={canEditLimited && !canEditAll}
-                >
-                  <Trash2 className="w-3 h-3" />
-                </Button>
+                isDeleted ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleRestoreItem(index)}
+                    className="text-blue-600 hover:bg-blue-50 rounded-lg p-1 h-6 w-6 animate-fade-in"
+                    title="품목 복구"
+                    disabled={canEditLimited && !canEditAll}
+                  >
+                    <Undo className="w-3.5 h-3.5" />
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleRemoveItem(index)}
+                    className="text-red-600 hover:bg-red-50 rounded-lg p-1 h-6 w-6"
+                    disabled={canEditLimited && !canEditAll}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                )
               ) : (
                 <>
                   {activeTab === 'purchase' && (
                   <div className="flex flex-col items-center gap-1">
                     {/* 구매완료 버튼 */}
                     <div className="flex justify-center">
-                      {canPurchase ? (
+                      {canRowPurchase ? (
                         <button
                           onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
                           className={`${
@@ -4627,7 +4695,7 @@ ${itemsText}`
                 
                 {activeTab === 'receipt' && (
                   <div className="flex justify-center">
-                    {canReceiveItems ? (
+                    {canRowReceiveItems ? (
                       actualReceivedAction.isCompleted(item) ? (
                         // 입고완료 상태 - 진파랑
                         <button
@@ -4700,7 +4768,7 @@ ${itemsText}`
                 
                 {activeTab === 'done' && (
                   <div className="flex justify-center">
-                    {canReceiveItems ? (
+                    {canRowReceiveItems ? (
                       actualReceivedAction.isCompleted(item) ? (
                         // 입고완료 상태 - 취소 가능
                         <button
@@ -4805,7 +4873,7 @@ ${itemsText}`
           {/* 거래명세서 확인 - 발주 + 리드바이어 입고현황/전체항목 */}
           {showStatementColumns && (
             <div className="text-center flex justify-center items-center">
-              {canReceiptCheck ? (
+              {canRowReceiptCheck ? (
                 statementReceivedAction.isCompleted(item) ? (
                   <button
                     onClick={() => {
@@ -4900,7 +4968,7 @@ ${itemsText}`
                 const hasExpenditure = !!item.expenditure_date
                 const hasExpenditureAmount = item.expenditure_amount !== null && item.expenditure_amount !== undefined
                 
-                if (canReceiptCheck) {
+                if (canRowReceiptCheck) {
                   return hasExpenditure ? (
                     <div className="w-full px-1 leading-none">
                       <div className="text-blue-700 text-[9px] leading-[1.1] font-normal">
@@ -4961,8 +5029,34 @@ ${itemsText}`
         {/* Mobile Layout */}
         <div className="block sm:hidden space-y-2">
           <div className="flex justify-between items-start">
+            {isEditing && (
+              <div className="mr-2 flex-shrink-0 self-center">
+                {isDeleted ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleRestoreItem(index)}
+                    className="text-blue-600 hover:bg-blue-50 rounded-lg p-1 h-6 w-6"
+                    title="품목 복구"
+                    disabled={canEditLimited && !canEditAll}
+                  >
+                    <Undo className="w-3.5 h-3.5" />
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleRemoveItem(index)}
+                    className="text-red-600 hover:bg-red-50 rounded-lg p-1 h-6 w-6"
+                    disabled={canEditLimited && !canEditAll}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
+            )}
             <div className="flex-1 min-w-0 relative">
-              {isEditing ? (
+              {isRowEditing ? (
                 <Input
                   value={item.item_name}
                   onChange={(e) => handleItemChange(index, 'item_name', e.target.value)}
@@ -4978,7 +5072,7 @@ ${itemsText}`
               ) : (
                 <div className="modal-value font-medium">{item.item_name || '품목명 없음'}</div>
               )}
-              {isEditing ? (
+              {isRowEditing ? (
                 <Input
                   value={item.specification}
                   onChange={(e) => handleItemChange(index, 'specification', e.target.value)}
@@ -4996,7 +5090,7 @@ ${itemsText}`
               )}
             </div>
             <div className="ml-3 text-right flex-shrink-0">
-              {isEditing ? (
+              {isRowEditing ? (
                 <Input
                   type="number"
                   value={item.amount_value || 0}
@@ -5019,7 +5113,7 @@ ${itemsText}`
           <div className="grid grid-cols-2 gap-2">
             <div>
               <span className="text-gray-500 text-xs">수량</span>
-              {isEditing ? (
+              {isRowEditing ? (
                 (activeTab === 'receipt' || activeTab === 'done') ? (
                   <div className="grid grid-cols-2 gap-1 mt-1">
                     <Input
@@ -5066,7 +5160,7 @@ ${itemsText}`
             <div>
               <span className="text-gray-500 text-xs">링크</span>
               <div className="mt-1">
-                {isEditing ? (
+                {isRowEditing ? (
                   <Input
                     value={item.link || ''}
                     onChange={(e) => handleItemChange(index, 'link', e.target.value)}
@@ -5103,7 +5197,7 @@ ${itemsText}`
                   <>
                     {activeTab === 'purchase' && (
                       <div className="flex items-center gap-2">
-                        {canPurchase ? (
+                        {canRowPurchase ? (
                           <button
                             onClick={() => handlePaymentToggle(item.id, !item.is_payment_completed)}
                             className={`text-xs px-2 py-1 rounded ${
@@ -5128,7 +5222,7 @@ ${itemsText}`
 
                     {activeTab === 'receipt' && (
                       <div className="flex items-center gap-2">
-                        {canReceiveItems ? (
+                        {canRowReceiveItems ? (
                           actualReceivedAction.isCompleted(item) ? (
                             <button
                               onClick={() => {
@@ -5198,10 +5292,10 @@ ${itemsText}`
               </div>
             </div>
 
-            {(item.remark || isEditing) && (
+            {(item.remark || isRowEditing) && (
               <div>
                 <span className="text-gray-500 text-xs">비고:</span>
-                {isEditing ? (
+                {isRowEditing ? (
                   <Input
                     value={item.remark || ''}
                     onChange={(e) => handleItemChange(index, 'remark', e.target.value)}
@@ -5215,7 +5309,7 @@ ${itemsText}`
             )}
           </div>
 
-          {!isEditing && activeTab === 'receipt' && actualReceivedAction.getCompletedDate(item) && (
+          {!isRowEditing && activeTab === 'receipt' && actualReceivedAction.getCompletedDate(item) && (
             <div>
               <span className="text-gray-500 text-xs">실제입고일:</span>
               <div className="mt-1">
@@ -5236,11 +5330,11 @@ ${itemsText}`
             </div>
           )}
 
-          {!isEditing && showStatementColumns && (
+          {!isRowEditing && showStatementColumns && (
             <div className="flex items-center justify-between">
               <span className="text-gray-500 text-xs">거래명세서 확인:</span>
               <div className="flex items-center gap-2">
-                {canReceiptCheck ? (
+                {canRowReceiptCheck ? (
                   statementReceivedAction.isCompleted(item) ? (
                     <button
                       onClick={() => {
@@ -5291,7 +5385,7 @@ ${itemsText}`
             </div>
           )}
 
-          {!isEditing && showStatementColumns && (
+          {!isRowEditing && showStatementColumns && (
             <div className="flex items-center justify-between">
               <span className="text-gray-500 text-xs">실거래일:</span>
               <span className="modal-subtitle text-blue-700">
@@ -5304,7 +5398,7 @@ ${itemsText}`
             </div>
           )}
 
-          {!isEditing && showStatementColumns && item.accounting_received_date && (
+          {!isRowEditing && showStatementColumns && item.accounting_received_date && (
             <div className="flex items-center justify-between">
               <span className="text-gray-500 text-xs">회계상 입고일:</span>
               <span className="modal-subtitle text-blue-700">
@@ -5317,7 +5411,7 @@ ${itemsText}`
             </div>
           )}
 
-          {!isEditing && showExpenditureColumn && (
+          {!isRowEditing && showExpenditureColumn && (
             <div className="flex items-center justify-between">
               <span className="text-gray-500 text-xs">지출정보:</span>
               <div className="text-right">
@@ -6369,7 +6463,7 @@ ${itemsText}`
                           {activeTab === 'done' && !canViewFinancialInfo
                             ? '-'
                             : `${(isEditing ? editedPurchase?.currency : purchase.currency) === 'USD' ? '$' : '₩'}${formatCurrency(
-                                (displayItems)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
+                                (displayItems)?.filter(item => !item.deleted_at).reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0
                               )}`}
                         </span>
                       </div>
@@ -6381,7 +6475,7 @@ ${itemsText}`
                             {activeTab === 'done' && !canViewFinancialInfo
                               ? '-'
                               : `${(isEditing ? editedPurchase?.currency : purchase.currency) === 'USD' ? '$' : '₩'}${formatCurrency(
-                                  (displayItems)?.reduce((sum, item) => sum + (item.tax_amount_value || 0), 0) || 0
+                                  (displayItems)?.filter(item => !item.deleted_at).reduce((sum, item) => sum + (item.tax_amount_value || 0), 0) || 0
                                 )}`}
                           </span>
                         </div>
@@ -6421,7 +6515,7 @@ ${itemsText}`
                                     ? '-'
                                     : `₩${formatCurrency(
                                         purchase.total_expenditure_amount ??
-                                        ((isEditing ? editedItems : currentItems)?.reduce((sum: number, item: EditablePurchaseItem) => {
+                                        ((isEditing ? editedItems : currentItems)?.filter(item => !item.deleted_at).reduce((sum: number, item: EditablePurchaseItem) => {
                                           return sum + (Number(item.expenditure_amount) || 0)
                                         }, 0) || 0)
                                       )}`}
@@ -6462,7 +6556,7 @@ ${itemsText}`
                             {activeTab === 'done' && !canViewFinancialInfo
                               ? '-'
                               : formatMoney(
-                                  (isEditing ? editedItems : currentItems)?.reduce((sum, item) => {
+                                  (isEditing ? editedItems : currentItems)?.filter(item => !item.deleted_at).reduce((sum, item) => {
                                     const amount = item.amount_value || 0
                                     const tax = item.tax_amount_value || 0
                                     return sum + amount + tax
@@ -6511,7 +6605,7 @@ ${itemsText}`
                         {activeTab === 'done' && !canViewFinancialInfo 
                           ? '-' 
                           : formatMoney(
-                              (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0,
+                              (isEditing ? editedItems : currentItems)?.filter(item => !item.deleted_at).reduce((sum, item) => sum + (item.amount_value || 0), 0) || 0,
                               getPurchaseDisplayCurrency()
                             )}
                       </span>
@@ -6525,7 +6619,7 @@ ${itemsText}`
                             {activeTab === 'done' && !canViewFinancialInfo 
                               ? '-' 
                               : formatMoney(
-                                  (isEditing ? editedItems : currentItems)?.reduce((sum, item) => sum + (item.tax_amount_value || 0), 0) || 0,
+                                  (isEditing ? editedItems : currentItems)?.filter(item => !item.deleted_at).reduce((sum, item) => sum + (item.tax_amount_value || 0), 0) || 0,
                                   getPurchaseDisplayCurrency()
                                 )}
                           </span>
@@ -6536,7 +6630,7 @@ ${itemsText}`
                             {activeTab === 'done' && !canViewFinancialInfo 
                               ? '-' 
                               : formatMoney(
-                                  (isEditing ? editedItems : currentItems)?.reduce((sum, item) => {
+                                  (isEditing ? editedItems : currentItems)?.filter(item => !item.deleted_at).reduce((sum, item) => {
                                     const amount = item.amount_value || 0
                                     const tax = item.tax_amount_value || 0
                                     return sum + amount + tax
@@ -6556,7 +6650,7 @@ ${itemsText}`
                             ? '-' 
                             : `₩${formatCurrency(
                                 purchase.total_expenditure_amount ??
-                                ((isEditing ? editedItems : currentItems)?.reduce((sum: number, item: EditablePurchaseItem) => {
+                                ((isEditing ? editedItems : currentItems)?.filter(item => !item.deleted_at).reduce((sum: number, item: EditablePurchaseItem) => {
                                   return sum + (Number(item.expenditure_amount) || 0)
                                 }, 0) || 0)
                               )}`}

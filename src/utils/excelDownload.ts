@@ -90,6 +90,8 @@ export const downloadPurchaseOrderExcel = async (
       // 업체 정보 조회 실패 시에도 계속 진행
     }
 
+    const activeItems = (orderItems || []).filter((item: any) => !item.deleted_at);
+
     const excelData: PurchaseOrderData = {
       purchase_order_number: purchaseRequest.purchase_order_number || '',
       request_date: purchaseRequest.request_date,
@@ -102,7 +104,7 @@ export const downloadPurchaseOrderExcel = async (
       project_vendor: purchaseRequest.project_vendor,
       sales_order_number: purchaseRequest.sales_order_number,
       project_item: purchaseRequest.project_item,
-      items: orderItems.map((item: { line_number?: number; item_name?: string; specification?: string; quantity?: number; unit_price_value?: number; amount_value?: number; remark?: string }) => ({
+      items: activeItems.map((item: { line_number?: number; item_name?: string; specification?: string; quantity?: number; unit_price_value?: number; amount_value?: number; remark?: string }) => ({
         line_number: item.line_number,
         item_name: item.item_name,
         specification: item.specification,

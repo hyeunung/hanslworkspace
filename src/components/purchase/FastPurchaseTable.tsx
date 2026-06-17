@@ -1073,7 +1073,16 @@ const FastPurchaseTable = ({
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-      
+      logger.info('발주서 엑셀 파일 다운로드 완료', {
+        source: 'frontend',
+        category: 'purchase',
+        action: 'export_excel',
+        target_table: 'purchase_requests',
+        target_id: purchase.id?.toString(),
+        purchase_order_number: purchase.purchase_order_number,
+        file_name: downloadFilename
+      });
+
       toast.success('엑셀 파일이 다운로드되었습니다.');
       
       // DB에 다운로드 완료 플래그(is_po_download) 업데이트 - lead buyer만 해당

@@ -99,6 +99,7 @@ class PurchaseService {
       let query = this.supabase
         .from('purchase_requests')
         .select('*,vendor:vendors(id,vendor_name),vendor_contacts:vendor_contacts(*),items:purchase_request_items(*).order(line_number)')
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       // 필터 적용
@@ -158,6 +159,7 @@ class PurchaseService {
       const { data, error } = await this.supabase
         .from('purchase_requests')
         .select('*,vendor:vendors(id,vendor_name),vendor_contacts:vendor_contacts(*),items:purchase_request_items(*).order(line_number)')
+        .is('deleted_at', null)
         .eq('id', id)
         .single();
 

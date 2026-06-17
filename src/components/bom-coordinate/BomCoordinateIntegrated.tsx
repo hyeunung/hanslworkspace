@@ -1027,8 +1027,26 @@ export default function BomCoordinateIntegrated() {
       
       // 상태에 따른 토스트 메시지 (isEditMode 사용)
       if (isEditMode) {
+        logger.info('BOM 최종 저장 완료', {
+          source: 'frontend',
+          category: 'bom',
+          action: 'save_final',
+          target_table: 'cad_drawings',
+          target_id: cadDrawingId,
+          board_name: metadata.boardName,
+          production_quantity: metadata.productionQuantity
+        });
         toast.success('최종 저장이 완료되었습니다.');
       } else {
+        logger.info('BOM 검토 요청 완료', {
+          source: 'frontend',
+          category: 'bom',
+          action: 'save_review',
+          target_table: 'cad_drawings',
+          target_id: cadDrawingId,
+          board_name: metadata.boardName,
+          production_quantity: metadata.productionQuantity
+        });
         toast.success('검토 요청이 완료되었습니다. 생산 담당자의 확인을 기다려주세요.');
       }
 
@@ -1387,6 +1405,16 @@ function dlFile() {
       
       downloadExcelBlob(blob, fileName);
       
+      logger.info('BOM 엑셀 파일 다운로드 완료', {
+        source: 'frontend',
+        category: 'bom',
+        action: 'export_excel',
+        target_table: 'cad_drawings',
+        target_id: boardId,
+        board_name: boardName,
+        file_name: fileName
+      });
+      
       toast.success('엑셀 파일이 다운로드되었습니다.');
     } catch (error: unknown) {
       logger.error('Download error:', error);
@@ -1628,6 +1656,15 @@ function dlFile() {
 
       // 3. 로컬 상태 업데이트
       setSavedBoards(prev => prev.filter(board => board.id !== boardId));
+      
+      logger.info('BOM 데이터 삭제 완료', {
+        source: 'frontend',
+        category: 'bom',
+        action: 'delete_board',
+        target_table: 'cad_drawings',
+        target_id: boardId,
+        board_name: boardName
+      });
       
       toast.success(`"${boardName}" BOM이 삭제되었습니다.`);
     } catch (error: unknown) {

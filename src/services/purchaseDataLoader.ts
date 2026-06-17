@@ -79,15 +79,18 @@ export async function loadAllPurchaseData(userId?: string): Promise<void> {
     }
     
     // 3. 데이터 처리 및 변환
-    const processedData: Purchase[] = (rawData || []).map((request: Record<string, unknown> & { purchase_request_items?: PurchaseRequestItem[]; vendors?: { vendor_payment_schedule?: string } | null; vendor_contacts?: { contact_name?: string } | null }) => {
-      return {
-        ...request,
-        purchase_request_items: request.purchase_request_items || [],
-        // JOIN된 데이터 플랫하게 추가
-        vendor_payment_schedule: request.vendors?.vendor_payment_schedule || null,
-        contact_name: request.vendor_contacts?.contact_name || null
-      }
-    })
+    const processedData: Purchase[] = (rawData || [])
+      .filter((request: any) => !request.deleted_at)
+      .map((request: Record<string, unknown> & { purchase_request_items?: PurchaseRequestItem[]; vendors?: { vendor_payment_schedule?: string } | null; vendor_contacts?: { contact_name?: string } | null }) => {
+        const activeItems = (request.purchase_request_items || []).filter(item => !item.deleted_at)
+        return {
+          ...request,
+          purchase_request_items: activeItems,
+          // JOIN된 데이터 플랫하게 추가
+          vendor_payment_schedule: request.vendors?.vendor_payment_schedule || null,
+          contact_name: request.vendor_contacts?.contact_name || null
+        }
+      })
     
     // 4. 메모리 캐시에 저장
     purchaseMemoryCache.allPurchases = processedData

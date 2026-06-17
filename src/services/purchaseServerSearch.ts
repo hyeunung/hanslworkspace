@@ -18,12 +18,14 @@ type RawPurchase = Record<string, unknown> & {
 }
 
 function processRawData(rawData: RawPurchase[]): Purchase[] {
-  return rawData.map((request) => ({
-    ...request,
-    purchase_request_items: request.purchase_request_items || [],
-    vendor_payment_schedule: request.vendors?.vendor_payment_schedule || null,
-    contact_name: request.vendor_contacts?.contact_name || null,
-  })) as Purchase[]
+  return rawData
+    .filter((request) => !request.deleted_at)
+    .map((request) => ({
+      ...request,
+      purchase_request_items: (request.purchase_request_items || []).filter(item => !item.deleted_at),
+      vendor_payment_schedule: request.vendors?.vendor_payment_schedule || null,
+      contact_name: request.vendor_contacts?.contact_name || null,
+    })) as Purchase[]
 }
 
 /**

@@ -344,7 +344,7 @@ export class DashboardService {
     const isLeadBuyer = roles.includes('lead buyer') || roles.includes('superadmin')
 
     const requesterName = employee.name || employee.email
-    const purchases = this.getPurchaseMemory()
+    const purchases = this.getPurchaseMemory().filter((p: Purchase) => !p.deleted_at)
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
     // lead buyer/superadmin: 전체, 그 외: 본인 것만
@@ -397,7 +397,7 @@ export class DashboardService {
   }
 
   private async getPendingCountFromMemory(employee: Employee, roles: string[]): Promise<number> {
-    const purchases = this.getPurchaseMemory()
+    const purchases = this.getPurchaseMemory().filter((p: Purchase) => !p.deleted_at)
 
     if (roles.includes('superadmin')) {
       const mid = purchases.filter((p: Purchase) => this.isPendingStatus(p.middle_manager_status)).length
@@ -422,7 +422,7 @@ export class DashboardService {
   }
 
   private getUrgentCountFromMemory(employee: Employee, roles: string[], threeDaysAgoIso: string): number {
-    const purchases = this.getPurchaseMemory()
+    const purchases = this.getPurchaseMemory().filter((p: Purchase) => !p.deleted_at)
     const threeDaysAgo = this.toTime(threeDaysAgoIso)
 
     const base = purchases.filter((p: Purchase) => this.toTime(p.created_at) > 0 && this.toTime(p.created_at) < threeDaysAgo)
@@ -447,7 +447,7 @@ export class DashboardService {
   }
 
   private getTodayActionsCountFromMemory(employee: Employee, todayIsoDate: string): number {
-    const purchases = this.getPurchaseMemory()
+    const purchases = this.getPurchaseMemory().filter((p: Purchase) => !p.deleted_at)
     const tomorrowIsoDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
     const inRange = (ts?: string | null) => {
@@ -476,12 +476,14 @@ export class DashboardService {
       // 전체 요청 수
       this.supabase
         .from('purchase_requests')
-        .select('id', { count: 'exact', head: true }),
+        .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null),
 
       // 내 요청 수
       this.supabase
         .from('purchase_requests')
         .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
         .eq('requester_name', employee.name),
 
       // 내가 처리해야 할 승인 대기
@@ -491,6 +493,7 @@ export class DashboardService {
       this.supabase
         .from('purchase_requests')
         .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
         .eq('is_received', true)
         .gte('received_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()),
 
@@ -518,6 +521,7 @@ export class DashboardService {
     const { data } = await this.supabase
       .from('purchase_requests')
       .select('*,vendors(vendor_name),purchase_request_items(id)')
+      .is('deleted_at', null)
       .eq('requester_name', employee.name)
       // 승인이 진행중인 항목만 (1차 승인됨 + 최종 대기중 OR 모든 승인 완료 + 구매 대기중)
       .or('and(middle_manager_status.eq.approved,final_manager_status.eq.pending),and(final_manager_status.eq.approved,is_payment_completed.eq.false)')
@@ -567,6 +571,7 @@ export class DashboardService {
           amount_value
         )
       `)
+      .is('deleted_at', null)
       .order('request_date', { ascending: false })
       .limit(100) // 성능 최적화: 100개로 제한
 
@@ -713,6 +718,7 @@ export class DashboardService {
       const { count: purchaseCount } = await this.supabase
         .from('purchase_requests')
         .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
         .eq('final_manager_status', 'approved')
         .eq('is_payment_completed', false)
 
@@ -741,6 +747,7 @@ export class DashboardService {
       this.supabase
         .from('purchase_requests')
         .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
         .gte('updated_at', today)
         .lt('updated_at', tomorrow)
         .or('middle_manager_status.eq.approved,final_manager_status.eq.approved'),
@@ -749,6 +756,7 @@ export class DashboardService {
       this.supabase
         .from('purchase_requests')
         .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
         .eq('requester_name', employee.name)
         .gte('created_at', today)
         .lt('created_at', tomorrow),
@@ -757,6 +765,7 @@ export class DashboardService {
       this.supabase
         .from('purchase_requests')
         .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
         .eq('is_received', true)
         .gte('received_at', today)
         .lt('received_at', tomorrow)
@@ -786,6 +795,7 @@ export class DashboardService {
     let query = this.supabase
       .from('purchase_requests')
       .select('*,vendors(vendor_name),purchase_request_items(*)')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(500)  // 충분한 개수로 증가
     
@@ -886,6 +896,7 @@ export class DashboardService {
       const { data: request } = await this.supabase
         .from('purchase_requests')
         .select('middle_manager_status, final_manager_status')
+        .is('deleted_at', null)
         .eq('id', requestId)
         .single()
 
@@ -980,15 +991,18 @@ export class DashboardService {
         this.supabase
           .from('purchase_requests')
           .select('id', { count: 'exact', head: true })
+          .is('deleted_at', null)
           .or(`middle_manager_status.in.(pending,대기),middle_manager_status.is.null`),
         this.supabase
           .from('purchase_requests')
           .select('id', { count: 'exact', head: true })
+          .is('deleted_at', null)
           .eq('middle_manager_status', 'approved')
           .or(`final_manager_status.in.(pending,대기),final_manager_status.is.null`),
         this.supabase
           .from('purchase_requests')
           .select('id', { count: 'exact', head: true })
+          .is('deleted_at', null)
           .eq('final_manager_status', 'approved')
           .eq('is_payment_completed', false)
       ])
@@ -1001,6 +1015,7 @@ export class DashboardService {
       const { count, error } = await this.supabase
         .from('purchase_requests')
         .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
         .or(`middle_manager_status.in.(pending,대기),middle_manager_status.is.null`)
 
       if (error) {
@@ -1014,6 +1029,7 @@ export class DashboardService {
       const { count, error } = await this.supabase
         .from('purchase_requests')
         .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
         .eq('middle_manager_status', 'approved')
         .or(`final_manager_status.in.(pending,대기),final_manager_status.is.null`)
 
@@ -1028,6 +1044,7 @@ export class DashboardService {
       const { count, error } = await this.supabase
         .from('purchase_requests')
         .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
         .eq('final_manager_status', 'approved')
         .eq('is_payment_completed', false)
 
@@ -1052,6 +1069,7 @@ export class DashboardService {
     let query = this.supabase
       .from('purchase_requests')
       .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null)
       .lt('created_at', threeDaysAgo)
 
     if (roles.includes('superadmin')) {
@@ -1082,6 +1100,7 @@ export class DashboardService {
     const { count } = await this.supabase
       .from('purchase_requests')
       .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null)
       .gte('updated_at', today)
       .lt('updated_at', tomorrow)
       .eq('requester_name', employee.name)
@@ -1094,6 +1113,7 @@ export class DashboardService {
     const { count } = await this.supabase
       .from('purchase_requests')
       .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null)
       .eq('is_received', false)
       .or('is_payment_completed.eq.true,progress_type.ilike.%선진행%')
 
@@ -1152,6 +1172,7 @@ export class DashboardService {
     // ✅ 메모리 캐시가 있으면 DB 조회 없이 즉시 계산 (대시보드 체감 속도 개선)
     if (this.hasValidPurchaseMemory(employee)) {
       const purchases = this.getPurchaseMemory()
+        .filter((item: Purchase) => !item.deleted_at)
         .filter((item: Purchase) => item.is_po_download !== true) // NULL/false 포함
         .sort((a: Purchase, b: Purchase) => this.toTime(b.created_at) - this.toTime(a.created_at))
         .slice(0, 500)
@@ -1180,6 +1201,7 @@ export class DashboardService {
             amount_value
           )
         `)
+        .is('deleted_at', null)
         .or('is_po_download.is.null,is_po_download.eq.false')
         .order('created_at', { ascending: false })  // 최신 순으로 정렬
         .limit(500)  // 더 많은 데이터 조회

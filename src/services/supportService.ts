@@ -517,6 +517,7 @@ class SupportService {
       let query = this.supabase
         .from('purchase_requests')
         .select('id,purchase_order_number,vendor_name,request_date,created_at,requester_name,middle_manager_status,final_manager_status,delivery_request_date,revised_delivery_request_date,purchase_request_items(id,line_number,item_name,specification,quantity,unit_price_value,amount_value)')
+        .is('deleted_at', null)
         .eq('requester_name', targetName)
         .order('created_at', { ascending: false })
 

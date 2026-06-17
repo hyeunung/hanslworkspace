@@ -503,22 +503,25 @@ export const calculateTabCounts = (
   allPurchases: Purchase[],
   currentUser: Employee | null
 ): Record<TabType, number> => {
+  // 0. Filter out soft-deleted requests first
+  const activePurchases = allPurchases.filter(p => !p.deleted_at)
+
   // 입고현황 뱃지 카운트: 비관리자는 본인 기본 뷰(요청자=본인) 기준으로 계산
   // (실제 필터링은 요청자 고급필터가 단일 소스; 뱃지 표시만 일관성 맞춤)
   const userRoles = parseRoles(currentUser?.roles)
   const receiptFullAccess = userRoles.some(role =>
     ['superadmin', 'ceo', 'hr', 'raw_material_manager', 'consumable_manager', 'purchase_manager'].includes(role)
   )
-  const receiptAll = filterByTab(allPurchases, 'receipt', currentUser)
+  const receiptAll = filterByTab(activePurchases, 'receipt', currentUser)
   const receiptCount = receiptFullAccess
     ? receiptAll.length
     : receiptAll.filter(p => p.requester_name === currentUser?.name).length
 
   return {
-    pending: filterByTab(allPurchases, 'pending', currentUser).length,
-    purchase: filterByTab(allPurchases, 'purchase', currentUser).length,
+    pending: filterByTab(activePurchases, 'pending', currentUser).length,
+    purchase: filterByTab(activePurchases, 'purchase', currentUser).length,
     receipt: receiptCount,
-    done: filterByTab(allPurchases, 'done', currentUser).length
+    done: filterByTab(activePurchases, 'done', currentUser).length
   }
 }
 
@@ -538,6 +541,9 @@ export const filterPendingApprovals = (
   const userRoles = parseRoles(currentUser.roles)
   
   return purchases.filter(purchase => {
+    // 0. Filter out soft-deleted
+    if (purchase.deleted_at) return false
+
     // 이미 양쪽 승인 완료되었거나 반려된 경우 제외
     if (purchase.middle_manager_status === 'approved' && 
         purchase.final_manager_status === 'approved') {
@@ -615,6 +621,9 @@ export const countPendingApprovalsForSidebarBadge = (
   }
 
   return purchases.filter(purchase => {
+    // 0. Filter out soft-deleted
+    if (purchase.deleted_at) return false
+
     // 승인 완료/반려 제외
     if (
       purchase.middle_manager_status === 'approved' &&
@@ -665,6 +674,9 @@ export const filterMiddlePendingApprovals = (
   const userRoles = parseRoles(currentUser.roles)
   
   return purchases.filter(purchase => {
+    // 0. Filter out soft-deleted
+    if (purchase.deleted_at) return false
+
     // 1차 승인 대기 상태
     if (purchase.middle_manager_status !== 'pending') return false
     
@@ -702,6 +714,9 @@ export const filterFinalPendingApprovals = (
   const userRoles = parseRoles(currentUser.roles)
   
   return purchases.filter(purchase => {
+    // 0. Filter out soft-deleted
+    if (purchase.deleted_at) return false
+
     // 1차 승인 완료 + 최종 대기
     if (purchase.middle_manager_status !== 'approved' || 
         purchase.final_manager_status !== 'pending') {
@@ -738,6 +753,9 @@ export const filterPurchaseInProgress = (
   )
   
   return purchases.filter(purchase => {
+    // 0. Filter out soft-deleted
+    if (purchase.deleted_at) return false
+
     const isRequest = purchase.payment_category === '구매 요청'
     const notPaid = !purchase.is_payment_completed
     
@@ -769,6 +787,9 @@ export const filterDeliveryPending = (
   )
   
   return purchases.filter(purchase => {
+    // 0. Filter out soft-deleted
+    if (purchase.deleted_at) return false
+
     if (purchase.is_received) return false
     
     // 선진행이거나 최종 승인 완료
@@ -791,6 +812,9 @@ export const filterUndownloadedOrders = (
   if (!purchases) return []
   
   return purchases.filter(purchase => {
+    // 0. Filter out soft-deleted
+    if (purchase.deleted_at) return false
+
     // 최종 승인 완료
     const finalApproved = purchase.final_manager_status === 'approved'
     // PO 미다운로드
@@ -822,7 +846,8 @@ export const applyAllFilters = (
   options: FilterOptions,
   currentUser: Employee | null
 ): Purchase[] => {
-  let filtered = purchases
+  // 0. Filter out soft-deleted requests first
+  let filtered = purchases.filter(p => !p.deleted_at)
   
   // 1. 탭 필터
   if (options.tab) {

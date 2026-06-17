@@ -2,7 +2,7 @@
 
 import { useNavigate } from 'react-router-dom'
 import { createClient } from '@/lib/supabase/client'
-import { User, Menu, MessageCircle, FileText, FileCheck, FileEdit, Clock, ScrollText } from 'lucide-react'
+import { User, Menu, MessageCircle, FileText, FileCheck, FileEdit, Clock, ScrollText, Database } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supportService } from '@/services/supportService'
 import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
@@ -428,6 +428,18 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
         
         {/* 사용자 정보 */}
         <div className="hidden sm:flex items-center gap-4">
+          {(roles.includes('superadmin') || roles.includes('hr')) && (
+            <button
+              type="button"
+              onClick={() => navigate('/logs')}
+              className="group inline-flex items-center justify-center h-9 rounded-lg hover:bg-gray-50 transition-all duration-200 px-2"
+              title="시스템 로그"
+              aria-label="시스템 로그"
+            >
+              <Database className="w-4 h-4 text-gray-500 group-hover:hidden" />
+              <span className="hidden group-hover:inline text-xs font-medium text-gray-600">시스템 로그</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => navigate('/attendance')}
