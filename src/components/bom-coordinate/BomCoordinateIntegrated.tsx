@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Package, Upload, FileText, X, AlertCircle, Loader2, Download, Eye, Plus, Check, ChevronsUpDown, RotateCcw, Save, Link2, Trash2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -119,6 +120,7 @@ export default function BomCoordinateIntegrated() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [skipTempDataLoad, setSkipTempDataLoad] = useState(false);
+  const [tooltipOpenId, setTooltipOpenId] = useState<string | null>(null);
 
   // REF 불일치 수 계산 (BOM vs 좌표)
   const { mismatchCount, missingInCoord, missingInBom } = useMemo(() => {
@@ -1816,15 +1818,40 @@ function dlFile() {
                               </TableCell>
                               <TableCell className="text-center py-1" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex gap-1 justify-center">
-                            <Button
-                                    onClick={() => handleDownloadSavedBOM(board.id, board.board_name)}
-                              variant="outline"
-                              size="sm"
-                                    className="h-6 px-2 text-[10px] text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
-                            >
+                            <TooltipProvider>
+                              <Tooltip open={tooltipOpenId === board.id} onOpenChange={(open) => { if (!open) setTooltipOpenId(null); }}>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    onClick={() => {
+                                      if (board.status !== 'completed') {
+                                        setTooltipOpenId(board.id);
+                                        setTimeout(() => {
+                                          setTooltipOpenId(prev => prev === board.id ? null : prev);
+                                        }, 2000);
+                                        return;
+                                      }
+                                      handleDownloadSavedBOM(board.id, board.board_name);
+                                    }}
+                                    variant="outline"
+                                    size="sm"
+                                    className={`h-6 px-2 text-[10px] text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200 ${
+                                      board.status !== 'completed' ? 'opacity-40 cursor-not-allowed' : ''
+                                    }`}
+                                  >
                                     <Download className="w-3 h-3 mr-1" />
                                     Excel
-                            </Button>
+                                  </Button>
+                                </TooltipTrigger>
+                                {board.status !== 'completed' && (
+                                  <TooltipContent side="top" className="!bg-gray-900 !text-white !border !border-gray-800 p-2 shadow-lg">
+                                    <div className="flex items-center gap-1.5">
+                                      <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                                      <span className="!text-white text-xs font-semibold">최종검토가 완료되지 않았습니다.</span>
+                                    </div>
+                                  </TooltipContent>
+                                )}
+                              </Tooltip>
+                            </TooltipProvider>
                                   {canDeleteBoard(board) && (
                             <Button
                                       onClick={() => handleDeleteSavedBOM(board.id, board.board_name)}
@@ -2268,13 +2295,16 @@ function dlFile() {
                       </>
                     )}
                   </Button>
+                  {/* UI상 임시 숨김 처리 (기능 제거 없이 UI에서만 숨김) */}
+                  {/* 
                   <Button 
                     onClick={() => previewPanelRef.current?.handleDownload()}
                     className="button-base bg-green-500 hover:bg-green-600 text-white"
-                >
+                  >
                     <Download className="w-4 h-4 mr-2" />
                     Excel
-                </Button>
+                  </Button>
+                  */}
               </div>
               </div>
 

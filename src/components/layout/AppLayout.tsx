@@ -14,6 +14,22 @@ export default function AppLayout() {
   const { employee } = useAuth()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
+  const [isHoverEnabled, setIsHoverEnabled] = useState(true)
+
+  const handleExpandChange = (expanded: boolean) => {
+    if (expanded) {
+      if (isHoverEnabled) {
+        setIsSidebarExpanded(true)
+      }
+    } else {
+      setIsSidebarExpanded(false)
+      setIsHoverEnabled(false)
+    }
+  }
+
+  const handleMouseLeave = () => {
+    setIsHoverEnabled(true)
+  }
 
   return (
     <div style={{ position: 'relative', minHeight: '100vh', backgroundColor: '#f9fafb' }}>
@@ -32,7 +48,8 @@ export default function AppLayout() {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         isExpanded={isSidebarExpanded}
-        onExpandChange={setIsSidebarExpanded}
+        onExpandChange={handleExpandChange}
+        onMouseLeave={handleMouseLeave}
       />
 
       {/* 콘텐츠 영역 */}

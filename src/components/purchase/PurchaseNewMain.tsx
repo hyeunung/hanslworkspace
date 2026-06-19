@@ -658,7 +658,21 @@ export default function PurchaseNewMain() {
       const progressType = watch('progress_type');
       const paymentCategory = watch('payment_category');
       const vendorId = watch('vendor_id');
-      return !!(requestType && progressType && paymentCategory && vendorId && vendorId !== 0 && fields.length > 0);
+      
+      // 기본 필수 항목 체크
+      if (!(requestType && progressType && paymentCategory && vendorId && vendorId !== 0 && fields.length > 0)) {
+        return false;
+      }
+      
+      // 결제 종류가 '발주'인 경우 입고 요청일 필수
+      if (paymentCategory === '발주') {
+        const deliveryRequestDate = watch('delivery_request_date');
+        if (!deliveryRequestDate) {
+          return false;
+        }
+      }
+      
+      return true;
     }
     
     return true;
@@ -670,7 +684,15 @@ export default function PurchaseNewMain() {
   // 필수항목 변경 감지
   useEffect(() => {
     setIsFormValid(checkRequiredFields());
-  }, [watch('po_template_type'), watch('request_type'), watch('progress_type'), watch('payment_category'), watch('vendor_id'), fields]);
+  }, [
+    watch('po_template_type'),
+    watch('request_type'),
+    watch('progress_type'),
+    watch('payment_category'),
+    watch('vendor_id'),
+    watch('delivery_request_date'),
+    fields
+  ]);
 
   // 발주요청번호 생성 함수 (재시도 로직 포함)
   const generatePurchaseOrderNumber = async () => {
@@ -1505,7 +1527,10 @@ export default function PurchaseNewMain() {
                   </DatePickerPopover>
                 </div>
                 <div>
-                  <Label className="mb-0.5 block text-[10px] sm:text-xs">입고 요청일</Label>
+                  <Label className="mb-0.5 block text-[10px] sm:text-xs">
+                    입고 요청일
+                    {watch('payment_category') === '발주' && <span className="text-red-500 ml-0.5">*</span>}
+                  </Label>
                   <DatePickerPopover
                     onDateSelect={(date) => {
                       setValue('delivery_request_date', format(date, 'yyyy-MM-dd'));

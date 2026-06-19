@@ -48,7 +48,7 @@ export default function ShippingMain() {
   const [isNewReceiver, setIsNewReceiver] = useState(false)
 
   // 부가 정보
-  const [deliveryType, setDeliveryType] = useState<'택배' | '퀵'>('택배')
+  const [deliveryType, setDeliveryType] = useState<'택배' | '퀵' | '화물'>('택배')
   const [productName, setProductName] = useState('')
   const [itemValue, setItemValue] = useState('')
   const [deliveryPoint, setDeliveryPoint] = useState('')
@@ -580,13 +580,14 @@ export default function ShippingMain() {
             <div className="grid grid-cols-2 gap-3">
               <div className="grid grid-cols-[50px_1fr] items-center gap-2">
                 <Label className="text-[11px] !font-normal text-gray-500">배송</Label>
-                <Select value={deliveryType} onValueChange={(v) => setDeliveryType(v as '택배' | '퀵')}>
+                <Select value={deliveryType} onValueChange={(v) => setDeliveryType(v as '택배' | '퀵' | '화물')}>
                   <SelectTrigger className="!h-7 !min-h-0 !px-2.5 !py-0 !text-[11px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="택배" className="text-[11px] py-1.5">택배</SelectItem>
                     <SelectItem value="퀵" className="text-[11px] py-1.5">퀵</SelectItem>
+                    <SelectItem value="화물" className="text-[11px] py-1.5">화물</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -688,7 +689,11 @@ export default function ShippingMain() {
                     <td className="px-2 py-1.5">
                       <span className={cn(
                         "px-1.5 py-0.5 rounded text-[10px]",
-                        label.delivery_type === '택배' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
+                        label.delivery_type === '택배'
+                          ? 'bg-blue-100 text-blue-700'
+                          : label.delivery_type === '퀵'
+                          ? 'bg-orange-100 text-orange-700'
+                          : 'bg-green-100 text-green-700'
                       )}>
                         {label.delivery_type}
                       </span>

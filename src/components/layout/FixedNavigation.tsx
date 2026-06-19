@@ -13,6 +13,7 @@ import {
   Package,
   FileEdit,
   ChevronDown,
+  ChevronLeft,
   Truck
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -28,9 +29,10 @@ interface NavigationProps {
   onClose?: () => void
   isExpanded?: boolean
   onExpandChange?: (expanded: boolean) => void
+  onMouseLeave?: () => void
 }
 
-export default function FixedNavigation({ role, isOpen = false, onClose, isExpanded = false, onExpandChange }: NavigationProps) {
+export default function FixedNavigation({ role, isOpen = false, onClose, isExpanded = false, onExpandChange, onMouseLeave }: NavigationProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const pathname = location.pathname
@@ -324,12 +326,27 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
             overflow: 'hidden',
           }}
           onMouseEnter={() => onExpandChange?.(true)}
-          onMouseLeave={() => onExpandChange?.(false)}
+          onMouseLeave={onMouseLeave}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
+            {/* 우측 세로 끝 접기 바 버튼 (확장 상태에서만 표시) */}
+            {isExpanded && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onExpandChange?.(false)
+                }}
+                className="absolute right-0 top-0 bottom-0 w-3 hover:w-4 bg-gray-50/50 hover:bg-gray-200 border-l border-gray-200 transition-all duration-150 flex items-center justify-center group cursor-pointer z-50"
+                title="메뉴 접기"
+                style={{ height: '100%' }}
+              >
+                <ChevronLeft className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600 transition-transform group-hover:-translate-x-[1px]" />
+              </button>
+            )}
             {/* 메뉴 아이템들 */}
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              <ul className="p-2 space-y-1">
+              <ul className={cn("pl-2 pt-2 pb-2 space-y-1", isExpanded ? "pr-5" : "pr-2")}>
                 {filteredMenuItems.map((item) => {
                   const Icon = item.icon
                   const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
@@ -503,7 +520,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
             </div>
 
             {/* 택배/인수증 + 관리 메뉴 + 신청서/문의 - 하단 고정 */}
-            <div className="p-2 border-t border-gray-200 space-y-1">
+            <div className={cn("pl-2 pt-2 pb-2 border-t border-gray-200 space-y-1", isExpanded ? "pr-5" : "pr-2")}>
               {(() => {
                 const isShippingActive = pathname === '/shipping' || pathname.startsWith('/shipping/')
                 return (
