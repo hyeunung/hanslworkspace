@@ -96,6 +96,15 @@ export async function generateBOMExcelFromTemplate(
     }
   }
 
+  // 모든 워크시트의 용지 크기를 A4(9)로 강제 설정 (A5=11 → A4=9)
+  workbook.worksheets.forEach((sheet) => {
+    if (sheet.pageSetup) {
+      sheet.pageSetup.paperSize = 9;
+    } else {
+      sheet.pageSetup = { paperSize: 9 };
+    }
+  });
+
   // Blob으로 반환
   const outBuffer = await workbook.xlsx.writeBuffer();
   return new Blob([outBuffer], { 

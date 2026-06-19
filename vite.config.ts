@@ -50,3 +50,4 @@ export default defineConfig(({ mode }) => {
   },
   }
 })
+// Force config reload to update __APP_VERSION__ to 0.7.0

@@ -48,7 +48,7 @@ export interface ShippingLabel {
   label_code: string | null
   sender_employee_id: string
   receiver_address_id: string
-  delivery_type: '택배' | '퀵'
+  delivery_type: '택배' | '퀵' | '화물'
   product_name: string | null
   item_value: number | null
   delivery_point: string | null
@@ -68,7 +68,7 @@ export interface ShippingLabel {
 export interface ShippingLabelFormData {
   sender_employee_id: string
   receiver_address_id: string
-  delivery_type: '택배' | '퀵'
+  delivery_type: '택배' | '퀵' | '화물'
   product_name: string
   item_value: number | null
   delivery_point: string
