@@ -163,12 +163,17 @@ function fillBOMSheet(
   // H5: 보드명 + 부품리스트
   bomSheet.getCell('H5').value = `${cleanBoardName} 부품리스트`;
 
-  // === A7: 보드명 | SET : 수량 (A7~J7 병합, _정리본 제외) ===
-  bomSheet.mergeCells('A7:J7');
-  const infoCell = bomSheet.getCell('A7');
-  infoCell.value = `${cleanBoardName}  |  SET : ${metadata.productionQuantity}`;
-  infoCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  infoCell.font = { bold: true };
+  // === A7~D7 병합: 보드명, E7: 총 세트 수량 ===
+  bomSheet.mergeCells('A7:D7');
+  const boardNameCell = bomSheet.getCell('A7');
+  boardNameCell.value = cleanBoardName;
+  boardNameCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  boardNameCell.font = { bold: true, name: '굴림체', size: 11 };
+
+  const qtyCell = bomSheet.getCell('E7');
+  qtyCell.value = metadata.productionQuantity;
+  qtyCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  qtyCell.font = { bold: true, name: '굴림체', size: 11 };
 
   // === Row 8~: BOM 데이터 ===
   const dataStartRow = 8;
@@ -222,9 +227,16 @@ function fillBOMSheet(
       itemNameUpper.includes('_PAD') || itemNameUpper.includes('PAD_') ||
       itemNameUpper.includes('_NC') || itemNameUpper.includes('NC_');
     
-    // E: 수량 (미삽이면 0, 아니면 생산수량 × SET)
+    // E: 수량 (미삽이면 0, 아니면 D{rowNum}*$E$7 수식 적용)
     const setCount = item.setCount || 0;
-    row.getCell('E').value = isMisap ? 0 : metadata.productionQuantity * setCount;
+    if (isMisap) {
+      row.getCell('E').value = 0;
+    } else {
+      row.getCell('E').value = { 
+        formula: `D${rowNum}*$E$7`, 
+        result: metadata.productionQuantity * setCount 
+      };
+    }
     
     // F: 비움 (재고)
     
