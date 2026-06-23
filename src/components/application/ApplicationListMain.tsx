@@ -357,7 +357,7 @@ export default function ApplicationListMain() {
         const app = allApplications.find((a) => a.id === appId) || applications.find((a) => a.id === appId);
         supabase.functions.invoke("send_fcm_notification", {
           body: {
-            type: "admin",
+            type: "ai_service_reviewed",
             title: "📋 신청서 검토 완료",
             body: `${app?.requester_name || "임직원"}님의 AI 서비스 신청서가 1차 승인(검토완료)되었습니다. 최종 승인을 확인해주세요.`,
             data: {
