@@ -257,7 +257,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
           ? supabase.from('vehicle_requests').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending')
           : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
         isTripApprover
-          ? supabase.from('business_trips').select('id', { count: 'exact', head: true }).eq('approval_status', 'pending')
+          ? supabase.from('business_trips').select('id', { count: 'exact', head: true }).or('approval_status.eq.pending,modification_status.eq.extension_pending')
           : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
         supabase.from('business_trips').select('id', { count: 'exact', head: true })
           .eq('requester_id', user?.id || '__no_user__')
@@ -293,7 +293,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
       const { count } = await supabase
         .from('ai_service_applications')
         .select('id', { count: 'exact', head: true })
-        .eq('approval_status', 'pending')
+        .in('approval_status', ['pending', 'reviewed'])
       if (!cancelled && typeof count === 'number') {
         setPendingApplicationCount(count)
       }

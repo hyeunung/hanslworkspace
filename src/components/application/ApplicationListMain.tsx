@@ -52,6 +52,10 @@ interface AiServiceApplication {
   rejection_reason?: string | null;
   requester_name?: string;
   requester_department?: string | null;
+  middle_approved_by?: string | null;
+  middle_approved_at?: string | null;
+  final_approved_by?: string | null;
+  final_approved_at?: string | null;
 }
 
 // ── 신청서 상세 모달 ─────────────────────────────────────────
@@ -60,17 +64,32 @@ function ApplicationDetailModal({
   open,
   onClose,
   canApprove,
-  onApprove,
+  onMiddleApprove,
+  onFinalApprove,
   onReject,
 }: {
   app: AiServiceApplication | null;
   open: boolean;
   onClose: () => void;
   canApprove: boolean;
-  onApprove?: (id: number) => void;
+  onMiddleApprove?: (id: number) => void;
+  onFinalApprove?: (id: number) => void;
   onReject?: (id: number) => void;
 }) {
   if (!app) return null;
+
+  const getStatusBadgeInModal = (status?: string) => {
+    if (!status) return null;
+    const map: Record<string, { text: string; cls: string }> = {
+      pending: { text: "승인대기", cls: "badge-utk-pending" },
+      reviewed: { text: "검토완료", cls: "bg-blue-100 text-blue-700 border border-blue-200" },
+      approved: { text: "승인완료", cls: "badge-utk-complete" },
+      rejected: { text: "반려", cls: "bg-red-100 text-red-700" },
+    };
+    const conf = map[status] || { text: status, cls: "bg-gray-100 text-gray-600" };
+    return <span className={`badge-stats ${conf.cls}`}>{conf.text}</span>;
+  };
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto p-0 gap-0">
@@ -156,35 +175,41 @@ function ApplicationDetailModal({
         <DialogFooter className="px-6 py-3 border-t border-gray-100 bg-gray-50">
           <div className="flex items-center justify-between w-full">
             <div>
-              {app.approval_status && (
-                <span className={`badge-stats ${
-                  app.approval_status === "approved" ? "badge-utk-complete" :
-                  app.approval_status === "rejected" ? "bg-red-100 text-red-700" :
-                  "badge-utk-pending"
-                }`}>
-                  {app.approval_status === "approved" ? "승인완료" : app.approval_status === "rejected" ? "반려" : "승인대기"}
-                </span>
-              )}
+              {getStatusBadgeInModal(app.approval_status)}
             </div>
             <div className="flex gap-2">
-              {canApprove && app.approval_status === "pending" && onApprove && onReject && (
+              {canApprove && onReject && (
                 <>
-                  <Button
-                    type="button"
-                    onClick={() => { onApprove(app.id); onClose(); }}
-                    className="button-base bg-green-500 hover:bg-green-600 text-white"
-                  >
-                    <Check className="w-3 h-3 mr-0.5" />
-                    승인
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={() => { onReject(app.id); onClose(); }}
-                    className="button-base border border-red-200 bg-white text-red-600 hover:bg-red-50"
-                  >
-                    <X className="w-3 h-3 mr-0.5" />
-                    반려
-                  </Button>
+                  {app.approval_status === "pending" && onMiddleApprove && (
+                    <Button
+                      type="button"
+                      onClick={() => { onMiddleApprove(app.id); onClose(); }}
+                      className="button-base bg-blue-500 hover:bg-blue-600 text-white"
+                    >
+                      <Check className="w-3 h-3 mr-0.5" />
+                      1차 승인
+                    </Button>
+                  )}
+                  {app.approval_status === "reviewed" && onFinalApprove && (
+                    <Button
+                      type="button"
+                      onClick={() => { onFinalApprove(app.id); onClose(); }}
+                      className="button-base bg-green-500 hover:bg-green-600 text-white"
+                    >
+                      <Check className="w-3 h-3 mr-0.5" />
+                      최종 승인
+                    </Button>
+                  )}
+                  {(app.approval_status === "pending" || app.approval_status === "reviewed") && (
+                    <Button
+                      type="button"
+                      onClick={() => { onReject(app.id); onClose(); }}
+                      className="button-base border border-red-200 bg-white text-red-600 hover:bg-red-50"
+                    >
+                      <X className="w-3 h-3 mr-0.5" />
+                      반려
+                    </Button>
+                  )}
                 </>
               )}
               <Button
@@ -227,7 +252,7 @@ export default function ApplicationListMain() {
   const [statusPopoverId, setStatusPopoverId] = useState<number | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
-  const pendingApplications = allApplications.filter((a) => a.approval_status === "pending");
+  const pendingApplications = allApplications.filter((a) => a.approval_status === "pending" || a.approval_status === "reviewed");
 
   const loadMyApplications = useCallback(async () => {
     try {
@@ -256,7 +281,7 @@ export default function ApplicationListMain() {
 
       const { data, error } = await supabase
         .from("ai_service_applications")
-        .select("id, service_name, plan_name, monthly_cost, application_date, current_usage_status, current_model, current_cost, usage_purpose, usage_example, created_at, approval_status, rejection_reason, requester_name, requester_department")
+        .select("id, service_name, plan_name, monthly_cost, application_date, current_usage_status, current_model, current_cost, usage_purpose, usage_example, created_at, approval_status, rejection_reason, requester_name, requester_department, middle_approved_by, middle_approved_at, final_approved_by, final_approved_at")
         .eq("requester_id", emp.id)
         .order("created_at", { ascending: false });
 
@@ -277,7 +302,7 @@ export default function ApplicationListMain() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from("ai_service_applications")
-        .select("id, service_name, plan_name, monthly_cost, application_date, current_usage_status, current_model, current_cost, usage_purpose, usage_example, created_at, approval_status, rejection_reason, requester_name, requester_department")
+        .select("id, service_name, plan_name, monthly_cost, application_date, current_usage_status, current_model, current_cost, usage_purpose, usage_example, created_at, approval_status, rejection_reason, requester_name, requester_department, middle_approved_by, middle_approved_at, final_approved_by, final_approved_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
       setAllApplications((data || []) as AiServiceApplication[]);
@@ -301,7 +326,57 @@ export default function ApplicationListMain() {
     }
   }, [activeTab, canApprove, loadPendingApplications]);
 
-  const handleApprove = useCallback(
+  const handleMiddleApprove = useCallback(
+    async (appId: number) => {
+      if (!employee?.id) return;
+      try {
+        const supabase = createClient();
+        const { error } = await supabase
+          .from("ai_service_applications")
+          .update({
+            approval_status: "reviewed",
+            middle_approved_by: employee.id,
+            middle_approved_at: new Date().toISOString(),
+            rejection_reason: null,
+          })
+          .eq("id", appId);
+        if (error) throw error;
+        toast.success("1차 승인(검토완료) 되었습니다.");
+
+        // FCM 알림 전송 (관리자들에게 검토완료 푸시 알림)
+        const app = allApplications.find((a) => a.id === appId) || applications.find((a) => a.id === appId);
+        supabase.functions.invoke("send_fcm_notification", {
+          body: {
+            type: "admin",
+            title: "📋 신청서 검토 완료",
+            body: `${app?.requester_name || "임직원"}님의 AI 서비스 신청서가 1차 승인(검토완료)되었습니다. 최종 승인을 확인해주세요.`,
+            data: {
+              application_id: String(appId),
+              type: "ai_service",
+              status: "reviewed"
+            }
+          },
+        }).catch((e: any) => console.error("FCM 알림 발송 실패:", e));
+
+        setAllApplications((prev) =>
+          prev.map((a) => a.id === appId ? { 
+            ...a, 
+            approval_status: "reviewed", 
+            middle_approved_by: employee.id,
+            middle_approved_at: new Date().toISOString(),
+            rejection_reason: null 
+          } : a)
+        );
+        setStatusPopoverId(null);
+      } catch (err) {
+        logger.error("1차 승인 처리 실패", err);
+        toast.error("1차 승인 처리에 실패했습니다.");
+      }
+    },
+    [employee?.id, allApplications, applications]
+  );
+
+  const handleFinalApprove = useCallback(
     async (appId: number) => {
       if (!employee?.id) return;
       try {
@@ -310,20 +385,30 @@ export default function ApplicationListMain() {
           .from("ai_service_applications")
           .update({
             approval_status: "approved",
+            final_approved_by: employee.id,
+            final_approved_at: new Date().toISOString(),
             approved_by: employee.id,
             approved_at: new Date().toISOString(),
             rejection_reason: null,
           })
           .eq("id", appId);
         if (error) throw error;
-        toast.success("승인되었습니다.");
+        toast.success("최종 승인되었습니다.");
         setAllApplications((prev) =>
-          prev.map((a) => a.id === appId ? { ...a, approval_status: "approved", rejection_reason: null } : a)
+          prev.map((a) => a.id === appId ? { 
+            ...a, 
+            approval_status: "approved", 
+            final_approved_by: employee.id,
+            final_approved_at: new Date().toISOString(),
+            approved_by: employee.id,
+            approved_at: new Date().toISOString(),
+            rejection_reason: null 
+          } : a)
         );
         setStatusPopoverId(null);
       } catch (err) {
-        logger.error("승인 처리 실패", err);
-        toast.error("승인 처리에 실패했습니다.");
+        logger.error("최종 승인 처리 실패", err);
+        toast.error("최종 승인 처리에 실패했습니다.");
       }
     },
     [employee?.id]
@@ -388,6 +473,7 @@ export default function ApplicationListMain() {
   const getStatusBadge = (status: string) => {
     const map: Record<string, { text: string; cls: string }> = {
       pending: { text: "승인대기", cls: "badge-utk-pending" },
+      reviewed: { text: "검토완료", cls: "badge-stats bg-blue-100 text-blue-700 border border-blue-200" },
       approved: { text: "승인완료", cls: "badge-utk-complete" },
       rejected: { text: "반려", cls: "badge-stats bg-red-100 text-red-700" },
     };
@@ -395,15 +481,17 @@ export default function ApplicationListMain() {
     return <span className={`badge-stats ${conf.cls}`}>{conf.text}</span>;
   };
 
-  // 승인 관리용 클릭 가능한 상태 배지 (pending일 때만 팝오버)
+  // 승인 관리용 클릭 가능한 상태 배지 (pending 또는 reviewed일 때만 팝오버)
   const getApprovalStatusCell = (app: AiServiceApplication) => {
-    const isPending = app.approval_status === "pending";
+    const isActionable = app.approval_status === "pending" || app.approval_status === "reviewed";
 
-    if (!isPending) {
+    if (!isActionable) {
       return getStatusBadge(app.approval_status || "pending");
     }
 
     const isOpen = statusPopoverId === app.id;
+    const badgeText = app.approval_status === "pending" ? "승인대기 ▾" : "검토완료 ▾";
+    const badgeCls = app.approval_status === "pending" ? "badge-utk-pending" : "badge-stats bg-blue-100 text-blue-700 border border-blue-200";
 
     return (
       <div className="relative inline-block" ref={isOpen ? popoverRef : null}>
@@ -413,9 +501,9 @@ export default function ApplicationListMain() {
             e.stopPropagation();
             setStatusPopoverId(isOpen ? null : app.id);
           }}
-          className="badge-stats badge-utk-pending cursor-pointer hover:opacity-80 transition-opacity"
+          className={`badge-stats ${badgeCls} cursor-pointer hover:opacity-80 transition-opacity`}
         >
-          승인대기 ▾
+          {badgeText}
         </button>
         {isOpen && (
           <div
@@ -423,14 +511,25 @@ export default function ApplicationListMain() {
             style={{ minWidth: "110px" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); handleApprove(app.id); }}
-              className="flex items-center gap-1.5 w-full px-3 py-1.5 text-[11px] font-medium text-green-700 hover:bg-green-50 transition-colors"
-            >
-              <Check className="w-3 h-3" />
-              승인
-            </button>
+            {app.approval_status === "pending" ? (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleMiddleApprove(app.id); }}
+                className="flex items-center gap-1.5 w-full px-3 py-1.5 text-[11px] font-medium text-blue-700 hover:bg-blue-50 transition-colors"
+              >
+                <Check className="w-3 h-3" />
+                1차 승인
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleFinalApprove(app.id); }}
+                className="flex items-center gap-1.5 w-full px-3 py-1.5 text-[11px] font-medium text-green-700 hover:bg-green-50 transition-colors"
+              >
+                <Check className="w-3 h-3" />
+                최종 승인
+              </button>
+            )}
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setStatusPopoverId(null); openRejectModal(app.id); }}
@@ -684,7 +783,8 @@ export default function ApplicationListMain() {
           open={!!detailModalApp}
           onClose={() => setDetailModalApp(null)}
           canApprove={canApprove}
-          onApprove={(id) => { handleApprove(id); }}
+          onMiddleApprove={(id) => { handleMiddleApprove(id); }}
+          onFinalApprove={(id) => { handleFinalApprove(id); }}
           onReject={(id) => { openRejectModal(id); }}
         />
 

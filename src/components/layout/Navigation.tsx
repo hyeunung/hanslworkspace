@@ -123,7 +123,7 @@ export default function Navigation({ role }: NavigationProps) {
       const { count } = await supabase
         .from('ai_service_applications')
         .select('id', { count: 'exact', head: true })
-        .eq('approval_status', 'pending')
+        .in('approval_status', ['pending', 'reviewed'])
       if (!cancelled && typeof count === 'number') {
         setPendingApplicationCount(count)
       }
