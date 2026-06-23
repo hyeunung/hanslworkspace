@@ -71,7 +71,7 @@ export function useRequestBadgeCounts() {
           ? supabase.from("vehicle_requests").select("id", { count: "exact", head: true }).eq("approval_status", "pending")
           : Promise.resolve({ count: 0, error: null } as { count: number | null; error: null }),
         isTripApprover
-          ? supabase.from("business_trips").select("id, expected_total_amount", { count: "exact" }).eq("approval_status", "pending")
+          ? supabase.from("business_trips").select("id, expected_total_amount, modification_status", { count: "exact" }).or("approval_status.eq.pending,modification_status.eq.extension_pending")
           : Promise.resolve({ data: [], count: 0, error: null } as { data: Array<{ id: number; expected_total_amount: number }> | null; count: number | null; error: null }),
         supabase
           .from("business_trips")
@@ -101,11 +101,14 @@ export function useRequestBadgeCounts() {
 
       let approvableTripCount = 0;
       if (isTripApprover) {
+        const trips = (tripPendingRes.data || []) as Array<{ id: number; expected_total_amount: number; modification_status?: string | null }>;
         if (isHighAmountApprover) {
-          approvableTripCount = tripPendingRes.count || 0;
+          approvableTripCount = trips.length;
         } else {
-          approvableTripCount = ((tripPendingRes.data || []) as Array<{ id: number; expected_total_amount: number }>)
-            .filter((t) => Number(t.expected_total_amount || 0) < 1_000_000).length;
+          approvableTripCount = trips.filter((t) => {
+            if (t.modification_status === "extension_pending") return true;
+            return Number(t.expected_total_amount || 0) < 1_000_000;
+          }).length;
         }
       }
 

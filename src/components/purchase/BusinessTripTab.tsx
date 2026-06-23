@@ -228,6 +228,14 @@ interface BusinessTrip {
   linkedCard?: CardUsageLink | null;
   linkedCards?: CardUsageLink[];
   linkedVehicle?: VehicleUsageLink | null;
+  modification_status?: "extension_pending" | "early_return_pending" | "extension_approved" | "early_return_approved" | "modification_rejected" | null;
+  original_end_date?: string | null;
+  requested_end_date?: string | null;
+  modification_reason?: string | null;
+  modification_rejected_reason?: string | null;
+  modification_requested_at?: string | null;
+  modification_approved_at?: string | null;
+  modification_approved_by?: string | null;
 }
 
 interface BusinessTripExpense {
@@ -427,7 +435,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
   // 반려 다이얼로그 (사전승인/정산 공용)
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectTargetTripId, setRejectTargetTripId] = useState<number | null>(null);
-  const [rejectMode, setRejectMode] = useState<"approval" | "settlement">("approval");
+  const [rejectMode, setRejectMode] = useState<"approval" | "settlement" | "modification">("approval");
   const [rejectReason, setRejectReason] = useState("");
 
   // 정산 모달
@@ -484,6 +492,17 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
   const [editingTripStartDate, setEditingTripStartDate] = useState("");
   const [editingTripEndDate, setEditingTripEndDate] = useState("");
   const [savingTripPeriod, setSavingTripPeriod] = useState(false);
+
+  // 출장 일정 변경 관련 상태
+  const [modificationTrip, setModificationTrip] = useState<BusinessTrip | null>(null);
+  const [requestedEndDate, setRequestedEndDate] = useState("");
+  const [extensionReason, setExtensionReason] = useState("");
+  const [submittingMod, setSubmittingMod] = useState(false);
+
+  const isHrOrSuperAdmin = useMemo(
+    () => roles.some((r) => ["superadmin", "hr"].includes(r)),
+    [roles]
+  );
 
   const startEditTripPeriod = useCallback((trip: BusinessTrip) => {
     setEditingTripPeriodId(trip.id);
@@ -1037,7 +1056,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     }
   }, [currentUser?.id, loadTrips, supabase, trips]);
 
-  const openRejectDialog = useCallback((tripId: number, mode: "approval" | "settlement") => {
+  const openRejectDialog = useCallback((tripId: number, mode: "approval" | "settlement" | "modification") => {
     setRejectTargetTripId(tripId);
     setRejectMode(mode);
     setRejectReason("");
@@ -1076,6 +1095,41 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
           .eq("approval_status", "pending");
 
         toast.success("출장 승인 반려 처리되었습니다.");
+      } else if (rejectMode === "modification") {
+        const { error } = await supabase
+          .from("business_trips")
+          .update({
+            modification_status: "modification_rejected",
+            modification_rejected_reason: rejectReason.trim(),
+            modification_approved_by: currentUser?.id || null,
+            modification_approved_at: new Date().toISOString(),
+          })
+          .eq("id", rejectTargetTripId);
+        if (error) throw error;
+
+        const trip = trips.find((t) => t.id === rejectTargetTripId);
+        if (trip?.requester_id) {
+          const { data: requester } = await supabase
+            .from("employees")
+            .select("email")
+            .eq("id", trip.requester_id)
+            .single();
+
+          if (requester?.email) {
+            supabase.functions.invoke("send_fcm_notification", {
+              body: {
+                type: "business_trip_rejected",
+                data: {
+                  requester_email: requester.email,
+                  trip_code: trip.trip_code,
+                  reason: rejectReason.trim(),
+                  is_modification: true,
+                },
+              },
+            }).catch(() => {});
+          }
+        }
+        toast.success("출장 변경 신청이 반려되었습니다.");
       } else {
         const { error } = await supabase
           .from("business_trips")
@@ -1098,7 +1152,256 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
       logger.error("반려 처리 실패", err);
       toast.error("반려 처리에 실패했습니다.");
     }
-  }, [currentUser?.id, loadTrips, rejectMode, rejectReason, rejectTargetTripId, supabase]);
+  }, [currentUser?.id, loadTrips, rejectMode, rejectReason, rejectTargetTripId, supabase, trips]);
+
+  const handleApproveModification = useCallback(async (trip: BusinessTrip) => {
+    if (!confirm(`[${trip.trip_code}] 출장 연장 요청을 승인하시겠습니까?\n종료일이 ${trip.requested_end_date}로 변경됩니다.`)) return;
+    try {
+      setLoading(true);
+      const response = await supabase.functions.invoke("update_leave_status", {
+        body: {
+          id: trip.id,
+          status: "approved",
+          is_business_trip: true,
+          is_modification: true,
+        },
+      });
+      if (response.error) throw response.error;
+      toast.success("출장 연장이 승인되었습니다.");
+      loadTrips();
+      onBadgeRefresh?.();
+    } catch (err) {
+      logger.error("출장 연장 승인 실패", err);
+      toast.error("승인 처리에 실패했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase, loadTrips, onBadgeRefresh]);
+
+  const handleImmediateEarlyReturn = useCallback(async (trip: BusinessTrip) => {
+    if (!confirm("지금 시각으로 즉시 조기 복귀 처리하시겠습니까?\n차량 배차가 자동 복귀 처리되며, 법인카드의 사용 기간도 오늘로 단축됩니다.")) return;
+    try {
+      setSubmittingMod(true);
+      const todayStr = format(new Date(), "yyyy-MM-dd");
+
+      // 1. 출장 테이블 업데이트 (조기복귀 승인 상태로 즉시 변경)
+      const { error: tripError } = await supabase
+        .from("business_trips")
+        .update({
+          trip_end_date: todayStr,
+          modification_status: "early_return_approved",
+          original_end_date: trip.original_end_date || trip.trip_end_date,
+          modification_approved_at: new Date().toISOString(),
+          modification_approved_by: currentUser?.id || null,
+          modification_reason: "조기 복귀",
+        })
+        .eq("id", trip.id);
+      if (tripError) throw tripError;
+
+      // 2. 차량 반납 처리
+      if (trip.linkedVehicle && trip.linkedVehicle.id) {
+        const { error: vehicleError } = await supabase
+          .from("vehicle_requests")
+          .update({
+            approval_status: "returned",
+          })
+          .eq("id", trip.linkedVehicle.id);
+        if (vehicleError) {
+          logger.warn("차량 반납 처리 실패", vehicleError);
+        }
+      }
+
+      // 3. 법인카드 기간 단축
+      if (trip.linkedCards && trip.linkedCards.length > 0) {
+        const cardIds = trip.linkedCards.map((c) => c.id);
+        const { error: cardError } = await supabase
+          .from("card_usages")
+          .update({
+            usage_date_end: todayStr,
+          })
+          .in("id", cardIds);
+        if (cardError) {
+          logger.warn("법인카드 사용 종료일 단축 실패", cardError);
+        }
+      }
+
+      // 4. FCM 알림 전송 (관리자들에게 조기 복귀 보고)
+      await supabase.functions.invoke("send_fcm_notification", {
+        body: {
+          type: "admin",
+          requester_department: trip.request_department,
+          title: "🏃 출장 조기 복귀 완료",
+          body: `${currentUser?.name || "임직원"}님이 출장에서 조기 복귀했습니다. (차량 반납 완료, 출장코드: ${trip.trip_code})`,
+          data: {
+            trip_code: trip.trip_code,
+            status: "early_return"
+          }
+        },
+      }).catch((e: any) => console.error("알림 발송 실패:", e));
+
+      toast.success("조기 복귀 처리가 완료되었습니다.");
+      setModificationTrip(null);
+      loadTrips();
+      onBadgeRefresh?.();
+    } catch (err) {
+      logger.error("조기 복귀 처리 실패", err);
+      toast.error("조기 복귀 처리에 실패했습니다.");
+    } finally {
+      setSubmittingMod(false);
+    }
+  }, [supabase, currentUser, loadTrips, onBadgeRefresh]);
+
+  const handleRequestExtension = useCallback(async (trip: BusinessTrip) => {
+    if (!requestedEndDate) {
+      toast.error("연장할 종료일을 선택해주세요.");
+      return;
+    }
+    if (requestedEndDate <= trip.trip_end_date) {
+      toast.error("연장 종료일은 기존 종료일보다 이후여야 합니다.");
+      return;
+    }
+    if (!extensionReason.trim()) {
+      toast.error("연장 사유를 입력해주세요.");
+      return;
+    }
+
+    // 겹치는 일정 자원(차량, 법인카드) 중복 체크
+    const rangeStart = new Date(trip.trip_end_date);
+    rangeStart.setDate(rangeStart.getDate() + 1); // 기존 종료일 다음날부터
+    rangeStart.setHours(0, 0, 0, 0);
+    const rangeEnd = new Date(requestedEndDate);
+    rangeEnd.setHours(23, 59, 59, 999);
+
+    // 차량 중복 체크
+    let vehicleConflict = false;
+    let conflictVehicleName = "";
+    if (trip.transport_type === "company_vehicle") {
+      const vInfo = trip.requested_vehicle_info || trip.linkedVehicle?.vehicle_info;
+      if (vInfo) {
+        const vehiclePlate = vInfo.split(" ").pop(); // 번호판 등 고유 식별자
+        const vehicleLabel = vInfo.split(" ")[0];
+        const targetVehicleKey = vehiclePlate || vehicleLabel;
+
+        const hasConflict = vehicleSchedules.some((sched) => {
+          // 자기 자신은 제외
+          if (trip.linkedVehicle && sched.id === trip.linkedVehicle.id) return false;
+          if (!sched.vehicle_info?.includes(targetVehicleKey)) return false;
+          const sStart = new Date(sched.start_at);
+          const sEnd = new Date(sched.end_at);
+          return sStart <= rangeEnd && sEnd >= rangeStart;
+        });
+        if (hasConflict) {
+          vehicleConflict = true;
+          conflictVehicleName = vInfo;
+        }
+      }
+    }
+
+    // 카드 중복 체크
+    let cardConflict = false;
+    let conflictCardNumber = "";
+    const cards = trip.requested_card_number || (trip.linkedCards || []).map((c) => c.card_number);
+    if (cards && cards.length > 0) {
+      for (const card of cards) {
+        const hasConflict = trips.some((otherTrip) => {
+          if (otherTrip.id === trip.id) return false;
+          if (otherTrip.approval_status === "rejected") return false;
+          if (!otherTrip.trip_start_date || !otherTrip.trip_end_date) return false;
+          const otherCards = otherTrip.requested_card_number || (otherTrip.linkedCards || []).map((c) => c.card_number);
+          if (!otherCards.includes(card)) return false;
+
+          const oStart = new Date(otherTrip.trip_start_date);
+          const oEnd = new Date(otherTrip.trip_end_date);
+          return oStart <= rangeEnd && oEnd >= rangeStart;
+        });
+        if (hasConflict) {
+          cardConflict = true;
+          conflictCardNumber = card;
+          break;
+        }
+      }
+    }
+
+    if (vehicleConflict || cardConflict) {
+      let msg = "연장하려는 기간에 중복 예약된 자원이 있습니다.\n\n";
+      if (vehicleConflict) {
+        msg += `🚗 차량 [${conflictVehicleName}]이 해당 기간에 이미 예약되어 있습니다.\n`;
+      }
+      if (cardConflict) {
+        msg += `💳 법인카드 [${conflictCardNumber}]가 해당 기간에 다른 출장에 사용 중입니다.\n`;
+      }
+      msg += "\n그래도 이대로 연장 신청을 진행하시겠습니까?";
+      if (!confirm(msg)) return;
+    }
+
+    try {
+      setSubmittingMod(true);
+      
+      // 1. 출장 테이블 업데이트 (연장 결재 대기 상태로 변경)
+      const { error: tripError } = await supabase
+        .from("business_trips")
+        .update({
+          modification_status: "extension_pending",
+          requested_end_date: requestedEndDate,
+          modification_reason: extensionReason.trim(),
+          original_end_date: trip.original_end_date || trip.trip_end_date,
+          modification_requested_at: new Date().toISOString(),
+        })
+        .eq("id", trip.id);
+      if (tripError) throw tripError;
+
+      // 2. FCM 알림 전송 (관리자들에게 승인 요청)
+      await supabase.functions.invoke("send_fcm_notification", {
+        body: {
+          type: "admin",
+          requester_department: trip.request_department,
+          title: "📋 출장 연장 승인 요청",
+          body: `${currentUser?.name || "임직원"}님이 출장 연장을 신청했습니다. 결재를 확인해주세요. (출장코드: ${trip.trip_code})`,
+          data: {
+            trip_code: trip.trip_code,
+            status: "extension_pending"
+          }
+        },
+      }).catch((e: any) => console.error("알림 발송 실패:", e));
+
+      toast.success("연장 결재 요청이 접수되었습니다.");
+      setModificationTrip(null);
+      loadTrips();
+      onBadgeRefresh?.();
+    } catch (err) {
+      logger.error("연장 신청 실패", err);
+      toast.error("연장 신청에 실패했습니다.");
+    } finally {
+      setSubmittingMod(false);
+    }
+  }, [supabase, currentUser, requestedEndDate, extensionReason, loadTrips, onBadgeRefresh, vehicleSchedules, trips]);
+
+  const handleCancelModification = useCallback(async (trip: BusinessTrip) => {
+    if (!confirm("출장 변경 신청을 취소하시겠습니까?")) return;
+    try {
+      setSubmittingMod(true);
+      const { error } = await supabase
+        .from("business_trips")
+        .update({
+          modification_status: null,
+          requested_end_date: null,
+          modification_reason: null,
+          modification_requested_at: null,
+        })
+        .eq("id", trip.id);
+      if (error) throw error;
+
+      toast.success("변경 신청이 취소되었습니다.");
+      setModificationTrip(null);
+      loadTrips();
+      onBadgeRefresh?.();
+    } catch (err) {
+      logger.error("변경 신청 취소 실패", err);
+      toast.error("신청 취소에 실패했습니다.");
+    } finally {
+      setSubmittingMod(false);
+    }
+  }, [supabase, loadTrips, onBadgeRefresh]);
 
   const [settlementApproveConfirmOpen, setSettlementApproveConfirmOpen] = useState(false);
   const [settlementApproveTargetId, setSettlementApproveTargetId] = useState<number | null>(null);
@@ -2101,7 +2404,20 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
     generatePurchaseOrderNumber,
   ]);
 
-  const getApprovalBadge = (status: string) => {
+  const getApprovalBadge = (status: string, modificationStatus?: string | null) => {
+    if (modificationStatus === "extension_pending") {
+      return <span className="badge-stats bg-purple-500 text-white">연장대기</span>;
+    }
+    if (modificationStatus === "extension_approved") {
+      return <span className="badge-stats bg-purple-100 text-purple-800">연장승인</span>;
+    }
+    if (modificationStatus === "early_return_approved") {
+      return <span className="badge-stats bg-blue-100 text-blue-800">조기복귀</span>;
+    }
+    if (modificationStatus === "modification_rejected") {
+      return <span className="badge-stats bg-red-100 text-red-800">변경반려</span>;
+    }
+
     const map: Record<string, { text: string; cls: string }> = {
       pending: { text: "승인대기", cls: "bg-orange-500 text-white" },
       approved: { text: "승인완료", cls: "bg-green-500 text-white" },
@@ -2529,7 +2845,31 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                     return (
                       <tr key={trip.id} className="border-b hover:bg-gray-100 transition-colors">
                         <td className="px-3 py-1.5 text-center whitespace-nowrap">
-                          {trip.approval_status === "pending" && canApproveTrip(trip) ? (
+                          {trip.modification_status === "extension_pending" && canApproveTrip(trip) ? (
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button type="button" className="badge-stats bg-purple-500 text-white hover:bg-purple-600">
+                                  연장대기
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-2 flex gap-1.5" side="right" align="start">
+                                <Button
+                                  className="button-base bg-green-500 hover:bg-green-600 text-white"
+                                  onClick={() => handleApproveModification(trip)}
+                                >
+                                  <Check className="w-3 h-3 mr-0.5" />
+                                  승인
+                                </Button>
+                                <Button
+                                  className="button-base border border-red-200 bg-white text-red-600 hover:bg-red-50"
+                                  onClick={() => openRejectDialog(trip.id, "modification")}
+                                >
+                                  <X className="w-3 h-3 mr-0.5" />
+                                  반려
+                                </Button>
+                              </PopoverContent>
+                            </Popover>
+                          ) : trip.approval_status === "pending" && canApproveTrip(trip) ? (
                             <Popover>
                               <PopoverTrigger asChild>
                                 <button type="button" className="badge-stats bg-orange-500 text-white hover:bg-orange-600">
@@ -2554,7 +2894,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                               </PopoverContent>
                             </Popover>
                           ) : (
-                            getApprovalBadge(trip.approval_status)
+                            getApprovalBadge(trip.approval_status, trip.modification_status)
                           )}
                         </td>
                         <td className="px-3 py-1.5 card-date whitespace-nowrap">
@@ -2597,14 +2937,38 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                               </button>
                             </div>
                           ) : (
-                            <div
-                              className={`text-[11px] font-medium text-gray-900 ${canEditTripPeriod ? "cursor-pointer hover:text-blue-600" : ""}`}
-                              onClick={() => canEditTripPeriod && startEditTripPeriod(trip)}
-                              title={canEditTripPeriod ? "클릭하여 수정" : undefined}
-                            >
-                              {trip.trip_start_date ? format(new Date(trip.trip_start_date), "MM/dd") : "-"} ~{" "}
-                              {trip.trip_end_date ? format(new Date(trip.trip_end_date), "MM/dd") : "-"}
-                            </div>
+                            (() => {
+                              const isOwner = currentUser?.id === trip.requester_id;
+                              const isCompanion = trip.companions?.some((c) => c.id === currentUser?.id) || false;
+                              const canModifyTrip = isOwner || isCompanion;
+
+                              return (
+                                <div
+                                  className={`text-[11px] font-medium text-gray-900 ${
+                                    canEditTripPeriod || canModifyTrip ? "cursor-pointer hover:text-blue-600" : ""
+                                  }`}
+                                  onClick={() => {
+                                    if (canEditTripPeriod) {
+                                      startEditTripPeriod(trip);
+                                    } else if (canModifyTrip) {
+                                      setModificationTrip(trip);
+                                      setRequestedEndDate(trip.trip_end_date || "");
+                                      setExtensionReason("");
+                                    }
+                                  }}
+                                  title={
+                                    canEditTripPeriod
+                                      ? "클릭하여 수정"
+                                      : canModifyTrip
+                                      ? "클릭하여 일정 변경 신청"
+                                      : undefined
+                                  }
+                                >
+                                  {trip.trip_start_date ? format(new Date(trip.trip_start_date), "MM/dd") : "-"} ~{" "}
+                                  {trip.trip_end_date ? format(new Date(trip.trip_end_date), "MM/dd") : "-"}
+                                </div>
+                              );
+                            })()
                           )}
                         </td>
                         <td className="px-3 py-1.5 card-title whitespace-nowrap">{trip.requester?.name || "-"}</td>
@@ -3822,6 +4186,130 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* 출장 일정 변경 신청 모달 */}
+      <Dialog open={!!modificationTrip} onOpenChange={(open) => !open && setModificationTrip(null)}>
+        <DialogContent className="sm:max-w-[480px] p-0 max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="px-5 pt-4 pb-3 border-b border-gray-100" style={{ gap: 0 }}>
+            <DialogTitle className="text-[14px] font-bold leading-tight">
+              출장 일정 변경 신청 (연장 / 조기복귀)
+            </DialogTitle>
+            <p className="page-subtitle leading-tight mt-1 text-gray-500">
+              {modificationTrip?.trip_code} | {modificationTrip?.trip_destination}
+            </p>
+          </DialogHeader>
+          <div className="px-5 py-4 space-y-5 bg-gray-50">
+            {/* 기본 정보 */}
+            <div className="bg-white p-3 rounded-lg border border-gray-200 space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">기존 출장 기간</span>
+                <span className="font-semibold text-gray-800">
+                  {modificationTrip?.trip_start_date} ~ {modificationTrip?.trip_end_date}
+                </span>
+              </div>
+              {modificationTrip?.modification_status === "extension_pending" && (
+                <div className="flex justify-between text-xs text-purple-600 bg-purple-50 p-1.5 rounded mt-2">
+                  <span>연장 승인 대기 중</span>
+                  <span className="font-semibold">
+                    {modificationTrip?.requested_end_date} (요청됨)
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* 조기 복귀 섹션 */}
+            <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-3">
+              <div>
+                <h4 className="text-xs font-bold text-gray-900 flex items-center gap-1">
+                  <RefreshCw className="w-3.5 h-3.5 text-blue-500" />
+                  조기 복귀 처리 (즉시 완료)
+                </h4>
+                <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                  오늘 날짜로 출장을 조기 복귀 처리합니다. 결재 절차 없이 <strong>즉시 완료</strong>되며, 회사 차량 배차가 자동 복귀 처리되고 법인카드는 종료일이 오늘 날짜로 단축됩니다.
+                </p>
+              </div>
+              <Button
+                type="button"
+                className="w-full button-base bg-blue-500 hover:bg-blue-600 text-white text-xs py-2"
+                onClick={() => modificationTrip && handleImmediateEarlyReturn(modificationTrip)}
+                disabled={submittingMod}
+              >
+                {submittingMod ? "처리 중..." : "즉시 조기 복귀 완료"}
+              </Button>
+            </div>
+
+            {/* 일정 연장 섹션 */}
+            <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-3">
+              <div>
+                <h4 className="text-xs font-bold text-gray-900 flex items-center gap-1">
+                  <CalendarIcon className="w-3.5 h-3.5 text-purple-500" />
+                  일정 연장 신청 (결재 대기)
+                </h4>
+                <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                  출장 종료일을 늘리기 위해 결재를 요청합니다. 연장 기간 내 법인카드/차량의 예약 현황 중복을 검증합니다.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-gray-500">연장할 종료일</Label>
+                  <Input
+                    type="date"
+                    value={requestedEndDate}
+                    onChange={(e) => setRequestedEndDate(e.target.value)}
+                    min={modificationTrip ? (() => {
+                      const nextDay = new Date(modificationTrip.trip_end_date);
+                      nextDay.setDate(nextDay.getDate() + 1);
+                      return format(nextDay, "yyyy-MM-dd");
+                    })() : ""}
+                    className="text-xs h-8 bg-white border-gray-300 rounded"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-gray-500">연장 사유</Label>
+                  <Textarea
+                    value={extensionReason}
+                    onChange={(e) => setExtensionReason(e.target.value)}
+                    placeholder="출장 연장 사유를 입력하세요"
+                    className="text-xs min-h-[60px] bg-white border-gray-300 rounded"
+                  />
+                </div>
+              </div>
+              <Button
+                type="button"
+                className="w-full button-base bg-purple-500 hover:bg-purple-600 text-white text-xs py-2"
+                onClick={() => modificationTrip && handleRequestExtension(modificationTrip)}
+                disabled={submittingMod}
+              >
+                {submittingMod ? "요청 중..." : "연장 승인 요청"}
+              </Button>
+            </div>
+
+            {/* 대기 취소 섹션 */}
+            {modificationTrip?.modification_status === "extension_pending" && (
+              <div className="pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full border-red-200 text-red-600 hover:bg-red-50 text-xs py-2"
+                  onClick={() => handleCancelModification(modificationTrip)}
+                  disabled={submittingMod}
+                >
+                  연장 신청 취소
+                </Button>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="px-5 py-3 bg-gray-100 border-t border-gray-200 flex justify-end">
+            <Button
+              type="button"
+              className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 text-xs"
+              onClick={() => setModificationTrip(null)}
+            >
+              닫기
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
