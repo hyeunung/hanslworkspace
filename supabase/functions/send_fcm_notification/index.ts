@@ -816,8 +816,8 @@ Deno.serve(async (req)=>{
         type: 'card_usage_approved',
       };
     } else if (type === 'ai_service_reviewed') {
-      console.log('🤖 [AI 서비스 신청서 알림] 검토완료 -> admin/hr에게 알림');
-      const result = await getPurchaseRoleTokens(supabase, ['admin', 'hr']);
+      console.log('🤖 [AI 서비스 신청서 알림] 검토완료 -> admin에게 알림');
+      const result = await getPurchaseRoleTokens(supabase, ['admin']);
       targetTokens = result.tokens;
       targetEmails = result.emails;
     } else if (type === 'admin') {
