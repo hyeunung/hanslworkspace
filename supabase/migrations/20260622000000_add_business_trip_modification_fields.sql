@@ -65,7 +65,7 @@ BEGIN
       NEW.id,
       true
     )
-    ON CONFLICT (business_trip_id) WHERE auto_created_by_trip = true DO NOTHING;
+    ON CONFLICT (business_trip_id) WHERE (business_trip_id IS NOT NULL AND auto_created_by_trip = true) DO NOTHING;
 
     -- 대기 중이거나 승인완료된 배차 요청의 일정을 최신 출장 일정으로 동기화 (연장/조기복귀 반영)
     UPDATE vehicle_requests
