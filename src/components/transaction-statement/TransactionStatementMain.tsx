@@ -1253,7 +1253,7 @@ export default function TransactionStatementMain() {
                         </td>
                         <td className="px-3 py-2.5 text-center">
                           <div className="flex items-center justify-center gap-1">
-                {['pending', 'queued', 'failed', 'rejected'].includes(statement.status) && (
+                {['pending', 'queued', 'failed', 'rejected'].includes(statement.status) && !statement.quantity_match_confirmed_at && (
                               <Button
                                 type="button"
                                 onClick={(e) => handleStartExtraction(e, statement)}
@@ -1334,7 +1334,7 @@ export default function TransactionStatementMain() {
                       </p>
                     )}
                     <div className="flex items-center justify-end gap-2 mt-2 pt-2 border-t border-gray-100">
-                  {['pending', 'queued', 'failed', 'rejected'].includes(statement.status) && (
+                  {['pending', 'queued', 'failed', 'rejected'].includes(statement.status) && !statement.quantity_match_confirmed_at && (
                         <Button
                           type="button"
                           onClick={(e) => handleStartExtraction(e, statement)}

@@ -4677,16 +4677,18 @@ export default function StatementConfirmModal({
                 거래명세서 확인 및 확정
               </div>
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleReextract}
-                  disabled={loading}
-                  className="button-base h-7 text-[10px]"
-                >
-                  <RefreshCw className="w-3.5 h-3.5 mr-1" />
-                  재추출
-                </Button>
+                {!isQuantityMatchConfirmed && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleReextract}
+                    disabled={loading}
+                    className="button-base h-7 text-[10px]"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                    재추출
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"

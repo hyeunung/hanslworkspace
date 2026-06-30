@@ -34,6 +34,7 @@ interface StatementPreRow {
   processing_started_at: string | null;
   file_name: string | null;
   extracted_data: ExtractedData | Record<string, unknown> | null;
+  quantity_match_confirmed_at?: string | null;
 }
 
 /** Supabase query result shape for transaction_statement_items with match_candidates_data */
@@ -1083,10 +1084,18 @@ class TransactionStatementService {
       try {
         const { data: row } = await this.supabase
           .from('transaction_statements')
-          .select('status, locked_by, next_retry_at, processing_started_at, file_name, extracted_data')
+          .select('status, locked_by, next_retry_at, processing_started_at, file_name, extracted_data, quantity_match_confirmed_at')
           .eq('id', statementId)
           .maybeSingle();
         const preRow = row as StatementPreRow | null;
+
+        if (preRow?.quantity_match_confirmed_at) {
+          return {
+            success: false,
+            error: '이미 수량일치가 완료된 거래명세서이므로 재추출할 수 없습니다.'
+          };
+        }
+
         preRowStatus = preRow?.status ?? null;
         preRowLocked = Boolean(preRow?.locked_by);
         preRowNextRetryAt = preRow?.next_retry_at ?? null;
