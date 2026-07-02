@@ -792,15 +792,15 @@ export default function ProductionListMain() {
   const filteredPcbs = pcbs.filter(item => selectedCategories.includes(item.production_category))
   const filteredCables = cables.filter(item => selectedCategories.includes(item.production_category))
 
-  // 가장 긴 보드명 길이에 따른 동적 열 너비 계산 (한글 13px, 영문/숫자 7.5px 기준으로 안전하게 계산)
+  // 가장 긴 보드명 길이에 따른 동적 열 너비 계산 (실제 표 글씨 10px 기준: 한글 10px, 영문/숫자 5.5px)
   const getVisualLength = (str: string): number => {
     if (!str) return 0
     let len = 0
     for (let i = 0; i < str.length; i++) {
       if (str.charCodeAt(i) > 128) {
-        len += 13
+        len += 10
       } else {
-        len += 7.5
+        len += 5.5
       }
     }
     return len
@@ -1528,7 +1528,7 @@ export default function ProductionListMain() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="text-left border-separate border-spacing-0 w-max min-w-full [&_th]:border-l-0 [&_td]:border-l-0 [&_th]:border-t-0 [&_td]:border-t-0 production-compact-table table-fixed">
+              <table className="text-left border-separate border-spacing-0 w-max min-w-full [&_th]:border-l-0 [&_td]:border-l-0 [&_th]:border-t-0 [&_td]:border-t-0 production-compact-table table-auto">
                 <thead className="whitespace-nowrap">
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 text-center sticky left-0 bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: '40px', minWidth: '40px', maxWidth: '40px' }}>NO.</th>
@@ -2298,7 +2298,7 @@ export default function ProductionListMain() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="text-left border-separate border-spacing-0 w-max min-w-full [&_th]:border-l-0 [&_td]:border-l-0 [&_th]:border-t-0 [&_td]:border-t-0 production-compact-table table-fixed">
+              <table className="text-left border-separate border-spacing-0 w-max min-w-full [&_th]:border-l-0 [&_td]:border-l-0 [&_th]:border-t-0 [&_td]:border-t-0 production-compact-table table-auto">
                 <thead className="whitespace-nowrap">
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 text-center sticky left-0 bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: '40px', minWidth: '40px', maxWidth: '40px' }}>NO.</th>
