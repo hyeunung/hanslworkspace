@@ -14,6 +14,7 @@ import {
   FileEdit,
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
   Truck,
   Database
 } from 'lucide-react'
@@ -315,7 +316,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
         />
       )}
 
-        {/* 데스크톱 네비게이션 - hover 시 확장 */}
+        {/* 데스크톱 네비게이션 - 수동 클릭 방식 */}
         <aside
           className="hidden lg:block"
           style={{
@@ -330,12 +331,10 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
             transition: 'width 0.2s ease',
             overflow: 'hidden',
           }}
-          onMouseEnter={() => onExpandChange?.(true)}
-          onMouseLeave={onMouseLeave}
         >
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
-            {/* 우측 세로 끝 접기 바 버튼 (확장 상태에서만 표시) */}
-            {isExpanded && (
+            {/* 우측 세로 끝 접기/펼치기 바 버튼 */}
+            {isExpanded ? (
               <button
                 type="button"
                 onClick={(e) => {
@@ -347,6 +346,19 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                 style={{ height: '100%' }}
               >
                 <ChevronLeft className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600 transition-transform group-hover:-translate-x-[1px]" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onExpandChange?.(true)
+                }}
+                className="absolute right-0 top-0 bottom-0 w-3 hover:w-4 bg-gray-50/50 hover:bg-gray-200 border-l border-gray-200 transition-all duration-150 flex items-center justify-center group cursor-pointer z-50"
+                title="메뉴 펼치기"
+                style={{ height: '100%' }}
+              >
+                <ChevronRight className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600 transition-transform group-hover:translate-x-[1px]" />
               </button>
             )}
             {/* 메뉴 아이템들 */}

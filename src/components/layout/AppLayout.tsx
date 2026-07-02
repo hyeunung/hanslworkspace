@@ -13,22 +13,10 @@ import OfficialDocumentApprovedModal from '@/components/official-document/Offici
 export default function AppLayout() {
   const { employee } = useAuth()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
-  const [isHoverEnabled, setIsHoverEnabled] = useState(true)
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true)
 
   const handleExpandChange = (expanded: boolean) => {
-    if (expanded) {
-      if (isHoverEnabled) {
-        setIsSidebarExpanded(true)
-      }
-    } else {
-      setIsSidebarExpanded(false)
-      setIsHoverEnabled(false)
-    }
-  }
-
-  const handleMouseLeave = () => {
-    setIsHoverEnabled(true)
+    setIsSidebarExpanded(expanded)
   }
 
   return (
@@ -49,7 +37,6 @@ export default function AppLayout() {
         onClose={() => setIsSidebarOpen(false)}
         isExpanded={isSidebarExpanded}
         onExpandChange={handleExpandChange}
-        onMouseLeave={handleMouseLeave}
       />
 
       {/* 콘텐츠 영역 */}
