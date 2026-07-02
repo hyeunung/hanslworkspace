@@ -771,7 +771,7 @@ export default function ProductionListMain() {
 
   // 셀 색상에 따른 배경색 클래스 매퍼
   const getCellBgClass = (color: string | null | undefined) => {
-    if (color === 'red') return 'bg-red-100'
+    if (color === 'red') return 'bg-red-200'
     if (color === 'green') return 'bg-emerald-100'
     if (color === 'yellow') return 'bg-amber-100'
     if (color === 'blue') return 'bg-blue-100'
@@ -781,7 +781,7 @@ export default function ProductionListMain() {
   // 행 색상에 따른 sticky 셀 배경색 클래스 매퍼
   const getStickyBgClass = (rowColor: string | null | undefined) => {
     if (!rowColor) return 'bg-white group-hover:bg-[#fafafa]'
-    if (rowColor === 'red') return 'bg-red-100'
+    if (rowColor === 'red') return 'bg-red-200'
     if (rowColor === 'green') return 'bg-emerald-100'
     if (rowColor === 'yellow') return 'bg-amber-100'
     if (rowColor === 'blue') return 'bg-blue-100'
@@ -1887,7 +1887,7 @@ export default function ProductionListMain() {
                   ) : (
                     filteredPcbs.map((item, index) => {
                       const { color: rColor, strike: rStrike } = parseColorState(item.row_color)
-                      const rowBgClass = rColor === 'red' ? 'bg-red-100' :
+                      const rowBgClass = rColor === 'red' ? 'bg-red-200' :
                                          rColor === 'green' ? 'bg-emerald-100' :
                                          rColor === 'yellow' ? 'bg-amber-100' :
                                          rColor === 'blue' ? 'bg-blue-100' :
@@ -2493,7 +2493,7 @@ export default function ProductionListMain() {
                   ) : (
                     filteredCables.map((item, index) => {
                       const { color: rColor, strike: rStrike } = parseColorState(item.row_color)
-                      const rowBgClass = rColor === 'red' ? 'bg-red-100' :
+                      const rowBgClass = rColor === 'red' ? 'bg-red-200' :
                                          rColor === 'green' ? 'bg-emerald-100' :
                                          rColor === 'yellow' ? 'bg-amber-100' :
                                          rColor === 'blue' ? 'bg-blue-100' :
