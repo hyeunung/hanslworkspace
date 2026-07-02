@@ -1288,6 +1288,20 @@ input[type="number"] {
   max-width: 32rem !important; /* w-full max-w-md or lg */
 }
 
+/* 품명/보드명 좌측정렬 유틸리티 */
+.production-compact-table .align-left,
+.adding-row .align-left {
+  text-align: left !important;
+  padding-left: 6px !important;
+}
+
+.production-compact-table input.align-left,
+.adding-row input.align-left {
+  text-align: left !important;
+  padding-left: 6px !important;
+}
+
+
 .compact-modal form {
   padding: 12px !important;
   gap: 8px !important;
