@@ -891,16 +891,54 @@ export default function ProductionListMain() {
     // 3. Add padding
     const padding = COLUMN_PADDING_SIDE * 2
     
-    // Minimum width bounds for select/input fields to be usable when editing
-    if (field === 'board_name') return Math.max(120, Math.ceil(rawWidth + padding))
-    if (field === 'changes_memo') return Math.max(150, Math.ceil(rawWidth + padding))
-    if (field === 'spec_details') return Math.max(180, Math.ceil(rawWidth + padding))
-    if (field === 'delivery_notes') return Math.max(120, Math.ceil(rawWidth + padding))
-    if (field === 'production_category') return Math.max(80, Math.ceil(rawWidth + padding))
-    if (field === 'reference') return Math.max(40, Math.ceil(rawWidth + padding))
-    if (field === 'request_date') return Math.max(80, Math.ceil(rawWidth + padding))
+    const computedWidth = Math.ceil(rawWidth + padding)
 
-    return Math.ceil(Math.max(50, rawWidth + padding))
+    // Determine field-specific minimum width bounds
+    let minWidth = 50
+    switch (field) {
+      case 'board_name': minWidth = 120; break;
+      case 'changes_memo': minWidth = 150; break;
+      case 'spec_details': minWidth = 180; break;
+      case 'delivery_notes': minWidth = 120; break;
+      case 'production_category': minWidth = 80; break;
+      case 'reference': minWidth = 40; break;
+      case 'request_date': minWidth = 80; break;
+      case 'estimate_no': minWidth = 80; break;
+      case 'delivery_deadline': minWidth = 80; break;
+      case 'client_name': minWidth = 80; break;
+      case 'client_manager': minWidth = 80; break;
+      case 'hansl_manager': minWidth = 60; break;
+      case 'creator': minWidth = 60; break;
+      case 'revision_count': minWidth = 40; break;
+      case 'quantity': minWidth = 45; break;
+      case 'artwork_status': minWidth = 85; break;
+      case 'metal_mask': minWidth = 80; break;
+      case 'stock_count': minWidth = 40; break;
+      case 'pcb_vendor': minWidth = 80; break;
+      case 'delivery_schedule': minWidth = 80; break;
+      case 'pcb_lead_time': minWidth = 80; break;
+      case 'received_quantity': minWidth = 50; break;
+      case 'received_destination': minWidth = 80; break;
+      case 'production_type': minWidth = 60; break;
+      case 'parts_organization': minWidth = 80; break;
+      case 'assy_hanwha': minWidth = 80; break;
+      case 'assy_evertech': minWidth = 80; break;
+      case 'assy_requested_date': minWidth = 80; break;
+      case 'final_product_stock': minWidth = 80; break;
+      case 'qa_passed': minWidth = 40; break;
+      case 'qa_failed': minWidth = 40; break;
+      case 'qa_notes': minWidth = 100; break;
+      case 'design_review': minWidth = 80; break;
+      case 'delivery_quantity': minWidth = 50; break;
+      case 'delivery_date': minWidth = 80; break;
+      case 'delivery_destination': minWidth = 80; break;
+      case 'cable_vendor': minWidth = 80; break;
+      case 'cable_requested_date': minWidth = 80; break;
+      case 'cable_actual_date': minWidth = 80; break;
+      default: minWidth = 50; break;
+    }
+
+    return Math.max(minWidth, computedWidth)
   }
 
   const getHeaderStyle = (type: 'pcb' | 'cable', field: string, defaultWidth: number): React.CSSProperties => {
@@ -2302,7 +2340,7 @@ export default function ProductionListMain() {
                     >
                       <td className="px-2 py-1.5 text-center font-bold text-blue-600 sticky left-0 bg-[#f8fbff] z-10 w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]">+</td>
                       <td className="px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] bg-[#f8fbff] z-10 w-[96px] min-w-[96px] max-w-[96px] truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]">{addingCableRow.sales_order_number}</td>
-                      <td className="px-1 py-1 sticky left-[136px] bg-[#f8fbff] z-10 w-[80px] min-w-[80px] max-w-[80px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]">
+                      <td className="px-1 py-1 sticky left-[136px] bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: `${productionCategoryCableWidth}px`, minWidth: `${productionCategoryCableWidth}px`, maxWidth: `${productionCategoryCableWidth}px` }}>
                         <select
                           value={addingCableRow.production_category}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, production_category: e.target.value })}
@@ -2314,7 +2352,7 @@ export default function ProductionListMain() {
                           <option value="Case">Case</option>
                         </select>
                       </td>
-                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] align-left" style={{ left: '216px', width: `${cableBoardWidth}px`, minWidth: `${cableBoardWidth}px`, maxWidth: `${cableBoardWidth}px` }}>
+                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] align-left" style={{ left: `${136 + productionCategoryCableWidth}px`, width: `${cableBoardWidth}px`, minWidth: `${cableBoardWidth}px`, maxWidth: `${cableBoardWidth}px` }}>
                         <input
                           type="text"
                           value={addingCableRow.board_name}
@@ -2323,7 +2361,7 @@ export default function ProductionListMain() {
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none align-left"
                         />
                       </td>
-                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${216 + cableBoardWidth}px`, width: `${getColumnWidth('cable', 'reference', 150)}px`, minWidth: `${getColumnWidth('cable', 'reference', 150)}px`, maxWidth: `${getColumnWidth('cable', 'reference', 150)}px` }}>
+                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${136 + productionCategoryCableWidth + cableBoardWidth}px`, width: `${referenceCableWidth}px`, minWidth: `${referenceCableWidth}px`, maxWidth: `${referenceCableWidth}px` }}>
                         <input
                           type="text"
                           value={addingCableRow.reference || ''}
@@ -2332,7 +2370,7 @@ export default function ProductionListMain() {
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none text-red-500 font-semibold"
                         />
                       </td>
-                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${216 + cableBoardWidth + getColumnWidth('cable', 'reference', 150)}px`, width: '80px', minWidth: '80px', maxWidth: '80px' }}>
+                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${136 + productionCategoryCableWidth + cableBoardWidth + referenceCableWidth}px`, width: `${requestDateCableWidth}px`, minWidth: `${requestDateCableWidth}px`, maxWidth: `${requestDateCableWidth}px` }}>
                         <input
                           type="text"
                           value={addingCableRow.request_date ? formatDbDateToDisplay(addingCableRow.request_date) : ''}
