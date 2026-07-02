@@ -954,8 +954,8 @@ export default function ProductionListMain() {
   const productionCategoryCableWidth = getColumnWidth('cable', 'production_category', 80)
   const pcbBoardWidth = getColumnWidth('pcb', 'board_name', 150)
   const cableBoardWidth = getColumnWidth('cable', 'board_name', 150)
-  const referencePcbWidth = getColumnWidth('pcb', 'reference', 150)
-  const referenceCableWidth = getColumnWidth('cable', 'reference', 150)
+  const referencePcbWidth = getColumnWidth('pcb', 'reference', 50)
+  const referenceCableWidth = getColumnWidth('cable', 'reference', 50)
   const requestDatePcbWidth = getColumnWidth('pcb', 'request_date', 80)
   const requestDateCableWidth = getColumnWidth('cable', 'request_date', 80)
 
