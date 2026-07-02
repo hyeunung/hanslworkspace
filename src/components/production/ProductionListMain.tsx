@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { vendorService } from '@/services/vendorService'
 
+
 interface Employee {
   id: string
   name: string
@@ -88,14 +89,23 @@ export default function ProductionListMain() {
   // 필터 및 검색 상태
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedMonth, setSelectedMonth] = useState<number | null>(() => new Date().getMonth() + 1)
+  const [selectedYear, setSelectedYear] = useState<number>(() => {
+    const savedYear = localStorage.getItem('hansl_prod_filter_year')
+    return savedYear ? Number(savedYear) : new Date().getFullYear()
+  })
+  const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i)
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['LG_PCB', 'LG_Socket Board', 'LG_Cable', 'LG_Case', 'PCB', 'Cable', 'Case'])
 
   // 로컬스토리지에서 저장된 필터 불러오기
   useEffect(() => {
     const savedMonth = localStorage.getItem('hansl_prod_filter_month')
+    const savedYear = localStorage.getItem('hansl_prod_filter_year')
     const savedCats = localStorage.getItem('hansl_prod_filter_categories')
     if (savedMonth !== null && savedMonth !== undefined && savedMonth !== '') {
       setSelectedMonth(savedMonth === 'null' ? null : Number(savedMonth))
+    }
+    if (savedYear !== null && savedYear !== undefined && savedYear !== '') {
+      setSelectedYear(Number(savedYear))
     }
     if (savedCats) {
       try {
@@ -117,12 +127,14 @@ export default function ProductionListMain() {
 
   const handleSaveFilters = () => {
     localStorage.setItem('hansl_prod_filter_month', String(selectedMonth))
+    localStorage.setItem('hansl_prod_filter_year', String(selectedYear))
     localStorage.setItem('hansl_prod_filter_categories', JSON.stringify(selectedCategories))
     toast.success('현재 필터 설정이 저장되었습니다.')
   }
 
   const handleResetMonthFilter = () => {
     setSelectedMonth(null)
+    setSelectedYear(new Date().getFullYear())
     toast.info('월 필터가 초기화되었습니다.')
   }
 
@@ -153,6 +165,221 @@ export default function ProductionListMain() {
 
   // 행 색상 피커 상태
   const [activeColorPicker, setActiveColorPicker] = useState<{ id: string, type: 'pcb' | 'cable' } | null>(null)
+
+  // 드래그 선택 관련 상태 정의
+  const [selectedCells, setSelectedCells] = useState<string[]>([])
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStartCell, setDragStartCell] = useState<{ id: string; field: string; type: 'pcb' | 'cable' } | null>(null)
+  const [floatingMenuPos, setFloatingMenuPos] = useState<{ x: number; y: number } | null>(null)
+
+  const pcbColumns = [
+    'production_category',
+    'board_name',
+    'reference',
+    'request_date',
+    'estimate_no',
+    'delivery_deadline',
+    'client_name',
+    'client_manager',
+    'hansl_manager',
+    'revision_count',
+    'quantity',
+    'artwork_status',
+    'metal_mask',
+    'changes_memo',
+    'stock_count',
+    'pcb_vendor',
+    'delivery_schedule',
+    'pcb_lead_time',
+    'received_quantity',
+    'received_destination',
+    'parts_organization',
+    'assy_hanwha',
+    'assy_evertech',
+    'assy_requested_date',
+    'final_product_stock',
+    'qa_passed',
+    'qa_failed',
+    'qa_notes',
+    'design_review',
+    'delivery_quantity',
+    'delivery_date',
+    'delivery_destination'
+  ]
+
+  const cableColumns = [
+    'production_category',
+    'board_name',
+    'reference',
+    'request_date',
+    'estimate_no',
+    'delivery_deadline',
+    'client_name',
+    'client_manager',
+    'hansl_manager',
+    'revision_count',
+    'quantity',
+    'spec_details',
+    'cable_vendor',
+    'cable_requested_date',
+    'cable_actual_date',
+    'delivery_notes'
+  ]
+
+  const getRowIndex = (type: 'pcb' | 'cable', id: string) => {
+    const list = type === 'pcb' ? filteredPcbs : filteredCables
+    return list.findIndex(item => item.id === id)
+  }
+
+  const handleCellMouseDown = (e: React.MouseEvent, id: string, field: string, type: 'pcb' | 'cable') => {
+    if (e.button !== 0) return // 마우스 왼쪽 클릭만 지원
+    setEditingCell(null)
+    setIsDragging(true)
+    setDragStartCell({ id, field, type })
+    setSelectedCells([`${id}::${field}`])
+    setFloatingMenuPos(null)
+  }
+
+  const handleCellMouseEnter = (id: string, field: string, type: 'pcb' | 'cable') => {
+    if (!isDragging || !dragStartCell || dragStartCell.type !== type) return
+    
+    const cols = type === 'pcb' ? pcbColumns : cableColumns
+    const startRowIdx = getRowIndex(type, dragStartCell.id)
+    const endRowIdx = getRowIndex(type, id)
+    const startColIdx = cols.indexOf(dragStartCell.field)
+    const endColIdx = cols.indexOf(field)
+    
+    if (startRowIdx === -1 || endRowIdx === -1 || startColIdx === -1 || endColIdx === -1) return
+    
+    const minRow = Math.min(startRowIdx, endRowIdx)
+    const maxRow = Math.max(startRowIdx, endRowIdx)
+    const minCol = Math.min(startColIdx, endColIdx)
+    const maxCol = Math.max(startColIdx, endColIdx)
+    
+    const list = type === 'pcb' ? filteredPcbs : filteredCables
+    const newSelection: string[] = []
+    
+    for (let r = minRow; r <= maxRow; r++) {
+      const rowId = list[r].id
+      for (let c = minCol; c <= maxCol; c++) {
+        newSelection.push(`${rowId}::${cols[c]}`)
+      }
+    }
+    
+    setSelectedCells(newSelection)
+  }
+
+  // 드래그 종료 마우스 리스너 및 아웃사이드 클릭 해제 처리
+  useEffect(() => {
+    const handleGlobalMouseUp = (e: MouseEvent) => {
+      if (isDragging) {
+        setIsDragging(false)
+        if (selectedCells.length > 1) {
+          setFloatingMenuPos({ x: e.clientX, y: e.clientY })
+        }
+      }
+    }
+
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (
+        target.closest('.floating-bulk-picker') || 
+        target.closest('.cursor-pointer') || 
+        target.closest('.color-picker-trigger') || 
+        target.closest('.color-picker-popover')
+      ) {
+        return
+      }
+      setSelectedCells([])
+      setFloatingMenuPos(null)
+    }
+
+    window.addEventListener('mouseup', handleGlobalMouseUp)
+    window.addEventListener('mousedown', handleOutsideClick)
+    return () => {
+      window.removeEventListener('mouseup', handleGlobalMouseUp)
+      window.removeEventListener('mousedown', handleOutsideClick)
+    }
+  }, [isDragging, selectedCells])
+
+  // 일괄 상태 변경 핸들러
+  const handleBulkUpdateCellColor = async (colorAction: string | null, isToggleStrike = false) => {
+    if (selectedCells.length === 0) return
+    
+    const type = dragStartCell?.type || 'pcb'
+    const table = type === 'pcb' ? 'production_pcbs' : 'production_cables'
+    const list = type === 'pcb' ? filteredPcbs : filteredCables
+    
+    try {
+      const supabase = createClient()
+      const updatesByRow: { [rowId: string]: { [field: string]: string | null } } = {}
+      
+      let targetStrike: 'strike' | 'nostrike' | null = null
+      if (isToggleStrike) {
+        const firstCellKey = selectedCells[0]
+        const [firstId, firstField] = firstCellKey.split('::')
+        const firstItem = list.find(i => i.id === firstId)
+        const firstCellColor = firstItem?.cell_colors?.[firstField]
+        const { strike: firstStrike } = parseColorState(firstCellColor)
+        const { strike: rowStrike } = parseColorState(firstItem?.row_color)
+        const effectiveStrike = firstStrike || rowStrike || null
+        targetStrike = effectiveStrike === 'strike' ? 'nostrike' : 'strike'
+      }
+      
+      selectedCells.forEach(key => {
+        const [rowId, field] = key.split('::')
+        if (!updatesByRow[rowId]) {
+          updatesByRow[rowId] = {}
+        }
+        updatesByRow[rowId][field] = colorAction
+      })
+      
+      const promises = Object.entries(updatesByRow).map(async ([rowId, fields]) => {
+        const rowItem = list.find(i => i.id === rowId)
+        if (!rowItem) return
+        
+        const newCellColors = { ...(rowItem.cell_colors || {}) }
+        
+        Object.keys(fields).forEach(field => {
+          const currentVal = newCellColors[field]
+          const { color: curColor, strike: curStrike } = parseColorState(currentVal)
+          
+          let nextColor: string | null = curColor
+          let nextStrike: 'strike' | 'nostrike' | null = curStrike
+          
+          if (isToggleStrike) {
+            nextStrike = targetStrike
+          } else if (colorAction === null) {
+            nextColor = null
+            nextStrike = null
+          } else {
+            nextColor = colorAction
+          }
+          
+          const serialized = serializeColorState(nextColor, nextStrike)
+          if (serialized === null) {
+            delete newCellColors[field]
+          } else {
+            newCellColors[field] = serialized
+          }
+        })
+        
+        return supabase.from(table).update({ cell_colors: newCellColors }).eq('id', rowId)
+      })
+      
+      const results = await Promise.all(promises)
+      const dbError = results.find(r => r?.error)?.error
+      if (dbError) throw dbError
+      
+      loadData()
+      setSelectedCells([])
+      setFloatingMenuPos(null)
+      toast.success(`${selectedCells.length}개 칸의 상태가 변경되었습니다.`)
+    } catch (err) {
+      console.error(err)
+      toast.error('일괄 상태 변경에 실패했습니다.')
+    }
+  }
 
   // 폼 필드 상태
   const [formFields, setFormFields] = useState<Record<string, any>>({
@@ -186,12 +413,14 @@ export default function ProductionListMain() {
     // 월별 필터에 기반한 날짜 자동 계산
     let calculatedStartDate = ''
     let calculatedEndDate = ''
+    const pad = (n: number) => String(n).padStart(2, '0')
     if (selectedMonth !== null) {
-      const year = new Date().getFullYear()
-      const pad = (n: number) => String(n).padStart(2, '0')
-      calculatedStartDate = `${year}-${pad(selectedMonth)}-01`
-      const lastDay = new Date(year, selectedMonth, 0).getDate()
-      calculatedEndDate = `${year}-${pad(selectedMonth)}-${pad(lastDay)}`
+      calculatedStartDate = `${selectedYear}-${pad(selectedMonth)}-01`
+      const lastDay = new Date(selectedYear, selectedMonth, 0).getDate()
+      calculatedEndDate = `${selectedYear}-${pad(selectedMonth)}-${pad(lastDay)}`
+    } else {
+      calculatedStartDate = `${selectedYear}-01-01`
+      calculatedEndDate = `${selectedYear}-12-31`
     }
 
     try {
@@ -239,7 +468,7 @@ export default function ProductionListMain() {
   // 검색/필터 변경 시 로드
   useEffect(() => {
     loadData()
-  }, [searchQuery, selectedMonth])
+  }, [searchQuery, selectedMonth, selectedYear])
 
   // 실시간 구독 설정
   useEffect(() => {
@@ -263,7 +492,7 @@ export default function ProductionListMain() {
       supabase.removeChannel(pcbChannel)
       supabase.removeChannel(cableChannel)
     }
-  }, [searchQuery, selectedMonth])
+  }, [searchQuery, selectedMonth, selectedYear])
 
   // 행 색상 피커 바깥 영역 클릭 시 닫기
   useEffect(() => {
@@ -396,6 +625,7 @@ export default function ProductionListMain() {
 
   // 인라인 셀 수정 클릭 핸들러
   const handleCellClick = (id: string, type: 'pcb' | 'cable', field: string, currentValue: any) => {
+    if (selectedCells.length > 1) return
     setEditingCell({ id, type, field })
     setEditValue(currentValue === null || currentValue === undefined ? '' : String(currentValue))
   }
@@ -433,29 +663,128 @@ export default function ProductionListMain() {
     }
   }
 
+  // 색상 문자열 파싱 (예: 'yellow::strike' -> { color: 'yellow', strike: 'strike' | 'nostrike' | null })
+  const parseColorState = (value: string | null | undefined): { color: string | null, strike: 'strike' | 'nostrike' | null } => {
+    if (!value) return { color: null, strike: null };
+    if (value === 'strike') return { color: null, strike: 'strike' };
+    if (value === 'nostrike') return { color: null, strike: 'nostrike' };
+    if (value.includes('::')) {
+      const [color, strikeFlag] = value.split('::');
+      return { 
+        color: color || null, 
+        strike: (strikeFlag === 'strike' || strikeFlag === 'nostrike') ? strikeFlag as 'strike' | 'nostrike' : null 
+      };
+    }
+    return { color: value, strike: null };
+  };
+
+  // 색상 상태 직렬화
+  const serializeColorState = (color: string | null, strike: 'strike' | 'nostrike' | null) => {
+    if (!color && !strike) return null;
+    if (!color && strike) return strike;
+    if (color && strike) return `${color}::${strike}`;
+    return color;
+  };
+
   // 행 배경색 업데이트 핸들러
-  const handleUpdateRowColor = async (type: 'pcb' | 'cable', id: string, color: string | null) => {
+  const handleUpdateRowColor = async (type: 'pcb' | 'cable', id: string, colorAction: string | null, isToggleStrike = false) => {
     try {
       const supabase = createClient()
       const table = type === 'pcb' ? 'production_pcbs' : 'production_cables'
-      const { error } = await supabase.from(table).update({ row_color: color }).eq('id', id)
+      const list = type === 'pcb' ? filteredPcbs : filteredCables
+      const currentItem = list.find(i => i.id === id)
+      if (!currentItem) return
+      
+      const { color: curColor, strike: curStrike } = parseColorState(currentItem.row_color)
+      
+      let nextColor: string | null = curColor
+      let nextStrike: 'strike' | 'nostrike' | null = curStrike
+      
+      if (isToggleStrike) {
+        nextStrike = curStrike === 'strike' ? null : 'strike'
+      } else if (colorAction === null) {
+        nextColor = null
+        nextStrike = null
+      } else {
+        nextColor = colorAction
+      }
+      
+      const serialized = serializeColorState(nextColor, nextStrike)
+      const { error } = await supabase.from(table).update({ row_color: serialized }).eq('id', id)
       if (error) throw error
+      
       loadData()
       setActiveColorPicker(null)
-      toast.success('행 색상이 변경되었습니다.')
+      toast.success('행 상태가 변경되었습니다.')
     } catch (err) {
       console.error(err)
-      toast.error('색상 변경에 실패했습니다.')
+      toast.error('상태 변경에 실패했습니다.')
     }
+  }
+
+  // 개별 셀 배경색 업데이트 핸들러
+  const handleUpdateCellColor = async (type: 'pcb' | 'cable', id: string, field: string, colorAction: string | null, currentCellColors: any, isToggleStrike = false) => {
+    try {
+      const supabase = createClient()
+      const table = type === 'pcb' ? 'production_pcbs' : 'production_cables'
+      const newCellColors = { ...(currentCellColors || {}) }
+      
+      const currentVal = newCellColors[field]
+      const { color: curColor, strike: curStrike } = parseColorState(currentVal)
+      
+      let nextColor: string | null = curColor
+      let nextStrike: 'strike' | 'nostrike' | null = curStrike
+      
+      if (isToggleStrike) {
+        const list = type === 'pcb' ? filteredPcbs : filteredCables
+        const currentItem = list.find(i => i.id === id)
+        const { strike: rowStrike } = parseColorState(currentItem?.row_color)
+        
+        const effectiveStrike = curStrike || rowStrike || null
+        nextStrike = effectiveStrike === 'strike' ? 'nostrike' : 'strike'
+      } else if (colorAction === null) {
+        nextColor = null
+        nextStrike = null
+      } else {
+        nextColor = colorAction
+      }
+      
+      const serialized = serializeColorState(nextColor, nextStrike)
+      if (serialized === null) {
+        delete newCellColors[field]
+      } else {
+        newCellColors[field] = serialized
+      }
+      
+      const { error } = await supabase.from(table).update({ cell_colors: newCellColors }).eq('id', id)
+      if (error) throw error
+      
+      // 색상 선택 시, 입력칸에 수정 중이던 텍스트도 자동으로 함께 저장하고 수정을 완료합니다.
+      await handleCellSave({ id, type, field }, editValue)
+      setEditingCell(null)
+      toast.success('칸 상태가 변경되었습니다.')
+    } catch (err) {
+      console.error(err)
+      toast.error('상태 변경에 실패했습니다.')
+    }
+  }
+
+  // 셀 색상에 따른 배경색 클래스 매퍼
+  const getCellBgClass = (color: string | null | undefined) => {
+    if (color === 'red') return 'bg-red-100'
+    if (color === 'green') return 'bg-emerald-100'
+    if (color === 'yellow') return 'bg-amber-100'
+    if (color === 'blue') return 'bg-blue-100'
+    return ''
   }
 
   // 행 색상에 따른 sticky 셀 배경색 클래스 매퍼
   const getStickyBgClass = (rowColor: string | null | undefined) => {
     if (!rowColor) return 'bg-white group-hover:bg-[#fafafa]'
-    if (rowColor === 'red') return 'bg-red-50/80 group-hover:bg-red-100/60'
-    if (rowColor === 'green') return 'bg-emerald-50/80 group-hover:bg-emerald-100/60'
-    if (rowColor === 'yellow') return 'bg-amber-50/80 group-hover:bg-amber-100/60'
-    if (rowColor === 'blue') return 'bg-blue-50/80 group-hover:bg-blue-100/60'
+    if (rowColor === 'red') return 'bg-red-100'
+    if (rowColor === 'green') return 'bg-emerald-100'
+    if (rowColor === 'yellow') return 'bg-amber-100'
+    if (rowColor === 'blue') return 'bg-blue-100'
     return 'bg-white group-hover:bg-[#fafafa]'
   }
 
@@ -638,10 +967,87 @@ export default function ProductionListMain() {
       cellStyle.maxWidth = `${activeWidth}px`
     }
 
+    const renderCellColorPicker = () => {
+      const cellVal = item.cell_colors?.[field];
+      const { color: activeColor, strike: isCellStruck } = parseColorState(cellVal);
+
+      return (
+        <div 
+          className="absolute left-0 bottom-full mb-1 bg-white border border-gray-200 rounded-md shadow-lg p-1 z-50 flex items-center gap-1"
+          style={{ width: 'max-content' }}
+        >
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleUpdateCellColor(type, id, field, 'yellow', item.cell_colors);
+            }}
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 border transition-colors text-[9px] text-amber-700 font-medium shrink-0 ${activeColor === 'yellow' ? 'border-amber-500 ring-1 ring-amber-400 font-bold bg-amber-100' : 'border-amber-200 hover:bg-amber-100'}`}
+            title="신규"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            <span>신규</span>
+          </button>
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleUpdateCellColor(type, id, field, 'blue', item.cell_colors);
+            }}
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 border transition-colors text-[9px] text-blue-700 font-medium shrink-0 ${activeColor === 'blue' ? 'border-blue-500 ring-1 ring-blue-400 font-bold bg-blue-100' : 'border-blue-200 hover:bg-blue-100'}`}
+            title="재발주"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+            <span>재발주</span>
+          </button>
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleUpdateCellColor(type, id, field, 'red', item.cell_colors);
+            }}
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 border transition-colors text-[9px] text-red-700 font-medium shrink-0 ${activeColor === 'red' ? 'border-red-500 ring-1 ring-red-400 font-bold bg-red-100' : 'border-red-200 hover:bg-red-100'}`}
+            title="취소"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+            <span>취소</span>
+          </button>
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleUpdateCellColor(type, id, field, null, item.cell_colors, true);
+            }}
+            className={`flex items-center justify-center px-1.5 py-0.5 rounded-full border transition-colors text-[9px] font-bold shrink-0 ${isCellStruck ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
+            title="취소선"
+          >
+            -
+          </button>
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleUpdateCellColor(type, id, field, null, item.cell_colors);
+            }}
+            className="text-[9px] text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-1 py-0 bg-gray-50 hover:bg-gray-100 shrink-0 font-medium transition-colors"
+            title="색상 초기화"
+          >
+            초기화
+          </button>
+        </div>
+      );
+    };
+
     if (isEditing) {
+      const editCellStyle = { ...cellStyle, overflow: 'visible', zIndex: 50 }
       if (inputType === 'select') {
         return (
-          <td className={`${cellClassName} p-0.5`} style={cellStyle}>
+          <td className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
             <select
               autoFocus
               value={editValue}
@@ -662,6 +1068,7 @@ export default function ProductionListMain() {
             >
               {selectOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
             </select>
+            {renderCellColorPicker()}
           </td>
         )
       }
@@ -687,7 +1094,7 @@ export default function ProductionListMain() {
       }
 
       return (
-        <td className={`${cellClassName} p-0.5`} style={cellStyle}>
+        <td className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
           <input
             autoFocus
             type={inputType}
@@ -708,22 +1115,66 @@ export default function ProductionListMain() {
             className={`w-full h-5 bg-white border border-gray-300 rounded px-1.5 py-0 text-[10px] focus:outline-none ${field === 'reference' ? 'text-red-500 font-semibold' : ''}`}
           />
           {datalistNode}
+          {renderCellColorPicker()}
         </td>
       )
     }
 
     let computedClassName = cellClassName
+    const isDateField = field.endsWith('_date') || field.endsWith('_deadline') || field.endsWith('_schedule');
+    const hasValue = item[field] !== null && item[field] !== undefined && item[field] !== '';
+    if (isDateField && hasValue) {
+      computedClassName += ' font-semibold text-gray-900'
+    }
+
+    const cState = parseColorState(item.cell_colors?.[field]);
+    const rState = parseColorState(item.row_color);
+    
+    // 이 셀 자체의 명시적인 하이픈(취소선) 설정이 최우선이고, 없을 시 행 전체 하이픈 설정을 상속받음
+    const isStruck = cState.strike === 'strike' ? true :
+                     cState.strike === 'nostrike' ? false :
+                     (rState.strike === 'strike');
+
+    if (isStruck) {
+      computedClassName = computedClassName
+        .replace('text-gray-900', '')
+        .replace('text-gray-500', '')
+        .replace('text-red-500', '')
+        .replace('font-semibold', '')
+        + ' line-through text-gray-400 font-normal'
+    }
+
     if (cellClassName.includes('sticky')) {
-      computedClassName = cellClassName
+      computedClassName = computedClassName
         .replace('bg-white', '')
         .replace('group-hover:bg-[#fafafa]', '')
-        + ' ' + getStickyBgClass(item.row_color)
+        + ' ' + (cState.color ? getStickyBgClass(cState.color) : getStickyBgClass(rState.color))
+    } else {
+      const activeColor = cState.color || rState.color;
+      if (activeColor) {
+        computedClassName = computedClassName
+          .replace('bg-white', '')
+          .replace('group-hover:bg-gray-50/50', '')
+        if (cState.color) {
+          computedClassName += ' ' + getCellBgClass(cState.color)
+        }
+      }
     }
+
+    const isSelected = selectedCells.includes(`${id}::${field}`);
+    const selectStyle: React.CSSProperties = isSelected ? {
+      outline: '1.5px solid #3b82f6',
+      outlineOffset: '-1.5px',
+      backgroundColor: 'rgba(59, 130, 246, 0.1)',
+      ...cellStyle
+    } : cellStyle;
 
     return (
       <td 
-        className={`${computedClassName} cursor-pointer hover:bg-gray-100/50 transition-colors`}
-        style={cellStyle}
+        className={`${computedClassName} cursor-pointer ${item.row_color || item.cell_colors?.[field] ? '' : 'hover:bg-gray-100/50'} transition-colors select-none`}
+        style={selectStyle}
+        onMouseDown={(e) => handleCellMouseDown(e, id, field, type)}
+        onMouseEnter={() => handleCellMouseEnter(id, field, type)}
         onClick={() => handleCellClick(id, type, field, item[field])}
         title={field === 'board_name' ? item.board_name : undefined}
       >
@@ -876,14 +1327,15 @@ export default function ProductionListMain() {
       <div className="card-professional p-3 space-y-3">
         {/* Row 1: 통합 검색창 */}
         <div className="flex items-center">
-          <div className="relative flex-1 min-w-[200px] max-w-sm">
-            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" />
+          <div className="relative w-[240px] flex-shrink-0 h-5 flex items-center">
+            <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="제작번호, 보드명, 업체명 검색..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full business-radius-input button-base border border-gray-300 bg-white text-gray-700 h-8 pl-8 pr-3"
+              style={{ paddingLeft: '26px', height: '20px' }}
+              className="w-full block business-radius-input border border-gray-300 bg-white text-gray-700 pr-3 text-[11px]"
             />
           </div>
         </div>
@@ -895,6 +1347,26 @@ export default function ProductionListMain() {
             요청월:
           </span>
           <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              style={{ 
+                width: '56px', 
+                textAlign: 'center',
+                WebkitAppearance: 'none',
+                MozAppearance: 'none',
+                appearance: 'none',
+                background: 'none'
+              }}
+              className="badge-stats cursor-pointer border bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100 transition-all justify-center text-center px-1"
+            >
+              {years.map(y => (
+                <option key={y} value={y}>
+                  {y}년
+                </option>
+              ))}
+            </select>
+
             <button
               type="button"
               onClick={() => setSelectedMonth(null)}
@@ -1414,17 +1886,17 @@ export default function ProductionListMain() {
                     </tr>
                   ) : (
                     filteredPcbs.map((item, index) => {
-                      const rowColor = item.row_color
-                      const rowBgClass = rowColor === 'red' ? 'bg-red-50/40 hover:bg-red-100/30' :
-                                         rowColor === 'green' ? 'bg-emerald-50/40 hover:bg-emerald-100/30' :
-                                         rowColor === 'yellow' ? 'bg-amber-50/40 hover:bg-amber-100/30' :
-                                         rowColor === 'blue' ? 'bg-blue-50/40 hover:bg-blue-100/30' :
+                      const { color: rColor, strike: rStrike } = parseColorState(item.row_color)
+                      const rowBgClass = rColor === 'red' ? 'bg-red-100' :
+                                         rColor === 'green' ? 'bg-emerald-100' :
+                                         rColor === 'yellow' ? 'bg-amber-100' :
+                                         rColor === 'blue' ? 'bg-blue-100' :
                                          'hover:bg-gray-50/50'
 
                       return (
                         <tr key={item.id} className={`group transition-colors ${rowBgClass}`}>
                           <td 
-                            className={`px-2 py-1.5 text-center text-gray-400 sticky left-0 transition-colors z-10 w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer relative color-picker-trigger ${getStickyBgClass(item.row_color)}`}
+                            className={`px-2 py-1.5 text-center text-gray-400 sticky left-0 transition-colors ${activeColorPicker?.id === item.id && activeColorPicker?.type === 'pcb' ? 'z-20' : 'z-10'} w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer relative color-picker-trigger ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
                             onClick={(e) => {
                               e.stopPropagation()
                               e.nativeEvent.stopPropagation()
@@ -1436,32 +1908,43 @@ export default function ProductionListMain() {
                               <div className="absolute left-[38px] top-1/2 -translate-y-1/2 bg-white border border-gray-200 rounded-md shadow-lg p-1.5 z-50 flex items-center gap-1.5 color-picker-popover">
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, 'red'); }}
-                                  className="w-3 h-3 rounded-full bg-red-200 border border-red-300 hover:scale-110 transition-transform"
-                                  title="빨간색"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, 'green'); }}
-                                  className="w-3 h-3 rounded-full bg-emerald-200 border border-emerald-300 hover:scale-110 transition-transform"
-                                  title="초록색"
-                                />
-                                <button
-                                  type="button"
                                   onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, 'yellow'); }}
-                                  className="w-3 h-3 rounded-full bg-amber-200 border border-amber-300 hover:scale-110 transition-transform"
-                                  title="노란색"
-                                />
+                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors text-[10px] text-amber-700 font-medium shrink-0"
+                                  title="신규"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                  <span>신규</span>
+                                </button>
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, 'blue'); }}
-                                  className="w-3 h-3 rounded-full bg-blue-200 border border-blue-300 hover:scale-110 transition-transform"
-                                  title="파란색"
-                                />
+                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors text-[10px] text-blue-700 font-medium shrink-0"
+                                  title="재발주"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                  <span>재발주</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, 'red'); }}
+                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 border border-red-200 hover:bg-red-100 transition-colors text-[10px] text-red-700 font-medium shrink-0"
+                                  title="취소"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                  <span>취소</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, null, true); }}
+                                  className="flex items-center justify-center px-2 py-0.5 rounded-full border border-gray-300 hover:bg-gray-100 transition-colors text-[10px] text-gray-600 font-bold shrink-0 bg-white"
+                                  title="취소선"
+                                >
+                                  -
+                                </button>
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, null); }}
-                                  className="text-[9px] text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-1 py-0 hover:bg-gray-50 shrink-0 font-medium"
+                                  className="text-[10px] text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 shrink-0 font-medium transition-colors"
                                   title="색상 초기화"
                                 >
                                   초기화
@@ -1469,7 +1952,7 @@ export default function ProductionListMain() {
                               </div>
                             )}
                           </td>
-                          <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 w-[96px] min-w-[96px] max-w-[96px] truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(item.row_color)}`}>{item.sales_order_number}</td>
+                          <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 w-[96px] min-w-[96px] max-w-[96px] truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}>{item.sales_order_number}</td>
                         {renderEditableCell(
                           item.id,
                           'pcb',
@@ -2009,17 +2492,17 @@ export default function ProductionListMain() {
                     </tr>
                   ) : (
                     filteredCables.map((item, index) => {
-                      const rowColor = item.row_color
-                      const rowBgClass = rowColor === 'red' ? 'bg-red-50/40 hover:bg-red-100/30' :
-                                         rowColor === 'green' ? 'bg-emerald-50/40 hover:bg-emerald-100/30' :
-                                         rowColor === 'yellow' ? 'bg-amber-50/40 hover:bg-amber-100/30' :
-                                         rowColor === 'blue' ? 'bg-blue-50/40 hover:bg-blue-100/30' :
+                      const { color: rColor, strike: rStrike } = parseColorState(item.row_color)
+                      const rowBgClass = rColor === 'red' ? 'bg-red-100' :
+                                         rColor === 'green' ? 'bg-emerald-100' :
+                                         rColor === 'yellow' ? 'bg-amber-100' :
+                                         rColor === 'blue' ? 'bg-blue-100' :
                                          'hover:bg-gray-50/50'
 
                       return (
                         <tr key={item.id} className={`group transition-colors ${rowBgClass}`}>
                           <td 
-                            className={`px-2 py-1.5 text-center text-gray-400 sticky left-0 transition-colors z-10 w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer relative color-picker-trigger ${getStickyBgClass(item.row_color)}`}
+                            className={`px-2 py-1.5 text-center text-gray-400 sticky left-0 transition-colors ${activeColorPicker?.id === item.id && activeColorPicker?.type === 'cable' ? 'z-20' : 'z-10'} w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer relative color-picker-trigger ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
                             onClick={(e) => {
                               e.stopPropagation()
                               e.nativeEvent.stopPropagation()
@@ -2031,32 +2514,43 @@ export default function ProductionListMain() {
                               <div className="absolute left-[38px] top-1/2 -translate-y-1/2 bg-white border border-gray-200 rounded-md shadow-lg p-1.5 z-50 flex items-center gap-1.5 color-picker-popover">
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, 'red'); }}
-                                  className="w-3 h-3 rounded-full bg-red-200 border border-red-300 hover:scale-110 transition-transform"
-                                  title="빨간색"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, 'green'); }}
-                                  className="w-3 h-3 rounded-full bg-emerald-200 border border-emerald-300 hover:scale-110 transition-transform"
-                                  title="초록색"
-                                />
-                                <button
-                                  type="button"
                                   onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, 'yellow'); }}
-                                  className="w-3 h-3 rounded-full bg-amber-200 border border-amber-300 hover:scale-110 transition-transform"
-                                  title="노란색"
-                                />
+                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors text-[10px] text-amber-700 font-medium shrink-0"
+                                  title="신규"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                  <span>신규</span>
+                                </button>
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, 'blue'); }}
-                                  className="w-3 h-3 rounded-full bg-blue-200 border border-blue-300 hover:scale-110 transition-transform"
-                                  title="파란색"
-                                />
+                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors text-[10px] text-blue-700 font-medium shrink-0"
+                                  title="재발주"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                  <span>재발주</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, 'red'); }}
+                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 border border-red-200 hover:bg-red-100 transition-colors text-[10px] text-red-700 font-medium shrink-0"
+                                  title="취소"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                  <span>취소</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, null, true); }}
+                                  className="flex items-center justify-center px-2 py-0.5 rounded-full border border-gray-300 hover:bg-gray-100 transition-colors text-[10px] text-gray-600 font-bold shrink-0 bg-white"
+                                  title="취소선"
+                                >
+                                  -
+                                </button>
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, null); }}
-                                  className="text-[9px] text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-1 py-0 hover:bg-gray-50 shrink-0 font-medium"
+                                  className="text-[10px] text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 shrink-0 font-medium transition-colors"
                                   title="색상 초기화"
                                 >
                                   초기화
@@ -2064,7 +2558,7 @@ export default function ProductionListMain() {
                               </div>
                             )}
                           </td>
-                          <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 w-[96px] min-w-[96px] max-w-[96px] truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(item.row_color)}`}>{item.sales_order_number}</td>
+                          <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 w-[96px] min-w-[96px] max-w-[96px] truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}>{item.sales_order_number}</td>
                         {renderEditableCell(
                           item.id,
                           'cable',
@@ -2567,6 +3061,73 @@ export default function ProductionListMain() {
           <option key={emp.id} value={emp.name} />
         ))}
       </datalist>
+
+      {/* 드래그 선택 시 나타나는 일괄 상태 변경 플로팅 툴바 */}
+      {floatingMenuPos && selectedCells.length > 1 && (
+        <div 
+          className="fixed bg-white border border-gray-200 rounded-md shadow-2xl p-1.5 z-[999] flex items-center gap-1.5 floating-bulk-picker animate-in fade-in slide-in-from-bottom-2 duration-150"
+          style={{ 
+            left: `${floatingMenuPos.x}px`, 
+            top: `${floatingMenuPos.y - 42}px` 
+          }}
+        >
+          <span className="text-[10px] font-semibold text-gray-500 px-1 border-r border-gray-100 mr-0.5 select-none">
+            {selectedCells.length}개 선택됨:
+          </span>
+          <button
+            type="button"
+            onClick={() => handleBulkUpdateCellColor('yellow')}
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors text-[9px] text-amber-700 font-medium shrink-0"
+            title="신규"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            <span>신규</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleBulkUpdateCellColor('blue')}
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors text-[9px] text-blue-700 font-medium shrink-0"
+            title="재발주"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+            <span>재발주</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleBulkUpdateCellColor('red')}
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 border border-red-200 hover:bg-red-100 transition-colors text-[9px] text-red-700 font-medium shrink-0"
+            title="취소"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+            <span>취소</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleBulkUpdateCellColor(null, true)}
+            className="flex items-center justify-center px-2 py-0.5 rounded-full border border-gray-300 hover:bg-gray-100 transition-colors text-[9px] text-gray-600 font-bold shrink-0 bg-white"
+            title="취소선 토글"
+          >
+            -
+          </button>
+          <button
+            type="button"
+            onClick={() => handleBulkUpdateCellColor(null)}
+            className="text-[9px] text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 shrink-0 font-medium transition-colors"
+            title="색상 및 상태 초기화"
+          >
+            초기화
+          </button>
+          <div className="h-4 w-px bg-gray-200 mx-0.5" />
+          <button
+            type="button"
+            onClick={() => { setSelectedCells([]); setFloatingMenuPos(null); }}
+            className="text-[9px] text-gray-400 hover:text-gray-600 px-1 py-0.5 rounded transition-colors"
+            title="선택 해제"
+          >
+            닫기
+          </button>
+        </div>
+      )}
     </div>
   )
 }

@@ -1310,8 +1310,8 @@ input[type="number"] {
   font-size: 11px !important;
   padding-top: 1px !important;
   padding-bottom: 1px !important;
-  padding-left: 8px !important;
-  padding-right: 8px !important;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
   line-height: 16px !important;
 }
 

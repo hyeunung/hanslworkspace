@@ -1249,14 +1249,18 @@ export default function FilterToolbar({
                 <span className="button-text">검색</span>
               </Button>
             ) : (
-              <div className="flex items-center gap-2">
-                <Input
-                  ref={searchInputRef}
-                  placeholder="전체 검색..."
-                  value={searchTerm}
-                  onChange={(e) => onSearchChange(e.target.value)}
-                  className="w-64 business-radius-input button-base border border-gray-300 bg-white text-gray-700"
-                />
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="relative flex items-center h-5">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                  <Input
+                    ref={searchInputRef}
+                    placeholder="전체 검색..."
+                    value={searchTerm}
+                    onChange={(e) => onSearchChange(e.target.value)}
+                    style={{ paddingLeft: '24px', width: '120px', height: '20px' }}
+                    className="block business-radius-input border border-gray-300 bg-white text-gray-700 pr-2 text-[11px]"
+                  />
+                </div>
                 <Button
                   variant="ghost"
                   onClick={() => {
