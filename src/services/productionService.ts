@@ -38,6 +38,7 @@ export interface ProductionPcb {
   delivery_date?: string
   delivery_destination?: string
   row_color?: string | null
+  cell_colors?: Record<string, string | null> | null
   reference?: string | null
   created_at: string
   updated_at: string
@@ -64,6 +65,7 @@ export interface ProductionCable {
   cable_actual_date?: string
   delivery_notes?: string
   row_color?: string | null
+  cell_colors?: Record<string, string | null> | null
   reference?: string | null
   created_at: string
   updated_at: string
