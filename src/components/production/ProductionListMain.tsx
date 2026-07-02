@@ -1535,7 +1535,7 @@ export default function ProductionListMain() {
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[40px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: '96px', minWidth: '96px', maxWidth: '96px' }}>제작 번호</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[136px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: `${productionCategoryPcbWidth}px`, minWidth: `${productionCategoryPcbWidth}px`, maxWidth: `${productionCategoryPcbWidth}px` }}>제작구분</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ left: `${136 + productionCategoryPcbWidth}px`, width: `${pcbBoardWidth}px`, minWidth: `${pcbBoardWidth}px`, maxWidth: `${pcbBoardWidth}px` }}>보드명</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${136 + productionCategoryPcbWidth + pcbBoardWidth}px`, width: `${referencePcbWidth}px`, minWidth: `${referencePcbWidth}px`, maxWidth: `${referencePcbWidth}px` }}>참고</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] align-left" style={{ left: `${136 + productionCategoryPcbWidth + pcbBoardWidth}px`, width: `${referencePcbWidth}px`, minWidth: `${referencePcbWidth}px`, maxWidth: `${referencePcbWidth}px` }}>참고</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${136 + productionCategoryPcbWidth + pcbBoardWidth + referencePcbWidth}px`, width: `${requestDatePcbWidth}px`, minWidth: `${requestDatePcbWidth}px`, maxWidth: `${requestDatePcbWidth}px` }}>요청일</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border-y border-r border-gray-200" style={getHeaderStyle('pcb', 'estimate_no', 80)}>견적NO.</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'delivery_deadline', 80)}>납품기한</th>
@@ -1616,7 +1616,7 @@ export default function ProductionListMain() {
                           value={addingPcbRow.reference || ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, reference: e.target.value })}
                           placeholder="참고"
-                          className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none text-red-500 font-semibold"
+                          className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none text-red-500 font-semibold align-left"
                         />
                       </td>
                       <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${136 + productionCategoryPcbWidth + pcbBoardWidth + referencePcbWidth}px`, width: `${requestDatePcbWidth}px`, minWidth: `${requestDatePcbWidth}px`, maxWidth: `${requestDatePcbWidth}px` }}>
@@ -2015,7 +2015,7 @@ export default function ProductionListMain() {
                           'reference',
                           item,
                           item.reference || '-',
-                          'px-2 py-1.5 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-red-500 font-semibold'
+                          'px-2 py-1.5 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-red-500 font-semibold align-left'
                         )}
                         {renderEditableCell(
                           item.id,
@@ -2305,7 +2305,7 @@ export default function ProductionListMain() {
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[40px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: '96px', minWidth: '96px', maxWidth: '96px' }}>제작 번호</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[136px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: `${productionCategoryCableWidth}px`, minWidth: `${productionCategoryCableWidth}px`, maxWidth: `${productionCategoryCableWidth}px` }}>제작구분</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ left: `${136 + productionCategoryCableWidth}px`, width: `${cableBoardWidth}px`, minWidth: `${cableBoardWidth}px`, maxWidth: `${cableBoardWidth}px` }}>품명</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${136 + productionCategoryCableWidth + cableBoardWidth}px`, width: `${referenceCableWidth}px`, minWidth: `${referenceCableWidth}px`, maxWidth: `${referenceCableWidth}px` }}>참고</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] align-left" style={{ left: `${136 + productionCategoryCableWidth + cableBoardWidth}px`, width: `${referenceCableWidth}px`, minWidth: `${referenceCableWidth}px`, maxWidth: `${referenceCableWidth}px` }}>참고</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${136 + productionCategoryCableWidth + cableBoardWidth + referenceCableWidth}px`, width: `${requestDateCableWidth}px`, minWidth: `${requestDateCableWidth}px`, maxWidth: `${requestDateCableWidth}px` }}>요청일</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border-y border-r border-gray-200" style={getHeaderStyle('cable', 'estimate_no', 80)}>견적NO.</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'delivery_deadline', 80)}>납품기한</th>
@@ -2367,7 +2367,7 @@ export default function ProductionListMain() {
                           value={addingCableRow.reference || ''}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, reference: e.target.value })}
                           placeholder="참고"
-                          className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none text-red-500 font-semibold"
+                          className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none text-red-500 font-semibold align-left"
                         />
                       </td>
                       <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${136 + productionCategoryCableWidth + cableBoardWidth + referenceCableWidth}px`, width: `${requestDateCableWidth}px`, minWidth: `${requestDateCableWidth}px`, maxWidth: `${requestDateCableWidth}px` }}>
@@ -2621,7 +2621,7 @@ export default function ProductionListMain() {
                           'reference',
                           item,
                           item.reference || '-',
-                          'px-2 py-1.5 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-red-500 font-semibold'
+                          'px-2 py-1.5 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-red-500 font-semibold align-left'
                         )}
                         {renderEditableCell(
                           item.id,
