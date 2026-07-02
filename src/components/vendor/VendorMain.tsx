@@ -5,6 +5,7 @@ import { vendorService } from '@/services/vendorService'
 import VendorFilters from '@/components/vendor/VendorFilters'
 import VendorTable from '@/components/vendor/VendorTable'
 import VendorModal from '@/components/vendor/VendorModal'
+import VendorContactsModal from '@/components/vendor/VendorContactsModal'
 import { toast } from 'sonner'
 import { Search } from 'lucide-react'
 // XLSX는 사용할 때만 동적으로 import (성능 최적화)
@@ -18,6 +19,7 @@ export default function VendorMain() {
 
   // 모달 상태
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isContactsModalOpen, setIsContactsModalOpen] = useState(false)
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null)
   const [modalMode, setModalMode] = useState<ModalMode>('create')
 
@@ -97,6 +99,16 @@ export default function VendorMain() {
 
   const handleModalClose = () => {
     setIsModalOpen(false)
+    setSelectedVendor(null)
+  }
+
+  const handleEditContacts = (vendor: Vendor) => {
+    setSelectedVendor(vendor)
+    setIsContactsModalOpen(true)
+  }
+
+  const handleContactsModalClose = () => {
+    setIsContactsModalOpen(false)
     setSelectedVendor(null)
   }
 
@@ -184,6 +196,7 @@ export default function VendorMain() {
           onEdit={handleEdit}
           onView={handleView}
           onRefresh={loadVendors}
+          onEditContacts={handleEditContacts}
         />
       </div>
 
@@ -194,6 +207,14 @@ export default function VendorMain() {
         vendor={selectedVendor}
         onSave={handleSave}
         mode={modalMode}
+      />
+
+      {/* 담당자 수정 전용 모달 */}
+      <VendorContactsModal
+        isOpen={isContactsModalOpen}
+        onClose={handleContactsModalClose}
+        vendor={selectedVendor}
+        onSave={handleSave}
       />
       </div>
     </>

@@ -50,6 +50,7 @@ interface Metadata {
   artworkManager: string;
   productionManager: string;
   productionQuantity: number;
+  salesOrderNumber?: string;
 }
 
 interface ProcessedResultState {
@@ -86,9 +87,11 @@ export default function BomCoordinateIntegrated() {
     boardName: '',
     artworkManager: '',
     productionManager: '',
-    productionQuantity: 0
+    productionQuantity: 0,
+    salesOrderNumber: ''
   });
   const [employees, setEmployees] = useState<{ id: string; name: string }[]>([]);
+  const [productionPcbs, setProductionPcbs] = useState<Array<{ sales_order_number: string; board_name: string }>>([]);
   const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -329,6 +332,15 @@ export default function BomCoordinateIntegrated() {
           setEmployees(empData);
         }
 
+        // 진행중인 PCB/소켓보드 수주 목록 로드
+        const { data: pcbData } = await supabase
+          .from('production_pcbs')
+          .select('sales_order_number, board_name')
+          .order('sales_order_number', { ascending: false });
+        if (pcbData) {
+          setProductionPcbs(pcbData);
+        }
+
         // 현재 사용자 정보 로드
         const { data: { user } } = await supabase.auth.getUser();
         if (user && user.email) {
@@ -441,9 +453,24 @@ export default function BomCoordinateIntegrated() {
       
       name = `${name}_${dateStr}_정리본`;
 
-      setMetadata(prev => ({ ...prev, boardName: name }));
+      // 진행중인 제작 현황판 목록에서 매칭 시도
+      const cleanNameForMatch = name.replace(/_\d{6}_정리본$/, '').replace(/_정리본$/, '').replace(/_\d{6}$/, '').toLowerCase().trim();
+      const matchedPcb = productionPcbs.find(p => {
+        const cleanPcbName = p.board_name.replace(/_\d{6}_정리본$/, '').replace(/_정리본$/, '').replace(/_\d{6}$/, '').toLowerCase().trim();
+        return cleanPcbName === cleanNameForMatch || p.board_name.toLowerCase().trim() === cleanNameForMatch;
+      });
+
+      if (matchedPcb) {
+        setMetadata(prev => ({ 
+          ...prev, 
+          boardName: matchedPcb.board_name, 
+          salesOrderNumber: matchedPcb.sales_order_number 
+        }));
+      } else {
+        setMetadata(prev => ({ ...prev, boardName: name }));
+      }
     }
-  }, [fileInfo.bomFile]);
+  }, [fileInfo.bomFile, productionPcbs]);
 
   const handleDrag = useCallback((e: React.DragEvent, type: string) => {
     e.preventDefault();
@@ -852,7 +879,8 @@ export default function BomCoordinateIntegrated() {
             artwork_manager: artworkManagerName,
             production_manager: finalProductionManager,
             production_quantity: metadata.productionQuantity,
-            status: saveStatus
+            status: saveStatus,
+            sales_order_number: metadata.salesOrderNumber || null
           })
             .select('id')
             .single();
@@ -873,7 +901,8 @@ export default function BomCoordinateIntegrated() {
             artwork_manager: artworkManagerName,
             production_manager: finalProductionManager,
             production_quantity: metadata.productionQuantity,
-            status: saveStatus
+            status: saveStatus,
+            sales_order_number: metadata.salesOrderNumber || null
           })
           .eq('id', cadDrawingId);
         if (updateExistingError) throw updateExistingError;
@@ -2007,15 +2036,29 @@ function dlFile() {
 
                 {/* 오른쪽: 정보 입력 (50%) */}
                 <div className="w-full lg:w-[50%] space-y-1">
-                  {/* 1. 보드 이름 (전체 폭) */}
+                  {/* 1. 보드 이름 (제작현황 연동) */}
                   <div className="space-y-1 mb-3.5">
-                    <Label className="text-[10px] text-gray-500">보드 이름 (자동)</Label>
-                    <Input
-                      value={metadata.boardName || 'BOM 파일 업로드 시 자동'}
-                      disabled
-                      className="w-full bg-gray-50 border border-[#d2d2d7] rounded-md text-xs shadow-sm"
-                      style={{ height: '32px' }}
-                    />
+                    <Label className="text-[10px] text-gray-500">보드 이름 (제작현황 연동) <span className="text-red-500">*</span></Label>
+                    <select
+                      value={metadata.salesOrderNumber ? `${metadata.salesOrderNumber}|${metadata.boardName}` : ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (!val) {
+                          setMetadata(prev => ({ ...prev, salesOrderNumber: '', boardName: '' }));
+                        } else {
+                          const [soNum, bName] = val.split('|');
+                          setMetadata(prev => ({ ...prev, salesOrderNumber: soNum, boardName: bName }));
+                        }
+                      }}
+                      className="w-full bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm h-8 px-2 focus:outline-none focus:ring-2 focus:ring-hansl-500"
+                    >
+                      <option value="">-- 제작현황 보드 선택 --</option>
+                      {productionPcbs.map(p => (
+                        <option key={p.sales_order_number} value={`${p.sales_order_number}|${p.board_name}`}>
+                          [{p.sales_order_number}] {p.board_name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   {/* 2. Artwork 담당자, 생산 담당자, 생산 수량, 생성 버튼 (같은 행) */}

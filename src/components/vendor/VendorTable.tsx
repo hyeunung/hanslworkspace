@@ -34,9 +34,10 @@ interface VendorTableProps {
   onEdit: (vendor: Vendor) => void
   onView: (vendor: Vendor) => void
   onRefresh: () => void
+  onEditContacts: (vendor: Vendor) => void
 }
 
-export default function VendorTable({ vendors, onEdit, onView, onRefresh }: VendorTableProps) {
+export default function VendorTable({ vendors, onEdit, onView, onRefresh, onEditContacts }: VendorTableProps) {
   const [loadingId, setLoadingId] = useState<number | null>(null)
   const { sortedData, sortConfig, handleSort } = useTableSort(vendors, 'vendor_name', 'asc')
 
@@ -69,18 +70,9 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-28 min-w-[100px]">
-                  <SortableHeader
-                    sortKey="vendor_name"
-                    currentSortKey={sortConfig.key as string | null}
-                    sortDirection={sortConfig.direction}
-                    onSort={() => handleSort('vendor_name' as keyof Vendor)}
-                  >
-                    업체명
-                  </SortableHeader>
-                </TableHead>
+                <TableHead className="w-28 min-w-[100px]">업체명</TableHead>
                 <TableHead className="w-14 min-w-[45px] text-center">담당자</TableHead>
-                <TableHead className="min-w-[180px]">담당자 정보</TableHead>
+                <TableHead className="w-[420px] min-w-[400px]">담당자 정보</TableHead>
                 <TableHead className="w-24 min-w-[90px]">전화번호</TableHead>
                 <TableHead className="w-24 min-w-[90px]">팩스번호</TableHead>
                 <TableHead className="w-20 min-w-[70px]">지출예정일</TableHead>
@@ -107,40 +99,52 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
               ) : (
                 sortedData.map((vendor) => (
                   <TableRow key={vendor.id}>
-                    {/* 업체명 */}
                     <TableCell className="text-[11px] font-medium text-gray-900 px-2 py-1.5">
                       {vendor.vendor_name}
-                      {vendor.vendor_alias && (
-                        <span className="text-[10px] text-gray-400 ml-1">({vendor.vendor_alias})</span>
-                      )}
                     </TableCell>
                     {/* 담당자 수 */}
-                    <TableCell className="text-center px-1 py-1.5">
+                    <TableCell 
+                      className="text-center px-1 py-1.5 cursor-pointer hover:bg-slate-50 transition-colors"
+                      onClick={() => onEditContacts(vendor)}
+                      title="클릭하여 담당자 정보를 수정합니다."
+                    >
                       <span className="badge-stats text-[10px] px-1.5 py-0.5 border border-gray-300 bg-white text-gray-600">
                         {vendor.vendor_contacts?.length || 0}명
                       </span>
                     </TableCell>
                     {/* 담당자 정보 */}
-                    <TableCell className="px-2 py-1.5">
+                    <TableCell 
+                      className="px-2 py-1.5 cursor-pointer hover:bg-slate-50/70 transition-colors"
+                      onClick={() => onEditContacts(vendor)}
+                      title="클릭하여 담당자 정보를 수정합니다."
+                    >
                       {vendor.vendor_contacts && vendor.vendor_contacts.length > 0 ? (
-                        <div className="flex flex-col gap-0.5">
+                        <div className="flex flex-col gap-1 w-[400px]">
                           {vendor.vendor_contacts.slice(0, 2).map((contact: VendorContact, idx: number) => (
-                            <div key={idx} className="flex items-center gap-2 text-[11px]">
-                              <span className="font-medium text-gray-900 whitespace-nowrap">{contact.contact_name}</span>
-                              {contact.contact_phone && (
-                                <span className="text-gray-500 whitespace-nowrap">{contact.contact_phone}</span>
-                              )}
-                              {contact.contact_email && (
-                                <span className="text-gray-400 truncate max-w-[150px]">{contact.contact_email}</span>
-                              )}
+                            <div key={idx} className="grid grid-cols-[80px_12px_70px_12px_110px_12px_1fr] items-center text-[11px] leading-tight">
+                              <span className="font-semibold text-gray-900 truncate" title={contact.contact_name}>
+                                {contact.contact_name}
+                              </span>
+                              <span className="text-gray-300 text-center">|</span>
+                              <span className="text-gray-500 truncate" title={contact.position || ''}>
+                                {contact.position || '-'}
+                              </span>
+                              <span className="text-gray-300 text-center">|</span>
+                              <span className="text-gray-600 truncate" title={contact.contact_phone || ''}>
+                                {contact.contact_phone || '-'}
+                              </span>
+                              <span className="text-gray-300 text-center">|</span>
+                              <span className="text-gray-450 truncate" title={contact.contact_email || ''}>
+                                {contact.contact_email || '-'}
+                              </span>
                             </div>
                           ))}
                           {vendor.vendor_contacts.length > 2 && (
-                            <span className="text-[10px] text-gray-400">외 {vendor.vendor_contacts.length - 2}명</span>
+                            <span className="text-[10px] text-gray-400 pl-1">외 {vendor.vendor_contacts.length - 2}명</span>
                           )}
                         </div>
                       ) : (
-                        <span className="text-[11px] text-gray-400">-</span>
+                        <span className="text-[11px] text-gray-400 pl-1">-</span>
                       )}
                     </TableCell>
                     {/* 전화번호 */}
@@ -213,9 +217,6 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
                 <div className="flex justify-between items-center">
                   <span className="text-[13px] font-medium text-gray-900">
                     {vendor.vendor_name}
-                    {vendor.vendor_alias && (
-                      <span className="text-[11px] text-gray-400 ml-1">({vendor.vendor_alias})</span>
-                    )}
                   </span>
                   <span className="badge-stats text-[10px] px-1.5 py-0.5 border border-gray-300 bg-white text-gray-600">
                     담당자 {vendor.vendor_contacts?.length || 0}명
@@ -225,12 +226,17 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh }: Vend
 
               <MobileCardItem
                 label="담당자"
+                onClick={() => onEditContacts(vendor)}
+                className="hover:bg-slate-50 rounded px-1 transition-all"
                 value={
                   vendor.vendor_contacts && vendor.vendor_contacts.length > 0 ? (
                     <div className="flex flex-col gap-1">
                       {vendor.vendor_contacts.slice(0, 2).map((contact: VendorContact, idx: number) => (
                         <div key={idx} className="text-[11px]">
                           <span className="font-medium text-gray-900">{contact.contact_name}</span>
+                          {contact.position && (
+                            <span className="text-gray-400 text-[10px] ml-1">({contact.position})</span>
+                          )}
                           {contact.contact_phone && (
                             <span className="text-gray-500 ml-1.5">{contact.contact_phone}</span>
                           )}

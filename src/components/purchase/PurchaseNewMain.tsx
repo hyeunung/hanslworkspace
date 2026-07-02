@@ -176,6 +176,7 @@ export default function PurchaseNewMain() {
   
   // 전체복사 버튼 상태
   const [isCopied, setIsCopied] = useState(false);
+  const [productionOrders, setProductionOrders] = useState<Array<{ sales_order_number: string; board_name: string; client_name: string }>>([]);
 
   const { control, handleSubmit: rhHandleSubmit, watch, setValue, reset, getValues } = useFormRH<FormValues>({
     defaultValues: {
@@ -301,6 +302,28 @@ export default function PurchaseNewMain() {
 
     loadVendors();
   }, []);
+
+  // 제작현황판에서 진행중인 모든 수주(PCB, 소켓, 케이블, 케이스) 로드
+  useEffect(() => {
+    const loadProductionOrders = async () => {
+      try {
+        const [pcbRes, cableRes] = await Promise.all([
+          supabase.from('production_pcbs').select('sales_order_number, board_name, client_name').order('sales_order_number', { ascending: false }),
+          supabase.from('production_cables').select('sales_order_number, board_name, client_name').order('sales_order_number', { ascending: false })
+        ]);
+        
+        const combined = [
+          ...(pcbRes.data || []).map((r: any) => ({ sales_order_number: r.sales_order_number, board_name: r.board_name, client_name: r.client_name || '' })),
+          ...(cableRes.data || []).map((r: any) => ({ sales_order_number: r.sales_order_number, board_name: r.board_name, client_name: r.client_name || '' }))
+        ].sort((a, b) => b.sales_order_number.localeCompare(a.sales_order_number));
+
+        setProductionOrders(combined);
+      } catch (err) {
+        console.error("제작 수주 목록을 불러올 수 없습니다.", err);
+      }
+    };
+    loadProductionOrders();
+  }, [supabase]);
 
   const selectedVendor = watch('vendor_id');
 
@@ -1546,38 +1569,52 @@ export default function PurchaseNewMain() {
                 </div>
               </div>
 
-              {/* 프로젝트 정보 */}
-              <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+              {/* 프로젝트 정보 (제작현황 연동) */}
+              <div className="space-y-3">
                 <div>
-                  <Label className="mb-0.5 block text-[10px] sm:text-xs">PJ업체</Label>
-                  <Input 
-                    type="text" 
-                    value={watch('project_vendor')} 
-                    onChange={(e) => setValue('project_vendor', e.target.value)} 
-                    placeholder="입력"
-                    className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
-                  />
+                  <Label className="mb-0.5 block text-[10px] sm:text-xs">수주 정보 선택 (제작현황 연동) <span className="text-red-500">*</span></Label>
+                  <select
+                    value={watch('sales_order_number') ? `${watch('sales_order_number')}|${watch('project_item')}|${watch('project_vendor')}` : ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) {
+                        setValue('sales_order_number', '');
+                        setValue('project_item', '');
+                        setValue('project_vendor', '');
+                      } else {
+                        const [soNum, item, vendor] = val.split('|');
+                        setValue('sales_order_number', soNum);
+                        setValue('project_item', item);
+                        setValue('project_vendor', vendor);
+                      }
+                    }}
+                    className="w-full bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm h-8 px-2 focus:outline-none focus:ring-2 focus:ring-hansl-500"
+                  >
+                    <option value="">-- 수주 번호 선택 --</option>
+                    {productionOrders.map(p => (
+                      <option key={p.sales_order_number} value={`${p.sales_order_number}|${p.board_name}|${p.client_name}`}>
+                        [{p.sales_order_number}] {p.board_name} ({p.client_name || '업체 없음'})
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <div>
-                  <Label className="mb-0.5 block text-[10px] sm:text-xs">수주번호</Label>
-                  <Input 
-                    type="text" 
-                    value={watch('sales_order_number')} 
-                    onChange={(e) => setValue('sales_order_number', e.target.value)} 
-                    placeholder="입력"
-                    className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
-                  />
-                </div>
-                <div>
-                  <Label className="mb-0.5 block text-[10px] sm:text-xs">Item</Label>
-                  <Input 
-                    type="text" 
-                    value={watch('project_item')} 
-                    onChange={(e) => setValue('project_item', e.target.value)} 
-                    placeholder="입력"
-                    className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
-                  />
-                </div>
+
+                {watch('sales_order_number') && (
+                  <div className="grid grid-cols-3 gap-2 bg-gray-50 p-2 rounded-lg border border-gray-100 text-[11px]">
+                    <div>
+                      <span className="text-gray-400 block text-[9px] uppercase">수주번호</span>
+                      <span className="font-semibold text-gray-800">{watch('sales_order_number')}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block text-[9px] uppercase">PJ업체</span>
+                      <span className="font-semibold text-gray-800">{watch('project_vendor') || '-'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block text-[9px] uppercase">Item / 보드명</span>
+                      <span className="font-semibold text-gray-800">{watch('project_item') || '-'}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

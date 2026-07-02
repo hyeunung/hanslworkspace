@@ -73,8 +73,14 @@ export default function OfficialDocumentApprovedModal() {
         if (cancelled) return
 
         const dismissed = getDismissedIds()
+        const oneMonthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
         const candidates = all
-          .filter((d) => d.approval_status === 'approved' && !dismissed.includes(d.id))
+          .filter((d) => {
+            const isApproved = d.approval_status === 'approved'
+            const isNotDismissed = !dismissed.includes(d.id)
+            const isRecent = new Date(d.created_at).getTime() >= oneMonthAgo
+            return isApproved && isNotDismissed && isRecent
+          })
           .sort((a, b) => {
             const ta = a.ceo_approved_at ? new Date(a.ceo_approved_at).getTime() : 0
             const tb = b.ceo_approved_at ? new Date(b.ceo_approved_at).getTime() : 0

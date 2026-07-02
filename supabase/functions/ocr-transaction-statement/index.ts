@@ -1999,11 +1999,21 @@ function normalizePoNumbers(
   })
 }
 
+function normalizePoDatePart(rawDate: string): string {
+  if (rawDate.length === 6) {
+    return '20' + rawDate
+  }
+  if (rawDate.length === 7) {
+    return '20' + rawDate.slice(1)
+  }
+  return rawDate
+}
+
 function extractOrderNumbersFromText(text: string): string[] {
   if (!text) return []
   const normalized = text.toUpperCase().replace(/\s+/g, "")
   const matches = normalized.match(
-    /F\d{8}[_-]\d{1,3}(?:[-_]\d{1,3})?|HS\d{6}[-_]\d{1,2}(?:[-_]\d{1,3})?/g
+    /F\d{6,8}[_-]\d{1,3}(?:[-_]\d{1,3})?|HS\d{6}[-_]\d{1,2}(?:[-_]\d{1,3})?/g
   )
   if (!matches) return []
   return matches
@@ -2015,20 +2025,22 @@ function extractOrderNumber(text: string): string | null {
   if (!text) return null
   const normalized = text.toUpperCase()
   const match = normalized.match(
-    /(F\d{8}[_-]\d{1,3}(?:[-_]\d{1,3})?|HS\d{6}[-_]\d{1,2}(?:[-_]\d{1,3})?)/
+    /(F\d{6,8}[_-]\d{1,3}(?:[-_]\d{1,3})?|HS\d{6}[-_]\d{1,2}(?:[-_]\d{1,3})?)/
   )
   return match ? match[1] : null
 }
 
 function parseOrderToken(value: string): ParsedOrderToken | null {
   const cleaned = normalizeOrderCandidate(value)
-    if (!cleaned) return null
+  if (!cleaned) return null
 
-  const poMatch = cleaned.match(/^(F\d{8})[_-](\d{1,3})(?:[-_](\d{1,3}))?$/)
+  const poMatch = cleaned.match(/^(F\d{6,8})[_-](\d{1,3})(?:[-_](\d{1,3}))?$/)
   if (poMatch) {
+    const rawDatePart = poMatch[1].slice(1) // Remove 'F'
+    const datePart = normalizePoDatePart(rawDatePart)
     const lineNumber = poMatch[3] ? Number.parseInt(poMatch[3], 10) : undefined
     return {
-      normalized: `${poMatch[1]}_${poMatch[2].padStart(3, "0")}`,
+      normalized: `F${datePart}_${poMatch[2].padStart(3, "0")}`,
       kind: "po",
       lineNumber: Number.isFinite(lineNumber as number) ? lineNumber : undefined,
     }

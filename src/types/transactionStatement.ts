@@ -260,6 +260,16 @@ export const PO_NUMBER_PATTERN = /^F\d{8}_\d{3}$/;
 // 수주번호: HS + YYMMDD + - + 2자리 숫자 (예: HS251201-01, HS251201-11)
 export const SO_NUMBER_PATTERN = /^HS\d{6}-\d{2}$/;
 
+function normalizePoDatePart(rawDate: string): string {
+  if (rawDate.length === 6) {
+    return '20' + rawDate;
+  }
+  if (rawDate.length === 7) {
+    return '20' + rawDate.slice(1);
+  }
+  return rawDate;
+}
+
 // OCR에서 읽은 번호를 시스템 형식으로 정규화
 export function normalizeOrderNumber(input: string): string {
   if (!input) return input;
@@ -268,10 +278,11 @@ export function normalizeOrderNumber(input: string): string {
 
   // 발주/수주번호 뒤에 붙는 라인 번호 suffix 제거
   // 예) F20260120_007-14 -> F20260120_007, HS251201-01-3 -> HS251201-01
-  const poWithLineMatch = normalized.match(/^(F\d{8})[_-](\d{1,3})[-_](\d{1,3})$/);
+  const poWithLineMatch = normalized.match(/^(F\d{6,8})[_-](\d{1,3})[-_](\d{1,3})$/);
   if (poWithLineMatch) {
     const [, prefix, num] = poWithLineMatch;
-    return `${prefix}_${num.padStart(3, '0')}`;
+    const datePart = normalizePoDatePart(prefix.slice(1));
+    return `F${datePart}_${num.padStart(3, '0')}`;
   }
 
   const soWithLineMatch = normalized.match(/^(HS\d{6})[-_](\d{1,2})[-_](\d{1,3})$/);
@@ -281,10 +292,11 @@ export function normalizeOrderNumber(input: string): string {
   }
   
   // 발주번호 정규화: F20251008_1 또는 F20251008-01 → F20251008_001
-  const poMatch = normalized.match(/^(F\d{8})[_-](\d{1,3})$/);
+  const poMatch = normalized.match(/^(F\d{6,8})[_-](\d{1,3})$/);
   if (poMatch) {
     const [, prefix, num] = poMatch;
-    return `${prefix}_${num.padStart(3, '0')}`;
+    const datePart = normalizePoDatePart(prefix.slice(1));
+    return `F${datePart}_${num.padStart(3, '0')}`;
   }
 
   // OCR 오류 대응: 발주번호는 항상 "_" 사용 (날짜 길이 오인식 포함)
@@ -292,7 +304,8 @@ export function normalizeOrderNumber(input: string): string {
     const dashMatch = normalized.match(/^(F\d{6,8})-(\d{1,3})$/);
     if (dashMatch) {
       const [, prefix, num] = dashMatch;
-      return `${prefix}_${num.padStart(3, '0')}`;
+      const datePart = normalizePoDatePart(prefix.slice(1));
+      return `F${datePart}_${num.padStart(3, '0')}`;
     }
     return normalized.replace('-', '_');
   }
@@ -316,7 +329,7 @@ export function extractLineNumberFromPO(rawPO: string): number | null {
   if (!rawPO) return null;
   const normalized = rawPO.toUpperCase().replace(/\s+/g, '');
 
-  const poMatch = normalized.match(/^F\d{8}[_-]\d{1,3}[-_](\d{1,3})$/);
+  const poMatch = normalized.match(/^F\d{6,8}[_-]\d{1,3}[-_](\d{1,3})$/);
   if (poMatch) return parseInt(poMatch[1], 10);
 
   const soMatch = normalized.match(/^HS\d{6}[-_]\d{1,2}[-_](\d{1,3})$/);

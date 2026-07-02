@@ -491,11 +491,21 @@ function detectPoNumberColumn(
   return colMap.poNumber
 }
 
+function normalizePoDatePart(rawDate: string): string {
+  if (rawDate.length === 6) {
+    return '20' + rawDate
+  }
+  if (rawDate.length === 7) {
+    return '20' + rawDate.slice(1)
+  }
+  return rawDate
+}
+
 function extractOrderToken(value: unknown): string {
   if (value === null || value === undefined) return ''
   const normalized = String(value).toUpperCase().replace(/\s+/g, '')
   const match = normalized.match(
-    /(F\d{8}[_-]\d{1,3}(?:[-_]\d{1,3})?|HS\d{6}[-_]\d{1,2}(?:[-_]\d{1,3})?)/
+    /(F\d{6,8}[_-]\d{1,3}(?:[-_]\d{1,3})?|HS\d{6}[-_]\d{1,2}(?:[-_]\d{1,3})?)/
   )
   return match?.[1] || ''
 }
@@ -504,10 +514,11 @@ function normalizeOrderNumber(raw: string): string {
   if (!raw) return ''
   const normalized = raw.toUpperCase().replace(/\s+/g, '')
 
-  const poWithLine = normalized.match(/^(F\d{8})[_-](\d{1,3})[-_](\d{1,3})$/)
+  const poWithLine = normalized.match(/^(F\d{6,8})[_-](\d{1,3})[-_](\d{1,3})$/)
   if (poWithLine) {
     const [, prefix, num] = poWithLine
-    return `${prefix}_${num.padStart(3, '0')}`
+    const datePart = normalizePoDatePart(prefix.slice(1))
+    return `F${datePart}_${num.padStart(3, '0')}`
   }
 
   const soWithLine = normalized.match(/^(HS\d{6})[-_](\d{1,2})[-_](\d{1,3})$/)
@@ -516,10 +527,11 @@ function normalizeOrderNumber(raw: string): string {
     return `${prefix}-${num.padStart(2, '0')}`
   }
 
-  const po = normalized.match(/^(F\d{8})[_-](\d{1,3})$/)
+  const po = normalized.match(/^(F\d{6,8})[_-](\d{1,3})$/)
   if (po) {
     const [, prefix, num] = po
-    return `${prefix}_${num.padStart(3, '0')}`
+    const datePart = normalizePoDatePart(prefix.slice(1))
+    return `F${datePart}_${num.padStart(3, '0')}`
   }
 
   const so = normalized.match(/^(HS\d{6})[-_](\d{1,2})$/)

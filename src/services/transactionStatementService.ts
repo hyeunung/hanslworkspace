@@ -1218,7 +1218,7 @@ class TransactionStatementService {
         try {
           await this.queueStatementForRetry(statementId, resetBeforeExtract);
         } catch (queueError) {
-          logger.warn('[Service] Failed to queue statement retry:', queueError);
+          logger.warn('[Service] Failed to queue statement retry:', { error: queueError });
         }
         void this.kickQueue().catch(() => {});
         return { success: true, queued: true, status: 'queued' as TransactionStatementStatus };
@@ -1249,7 +1249,7 @@ class TransactionStatementService {
           .eq('id', statementId)
           .in('status', ['pending', 'queued', 'processing', 'failed']);
       } catch (updateError) {
-        logger.warn('[Service] Failed to update failed statement status:', updateError);
+        logger.warn('[Service] Failed to update failed statement status:', { error: updateError });
       }
       return {
         success: false,
