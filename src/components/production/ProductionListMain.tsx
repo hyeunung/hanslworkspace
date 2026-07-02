@@ -1342,7 +1342,7 @@ export default function ProductionListMain() {
 
         {/* Row 2: 요청월 필터 버튼 그룹 */}
         {/* Row 2: 요청월 필터 버튼 그룹 */}
-        <div className="grid grid-cols-[75px_620px_auto] items-center gap-2 pt-2 border-t border-gray-100">
+        <div className="grid grid-cols-[75px_575px_auto] items-center gap-2 pt-2 border-t border-gray-100">
           <span className="text-[10px] font-semibold text-gray-500 uppercase mr-1">
             요청월:
           </span>
@@ -1416,7 +1416,7 @@ export default function ProductionListMain() {
         </div>
 
         {/* Row 3: 카테고리 필터 토글 버튼 그룹 */}
-        <div className="grid grid-cols-[75px_620px_auto] items-center gap-2 pt-2 border-t border-gray-100">
+        <div className="grid grid-cols-[75px_575px_auto] items-center gap-2 pt-2 border-t border-gray-100">
           <span className="text-[10px] font-semibold text-gray-500 uppercase mr-1 flex items-center gap-1">
             <Filter className="w-3.5 h-3.5" /> 제작구분:
           </span>
