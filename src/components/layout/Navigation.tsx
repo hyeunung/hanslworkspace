@@ -182,7 +182,7 @@ export default function Navigation({ role }: NavigationProps) {
     { label: '요청 목록', href: '/purchase/list', icon: FileText, roles: ['all'], hasSubmenu: true },
     { label: '거래명세서 확인', href: '/transaction-statement', icon: FileCheck, roles: ['all'] },
     { label: '영수증', href: '/receipts', icon: Receipt, roles: ['superadmin', 'hr', 'lead buyer'] },
-    { label: 'BOM/좌표 정리', href: '/bom-coordinate', icon: Package, roles: ['all'] },
+    { label: '업체관리', href: '/vendor', icon: Building2, roles: ['all'] },
     {
       label: '신청서 관리', href: '/application', icon: FileEdit, roles: ['all'],
       badge: isApplicationApprover && pendingApplicationCount > 0 ? pendingApplicationCount : undefined
@@ -192,7 +192,6 @@ export default function Navigation({ role }: NavigationProps) {
       badge: pendingInquiryCount > 0 ? pendingInquiryCount : undefined
     },
     { type: 'divider', label: '관리' },
-    { label: '업체 관리', href: '/vendor', icon: Building2, roles: ['all'] },
     { label: '직원 관리', href: '/employee', icon: Users, roles: ['all'] },
   ]
 

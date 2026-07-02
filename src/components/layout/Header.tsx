@@ -1,14 +1,16 @@
 
 
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { createClient } from '@/lib/supabase/client'
-import { User, Menu, MessageCircle, FileText, FileCheck, FileEdit, Clock, ScrollText, Database } from 'lucide-react'
+import { User, Menu, MessageCircle, FileText, FileCheck, FileEdit, Clock, ScrollText, Database, ChevronDown } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
+import { toast } from 'sonner'
+import { logger } from '@/lib/logger'
 import { supportService } from '@/services/supportService'
 import { usePurchaseMemory } from '@/hooks/usePurchaseMemory'
 import { countPendingApprovalsForSidebarBadge } from '@/utils/purchaseFilters'
 import { parseRoles } from '@/utils/roleHelper'
-import { useAuth } from '@/contexts/AuthContext'
 
 interface HeaderProps {
   user: {
@@ -36,13 +38,77 @@ const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "superad
 
 export default function Header({ user, onMenuClick }: HeaderProps) {
   const navigate = useNavigate()
+  const location = useLocation()
+  const pathname = location.pathname
+  const [isSystemDropdownOpen, setIsSystemDropdownOpen] = useState(false)
+
+  const isClientOrders = pathname.startsWith('/client-orders')
+  const isProduction = pathname.startsWith('/production')
+
+  let currentSystemKey: 'purchase' | 'client-orders' | 'production' = 'purchase'
+  let currentSystemLabel = 'PURCHASE SYSTEM'
+
+  if (isClientOrders) {
+    currentSystemKey = 'client-orders'
+    currentSystemLabel = 'CLIENT ORDERS'
+  } else if (isProduction) {
+    currentSystemKey = 'production'
+    currentSystemLabel = 'PRODUCTION STATUS'
+  }
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
   const [pendingStatementCount, setPendingStatementCount] = useState(0)
   const [pendingApplicationCount, setPendingApplicationCount] = useState(0)
   const [otherPendingCount, setOtherPendingCount] = useState(0)
   const { allPurchases } = usePurchaseMemory()
-  const { currentUserId } = useAuth()
+  
+  const { currentUserId, currentUserEmail } = useAuth()
+  const [defaultLanding, setDefaultLanding] = useState<string>('purchase')
+
+  useEffect(() => {
+    if (!currentUserEmail) return
+    const loadPref = async () => {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('user_ui_settings')
+        .select('setting_value')
+        .eq('user_email', currentUserEmail)
+        .eq('setting_type', 'general')
+        .eq('setting_key', 'default_landing_system')
+        .maybeSingle()
+      if (!error && data?.setting_value) {
+        const val = data.setting_value as { system?: string }
+        if (val.system) {
+          setDefaultLanding(val.system)
+        }
+      }
+    }
+    loadPref()
+  }, [currentUserEmail])
+
+  const handleSetDefaultLanding = async (e: React.MouseEvent, systemKey: 'purchase' | 'client-orders' | 'production') => {
+    e.stopPropagation()
+    setDefaultLanding(systemKey)
+    const supabase = createClient()
+    try {
+      const { error } = await supabase
+        .from('user_ui_settings')
+        .upsert({
+          user_email: currentUserEmail,
+          setting_type: 'general',
+          setting_key: 'default_landing_system',
+          setting_value: { system: systemKey }
+        }, {
+          onConflict: 'user_email,setting_type,setting_key'
+        })
+      if (error) throw error
+      toast.success('기본 페이지로 설정되었습니다.')
+    } catch (err) {
+      logger.error('Failed to save default landing page preference', err)
+      toast.error('설정 저장에 실패했습니다.')
+    }
+  }
 
   const roles = parseRoles(user?.roles)
   const isAdmin = roles.includes('superadmin')
@@ -328,11 +394,17 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
           <Menu className="w-5 h-5 text-gray-600" />
         </button>
 
-        {/* 로고 */}
+        {/* 로고 및 통합 시스템 스위처 */}
         <div className="flex items-center">
-          <a
-            href="https://hansl-workspace.com"
-            className="flex items-center hover:opacity-80 transition-opacity"
+          <Link
+            to={
+              defaultLanding === 'client-orders'
+                ? '/client-orders'
+                : defaultLanding === 'production'
+                ? '/production'
+                : '/dashboard'
+            }
+            className="flex items-center hover:opacity-90 transition-opacity"
           >
             <img
               src="/logo_symbol.svg"
@@ -340,7 +412,14 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
               className="w-14 h-14"
               style={{ objectFit: 'contain' }}
             />
-            <div className="ml-3 leading-none flex flex-col items-start">
+          </Link>
+          
+          <div className="relative ml-3">
+            <button
+              type="button"
+              onClick={() => setIsSystemDropdownOpen(!isSystemDropdownOpen)}
+              className="leading-none flex flex-col items-start text-left hover:opacity-80 transition-opacity"
+            >
               <div className="flex items-baseline gap-1.5 mb-0.5">
                 <h1 className="text-[30px] font-bold text-gray-600 leading-none">
                   HANSL
@@ -350,10 +429,120 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
                 </span>
               </div>
               <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wide leading-none ml-[1px]">
-                Purchase System
+                {currentSystemLabel}
               </span>
-            </div>
-          </a>
+            </button>
+
+            {/* 드롭다운 메뉴 */}
+            {isSystemDropdownOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setIsSystemDropdownOpen(false)}
+                />
+                <div className="absolute left-0 mt-1 w-[340px] bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <div
+                    className={`w-full grid grid-cols-[210px_1fr] items-center text-xs font-bold transition-colors ${
+                      currentSystemKey === 'purchase'
+                        ? 'bg-hansl-50 text-hansl-600'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSystemDropdownOpen(false)
+                        navigate('/dashboard')
+                      }}
+                      className="text-left px-3 py-2.5 w-full"
+                    >
+                      PURCHASE SYSTEM <span className="font-normal text-gray-500">(발주시스템)</span>
+                    </button>
+                    <div className="flex items-center gap-2 text-left pl-1">
+                      <button
+                        type="button"
+                        onClick={(e) => handleSetDefaultLanding(e, 'purchase')}
+                        className={`${
+                          defaultLanding === 'purchase'
+                            ? 'badge-stats bg-hansl-600 text-white font-bold'
+                            : 'badge-utk-pending'
+                        } cursor-pointer text-[9px]`}
+                      >
+                        {defaultLanding === 'purchase' ? 'Main' : 'Set Main'}
+                      </button>
+                      {currentSystemKey === 'purchase' && <span className="w-1.5 h-1.5 rounded-full bg-hansl-600 flex-shrink-0" />}
+                    </div>
+                  </div>
+
+                  <div
+                    className={`w-full grid grid-cols-[210px_1fr] items-center text-xs font-bold transition-colors ${
+                      currentSystemKey === 'client-orders'
+                        ? 'bg-hansl-50 text-hansl-600'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSystemDropdownOpen(false)
+                        navigate('/client-orders')
+                      }}
+                      className="text-left px-3 py-2.5 w-full"
+                    >
+                      CLIENT ORDERS <span className="font-normal text-gray-500">(발주통합)</span>
+                    </button>
+                    <div className="flex items-center gap-2 text-left pl-1">
+                      <button
+                        type="button"
+                        onClick={(e) => handleSetDefaultLanding(e, 'client-orders')}
+                        className={`${
+                          defaultLanding === 'client-orders'
+                            ? 'badge-stats bg-hansl-600 text-white font-bold'
+                            : 'badge-utk-pending'
+                        } cursor-pointer text-[9px]`}
+                      >
+                        {defaultLanding === 'client-orders' ? 'Main' : 'Set Main'}
+                      </button>
+                      {currentSystemKey === 'client-orders' && <span className="w-1.5 h-1.5 rounded-full bg-hansl-600 flex-shrink-0" />}
+                    </div>
+                  </div>
+
+                  <div
+                    className={`w-full grid grid-cols-[210px_1fr] items-center text-xs font-bold transition-colors ${
+                      currentSystemKey === 'production'
+                        ? 'bg-hansl-50 text-hansl-600'
+                        : 'text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSystemDropdownOpen(false)
+                        navigate('/production')
+                      }}
+                      className="text-left px-3 py-2.5 w-full"
+                    >
+                      PRODUCTION STATUS <span className="font-normal text-gray-500">(제작현황)</span>
+                    </button>
+                    <div className="flex items-center gap-2 text-left pl-1">
+                      <button
+                        type="button"
+                        onClick={(e) => handleSetDefaultLanding(e, 'production')}
+                        className={`${
+                          defaultLanding === 'production'
+                            ? 'badge-stats bg-hansl-600 text-white font-bold'
+                            : 'badge-utk-pending'
+                        } cursor-pointer text-[9px]`}
+                      >
+                        {defaultLanding === 'production' ? 'Main' : 'Set Main'}
+                      </button>
+                      {currentSystemKey === 'production' && <span className="w-1.5 h-1.5 rounded-full bg-hansl-600 flex-shrink-0" />}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
 
           {/* 공문 페이지 진입 버튼 (항상 표시) */}
           <button

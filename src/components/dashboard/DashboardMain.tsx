@@ -83,6 +83,7 @@ export default function DashboardMain() {
   const [cardUsages, setCardUsages] = useState<Array<{
     card_number?: string
     usage_category?: string
+    usage_date_start?: string
     requester?: { name?: string }
     [key: string]: unknown
   }>>([])
@@ -305,7 +306,7 @@ export default function DashboardMain() {
 
     const map: Record<string, { inUse: boolean; user: string; category: string }> = {}
     for (const card of DASHBOARD_CARDS) {
-      const active = cardUsages.find(u => u.card_number === card.value && todayStr >= u.usage_date_start)
+      const active = cardUsages.find(u => u.card_number === card.value && u.usage_date_start && todayStr >= u.usage_date_start)
       if (active) {
         map[card.value] = { inUse: true, user: active.requester?.name || "-", category: active.usage_category || "" }
       } else {

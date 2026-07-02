@@ -14,7 +14,8 @@ import {
   FileEdit,
   ChevronDown,
   ChevronLeft,
-  Truck
+  Truck,
+  Database
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -42,6 +43,10 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
   const [pendingStatementCount, setPendingStatementCount] = useState(0)
   const [pendingApplicationCount, setPendingApplicationCount] = useState(0)
+
+  const isClientOrdersMode = pathname.startsWith('/client-orders')
+  const isProductionMode = pathname.startsWith('/production')
+  const isPurchaseMode = !isClientOrdersMode && !isProductionMode
 
   const roles = parseRoles(role)
   const isAdmin = roles.includes('superadmin')
@@ -213,9 +218,6 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
   const [purchaseListOpen, setPurchaseListOpen] = useState(
     pathname.startsWith('/purchase/list')
   )
-  const [bomMenuOpen, setBomMenuOpen] = useState(
-    pathname.startsWith('/bom-coordinate')
-  )
   const [shippingMenuOpen, setShippingMenuOpen] = useState(
     pathname.startsWith('/shipping')
   )
@@ -224,12 +226,6 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
   useEffect(() => {
     if (pathname.startsWith('/purchase/list')) {
       setPurchaseListOpen(true)
-    }
-  }, [pathname])
-
-  useEffect(() => {
-    if (pathname.startsWith('/bom-coordinate')) {
-      setBomMenuOpen(true)
     }
   }, [pathname])
 
@@ -247,11 +243,6 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
     { key: '연차', label: '연차' },
   ] as const
 
-  const bomSubItems = [
-    { key: 'new', label: '새로 만들기', href: '/bom-coordinate/new' },
-    { key: 'list', label: '보드별 정리', href: '/bom-coordinate/list' },
-  ] as const
-
   const shippingSubItems = [
     { key: 'shipping', label: '택배', href: '/shipping' },
     { key: 'acceptance', label: '인수증', href: '/shipping/acceptance' },
@@ -262,17 +253,31 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
     href: string
     icon: typeof Home
     roles: string[]
-    hasSubmenu?: 'purchase' | 'bom'
+    hasSubmenu?: 'purchase'
   }
 
-  const menuItems: Array<MenuItem> = [
-    { label: '대시보드', href: '/dashboard', icon: Home, roles: ['all'] },
-    { label: '새 요청', href: '/purchase/new', icon: ShoppingCart, roles: ['all'] },
-    { label: '요청 목록', href: '/purchase/list', icon: FileText, roles: ['all'], hasSubmenu: 'purchase' as const },
-    { label: '거래명세서 확인', href: '/transaction-statement', icon: FileCheck, roles: ['all'] },
-    { label: '영수증', href: '/receipts', icon: Receipt, roles: ['superadmin', 'hr', 'lead buyer'] },
-    { label: 'BOM/좌표 정리', href: '/bom-coordinate', icon: Package, roles: ['all'], hasSubmenu: 'bom' as const },
-  ]
+  const menuItems: Array<MenuItem> = useMemo(() => {
+    if (isClientOrdersMode) {
+      return [
+        { label: '수주 통합 목록', href: '/client-orders', icon: FileText, roles: ['all'] },
+        { label: '업체관리', href: '/vendor', icon: Building2, roles: ['all'] },
+      ]
+    }
+    if (isProductionMode) {
+      return [
+        { label: '제작 현황', href: '/production', icon: Package, roles: ['all'] },
+        { label: '업체관리', href: '/vendor', icon: Building2, roles: ['all'] },
+      ]
+    }
+    return [
+      { label: '대시보드', href: '/dashboard', icon: Home, roles: ['all'] },
+      { label: '새 요청', href: '/purchase/new', icon: ShoppingCart, roles: ['all'] },
+      { label: '요청 목록', href: '/purchase/list', icon: FileText, roles: ['all'], hasSubmenu: 'purchase' as const },
+      { label: '거래명세서 확인', href: '/transaction-statement', icon: FileCheck, roles: ['all'] },
+      { label: '영수증', href: '/receipts', icon: Receipt, roles: ['superadmin', 'hr', 'lead buyer'] },
+      { label: '업체관리', href: '/vendor', icon: Building2, roles: ['all'] },
+    ]
+  }, [isClientOrdersMode, isProductionMode])
 
   const filteredMenuItems = menuItems.filter(item => {
     if (item.roles.includes('all')) return true
@@ -420,68 +425,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                     )
                   }
 
-                  if (item.hasSubmenu === 'bom') {
-                    return (
-                      <li
-                        key={item.href}
-                        onMouseEnter={() => { if (isExpanded) setBomMenuOpen(true) }}
-                        onMouseLeave={() => { if (!pathname.startsWith('/bom-coordinate')) setBomMenuOpen(false) }}
-                      >
-                        <button
-                          onClick={() => {
-                            if (!bomMenuOpen) {
-                              setBomMenuOpen(true)
-                              navigate('/bom-coordinate/new')
-                            } else {
-                              setBomMenuOpen(false)
-                            }
-                          }}
-                          className={cn(
-                            'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap w-full',
-                            isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
-                            isActive
-                              ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
-                              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
-                          )}
-                        >
-                          <div className="relative flex-shrink-0">
-                            <Icon className="w-4 h-4" />
-                          </div>
-                          {isExpanded && (
-                            <>
-                              <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
-                              <ChevronDown className={cn(
-                                "w-3.5 h-3.5 transition-transform flex-shrink-0",
-                                bomMenuOpen ? "rotate-180" : ""
-                              )} />
-                            </>
-                          )}
-                        </button>
-                        {isExpanded && bomMenuOpen && (
-                          <ul className="mt-1 space-y-0.5">
-                            {bomSubItems.map((sub) => {
-                              const isSubActive = pathname === sub.href
-                              return (
-                                <li key={sub.key}>
-                                  <Link
-                                    to={sub.href}
-                                    className={cn(
-                                      'flex items-center h-8 pl-10 pr-3 rounded-lg transition-colors whitespace-nowrap text-[13px]',
-                                      isSubActive
-                                        ? 'bg-hansl-50 text-hansl-600 font-semibold'
-                                        : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
-                                    )}
-                                  >
-                                    <span className="flex-1">{sub.label}</span>
-                                  </Link>
-                                </li>
-                              )
-                            })}
-                          </ul>
-                        )}
-                      </li>
-                    )
-                  }
+
 
                   return (
                     <li key={item.href}>
@@ -520,161 +464,162 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
             </div>
 
             {/* 택배/인수증 + 관리 메뉴 + 신청서/문의 - 하단 고정 */}
-            <div className={cn("pl-2 pt-2 pb-2 border-t border-gray-200 space-y-1", isExpanded ? "pr-5" : "pr-2")}>
-              {(() => {
-                const isShippingActive = pathname === '/shipping' || pathname.startsWith('/shipping/')
-                return (
-                  <div
-                    onMouseEnter={() => { if (isExpanded) setShippingMenuOpen(true) }}
-                    onMouseLeave={() => { if (!pathname.startsWith('/shipping')) setShippingMenuOpen(false) }}
-                  >
-                    <button
-                      onClick={() => {
-                        if (!shippingMenuOpen) {
-                          setShippingMenuOpen(true)
-                          navigate('/shipping')
-                        } else {
-                          setShippingMenuOpen(false)
-                        }
-                      }}
+            {isPurchaseMode && (
+              <div className={cn("pl-2 pt-2 pb-2 border-t border-gray-200 space-y-1", isExpanded ? "pr-5" : "pr-2")}>
+                {(() => {
+                  const isShippingActive = pathname === '/shipping' || pathname.startsWith('/shipping/')
+                  return (
+                    <div
+                      onMouseEnter={() => { if (isExpanded) setShippingMenuOpen(true) }}
+                      onMouseLeave={() => { if (!pathname.startsWith('/shipping')) setShippingMenuOpen(false) }}
+                    >
+                      <button
+                        onClick={() => {
+                          if (!shippingMenuOpen) {
+                            setShippingMenuOpen(true)
+                            navigate('/shipping')
+                          } else {
+                            setShippingMenuOpen(false)
+                          }
+                        }}
+                        className={cn(
+                          'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap w-full',
+                          isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
+                          isShippingActive
+                            ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
+                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                        )}
+                      >
+                        <div className="relative flex-shrink-0">
+                          <Truck className="w-4 h-4" />
+                        </div>
+                        {isExpanded && (
+                          <>
+                            <span className="text-sm font-medium flex-1 text-left">택배/인수증</span>
+                            <ChevronDown className={cn(
+                              "w-3.5 h-3.5 transition-transform flex-shrink-0",
+                              shippingMenuOpen ? "rotate-180" : ""
+                            )} />
+                          </>
+                        )}
+                      </button>
+                      {isExpanded && shippingMenuOpen && (
+                        <ul className="mt-1 space-y-0.5">
+                          {shippingSubItems.map((sub) => {
+                            const isSubActive = pathname === sub.href
+                            return (
+                              <li key={sub.key}>
+                                <Link
+                                  to={sub.href}
+                                  className={cn(
+                                    'flex items-center h-8 pl-10 pr-3 rounded-lg transition-colors whitespace-nowrap text-[13px]',
+                                    isSubActive
+                                      ? 'bg-hansl-50 text-hansl-600 font-semibold'
+                                      : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
+                                  )}
+                                >
+                                  <span className="flex-1">{sub.label}</span>
+                                </Link>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  )
+                })()}
+                <div className="border-t border-gray-200 my-1" />
+                {isExpanded && (
+                  <span className="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">관리</span>
+                )}
+                {[
+                  { label: '직원 관리', href: '/employee', icon: Users },
+                ].map((mgmtItem) => {
+                  const MgmtIcon = mgmtItem.icon
+                  const isMgmtActive = pathname === mgmtItem.href || pathname.startsWith(`${mgmtItem.href}/`)
+                  return (
+                    <Link
+                      key={mgmtItem.href}
+                      to={mgmtItem.href}
                       className={cn(
-                        'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap w-full',
+                        'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap',
                         isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
-                        isShippingActive
+                        isMgmtActive
                           ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
                           : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
                       )}
                     >
                       <div className="relative flex-shrink-0">
-                        <Truck className="w-4 h-4" />
+                        <MgmtIcon className="w-4 h-4" />
                       </div>
                       {isExpanded && (
-                        <>
-                          <span className="text-sm font-medium flex-1 text-left">택배/인수증</span>
-                          <ChevronDown className={cn(
-                            "w-3.5 h-3.5 transition-transform flex-shrink-0",
-                            shippingMenuOpen ? "rotate-180" : ""
-                          )} />
-                        </>
+                        <span className="text-sm font-medium flex-1">{mgmtItem.label}</span>
                       )}
-                    </button>
-                    {isExpanded && shippingMenuOpen && (
-                      <ul className="mt-1 space-y-0.5">
-                        {shippingSubItems.map((sub) => {
-                          const isSubActive = pathname === sub.href
-                          return (
-                            <li key={sub.key}>
-                              <Link
-                                to={sub.href}
-                                className={cn(
-                                  'flex items-center h-8 pl-10 pr-3 rounded-lg transition-colors whitespace-nowrap text-[13px]',
-                                  isSubActive
-                                    ? 'bg-hansl-50 text-hansl-600 font-semibold'
-                                    : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
-                                )}
-                              >
-                                <span className="flex-1">{sub.label}</span>
-                              </Link>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    )}
+                    </Link>
+                  )
+                })}
+                <div className="border-t border-gray-200 my-1" />
+                <Link
+                  to="/application"
+                  className={cn(
+                    'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap',
+                    isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
+                    pathname === '/application' || pathname.startsWith('/application/')
+                      ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
+                      : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                  )}
+                >
+                  <div className="relative flex-shrink-0">
+                    <FileEdit className="w-4 h-4" />
+                    {!isExpanded && isApplicationApprover && renderIconBadge(pendingApplicationCount)}
                   </div>
-                )
-              })()}
-              <div className="border-t border-gray-200 my-1" />
-              {isExpanded && (
-                <span className="px-3 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">관리</span>
-              )}
-              {[
-                { label: '업체 관리', href: '/vendor', icon: Building2 },
-                { label: '직원 관리', href: '/employee', icon: Users },
-              ].map((mgmtItem) => {
-                const MgmtIcon = mgmtItem.icon
-                const isMgmtActive = pathname === mgmtItem.href || pathname.startsWith(`${mgmtItem.href}/`)
-                return (
-                  <Link
-                    key={mgmtItem.href}
-                    to={mgmtItem.href}
-                    className={cn(
-                      'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap',
-                      isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
-                      isMgmtActive
-                        ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
-                        : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
-                    )}
-                  >
-                    <div className="relative flex-shrink-0">
-                      <MgmtIcon className="w-4 h-4" />
-                    </div>
-                    {isExpanded && (
-                      <span className="text-sm font-medium flex-1">{mgmtItem.label}</span>
-                    )}
-                  </Link>
-                )
-              })}
-              <div className="border-t border-gray-200 my-1" />
-              <Link
-                to="/application"
-                className={cn(
-                  'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap',
-                  isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
-                  pathname === '/application' || pathname.startsWith('/application/')
-                    ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
-                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
-                )}
-              >
-                <div className="relative flex-shrink-0">
-                  <FileEdit className="w-4 h-4" />
-                  {!isExpanded && isApplicationApprover && renderIconBadge(pendingApplicationCount)}
-                </div>
-                {isExpanded && (
-                  <>
-                    <span className="text-sm font-medium flex-1">신청서 관리</span>
-                    {isApplicationApprover && pendingApplicationCount > 0 && (
-                      <span className={cn(
-                        "text-[11px] font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center",
-                        pathname === '/application' || pathname.startsWith('/application/')
-                          ? "bg-hansl-200 text-hansl-700" : "bg-red-100 text-red-700"
-                      )}>
-                        {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
-                      </span>
-                    )}
-                  </>
-                )}
-              </Link>
-              <div className="border-t border-gray-200 my-1" />
-              <Link
-                to="/support"
-                className={cn(
-                  'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap',
-                  isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
-                  pathname === '/support'
-                    ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
-                    : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
-                )}
-              >
-                <div className="relative flex-shrink-0">
-                  <MessageCircle className="w-4 h-4" />
-                  {!isExpanded && renderIconBadge(supportBadge)}
-                </div>
-                {isExpanded && (
-                  <>
-                    <span className="text-sm font-medium flex-1">문의하기</span>
-                    {supportBadge > 0 && (
-                      <span className={cn(
-                        "text-[11px] font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center",
-                        pathname === '/support'
-                          ? "bg-hansl-200 text-hansl-700" : "bg-red-100 text-red-700"
-                      )}>
-                        {supportBadge > 99 ? '99+' : supportBadge}
-                      </span>
-                    )}
-                  </>
-                )}
-              </Link>
-            </div>
+                  {isExpanded && (
+                    <>
+                      <span className="text-sm font-medium flex-1">신청서 관리</span>
+                      {isApplicationApprover && pendingApplicationCount > 0 && (
+                        <span className={cn(
+                          "text-[11px] font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center",
+                          pathname === '/application' || pathname.startsWith('/application/')
+                            ? "bg-hansl-200 text-hansl-700" : "bg-red-100 text-red-700"
+                        )}>
+                          {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </Link>
+                <div className="border-t border-gray-200 my-1" />
+                <Link
+                  to="/support"
+                  className={cn(
+                    'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap',
+                    isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
+                    pathname === '/support'
+                      ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
+                      : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                  )}
+                >
+                  <div className="relative flex-shrink-0">
+                    <MessageCircle className="w-4 h-4" />
+                    {!isExpanded && renderIconBadge(supportBadge)}
+                  </div>
+                  {isExpanded && (
+                    <>
+                      <span className="text-sm font-medium flex-1">문의하기</span>
+                      {supportBadge > 0 && (
+                        <span className={cn(
+                          "text-[11px] font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center",
+                          pathname === '/support'
+                            ? "bg-hansl-200 text-hansl-700" : "bg-red-100 text-red-700"
+                        )}>
+                          {supportBadge > 99 ? '99+' : supportBadge}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </Link>
+              </div>
+            )}
           </div>
         </aside>
 
@@ -754,58 +699,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                 )
               }
 
-              if (item.hasSubmenu === 'bom') {
-                return (
-                  <li key={item.href}>
-                    <button
-                      onClick={() => {
-                        if (!bomMenuOpen) {
-                          setBomMenuOpen(true)
-                          navigate('/bom-coordinate/new')
-                        } else {
-                          setBomMenuOpen(false)
-                        }
-                      }}
-                      className={cn(
-                        'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors w-full',
-                        isActive
-                          ? 'bg-hansl-50 text-hansl-600 border-l-2 border-hansl-500'
-                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                      )}
-                    >
-                      <Icon className="w-4 h-4" />
-                      <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
-                      <ChevronDown className={cn(
-                        "w-3.5 h-3.5 transition-transform",
-                        bomMenuOpen ? "rotate-180" : ""
-                      )} />
-                    </button>
-                    {bomMenuOpen && (
-                      <ul className="mt-1 space-y-0.5">
-                        {bomSubItems.map((sub) => {
-                          const isSubActive = pathname === sub.href
-                          return (
-                            <li key={sub.key}>
-                              <Link
-                                to={sub.href}
-                                onClick={onClose}
-                                className={cn(
-                                  'flex items-center h-9 pl-11 pr-4 rounded-lg transition-colors text-[13px]',
-                                  isSubActive
-                                    ? 'bg-hansl-50 text-hansl-600 font-semibold'
-                                    : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
-                                )}
-                              >
-                                <span className="flex-1">{sub.label}</span>
-                              </Link>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    )}
-                  </li>
-                )
-              }
+
 
               return (
                 <li key={item.href}>
@@ -827,134 +721,135 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
             })}
           </ul>
           {/* 택배/인수증 + 관리 메뉴 + 신청서/문의 - 하단 고정 */}
-          <div className="p-2 border-t border-gray-200 space-y-1">
-            {(() => {
-              const isShippingActive = pathname === '/shipping' || pathname.startsWith('/shipping/')
-              return (
-                <div>
-                  <button
-                    onClick={() => {
-                      if (!shippingMenuOpen) {
-                        setShippingMenuOpen(true)
-                        navigate('/shipping')
-                        onClose?.()
-                      } else {
-                        setShippingMenuOpen(false)
-                      }
-                    }}
+          {isPurchaseMode && (
+            <div className="p-2 border-t border-gray-200 space-y-1">
+              {(() => {
+                const isShippingActive = pathname === '/shipping' || pathname.startsWith('/shipping/')
+                return (
+                  <div>
+                    <button
+                      onClick={() => {
+                        if (!shippingMenuOpen) {
+                          setShippingMenuOpen(true)
+                          navigate('/shipping')
+                          onClose?.()
+                        } else {
+                          setShippingMenuOpen(false)
+                        }
+                      }}
+                      className={cn(
+                        'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors w-full',
+                        isShippingActive
+                          ? 'bg-hansl-50 text-hansl-600 border-l-2 border-hansl-500'
+                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      )}
+                    >
+                      <Truck className="w-4 h-4" />
+                      <span className="text-sm font-medium flex-1 text-left">택배/인수증</span>
+                      <ChevronDown className={cn(
+                        "w-3.5 h-3.5 transition-transform",
+                        shippingMenuOpen ? "rotate-180" : ""
+                      )} />
+                    </button>
+                    {shippingMenuOpen && (
+                      <ul className="mt-1 space-y-0.5">
+                        {shippingSubItems.map((sub) => {
+                          const isSubActive = pathname === sub.href
+                          return (
+                            <li key={sub.key}>
+                              <Link
+                                to={sub.href}
+                                onClick={onClose}
+                                className={cn(
+                                  'flex items-center h-9 pl-11 pr-4 rounded-lg transition-colors text-[13px]',
+                                  isSubActive
+                                    ? 'bg-hansl-50 text-hansl-600 font-semibold'
+                                    : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
+                                )}
+                              >
+                                <span className="flex-1">{sub.label}</span>
+                              </Link>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                )
+              })()}
+              <div className="border-t border-gray-200 my-1" />
+              <span className="px-4 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">관리</span>
+              {[
+                { label: '직원 관리', href: '/employee', icon: Users },
+              ].map((mgmtItem) => {
+                const MgmtIcon = mgmtItem.icon
+                const isMgmtActive = pathname === mgmtItem.href || pathname.startsWith(`${mgmtItem.href}/`)
+                return (
+                  <Link
+                    key={mgmtItem.href}
+                    to={mgmtItem.href}
+                    onClick={onClose}
                     className={cn(
-                      'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors w-full',
-                      isShippingActive
+                      'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors',
+                      isMgmtActive
                         ? 'bg-hansl-50 text-hansl-600 border-l-2 border-hansl-500'
                         : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                     )}
                   >
-                    <Truck className="w-4 h-4" />
-                    <span className="text-sm font-medium flex-1 text-left">택배/인수증</span>
-                    <ChevronDown className={cn(
-                      "w-3.5 h-3.5 transition-transform",
-                      shippingMenuOpen ? "rotate-180" : ""
-                    )} />
-                  </button>
-                  {shippingMenuOpen && (
-                    <ul className="mt-1 space-y-0.5">
-                      {shippingSubItems.map((sub) => {
-                        const isSubActive = pathname === sub.href
-                        return (
-                          <li key={sub.key}>
-                            <Link
-                              to={sub.href}
-                              onClick={onClose}
-                              className={cn(
-                                'flex items-center h-9 pl-11 pr-4 rounded-lg transition-colors text-[13px]',
-                                isSubActive
-                                  ? 'bg-hansl-50 text-hansl-600 font-semibold'
-                                  : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
-                              )}
-                            >
-                              <span className="flex-1">{sub.label}</span>
-                            </Link>
-                          </li>
-                        )
-                      })}
-                    </ul>
+                    <MgmtIcon className="w-4 h-4" />
+                    <span className="text-sm font-medium">{mgmtItem.label}</span>
+                  </Link>
+                )
+              })}
+              <div className="border-t border-gray-200 my-1" />
+              <Link
+                to="/application"
+                onClick={onClose}
+                className={cn(
+                  'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors',
+                  pathname === '/application' || pathname.startsWith('/application/')
+                    ? 'bg-hansl-50 text-hansl-600 border-l-2 border-hansl-500'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                )}
+              >
+                <div className="relative">
+                  <FileEdit className="w-4 h-4" />
+                  {isApplicationApprover && pendingApplicationCount > 0 && (
+                    <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                      {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
+                    </span>
                   )}
                 </div>
-              )
-            })()}
-            <div className="border-t border-gray-200 my-1" />
-            <span className="px-4 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">관리</span>
-            {[
-              { label: '업체 관리', href: '/vendor', icon: Building2 },
-              { label: '직원 관리', href: '/employee', icon: Users },
-            ].map((mgmtItem) => {
-              const MgmtIcon = mgmtItem.icon
-              const isMgmtActive = pathname === mgmtItem.href || pathname.startsWith(`${mgmtItem.href}/`)
-              return (
-                <Link
-                  key={mgmtItem.href}
-                  to={mgmtItem.href}
-                  onClick={onClose}
-                  className={cn(
-                    'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors',
-                    isMgmtActive
-                      ? 'bg-hansl-50 text-hansl-600 border-l-2 border-hansl-500'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                  )}
-                >
-                  <MgmtIcon className="w-4 h-4" />
-                  <span className="text-sm font-medium">{mgmtItem.label}</span>
-                </Link>
-              )
-            })}
-            <div className="border-t border-gray-200 my-1" />
-            <Link
-              to="/application"
-              onClick={onClose}
-              className={cn(
-                'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors',
-                pathname === '/application' || pathname.startsWith('/application/')
-                  ? 'bg-hansl-50 text-hansl-600 border-l-2 border-hansl-500'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              )}
-            >
-              <div className="relative">
-                <FileEdit className="w-4 h-4" />
+                <span className="text-sm font-medium">신청서 관리</span>
                 {isApplicationApprover && pendingApplicationCount > 0 && (
-                  <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                  <span className="ml-auto badge-stats bg-red-100 text-red-700">
                     {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
                   </span>
                 )}
-              </div>
-              <span className="text-sm font-medium">신청서 관리</span>
-              {isApplicationApprover && pendingApplicationCount > 0 && (
-                <span className="ml-auto badge-stats bg-red-100 text-red-700">
-                  {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
-                </span>
-              )}
-            </Link>
-            <div className="border-t border-gray-200 my-1" />
-            <Link
-              to="/support"
-              onClick={onClose}
-              className={cn(
-                'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors',
-                pathname === '/support'
-                  ? 'bg-hansl-50 text-hansl-600 border-l-2 border-hansl-500'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              )}
-            >
-              <div className="relative">
-              <MessageCircle className="w-4 h-4" />
-                {supportBadge > 0 && (
-                  <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
-                    {supportBadge > 99 ? '99+' : supportBadge}
-                  </span>
+              </Link>
+              <div className="border-t border-gray-200 my-1" />
+              <Link
+                to="/support"
+                onClick={onClose}
+                className={cn(
+                  'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors',
+                  pathname === '/support'
+                    ? 'bg-hansl-50 text-hansl-600 border-l-2 border-hansl-500'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 )}
-              </div>
-              <span className="text-sm font-medium">문의하기</span>
-            </Link>
-          </div>
+              >
+                <div className="relative">
+                <MessageCircle className="w-4 h-4" />
+                  {supportBadge > 0 && (
+                    <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
+                      {supportBadge > 99 ? '99+' : supportBadge}
+                    </span>
+                  )}
+                </div>
+                <span className="text-sm font-medium">문의하기</span>
+              </Link>
+            </div>
+          )}
         </nav>
     </>
   )

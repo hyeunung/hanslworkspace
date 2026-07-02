@@ -1,6 +1,8 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import ErrorBoundary from '@/components/ErrorBoundary'
+import { useAuth } from '@/contexts/AuthContext'
+import { createClient } from '@/lib/supabase/client'
 
 // 페이지 컴포넌트들을 lazy loading으로 변경 (코드 스플리팅)
 const DashboardMain = lazy(() => import('@/components/dashboard/DashboardMain'))
@@ -22,6 +24,8 @@ const OfficialDocumentMain = lazy(() => import('@/components/official-document/O
 const AuthConfirm = lazy(() => import('@/components/auth/AuthConfirm'))
 const ResetPassword = lazy(() => import('@/components/auth/ResetPassword'))
 const SystemActivityLogsPage = lazy(() => import('@/components/logs/SystemActivityLogsPage'))
+const ClientOrderListMain = lazy(() => import('@/components/production/ClientOrderListMain'))
+const ProductionListMain = lazy(() => import('@/components/production/ProductionListMain'))
 
 /**
  * 애플리케이션 라우팅 컴포넌트
@@ -44,7 +48,7 @@ export default function AppRoutes() {
       }>
         <Routes>
           {/* 기본 리다이렉트 */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<RootRedirect />} />
           
           {/* 테스트 라우트 */}
           <Route path="/test" element={<div style={{ padding: '20px', backgroundColor: 'yellow' }}>테스트 라우트 작동 중!</div>} />
@@ -71,6 +75,8 @@ export default function AppRoutes() {
           <Route path="/bom-coordinate/list" element={<BomCoordinateMain />} />
           <Route path="/transaction-statement" element={<TransactionStatementMain />} />
           <Route path="/official-document" element={<OfficialDocumentMain />} />
+          <Route path="/client-orders" element={<ClientOrderListMain />} />
+          <Route path="/production" element={<ProductionListMain />} />
           
           {/* 인증 관련 라우트 */}
           <Route path="/auth/confirm" element={<AuthConfirm />} />
@@ -82,4 +88,62 @@ export default function AppRoutes() {
       </Suspense>
     </ErrorBoundary>
   )
+}
+
+function RootRedirect() {
+  const { currentUserEmail, loading: authLoading } = useAuth()
+  const [targetPath, setTargetPath] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (authLoading) return
+
+    if (!currentUserEmail) {
+      setTargetPath('/dashboard')
+      setLoading(false)
+      return
+    }
+
+    const loadPreference = async () => {
+      try {
+        const supabase = createClient()
+        const { data, error } = await supabase
+          .from('user_ui_settings')
+          .select('setting_value')
+          .eq('user_email', currentUserEmail)
+          .eq('setting_type', 'general')
+          .eq('setting_key', 'default_landing_system')
+          .maybeSingle()
+
+        if (!error && data?.setting_value) {
+          const val = data.setting_value as { system?: string }
+          if (val.system === 'client-orders') {
+            setTargetPath('/client-orders')
+          } else if (val.system === 'production') {
+            setTargetPath('/production')
+          } else {
+            setTargetPath('/dashboard')
+          }
+        } else {
+          setTargetPath('/dashboard')
+        }
+      } catch (err) {
+        setTargetPath('/dashboard')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadPreference()
+  }, [currentUserEmail, authLoading])
+
+  if (authLoading || loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="w-8 h-8 border-2 border-hansl-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  return <Navigate to={targetPath || '/dashboard'} replace />
 }

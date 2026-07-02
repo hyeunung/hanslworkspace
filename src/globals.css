@@ -1243,3 +1243,94 @@ input[type="number"] {
 }
 
 /* 공문 인쇄는 새 창에서 처리 (printOfficialDoc) — 기존 페이지 컨텍스트의 fixed/relative 부모 충돌 회피 */
+
+/* 제작현황 테이블의 셀 초밀착 컴팩트 높낮이 및 중앙정렬 스타일 */
+.production-compact-table th,
+.production-compact-table td,
+.adding-row td {
+  font-size: 10px !important;
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+  padding-left: 2px !important;
+  padding-right: 2px !important;
+  line-height: 1.2 !important;
+  text-align: center !important;
+}
+
+.production-compact-table input,
+.production-compact-table select,
+.adding-row input,
+.adding-row select {
+  height: 15px !important;
+  font-size: 10px !important;
+  line-height: 1 !important;
+  padding-top: 0px !important;
+  padding-bottom: 0px !important;
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+  text-align: center !important;
+}
+
+.production-compact-table select,
+.adding-row select {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234b5563' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 3px center !important;
+  background-size: 8px 8px !important;
+  padding-right: 12px !important;
+}
+
+/* 등록 및 수정 모달 컴팩트 스타일 */
+.compact-modal {
+  max-width: 32rem !important; /* w-full max-w-md or lg */
+}
+
+.compact-modal form {
+  padding: 12px !important;
+  gap: 8px !important;
+}
+
+.compact-modal .grid {
+  gap: 8px !important;
+}
+
+.compact-modal .modal-label {
+  font-size: 10px !important;
+  margin-bottom: 2px !important;
+}
+
+.compact-modal input,
+.compact-modal select,
+.compact-inputs input,
+.compact-inputs select {
+  height: 20px !important;
+  font-size: 11px !important;
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+  line-height: 16px !important;
+}
+
+.compact-modal select,
+.compact-inputs select {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234b5563' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 6px center !important;
+  background-size: 10px 10px !important;
+  padding-right: 20px !important;
+}
+
+.compact-modal textarea,
+.compact-inputs textarea {
+  font-size: 11px !important;
+  padding: 4px 8px !important;
+  height: auto !important;
+  min-height: 48px !important;
+}

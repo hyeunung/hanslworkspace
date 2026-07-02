@@ -1,4 +1,4 @@
-import { parseOrderNumberWithLine, extractOrderNumber } from '../supabase/functions/_shared/order-number.ts';
+import { parseOrderNumberWithLine, extractOrderNumber } from '../supabase/functions/_shared/order-number';
 
 const text = "M-11 F20260422_007-22(2)";
 console.log('extractOrderNumber:', extractOrderNumber(text));

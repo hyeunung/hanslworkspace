@@ -1458,7 +1458,8 @@ ${itemsText}`
   }, [refreshModalData])
 
   // UTK 확인 토글 핸들러 (상세모달 공통: 전체항목/입고현황에서 사용)
-  const handleToggleUtkCheck = useCallback(async () => {
+  const handleToggleUtkCheck = useCallback(async (e?: React.MouseEvent) => {
+    e?.stopPropagation()
     if (!purchase) return
     if (!canReceiptCheck || !canViewFinancialInfo) return
 
@@ -3651,7 +3652,8 @@ ${itemsText}`
 
 
   // 승인 처리
-  const handleApprove = async (type: 'middle' | 'final') => {
+  const handleApprove = async (type: 'middle' | 'final', e?: React.MouseEvent) => {
+    e?.stopPropagation()
     if (!purchase) return
     
     const approvalType = type === 'middle' ? '1차 승인' : '최종 승인'
@@ -3727,8 +3729,8 @@ ${itemsText}`
   }
   
   // 전체 구매완료 처리 (개별 품목별 처리 방식)
-  const handleCompleteAllPayment = async () => {
-    
+  const handleCompleteAllPayment = async (e?: React.MouseEvent) => {
+    e?.stopPropagation()
     if (!purchase || !canPurchase) {
       return
     }
@@ -4699,7 +4701,8 @@ ${itemsText}`
                       actualReceivedAction.isCompleted(item) ? (
                         // 입고완료 상태 - 진파랑
                         <button
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation()
                             actualReceivedAction.handleCancel(item.id, {
                               item_name: item.item_name,
                               specification: item.specification,
@@ -4772,7 +4775,8 @@ ${itemsText}`
                       actualReceivedAction.isCompleted(item) ? (
                         // 입고완료 상태 - 취소 가능
                         <button
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation()
                             actualReceivedAction.handleCancel(item.id, {
                               item_name: item.item_name,
                               specification: item.specification,
@@ -4876,7 +4880,8 @@ ${itemsText}`
               {canRowReceiptCheck ? (
                 statementReceivedAction.isCompleted(item) ? (
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation()
                       statementReceivedAction.handleCancel(item.id, {
                         item_name: item.item_name,
                         specification: item.specification,
@@ -5225,7 +5230,8 @@ ${itemsText}`
                         {canRowReceiveItems ? (
                           actualReceivedAction.isCompleted(item) ? (
                             <button
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation()
                                 actualReceivedAction.handleCancel(item.id, {
                                   item_name: item.item_name,
                                   specification: item.specification,
@@ -5337,7 +5343,8 @@ ${itemsText}`
                 {canRowReceiptCheck ? (
                   statementReceivedAction.isCompleted(item) ? (
                     <button
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation()
                         statementReceivedAction.handleCancel(item.id, {
                           item_name: item.item_name,
                           specification: item.specification,
@@ -5480,7 +5487,7 @@ ${itemsText}`
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => handleApprove('middle')}
+                    onClick={(e) => handleApprove('middle', e)}
                     className={`${approvalButtonClass} border border-gray-400 bg-white hover:bg-gray-50 hover:border-gray-500`}
                   >
                     1차 승인 대기
@@ -5512,7 +5519,7 @@ ${itemsText}`
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => handleApprove('final')}
+                    onClick={(e) => handleApprove('final', e)}
                     className={`${approvalButtonClass} border border-gray-400 bg-white hover:bg-gray-50 hover:border-gray-500`}
                   >
                     <Check className="w-3 h-3" />
@@ -5558,7 +5565,7 @@ ${itemsText}`
                     </h3>
                     {canReceiptCheck && canViewFinancialInfo && (activeTab === 'done' || activeTab === 'receipt') && (
                       <button
-                        onClick={handleToggleUtkCheck}
+                        onClick={(e) => handleToggleUtkCheck(e)}
                         className={`button-base text-xs px-2 py-1 flex items-center ${
                           purchase?.is_utk_checked
                             ? 'button-toggle-active bg-orange-500 hover:bg-orange-600 text-white'
@@ -6267,7 +6274,7 @@ ${itemsText}`
                       {activeTab === 'purchase' && canPurchase && (
                         <Button
                           size="sm"
-                          onClick={handleCompleteAllPayment}
+                          onClick={(e) => handleCompleteAllPayment(e)}
                           className="button-base bg-orange-500 hover:bg-orange-600 text-white"
                         >
                           <CreditCard className="w-3 h-3 mr-1" />
@@ -6722,6 +6729,9 @@ ${itemsText}`
       <DialogContent 
         className="overflow-hidden bg-white rounded-lg shadow-sm border-0 w-full sm:w-auto max-w-[calc(100vw-48px)] sm:max-w-[calc(100vw-80px)] lg:max-w-[90vw] xl:max-w-[85vw] h-[95vh] sm:h-auto sm:max-h-[90vh] lg:max-h-[85vh] sm:rounded-lg flex flex-col" 
         showCloseButton={false}
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onFocusOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
       >
         <DialogHeader className="sr-only">
           <DialogTitle>발주 상세 정보</DialogTitle>

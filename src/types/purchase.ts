@@ -169,6 +169,7 @@ export interface PurchaseRequestItem {
   receipt_history?: ReceiptHistoryItem[]
   created_at: string
   updated_at: string
+  deleted_at?: string | null
 }
 
 export interface PurchaseRequest {
@@ -405,6 +406,7 @@ export interface Purchase {
   // JOIN으로 가져오는 필드들
   vendor_payment_schedule?: string | null;
   contact_name?: string | null;
+  deleted_at?: string | null;
 }
 
 export interface DashboardData {

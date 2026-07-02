@@ -380,7 +380,7 @@ class SupportService {
             await this.supabase.storage.from('receipt-images').remove([path])
           }
         } catch (e) {
-          logger.warn('거래명세서 Storage 파일 삭제 실패 (DB 삭제는 완료):', e)
+          logger.warn('거래명세서 Storage 파일 삭제 실패 (DB 삭제는 완료):', { error: e })
         }
       }
 

@@ -203,6 +203,7 @@ const ColumnSettingsDropdown: React.FC<ColumnSettingsDropdownProps> = memo(({
                   purchase_progress: '구매진행',
                   receipt_progress: '입고진행',
                   received_quantity: '실제 입고수량',
+                  payment_schedule: '지출예정일',
                 };
 
                 return (

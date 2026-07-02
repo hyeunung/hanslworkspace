@@ -18,23 +18,35 @@ export interface ParsedOrderNumber {
  *   HS260109-03-01    → base=HS260109-03,   lineNumber=1  (SO + 라인)
  *   HS260109-03       → base=HS260109-03,   lineNumber=null (SO)
  */
+function normalizePoDatePart(rawDate: string): string {
+  if (rawDate.length === 6) {
+    return '20' + rawDate
+  }
+  if (rawDate.length === 7) {
+    return '20' + rawDate.slice(1)
+  }
+  return rawDate
+}
+
 export function parseOrderNumberWithLine(input: string | null | undefined): ParsedOrderNumber | null {
   if (!input) return null
   const normalized = input.toUpperCase().replace(/\s+/g, '')
 
-  const poWithLine = normalized.match(/^(F\d{8})[_-](\d{1,3})[-_](\d{1,3})$/)
+  const poWithLine = normalized.match(/^(F\d{6,8})[_-](\d{1,3})[-_](\d{1,3})$/)
   if (poWithLine) {
+    const datePart = normalizePoDatePart(poWithLine[1].slice(1))
     return {
-      base: `${poWithLine[1]}_${poWithLine[2].padStart(3, '0')}`,
+      base: `F${datePart}_${poWithLine[2].padStart(3, '0')}`,
       lineNumber: parseInt(poWithLine[3], 10),
       type: 'PO',
     }
   }
 
-  const poOnly = normalized.match(/^(F\d{8})[_-](\d{1,3})$/)
+  const poOnly = normalized.match(/^(F\d{6,8})[_-](\d{1,3})$/)
   if (poOnly) {
+    const datePart = normalizePoDatePart(poOnly[1].slice(1))
     return {
-      base: `${poOnly[1]}_${poOnly[2].padStart(3, '0')}`,
+      base: `F${datePart}_${poOnly[2].padStart(3, '0')}`,
       lineNumber: null,
       type: 'PO',
     }
@@ -73,7 +85,7 @@ export function extractOrderNumber(text: string | null | undefined): string | nu
   if (!text) return null
   const normalized = text.toUpperCase().replace(/\s+/g, '')
 
-  const exactPo = normalized.match(/F\d{8}[_-]\d{1,3}/g)
+  const exactPo = normalized.match(/F\d{6,8}[_-]\d{1,3}/g)
   if (exactPo?.length) return normalizeOrderNumber(exactPo[0])
 
   const exactSo = normalized.match(/HS\d{6}[-_]\d{1,2}/g)

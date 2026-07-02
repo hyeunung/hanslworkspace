@@ -13,6 +13,7 @@ interface MobileCardItemProps {
   value: ReactNode
   className?: string
   valueClassName?: string
+  onClick?: () => void
 }
 
 export function MobileCard({ children, className }: MobileCardProps) {
@@ -29,10 +30,14 @@ export function MobileCardItem({
   label, 
   value, 
   className,
-  valueClassName 
+  valueClassName,
+  onClick
 }: MobileCardItemProps) {
   return (
-    <div className={cn("flex justify-between items-start", className)}>
+    <div 
+      className={cn("flex justify-between items-start", className, onClick && "cursor-pointer")}
+      onClick={onClick}
+    >
       <span className="text-sm text-muted-foreground font-medium min-w-[100px]">
         {label}
       </span>
