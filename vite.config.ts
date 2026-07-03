@@ -8,6 +8,11 @@ export default defineConfig(({ mode }) => {
   // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
   const env = loadEnv(mode, process.cwd(), '')
 
+  // 프리뷰 하네스가 PORT 환경변수로 포트를 지정하면 그 값을 사용(HMR은 기본값에 위임),
+  // 아니면 기존 로컬 개발 설정(포트 3000, HMR 24678)을 유지
+  const assignedPort = process.env.PORT ? Number(process.env.PORT) : undefined
+  const devPort = assignedPort ?? 3000
+
   return {
   plugins: [react(), versionPlugin()],
     define: {
@@ -21,11 +26,13 @@ export default defineConfig(({ mode }) => {
     },
   },
   server: {
-    port: 3000,
-    open: true,
+    port: devPort,
+    strictPort: !!assignedPort,
+    open: !assignedPort,
     middlewareMode: false,
     cors: true,
-    hmr: {
+    // 프리뷰(PORT 지정) 모드에서는 HMR을 기본 포트에 위임해 24678 충돌을 피함
+    hmr: assignedPort ? true : {
       port: 24678,
       clientPort: 24678
     },

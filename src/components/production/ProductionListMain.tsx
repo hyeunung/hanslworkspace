@@ -21,6 +21,71 @@ const TABLE_FONT_STACK = "Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe 
 const BODY_LETTER_SPACING = -0.15
 // 헤더 자간: .table-header-text { letter-spacing:0.02em } @10px = +0.2px (globals.css)
 const HEADER_LETTER_SPACING = 0.2
+// 데이터가 없을 때(빈 표)에도 각 칼럼이 실제 입력 데이터를 담기에 충분한 최소 폭을 갖도록,
+// 각 표(PCB / Cable)의 실제 DB 데이터 평균 길이를 기준으로 산정한 칼럼별 최소 너비(px, 좌우 여백 포함 최종값).
+// 헤더 제목 폭·본문 실측 폭과 함께 Math.max 로 비교되어 '바닥값' 역할만 한다(데이터가 길면 더 넓어짐).
+// PCB와 Cable은 같은 필드라도 평균 데이터 길이가 다르므로(예: 보드명 34자 vs 품명 20자) 표별로 따로 관리한다.
+const MIN_COLUMN_WIDTH: Record<'pcb' | 'cable', Record<string, number>> = {
+  // production_pcbs 실제 데이터의 표시 폭(px, 한글 10px·영문/숫자 5.5px @10px 폰트) 평균 실측 기준
+  pcb: {
+    sales_order_number: 80,
+    production_category: 96,
+    board_name: 200, // 평균 193px
+    reference: 165, // 평균 159px
+    request_date: 60,
+    estimate_no: 66,
+    delivery_deadline: 60,
+    client_name: 60,
+    client_manager: 80, // 평균 72px
+    hansl_manager: 54,
+    creator: 54,
+    revision_count: 46,
+    quantity: 50,
+    artwork_status: 140,
+    metal_mask: 74, // 평균 53px + 헤더 'MetalMask' 기준
+    changes_memo: 96,
+    stock_count: 50,
+    pcb_vendor: 56,
+    delivery_schedule: 64,
+    pcb_lead_time: 80,
+    received_quantity: 60,
+    received_destination: 52,
+    parts_organization: 56,
+    assy_hanwha: 72,
+    assy_evertech: 72,
+    assy_requested_date: 62,
+    final_product_stock: 80, // 평균 72px
+    qa_passed: 46,
+    qa_failed: 46,
+    qa_notes: 130, // 평균 121px
+    design_review: 115, // 평균 107px
+    delivery_quantity: 50,
+    delivery_date: 60,
+    delivery_destination: 135, // 평균 129px
+  },
+  // production_cables 실제 데이터의 표시 폭 평균 실측 기준
+  cable: {
+    sales_order_number: 80,
+    production_category: 74,
+    board_name: 145, // 품명 평균 116px
+    reference: 60,
+    request_date: 60,
+    estimate_no: 60, // 평균 46px
+    delivery_deadline: 60,
+    client_name: 56, // 평균 29px + 입력 여유
+    client_manager: 66, // 평균 46px + 헤더 '업체 담당자' 기준
+    hansl_manager: 48,
+    creator: 52,
+    revision_count: 46,
+    quantity: 50,
+    spec_details: 170, // 사양 평균 155px
+    cable_vendor: 56, // 평균 39px
+    cable_requested_date: 66, // 입고 요청일
+    cable_actual_date: 66, // 실제 입고일
+    delivery_notes: 85, // 납품/비고 평균 71px
+  },
+}
+
 let measureCtx: CanvasRenderingContext2D | null = null
 
 const measureText = (rawText: string, weight: number, letterSpacing: number = BODY_LETTER_SPACING): number => {
@@ -159,6 +224,139 @@ const buildStockInLabel = (): string => {
   const dd = String(kst.getDate()).padStart(2, '0');
   return `${mm}월 ${dd}일 입고`;
 };
+
+// ─────────────────────────────────────────────────────────────
+// ARTWORK 상태(하이브리드): 상태 선택(진행중/업체 확인중/발주완료) + 메모
+// 저장 포맷: `<status>|||<date>|||<memo>` (상태 없으면 메모 원문만 저장 → 하위호환)
+//  - status: '' | 'progress' | 'checking' | 'ordered'
+//  - date  : 'YYYY-MM-DD' (ordered일 때 발주완료 누른 당일, 한국시간 기준)
+//  - memo  : 자유 메모
+// ─────────────────────────────────────────────────────────────
+const ARTWORK_STATUS_OPTIONS: { code: string; label: string }[] = [
+  { code: 'progress', label: '진행중' },
+  { code: 'checking', label: '업체 확인중' },
+  { code: 'ordered', label: '발주완료' },
+]
+
+type ArtworkParts = { status: string; date: string; memo: string }
+
+// 한국시간(KST) 기준 오늘 날짜 'YYYY-MM-DD'
+const getKstTodayISO = (): string => {
+  const kst = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+  const y = kst.getFullYear()
+  const m = String(kst.getMonth() + 1).padStart(2, '0')
+  const d = String(kst.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+// 'YYYY-MM-DD' -> 'MM월DD일'
+const formatKoreanMMDD = (iso: string): string => {
+  const p = iso.split('-')
+  if (p.length < 3) return iso
+  return `${p[1]}월${p[2]}일`
+}
+
+const parseArtworkStatus = (raw: string | null | undefined): ArtworkParts => {
+  if (!raw) return { status: '', date: '', memo: '' }
+  if (raw.includes('|||')) {
+    const parts = raw.split('|||')
+    return { status: parts[0] || '', date: parts[1] || '', memo: parts.slice(2).join('|||') }
+  }
+  // 하위호환: 구분자가 없으면 전체를 메모로 간주
+  return { status: '', date: '', memo: raw }
+}
+
+const serializeArtworkStatus = (p: ArtworkParts): string => {
+  if (!p.status && !p.memo) return ''
+  if (!p.status) return p.memo // 메모만 있을 때는 원문 저장(하위호환)
+  return `${p.status}|||${p.date || ''}|||${p.memo || ''}`
+}
+
+// 셀 표시용 문자열 (예: '07월06일 발주완료 │ 추가 메모')
+const formatArtworkDisplay = (raw: string | null | undefined): string => {
+  const { status, date, memo } = parseArtworkStatus(raw)
+  let label = ''
+  if (status === 'progress') label = '진행중'
+  else if (status === 'checking') label = '업체 확인중'
+  else if (status === 'ordered') label = `${date ? formatKoreanMMDD(date) + ' ' : ''}발주완료`
+  if (label && memo) return `${label} │ ${memo}`
+  if (label) return label
+  return memo || ''
+}
+
+// 상태 선택 칩 + 구분선 + 메모 입력을 함께 제공하는 재사용 에디터
+function ArtworkStatusEditor({
+  value,
+  onChange,
+  onCommit,
+  onCancel,
+  autoFocusMemo = false,
+}: {
+  value: string
+  onChange: (v: string) => void
+  onCommit?: () => void
+  onCancel?: () => void
+  autoFocusMemo?: boolean
+}) {
+  const parts = parseArtworkStatus(value)
+  const pickStatus = (code: string) => {
+    if (parts.status === code) {
+      // 같은 상태 재클릭 → 해제 (메모만 남기기)
+      onChange(serializeArtworkStatus({ ...parts, status: '', date: '' }))
+    } else if (code === 'ordered') {
+      onChange(serializeArtworkStatus({ ...parts, status: 'ordered', date: getKstTodayISO() }))
+    } else {
+      onChange(serializeArtworkStatus({ ...parts, status: code, date: '' }))
+    }
+  }
+  const setMemo = (m: string) => onChange(serializeArtworkStatus({ ...parts, memo: m }))
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-0.5">
+        {ARTWORK_STATUS_OPTIONS.map(({ code, label }) => {
+          const active = parts.status === code
+          return (
+            <button
+              key={code}
+              type="button"
+              // onMouseDown + preventDefault: 메모 인풋의 포커스를 뺏지 않아 blur 저장이 오작동하지 않도록 함
+              onMouseDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                pickStatus(code)
+              }}
+              className={`text-[10px] leading-tight px-1.5 py-0.5 rounded border text-left transition-colors ${
+                active
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+              }`}
+            >
+              {label}
+              {code === 'ordered' && active && parts.date ? ` (${formatKoreanMMDD(parts.date)})` : ''}
+            </button>
+          )
+        })}
+      </div>
+      {/* 구분선 */}
+      <div className="border-t border-gray-200" />
+      <input
+        type="text"
+        autoFocus={autoFocusMemo}
+        value={parts.memo}
+        onChange={(e) => setMemo(e.target.value)}
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onCommit?.()
+          if (e.key === 'Escape') onCancel?.()
+        }}
+        onBlur={() => onCommit?.()}
+        placeholder="메모"
+        className="w-full h-5 bg-white border border-gray-300 rounded px-1 text-[10px] focus:outline-none"
+      />
+    </div>
+  )
+}
 
 export default function ProductionListMain() {
   const [pcbs, setPcbs] = useState<ProductionPcb[]>([])
@@ -315,9 +513,11 @@ export default function ProductionListMain() {
   }
 
   const handleResetMonthFilter = () => {
-    setSelectedMonth(null)
-    setSelectedYear(new Date().getFullYear())
-    toast.info('월 필터가 초기화되었습니다.')
+    // 기본 세팅 = 현재 월/연도로 복귀 (전체가 아니라 이번 달)
+    const now = new Date()
+    setSelectedMonth(now.getMonth() + 1)
+    setSelectedYear(now.getFullYear())
+    toast.info('현재 월로 초기화되었습니다.')
   }
 
   const handleResetCategoryFilter = () => {
@@ -665,7 +865,7 @@ export default function ProductionListMain() {
       const { data } = await supabase.from('employees').select('id, name, email').order('name')
       if (data) {
         // name에서 직함(공백 뒤의 텍스트) 제거 (예: "홍길동 사원" → "홍길동")
-        const cleaned = data.map(emp => ({
+        const cleaned = data.map((emp: any) => ({
           ...emp,
           name: emp.name.split(/\s+/)[0] // 첫 번째 공백까지만 추출
         }))
@@ -810,13 +1010,29 @@ export default function ProductionListMain() {
           sanitized[key] = null
         }
       })
-      await productionService.createProductionPcb(sanitized)
+      const created = await productionService.createProductionPcb(sanitized)
       toast.success('신규 PCB 항목이 저장되었습니다.')
       setAddingPcbRow(null)
-      loadData()
+      // 저장된 행의 요청일이 현재 월/연도 필터 밖이면(예: 6월을 보는데 오늘=7월로 저장),
+      // 저장은 됐지만 목록에 안 보여 "저장이 안 된 것처럼" 보이므로 필터를 해당 행 기준으로 이동시켜 노출
+      focusFilterOnRow(created?.request_date)
     } catch (err) {
       console.error(err)
       toast.error('저장에 실패했습니다.')
+    }
+  }
+
+  // 저장된 행이 현재 필터에 보이지 않을 경우, 그 행의 요청일 기준으로 월/연도 필터를 옮겨 노출한다.
+  // (필터가 바뀌면 useEffect가 loadData를 호출하고, 바뀌지 않으면 여기서 직접 loadData 호출)
+  const focusFilterOnRow = (requestDate?: string | null) => {
+    if (!requestDate) { loadData(); return }
+    const [y, m] = requestDate.split('-').map(Number)
+    const inCurrentFilter = y === selectedYear && (selectedMonth === null || selectedMonth === m)
+    if (inCurrentFilter) {
+      loadData()
+    } else {
+      setSelectedYear(y)
+      setSelectedMonth(m)
     }
   }
 
@@ -834,10 +1050,10 @@ export default function ProductionListMain() {
           sanitized[key] = null
         }
       })
-      await productionService.createProductionCable(sanitized)
+      const created = await productionService.createProductionCable(sanitized)
       toast.success('신규 Cable/Case 항목이 저장되었습니다.')
       setAddingCableRow(null)
-      loadData()
+      focusFilterOnRow(created?.request_date)
     } catch (err) {
       console.error(err)
       toast.error('저장에 실패했습니다.')
@@ -1052,8 +1268,13 @@ export default function ProductionListMain() {
     return 400
   }
 
-  const getColumnTitle = (field: string): string => {
+  const getColumnTitle = (field: string, type: 'pcb' | 'cable' = 'pcb'): string => {
     switch (field) {
+      // 고정(sticky) 칼럼: 헤더가 하드코딩되어 있어 여기서도 실제 헤더 문구와 일치시켜야
+      // 데이터가 없을 때(본문 실측값이 없을 때) 칼럼 폭이 헤더 제목에 딱 맞게 계산됨
+      case 'production_category': return '제작구분'
+      case 'board_name': return type === 'cable' ? '품명' : '보드명'
+      case 'request_date': return '요청일'
       case 'estimate_no': return '견적NO.'
       case 'delivery_deadline': return '납품기한'
       case 'client_name': return '업체'
@@ -1115,7 +1336,7 @@ export default function ProductionListMain() {
   // 칼럼 너비 = Max(헤더 실측, 가장 긴 본문 실측) + 좌우 여백(5px씩) [+ 비고정 칼럼은 우측 보더 1px]
   const getColumnWidth = (type: 'pcb' | 'cable', field: string, defaultWidth: number): number => {
     // 1. 헤더 실측 (table-header-text: 600 굵기, letter-spacing 0.02em)
-    const title = getColumnTitle(field)
+    const title = getColumnTitle(field, type)
     const titleWidth = measureText(title, 600, HEADER_LETTER_SPACING)
 
     // 2. 모든 행(입력 중인 신규 행 포함)의 표시값 실측 — 표시 굵기 그대로 반영
@@ -1139,7 +1360,9 @@ export default function ProductionListMain() {
 
     // 3. 좌우 여백 5px씩 + (border-r을 쓰는 비고정 칼럼은 border-box라 1px 보정)
     const borderAllowance = STICKY_FIELDS.includes(field) ? 0 : 1
-    return Math.ceil(Math.max(titleWidth, maxValWidth) + COLUMN_PADDING_SIDE * 2 + borderAllowance)
+    const contentWidth = Math.max(titleWidth, maxValWidth) + COLUMN_PADDING_SIDE * 2 + borderAllowance
+    // 표별(PCB/Cable) 데이터 평균 기반 최소 폭을 바닥값으로 적용 (빈 표에서도 입력 여유 공간 확보)
+    return Math.ceil(Math.max(contentWidth, MIN_COLUMN_WIDTH[type][field] ?? 0))
   }
 
   const getHeaderStyle = (type: 'pcb' | 'cable', field: string, defaultWidth: number): React.CSSProperties => {
@@ -1318,6 +1541,31 @@ export default function ProductionListMain() {
 
     if (isEditing) {
       const editCellStyle = { ...cellStyle, overflow: 'visible', zIndex: 50 }
+      if (field === 'artwork_status') {
+        return (
+          <td className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
+            <span className="text-[10px] text-gray-400 truncate block px-1">
+              {formatArtworkDisplay(editValue) || ' '}
+            </span>
+            <div
+              className="absolute left-0 top-full mt-0.5 z-50 bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
+              style={{ width: '150px' }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <ArtworkStatusEditor
+                value={editValue}
+                onChange={setEditValue}
+                autoFocusMemo
+                onCommit={() => {
+                  handleCellSave({ id, type, field }, editValue)
+                  setEditingCell(null)
+                }}
+                onCancel={() => setEditingCell(null)}
+              />
+            </div>
+          </td>
+        )
+      }
       if (inputType === 'select') {
         return (
           <td className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
@@ -1691,7 +1939,7 @@ export default function ProductionListMain() {
               onClick={() => setSelectedMonth(null)}
               className={`badge-stats cursor-pointer border transition-all ${
                 selectedMonth === null
-                  ? 'bg-blue-500 border-blue-500 text-white font-bold shadow-sm hover:bg-blue-600'
+                  ? 'bg-[#1777CB] border-[#1777CB] text-white font-bold shadow-sm hover:bg-[#1265A8]'
                   : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
               }`}
             >
@@ -1704,7 +1952,7 @@ export default function ProductionListMain() {
                 onClick={() => setSelectedMonth(m)}
                 className={`badge-stats cursor-pointer border transition-all ${
                   selectedMonth === m
-                    ? 'bg-blue-500 border-blue-500 text-white font-bold shadow-sm hover:bg-blue-600'
+                    ? 'bg-[#1777CB] border-[#1777CB] text-white font-bold shadow-sm hover:bg-[#1265A8]'
                     : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
                 }`}
               >
@@ -1764,7 +2012,7 @@ export default function ProductionListMain() {
                     dragCat === cat ? 'opacity-40' : ''
                   } ${
                     isSelected
-                      ? 'bg-blue-500 border-blue-500 text-white font-bold shadow-sm hover:bg-blue-600'
+                      ? 'bg-[#1777CB] border-[#1777CB] text-white font-bold shadow-sm hover:bg-[#1265A8]'
                       : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
                   }`}
                 >
@@ -1814,7 +2062,7 @@ export default function ProductionListMain() {
               <button
                 type="button"
                 onClick={() => handleAddClick('pcb')}
-                className="button-base bg-blue-500 hover:bg-blue-600 text-white flex items-center gap-1.5 h-8 px-3 business-radius-button"
+                className="button-base bg-[#1777CB] hover:bg-[#1265A8] text-white flex items-center gap-1.5 h-8 px-3 business-radius-button"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span className="button-text text-white">행 추가</span>
@@ -1998,13 +2246,10 @@ export default function ProductionListMain() {
                           min="0"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
+                      <td className="px-1 py-1 border border-gray-200 align-top">
+                        <ArtworkStatusEditor
                           value={addingPcbRow.artwork_status || ''}
-                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, artwork_status: e.target.value })}
-                          placeholder="Artwork"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          onChange={(v) => setAddingPcbRow({ ...addingPcbRow, artwork_status: v })}
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
@@ -2217,7 +2462,7 @@ export default function ProductionListMain() {
                   )}
                   {filteredPcbs.length === 0 && !addingPcbRow ? (
                     <tr>
-                      <td colSpan={35} className="text-center py-6 text-gray-400 border border-gray-200">검색 조건에 맞는 데이터가 없습니다.</td>
+                      <td colSpan={36} className="text-center py-6 text-gray-400 border border-gray-200">검색 조건에 맞는 데이터가 없습니다.</td>
                     </tr>
                   ) : (
                     filteredPcbs.map((item, index) => {
@@ -2386,7 +2631,7 @@ export default function ProductionListMain() {
                           'pcb',
                           'artwork_status',
                           item,
-                          item.artwork_status || '-',
+                          formatArtworkDisplay(item.artwork_status) || '-',
                           'px-2 py-1.5 border border-gray-200'
                         )}
                         {renderEditableCell(
@@ -2587,7 +2832,7 @@ export default function ProductionListMain() {
               <button
                 type="button"
                 onClick={() => handleAddClick('cable')}
-                className="button-base bg-blue-500 hover:bg-blue-600 text-white flex items-center gap-1.5 h-8 px-3 business-radius-button"
+                className="button-base bg-[#1777CB] hover:bg-[#1265A8] text-white flex items-center gap-1.5 h-8 px-3 business-radius-button"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span className="button-text text-white">행 추가</span>
@@ -2823,7 +3068,7 @@ export default function ProductionListMain() {
                   )}
                   {filteredCables.length === 0 && !addingCableRow ? (
                     <tr>
-                      <td colSpan={19} className="text-center py-6 text-gray-400 border border-gray-200">검색 조건에 맞는 데이터가 없습니다.</td>
+                      <td colSpan={20} className="text-center py-6 text-gray-400 border border-gray-200">검색 조건에 맞는 데이터가 없습니다.</td>
                     </tr>
                   ) : (
                     filteredCables.map((item, index) => {
@@ -3237,13 +3482,12 @@ export default function ProductionListMain() {
 
                     <div>
                       <label className="modal-label mb-1 block">ARTWORK 상태</label>
-                      <input
-                        type="text"
-                        value={formFields.artwork_status}
-                        onChange={(e) => setFormFields({ ...formFields, artwork_status: e.target.value })}
-                        placeholder="예: 강철-9"
-                        className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
+                      <div className="border border-[#d2d2d7] rounded-md p-2 bg-white">
+                        <ArtworkStatusEditor
+                          value={formFields.artwork_status || ''}
+                          onChange={(v) => setFormFields({ ...formFields, artwork_status: v })}
+                        />
+                      </div>
                     </div>
 
                     <div>
