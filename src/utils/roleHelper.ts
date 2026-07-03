@@ -45,8 +45,22 @@ export const APPROVER_ROLES: PurchaseRole[] = [
   'hr'
 ];
 
+// 업체관리(업체/담당자) 수정 권한 목록 — 등록/수정/삭제 모두 이 역할만 가능
+export const VENDOR_EDIT_ROLES: PurchaseRole[] = [
+  'superadmin',
+  'hr',
+  'lead buyer'
+];
+
 // 숨김 직원 목록
 export const HIDDEN_EMPLOYEES = ['정희웅'];
+
+/**
+ * 업체관리 수정 권한 여부 확인 (등록/수정/삭제/담당자 관리)
+ */
+export function canEditVendors(roles: string[]): boolean {
+  return VENDOR_EDIT_ROLES.some(role => roles.includes(role));
+}
 
 /**
  * 관리자 권한 여부 확인
