@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { productionService, ProductionPcb, ProductionCable } from '@/services/productionService'
-import { Plus, Search, Edit2, X, Filter, Save, RotateCcw } from 'lucide-react'
+import { Plus, Search, Edit2, X, Filter, Save, RotateCcw, ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { vendorService } from '@/services/vendorService'
@@ -12,6 +12,48 @@ interface Employee {
   name: string
   email: string
 }
+
+// ─── 칼럼 너비 실측 유틸 ─────────────────────────────────────────────
+// 표 셀 폰트(10px)와 동일한 폰트로 캔버스에서 텍스트 폭을 실측한다.
+// 칼럼 너비 = Max(헤더, 가장 긴 본문) + 좌우 여백(COLUMN_PADDING_SIDE)씩
+const TABLE_FONT_STACK = "Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif"
+// 본문 셀 자간: body { font-size:15px; letter-spacing:-0.01em } → computed -0.15px가 셀로 상속됨 (globals.css)
+const BODY_LETTER_SPACING = -0.15
+// 헤더 자간: .table-header-text { letter-spacing:0.02em } @10px = +0.2px (globals.css)
+const HEADER_LETTER_SPACING = 0.2
+let measureCtx: CanvasRenderingContext2D | null = null
+
+const measureText = (rawText: string, weight: number, letterSpacing: number = BODY_LETTER_SPACING): number => {
+  // HTML 렌더링과 동일하게 연속 공백은 1칸으로, 앞뒤 공백은 제거하고 측정
+  const text = rawText ? rawText.replace(/\s+/g, ' ').trim() : ''
+  if (!text) return 0
+  if (typeof document !== 'undefined') {
+    if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d')
+    if (measureCtx) {
+      measureCtx.font = `${weight} 10px ${TABLE_FONT_STACK}`
+      const ctxAny = measureCtx as any
+      if ('letterSpacing' in ctxAny) {
+        // Chrome/Edge: 캔버스가 자간까지 실측
+        ctxAny.letterSpacing = `${letterSpacing}px`
+        return measureCtx.measureText(text).width
+      }
+      // 자간 미지원 브라우저: 글자 수 × 자간으로 보정
+      return measureCtx.measureText(text).width + text.length * letterSpacing
+    }
+  }
+  // SSR 대비 근사치 (한글 10px, 영문/숫자 5.5px)
+  let len = 0
+  for (let i = 0; i < text.length; i++) {
+    len += text.charCodeAt(i) > 128 ? 10 : 5.5
+  }
+  return len
+}
+
+// 좌측 고정(sticky) 칼럼: 구분선을 border 대신 box-shadow로 그려서 보더 폭 보정이 불필요
+const STICKY_FIELDS = ['sales_order_number', 'production_category', 'board_name', 'reference', 'request_date']
+
+// 제작구분 칩의 기본 표시/그룹 순서 — 드래그로 재정렬 가능. 이 순서대로 테이블이 제작구분별로 위→아래 그룹핑됨
+const DEFAULT_CATEGORY_ORDER = ['LG_PCB', 'LG_Socket Board', 'LG_Cable', 'LG_Case', 'PCB', 'Cable', 'Case']
 
 // Date utilities for formatting text inputs (e.g. 7/6 -> 07월 06일)
 const formatDbDateToDisplay = (dbDate: string | null | undefined): string => {
@@ -88,13 +130,112 @@ export default function ProductionListMain() {
 
   // 필터 및 검색 상태
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedMonth, setSelectedMonth] = useState<number | null>(() => new Date().getMonth() + 1)
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(() => {
+    // 저장된 필터가 있으면 처음부터 반영 (마운트 직후 기본값→저장값 교체로 인한 이중 fetch 방지)
+    const savedMonth = localStorage.getItem('hansl_prod_filter_month')
+    if (savedMonth !== null && savedMonth !== undefined && savedMonth !== '') {
+      return savedMonth === 'null' ? null : Number(savedMonth)
+    }
+    return new Date().getMonth() + 1
+  })
   const [selectedYear, setSelectedYear] = useState<number>(() => {
     const savedYear = localStorage.getItem('hansl_prod_filter_year')
     return savedYear ? Number(savedYear) : new Date().getFullYear()
   })
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i)
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(['LG_PCB', 'LG_Socket Board', 'LG_Cable', 'LG_Case', 'PCB', 'Cable', 'Case'])
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([...DEFAULT_CATEGORY_ORDER])
+
+  // 필터 패널 접기/펴기 (좌측 사이드바처럼) — 기본값은 '닫힘', 사용자가 명시적으로 '0'(펼침) 저장 시에만 펼침
+  const [filterCollapsed, setFilterCollapsed] = useState<boolean>(() => localStorage.getItem('hansl_prod_filter_collapsed') !== '0')
+  const toggleFilterCollapsed = () => setFilterCollapsed(prev => {
+    const next = !prev
+    localStorage.setItem('hansl_prod_filter_collapsed', next ? '1' : '0')
+    return next
+  })
+
+  // 제작구분 그룹 순서 — 저장된 순서가 있으면 반영하고, 누락된 기본 카테고리는 뒤에 보강
+  const [categoryOrder, setCategoryOrder] = useState<string[]>(() => {
+    const saved = localStorage.getItem('hansl_prod_filter_category_order')
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as string[]
+        const merged = parsed.filter(c => DEFAULT_CATEGORY_ORDER.includes(c))
+        for (const c of DEFAULT_CATEGORY_ORDER) if (!merged.includes(c)) merged.push(c)
+        return merged
+      } catch { /* fall through to default */ }
+    }
+    return [...DEFAULT_CATEGORY_ORDER]
+  })
+  // 드래그 중인 칩 (ref: 드롭 핸들러의 최신값 보장 / state: 시각 표시용)
+  const dragCatRef = useRef<string | null>(null)
+  const [dragCat, setDragCat] = useState<string | null>(null)
+  // 삽입 지점 인덱스 (0 = 맨 앞, N = 맨 뒤). 칩 사이에 세로 표시선으로 보여줌
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
+  const chipContainerRef = useRef<HTMLDivElement>(null)
+
+  // 커서 X좌표 기준으로 "칩과 칩 사이" 어느 지점에 꽂힐지 인덱스 계산 (빈 간격에 놔도 인식됨)
+  const computeDropIndex = (clientX: number): number => {
+    const container = chipContainerRef.current
+    if (!container) return 0
+    const chips = Array.from(container.querySelectorAll<HTMLElement>('[data-cat]'))
+    for (let i = 0; i < chips.length; i++) {
+      const r = chips[i].getBoundingClientRect()
+      if (clientX < r.left + r.width / 2) return i
+    }
+    return chips.length
+  }
+
+  // 드래그한 칩을 계산된 삽입 지점으로 이동 (제거로 인한 인덱스 밀림 보정)
+  const dropCategoryAt = (index: number) => {
+    const from = dragCatRef.current
+    if (!from) return
+    setCategoryOrder(prev => {
+      const fromIdx = prev.indexOf(from)
+      if (fromIdx < 0) return prev
+      const arr = [...prev]
+      arr.splice(fromIdx, 1)
+      let target = index
+      if (fromIdx < index) target -= 1
+      target = Math.max(0, Math.min(arr.length, target))
+      arr.splice(target, 0, from)
+      return arr
+    })
+  }
+
+  // 포인터 기반 드래그 — 네이티브 HTML5 DnD 대신 pointermove/up으로 직접 처리 (실사용/검증 모두 안정적)
+  const dragStartXRef = useRef(0)
+  const dragMovedRef = useRef(false)
+  const DRAG_THRESHOLD = 4 // px 이상 움직이면 드래그, 아니면 클릭(선택 토글)로 간주
+
+  const handleChipPointerDown = (e: React.PointerEvent<HTMLButtonElement>, cat: string) => {
+    if (e.button !== 0) return
+    dragCatRef.current = cat
+    dragStartXRef.current = e.clientX
+    dragMovedRef.current = false
+    setDragCat(cat)
+
+    const onMove = (ev: PointerEvent) => {
+      if (!dragCatRef.current) return
+      if (!dragMovedRef.current && Math.abs(ev.clientX - dragStartXRef.current) < DRAG_THRESHOLD) return
+      dragMovedRef.current = true
+      setDropIndex(computeDropIndex(ev.clientX))
+    }
+    const onUp = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      if (dragMovedRef.current) {
+        dropCategoryAt(computeDropIndex(ev.clientX)) // 놓은 자리에 삽입
+      } else if (dragCatRef.current) {
+        toggleCategory(dragCatRef.current)            // 안 움직였으면 클릭 = 표시 토글
+      }
+      dragCatRef.current = null
+      dragMovedRef.current = false
+      setDragCat(null)
+      setDropIndex(null)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
 
   // 로컬스토리지에서 저장된 필터 불러오기
   useEffect(() => {
@@ -129,6 +270,7 @@ export default function ProductionListMain() {
     localStorage.setItem('hansl_prod_filter_month', String(selectedMonth))
     localStorage.setItem('hansl_prod_filter_year', String(selectedYear))
     localStorage.setItem('hansl_prod_filter_categories', JSON.stringify(selectedCategories))
+    localStorage.setItem('hansl_prod_filter_category_order', JSON.stringify(categoryOrder))
     toast.success('현재 필터 설정이 저장되었습니다.')
   }
 
@@ -139,12 +281,21 @@ export default function ProductionListMain() {
   }
 
   const handleResetCategoryFilter = () => {
-    setSelectedCategories(['LG_PCB', 'LG_Socket Board', 'LG_Cable', 'LG_Case', 'PCB', 'Cable', 'Case'])
+    setSelectedCategories([...DEFAULT_CATEGORY_ORDER])
+    setCategoryOrder([...DEFAULT_CATEGORY_ORDER])
     toast.info('제작구분 필터가 초기화되었습니다.')
   }
 
-  // 컬럼 좌우 여백 (각각 6px, 총 12px)
-  const COLUMN_PADDING_SIDE = 6
+  // 컬럼 좌우 여백 (각각 5px, 총 10px) — globals.css의 .production-compact-table th/td 패딩과 반드시 동일하게 유지
+  const COLUMN_PADDING_SIDE = 5
+
+  // 웹폰트(Pretendard) 로드 완료 후 한 번 재렌더 → 캔버스 실측 폭을 실제 렌더 폰트와 일치시킴
+  const [, setFontsReady] = useState(false)
+  useEffect(() => {
+    if (typeof document !== 'undefined' && (document as any).fonts?.ready) {
+      (document as any).fonts.ready.then(() => setFontsReady(true))
+    }
+  }, [])
 
   // 모달 상태
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -303,29 +454,38 @@ export default function ProductionListMain() {
   }, [isDragging, selectedCells])
 
   // 일괄 상태 변경 핸들러
-  const handleBulkUpdateCellColor = async (colorAction: string | null, isToggleStrike = false) => {
+  const handleBulkUpdateCellColor = async (colorAction: string | null, toggle: 'strike' | 'bold' | 'redtext' | null = null) => {
     if (selectedCells.length === 0) return
-    
+
     const type = dragStartCell?.type || 'pcb'
     const table = type === 'pcb' ? 'production_pcbs' : 'production_cables'
     const list = type === 'pcb' ? filteredPcbs : filteredCables
-    
+
     try {
       const supabase = createClient()
       const updatesByRow: { [rowId: string]: { [field: string]: string | null } } = {}
-      
+
+      // 선택된 첫 셀 기준으로 토글 목표 상태를 정해 전체에 동일하게 적용
       let targetStrike: 'strike' | 'nostrike' | null = null
-      if (isToggleStrike) {
+      let targetBold: boolean | null = null
+      let targetRedText: boolean | null = null
+      if (toggle) {
         const firstCellKey = selectedCells[0]
         const [firstId, firstField] = firstCellKey.split('::')
         const firstItem = list.find(i => i.id === firstId)
         const firstCellColor = firstItem?.cell_colors?.[firstField]
-        const { strike: firstStrike } = parseColorState(firstCellColor)
-        const { strike: rowStrike } = parseColorState(firstItem?.row_color)
-        const effectiveStrike = firstStrike || rowStrike || null
-        targetStrike = effectiveStrike === 'strike' ? 'nostrike' : 'strike'
+        const { strike: firstStrike, bold: firstBold, redText: firstRedText } = parseColorState(firstCellColor)
+        if (toggle === 'strike') {
+          const { strike: rowStrike } = parseColorState(firstItem?.row_color)
+          const effectiveStrike = firstStrike || rowStrike || null
+          targetStrike = effectiveStrike === 'strike' ? 'nostrike' : 'strike'
+        } else if (toggle === 'bold') {
+          targetBold = !firstBold
+        } else if (toggle === 'redtext') {
+          targetRedText = !firstRedText
+        }
       }
-      
+
       selectedCells.forEach(key => {
         const [rowId, field] = key.split('::')
         if (!updatesByRow[rowId]) {
@@ -333,30 +493,38 @@ export default function ProductionListMain() {
         }
         updatesByRow[rowId][field] = colorAction
       })
-      
+
       const promises = Object.entries(updatesByRow).map(async ([rowId, fields]) => {
         const rowItem = list.find(i => i.id === rowId)
         if (!rowItem) return
-        
+
         const newCellColors = { ...(rowItem.cell_colors || {}) }
-        
+
         Object.keys(fields).forEach(field => {
           const currentVal = newCellColors[field]
-          const { color: curColor, strike: curStrike } = parseColorState(currentVal)
-          
+          const { color: curColor, strike: curStrike, bold: curBold, redText: curRedText } = parseColorState(currentVal)
+
           let nextColor: string | null = curColor
           let nextStrike: 'strike' | 'nostrike' | null = curStrike
-          
-          if (isToggleStrike) {
+          let nextBold = curBold
+          let nextRedText = curRedText
+
+          if (toggle === 'strike') {
             nextStrike = targetStrike
+          } else if (toggle === 'bold') {
+            nextBold = targetBold ?? curBold
+          } else if (toggle === 'redtext') {
+            nextRedText = targetRedText ?? curRedText
           } else if (colorAction === null) {
             nextColor = null
             nextStrike = null
+            nextBold = false
+            nextRedText = false
           } else {
             nextColor = colorAction
           }
-          
-          const serialized = serializeColorState(nextColor, nextStrike)
+
+          const serialized = serializeColorState(nextColor, nextStrike, nextBold, nextRedText)
           if (serialized === null) {
             delete newCellColors[field]
           } else {
@@ -407,9 +575,13 @@ export default function ProductionListMain() {
   })
 
   // 데이터 로드
+  // 동시에 여러 loadData가 날아갈 때, 늦게 도착한 이전 요청 응답이 최신 데이터를 덮어쓰는 것을 방지
+  const loadSeqRef = useRef(0)
+
   const loadData = async () => {
+    const seq = ++loadSeqRef.current
     setLoading(true)
-    
+
     // 월별 필터에 기반한 날짜 자동 계산
     let calculatedStartDate = ''
     let calculatedEndDate = ''
@@ -434,13 +606,15 @@ export default function ProductionListMain() {
         startDate: calculatedStartDate,
         endDate: calculatedEndDate
       })
+      if (seq !== loadSeqRef.current) return // 더 최신 요청이 있으면 이 응답은 버림
       setPcbs(pcbData)
       setCables(cableData)
     } catch (error) {
+      if (seq !== loadSeqRef.current) return
       console.error('Failed to load production status data', error)
       toast.error('데이터 조회에 실패했습니다.')
     } finally {
-      setLoading(false)
+      if (seq === loadSeqRef.current) setLoading(false)
     }
   }
 
@@ -663,27 +837,31 @@ export default function ProductionListMain() {
     }
   }
 
-  // 색상 문자열 파싱 (예: 'yellow::strike' -> { color: 'yellow', strike: 'strike' | 'nostrike' | null })
-  const parseColorState = (value: string | null | undefined): { color: string | null, strike: 'strike' | 'nostrike' | null } => {
-    if (!value) return { color: null, strike: null };
-    if (value === 'strike') return { color: null, strike: 'strike' };
-    if (value === 'nostrike') return { color: null, strike: 'nostrike' };
-    if (value.includes('::')) {
-      const [color, strikeFlag] = value.split('::');
-      return { 
-        color: color || null, 
-        strike: (strikeFlag === 'strike' || strikeFlag === 'nostrike') ? strikeFlag as 'strike' | 'nostrike' : null 
-      };
+  // 색상/스타일 문자열 파싱 (예: 'yellow::strike::bold::redtext' -> { color, strike, bold, redText })
+  // 각 토큰은 '::'로 구분되며 배경색 / 취소선 / 볼드 / 빨간글자를 중복 지정할 수 있음 (하위호환 유지)
+  const COLOR_NAMES = ['yellow', 'blue', 'red', 'green'];
+  const parseColorState = (value: string | null | undefined): { color: string | null, strike: 'strike' | 'nostrike' | null, bold: boolean, redText: boolean } => {
+    const empty = { color: null as string | null, strike: null as 'strike' | 'nostrike' | null, bold: false, redText: false };
+    if (!value) return empty;
+    const result = { ...empty };
+    for (const token of value.split('::')) {
+      if (!token) continue;
+      if (COLOR_NAMES.includes(token)) result.color = token;
+      else if (token === 'strike' || token === 'nostrike') result.strike = token;
+      else if (token === 'bold') result.bold = true;
+      else if (token === 'redtext') result.redText = true;
     }
-    return { color: value, strike: null };
+    return result;
   };
 
-  // 색상 상태 직렬화
-  const serializeColorState = (color: string | null, strike: 'strike' | 'nostrike' | null) => {
-    if (!color && !strike) return null;
-    if (!color && strike) return strike;
-    if (color && strike) return `${color}::${strike}`;
-    return color;
+  // 색상/스타일 상태 직렬화 (지정된 항목만 '::'로 이어붙임)
+  const serializeColorState = (color: string | null, strike: 'strike' | 'nostrike' | null, bold = false, redText = false) => {
+    const parts: string[] = [];
+    if (color) parts.push(color);
+    if (strike) parts.push(strike);
+    if (bold) parts.push('bold');
+    if (redText) parts.push('redtext');
+    return parts.length ? parts.join('::') : null;
   };
 
   // 행 배경색 업데이트 핸들러
@@ -723,33 +901,41 @@ export default function ProductionListMain() {
   }
 
   // 개별 셀 배경색 업데이트 핸들러
-  const handleUpdateCellColor = async (type: 'pcb' | 'cable', id: string, field: string, colorAction: string | null, currentCellColors: any, isToggleStrike = false) => {
+  const handleUpdateCellColor = async (type: 'pcb' | 'cable', id: string, field: string, colorAction: string | null, currentCellColors: any, toggle: 'strike' | 'bold' | 'redtext' | null = null) => {
     try {
       const supabase = createClient()
       const table = type === 'pcb' ? 'production_pcbs' : 'production_cables'
       const newCellColors = { ...(currentCellColors || {}) }
-      
+
       const currentVal = newCellColors[field]
-      const { color: curColor, strike: curStrike } = parseColorState(currentVal)
-      
+      const { color: curColor, strike: curStrike, bold: curBold, redText: curRedText } = parseColorState(currentVal)
+
       let nextColor: string | null = curColor
       let nextStrike: 'strike' | 'nostrike' | null = curStrike
-      
-      if (isToggleStrike) {
+      let nextBold = curBold
+      let nextRedText = curRedText
+
+      if (toggle === 'strike') {
         const list = type === 'pcb' ? filteredPcbs : filteredCables
         const currentItem = list.find(i => i.id === id)
         const { strike: rowStrike } = parseColorState(currentItem?.row_color)
-        
+
         const effectiveStrike = curStrike || rowStrike || null
         nextStrike = effectiveStrike === 'strike' ? 'nostrike' : 'strike'
+      } else if (toggle === 'bold') {
+        nextBold = !curBold
+      } else if (toggle === 'redtext') {
+        nextRedText = !curRedText
       } else if (colorAction === null) {
         nextColor = null
         nextStrike = null
+        nextBold = false
+        nextRedText = false
       } else {
         nextColor = colorAction
       }
-      
-      const serialized = serializeColorState(nextColor, nextStrike)
+
+      const serialized = serializeColorState(nextColor, nextStrike, nextBold, nextRedText)
       if (serialized === null) {
         delete newCellColors[field]
       } else {
@@ -788,22 +974,27 @@ export default function ProductionListMain() {
     return 'bg-white group-hover:bg-[#fafafa]'
   }
 
-  // 카테고리 필터 매칭 데이터
-  const filteredPcbs = pcbs.filter(item => selectedCategories.includes(item.production_category))
-  const filteredCables = cables.filter(item => selectedCategories.includes(item.production_category))
+  // 제작구분 그룹 순서 인덱스 (없는 카테고리는 맨 뒤로)
+  const categoryRank = (cat: string): number => {
+    const i = categoryOrder.indexOf(cat)
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i
+  }
 
-  // 가장 긴 보드명 길이에 따른 동적 열 너비 계산 (실제 표 글씨 10px 기준: 한글 10px, 영문/숫자 5.5px)
-  const getVisualLength = (str: string): number => {
-    if (!str) return 0
-    let len = 0
-    for (let i = 0; i < str.length; i++) {
-      if (str.charCodeAt(i) > 128) {
-        len += 10
-      } else {
-        len += 5.5
-      }
-    }
-    return len
+  // 카테고리 필터 매칭 + 드래그한 제작구분 순서대로 그룹핑 (그룹 내부는 기존 정렬(제작번호 내림차순) 유지 — Array.sort는 안정 정렬)
+  const filteredPcbs = pcbs
+    .filter(item => selectedCategories.includes(item.production_category))
+    .sort((a, b) => categoryRank(a.production_category) - categoryRank(b.production_category))
+  const filteredCables = cables
+    .filter(item => selectedCategories.includes(item.production_category))
+    .sort((a, b) => categoryRank(a.production_category) - categoryRank(b.production_category))
+
+  // 셀에 표시되는 폰트 굵기: 실제 렌더링 클래스(font-semibold/medium)와 동일하게 맞춰야 실측이 정확함
+  const getFieldFontWeight = (field: string, hasValue: boolean): number => {
+    if (field === 'reference' || field === 'sales_order_number') return 600
+    if (field === 'board_name') return 500
+    const isDateField = field.endsWith('_date') || field.endsWith('_deadline') || field.endsWith('_schedule')
+    if (isDateField && hasValue) return 600 // 날짜값 있으면 font-semibold로 표시됨
+    return 400
   }
 
   const getColumnTitle = (field: string): string => {
@@ -844,6 +1035,7 @@ export default function ProductionListMain() {
       case 'cable_actual_date': return '실제 입고일'
       case 'delivery_notes': return '납품/비고'
       case 'reference': return '참고'
+      case 'sales_order_number': return '제작 번호'
       default: return '내용'
     }
   }
@@ -865,80 +1057,34 @@ export default function ProductionListMain() {
     return val.toString()
   }
 
+  // 칼럼 너비 = Max(헤더 실측, 가장 긴 본문 실측) + 좌우 여백(5px씩) [+ 비고정 칼럼은 우측 보더 1px]
   const getColumnWidth = (type: 'pcb' | 'cable', field: string, defaultWidth: number): number => {
-    // 1. Title length
+    // 1. 헤더 실측 (table-header-text: 600 굵기, letter-spacing 0.02em)
     const title = getColumnTitle(field)
-    const titleLen = getVisualLength(title)
+    const titleWidth = measureText(title, 600, HEADER_LETTER_SPACING)
 
-    // 2. Value lengths across all rows
+    // 2. 모든 행(입력 중인 신규 행 포함)의 표시값 실측 — 표시 굵기 그대로 반영
     const list = type === 'pcb' ? filteredPcbs : filteredCables
-    
-    // Add addingRow's value if active
     const addingRow = type === 'pcb' ? addingPcbRow : addingCableRow
-    const rows: any[] = [...list]
-    if (addingRow) {
-      rows.push(addingRow)
-    }
+    const rows: any[] = addingRow ? [...list, addingRow] : list
 
-    const valLengths = rows.map(item => {
+    let maxValWidth = 0
+    for (const item of rows) {
       const valStr = getDisplayValueForField(type, field, item)
-      return getVisualLength(valStr)
-    })
-
-    const maxValLen = valLengths.length > 0 ? Math.max(...valLengths) : 0
-    const rawWidth = Math.max(titleLen, maxValLen)
-
-    // 3. Add padding
-    const padding = COLUMN_PADDING_SIDE * 2
-    
-    const computedWidth = Math.ceil(rawWidth + padding)
-
-    // Determine field-specific minimum width bounds
-    let minWidth = 50
-    switch (field) {
-      case 'board_name': minWidth = 120; break;
-      case 'changes_memo': minWidth = 150; break;
-      case 'spec_details': minWidth = 180; break;
-      case 'delivery_notes': minWidth = 120; break;
-      case 'production_category': minWidth = 80; break;
-      case 'reference': minWidth = 40; break;
-      case 'request_date': minWidth = 80; break;
-      case 'estimate_no': minWidth = 80; break;
-      case 'delivery_deadline': minWidth = 80; break;
-      case 'client_name': minWidth = 80; break;
-      case 'client_manager': minWidth = 80; break;
-      case 'hansl_manager': minWidth = 60; break;
-      case 'creator': minWidth = 60; break;
-      case 'revision_count': minWidth = 40; break;
-      case 'quantity': minWidth = 45; break;
-      case 'artwork_status': minWidth = 85; break;
-      case 'metal_mask': minWidth = 80; break;
-      case 'stock_count': minWidth = 40; break;
-      case 'pcb_vendor': minWidth = 80; break;
-      case 'delivery_schedule': minWidth = 80; break;
-      case 'pcb_lead_time': minWidth = 80; break;
-      case 'received_quantity': minWidth = 50; break;
-      case 'received_destination': minWidth = 80; break;
-      case 'production_type': minWidth = 60; break;
-      case 'parts_organization': minWidth = 80; break;
-      case 'assy_hanwha': minWidth = 80; break;
-      case 'assy_evertech': minWidth = 80; break;
-      case 'assy_requested_date': minWidth = 80; break;
-      case 'final_product_stock': minWidth = 80; break;
-      case 'qa_passed': minWidth = 40; break;
-      case 'qa_failed': minWidth = 40; break;
-      case 'qa_notes': minWidth = 100; break;
-      case 'design_review': minWidth = 80; break;
-      case 'delivery_quantity': minWidth = 50; break;
-      case 'delivery_date': minWidth = 80; break;
-      case 'delivery_destination': minWidth = 80; break;
-      case 'cable_vendor': minWidth = 80; break;
-      case 'cable_requested_date': minWidth = 80; break;
-      case 'cable_actual_date': minWidth = 80; break;
-      default: minWidth = 50; break;
+      const hasValue = item[field] !== null && item[field] !== undefined && item[field] !== ''
+      // 취소선 셀은 font-normal(400)로 렌더되므로 같은 굵기로 측정 (renderEditableCell의 isStruck 로직과 동일)
+      const cState = parseColorState(item.cell_colors?.[field])
+      const rState = parseColorState(item.row_color)
+      const isStruck = cState.strike === 'strike' ? true : cState.strike === 'nostrike' ? false : (rState.strike === 'strike')
+      const isBold = cState.bold || rState.bold
+      const weight = isBold ? 700 : (isStruck ? 400 : getFieldFontWeight(field, hasValue))
+      const w = measureText(valStr, weight)
+      if (w > maxValWidth) maxValWidth = w
     }
 
-    return Math.max(minWidth, computedWidth)
+    // 3. 좌우 여백 5px씩 + (border-r을 쓰는 비고정 칼럼은 border-box라 1px 보정)
+    const borderAllowance = STICKY_FIELDS.includes(field) ? 0 : 1
+    return Math.ceil(Math.max(titleWidth, maxValWidth) + COLUMN_PADDING_SIDE * 2 + borderAllowance)
   }
 
   const getHeaderStyle = (type: 'pcb' | 'cable', field: string, defaultWidth: number): React.CSSProperties => {
@@ -950,6 +1096,8 @@ export default function ProductionListMain() {
     }
   }
 
+  const salesOrderPcbWidth = getColumnWidth('pcb', 'sales_order_number', 96)
+  const salesOrderCableWidth = getColumnWidth('cable', 'sales_order_number', 96)
   const productionCategoryPcbWidth = getColumnWidth('pcb', 'production_category', 80)
   const productionCategoryCableWidth = getColumnWidth('cable', 'production_category', 80)
   const pcbBoardWidth = getColumnWidth('pcb', 'board_name', 150)
@@ -973,28 +1121,30 @@ export default function ProductionListMain() {
     const isEditing = editingCell?.id === id && editingCell?.type === type && editingCell?.field === field
     const cellStyle: React.CSSProperties = {}
 
+    const activeSalesWidth = type === 'pcb' ? salesOrderPcbWidth : salesOrderCableWidth
     const activeProdCatWidth = type === 'pcb' ? productionCategoryPcbWidth : productionCategoryCableWidth
     const activeBoardWidth = type === 'pcb' ? pcbBoardWidth : cableBoardWidth
     const activeRefWidth = type === 'pcb' ? referencePcbWidth : referenceCableWidth
     const activeReqDateWidth = type === 'pcb' ? requestDatePcbWidth : requestDateCableWidth
+    const stickyBase = 40 + activeSalesWidth // NO.(40px 고정) + 제작 번호(동적)
 
     if (field === 'production_category') {
-      cellStyle.left = '136px'
+      cellStyle.left = `${stickyBase}px`
       cellStyle.width = `${activeProdCatWidth}px`
       cellStyle.minWidth = `${activeProdCatWidth}px`
       cellStyle.maxWidth = `${activeProdCatWidth}px`
     } else if (field === 'board_name') {
-      cellStyle.left = `${136 + activeProdCatWidth}px`
+      cellStyle.left = `${stickyBase + activeProdCatWidth}px`
       cellStyle.width = `${activeBoardWidth}px`
       cellStyle.minWidth = `${activeBoardWidth}px`
       cellStyle.maxWidth = `${activeBoardWidth}px`
     } else if (field === 'reference') {
-      cellStyle.left = `${136 + activeProdCatWidth + activeBoardWidth}px`
+      cellStyle.left = `${stickyBase + activeProdCatWidth + activeBoardWidth}px`
       cellStyle.width = `${activeRefWidth}px`
       cellStyle.minWidth = `${activeRefWidth}px`
       cellStyle.maxWidth = `${activeRefWidth}px`
     } else if (field === 'request_date') {
-      cellStyle.left = `${136 + activeProdCatWidth + activeBoardWidth + activeRefWidth}px`
+      cellStyle.left = `${stickyBase + activeProdCatWidth + activeBoardWidth + activeRefWidth}px`
       cellStyle.width = `${activeReqDateWidth}px`
       cellStyle.minWidth = `${activeReqDateWidth}px`
       cellStyle.maxWidth = `${activeReqDateWidth}px`
@@ -1007,76 +1157,106 @@ export default function ProductionListMain() {
 
     const renderCellColorPicker = () => {
       const cellVal = item.cell_colors?.[field];
-      const { color: activeColor, strike: isCellStruck } = parseColorState(cellVal);
+      const { color: activeColor, strike: isCellStruck, bold: isCellBold, redText: isCellRedText } = parseColorState(cellVal);
 
       return (
-        <div 
-          className="absolute left-0 bottom-full mb-1 bg-white border border-gray-200 rounded-md shadow-lg p-1 z-50 flex items-center gap-1"
+        <div
+          className="absolute left-0 bottom-full mb-1 bg-white border border-gray-200 rounded-md shadow-lg p-1 z-50 flex flex-col gap-1"
           style={{ width: 'max-content' }}
         >
-          <button
-            type="button"
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleUpdateCellColor(type, id, field, 'yellow', item.cell_colors);
-            }}
-            className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 border transition-colors text-[9px] text-amber-700 font-medium shrink-0 ${activeColor === 'yellow' ? 'border-amber-500 ring-1 ring-amber-400 font-bold bg-amber-100' : 'border-amber-200 hover:bg-amber-100'}`}
-            title="신규"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-            <span>신규</span>
-          </button>
-          <button
-            type="button"
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleUpdateCellColor(type, id, field, 'blue', item.cell_colors);
-            }}
-            className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 border transition-colors text-[9px] text-blue-700 font-medium shrink-0 ${activeColor === 'blue' ? 'border-blue-500 ring-1 ring-blue-400 font-bold bg-blue-100' : 'border-blue-200 hover:bg-blue-100'}`}
-            title="재발주"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-            <span>재발주</span>
-          </button>
-          <button
-            type="button"
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleUpdateCellColor(type, id, field, 'red', item.cell_colors);
-            }}
-            className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 border transition-colors text-[9px] text-red-700 font-medium shrink-0 ${activeColor === 'red' ? 'border-red-500 ring-1 ring-red-400 font-bold bg-red-100' : 'border-red-200 hover:bg-red-100'}`}
-            title="취소"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-            <span>취소</span>
-          </button>
-          <button
-            type="button"
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleUpdateCellColor(type, id, field, null, item.cell_colors, true);
-            }}
-            className={`flex items-center justify-center px-1.5 py-0.5 rounded-full border transition-colors text-[9px] font-bold shrink-0 ${isCellStruck ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}
-            title="취소선"
-          >
-            -
-          </button>
-          <button
-            type="button"
-            onMouseDown={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleUpdateCellColor(type, id, field, null, item.cell_colors);
-            }}
-            className="text-[9px] text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-1 py-0 bg-gray-50 hover:bg-gray-100 shrink-0 font-medium transition-colors"
-            title="색상 초기화"
-          >
-            초기화
-          </button>
+          {/* 1행: 배경색 */}
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleUpdateCellColor(type, id, field, 'yellow', item.cell_colors);
+              }}
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 border transition-colors text-[9px] text-amber-700 font-medium shrink-0 ${activeColor === 'yellow' ? 'border-amber-500 ring-1 ring-amber-400 font-bold bg-amber-100' : 'border-amber-200 hover:bg-amber-100'}`}
+              title="신규"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+              <span>신규</span>
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleUpdateCellColor(type, id, field, 'blue', item.cell_colors);
+              }}
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 border transition-colors text-[9px] text-blue-700 font-medium shrink-0 ${activeColor === 'blue' ? 'border-blue-500 ring-1 ring-blue-400 font-bold bg-blue-100' : 'border-blue-200 hover:bg-blue-100'}`}
+              title="재발주"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+              <span>재발주</span>
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleUpdateCellColor(type, id, field, 'red', item.cell_colors);
+              }}
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 border transition-colors text-[9px] text-red-700 font-medium shrink-0 ${activeColor === 'red' ? 'border-red-500 ring-1 ring-red-400 font-bold bg-red-100' : 'border-red-200 hover:bg-red-100'}`}
+              title="취소"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+              <span>취소</span>
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleUpdateCellColor(type, id, field, null, item.cell_colors);
+              }}
+              className="text-[9px] text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-1 py-0 bg-gray-50 hover:bg-gray-100 shrink-0 font-medium transition-colors"
+              title="색상 초기화"
+            >
+              초기화
+            </button>
+          </div>
+          {/* 2행: 글자 스타일 (볼드 / 빨간 글자 / 취소선) — 배경색과 중복 지정 가능 */}
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleUpdateCellColor(type, id, field, null, item.cell_colors, 'bold');
+              }}
+              className={`flex items-center justify-center px-2 py-0.5 rounded-full border transition-colors text-[10px] font-bold shrink-0 ${isCellBold ? 'bg-gray-800 text-white border-gray-800 hover:bg-gray-900' : 'bg-white text-gray-800 border-gray-300 hover:bg-gray-100'}`}
+              title="볼드"
+            >
+              B
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleUpdateCellColor(type, id, field, null, item.cell_colors, 'redtext');
+              }}
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border transition-colors text-[9px] shrink-0 ${isCellRedText ? 'bg-red-50 border-red-500 ring-1 ring-red-400' : 'bg-white border-gray-300 hover:bg-red-50'}`}
+              title="글자 빨간색"
+            >
+              <span className="text-red-600 font-bold">빨강</span>
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleUpdateCellColor(type, id, field, null, item.cell_colors, 'strike');
+              }}
+              className={`flex items-center justify-center px-2 py-0.5 rounded-full border transition-colors text-[10px] font-bold shrink-0 ${isCellStruck ? 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'}`}
+              title="취소선"
+            >
+              <span className="line-through">가</span>
+            </button>
+          </div>
         </div>
       );
     };
@@ -1150,7 +1330,7 @@ export default function ProductionListMain() {
               }
               if (e.key === 'Escape') setEditingCell(null)
             }}
-            className={`w-full h-5 bg-white border border-gray-300 rounded px-1.5 py-0 text-[10px] focus:outline-none ${field === 'reference' ? 'text-red-500 font-semibold' : ''}`}
+            className={`w-full h-5 bg-white border border-gray-300 rounded px-1.5 py-0 text-[10px] focus:outline-none ${field === 'reference' ? 'text-red-500 font-semibold align-left' : ''}${field === 'board_name' ? ' align-left' : ''}`}
           />
           {datalistNode}
           {renderCellColorPicker()}
@@ -1173,6 +1353,10 @@ export default function ProductionListMain() {
                      cState.strike === 'nostrike' ? false :
                      (rState.strike === 'strike');
 
+    // 볼드 / 빨간 글자: 셀 우선, 없으면 행 설정 상속 (취소선과 중복 적용 가능)
+    const isBold = cState.bold || rState.bold;
+    const isRedText = cState.redText || rState.redText;
+
     if (isStruck) {
       computedClassName = computedClassName
         .replace('text-gray-900', '')
@@ -1180,6 +1364,24 @@ export default function ProductionListMain() {
         .replace('text-red-500', '')
         .replace('font-semibold', '')
         + ' line-through text-gray-400 font-normal'
+    }
+
+    // 볼드: 취소선의 font-normal 및 기본 굵기를 덮어씀
+    if (isBold) {
+      computedClassName = computedClassName
+        .replace('font-normal', '')
+        .replace('font-semibold', '')
+        + ' font-bold'
+    }
+
+    // 빨간 글자: 취소선의 회색 텍스트 및 기본 텍스트 색을 덮어씀
+    if (isRedText) {
+      computedClassName = computedClassName
+        .replace('text-gray-900', '')
+        .replace('text-gray-500', '')
+        .replace('text-gray-400', '')
+        .replace('text-red-500', '')
+        + ' text-red-600'
     }
 
     if (cellClassName.includes('sticky')) {
@@ -1351,18 +1553,22 @@ export default function ProductionListMain() {
 
 
   return (
-    <div className="p-4 sm:p-5 space-y-4 bg-gray-50 min-h-screen">
-      <style>{`
-        .production-compact-table th, 
-        .production-compact-table td {
-          padding-left: ${COLUMN_PADDING_SIDE}px !important;
-          padding-right: ${COLUMN_PADDING_SIDE}px !important;
-        }
-      `}</style>
-
-
-      {/* 필터 툴바 */}
-      <div className="card-professional p-3 space-y-3">
+    <div className="p-4 sm:p-5 bg-gray-50 min-h-screen">
+      {/* 필터 툴바 — 아래 표와 붙이고(rounded-b-none/border-b-0), 헤더로 접기/펴기 */}
+      <div className="card-professional rounded-b-none border-b-0 overflow-hidden">
+        {/* 헤더: 좌측 사이드바처럼 접기/펴기 토글 */}
+        <button
+          type="button"
+          onClick={toggleFilterCollapsed}
+          className="w-full flex items-center gap-1 px-3 py-0.5 text-[10px] font-semibold text-gray-500 hover:bg-gray-50 transition-colors"
+          title={filterCollapsed ? '필터 펼치기' : '필터 접기'}
+        >
+          <Filter className="w-3 h-3" />
+          <span>필터</span>
+          <ChevronDown className={`w-3 h-3 ml-auto text-gray-400 transition-transform ${filterCollapsed ? '-rotate-90' : ''}`} />
+        </button>
+        {!filterCollapsed && (
+        <div className="px-3 pb-3 pt-3 space-y-3 border-t border-gray-100">
         {/* Row 1: 통합 검색창 */}
         <div className="flex items-center">
           <div className="relative w-[240px] flex-shrink-0 h-5 flex items-center">
@@ -1458,26 +1664,37 @@ export default function ProductionListMain() {
           <span className="text-[10px] font-semibold text-gray-500 uppercase mr-1 flex items-center gap-1">
             <Filter className="w-3.5 h-3.5" /> 제작구분:
           </span>
-          <div className="flex flex-wrap items-center gap-2">
-            {['LG_PCB', 'LG_Socket Board', 'LG_Cable', 'LG_Case', 'PCB', 'Cable', 'Case'].map(cat => {
+          <div
+            ref={chipContainerRef}
+            className="flex flex-wrap items-center gap-2 select-none"
+          >
+            {categoryOrder.map((cat, i) => {
               const isSelected = selectedCategories.includes(cat)
+              const showLeftBar = dropIndex === i
+              const showRightBar = dropIndex === categoryOrder.length && i === categoryOrder.length - 1
               return (
-                <React.Fragment key={cat}>
-                  {cat === 'PCB' && (
-                    <div className="h-4 w-px bg-gray-300 mx-1.5 self-center" />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => toggleCategory(cat)}
-                    className={`badge-stats cursor-pointer border transition-all ${
-                      isSelected
-                        ? 'bg-blue-500 border-blue-500 text-white font-bold shadow-sm hover:bg-blue-600'
-                        : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    {cat}
-                  </button>
-                </React.Fragment>
+                <button
+                  key={cat}
+                  data-cat={cat}
+                  type="button"
+                  onPointerDown={(e) => handleChipPointerDown(e, cat)}
+                  title="드래그하여 그룹 순서 변경 · 클릭하여 표시 여부 전환"
+                  style={{
+                    touchAction: 'none',
+                    ...(showLeftBar ? { boxShadow: '-3px 0 0 0 #2563eb' }
+                      : showRightBar ? { boxShadow: '3px 0 0 0 #2563eb' }
+                      : {})
+                  }}
+                  className={`badge-stats cursor-grab active:cursor-grabbing border transition-all ${
+                    dragCat === cat ? 'opacity-40' : ''
+                  } ${
+                    isSelected
+                      ? 'bg-blue-500 border-blue-500 text-white font-bold shadow-sm hover:bg-blue-600'
+                      : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {cat}
+                </button>
               )
             })}
           </div>
@@ -1502,14 +1719,16 @@ export default function ProductionListMain() {
             </button>
           </div>
         </div>
+        </div>
+        )}
       </div>
 
-      {/* 테이블 영역 */}
+      {/* 테이블 영역 (필터와 붙임) */}
       <div className="space-y-6">
         
-        {/* 테이블 1: PCB & 소켓보드 제작현황 */}
+        {/* 테이블 1: PCB & 소켓보드 제작현황 (필터 바로 아래 = 상단 평평) */}
         {showPcbTable && (
-          <div className="card-professional overflow-hidden">
+          <div className="card-professional overflow-hidden rounded-t-none">
             <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50/50">
               <div className="flex items-center gap-2">
                 <span className="modal-section-title">PCB & Socket Board 제작 현황</span>
@@ -1532,11 +1751,11 @@ export default function ProductionListMain() {
                 <thead className="whitespace-nowrap">
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 text-center sticky left-0 bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: '40px', minWidth: '40px', maxWidth: '40px' }}>NO.</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[40px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: '96px', minWidth: '96px', maxWidth: '96px' }}>제작 번호</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[136px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: `${productionCategoryPcbWidth}px`, minWidth: `${productionCategoryPcbWidth}px`, maxWidth: `${productionCategoryPcbWidth}px` }}>제작구분</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ left: `${136 + productionCategoryPcbWidth}px`, width: `${pcbBoardWidth}px`, minWidth: `${pcbBoardWidth}px`, maxWidth: `${pcbBoardWidth}px` }}>보드명</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ left: `${136 + productionCategoryPcbWidth + pcbBoardWidth}px`, width: `${referencePcbWidth}px`, minWidth: `${referencePcbWidth}px`, maxWidth: `${referencePcbWidth}px` }}>참고</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${136 + productionCategoryPcbWidth + pcbBoardWidth + referencePcbWidth}px`, width: `${requestDatePcbWidth}px`, minWidth: `${requestDatePcbWidth}px`, maxWidth: `${requestDatePcbWidth}px` }}>요청일</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[40px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: `${salesOrderPcbWidth}px`, minWidth: `${salesOrderPcbWidth}px`, maxWidth: `${salesOrderPcbWidth}px` }}>제작 번호</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderPcbWidth}px`, width: `${productionCategoryPcbWidth}px`, minWidth: `${productionCategoryPcbWidth}px`, maxWidth: `${productionCategoryPcbWidth}px` }}>제작구분</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth}px`, width: `${pcbBoardWidth}px`, minWidth: `${pcbBoardWidth}px`, maxWidth: `${pcbBoardWidth}px` }}>보드명</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth + pcbBoardWidth}px`, width: `${referencePcbWidth}px`, minWidth: `${referencePcbWidth}px`, maxWidth: `${referencePcbWidth}px` }}>참고</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth + pcbBoardWidth + referencePcbWidth}px`, width: `${requestDatePcbWidth}px`, minWidth: `${requestDatePcbWidth}px`, maxWidth: `${requestDatePcbWidth}px` }}>요청일</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border-y border-r border-gray-200" style={getHeaderStyle('pcb', 'estimate_no', 80)}>견적NO.</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'delivery_deadline', 80)}>납품기한</th>
                     <th colSpan={3} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">PJT 담당자</th>
@@ -1588,8 +1807,8 @@ export default function ProductionListMain() {
                       }}
                     >
                       <td className="px-2 py-1.5 text-center font-bold text-blue-600 sticky left-0 bg-[#f8fbff] z-10 w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]">+</td>
-                      <td className="px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] bg-[#f8fbff] z-10 w-[96px] min-w-[96px] max-w-[96px] truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]">{addingPcbRow.sales_order_number}</td>
-                      <td className="px-1 py-1 sticky left-[136px] bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: `${productionCategoryPcbWidth}px`, minWidth: `${productionCategoryPcbWidth}px`, maxWidth: `${productionCategoryPcbWidth}px` }}>
+                      <td className="px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] bg-[#f8fbff] z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: `${salesOrderPcbWidth}px`, minWidth: `${salesOrderPcbWidth}px`, maxWidth: `${salesOrderPcbWidth}px` }}>{addingPcbRow.sales_order_number}</td>
+                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderPcbWidth}px`, width: `${productionCategoryPcbWidth}px`, minWidth: `${productionCategoryPcbWidth}px`, maxWidth: `${productionCategoryPcbWidth}px` }}>
                         <select
                           value={addingPcbRow.production_category}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, production_category: e.target.value })}
@@ -1600,7 +1819,7 @@ export default function ProductionListMain() {
                           <option value="PCB">PCB</option>
                         </select>
                       </td>
-                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] align-left" style={{ left: `${136 + productionCategoryPcbWidth}px`, width: `${pcbBoardWidth}px`, minWidth: `${pcbBoardWidth}px`, maxWidth: `${pcbBoardWidth}px` }}>
+                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] align-left" style={{ left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth}px`, width: `${pcbBoardWidth}px`, minWidth: `${pcbBoardWidth}px`, maxWidth: `${pcbBoardWidth}px` }}>
                         <input
                           type="text"
                           value={addingPcbRow.board_name}
@@ -1610,7 +1829,7 @@ export default function ProductionListMain() {
                         >
                         </input>
                       </td>
-                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${136 + productionCategoryPcbWidth + pcbBoardWidth}px`, width: `${referencePcbWidth}px`, minWidth: `${referencePcbWidth}px`, maxWidth: `${referencePcbWidth}px` }}>
+                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth + pcbBoardWidth}px`, width: `${referencePcbWidth}px`, minWidth: `${referencePcbWidth}px`, maxWidth: `${referencePcbWidth}px` }}>
                         <input
                           type="text"
                           value={addingPcbRow.reference || ''}
@@ -1619,7 +1838,7 @@ export default function ProductionListMain() {
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none text-red-500 font-semibold align-left"
                         />
                       </td>
-                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${136 + productionCategoryPcbWidth + pcbBoardWidth + referencePcbWidth}px`, width: `${requestDatePcbWidth}px`, minWidth: `${requestDatePcbWidth}px`, maxWidth: `${requestDatePcbWidth}px` }}>
+                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth + pcbBoardWidth + referencePcbWidth}px`, width: `${requestDatePcbWidth}px`, minWidth: `${requestDatePcbWidth}px`, maxWidth: `${requestDatePcbWidth}px` }}>
                         <input
                           type="text"
                           value={addingPcbRow.request_date ? formatDbDateToDisplay(addingPcbRow.request_date) : ''}
@@ -1990,14 +2209,14 @@ export default function ProductionListMain() {
                               </div>
                             )}
                           </td>
-                          <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 w-[96px] min-w-[96px] max-w-[96px] truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}>{item.sales_order_number}</td>
+                          <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`} style={{ width: `${salesOrderPcbWidth}px`, minWidth: `${salesOrderPcbWidth}px`, maxWidth: `${salesOrderPcbWidth}px` }}>{item.sales_order_number}</td>
                         {renderEditableCell(
                           item.id,
                           'pcb',
                           'production_category',
                           item,
                           item.production_category,
-                          'px-2 py-1.5 sticky left-[136px] bg-white group-hover:bg-[#fafafa] transition-colors z-10 w-[80px] min-w-[80px] max-w-[80px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]',
+                          'px-2 py-1.5 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]',
                           'select',
                           ['LG_PCB', 'LG_Socket Board', 'PCB']
                         )}
@@ -2023,7 +2242,7 @@ export default function ProductionListMain() {
                           'request_date',
                           item,
                           formatDbDateToDisplay(item.request_date),
-                          'px-2 py-1.5 text-gray-500 w-[80px] min-w-[80px] max-w-[80px] sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]'
+                          'px-2 py-1.5 text-gray-500 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]'
                         )}
                         {renderEditableCell(
                           item.id,
@@ -2277,9 +2496,9 @@ export default function ProductionListMain() {
           </div>
         )}
 
-        {/* 테이블 2: 케이블 & 케이스 제작현황 */}
+        {/* 테이블 2: 케이블 & 케이스 제작현황 (PCB 표가 없으면 이 표가 필터에 붙어 상단 평평) */}
         {showCableTable && (
-          <div className="card-professional overflow-hidden">
+          <div className={`card-professional overflow-hidden ${!showPcbTable ? 'rounded-t-none' : ''}`}>
             <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50/50">
               <div className="flex items-center gap-2">
                 <span className="modal-section-title">Cable & Case 제작 현황</span>
@@ -2302,11 +2521,11 @@ export default function ProductionListMain() {
                 <thead className="whitespace-nowrap">
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 text-center sticky left-0 bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: '40px', minWidth: '40px', maxWidth: '40px' }}>NO.</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[40px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: '96px', minWidth: '96px', maxWidth: '96px' }}>제작 번호</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[136px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: `${productionCategoryCableWidth}px`, minWidth: `${productionCategoryCableWidth}px`, maxWidth: `${productionCategoryCableWidth}px` }}>제작구분</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ left: `${136 + productionCategoryCableWidth}px`, width: `${cableBoardWidth}px`, minWidth: `${cableBoardWidth}px`, maxWidth: `${cableBoardWidth}px` }}>품명</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ left: `${136 + productionCategoryCableWidth + cableBoardWidth}px`, width: `${referenceCableWidth}px`, minWidth: `${referenceCableWidth}px`, maxWidth: `${referenceCableWidth}px` }}>참고</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${136 + productionCategoryCableWidth + cableBoardWidth + referenceCableWidth}px`, width: `${requestDateCableWidth}px`, minWidth: `${requestDateCableWidth}px`, maxWidth: `${requestDateCableWidth}px` }}>요청일</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[40px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: `${salesOrderCableWidth}px`, minWidth: `${salesOrderCableWidth}px`, maxWidth: `${salesOrderCableWidth}px` }}>제작 번호</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderCableWidth}px`, width: `${productionCategoryCableWidth}px`, minWidth: `${productionCategoryCableWidth}px`, maxWidth: `${productionCategoryCableWidth}px` }}>제작구분</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ left: `${40 + salesOrderCableWidth + productionCategoryCableWidth}px`, width: `${cableBoardWidth}px`, minWidth: `${cableBoardWidth}px`, maxWidth: `${cableBoardWidth}px` }}>품명</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ left: `${40 + salesOrderCableWidth + productionCategoryCableWidth + cableBoardWidth}px`, width: `${referenceCableWidth}px`, minWidth: `${referenceCableWidth}px`, maxWidth: `${referenceCableWidth}px` }}>참고</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderCableWidth + productionCategoryCableWidth + cableBoardWidth + referenceCableWidth}px`, width: `${requestDateCableWidth}px`, minWidth: `${requestDateCableWidth}px`, maxWidth: `${requestDateCableWidth}px` }}>요청일</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border-y border-r border-gray-200" style={getHeaderStyle('cable', 'estimate_no', 80)}>견적NO.</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'delivery_deadline', 80)}>납품기한</th>
                     <th colSpan={3} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">PJT 담당자</th>
@@ -2339,8 +2558,8 @@ export default function ProductionListMain() {
                       }}
                     >
                       <td className="px-2 py-1.5 text-center font-bold text-blue-600 sticky left-0 bg-[#f8fbff] z-10 w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]">+</td>
-                      <td className="px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] bg-[#f8fbff] z-10 w-[96px] min-w-[96px] max-w-[96px] truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]">{addingCableRow.sales_order_number}</td>
-                      <td className="px-1 py-1 sticky left-[136px] bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: `${productionCategoryCableWidth}px`, minWidth: `${productionCategoryCableWidth}px`, maxWidth: `${productionCategoryCableWidth}px` }}>
+                      <td className="px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] bg-[#f8fbff] z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: `${salesOrderCableWidth}px`, minWidth: `${salesOrderCableWidth}px`, maxWidth: `${salesOrderCableWidth}px` }}>{addingCableRow.sales_order_number}</td>
+                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderCableWidth}px`, width: `${productionCategoryCableWidth}px`, minWidth: `${productionCategoryCableWidth}px`, maxWidth: `${productionCategoryCableWidth}px` }}>
                         <select
                           value={addingCableRow.production_category}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, production_category: e.target.value })}
@@ -2352,7 +2571,7 @@ export default function ProductionListMain() {
                           <option value="Case">Case</option>
                         </select>
                       </td>
-                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] align-left" style={{ left: `${136 + productionCategoryCableWidth}px`, width: `${cableBoardWidth}px`, minWidth: `${cableBoardWidth}px`, maxWidth: `${cableBoardWidth}px` }}>
+                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] align-left" style={{ left: `${40 + salesOrderCableWidth + productionCategoryCableWidth}px`, width: `${cableBoardWidth}px`, minWidth: `${cableBoardWidth}px`, maxWidth: `${cableBoardWidth}px` }}>
                         <input
                           type="text"
                           value={addingCableRow.board_name}
@@ -2361,7 +2580,7 @@ export default function ProductionListMain() {
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none align-left"
                         />
                       </td>
-                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${136 + productionCategoryCableWidth + cableBoardWidth}px`, width: `${referenceCableWidth}px`, minWidth: `${referenceCableWidth}px`, maxWidth: `${referenceCableWidth}px` }}>
+                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderCableWidth + productionCategoryCableWidth + cableBoardWidth}px`, width: `${referenceCableWidth}px`, minWidth: `${referenceCableWidth}px`, maxWidth: `${referenceCableWidth}px` }}>
                         <input
                           type="text"
                           value={addingCableRow.reference || ''}
@@ -2370,7 +2589,7 @@ export default function ProductionListMain() {
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none text-red-500 font-semibold align-left"
                         />
                       </td>
-                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${136 + productionCategoryCableWidth + cableBoardWidth + referenceCableWidth}px`, width: `${requestDateCableWidth}px`, minWidth: `${requestDateCableWidth}px`, maxWidth: `${requestDateCableWidth}px` }}>
+                      <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderCableWidth + productionCategoryCableWidth + cableBoardWidth + referenceCableWidth}px`, width: `${requestDateCableWidth}px`, minWidth: `${requestDateCableWidth}px`, maxWidth: `${requestDateCableWidth}px` }}>
                         <input
                           type="text"
                           value={addingCableRow.request_date ? formatDbDateToDisplay(addingCableRow.request_date) : ''}
@@ -2596,14 +2815,14 @@ export default function ProductionListMain() {
                               </div>
                             )}
                           </td>
-                          <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 w-[96px] min-w-[96px] max-w-[96px] truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}>{item.sales_order_number}</td>
+                          <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`} style={{ width: `${salesOrderCableWidth}px`, minWidth: `${salesOrderCableWidth}px`, maxWidth: `${salesOrderCableWidth}px` }}>{item.sales_order_number}</td>
                         {renderEditableCell(
                           item.id,
                           'cable',
                           'production_category',
                           item,
                           item.production_category,
-                          'px-2 py-1.5 sticky left-[136px] bg-white group-hover:bg-[#fafafa] transition-colors z-10 w-[80px] min-w-[80px] max-w-[80px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]',
+                          'px-2 py-1.5 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]',
                           'select',
                           ['LG_Cable', 'LG_Case', 'Cable', 'Case']
                         )}
@@ -2629,7 +2848,7 @@ export default function ProductionListMain() {
                           'request_date',
                           item,
                           formatDbDateToDisplay(item.request_date),
-                          'px-2 py-1.5 text-gray-500 w-[80px] min-w-[80px] max-w-[80px] sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]'
+                          'px-2 py-1.5 text-gray-500 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]'
                         )}
                         {renderEditableCell(
                           item.id,
@@ -2975,9 +3194,10 @@ export default function ProductionListMain() {
                       <label className="modal-label mb-1 block">입고 일정 (일정)</label>
                       <input
                         type="text"
-                        value={formFields.delivery_schedule}
+                        value={formFields.delivery_schedule ? formatDbDateToDisplay(formFields.delivery_schedule) : ''}
                         onChange={(e) => setFormFields({ ...formFields, delivery_schedule: e.target.value })}
-                        placeholder="예: 2/26 입고 완료"
+                        onBlur={(e) => setFormFields({ ...formFields, delivery_schedule: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, selectedMonth)) || '' })}
+                        placeholder="예: 7/6"
                         className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
@@ -3141,11 +3361,29 @@ export default function ProductionListMain() {
           </button>
           <button
             type="button"
-            onClick={() => handleBulkUpdateCellColor(null, true)}
+            onClick={() => handleBulkUpdateCellColor(null, 'strike')}
             className="flex items-center justify-center px-2 py-0.5 rounded-full border border-gray-300 hover:bg-gray-100 transition-colors text-[9px] text-gray-600 font-bold shrink-0 bg-white"
             title="취소선 토글"
           >
             -
+          </button>
+          <button
+            type="button"
+            onClick={() => handleBulkUpdateCellColor(null, 'bold')}
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-gray-300 hover:bg-gray-100 transition-colors text-[9px] text-gray-700 shrink-0 bg-white"
+            title="볼드 토글"
+          >
+            <span className="font-bold">가</span>
+            <span>볼드</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleBulkUpdateCellColor(null, 'redtext')}
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-gray-300 hover:bg-red-50 transition-colors text-[9px] text-gray-700 shrink-0 bg-white"
+            title="글자 빨간색 토글"
+          >
+            <span className="text-red-600 font-bold">가</span>
+            <span>빨강</span>
           </button>
           <button
             type="button"
