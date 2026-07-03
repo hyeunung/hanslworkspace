@@ -1251,8 +1251,9 @@ input[type="number"] {
   font-size: 10px !important;
   padding-top: 1px !important;
   padding-bottom: 1px !important;
-  padding-left: 2px !important;
-  padding-right: 2px !important;
+  /* 칼럼 좌우 여백 5px — ProductionListMain.tsx의 COLUMN_PADDING_SIDE와 반드시 동일하게 유지 */
+  padding-left: 5px !important;
+  padding-right: 5px !important;
   line-height: 1.2 !important;
   text-align: center !important;
 }
@@ -1288,17 +1289,15 @@ input[type="number"] {
   max-width: 32rem !important; /* w-full max-w-md or lg */
 }
 
-/* 품명/보드명 좌측정렬 유틸리티 */
+/* 품명/보드명/참고 좌측정렬 유틸리티 (여백은 공통 규칙 5px를 그대로 상속) */
 .production-compact-table .align-left,
 .adding-row .align-left {
   text-align: left !important;
-  padding-left: 6px !important;
 }
 
 .production-compact-table input.align-left,
 .adding-row input.align-left {
   text-align: left !important;
-  padding-left: 6px !important;
 }
 
 

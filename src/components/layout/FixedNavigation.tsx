@@ -323,7 +323,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
             position: 'fixed',
             left: 0,
             top: '56px',
-            width: isExpanded ? '200px' : '56px',
+            width: isExpanded ? '200px' : (isProductionMode ? '16px' : '56px'),
             height: 'calc(100vh - 56px)',
             backgroundColor: 'white',
             borderRight: '1px solid #e5e7eb',
@@ -361,7 +361,8 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                 <ChevronRight className="w-3.5 h-3.5 text-gray-400 group-hover:text-gray-600 transition-transform group-hover:translate-x-[1px]" />
               </button>
             )}
-            {/* 메뉴 아이템들 */}
+            {/* 메뉴 아이템들 (제작현황 모드에서 접힌 상태면 아이콘을 모두 숨기고 펼치기 토글만 남김) */}
+            {!(isProductionMode && !isExpanded) && (
             <div style={{ flex: 1, overflowY: 'auto' }}>
               <ul className={cn("pl-2 pt-2 pb-2 space-y-1", isExpanded ? "pr-5" : "pr-2")}>
                 {filteredMenuItems.map((item) => {
@@ -474,6 +475,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                 })}
               </ul>
             </div>
+            )}
 
             {/* 택배/인수증 + 관리 메뉴 + 신청서/문의 - 하단 고정 */}
             {isPurchaseMode && (
