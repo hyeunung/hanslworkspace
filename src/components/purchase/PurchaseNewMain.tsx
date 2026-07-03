@@ -1569,37 +1569,8 @@ export default function PurchaseNewMain() {
                 </div>
               </div>
 
-              {/* 프로젝트 정보 (제작현황 연동) */}
+              {/* 프로젝트 정보 (제작현황 연동 및 수동 입력 통합) */}
               <div className="space-y-3">
-                <div>
-                  <Label className="mb-0.5 block text-[10px] sm:text-xs">수주 정보 선택 (제작현황 연동) <span className="text-red-500">*</span></Label>
-                  <select
-                    value={watch('sales_order_number') ? `${watch('sales_order_number')}|${watch('project_item')}|${watch('project_vendor')}` : ''}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (!val) {
-                        setValue('sales_order_number', '');
-                        setValue('project_item', '');
-                        setValue('project_vendor', '');
-                      } else {
-                        const [soNum, item, vendor] = val.split('|');
-                        setValue('sales_order_number', soNum);
-                        setValue('project_item', item);
-                        setValue('project_vendor', vendor);
-                      }
-                    }}
-                    className="w-full bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm h-8 px-2 focus:outline-none focus:ring-2 focus:ring-hansl-500"
-                  >
-                    <option value="">-- 수주 번호 선택 --</option>
-                    {productionOrders.map(p => (
-                      <option key={p.sales_order_number} value={`${p.sales_order_number}|${p.board_name}|${p.client_name}`}>
-                        [{p.sales_order_number}] {p.board_name} ({p.client_name || '업체 없음'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* PJ업체, 수주번호, Item 수동 입력 필드 3개 */}
                 <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                   <div>
                     <Label className="mb-0.5 block text-[10px] sm:text-xs">PJ업체</Label>
@@ -1612,14 +1583,32 @@ export default function PurchaseNewMain() {
                     />
                   </div>
                   <div>
-                    <Label className="mb-0.5 block text-[10px] sm:text-xs">수주번호</Label>
+                    <Label className="mb-0.5 block text-[10px] sm:text-xs">수주번호 <span className="text-red-500">*</span></Label>
                     <Input 
                       type="text" 
+                      list="production-orders-datalist"
                       value={watch('sales_order_number') || ''} 
-                      onChange={(e) => setValue('sales_order_number', e.target.value)} 
-                      placeholder="입력"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setValue('sales_order_number', val);
+                        
+                        // 입력한 수주번호가 제작현황 목록에 존재하면 PJ업체와 Item을 자동 매핑
+                        const matched = productionOrders.find(p => p.sales_order_number === val);
+                        if (matched) {
+                          setValue('project_item', matched.board_name);
+                          setValue('project_vendor', matched.client_name);
+                        }
+                      }} 
+                      placeholder="선택 또는 입력"
                       className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
                     />
+                    <datalist id="production-orders-datalist">
+                      {productionOrders.map(p => (
+                        <option key={p.sales_order_number} value={p.sales_order_number}>
+                          {p.board_name} {p.client_name ? `(${p.client_name})` : ''}
+                        </option>
+                      ))}
+                    </datalist>
                   </div>
                   <div>
                     <Label className="mb-0.5 block text-[10px] sm:text-xs">Item</Label>
