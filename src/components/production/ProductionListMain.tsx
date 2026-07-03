@@ -663,7 +663,14 @@ export default function ProductionListMain() {
     const loadEmployees = async () => {
       const supabase = createClient()
       const { data } = await supabase.from('employees').select('id, name, email').order('name')
-      if (data) setEmployees(data)
+      if (data) {
+        // name에서 직함(공백 뒤의 텍스트) 제거 (예: "홍길동 사원" → "홍길동")
+        const cleaned = data.map(emp => ({
+          ...emp,
+          name: emp.name.split(/\s+/)[0] // 첫 번째 공백까지만 추출
+        }))
+        setEmployees(cleaned)
+      }
     }
     loadEmployees()
   }, [])
