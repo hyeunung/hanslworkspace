@@ -1583,7 +1583,7 @@ export default function PurchaseNewMain() {
                     />
                   </div>
                   <div>
-                    <Label className="mb-0.5 block text-[10px] sm:text-xs">수주번호 <span className="text-red-500">*</span></Label>
+                    <Label className="mb-0.5 block text-[10px] sm:text-xs">수주번호</Label>
                     <Input 
                       type="text" 
                       list="production-orders-datalist"
