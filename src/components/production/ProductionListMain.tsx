@@ -568,9 +568,11 @@ export default function ProductionListMain() {
   const [activeColorPicker, setActiveColorPicker] = useState<{ id: string, type: 'pcb' | 'cable' } | null>(null)
 
   // 드래그 선택 관련 상태 정의
+  // dragStartCell은 ref로 관리한다: mousedown 시점에 곧바로 selectedCells를 채우면
+  // 뒤이은 click에서 "이미 선택됨"으로 오판해 1클릭 편집 진입 버그가 재발한다.
   const [selectedCells, setSelectedCells] = useState<string[]>([])
   const [isDragging, setIsDragging] = useState(false)
-  const [dragStartCell, setDragStartCell] = useState<{ id: string; field: string; type: 'pcb' | 'cable' } | null>(null)
+  const dragStartCellRef = useRef<{ id: string; field: string; type: 'pcb' | 'cable' } | null>(null)
   const [floatingMenuPos, setFloatingMenuPos] = useState<{ x: number; y: number } | null>(null)
 
   const pcbColumns = [
@@ -634,16 +636,20 @@ export default function ProductionListMain() {
 
   const handleCellMouseDown = (e: React.MouseEvent, id: string, field: string, type: 'pcb' | 'cable') => {
     if (e.button !== 0) return // 마우스 왼쪽 클릭만 지원
-    setEditingCell(null)
-    setIsDragging(true)
-    setDragStartCell({ id, field, type })
-    setSelectedCells([`${id}::${field}`])
-    setFloatingMenuPos(null)
+    // 실제 드래그로 판명되기 전까지는 ref에만 기록한다.
+    // 여기서 곧바로 setSelectedCells를 호출하면 뒤이은 click 핸들러가 "이미 선택된 셀"로 오판해
+    // 첫 클릭에 곧장 편집 모드로 들어가버린다 (선택→편집 2단계 클릭이 깨짐).
+    dragStartCellRef.current = { id, field, type }
+    if (editingCell) setEditingCell(null)
+    if (floatingMenuPos) setFloatingMenuPos(null)
   }
 
-  const handleCellMouseEnter = (id: string, field: string, type: 'pcb' | 'cable') => {
-    if (!isDragging || !dragStartCell || dragStartCell.type !== type) return
-    
+  const handleCellMouseEnter = (e: React.MouseEvent, id: string, field: string, type: 'pcb' | 'cable') => {
+    const dragStartCell = dragStartCellRef.current
+    if (!dragStartCell || dragStartCell.type !== type) return
+    if ((e.buttons & 1) === 0) return // 왼쪽 버튼이 눌린 상태에서 이동할 때만 드래그로 인정
+    if (!isDragging) setIsDragging(true)
+
     const cols = type === 'pcb' ? pcbColumns : cableColumns
     const startRowIdx = getRowIndex(type, dragStartCell.id)
     const endRowIdx = getRowIndex(type, id)
@@ -707,7 +713,7 @@ export default function ProductionListMain() {
   const handleBulkUpdateCellColor = async (colorAction: string | null, toggle: 'strike' | 'bold' | 'redtext' | null = null) => {
     if (selectedCells.length === 0) return
 
-    const type = dragStartCell?.type || 'pcb'
+    const type = dragStartCellRef.current?.type || 'pcb'
     const table = type === 'pcb' ? 'production_pcbs' : 'production_cables'
     const list = type === 'pcb' ? filteredPcbs : filteredCables
 
@@ -1076,11 +1082,17 @@ export default function ProductionListMain() {
     }
   }
 
-  // 인라인 셀 수정 클릭 핸들러
+  // 인라인 셀 수정 클릭 핸들러: 첫 클릭은 셀 선택만, 이미 선택된 셀을 한 번 더 클릭하면 편집 모드로 진입
   const handleCellClick = (id: string, type: 'pcb' | 'cable', field: string, currentValue: any) => {
     if (selectedCells.length > 1) return
-    setEditingCell({ id, type, field })
-    setEditValue(currentValue === null || currentValue === undefined ? '' : String(currentValue))
+    const cellKey = `${id}::${field}`
+    const isAlreadySelected = selectedCells.length === 1 && selectedCells[0] === cellKey
+    if (isAlreadySelected) {
+      setEditingCell({ id, type, field })
+      setEditValue(currentValue === null || currentValue === undefined ? '' : String(currentValue))
+    } else {
+      setSelectedCells([cellKey])
+    }
   }
 
   // 인라인 셀 수정 저장 핸들러
@@ -1739,12 +1751,14 @@ export default function ProductionListMain() {
        String(item.final_product_stock).trim() === '' ||
        String(item.final_product_stock).trim() === '-')
 
+    // 선택된 셀은 transition-colors를 제거해 하이라이트가 150ms 페이드 없이 즉시 나타나게 한다
+    const tdClassName = `${computedClassName} cursor-pointer ${item.row_color || item.cell_colors?.[field] ? '' : 'hover:bg-gray-100/50'} transition-colors select-none`
     return (
       <td
-        className={`${computedClassName} cursor-pointer ${item.row_color || item.cell_colors?.[field] ? '' : 'hover:bg-gray-100/50'} transition-colors select-none`}
+        className={isSelected ? tdClassName.replace(/\btransition-colors\b/g, '') : tdClassName}
         style={selectStyle}
         onMouseDown={(e) => handleCellMouseDown(e, id, field, type)}
-        onMouseEnter={() => handleCellMouseEnter(id, field, type)}
+        onMouseEnter={(e) => handleCellMouseEnter(e, id, field, type)}
         onClick={isStockWaiting
           ? (e) => { e.stopPropagation(); handleStockInPress(id, type) }
           : () => handleCellClick(id, type, field, item[field])}
