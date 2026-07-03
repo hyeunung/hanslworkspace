@@ -76,6 +76,7 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh, onEdit
                 <TableHead className="w-24 min-w-[90px]">전화번호</TableHead>
                 <TableHead className="w-24 min-w-[90px]">팩스번호</TableHead>
                 <TableHead className="w-20 min-w-[70px]">지출예정일</TableHead>
+                <TableHead className="w-28 min-w-[100px]">비고</TableHead>
                 <TableHead className="w-20 min-w-[60px]">
                   <SortableHeader
                     sortKey="created_at"
@@ -92,7 +93,7 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh, onEdit
             <TableBody>
               {sortedData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                  <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                     등록된 업체가 없습니다.
                   </TableCell>
                 </TableRow>
@@ -158,6 +159,10 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh, onEdit
                     {/* 지출예정일 */}
                     <TableCell className="text-[11px] text-gray-700 px-2 py-1.5">
                       {vendor.vendor_payment_schedule || '-'}
+                    </TableCell>
+                    {/* 비고 */}
+                    <TableCell className="text-[11px] text-gray-700 px-2 py-1.5 max-w-[150px] truncate" title={vendor.note || ''}>
+                      {vendor.note || '-'}
                     </TableCell>
                     {/* 등록일 */}
                     <TableCell className="text-[11px] text-gray-700 px-2 py-1.5">
@@ -257,6 +262,7 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh, onEdit
               <MobileCardItem label="전화번호" value={<span className="text-[11px] text-gray-700">{vendor.vendor_phone || '-'}</span>} />
               <MobileCardItem label="팩스번호" value={<span className="text-[11px] text-gray-700">{vendor.vendor_fax || '-'}</span>} />
               <MobileCardItem label="지출예정일" value={<span className="text-[11px] text-gray-700">{vendor.vendor_payment_schedule || '-'}</span>} />
+              <MobileCardItem label="비고" value={<span className="text-[11px] text-gray-700">{vendor.note || '-'}</span>} />
               <MobileCardItem label="등록일" value={<span className="text-[11px] text-gray-700">{formatDate(vendor.created_at)}</span>} />
 
               <MobileCardActions>
