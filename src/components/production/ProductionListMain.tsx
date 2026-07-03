@@ -1406,8 +1406,10 @@ export default function ProductionListMain() {
     // 3. 좌우 여백 5px씩 + (border-r을 쓰는 비고정 칼럼은 border-box라 1px 보정)
     const borderAllowance = STICKY_FIELDS.includes(field) ? 0 : 1
     const contentWidth = Math.max(titleWidth, maxValWidth) + COLUMN_PADDING_SIDE * 2 + borderAllowance
-    // 표별(PCB/Cable) 데이터 평균 기반 최소 폭을 바닥값으로 적용 (빈 표에서도 입력 여유 공간 확보)
-    return Math.ceil(Math.max(contentWidth, MIN_COLUMN_WIDTH[type][field] ?? 0))
+    // 평균 데이터 기반 최소 폭(바닥값)은 "표에 데이터가 하나도 없을 때"만 적용해 입력 여유 공간을 확보한다.
+    // 표에 데이터가 있으면 각 칼럼을 헤더/실제 데이터 폭에 맞춰 핏하게 축소 (빈 칼럼은 헤더 크기로 줄어듦).
+    const floor = list.length === 0 ? (MIN_COLUMN_WIDTH[type][field] ?? 0) : 0
+    return Math.ceil(Math.max(contentWidth, floor))
   }
 
   const getHeaderStyle = (type: 'pcb' | 'cable', field: string, defaultWidth: number): React.CSSProperties => {
