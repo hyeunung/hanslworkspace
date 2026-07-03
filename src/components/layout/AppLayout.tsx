@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import Header from '@/components/layout/Header'
@@ -16,7 +16,13 @@ export default function AppLayout() {
   const location = useLocation()
   const isProductionMode = location.pathname.startsWith('/production')
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true)
+  // 제작현황(PRODUCTION STATUS) 모드에서는 좌측 메뉴를 접힌 상태로 시작 (기본값)
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(!isProductionMode)
+
+  // 시스템 모드가 바뀔 때(제작현황 진입/이탈) 좌측 메뉴 기본 펼침 상태를 재설정
+  useEffect(() => {
+    setIsSidebarExpanded(!isProductionMode)
+  }, [isProductionMode])
 
   const handleExpandChange = (expanded: boolean) => {
     setIsSidebarExpanded(expanded)
