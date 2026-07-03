@@ -1599,22 +1599,39 @@ export default function PurchaseNewMain() {
                   </select>
                 </div>
 
-                {watch('sales_order_number') && (
-                  <div className="grid grid-cols-3 gap-2 bg-gray-50 p-2 rounded-lg border border-gray-100 text-[11px]">
-                    <div>
-                      <span className="text-gray-400 block text-[9px] uppercase">수주번호</span>
-                      <span className="font-semibold text-gray-800">{watch('sales_order_number')}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-400 block text-[9px] uppercase">PJ업체</span>
-                      <span className="font-semibold text-gray-800">{watch('project_vendor') || '-'}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-400 block text-[9px] uppercase">Item / 보드명</span>
-                      <span className="font-semibold text-gray-800">{watch('project_item') || '-'}</span>
-                    </div>
+                {/* PJ업체, 수주번호, Item 수동 입력 필드 3개 */}
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                  <div>
+                    <Label className="mb-0.5 block text-[10px] sm:text-xs">PJ업체</Label>
+                    <Input 
+                      type="text" 
+                      value={watch('project_vendor') || ''} 
+                      onChange={(e) => setValue('project_vendor', e.target.value)} 
+                      placeholder="입력"
+                      className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
+                    />
                   </div>
-                )}
+                  <div>
+                    <Label className="mb-0.5 block text-[10px] sm:text-xs">수주번호</Label>
+                    <Input 
+                      type="text" 
+                      value={watch('sales_order_number') || ''} 
+                      onChange={(e) => setValue('sales_order_number', e.target.value)} 
+                      placeholder="입력"
+                      className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
+                    />
+                  </div>
+                  <div>
+                    <Label className="mb-0.5 block text-[10px] sm:text-xs">Item</Label>
+                    <Input 
+                      type="text" 
+                      value={watch('project_item') || ''} 
+                      onChange={(e) => setValue('project_item', e.target.value)} 
+                      placeholder="입력"
+                      className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           )}
