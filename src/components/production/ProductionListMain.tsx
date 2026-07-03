@@ -1101,7 +1101,7 @@ export default function ProductionListMain() {
     
     // 날짜 컬럼 보정
     let valueToSave: any = val
-    if (['request_date', 'delivery_deadline', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date'].includes(field)) {
+    if (['request_date', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date'].includes(field)) {
       if (val) {
         const parsed = parseAndFormatInputDate(val, selectedMonth)
         const dbDate = formatDisplayDateToDb(parsed)
@@ -1109,11 +1109,11 @@ export default function ProductionListMain() {
       } else {
         valueToSave = null
       }
-    } else if (['assy_hanwha', 'assy_evertech'].includes(field)) {
+    } else if (['assy_hanwha', 'assy_evertech', 'delivery_deadline'].includes(field)) {
       // 날짜 또는 메모 하이브리드: 날짜면 YYYY-MM-DD, 아니면 메모 원문
       valueToSave = toDateOrMemo(val, selectedMonth)
     } else if (['revision_count', 'quantity', 'stock_count', 'received_quantity', 'delivery_quantity'].includes(field)) {
-      valueToSave = val === '' ? 0 : Number(val)
+      valueToSave = val === '' ? null : Number(val)
     } else if (field === 'hansl_manager') {
       valueToSave = val === '' ? null : stripEmployeeTitle(val)
     } else if (val === '') {
@@ -1130,6 +1130,21 @@ export default function ProductionListMain() {
     } catch (err) {
       console.error(err)
       toast.error('수정에 실패했습니다.')
+    }
+  }
+
+  // 수량 단위(ea/set) 변경 핸들러
+  const handleUpdateQuantityUnit = async (id: string, type: 'pcb' | 'cable', unit: string) => {
+    try {
+      if (type === 'pcb') {
+        await productionService.updateProductionPcb(id, { quantity_unit: unit })
+      } else {
+        await productionService.updateProductionCable(id, { quantity_unit: unit })
+      }
+      loadData()
+    } catch (err) {
+      console.error(err)
+      toast.error('단위 변경에 실패했습니다.')
     }
   }
 
@@ -1778,6 +1793,48 @@ export default function ProductionListMain() {
     )
   }
 
+  // 수량 셀: 숫자(인라인 편집) + 단위(ea/set) 드롭다운. 배경색은 tr에서 상속됨
+  const renderQuantityCell = (id: string, type: 'pcb' | 'cable', item: any) => {
+    const isEditing = editingCell?.id === id && editingCell?.type === type && editingCell?.field === 'quantity'
+    const unit = item.quantity_unit || 'ea'
+    return (
+      <td className="px-2 py-1.5 text-gray-500 border border-gray-200">
+        <div className="flex items-center justify-center gap-1">
+          {isEditing ? (
+            <input
+              autoFocus
+              type="number"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={() => { handleCellSave({ id, type, field: 'quantity' }, editValue); setEditingCell(null) }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { handleCellSave({ id, type, field: 'quantity' }, editValue); setEditingCell(null) }
+                if (e.key === 'Escape') setEditingCell(null)
+              }}
+              className="w-10 h-5 bg-white border border-gray-300 rounded px-1 py-0 text-[10px] text-center focus:outline-none"
+            />
+          ) : (
+            <span
+              className="cursor-pointer min-w-[14px] text-center"
+              onClick={() => handleCellClick(id, type, 'quantity', item.quantity)}
+            >
+              {item.quantity ?? ''}
+            </span>
+          )}
+          <select
+            value={unit}
+            onMouseDown={(e) => e.stopPropagation()}
+            onChange={(e) => handleUpdateQuantityUnit(id, type, e.target.value)}
+            className="h-4 bg-transparent text-[9px] text-gray-400 border border-gray-200 rounded px-0.5 py-0 cursor-pointer focus:outline-none"
+          >
+            <option value="ea">ea</option>
+            <option value="set">set</option>
+          </select>
+        </div>
+      </td>
+    )
+  }
+
   // 행 수정 모달 열기
   const handleEditClick = (type: 'pcb' | 'cable', item: any) => {
     setFormFields({
@@ -2215,9 +2272,9 @@ export default function ProductionListMain() {
                       <td className="px-1 py-1 border border-gray-200">
                         <input
                           type="text"
-                          value={addingPcbRow.delivery_deadline ? formatDbDateToDisplay(addingPcbRow.delivery_deadline) : ''}
+                          value={addingPcbRow.delivery_deadline ? formatDateOrMemo(addingPcbRow.delivery_deadline) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_deadline: e.target.value })}
-                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_deadline: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, selectedMonth)) || '' })}
+                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_deadline: toDateOrMemo(e.target.value, selectedMonth) || '' })}
                           placeholder="예: 7/6"
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
@@ -2612,7 +2669,7 @@ export default function ProductionListMain() {
                           'pcb',
                           'delivery_deadline',
                           item,
-                          formatDbDateToDisplay(item.delivery_deadline),
+                          formatDateOrMemo(item.delivery_deadline),
                           'px-2 py-1.5 text-gray-500 border border-gray-200'
                         )}
                         {renderEditableCell(
@@ -2649,15 +2706,7 @@ export default function ProductionListMain() {
                           'px-2 py-1.5 text-gray-500 border border-gray-200',
                           'number'
                         )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'quantity',
-                          item,
-                          item.quantity,
-                          'px-2 py-1.5 text-gray-500 border border-gray-200',
-                          'number'
-                        )}
+                        {renderQuantityCell(item.id, 'pcb', item)}
                         {renderEditableCell(
                           item.id,
                           'pcb',
@@ -2966,9 +3015,9 @@ export default function ProductionListMain() {
                       <td className="px-1 py-1 border border-gray-200">
                         <input
                           type="text"
-                          value={addingCableRow.delivery_deadline ? formatDbDateToDisplay(addingCableRow.delivery_deadline) : ''}
+                          value={addingCableRow.delivery_deadline ? formatDateOrMemo(addingCableRow.delivery_deadline) : ''}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, delivery_deadline: e.target.value })}
-                          onBlur={(e) => setAddingCableRow({ ...addingCableRow, delivery_deadline: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, selectedMonth)) || '' })}
+                          onBlur={(e) => setAddingCableRow({ ...addingCableRow, delivery_deadline: toDateOrMemo(e.target.value, selectedMonth) || '' })}
                           placeholder="예: 7/6"
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
@@ -3218,7 +3267,7 @@ export default function ProductionListMain() {
                           'cable',
                           'delivery_deadline',
                           item,
-                          formatDbDateToDisplay(item.delivery_deadline),
+                          formatDateOrMemo(item.delivery_deadline),
                           'px-2 py-1.5 text-gray-500 border border-gray-200'
                         )}
                         {renderEditableCell(
@@ -3255,15 +3304,7 @@ export default function ProductionListMain() {
                           'px-2 py-1.5 text-gray-500 border border-gray-200',
                           'number'
                         )}
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'quantity',
-                          item,
-                          item.quantity,
-                          'px-2 py-1.5 text-gray-500 border border-gray-200',
-                          'number'
-                        )}
+                        {renderQuantityCell(item.id, 'cable', item)}
                         {renderEditableCell(
                           item.id,
                           'cable',
@@ -3430,9 +3471,9 @@ export default function ProductionListMain() {
                   <label className="modal-label mb-1 block">납품 기한</label>
                   <input
                     type="text"
-                    value={formFields.delivery_deadline ? formatDbDateToDisplay(formFields.delivery_deadline) : ''}
+                    value={formFields.delivery_deadline ? formatDateOrMemo(formFields.delivery_deadline) : ''}
                     onChange={(e) => setFormFields({ ...formFields, delivery_deadline: e.target.value })}
-                    onBlur={(e) => setFormFields({ ...formFields, delivery_deadline: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, selectedMonth)) || '' })}
+                    onBlur={(e) => setFormFields({ ...formFields, delivery_deadline: toDateOrMemo(e.target.value, selectedMonth) || '' })}
                     placeholder="예: 7/6"
                     className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />

@@ -14,6 +14,7 @@ export interface ProductionPcb {
   creator?: string
   revision_count: number
   quantity: number
+  quantity_unit?: string // 수량 단위 (기본 'ea', 'set' 선택 가능)
   artwork_status?: string
   metal_mask?: string
   pcb_vendor?: string
@@ -58,6 +59,7 @@ export interface ProductionCable {
   creator?: string
   revision_count: number
   quantity: number
+  quantity_unit?: string // 수량 단위 (기본 'ea', 'set' 선택 가능)
   spec_details?: string
   // 신규 추가 칼럼들
   cable_vendor?: string
