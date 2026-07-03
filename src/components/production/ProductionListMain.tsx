@@ -225,6 +225,16 @@ const buildStockInLabel = (): string => {
   return `${mm}월 ${dd}일 입고`;
 };
 
+// HANSL 담당자는 이름만 표시/저장한다. datalist 입력은 자유 텍스트라 "이종근사원"처럼
+// 직함이 붙은 값이 타이핑될 수 있어, 저장 직전에 뒤에 붙은 직함을 제거한다.
+const EMPLOYEE_TITLE_SUFFIX = /(사원|주임|대리|과장|차장|부장|이사|상무|전무|팀장|실장|본부장|소장|대표)$/
+const stripEmployeeTitle = (name: string | null | undefined): string => {
+  if (!name) return ''
+  const trimmed = name.trim()
+  const stripped = trimmed.replace(EMPLOYEE_TITLE_SUFFIX, '').trim()
+  return stripped || trimmed
+};
+
 // ─────────────────────────────────────────────────────────────
 // ARTWORK 상태(하이브리드): 상태 선택(진행중/업체 확인중/발주완료) + 메모
 // 저장 포맷: `<status>|||<date>|||<memo>` (상태 없으면 메모 원문만 저장 → 하위호환)
@@ -1010,6 +1020,9 @@ export default function ProductionListMain() {
           sanitized[key] = null
         }
       })
+      if (sanitized.hansl_manager) {
+        sanitized.hansl_manager = stripEmployeeTitle(sanitized.hansl_manager)
+      }
       const created = await productionService.createProductionPcb(sanitized)
       toast.success('신규 PCB 항목이 저장되었습니다.')
       setAddingPcbRow(null)
@@ -1050,6 +1063,9 @@ export default function ProductionListMain() {
           sanitized[key] = null
         }
       })
+      if (sanitized.hansl_manager) {
+        sanitized.hansl_manager = stripEmployeeTitle(sanitized.hansl_manager)
+      }
       const created = await productionService.createProductionCable(sanitized)
       toast.success('신규 Cable/Case 항목이 저장되었습니다.')
       setAddingCableRow(null)
@@ -1086,6 +1102,8 @@ export default function ProductionListMain() {
       valueToSave = toDateOrMemo(val, selectedMonth)
     } else if (['revision_count', 'quantity', 'stock_count', 'received_quantity', 'delivery_quantity'].includes(field)) {
       valueToSave = val === '' ? 0 : Number(val)
+    } else if (field === 'hansl_manager') {
+      valueToSave = val === '' ? null : stripEmployeeTitle(val)
     } else if (val === '') {
       valueToSave = null
     }
