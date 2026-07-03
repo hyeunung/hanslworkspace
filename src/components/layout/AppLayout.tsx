@@ -53,17 +53,15 @@ export default function AppLayout() {
       />
 
       {/* 콘텐츠 영역 */}
+      {/* 이전에는 데스크톱/모바일 뷰를 각각 별도 div로 만들어 <AppRoutes />를 두 번 마운트했다
+          (CSS로 한쪽만 숨김) — 페이지 전체가 매 상태변경마다 두 벌씩 리렌더되는 원인이었다.
+          margin-left만 lg 브레이크포인트에서 다르므로 CSS 변수로 넘기고 인스턴스는 하나만 유지한다. */}
       <div style={{ paddingTop: '56px', paddingLeft: '0' }}>
-        {/* 데스크톱 뷰 - 항상 보이도록 수정 */}
-        <div style={{ marginLeft: contentMarginLeft, transition: 'margin-left 0.2s ease' }} className="hidden lg:block">
+        <div
+          style={{ ['--content-ml' as string]: contentMarginLeft }}
+          className="lg:ml-[var(--content-ml)] lg:transition-[margin-left] lg:duration-200 lg:ease"
+        >
           <main className="p-1 sm:p-2 lg:p-3" style={{ minHeight: 'calc(100vh - 56px)' }}>
-            <AppRoutes />
-          </main>
-        </div>
-
-        {/* 모바일 뷰 */}
-        <div className="block lg:hidden">
-          <main className="p-1 sm:p-2" style={{ minHeight: 'calc(100vh - 56px)' }}>
             <AppRoutes />
           </main>
         </div>
