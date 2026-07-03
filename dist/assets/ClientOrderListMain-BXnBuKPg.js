@@ -1,0 +1,2 @@
+import{j as e}from"./index-qYRl5JNU.js";function s(){return e.jsx("div",{className:"p-8 max-w-4xl mx-auto space-y-4",children:e.jsxs("div",{className:"bg-white p-8 rounded-2xl border border-gray-200 shadow-sm",children:[e.jsx("h1",{className:"text-2xl font-bold text-gray-800 mb-2",children:"CLIENT ORDERS"}),e.jsx("p",{className:"text-sm text-gray-500",children:"발주 통합 관리 화면입니다. 상세 기능은 준비 중입니다."})]})})}export{s as default};
+//# sourceMappingURL=ClientOrderListMain-BXnBuKPg.js.map

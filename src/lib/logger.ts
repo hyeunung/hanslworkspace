@@ -28,7 +28,9 @@ class Logger {
           try {
             const parsed = JSON.parse(userProfile);
             actor_name = parsed.name || '';
-          } catch {}
+          } catch {
+            // Ignore invalid JSON or missing name field
+          }
         }
       }
 

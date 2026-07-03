@@ -346,7 +346,9 @@ export default function AcceptanceMain() {
     setPreviewError(null)
     // 기존 미리보기 창 닫기
     if (previewWinRef.current && !previewWinRef.current.closed) {
-      try { previewWinRef.current.close() } catch {}
+      try { previewWinRef.current.close() } catch {
+        // ignore window closing error
+      }
     }
     previewWinRef.current = null
     setPreviewSession((s) => s + 1) // key 변경으로 NewWindow 강제 remount
@@ -1346,7 +1348,9 @@ export default function AcceptanceMain() {
             previewWinRef.current = w
             if (autoPrintPending) {
               setTimeout(() => {
-                try { w.print() } catch {}
+                try { w.print() } catch {
+                  // ignore printing failure/dismissal
+                }
                 setAutoPrintPending(false)
               }, 500)
             }

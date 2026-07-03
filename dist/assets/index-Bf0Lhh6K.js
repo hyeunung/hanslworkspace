@@ -1,0 +1,2 @@
+import{r as a,j as e,as as r}from"./index-qYRl5JNU.js";var s=Object.freeze({position:"absolute",border:0,width:1,height:1,padding:0,margin:-1,overflow:"hidden",clip:"rect(0, 0, 0, 0)",whiteSpace:"nowrap",wordWrap:"normal"}),i=a.forwardRef((a,i)=>e.jsx(r.span,{...a,ref:i,style:{...s,...a.style}}));i.displayName="VisuallyHidden";var o=i;export{o as R,s as V};
+//# sourceMappingURL=index-Bf0Lhh6K.js.map
