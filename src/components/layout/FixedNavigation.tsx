@@ -222,6 +222,9 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
   const [shippingMenuOpen, setShippingMenuOpen] = useState(
     pathname.startsWith('/shipping')
   )
+  const [bomMenuOpen, setBomMenuOpen] = useState(
+    pathname.startsWith('/bom-coordinate')
+  )
   const [searchParams] = useSearchParams()
 
   useEffect(() => {
@@ -233,6 +236,12 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
   useEffect(() => {
     if (pathname.startsWith('/shipping')) {
       setShippingMenuOpen(true)
+    }
+  }, [pathname])
+
+  useEffect(() => {
+    if (pathname.startsWith('/bom-coordinate')) {
+      setBomMenuOpen(true)
     }
   }, [pathname])
 
@@ -249,12 +258,17 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
     { key: 'acceptance', label: '인수증', href: '/shipping/acceptance' },
   ] as const
 
+  const bomSubItems = [
+    { key: 'new', label: 'BOM 등록', href: '/bom-coordinate/new' },
+    { key: 'list', label: '보드별 정리', href: '/bom-coordinate/list' },
+  ] as const
+
   type MenuItem = {
     label: string
     href: string
     icon: typeof Home
     roles: string[]
-    hasSubmenu?: 'purchase'
+    hasSubmenu?: 'purchase' | 'bom'
   }
 
   const menuItems: Array<MenuItem> = useMemo(() => {
@@ -276,6 +290,7 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
       { label: '요청 목록', href: '/purchase/list', icon: FileText, roles: ['all'], hasSubmenu: 'purchase' as const },
       { label: '거래명세서 확인', href: '/transaction-statement', icon: FileCheck, roles: ['all'] },
       { label: '영수증', href: '/receipts', icon: Receipt, roles: ['superadmin', 'hr', 'lead buyer'] },
+      { label: 'BOM/좌표 정리', href: '/bom-coordinate', icon: Package, roles: ['all'], hasSubmenu: 'bom' as const },
       { label: '업체관리', href: '/vendor', icon: Building2, roles: ['all'] },
     ]
   }, [isClientOrdersMode, isProductionMode])
@@ -438,7 +453,68 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                     )
                   }
 
-
+                  if (item.hasSubmenu === 'bom') {
+                    return (
+                      <li
+                        key={item.href}
+                        onMouseEnter={() => { if (isExpanded) setBomMenuOpen(true) }}
+                        onMouseLeave={() => { if (!pathname.startsWith('/bom-coordinate')) setBomMenuOpen(false) }}
+                      >
+                        <button
+                          onClick={() => {
+                            if (!bomMenuOpen) {
+                              setBomMenuOpen(true)
+                              navigate('/bom-coordinate/new')
+                            } else {
+                              setBomMenuOpen(false)
+                            }
+                          }}
+                          className={cn(
+                            'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap w-full',
+                            isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
+                            isActive
+                              ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
+                              : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                          )}
+                        >
+                          <div className="relative flex-shrink-0">
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          {isExpanded && (
+                            <>
+                              <span className="text-sm font-medium flex-1 text-left">{item.label}</span>
+                              <ChevronDown className={cn(
+                                "w-3.5 h-3.5 transition-transform flex-shrink-0",
+                                bomMenuOpen ? "rotate-180" : ""
+                              )} />
+                            </>
+                          )}
+                        </button>
+                        {isExpanded && bomMenuOpen && (
+                          <ul className="mt-1 space-y-0.5">
+                            {bomSubItems.map((sub) => {
+                              const isSubActive = pathname === sub.href
+                              return (
+                                <li key={sub.key}>
+                                  <Link
+                                    to={sub.href}
+                                    className={cn(
+                                      'flex items-center h-8 pl-10 pr-3 rounded-lg transition-colors whitespace-nowrap text-[13px]',
+                                      isSubActive
+                                        ? 'bg-hansl-50 text-hansl-600 font-semibold'
+                                        : 'text-gray-400 hover:bg-gray-50 hover:text-gray-600'
+                                    )}
+                                  >
+                                    <span className="flex-1">{sub.label}</span>
+                                  </Link>
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        )}
+                      </li>
+                    )
+                  }
 
                   return (
                     <li key={item.href}>
