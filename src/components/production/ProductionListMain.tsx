@@ -152,6 +152,14 @@ const formatDateOrMemo = (value: string | null | undefined): string => {
   return value;
 };
 
+// 완제품 입고: 오늘(한국시간) 날짜로 'MM월 DD일 입고' 라벨 생성
+const buildStockInLabel = (): string => {
+  const kst = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+  const mm = String(kst.getMonth() + 1).padStart(2, '0');
+  const dd = String(kst.getDate()).padStart(2, '0');
+  return `${mm}월 ${dd}일 입고`;
+};
+
 export default function ProductionListMain() {
   const [pcbs, setPcbs] = useState<ProductionPcb[]>([])
   const [cables, setCables] = useState<ProductionCable[]>([])
@@ -872,6 +880,11 @@ export default function ProductionListMain() {
     }
   }
 
+  // 완제품 입고: '입고대기' 버튼 클릭 → 오늘(한국시간) 날짜로 'MM월 DD일 입고' 기록
+  const handleStockInPress = (id: string, type: 'pcb' | 'cable') => {
+    handleCellSave({ id, type, field: 'final_product_stock' }, buildStockInLabel())
+  }
+
   // 색상/스타일 문자열 파싱 (예: 'yellow::strike::bold::redtext' -> { color, strike, bold, redText })
   // 각 토큰은 '::'로 구분되며 배경색 / 취소선 / 볼드 / 빨간글자를 중복 지정할 수 있음 (하위호환 유지)
   const COLOR_NAMES = ['yellow', 'blue', 'red', 'green'];
@@ -1447,16 +1460,33 @@ export default function ProductionListMain() {
       ...cellStyle
     } : cellStyle;
 
+    // 완제품 입고: 값이 비어 있으면 '입고대기' 버튼 표시 (클릭 시 오늘 날짜 기록)
+    const isStockWaiting = field === 'final_product_stock' &&
+      (item.final_product_stock == null ||
+       String(item.final_product_stock).trim() === '' ||
+       String(item.final_product_stock).trim() === '-')
+
     return (
-      <td 
+      <td
         className={`${computedClassName} cursor-pointer ${item.row_color || item.cell_colors?.[field] ? '' : 'hover:bg-gray-100/50'} transition-colors select-none`}
         style={selectStyle}
         onMouseDown={(e) => handleCellMouseDown(e, id, field, type)}
         onMouseEnter={() => handleCellMouseEnter(id, field, type)}
-        onClick={() => handleCellClick(id, type, field, item[field])}
+        onClick={isStockWaiting
+          ? (e) => { e.stopPropagation(); handleStockInPress(id, type) }
+          : () => handleCellClick(id, type, field, item[field])}
         title={field === 'board_name' ? item.board_name : undefined}
       >
-        {displayValue}
+        {isStockWaiting ? (
+          <button
+            type="button"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); handleStockInPress(id, type) }}
+            className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-colors"
+          >
+            입고대기
+          </button>
+        ) : displayValue}
       </td>
     )
   }
