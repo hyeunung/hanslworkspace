@@ -1402,10 +1402,13 @@ export default function ProductionListMain() {
     }
 
     const isSelected = selectedCells.includes(`${id}::${field}`);
+    const isStickyCell = cellClassName.includes('sticky');
     const selectStyle: React.CSSProperties = isSelected ? {
       outline: '1.5px solid #3b82f6',
       outlineOffset: '-1.5px',
-      backgroundColor: 'rgba(59, 130, 246, 0.1)',
+      // 고정 칼럼은 반투명 배경을 주면 가로 스크롤 시 뒤의 비고정 칼럼이 비쳐 보이므로,
+      // 원래의 불투명 배경(흰색/셀 색상)을 유지한 채 테두리만 표시한다.
+      ...(isStickyCell ? {} : { backgroundColor: 'rgba(59, 130, 246, 0.1)' }),
       ...cellStyle
     } : cellStyle;
 
