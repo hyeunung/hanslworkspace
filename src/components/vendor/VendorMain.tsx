@@ -8,11 +8,17 @@ import VendorModal from '@/components/vendor/VendorModal'
 import VendorContactsModal from '@/components/vendor/VendorContactsModal'
 import { toast } from 'sonner'
 import { Search } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
+import { canEditVendors } from '@/utils/roleHelper'
 // XLSX는 사용할 때만 동적으로 import (성능 최적화)
 
 type ModalMode = 'create' | 'edit' | 'view'
 
 export default function VendorMain() {
+  const { currentUserRoles } = useAuth()
+  // 업체관리 수정 권한 (등록/수정/삭제/담당자 관리) — superadmin, hr, lead buyer만 허용
+  const canEdit = canEditVendors(currentUserRoles)
+
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState<VendorFiltersType>({})
@@ -80,12 +86,14 @@ export default function VendorMain() {
 
   // 모달 핸들러
   const handleCreateNew = () => {
+    if (!canEdit) return
     setSelectedVendor(null)
     setModalMode('create')
     setIsModalOpen(true)
   }
 
   const handleEdit = (vendor: Vendor) => {
+    if (!canEdit) return
     setSelectedVendor(vendor)
     setModalMode('edit')
     setIsModalOpen(true)
@@ -103,6 +111,7 @@ export default function VendorMain() {
   }
 
   const handleEditContacts = (vendor: Vendor) => {
+    if (!canEdit) return
     setSelectedVendor(vendor)
     setIsContactsModalOpen(true)
   }
@@ -161,6 +170,7 @@ export default function VendorMain() {
       <VendorFilters
         onExport={handleExport}
         onCreateNew={handleCreateNew}
+        canEdit={canEdit}
       />
 
       {/* 테이블 섹션 */}
@@ -197,6 +207,7 @@ export default function VendorMain() {
           onView={handleView}
           onRefresh={loadVendors}
           onEditContacts={handleEditContacts}
+          canEdit={canEdit}
         />
       </div>
 

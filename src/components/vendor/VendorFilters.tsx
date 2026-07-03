@@ -5,11 +5,13 @@ import { Download, Plus } from 'lucide-react'
 interface VendorFiltersProps {
   onExport: () => void
   onCreateNew: () => void
+  canEdit: boolean
 }
 
 export default function VendorFilters({
   onExport,
-  onCreateNew
+  onCreateNew,
+  canEdit
 }: VendorFiltersProps) {
   return (
     <div className="space-y-4">
@@ -28,13 +30,15 @@ export default function VendorFilters({
             <span className="hidden sm:inline text-[12px]">Excel 내보내기</span>
             <span className="sm:hidden text-[12px]">Excel</span>
           </Button>
-          <Button
-            onClick={onCreateNew}
-            className="button-base bg-blue-500 hover:bg-blue-600 text-white flex items-center gap-1"
-          >
-            <Plus className="w-4 h-4" />
-            <span className="text-[12px]">업체 등록</span>
-          </Button>
+          {canEdit && (
+            <Button
+              onClick={onCreateNew}
+              className="button-base bg-blue-500 hover:bg-blue-600 text-white flex items-center gap-1"
+            >
+              <Plus className="w-4 h-4" />
+              <span className="text-[12px]">업체 등록</span>
+            </Button>
+          )}
         </div>
       </div>
     </div>

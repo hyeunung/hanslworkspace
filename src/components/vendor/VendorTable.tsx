@@ -35,9 +35,10 @@ interface VendorTableProps {
   onView: (vendor: Vendor) => void
   onRefresh: () => void
   onEditContacts: (vendor: Vendor) => void
+  canEdit: boolean
 }
 
-export default function VendorTable({ vendors, onEdit, onView, onRefresh, onEditContacts }: VendorTableProps) {
+export default function VendorTable({ vendors, onEdit, onView, onRefresh, onEditContacts, canEdit }: VendorTableProps) {
   const [loadingId, setLoadingId] = useState<number | null>(null)
   const { sortedData, sortConfig, handleSort } = useTableSort(vendors, 'vendor_name', 'asc')
 
@@ -104,20 +105,20 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh, onEdit
                       {vendor.vendor_name}
                     </TableCell>
                     {/* 담당자 수 */}
-                    <TableCell 
-                      className="text-center px-1 py-1.5 cursor-pointer hover:bg-slate-50 transition-colors"
-                      onClick={() => onEditContacts(vendor)}
-                      title="클릭하여 담당자 정보를 수정합니다."
+                    <TableCell
+                      className={`text-center px-1 py-1.5 transition-colors ${canEdit ? 'cursor-pointer hover:bg-slate-50' : ''}`}
+                      onClick={canEdit ? () => onEditContacts(vendor) : undefined}
+                      title={canEdit ? '클릭하여 담당자 정보를 수정합니다.' : undefined}
                     >
                       <span className="badge-stats text-[10px] px-1.5 py-0.5 border border-gray-300 bg-white text-gray-600">
                         {vendor.vendor_contacts?.length || 0}명
                       </span>
                     </TableCell>
                     {/* 담당자 정보 */}
-                    <TableCell 
-                      className="px-2 py-1.5 cursor-pointer hover:bg-slate-50/70 transition-colors"
-                      onClick={() => onEditContacts(vendor)}
-                      title="클릭하여 담당자 정보를 수정합니다."
+                    <TableCell
+                      className={`px-2 py-1.5 transition-colors ${canEdit ? 'cursor-pointer hover:bg-slate-50/70' : ''}`}
+                      onClick={canEdit ? () => onEditContacts(vendor) : undefined}
+                      title={canEdit ? '클릭하여 담당자 정보를 수정합니다.' : undefined}
                     >
                       {vendor.vendor_contacts && vendor.vendor_contacts.length > 0 ? (
                         <div className="flex flex-col gap-1 w-[400px]">
@@ -184,20 +185,24 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh, onEdit
                             <Eye className="mr-2 h-4 w-4" />
                             상세 보기
                           </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => onEdit(vendor)}>
-                            <Edit className="mr-2 h-4 w-4" />
-                            수정
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onSelect={(e) => {
-                              e.preventDefault()
-                              handleDelete(vendor)
-                            }}
-                            className="text-red-600"
-                          >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            삭제
-                          </DropdownMenuItem>
+                          {canEdit && (
+                            <>
+                              <DropdownMenuItem onSelect={() => onEdit(vendor)}>
+                                <Edit className="mr-2 h-4 w-4" />
+                                수정
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={(e) => {
+                                  e.preventDefault()
+                                  handleDelete(vendor)
+                                }}
+                                className="text-red-600"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                삭제
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -231,8 +236,8 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh, onEdit
 
               <MobileCardItem
                 label="담당자"
-                onClick={() => onEditContacts(vendor)}
-                className="hover:bg-slate-50 rounded px-1 transition-all"
+                onClick={canEdit ? () => onEditContacts(vendor) : undefined}
+                className={canEdit ? 'hover:bg-slate-50 rounded px-1 transition-all' : ''}
                 value={
                   vendor.vendor_contacts && vendor.vendor_contacts.length > 0 ? (
                     <div className="flex flex-col gap-1">
@@ -273,21 +278,25 @@ export default function VendorTable({ vendors, onEdit, onView, onRefresh, onEdit
                   <Eye className="w-4 h-4" />
                   보기
                 </Button>
-                <Button
-                  className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 flex items-center gap-1"
-                  onClick={() => onEdit(vendor)}
-                >
-                  <Edit className="w-4 h-4" />
-                  수정
-                </Button>
-                <Button
-                  className="button-base border border-red-200 bg-white text-red-600 hover:bg-red-50 flex items-center gap-1"
-                  onClick={() => handleDelete(vendor)}
-                  disabled={loadingId === vendor.id}
-                >
-                  <Trash2 className="w-4 h-4" />
-                  삭제
-                </Button>
+                {canEdit && (
+                  <>
+                    <Button
+                      className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 flex items-center gap-1"
+                      onClick={() => onEdit(vendor)}
+                    >
+                      <Edit className="w-4 h-4" />
+                      수정
+                    </Button>
+                    <Button
+                      className="button-base border border-red-200 bg-white text-red-600 hover:bg-red-50 flex items-center gap-1"
+                      onClick={() => handleDelete(vendor)}
+                      disabled={loadingId === vendor.id}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      삭제
+                    </Button>
+                  </>
+                )}
               </MobileCardActions>
             </MobileCard>
           ))
