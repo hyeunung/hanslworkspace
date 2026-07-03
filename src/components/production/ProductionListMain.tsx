@@ -120,6 +120,38 @@ const parseAndFormatInputDate = (val: string, defaultMonth?: number | null): str
   return `${mStr}월 ${dStr}일`;
 };
 
+// ASS'Y(환화/에버텍)처럼 '날짜 또는 메모' 하이브리드 칼럼용 유틸.
+// 입력 '전체'가 날짜 토큰일 때만 날짜로 인식하고, 그 외(숫자가 섞인 메모 포함)는 메모 원문으로 취급한다.
+const isDateLikeInput = (raw: string | null | undefined): boolean => {
+  const s = (raw || '').trim();
+  if (!s) return false;
+  // 2026-07-06 / 2026.7.6 / 2026/07/06
+  if (/^\d{4}\s*[.\-/]\s*\d{1,2}\s*[.\-/]\s*\d{1,2}$/.test(s)) return true;
+  // 7/6 / 12-26 / 7.6
+  if (/^\d{1,2}\s*[.\-/]\s*\d{1,2}$/.test(s)) return true;
+  // 7월 6일 / 2026년 7월 6일 / 7월6일
+  if (/^(\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일$/.test(s)) return true;
+  return false;
+};
+
+// 하이브리드 칼럼 저장값 계산: 날짜 토큰이면 YYYY-MM-DD, 아니면 메모 원문, 빈값이면 null
+const toDateOrMemo = (val: string, defaultMonth?: number | null): string | null => {
+  if (!val || val.trim() === '') return null;
+  if (isDateLikeInput(val)) {
+    const db = formatDisplayDateToDb(parseAndFormatInputDate(val, defaultMonth));
+    if (db) return db;
+  }
+  return val;
+};
+
+// 하이브리드 칼럼 표시값: YYYY-MM-DD -> 'MM월 DD일', 그 외는 메모 원문, 빈값은 '-'
+const formatDateOrMemo = (value: string | null | undefined): string => {
+  if (!value || value.trim() === '' || value === '-') return '-';
+  const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[2]}월 ${m[3]}일`;
+  return value;
+};
+
 export default function ProductionListMain() {
   const [pcbs, setPcbs] = useState<ProductionPcb[]>([])
   const [cables, setCables] = useState<ProductionCable[]>([])
@@ -818,6 +850,9 @@ export default function ProductionListMain() {
       } else {
         valueToSave = null
       }
+    } else if (['assy_hanwha', 'assy_evertech'].includes(field)) {
+      // 날짜 또는 메모 하이브리드: 날짜면 YYYY-MM-DD, 아니면 메모 원문
+      valueToSave = toDateOrMemo(val, selectedMonth)
     } else if (['revision_count', 'quantity', 'stock_count', 'received_quantity', 'delivery_quantity'].includes(field)) {
       valueToSave = val === '' ? 0 : Number(val)
     } else if (val === '') {
@@ -1294,7 +1329,7 @@ export default function ProductionListMain() {
       let listId: string | undefined = undefined
       let datalistNode: React.ReactNode = null
       
-      if (field === 'client_name') {
+      if (field === 'client_name' || field === 'pcb_vendor') {
         listId = 'vendors-list'
       } else if (field === 'client_manager') {
         listId = `contacts-list-${id}`
@@ -1965,6 +2000,7 @@ export default function ProductionListMain() {
                       <td className="px-1 py-1 border border-gray-200">
                         <input
                           type="text"
+                          list="vendors-list"
                           value={addingPcbRow.pcb_vendor || ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, pcb_vendor: e.target.value })}
                           placeholder="PCB업체"
@@ -2020,18 +2056,20 @@ export default function ProductionListMain() {
                       <td className="px-1 py-1 border border-gray-200">
                         <input
                           type="text"
-                          value={addingPcbRow.assy_hanwha || ''}
+                          value={addingPcbRow.assy_hanwha ? formatDateOrMemo(addingPcbRow.assy_hanwha) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, assy_hanwha: e.target.value })}
-                          placeholder="환화"
+                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, assy_hanwha: toDateOrMemo(e.target.value, selectedMonth) || '' })}
+                          placeholder="환화 (날짜/메모)"
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
                         <input
                           type="text"
-                          value={addingPcbRow.assy_evertech || ''}
+                          value={addingPcbRow.assy_evertech ? formatDateOrMemo(addingPcbRow.assy_evertech) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, assy_evertech: e.target.value })}
-                          placeholder="에버텍"
+                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, assy_evertech: toDateOrMemo(e.target.value, selectedMonth) || '' })}
+                          placeholder="에버텍 (날짜/메모)"
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
@@ -2393,7 +2431,7 @@ export default function ProductionListMain() {
                           'pcb',
                           'assy_hanwha',
                           item,
-                          item.assy_hanwha || '-',
+                          formatDateOrMemo(item.assy_hanwha),
                           'px-2 py-1.5 border border-gray-200'
                         )}
                         {renderEditableCell(
@@ -2401,7 +2439,7 @@ export default function ProductionListMain() {
                           'pcb',
                           'assy_evertech',
                           item,
-                          item.assy_evertech || '-',
+                          formatDateOrMemo(item.assy_evertech),
                           'px-2 py-1.5 border border-gray-200'
                         )}
                         {renderEditableCell(
@@ -3186,6 +3224,7 @@ export default function ProductionListMain() {
                       <label className="modal-label mb-1 block">PCB 제작 업체</label>
                       <input
                         type="text"
+                        list="vendors-list"
                         value={formFields.pcb_vendor}
                         onChange={(e) => setFormFields({ ...formFields, pcb_vendor: e.target.value })}
                         placeholder="예: 우리기술"
