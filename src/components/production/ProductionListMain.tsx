@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { productionService, ProductionPcb, ProductionCable } from '@/services/productionService'
 import { Plus, Search, Edit2, X, Filter, Save, RotateCcw, ChevronDown } from 'lucide-react'
@@ -119,6 +119,119 @@ const STICKY_FIELDS = ['sales_order_number', 'production_category', 'board_name'
 
 // 제작구분 칩의 기본 표시/그룹 순서 — 드래그로 재정렬 가능. 이 순서대로 테이블이 제작구분별로 위→아래 그룹핑됨
 const DEFAULT_CATEGORY_ORDER = ['LG_PCB', 'LG_Socket Board', 'LG_Cable', 'LG_Case', 'PCB', 'Cable', 'Case']
+
+// ─── 테이블별 필터 (PCB/Cable 각각 독립, 노션식 규칙 기반) ─────────────
+// 위(PCB) 테이블과 아래(Cable) 테이블은 제작구분·칼럼이 서로 달라 필터를 분리한다.
+// 필터 = 규칙(칼럼 + 조건 + 값) 목록의 AND 결합. 노션처럼 규칙을 추가/수정/제거할 수 있고,
+// 기본 필터(입고대기 + 요청일 현재년도)도 일반 규칙이라 X로 제거 가능하다.
+const PCB_CATEGORIES = ['LG_PCB', 'LG_Socket Board', 'PCB']
+const CABLE_CATEGORIES = ['LG_Cable', 'LG_Case', 'Cable', 'Case']
+
+// 순수 날짜 칼럼(YYYY-MM-DD)과 날짜/메모 혼합 칼럼 — 조건(op) 선택지가 달라진다
+const DATE_ONLY_FIELDS = ['request_date', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date']
+const HYBRID_DATE_FIELDS = ['delivery_deadline', 'assy_hanwha', 'assy_evertech']
+
+// 필터 규칙 하나: field 칼럼에 op 조건 적용. contains류는 value, date_in은 year/month 사용.
+type FilterOp = 'date_in' | 'contains' | 'not_contains' | 'is_empty' | 'not_empty'
+type FilterRule = {
+  id: string
+  field: string
+  op: FilterOp
+  value?: string
+  year?: number | null
+  month?: number | null
+}
+
+type TableFilter = {
+  categories: string[]
+  rules: FilterRule[]
+}
+
+const OP_LABELS: Record<FilterOp, string> = {
+  date_in: '년/월',
+  contains: '포함',
+  not_contains: '미포함',
+  is_empty: '비어있음',
+  not_empty: '비어있지 않음',
+}
+
+// 칼럼 타입에 따라 선택 가능한 조건 목록
+const opsForField = (field: string): FilterOp[] => {
+  if (DATE_ONLY_FIELDS.includes(field)) return ['date_in', 'is_empty', 'not_empty']
+  if (HYBRID_DATE_FIELDS.includes(field)) return ['date_in', 'contains', 'not_contains', 'is_empty', 'not_empty']
+  return ['contains', 'not_contains', 'is_empty', 'not_empty']
+}
+
+let filterRuleSeq = 0
+const newRuleId = () => `r${++filterRuleSeq}`
+
+// 기본 필터 규칙: 입고대기(입고 칼럼 비어있음) + 요청일이 현재 년도(월 전체)
+const defaultRules = (type: 'pcb' | 'cable'): FilterRule[] => [
+  { id: newRuleId(), field: type === 'pcb' ? 'final_product_stock' : 'cable_actual_date', op: 'is_empty' },
+  { id: newRuleId(), field: 'request_date', op: 'date_in', year: new Date().getFullYear(), month: null },
+]
+
+const defaultTableFilter = (type: 'pcb' | 'cable'): TableFilter => ({
+  categories: type === 'pcb' ? [...PCB_CATEGORIES] : [...CABLE_CATEGORIES],
+  rules: defaultRules(type),
+})
+
+// 규칙 하나를 행에 적용 (AND 결합은 호출부에서). 값이 없는 셀은 date_in/contains에서 제외된다.
+const applyFilterRule = (item: any, rule: FilterRule): boolean => {
+  const raw = item[rule.field]
+  const s = raw == null ? '' : String(raw).trim()
+  const empty = s === '' || s === '-'
+  switch (rule.op) {
+    case 'is_empty': return empty
+    case 'not_empty': return !empty
+    case 'contains': return !rule.value || s.toLowerCase().includes(rule.value.toLowerCase())
+    case 'not_contains': return !rule.value || !s.toLowerCase().includes(rule.value.toLowerCase())
+    case 'date_in': {
+      if (rule.year == null && rule.month == null) return true
+      const m = s.match(/^(\d{4})-(\d{2})/)
+      if (!m) return false
+      if (rule.year != null && Number(m[1]) !== rule.year) return false
+      if (rule.month != null && Number(m[2]) !== rule.month) return false
+      return true
+    }
+  }
+}
+
+// localStorage에 저장된 테이블 필터 복원 (형식이 어긋나면 기본값, 구버전 형식은 규칙으로 변환)
+const loadTableFilter = (type: 'pcb' | 'cable'): TableFilter => {
+  const def = defaultTableFilter(type)
+  try {
+    const raw = localStorage.getItem(`hansl_prod_filter_${type}`)
+    if (!raw) return def
+    const p = JSON.parse(raw)
+    const validCats = type === 'pcb' ? PCB_CATEGORIES : CABLE_CATEGORIES
+    const categories = Array.isArray(p.categories) ? p.categories.filter((c: string) => validCats.includes(c)) : def.categories
+    if (Array.isArray(p.rules)) {
+      const rules: FilterRule[] = p.rules
+        .filter((r: any) => r && typeof r.field === 'string' && typeof r.op === 'string' && opsForField(r.field).includes(r.op))
+        .map((r: any) => ({
+          id: newRuleId(),
+          field: r.field,
+          op: r.op,
+          value: typeof r.value === 'string' ? r.value : undefined,
+          year: typeof r.year === 'number' ? r.year : null,
+          month: typeof r.month === 'number' ? r.month : null,
+        }))
+      return { categories, rules }
+    }
+    // 구버전(waitingOnly/year/month/dateField) 형식 → 규칙으로 변환
+    const rules: FilterRule[] = []
+    if (p.waitingOnly !== false) {
+      rules.push({ id: newRuleId(), field: type === 'pcb' ? 'final_product_stock' : 'cable_actual_date', op: 'is_empty' })
+    }
+    if (typeof p.year === 'number' || typeof p.month === 'number') {
+      rules.push({ id: newRuleId(), field: typeof p.dateField === 'string' ? p.dateField : 'request_date', op: 'date_in', year: typeof p.year === 'number' ? p.year : null, month: typeof p.month === 'number' ? p.month : null })
+    }
+    return { categories, rules }
+  } catch {
+    return def
+  }
+}
 
 // Date utilities for formatting text inputs (e.g. 7/6 -> 07월 06일)
 const formatDbDateToDisplay = (dbDate: string | null | undefined): string => {
@@ -249,6 +362,38 @@ const formatStockInDisplay = (value: string | null | undefined): string => {
   // 그 외(분할입고 수량/재고/회수 메모, 오타 등)는 의미가 있어 원문 유지
   return s;
 };
+
+// ─── 셀 내 URL → '링크' 하이퍼링크 표시 ─────────────────────────────
+// 셀 값에 웹사이트 주소가 들어 있으면 긴 URL 대신 '링크' 텍스트로 축약해 새 탭으로 연결한다.
+// 편집 모드에서는 원본 URL이 그대로 보이므로 수정에는 지장 없음.
+const URL_IN_TEXT_REGEX = /(https?:\/\/[^\s]+)/g
+
+// 칼럼 폭 실측용: URL을 표시 텍스트('링크')와 동일하게 치환한 문자열
+const collapseUrlsForMeasure = (s: string): string => s.replace(URL_IN_TEXT_REGEX, '링크')
+
+const renderCellValueWithLinks = (value: React.ReactNode, onLinkClick?: () => void): React.ReactNode => {
+  if (typeof value !== 'string' || !/https?:\/\//.test(value)) return value
+  const parts = value.split(URL_IN_TEXT_REGEX)
+  return parts.map((part, i) =>
+    /^https?:\/\//.test(part) ? (
+      <a
+        key={i}
+        href={part}
+        target="_blank"
+        rel="noopener noreferrer"
+        // 편집 진입은 막되(전파 차단), 새 탭으로 열리면서 셀 선택은 되도록 콜백 호출
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); onLinkClick?.() }}
+        className="text-blue-600 underline hover:text-blue-800"
+        title={part}
+      >
+        링크
+      </a>
+    ) : (
+      part
+    )
+  )
+}
 
 // HANSL 담당자는 이름만 표시/저장한다. datalist 입력은 자유 텍스트라 "이종근사원"처럼
 // 직함이 붙은 값이 타이핑될 수 있어, 저장 직전에 뒤에 붙은 직함을 제거한다.
@@ -401,22 +546,15 @@ export default function ProductionListMain() {
   const [addingPcbRow, setAddingPcbRow] = useState<Omit<ProductionPcb, 'id' | 'created_at' | 'updated_at'> | null>(null)
   const [addingCableRow, setAddingCableRow] = useState<Omit<ProductionCable, 'id' | 'created_at' | 'updated_at'> | null>(null)
 
-  // 필터 및 검색 상태
+  // 필터 및 검색 상태 — PCB/Cable 테이블별 독립 필터 (저장된 필터가 있으면 처음부터 반영)
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedMonth, setSelectedMonth] = useState<number | null>(() => {
-    // 저장된 필터가 있으면 처음부터 반영 (마운트 직후 기본값→저장값 교체로 인한 이중 fetch 방지)
-    const savedMonth = localStorage.getItem('hansl_prod_filter_month')
-    if (savedMonth !== null && savedMonth !== undefined && savedMonth !== '') {
-      return savedMonth === 'null' ? null : Number(savedMonth)
-    }
-    return new Date().getMonth() + 1
-  })
-  const [selectedYear, setSelectedYear] = useState<number>(() => {
-    const savedYear = localStorage.getItem('hansl_prod_filter_year')
-    return savedYear ? Number(savedYear) : new Date().getFullYear()
-  })
-  const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i)
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([...DEFAULT_CATEGORY_ORDER])
+  const [pcbFilter, setPcbFilter] = useState<TableFilter>(() => loadTableFilter('pcb'))
+  const [cableFilter, setCableFilter] = useState<TableFilter>(() => loadTableFilter('cable'))
+  const filterFor = (type: 'pcb' | 'cable') => (type === 'pcb' ? pcbFilter : cableFilter)
+  const setFilterFor = (type: 'pcb' | 'cable', patch: Partial<TableFilter>) => {
+    if (type === 'pcb') setPcbFilter(prev => ({ ...prev, ...patch }))
+    else setCableFilter(prev => ({ ...prev, ...patch }))
+  }
 
   // 필터 패널 접기/펴기 (좌측 사이드바처럼) — 기본값은 '닫힘', 사용자가 명시적으로 '0'(펼침) 저장 시에만 펼침
   const [filterCollapsed, setFilterCollapsed] = useState<boolean>(() => localStorage.getItem('hansl_prod_filter_collapsed') !== '0')
@@ -442,13 +580,16 @@ export default function ProductionListMain() {
   // 드래그 중인 칩 (ref: 드롭 핸들러의 최신값 보장 / state: 시각 표시용)
   const dragCatRef = useRef<string | null>(null)
   const [dragCat, setDragCat] = useState<string | null>(null)
-  // 삽입 지점 인덱스 (0 = 맨 앞, N = 맨 뒤). 칩 사이에 세로 표시선으로 보여줌
-  const [dropIndex, setDropIndex] = useState<number | null>(null)
-  const chipContainerRef = useRef<HTMLDivElement>(null)
+  // 삽입 지점 (0 = 맨 앞, N = 맨 뒤) + 어느 테이블 툴바인지. 칩 사이에 세로 표시선으로 보여줌
+  const [dropIndex, setDropIndex] = useState<{ type: 'pcb' | 'cable'; index: number } | null>(null)
+  // 툴바가 PCB/Cable 두 벌이라 칩 컨테이너 ref도 테이블별로 관리
+  const pcbChipContainerRef = useRef<HTMLDivElement>(null)
+  const cableChipContainerRef = useRef<HTMLDivElement>(null)
+  const chipRefFor = (type: 'pcb' | 'cable') => (type === 'pcb' ? pcbChipContainerRef : cableChipContainerRef)
 
   // 커서 X좌표 기준으로 "칩과 칩 사이" 어느 지점에 꽂힐지 인덱스 계산 (빈 간격에 놔도 인식됨)
-  const computeDropIndex = (clientX: number): number => {
-    const container = chipContainerRef.current
+  const computeDropIndex = (type: 'pcb' | 'cable', clientX: number): number => {
+    const container = chipRefFor(type).current
     if (!container) return 0
     const chips = Array.from(container.querySelectorAll<HTMLElement>('[data-cat]'))
     for (let i = 0; i < chips.length; i++) {
@@ -459,19 +600,23 @@ export default function ProductionListMain() {
   }
 
   // 드래그한 칩을 계산된 삽입 지점으로 이동 (제거로 인한 인덱스 밀림 보정)
-  const dropCategoryAt = (index: number) => {
+  // index는 "해당 테이블 칩 목록 내" 인덱스 — 전역 categoryOrder에서 그 테이블 슬롯만 새 순서로 치환
+  const dropCategoryAt = (type: 'pcb' | 'cable', index: number) => {
     const from = dragCatRef.current
     if (!from) return
     setCategoryOrder(prev => {
-      const fromIdx = prev.indexOf(from)
+      const cats = type === 'pcb' ? PCB_CATEGORIES : CABLE_CATEGORIES
+      const sub = prev.filter(c => cats.includes(c))
+      const fromIdx = sub.indexOf(from)
       if (fromIdx < 0) return prev
-      const arr = [...prev]
+      const arr = [...sub]
       arr.splice(fromIdx, 1)
       let target = index
       if (fromIdx < index) target -= 1
       target = Math.max(0, Math.min(arr.length, target))
       arr.splice(target, 0, from)
-      return arr
+      let k = 0
+      return prev.map(c => (cats.includes(c) ? arr[k++] : c))
     })
   }
 
@@ -480,7 +625,7 @@ export default function ProductionListMain() {
   const dragMovedRef = useRef(false)
   const DRAG_THRESHOLD = 4 // px 이상 움직이면 드래그, 아니면 클릭(선택 토글)로 간주
 
-  const handleChipPointerDown = (e: React.PointerEvent<HTMLButtonElement>, cat: string) => {
+  const handleChipPointerDown = (e: React.PointerEvent<HTMLButtonElement>, cat: string, type: 'pcb' | 'cable') => {
     if (e.button !== 0) return
     dragCatRef.current = cat
     dragStartXRef.current = e.clientX
@@ -491,15 +636,15 @@ export default function ProductionListMain() {
       if (!dragCatRef.current) return
       if (!dragMovedRef.current && Math.abs(ev.clientX - dragStartXRef.current) < DRAG_THRESHOLD) return
       dragMovedRef.current = true
-      setDropIndex(computeDropIndex(ev.clientX))
+      setDropIndex({ type, index: computeDropIndex(type, ev.clientX) })
     }
     const onUp = (ev: PointerEvent) => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       if (dragMovedRef.current) {
-        dropCategoryAt(computeDropIndex(ev.clientX)) // 놓은 자리에 삽입
+        dropCategoryAt(type, computeDropIndex(type, ev.clientX)) // 놓은 자리에 삽입
       } else if (dragCatRef.current) {
-        toggleCategory(dragCatRef.current)            // 안 움직였으면 클릭 = 표시 토글
+        toggleCategory(type, dragCatRef.current)                  // 안 움직였으면 클릭 = 표시 토글
       }
       dragCatRef.current = null
       dragMovedRef.current = false
@@ -510,55 +655,38 @@ export default function ProductionListMain() {
     window.addEventListener('pointerup', onUp)
   }
 
-  // 로컬스토리지에서 저장된 필터 불러오기
-  useEffect(() => {
-    const savedMonth = localStorage.getItem('hansl_prod_filter_month')
-    const savedYear = localStorage.getItem('hansl_prod_filter_year')
-    const savedCats = localStorage.getItem('hansl_prod_filter_categories')
-    if (savedMonth !== null && savedMonth !== undefined && savedMonth !== '') {
-      setSelectedMonth(savedMonth === 'null' ? null : Number(savedMonth))
-    }
-    if (savedYear !== null && savedYear !== undefined && savedYear !== '') {
-      setSelectedYear(Number(savedYear))
-    }
-    if (savedCats) {
-      try {
-        const parsed = JSON.parse(savedCats) as string[]
-        // 레거시 카테고리 명칭 (suffix _LG)이 있으면 prefix LG_ 형식으로 마이그레이션
-        const migrated = parsed.map(cat => {
-          if (cat === 'PCB_LG') return 'LG_PCB'
-          if (cat === 'Socket Board_LG') return 'LG_Socket Board'
-          if (cat === 'Cable_LG') return 'LG_Cable'
-          if (cat === 'Case_LG') return 'LG_Case'
-          return cat
-        })
-        setSelectedCategories(migrated)
-      } catch (e) {
-        console.error(e)
-      }
-    }
-  }, [])
-
+  // 필터 저장/초기화 — 테이블별 필터 JSON + 공용 그룹 순서
   const handleSaveFilters = () => {
-    localStorage.setItem('hansl_prod_filter_month', String(selectedMonth))
-    localStorage.setItem('hansl_prod_filter_year', String(selectedYear))
-    localStorage.setItem('hansl_prod_filter_categories', JSON.stringify(selectedCategories))
+    localStorage.setItem('hansl_prod_filter_pcb', JSON.stringify(pcbFilter))
+    localStorage.setItem('hansl_prod_filter_cable', JSON.stringify(cableFilter))
     localStorage.setItem('hansl_prod_filter_category_order', JSON.stringify(categoryOrder))
     toast.success('현재 필터 설정이 저장되었습니다.')
   }
 
-  const handleResetMonthFilter = () => {
-    // 기본 세팅 = 현재 월/연도로 복귀 (전체가 아니라 이번 달)
-    const now = new Date()
-    setSelectedMonth(now.getMonth() + 1)
-    setSelectedYear(now.getFullYear())
-    toast.info('현재 월로 초기화되었습니다.')
+  const handleResetRules = (type: 'pcb' | 'cable') => {
+    // 기본 세팅 = 입고대기 + 요청일 현재 년도(월 전체)
+    setFilterFor(type, { rules: defaultRules(type) })
+    toast.info('필터가 기본값으로 초기화되었습니다.')
   }
 
-  const handleResetCategoryFilter = () => {
-    setSelectedCategories([...DEFAULT_CATEGORY_ORDER])
+  const handleResetCategoryFilter = (type: 'pcb' | 'cable') => {
+    setFilterFor(type, { categories: type === 'pcb' ? [...PCB_CATEGORIES] : [...CABLE_CATEGORIES] })
     setCategoryOrder([...DEFAULT_CATEGORY_ORDER])
     toast.info('제작구분 필터가 초기화되었습니다.')
+  }
+
+  // 필터 규칙 조작 (노션식 추가/수정/제거)
+  const addRule = (type: 'pcb' | 'cable') => {
+    const f = filterFor(type)
+    setFilterFor(type, { rules: [...f.rules, { id: newRuleId(), field: 'board_name', op: 'contains', value: '' }] })
+  }
+  const updateRule = (type: 'pcb' | 'cable', id: string, patch: Partial<FilterRule>) => {
+    const f = filterFor(type)
+    setFilterFor(type, { rules: f.rules.map(r => (r.id === id ? { ...r, ...patch } : r)) })
+  }
+  const removeRule = (type: 'pcb' | 'cable', id: string) => {
+    const f = filterFor(type)
+    setFilterFor(type, { rules: f.rules.filter(r => r.id !== id) })
   }
 
   // 컬럼 좌우 여백 (각각 5px, 총 10px) — globals.css의 .production-compact-table th/td 패딩과 반드시 동일하게 유지
@@ -863,29 +991,14 @@ export default function ProductionListMain() {
     const seq = ++loadSeqRef.current
     setLoading(true)
 
-    // 월별 필터에 기반한 날짜 자동 계산
-    let calculatedStartDate = ''
-    let calculatedEndDate = ''
-    const pad = (n: number) => String(n).padStart(2, '0')
-    if (selectedMonth !== null) {
-      calculatedStartDate = `${selectedYear}-${pad(selectedMonth)}-01`
-      const lastDay = new Date(selectedYear, selectedMonth, 0).getDate()
-      calculatedEndDate = `${selectedYear}-${pad(selectedMonth)}-${pad(lastDay)}`
-    } else {
-      calculatedStartDate = `${selectedYear}-01-01`
-      calculatedEndDate = `${selectedYear}-12-31`
-    }
-
+    // 전체 로드 — 년/월은 클라이언트 표시 필터(matchDateFilter)로 처리한다.
+    // 날짜범위를 서버에서 자르면 request_date가 NULL인 행이 영영 안 보이는 문제도 있었음.
     try {
       const pcbData = await productionService.getProductionPcbs({
-        query: searchQuery,
-        startDate: calculatedStartDate,
-        endDate: calculatedEndDate
+        query: searchQuery
       })
       const cableData = await productionService.getProductionCables({
-        query: searchQuery,
-        startDate: calculatedStartDate,
-        endDate: calculatedEndDate
+        query: searchQuery
       })
       if (seq !== loadSeqRef.current) return // 더 최신 요청이 있으면 이 응답은 버림
       setPcbs(pcbData)
@@ -930,7 +1043,7 @@ export default function ProductionListMain() {
   // 검색/필터 변경 시 로드
   useEffect(() => {
     loadData()
-  }, [searchQuery, selectedMonth, selectedYear])
+  }, [searchQuery])
 
   // 실시간 구독 설정
   useEffect(() => {
@@ -954,7 +1067,7 @@ export default function ProductionListMain() {
       supabase.removeChannel(pcbChannel)
       supabase.removeChannel(cableChannel)
     }
-  }, [searchQuery, selectedMonth, selectedYear])
+  }, [searchQuery])
 
   // 행 색상 피커 바깥 영역 클릭 시 닫기
   useEffect(() => {
@@ -971,13 +1084,12 @@ export default function ProductionListMain() {
     }
   }, [])
 
-  // 카테고리 필터 토글
-  const toggleCategory = (cat: string) => {
-    if (selectedCategories.includes(cat)) {
-      setSelectedCategories(selectedCategories.filter(c => c !== cat))
-    } else {
-      setSelectedCategories([...selectedCategories, cat])
-    }
+  // 카테고리 필터 토글 (테이블별)
+  const toggleCategory = (type: 'pcb' | 'cable', cat: string) => {
+    const cur = filterFor(type).categories
+    setFilterFor(type, {
+      categories: cur.includes(cat) ? cur.filter(c => c !== cat) : [...cur, cat],
+    })
   }
 
   // 행 추가 인라인 모드로 전환
@@ -1059,24 +1171,30 @@ export default function ProductionListMain() {
       setAddingPcbRow(null)
       // 저장된 행의 요청일이 현재 월/연도 필터 밖이면(예: 6월을 보는데 오늘=7월로 저장),
       // 저장은 됐지만 목록에 안 보여 "저장이 안 된 것처럼" 보이므로 필터를 해당 행 기준으로 이동시켜 노출
-      focusFilterOnRow(created?.request_date)
+      focusFilterOnRow('pcb', created?.request_date)
     } catch (err) {
       console.error(err)
       toast.error('저장에 실패했습니다.')
     }
   }
 
-  // 저장된 행이 현재 필터에 보이지 않을 경우, 그 행의 요청일 기준으로 월/연도 필터를 옮겨 노출한다.
-  // (필터가 바뀌면 useEffect가 loadData를 호출하고, 바뀌지 않으면 여기서 직접 loadData 호출)
-  const focusFilterOnRow = (requestDate?: string | null) => {
-    if (!requestDate) { loadData(); return }
+  // 저장된 행이 현재 날짜 규칙에 걸러져 안 보일 경우, 요청일 date_in 규칙을 행의 년/월로 옮겨 노출한다.
+  // (전체 로드 구조라 데이터 갱신은 loadData 한 번이면 충분)
+  const focusFilterOnRow = (type: 'pcb' | 'cable', requestDate?: string | null) => {
+    loadData()
+    if (!requestDate) return
+    const f = filterFor(type)
     const [y, m] = requestDate.split('-').map(Number)
-    const inCurrentFilter = y === selectedYear && (selectedMonth === null || selectedMonth === m)
-    if (inCurrentFilter) {
-      loadData()
-    } else {
-      setSelectedYear(y)
-      setSelectedMonth(m)
+    const outside = f.rules.some(r =>
+      r.op === 'date_in' && r.field === 'request_date' &&
+      ((r.year != null && r.year !== y) || (r.month != null && r.month !== m))
+    )
+    if (outside) {
+      setFilterFor(type, {
+        rules: f.rules.map(r =>
+          r.op === 'date_in' && r.field === 'request_date' ? { ...r, year: y, month: m } : r
+        ),
+      })
     }
   }
 
@@ -1100,7 +1218,7 @@ export default function ProductionListMain() {
       const created = await productionService.createProductionCable(sanitized)
       toast.success('신규 Cable/Case 항목이 저장되었습니다.')
       setAddingCableRow(null)
-      focusFilterOnRow(created?.request_date)
+      focusFilterOnRow('cable', created?.request_date)
     } catch (err) {
       console.error(err)
       toast.error('저장에 실패했습니다.')
@@ -1123,12 +1241,14 @@ export default function ProductionListMain() {
   // 인라인 셀 수정 저장 핸들러
   const handleCellSave = async (currentCell: { id: string, type: 'pcb' | 'cable', field: string }, val: string) => {
     const { id, type, field } = currentCell
-    
+    // 날짜 입력의 기본 월 = 해당 테이블 필터에 월이 지정돼 있으면 그 월
+    const defaultMonth = defaultMonthFor(type)
+
     // 날짜 컬럼 보정
     let valueToSave: any = val
     if (['request_date', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date'].includes(field)) {
       if (val) {
-        const parsed = parseAndFormatInputDate(val, selectedMonth)
+        const parsed = parseAndFormatInputDate(val, defaultMonth)
         let dbDate = formatDisplayDateToDb(parsed)
         // 입력에 명시적 연도(4자리)가 없으면 formatDisplayDateToDb가 '올해'를 찍는다.
         // 이 경우 기존 값의 연도를 보존하여 연도가 임의로 바뀌는 것을 막는다.
@@ -1144,7 +1264,7 @@ export default function ProductionListMain() {
       }
     } else if (['assy_hanwha', 'assy_evertech', 'delivery_deadline'].includes(field)) {
       // 날짜 또는 메모 하이브리드: 날짜면 YYYY-MM-DD, 아니면 메모 원문
-      valueToSave = toDateOrMemo(val, selectedMonth)
+      valueToSave = toDateOrMemo(val, defaultMonth)
     } else if (['revision_count', 'quantity', 'stock_count', 'received_quantity', 'delivery_quantity'].includes(field)) {
       valueToSave = val === '' ? null : Number(val)
     } else if (field === 'hansl_manager') {
@@ -1182,8 +1302,10 @@ export default function ProductionListMain() {
   }
 
   // 완제품 입고: '입고대기' 버튼 클릭 → 오늘(한국시간) 날짜로 'MM월 DD일 입고' 기록
-  const handleStockInPress = (id: string, type: 'pcb' | 'cable') => {
-    handleCellSave({ id, type, field: 'final_product_stock' }, buildStockInLabel())
+  const handleStockInPress = (id: string, type: 'pcb' | 'cable', field: string = 'final_product_stock') => {
+    // cable_actual_date는 날짜(ISO) 컬럼이라 오늘 날짜를 YYYY-MM-DD로, final_product_stock은 'MM월 DD일' 라벨로 스탬프
+    const value = field === 'cable_actual_date' ? getKstTodayISO() : buildStockInLabel()
+    handleCellSave({ id, type, field }, value)
   }
 
   // 색상/스타일 문자열 파싱 (예: 'yellow::strike::bold::redtext' -> { color, strike, bold, redText })
@@ -1329,13 +1451,35 @@ export default function ProductionListMain() {
     return i < 0 ? Number.MAX_SAFE_INTEGER : i
   }
 
-  // 카테고리 필터 매칭 + 드래그한 제작구분 순서대로 그룹핑 (그룹 내부는 기존 정렬(제작번호 내림차순) 유지 — Array.sort는 안정 정렬)
-  const filteredPcbs = pcbs
-    .filter(item => selectedCategories.includes(item.production_category))
-    .sort((a, b) => categoryRank(a.production_category) - categoryRank(b.production_category))
-  const filteredCables = cables
-    .filter(item => selectedCategories.includes(item.production_category))
-    .sort((a, b) => categoryRank(a.production_category) - categoryRank(b.production_category))
+  // 카테고리 + 필터 규칙(AND) 적용 + 드래그한 제작구분 순서대로 그룹핑 (그룹 내부는 기존 정렬(제작번호 내림차순) 유지 — Array.sort는 안정 정렬)
+  const filteredPcbs = useMemo(() => pcbs
+    .filter(item => pcbFilter.categories.includes(item.production_category))
+    .filter(item => pcbFilter.rules.every(rule => applyFilterRule(item, rule)))
+    .sort((a, b) => categoryRank(a.production_category) - categoryRank(b.production_category)),
+    [pcbs, pcbFilter, categoryOrder])
+  const filteredCables = useMemo(() => cables
+    .filter(item => cableFilter.categories.includes(item.production_category))
+    .filter(item => cableFilter.rules.every(rule => applyFilterRule(item, rule)))
+    .sort((a, b) => categoryRank(a.production_category) - categoryRank(b.production_category)),
+    [cables, cableFilter, categoryOrder])
+
+  // 년도 드롭다운 옵션 = 로드된 데이터에서 해당 날짜 칼럼에 실제 존재하는 년도만 (내림차순)
+  const yearsFor = (type: 'pcb' | 'cable', dateField: string): number[] => {
+    const list: any[] = type === 'pcb' ? pcbs : cables
+    const set = new Set<number>()
+    for (const item of list) {
+      const raw = item[dateField]
+      const m = typeof raw === 'string' ? raw.match(/^(\d{4})-/) : null
+      if (m) set.add(Number(m[1]))
+    }
+    return Array.from(set).sort((a, b) => b - a)
+  }
+
+  // 날짜 입력의 기본 월: 해당 테이블 필터에 월이 지정된 date_in 규칙이 있으면 그 월
+  const defaultMonthFor = (type: 'pcb' | 'cable'): number | null => {
+    const r = filterFor(type).rules.find(r => r.op === 'date_in' && r.month != null)
+    return r?.month ?? null
+  }
 
   // 셀에 표시되는 폰트 굵기: 실제 렌더링 클래스(font-semibold/medium)와 동일하게 맞춰야 실측이 정확함
   const getFieldFontWeight = (field: string, hasValue: boolean): number => {
@@ -1408,7 +1552,8 @@ export default function ProductionListMain() {
     }
     
     if (val === null || val === undefined || val === '') return '-'
-    return val.toString()
+    // URL은 화면에 '링크'로 축약 표시되므로 폭 실측도 동일 기준으로
+    return collapseUrlsForMeasure(val.toString())
   }
 
   // 칼럼 너비 = Max(헤더 실측, 가장 긴 본문 실측) + 좌우 여백(5px씩) [+ 비고정 칼럼은 우측 보더 1px]
@@ -1796,10 +1941,10 @@ export default function ProductionListMain() {
     } : cellStyle;
 
     // 완제품 입고: 값이 비어 있으면 '입고대기' 버튼 표시 (클릭 시 오늘 날짜 기록)
-    const isStockWaiting = field === 'final_product_stock' &&
-      (item.final_product_stock == null ||
-       String(item.final_product_stock).trim() === '' ||
-       String(item.final_product_stock).trim() === '-')
+    const isStockWaiting = (field === 'final_product_stock' || field === 'cable_actual_date') &&
+      (item[field] == null ||
+       String(item[field]).trim() === '' ||
+       String(item[field]).trim() === '-')
 
     // 선택된 셀은 transition-colors를 제거해 하이라이트가 150ms 페이드 없이 즉시 나타나게 한다
     const tdClassName = `${computedClassName} cursor-pointer ${item.row_color || item.cell_colors?.[field] ? '' : 'hover:bg-gray-100/50'} transition-colors select-none`
@@ -1810,7 +1955,7 @@ export default function ProductionListMain() {
         onMouseDown={(e) => handleCellMouseDown(e, id, field, type)}
         onMouseEnter={(e) => handleCellMouseEnter(e, id, field, type)}
         onClick={isStockWaiting
-          ? (e) => { e.stopPropagation(); handleStockInPress(id, type) }
+          ? (e) => { e.stopPropagation(); handleStockInPress(id, type, field) }
           : () => handleCellClick(id, type, field, item[field])}
         title={field === 'board_name' ? item.board_name : undefined}
       >
@@ -1818,12 +1963,12 @@ export default function ProductionListMain() {
           <button
             type="button"
             onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); handleStockInPress(id, type) }}
+            onClick={(e) => { e.stopPropagation(); handleStockInPress(id, type, field) }}
             className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-colors"
           >
             입고대기
           </button>
-        ) : displayValue}
+        ) : renderCellValueWithLinks(displayValue, () => setSelectedCells([`${id}::${field}`]))}
       </td>
     )
   }
@@ -1995,8 +2140,237 @@ export default function ProductionListMain() {
   }
 
   // 테이블 표시 조건
-  const showPcbTable = selectedCategories.includes('PCB') || selectedCategories.includes('LG_PCB') || selectedCategories.includes('LG_Socket Board')
-  const showCableTable = selectedCategories.includes('Cable') || selectedCategories.includes('LG_Cable') || selectedCategories.includes('Case') || selectedCategories.includes('LG_Case')
+  const showPcbTable = pcbFilter.categories.length > 0
+  const showCableTable = cableFilter.categories.length > 0
+
+  // 테이블별 필터 툴바 (노션식 규칙 필터 + 제작구분 칩) — PCB/Cable 동일 마크업
+  // 규칙 = [칼럼 ▾][조건 ▾][값 | 년 ▾ 월 ▾][×] 이며 노션처럼 추가/수정/제거 가능.
+  // 기본 규칙(입고대기 + 요청일 현재년도)도 일반 규칙이라 X로 제거할 수 있다.
+  const renderFilterToolbar = (type: 'pcb' | 'cable') => {
+    const f = filterFor(type)
+    const tableCats = type === 'pcb' ? PCB_CATEGORIES : CABLE_CATEGORIES
+    const orderedCats = categoryOrder.filter(c => tableCats.includes(c))
+    // 필터를 걸 수 있는 칼럼 = 그 테이블의 모든 칼럼
+    const filterableFields = Object.keys(MIN_COLUMN_WIDTH[type])
+    // 브라우저 기본 select 외형(테두리/패딩/화살표/포커스링)을 완전히 제거 — 알약 안에서 텍스트처럼 보이게
+    const selectClass = 'cursor-pointer bg-transparent border-0 p-0 m-0 appearance-none text-[10px] text-gray-700 focus:outline-none focus:ring-0'
+    const selectStyle: React.CSSProperties = {
+      WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none',
+      border: 'none', padding: 0, margin: 0, background: 'none', outline: 'none',
+    }
+    // 네이티브 select는 '가장 긴 옵션' 폭으로 벌어지므로, 현재 선택된 라벨 실측 폭으로 고정한다
+    const fitSelect = (label: string, weight = 400): React.CSSProperties => ({
+      ...selectStyle,
+      width: `${Math.ceil(measureText(label, weight)) + 6}px`,
+    })
+
+    // 칼럼 변경 시 새 칼럼이 지원하는 조건으로 보정 (date_in이면 년/월 초기화)
+    const changeRuleField = (rule: FilterRule, field: string) => {
+      const ops = opsForField(field)
+      const op = ops.includes(rule.op) ? rule.op : ops[0]
+      updateRule(type, rule.id, {
+        field,
+        op,
+        value: op === 'contains' || op === 'not_contains' ? (rule.value ?? '') : undefined,
+        year: op === 'date_in' ? new Date().getFullYear() : null,
+        month: op === 'date_in' ? null : null,
+      })
+    }
+    const changeRuleOp = (rule: FilterRule, op: FilterOp) => {
+      updateRule(type, rule.id, {
+        op,
+        value: op === 'contains' || op === 'not_contains' ? (rule.value ?? '') : undefined,
+        year: op === 'date_in' ? (rule.year ?? new Date().getFullYear()) : null,
+        month: op === 'date_in' ? (rule.month ?? null) : null,
+      })
+    }
+
+    return (
+      <>
+        {/* Row A: 필터 규칙 (노션식 추가/수정/제거) */}
+        <div className="grid grid-cols-[75px_575px_auto] items-center gap-2 pt-2 border-t border-gray-100">
+          <span className="text-[10px] font-semibold text-gray-500 uppercase mr-1 flex items-center gap-1">
+            <Filter className="w-3.5 h-3.5" /> 필터:
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {f.rules.map(rule => {
+              const ops = opsForField(rule.field)
+              const dataYears = yearsFor(type, rule.field)
+              const years = rule.year != null && !dataYears.includes(rule.year)
+                ? [rule.year, ...dataYears].sort((a, b) => b - a)
+                : dataYears
+              return (
+                <div
+                  key={rule.id}
+                  className="flex items-center gap-1 border border-gray-200 bg-gray-50 rounded-full pl-2 pr-1 h-[22px]"
+                >
+                  {/* 칼럼 선택 */}
+                  <select
+                    value={rule.field}
+                    onChange={(e) => changeRuleField(rule, e.target.value)}
+                    style={fitSelect(getColumnTitle(rule.field, type), 600)}
+                    className={`${selectClass} font-semibold`}
+                  >
+                    {filterableFields.map(k => (
+                      <option key={k} value={k}>{getColumnTitle(k, type)}</option>
+                    ))}
+                  </select>
+                  <span className="text-gray-300">·</span>
+                  {/* 조건 선택 */}
+                  <select
+                    value={rule.op}
+                    onChange={(e) => changeRuleOp(rule, e.target.value as FilterOp)}
+                    style={fitSelect(OP_LABELS[rule.op])}
+                    className={selectClass}
+                  >
+                    {ops.map(op => (
+                      <option key={op} value={op}>{OP_LABELS[op]}</option>
+                    ))}
+                  </select>
+                  {/* 조건별 값 입력: 년/월 드롭다운 또는 텍스트 */}
+                  {rule.op === 'date_in' && (
+                    <>
+                      <select
+                        value={rule.year ?? ''}
+                        onChange={(e) => updateRule(type, rule.id, { year: e.target.value === '' ? null : Number(e.target.value) })}
+                        style={fitSelect(rule.year != null ? `${rule.year}년` : '전체년도', 700)}
+                        className={`${selectClass} text-[#1777CB] font-bold`}
+                      >
+                        <option value="">전체년도</option>
+                        {years.map(y => (
+                          <option key={y} value={y}>{y}년</option>
+                        ))}
+                      </select>
+                      <select
+                        value={rule.month ?? ''}
+                        onChange={(e) => updateRule(type, rule.id, { month: e.target.value === '' ? null : Number(e.target.value) })}
+                        style={fitSelect(rule.month != null ? `${rule.month}월` : '전체월', 700)}
+                        className={`${selectClass} text-[#1777CB] font-bold`}
+                      >
+                        <option value="">전체월</option>
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
+                          <option key={m} value={m}>{m}월</option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                  {(rule.op === 'contains' || rule.op === 'not_contains') && (
+                    <input
+                      type="text"
+                      value={rule.value ?? ''}
+                      onChange={(e) => updateRule(type, rule.id, { value: e.target.value })}
+                      placeholder="값"
+                      // 전역 input 기본 스타일(테두리 박스/포커스 아웃라인) 무력화 — 알약 안에서 밑줄 입력처럼 보이게
+                      className="w-20 h-[14px] bg-transparent text-[10px] text-gray-700 border-0 border-b border-gray-300 rounded-none focus:border-[#1777CB] focus:outline-none focus:ring-0 px-0.5 py-0"
+                      style={{ border: 'none', borderBottom: '1px solid #d1d5db', boxShadow: 'none', background: 'none', outline: 'none' }}
+                    />
+                  )}
+                  {/* 규칙 제거 */}
+                  <button
+                    type="button"
+                    onClick={() => removeRule(type, rule.id)}
+                    title="이 필터 제거"
+                    className="p-0.5 rounded-full text-gray-400 hover:text-red-500 hover:bg-gray-100 transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )
+            })}
+            {/* 규칙 추가 */}
+            <button
+              type="button"
+              onClick={() => addRule(type)}
+              className="badge-stats cursor-pointer border border-dashed border-gray-300 bg-white text-gray-500 hover:bg-gray-50 hover:text-[#1777CB] hover:border-[#1777CB] transition-all flex items-center gap-0.5"
+            >
+              <Plus className="w-3 h-3" /> 필터
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="h-4 w-px bg-gray-300 mx-1.5" />
+            <button
+              type="button"
+              onClick={handleSaveFilters}
+              className="p-1 hover:bg-gray-100 rounded-md text-gray-500 hover:text-blue-600 transition-colors"
+              title="필터 저장"
+            >
+              <Save className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleResetRules(type)}
+              className="p-1 hover:bg-gray-100 rounded-md text-gray-500 hover:text-red-600 transition-colors"
+              title="기본 필터로 초기화"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Row B: 제작구분 칩 */}
+        <div className="grid grid-cols-[75px_575px_auto] items-center gap-2 pt-2 border-t border-gray-100">
+          <span className="text-[10px] font-semibold text-gray-500 uppercase mr-1 flex items-center gap-1">
+            <Filter className="w-3.5 h-3.5" /> 제작구분:
+          </span>
+          <div
+            ref={chipRefFor(type)}
+            className="flex flex-wrap items-center gap-2 select-none"
+          >
+            {orderedCats.map((cat, i) => {
+              const isSelected = f.categories.includes(cat)
+              const showLeftBar = dropIndex?.type === type && dropIndex.index === i
+              const showRightBar = dropIndex?.type === type && dropIndex.index === orderedCats.length && i === orderedCats.length - 1
+              return (
+                <button
+                  key={cat}
+                  data-cat={cat}
+                  type="button"
+                  onPointerDown={(e) => handleChipPointerDown(e, cat, type)}
+                  title="드래그하여 그룹 순서 변경 · 클릭하여 표시 여부 전환"
+                  style={{
+                    touchAction: 'none',
+                    ...(showLeftBar ? { boxShadow: '-3px 0 0 0 #2563eb' }
+                      : showRightBar ? { boxShadow: '3px 0 0 0 #2563eb' }
+                      : {})
+                  }}
+                  className={`badge-stats cursor-grab active:cursor-grabbing border transition-all ${
+                    dragCat === cat ? 'opacity-40' : ''
+                  } ${
+                    isSelected
+                      ? 'bg-[#1777CB] border-[#1777CB] text-white font-bold shadow-sm hover:bg-[#1265A8]'
+                      : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {cat}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="h-4 w-px bg-gray-300 mx-1.5" />
+            <button
+              type="button"
+              onClick={handleSaveFilters}
+              className="p-1 hover:bg-gray-100 rounded-md text-gray-500 hover:text-blue-600 transition-colors"
+              title="필터 저장"
+            >
+              <Save className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleResetCategoryFilter(type)}
+              className="p-1 hover:bg-gray-100 rounded-md text-gray-500 hover:text-red-600 transition-colors"
+              title="초기화"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </>
+    )
+  }
 
 
   return (
@@ -2031,141 +2405,7 @@ export default function ProductionListMain() {
           </div>
         </div>
 
-        {/* Row 2: 요청월 필터 버튼 그룹 */}
-        {/* Row 2: 요청월 필터 버튼 그룹 */}
-        <div className="grid grid-cols-[75px_575px_auto] items-center gap-2 pt-2 border-t border-gray-100">
-          <span className="text-[10px] font-semibold text-gray-500 uppercase mr-1">
-            요청월:
-          </span>
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              style={{ 
-                width: '56px', 
-                textAlign: 'center',
-                WebkitAppearance: 'none',
-                MozAppearance: 'none',
-                appearance: 'none',
-                background: 'none'
-              }}
-              className="badge-stats cursor-pointer border bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100 transition-all justify-center text-center px-1"
-            >
-              {years.map(y => (
-                <option key={y} value={y}>
-                  {y}년
-                </option>
-              ))}
-            </select>
-
-            <button
-              type="button"
-              onClick={() => setSelectedMonth(null)}
-              className={`badge-stats cursor-pointer border transition-all ${
-                selectedMonth === null
-                  ? 'bg-[#1777CB] border-[#1777CB] text-white font-bold shadow-sm hover:bg-[#1265A8]'
-                  : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              전체
-            </button>
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setSelectedMonth(m)}
-                className={`badge-stats cursor-pointer border transition-all ${
-                  selectedMonth === m
-                    ? 'bg-[#1777CB] border-[#1777CB] text-white font-bold shadow-sm hover:bg-[#1265A8]'
-                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                {m}월
-              </button>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            <div className="h-4 w-px bg-gray-300 mx-1.5" />
-            <button
-              type="button"
-              onClick={handleSaveFilters}
-              className="p-1 hover:bg-gray-100 rounded-md text-gray-500 hover:text-blue-600 transition-colors"
-              title="필터 저장"
-            >
-              <Save className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={handleResetMonthFilter}
-              className="p-1 hover:bg-gray-100 rounded-md text-gray-500 hover:text-red-600 transition-colors"
-              title="초기화"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Row 3: 카테고리 필터 토글 버튼 그룹 */}
-        <div className="grid grid-cols-[75px_575px_auto] items-center gap-2 pt-2 border-t border-gray-100">
-          <span className="text-[10px] font-semibold text-gray-500 uppercase mr-1 flex items-center gap-1">
-            <Filter className="w-3.5 h-3.5" /> 제작구분:
-          </span>
-          <div
-            ref={chipContainerRef}
-            className="flex flex-wrap items-center gap-2 select-none"
-          >
-            {categoryOrder.map((cat, i) => {
-              const isSelected = selectedCategories.includes(cat)
-              const showLeftBar = dropIndex === i
-              const showRightBar = dropIndex === categoryOrder.length && i === categoryOrder.length - 1
-              return (
-                <button
-                  key={cat}
-                  data-cat={cat}
-                  type="button"
-                  onPointerDown={(e) => handleChipPointerDown(e, cat)}
-                  title="드래그하여 그룹 순서 변경 · 클릭하여 표시 여부 전환"
-                  style={{
-                    touchAction: 'none',
-                    ...(showLeftBar ? { boxShadow: '-3px 0 0 0 #2563eb' }
-                      : showRightBar ? { boxShadow: '3px 0 0 0 #2563eb' }
-                      : {})
-                  }}
-                  className={`badge-stats cursor-grab active:cursor-grabbing border transition-all ${
-                    dragCat === cat ? 'opacity-40' : ''
-                  } ${
-                    isSelected
-                      ? 'bg-[#1777CB] border-[#1777CB] text-white font-bold shadow-sm hover:bg-[#1265A8]'
-                      : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  {cat}
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            <div className="h-4 w-px bg-gray-300 mx-1.5" />
-            <button
-              type="button"
-              onClick={handleSaveFilters}
-              className="p-1 hover:bg-gray-100 rounded-md text-gray-500 hover:text-blue-600 transition-colors"
-              title="필터 저장"
-            >
-              <Save className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={handleResetCategoryFilter}
-              className="p-1 hover:bg-gray-100 rounded-md text-gray-500 hover:text-red-600 transition-colors"
-              title="초기화"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
+        {renderFilterToolbar('pcb')}
         </div>
         )}
       </div>
@@ -2290,7 +2530,7 @@ export default function ProductionListMain() {
                           type="text"
                           value={addingPcbRow.request_date ? formatDbDateToDisplay(addingPcbRow.request_date) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, request_date: e.target.value })}
-                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, request_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, selectedMonth)) || '' })}
+                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, request_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor('pcb'))) || '' })}
                           placeholder="예: 7/6"
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[10px] focus:outline-none"
                         />
@@ -2309,7 +2549,7 @@ export default function ProductionListMain() {
                           type="text"
                           value={addingPcbRow.delivery_deadline ? formatDateOrMemo(addingPcbRow.delivery_deadline) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_deadline: e.target.value })}
-                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_deadline: toDateOrMemo(e.target.value, selectedMonth) || '' })}
+                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_deadline: toDateOrMemo(e.target.value, defaultMonthFor('pcb')) || '' })}
                           placeholder="예: 7/6"
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
@@ -2418,7 +2658,7 @@ export default function ProductionListMain() {
                           type="text"
                           value={addingPcbRow.delivery_schedule ? formatDbDateToDisplay(addingPcbRow.delivery_schedule) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_schedule: e.target.value })}
-                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_schedule: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, selectedMonth)) || '' })}
+                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_schedule: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor('pcb'))) || '' })}
                           placeholder="예: 7/6"
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
@@ -2464,7 +2704,7 @@ export default function ProductionListMain() {
                           type="text"
                           value={addingPcbRow.assy_hanwha ? formatDateOrMemo(addingPcbRow.assy_hanwha) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, assy_hanwha: e.target.value })}
-                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, assy_hanwha: toDateOrMemo(e.target.value, selectedMonth) || '' })}
+                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, assy_hanwha: toDateOrMemo(e.target.value, defaultMonthFor('pcb')) || '' })}
                           placeholder="환화 (날짜/메모)"
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
@@ -2474,7 +2714,7 @@ export default function ProductionListMain() {
                           type="text"
                           value={addingPcbRow.assy_evertech ? formatDateOrMemo(addingPcbRow.assy_evertech) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, assy_evertech: e.target.value })}
-                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, assy_evertech: toDateOrMemo(e.target.value, selectedMonth) || '' })}
+                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, assy_evertech: toDateOrMemo(e.target.value, defaultMonthFor('pcb')) || '' })}
                           placeholder="에버텍 (날짜/메모)"
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
@@ -2484,7 +2724,7 @@ export default function ProductionListMain() {
                           type="text"
                           value={addingPcbRow.assy_requested_date ? formatDbDateToDisplay(addingPcbRow.assy_requested_date) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, assy_requested_date: e.target.value })}
-                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, assy_requested_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, selectedMonth)) || '' })}
+                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, assy_requested_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor('pcb'))) || '' })}
                           placeholder="예: 7/6"
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
@@ -2548,7 +2788,7 @@ export default function ProductionListMain() {
                           type="text"
                           value={addingPcbRow.delivery_date ? formatDbDateToDisplay(addingPcbRow.delivery_date) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_date: e.target.value })}
-                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, selectedMonth)) || '' })}
+                          onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor('pcb'))) || '' })}
                           placeholder="예: 7/6"
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
@@ -2955,6 +3195,13 @@ export default function ProductionListMain() {
               </button>
             </div>
 
+            {/* Cable 테이블 전용 필터 (PCB 툴바와 동일 형식, 접기 상태 공유) */}
+            {!filterCollapsed && (
+              <div className="px-3 pb-3 space-y-3 border-b border-gray-200">
+                {renderFilterToolbar('cable')}
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="text-left border-separate border-spacing-0 w-max [&_th]:border-l-0 [&_td]:border-l-0 [&_th]:border-t-0 [&_td]:border-t-0 production-compact-table table-auto">
                 <thead className="whitespace-nowrap">
@@ -3033,7 +3280,7 @@ export default function ProductionListMain() {
                           type="text"
                           value={addingCableRow.request_date ? formatDbDateToDisplay(addingCableRow.request_date) : ''}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, request_date: e.target.value })}
-                          onBlur={(e) => setAddingCableRow({ ...addingCableRow, request_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, selectedMonth)) || '' })}
+                          onBlur={(e) => setAddingCableRow({ ...addingCableRow, request_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor('cable'))) || '' })}
                           placeholder="예: 7/6"
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[10px] focus:outline-none"
                         />
@@ -3052,7 +3299,7 @@ export default function ProductionListMain() {
                           type="text"
                           value={addingCableRow.delivery_deadline ? formatDateOrMemo(addingCableRow.delivery_deadline) : ''}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, delivery_deadline: e.target.value })}
-                          onBlur={(e) => setAddingCableRow({ ...addingCableRow, delivery_deadline: toDateOrMemo(e.target.value, selectedMonth) || '' })}
+                          onBlur={(e) => setAddingCableRow({ ...addingCableRow, delivery_deadline: toDateOrMemo(e.target.value, defaultMonthFor('cable')) || '' })}
                           placeholder="예: 7/6"
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
@@ -3136,7 +3383,7 @@ export default function ProductionListMain() {
                           type="text"
                           value={addingCableRow.cable_requested_date ? formatDbDateToDisplay(addingCableRow.cable_requested_date) : ''}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, cable_requested_date: e.target.value })}
-                          onBlur={(e) => setAddingCableRow({ ...addingCableRow, cable_requested_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, selectedMonth)) || '' })}
+                          onBlur={(e) => setAddingCableRow({ ...addingCableRow, cable_requested_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor('cable'))) || '' })}
                           placeholder="예: 7/6"
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
@@ -3146,7 +3393,7 @@ export default function ProductionListMain() {
                           type="text"
                           value={addingCableRow.cable_actual_date ? formatDbDateToDisplay(addingCableRow.cable_actual_date) : ''}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, cable_actual_date: e.target.value })}
-                          onBlur={(e) => setAddingCableRow({ ...addingCableRow, cable_actual_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, selectedMonth)) || '' })}
+                          onBlur={(e) => setAddingCableRow({ ...addingCableRow, cable_actual_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor('cable'))) || '' })}
                           placeholder="예: 7/6"
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
@@ -3482,7 +3729,7 @@ export default function ProductionListMain() {
                     type="text"
                     value={formFields.request_date ? formatDbDateToDisplay(formFields.request_date) : ''}
                     onChange={(e) => setFormFields({ ...formFields, request_date: e.target.value })}
-                    onBlur={(e) => setFormFields({ ...formFields, request_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, selectedMonth)) || '' })}
+                    onBlur={(e) => setFormFields({ ...formFields, request_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor(modalType))) || '' })}
                     placeholder="예: 7/6"
                     className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
                     required
@@ -3508,7 +3755,7 @@ export default function ProductionListMain() {
                     type="text"
                     value={formFields.delivery_deadline ? formatDateOrMemo(formFields.delivery_deadline) : ''}
                     onChange={(e) => setFormFields({ ...formFields, delivery_deadline: e.target.value })}
-                    onBlur={(e) => setFormFields({ ...formFields, delivery_deadline: toDateOrMemo(e.target.value, selectedMonth) || '' })}
+                    onBlur={(e) => setFormFields({ ...formFields, delivery_deadline: toDateOrMemo(e.target.value, defaultMonthFor(modalType)) || '' })}
                     placeholder="예: 7/6"
                     className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
@@ -3627,7 +3874,7 @@ export default function ProductionListMain() {
                         type="text"
                         value={formFields.delivery_schedule ? formatDbDateToDisplay(formFields.delivery_schedule) : ''}
                         onChange={(e) => setFormFields({ ...formFields, delivery_schedule: e.target.value })}
-                        onBlur={(e) => setFormFields({ ...formFields, delivery_schedule: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, selectedMonth)) || '' })}
+                        onBlur={(e) => setFormFields({ ...formFields, delivery_schedule: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor(modalType))) || '' })}
                         placeholder="예: 7/6"
                         className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
