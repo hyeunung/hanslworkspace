@@ -1244,6 +1244,21 @@ input[type="number"] {
 
 /* 공문 인쇄는 새 창에서 처리 (printOfficialDoc) — 기존 페이지 컨텍스트의 fixed/relative 부모 충돌 회피 */
 
+/* 제작현황 행 가상화: 테이블이 세로 스크롤 컨테이너 안에 있으므로 헤더 2행을 상단에 고정.
+   z-index 15 = 본문 좌측 고정 셀(z-10/20)보다 위. 좌측 고정 '코너' 헤더는 인라인 zIndex 40으로 최상위. */
+.production-compact-table thead tr:first-child th {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  background-color: #f9fafb; /* bg-gray-50 — sticky로 뜬 뒤 본문 비침 방지 */
+}
+.production-compact-table thead tr:nth-child(2) th {
+  position: sticky;
+  top: 15px; /* 첫 헤더행(rowSpan=1 th) 실측 높이 */
+  z-index: 15;
+  background-color: #f9fafb;
+}
+
 /* 제작현황 테이블의 셀 초밀착 컴팩트 높낮이 및 중앙정렬 스타일 */
 .production-compact-table th,
 .production-compact-table td,
