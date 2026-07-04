@@ -157,23 +157,27 @@ const parseAndFormatInputDate = (val: string, defaultMonth?: number | null): str
   const clean = val.trim();
   if (!clean) return '';
   if (clean.includes('월') && clean.includes('일')) {
+    // 'YYYY년 MM월 DD일'처럼 연도가 있으면 연도를 보존하여 ISO로 승격
+    const ky = clean.match(/(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+    if (ky) return `${ky[1]}-${ky[2].padStart(2, '0')}-${ky[3].padStart(2, '0')}`;
     return clean;
   }
   const numbers = clean.match(/\d+/g);
   if (!numbers || numbers.length === 0) return val;
 
+  // 입력에 4자리 연도가 있으면 그 연도를 보존하여 ISO(YYYY-MM-DD)로 반환.
+  // (formatDisplayDateToDb가 ISO 형식은 그대로 통과시키므로 연도가 유지된다)
+  if (numbers.length >= 3 && numbers[0].length === 4) {
+    const yStr = numbers[0];
+    const mm = String(Math.min(12, Math.max(1, parseInt(numbers[1], 10)))).padStart(2, '0');
+    const dd = String(Math.min(31, Math.max(1, parseInt(numbers[2], 10)))).padStart(2, '0');
+    return `${yStr}-${mm}-${dd}`;
+  }
+
   let month = defaultMonth || (new Date().getMonth() + 1);
   let day = 1;
 
-  if (numbers.length >= 3) {
-    if (numbers[0].length === 4) {
-      month = parseInt(numbers[1], 10);
-      day = parseInt(numbers[2], 10);
-    } else {
-      month = parseInt(numbers[0], 10);
-      day = parseInt(numbers[1], 10);
-    }
-  } else if (numbers.length === 2) {
+  if (numbers.length >= 2) {
     month = parseInt(numbers[0], 10);
     day = parseInt(numbers[1], 10);
   } else if (numbers.length === 1) {
@@ -217,12 +221,33 @@ const formatDateOrMemo = (value: string | null | undefined): string => {
   return value;
 };
 
-// 완제품 입고: 오늘(한국시간) 날짜로 'MM월 DD일 입고' 라벨 생성
+// 완제품 입고: 오늘(한국시간) 날짜로 'MM월 DD일' 라벨 생성 (정식 표시형식, '입고' 텍스트 없음)
 const buildStockInLabel = (): string => {
   const kst = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
   const mm = String(kst.getMonth() + 1).padStart(2, '0');
   const dd = String(kst.getDate()).padStart(2, '0');
-  return `${mm}월 ${dd}일 입고`;
+  return `${mm}월 ${dd}일`;
+};
+
+// 완제품 입고 표시 정규화: 경로별로 섞인 값을 'MM월 DD일'로 통일해 보여준다.
+// - ISO(YYYY-MM-DD) → 'MM월 DD일' (엑셀 임포트분)
+// - 'MM월 DD일 입고' → 'MM월 DD일' (버튼 스탬프 구형: '입고' 제거)
+// - 그 외(완료/납품/분할입고 메모 등)는 의미가 있어 원문 유지
+const formatStockInDisplay = (value: string | null | undefined): string => {
+  if (!value) return '-';
+  const s = String(value).trim();
+  if (!s || s === '-') return '-';
+  // ISO(YYYY-MM-DD) → MM월 DD일 (엑셀 임포트분)
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${iso[2]}월 ${iso[3]}일`;
+  // 'MM월 DD일' + 선택적 상태어(입고/완료/납품) → MM월 DD일
+  const md = s.match(/^(\d{1,2})\s*월\s*(\d{1,2})\s*일(?:\s*(?:입고|완료|납품))?$/);
+  if (md) return `${md[1].padStart(2, '0')}월 ${md[2].padStart(2, '0')}일`;
+  // 'M/D' 또는 'M/D 입고' → MM월 DD일
+  const slash = s.match(/^(\d{1,2})\/(\d{1,2})(?:\s*입고)?$/);
+  if (slash) return `${slash[1].padStart(2, '0')}월 ${slash[2].padStart(2, '0')}일`;
+  // 그 외(분할입고 수량/재고/회수 메모, 오타 등)는 의미가 있어 원문 유지
+  return s;
 };
 
 // HANSL 담당자는 이름만 표시/저장한다. datalist 입력은 자유 텍스트라 "이종근사원"처럼
@@ -1104,7 +1129,15 @@ export default function ProductionListMain() {
     if (['request_date', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date'].includes(field)) {
       if (val) {
         const parsed = parseAndFormatInputDate(val, selectedMonth)
-        const dbDate = formatDisplayDateToDb(parsed)
+        let dbDate = formatDisplayDateToDb(parsed)
+        // 입력에 명시적 연도(4자리)가 없으면 formatDisplayDateToDb가 '올해'를 찍는다.
+        // 이 경우 기존 값의 연도를 보존하여 연도가 임의로 바뀌는 것을 막는다.
+        if (dbDate && !/\d{4}/.test(val)) {
+          const list = type === 'pcb' ? filteredPcbs : filteredCables
+          const prev = (list.find(i => i.id === id) as any)?.[field]
+          const prevYear = typeof prev === 'string' ? prev.match(/^(\d{4})-/)?.[1] : null
+          if (prevYear) dbDate = `${prevYear}${dbDate.slice(4)}`
+        }
         valueToSave = dbDate || null
       } else {
         valueToSave = null
@@ -1308,7 +1341,7 @@ export default function ProductionListMain() {
   const getFieldFontWeight = (field: string, hasValue: boolean): number => {
     if (field === 'reference' || field === 'sales_order_number') return 600
     if (field === 'board_name') return 500
-    const isDateField = field.endsWith('_date') || field.endsWith('_deadline') || field.endsWith('_schedule')
+    const isDateField = field.endsWith('_date') || field.endsWith('_deadline') || field.endsWith('_schedule') || field === 'final_product_stock'
     if (isDateField && hasValue) return 600 // 날짜값 있으면 font-semibold로 표시됨
     return 400
   }
@@ -1689,7 +1722,7 @@ export default function ProductionListMain() {
     }
 
     let computedClassName = cellClassName
-    const isDateField = field.endsWith('_date') || field.endsWith('_deadline') || field.endsWith('_schedule');
+    const isDateField = field.endsWith('_date') || field.endsWith('_deadline') || field.endsWith('_schedule') || field === 'final_product_stock';
     const hasValue = item[field] !== null && item[field] !== undefined && item[field] !== '';
     if (isDateField && hasValue) {
       computedClassName += ' font-semibold text-gray-900'
@@ -2820,7 +2853,7 @@ export default function ProductionListMain() {
                           'pcb',
                           'final_product_stock',
                           item,
-                          item.final_product_stock || '-',
+                          formatStockInDisplay(item.final_product_stock),
                           'px-2 py-1.5 border border-gray-200'
                         )}
                         {renderEditableCell(
