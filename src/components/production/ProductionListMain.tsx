@@ -538,6 +538,33 @@ function ArtworkStatusEditor({
   )
 }
 
+// ─── 행 렌더 격리 유틸 ──────────────────────────────────────────────
+// 항상 같은 함수 객체를 유지하면서 내부는 "최신 렌더"의 로직을 실행한다.
+// MemoRow가 렌더를 스킵한 행의 이벤트 핸들러(이전 렌더의 element에 붙어 있음)가
+// 오래된 상태(stale closure)를 읽는 것을 방지하는 장치.
+function useStableHandler<T extends (...args: any[]) => any>(fn: T): T {
+  const ref = useRef(fn)
+  ref.current = fn
+  const stableRef = useRef(((...args: any[]) => ref.current(...args)) as T)
+  return stableRef.current
+}
+
+// 행 렌더 격리: 자신의 데이터(item)나 자신과 관련된 UI 상태 요약(sig), 칼럼폭(widths)이
+// 바뀔 때만 다시 그린다. renderRow 함수 프롭은 비교에서 의도적으로 무시 — 행 내부의
+// 커스텀 이벤트 핸들러가 모두 useStableHandler로 안정화되어 있어 안전하다.
+type MemoRowProps = {
+  item: any
+  index: number
+  sig: string
+  widths: Record<string, number>
+  renderRow: (item: any, index: number) => React.ReactElement
+}
+const MemoRow = React.memo(
+  ({ item, index, renderRow }: MemoRowProps) => renderRow(item, index),
+  (a, b) => a.item === b.item && a.index === b.index && a.sig === b.sig && a.widths === b.widths
+)
+MemoRow.displayName = 'MemoRow'
+
 export default function ProductionListMain() {
   const [pcbs, setPcbs] = useState<ProductionPcb[]>([])
   const [cables, setCables] = useState<ProductionCable[]>([])
@@ -692,8 +719,8 @@ export default function ProductionListMain() {
   // 컬럼 좌우 여백 (각각 5px, 총 10px) — globals.css의 .production-compact-table th/td 패딩과 반드시 동일하게 유지
   const COLUMN_PADDING_SIDE = 5
 
-  // 웹폰트(Pretendard) 로드 완료 후 한 번 재렌더 → 캔버스 실측 폭을 실제 렌더 폰트와 일치시킴
-  const [, setFontsReady] = useState(false)
+  // 웹폰트(Pretendard) 로드 완료 후 한 번 재렌더 → 캔버스 실측 폭을 실제 렌더 폰트와 일치시킴 (칼럼폭 캐시 재계산 트리거)
+  const [fontsLoaded, setFontsReady] = useState(false)
   useEffect(() => {
     if (typeof document !== 'undefined' && (document as any).fonts?.ready) {
       (document as any).fonts.ready.then(() => setFontsReady(true))
@@ -787,7 +814,7 @@ export default function ProductionListMain() {
     return list.findIndex(item => item.id === id)
   }
 
-  const handleCellMouseDown = (e: React.MouseEvent, id: string, field: string, type: 'pcb' | 'cable') => {
+  const handleCellMouseDown = useStableHandler((e: React.MouseEvent, id: string, field: string, type: 'pcb' | 'cable') => {
     if (e.button !== 0) return // 마우스 왼쪽 클릭만 지원
     // 실제 드래그로 판명되기 전까지는 ref에만 기록한다.
     // 여기서 곧바로 setSelectedCells를 호출하면 뒤이은 click 핸들러가 "이미 선택된 셀"로 오판해
@@ -795,9 +822,9 @@ export default function ProductionListMain() {
     dragStartCellRef.current = { id, field, type }
     if (editingCell) setEditingCell(null)
     if (floatingMenuPos) setFloatingMenuPos(null)
-  }
+  })
 
-  const handleCellMouseEnter = (e: React.MouseEvent, id: string, field: string, type: 'pcb' | 'cable') => {
+  const handleCellMouseEnter = useStableHandler((e: React.MouseEvent, id: string, field: string, type: 'pcb' | 'cable') => {
     const dragStartCell = dragStartCellRef.current
     if (!dragStartCell || dragStartCell.type !== type) return
     if ((e.buttons & 1) === 0) return // 왼쪽 버튼이 눌린 상태에서 이동할 때만 드래그로 인정
@@ -827,7 +854,7 @@ export default function ProductionListMain() {
     }
     
     setSelectedCells(newSelection)
-  }
+  })
 
   // 드래그 종료 마우스 리스너 및 아웃사이드 클릭 해제 처리
   useEffect(() => {
@@ -1226,7 +1253,7 @@ export default function ProductionListMain() {
   }
 
   // 인라인 셀 수정 클릭 핸들러: 첫 클릭은 셀 선택만, 이미 선택된 셀을 한 번 더 클릭하면 편집 모드로 진입
-  const handleCellClick = (id: string, type: 'pcb' | 'cable', field: string, currentValue: any) => {
+  const handleCellClick = useStableHandler((id: string, type: 'pcb' | 'cable', field: string, currentValue: any) => {
     if (selectedCells.length > 1) return
     const cellKey = `${id}::${field}`
     const isAlreadySelected = selectedCells.length === 1 && selectedCells[0] === cellKey
@@ -1236,10 +1263,10 @@ export default function ProductionListMain() {
     } else {
       setSelectedCells([cellKey])
     }
-  }
+  })
 
   // 인라인 셀 수정 저장 핸들러
-  const handleCellSave = async (currentCell: { id: string, type: 'pcb' | 'cable', field: string }, val: string) => {
+  const handleCellSave = useStableHandler(async (currentCell: { id: string, type: 'pcb' | 'cable', field: string }, val: string) => {
     const { id, type, field } = currentCell
     // 날짜 입력의 기본 월 = 해당 테이블 필터에 월이 지정돼 있으면 그 월
     const defaultMonth = defaultMonthFor(type)
@@ -1284,10 +1311,10 @@ export default function ProductionListMain() {
       console.error(err)
       toast.error('수정에 실패했습니다.')
     }
-  }
+  })
 
   // 수량 단위(ea/set) 변경 핸들러
-  const handleUpdateQuantityUnit = async (id: string, type: 'pcb' | 'cable', unit: string) => {
+  const handleUpdateQuantityUnit = useStableHandler(async (id: string, type: 'pcb' | 'cable', unit: string) => {
     try {
       if (type === 'pcb') {
         await productionService.updateProductionPcb(id, { quantity_unit: unit })
@@ -1299,14 +1326,14 @@ export default function ProductionListMain() {
       console.error(err)
       toast.error('단위 변경에 실패했습니다.')
     }
-  }
+  })
 
   // 완제품 입고: '입고대기' 버튼 클릭 → 오늘(한국시간) 날짜로 'MM월 DD일 입고' 기록
-  const handleStockInPress = (id: string, type: 'pcb' | 'cable', field: string = 'final_product_stock') => {
+  const handleStockInPress = useStableHandler((id: string, type: 'pcb' | 'cable', field: string = 'final_product_stock') => {
     // cable_actual_date는 날짜(ISO) 컬럼이라 오늘 날짜를 YYYY-MM-DD로, final_product_stock은 'MM월 DD일' 라벨로 스탬프
     const value = field === 'cable_actual_date' ? getKstTodayISO() : buildStockInLabel()
     handleCellSave({ id, type, field }, value)
-  }
+  })
 
   // 색상/스타일 문자열 파싱 (예: 'yellow::strike::bold::redtext' -> { color, strike, bold, redText })
   // 각 토큰은 '::'로 구분되며 배경색 / 취소선 / 볼드 / 빨간글자를 중복 지정할 수 있음 (하위호환 유지)
@@ -1336,7 +1363,7 @@ export default function ProductionListMain() {
   };
 
   // 행 배경색 업데이트 핸들러
-  const handleUpdateRowColor = async (type: 'pcb' | 'cable', id: string, colorAction: string | null, isToggleStrike = false) => {
+  const handleUpdateRowColor = useStableHandler(async (type: 'pcb' | 'cable', id: string, colorAction: string | null, isToggleStrike = false) => {
     try {
       const supabase = createClient()
       const table = type === 'pcb' ? 'production_pcbs' : 'production_cables'
@@ -1369,10 +1396,10 @@ export default function ProductionListMain() {
       console.error(err)
       toast.error('상태 변경에 실패했습니다.')
     }
-  }
+  })
 
   // 개별 셀 배경색 업데이트 핸들러
-  const handleUpdateCellColor = async (type: 'pcb' | 'cable', id: string, field: string, colorAction: string | null, currentCellColors: any, toggle: 'strike' | 'bold' | 'redtext' | null = null) => {
+  const handleUpdateCellColor = useStableHandler(async (type: 'pcb' | 'cable', id: string, field: string, colorAction: string | null, currentCellColors: any, toggle: 'strike' | 'bold' | 'redtext' | null = null) => {
     try {
       const supabase = createClient()
       const table = type === 'pcb' ? 'production_pcbs' : 'production_cables'
@@ -1424,7 +1451,7 @@ export default function ProductionListMain() {
       console.error(err)
       toast.error('상태 변경에 실패했습니다.')
     }
-  }
+  })
 
   // 셀 색상에 따른 배경색 클래스 매퍼
   const getCellBgClass = (color: string | null | undefined) => {
@@ -1480,6 +1507,52 @@ export default function ProductionListMain() {
     const r = filterFor(type).rules.find(r => r.op === 'date_in' && r.month != null)
     return r?.month ?? null
   }
+
+  // ─── 행 가상화(windowing): 스크롤 위치 기준 보이는 행만 렌더 ───────────
+  // Excel/스프레드시트와 같은 원리 — 행이 얼마나 쌓여도 렌더 비용은 "화면에 보이는 분량"으로 고정.
+  // 각 테이블을 세로 스크롤 컨테이너로 감싸고, tbody에 스페이서 <tr>로 전체 높이를 유지한다.
+  const VIRTUAL_ROW_H = 27      // 행 높이 기본값(px) — 마운트 후 실제 행으로 실측 보정
+  const VIRTUAL_BUFFER = 12     // 화면 밖 위/아래로 미리 렌더할 행 수
+  const pcbScrollRef = useRef<HTMLDivElement>(null)
+  const cableScrollRef = useRef<HTMLDivElement>(null)
+  const [pcbWin, setPcbWin] = useState({ start: 0, end: 80 })
+  const [cableWin, setCableWin] = useState({ start: 0, end: 80 })
+  const rowHeightRef = useRef<{ pcb: number; cable: number }>({ pcb: VIRTUAL_ROW_H, cable: VIRTUAL_ROW_H })
+
+  const recalcWindow = (type: 'pcb' | 'cable') => {
+    const el = (type === 'pcb' ? pcbScrollRef : cableScrollRef).current
+    if (!el) return
+    const rowH = rowHeightRef.current[type]
+    const start = Math.max(0, Math.floor(el.scrollTop / rowH) - VIRTUAL_BUFFER)
+    const count = Math.ceil(el.clientHeight / rowH) + VIRTUAL_BUFFER * 2
+    const setter = type === 'pcb' ? setPcbWin : setCableWin
+    setter(w => (w.start === start && w.end === start + count) ? w : { start, end: start + count })
+  }
+  // 스크롤마다 직접 재계산 — setState는 값이 같으면 재렌더를 건너뛰고(레퍼런스 유지),
+  // rAF 스로틀은 백그라운드 탭에서 콜백이 보류되는 함정이 있어 쓰지 않는다.
+  const handleVirtualScroll = (type: 'pcb' | 'cable') => {
+    recalcWindow(type)
+  }
+  // 데이터 변경 시 윈도우 재계산 + 실제 행 높이 실측(스페이서 정확도)
+  useEffect(() => {
+    for (const type of ['pcb', 'cable'] as const) {
+      const el = (type === 'pcb' ? pcbScrollRef : cableScrollRef).current
+      const tr = el?.querySelector('tbody tr[data-vrow]') as HTMLElement | null
+      if (tr && tr.offsetHeight > 10) rowHeightRef.current[type] = tr.offsetHeight
+      recalcWindow(type)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredPcbs.length, filteredCables.length])
+
+  // 렌더용 슬라이스/스페이서 (스페이서는 tbody 안 <tr>로 전체 스크롤 높이 유지)
+  const pcbWinEnd = Math.min(pcbWin.end, filteredPcbs.length)
+  const pcbVisibleRows = filteredPcbs.slice(pcbWin.start, pcbWinEnd)
+  const pcbTopPad = Math.round(pcbWin.start * rowHeightRef.current.pcb)
+  const pcbBottomPad = Math.round((filteredPcbs.length - pcbWinEnd) * rowHeightRef.current.pcb)
+  const cableWinEnd = Math.min(cableWin.end, filteredCables.length)
+  const cableVisibleRows = filteredCables.slice(cableWin.start, cableWinEnd)
+  const cableTopPad = Math.round(cableWin.start * rowHeightRef.current.cable)
+  const cableBottomPad = Math.round((filteredCables.length - cableWinEnd) * rowHeightRef.current.cable)
 
   // 셀에 표시되는 폰트 굵기: 실제 렌더링 클래스(font-semibold/medium)와 동일하게 맞춰야 실측이 정확함
   const getFieldFontWeight = (field: string, hasValue: boolean): number => {
@@ -1557,7 +1630,7 @@ export default function ProductionListMain() {
   }
 
   // 칼럼 너비 = Max(헤더 실측, 가장 긴 본문 실측) + 좌우 여백(5px씩) [+ 비고정 칼럼은 우측 보더 1px]
-  const getColumnWidth = (type: 'pcb' | 'cable', field: string, defaultWidth: number): number => {
+  const computeColumnWidth = (type: 'pcb' | 'cable', field: string): number => {
     // 1. 헤더 실측 (table-header-text: 600 굵기, letter-spacing 0.02em)
     const title = getColumnTitle(field, type)
     const titleWidth = measureText(title, 600, HEADER_LETTER_SPACING)
@@ -1588,6 +1661,26 @@ export default function ProductionListMain() {
     // 표에 데이터가 있으면 각 칼럼을 헤더/실제 데이터 폭에 맞춰 핏하게 축소 (빈 칼럼은 헤더 크기로 줄어듦).
     const floor = list.length === 0 ? (MIN_COLUMN_WIDTH[type][field] ?? 0) : 0
     return Math.ceil(Math.max(contentWidth, floor))
+  }
+
+  // 칼럼폭 캐시: 렌더마다 (호출 지점 수 × 전체 행) canvas 실측이 돌던 것을
+  // 데이터가 바뀔 때 한 번만 전 칼럼 일괄 계산하도록 메모화 (전체 보기 1,000행+ 성능의 핵심)
+  const pcbColumnWidths = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const f of Object.keys(MIN_COLUMN_WIDTH.pcb)) out[f] = computeColumnWidth('pcb', f)
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredPcbs, addingPcbRow, fontsLoaded])
+  const cableColumnWidths = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const f of Object.keys(MIN_COLUMN_WIDTH.cable)) out[f] = computeColumnWidth('cable', f)
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredCables, addingCableRow, fontsLoaded])
+
+  const getColumnWidth = (type: 'pcb' | 'cable', field: string, _defaultWidth: number): number => {
+    const cached = (type === 'pcb' ? pcbColumnWidths : cableColumnWidths)[field]
+    return cached !== undefined ? cached : computeColumnWidth(type, field)
   }
 
   const getHeaderStyle = (type: 'pcb' | 'cable', field: string, defaultWidth: number): React.CSSProperties => {
@@ -2045,9 +2138,9 @@ export default function ProductionListMain() {
   }
 
   // 삭제 처리
-  const handleDeleteClick = (type: 'pcb' | 'cable', id: string) => {
+  const handleDeleteClick = useStableHandler((type: 'pcb' | 'cable', id: string) => {
     setDeleteConfirm({ type, id })
-  }
+  })
 
   const handleExecuteDelete = async () => {
     if (!deleteConfirm) return
@@ -2140,6 +2233,566 @@ export default function ProductionListMain() {
   }
 
   // 테이블 표시 조건
+  // 행 하나의 렌더에 영향을 주는 '그 행 관련' UI 상태 요약 — 이 값이 바뀐 행만 다시 그린다
+  const rowSig = (type: 'pcb' | 'cable', item: any): string => {
+    const sel = selectedCells.length ? selectedCells.filter(k => k.startsWith(item.id + '::')).join(',') : ''
+    const editing = editingCell && editingCell.type === type && editingCell.id === item.id
+      ? `E:${editingCell.field}:${editValue}` : ''
+    const picker = activeColorPicker && activeColorPicker.type === type && activeColorPicker.id === item.id ? 'P' : ''
+    return sel + '|' + editing + '|' + picker
+  }
+
+  // PCB 행 렌더 본문 — MemoRow가 (item, index)로 호출. 내부 커스텀 핸들러는 모두 useStableHandler로 안정화됨.
+  const renderPcbRow = (item: any, index: number) => {
+                      const { color: rColor, strike: rStrike } = parseColorState(item.row_color)
+                      const rowBgClass = rColor === 'red' ? 'bg-red-200' :
+                                         rColor === 'green' ? 'bg-emerald-100' :
+                                         rColor === 'yellow' ? 'bg-amber-100' :
+                                         rColor === 'blue' ? 'bg-blue-100' :
+                                         'hover:bg-gray-50/50'
+
+                      return (
+                        <tr key={item.id} data-vrow className={`group transition-colors ${rowBgClass}`}>
+                          <td 
+                            className={`px-2 py-1.5 text-center text-gray-400 sticky left-0 transition-colors ${activeColorPicker?.id === item.id && activeColorPicker?.type === 'pcb' ? 'z-20' : 'z-10'} w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer relative color-picker-trigger ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              e.nativeEvent.stopPropagation()
+                              setActiveColorPicker(activeColorPicker?.id === item.id && activeColorPicker?.type === 'pcb' ? null : { id: item.id, type: 'pcb' })
+                            }}
+                          >
+                            {index + 1}
+                            {activeColorPicker?.id === item.id && activeColorPicker?.type === 'pcb' && (
+                              <div className="absolute left-[38px] top-1/2 -translate-y-1/2 bg-white border border-gray-200 rounded-md shadow-lg p-1.5 z-50 flex items-center gap-1.5 color-picker-popover">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, 'yellow'); }}
+                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors text-[10px] text-amber-700 font-medium shrink-0"
+                                  title="신규"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                  <span>신규</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, 'blue'); }}
+                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors text-[10px] text-blue-700 font-medium shrink-0"
+                                  title="재발주"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                  <span>재발주</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, 'red'); }}
+                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 border border-red-200 hover:bg-red-100 transition-colors text-[10px] text-red-700 font-medium shrink-0"
+                                  title="취소"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                  <span>취소</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, null, true); }}
+                                  className="flex items-center justify-center px-2 py-0.5 rounded-full border border-gray-300 hover:bg-gray-100 transition-colors text-[10px] text-gray-600 font-bold shrink-0 bg-white"
+                                  title="취소선"
+                                >
+                                  -
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, null); }}
+                                  className="text-[10px] text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 shrink-0 font-medium transition-colors"
+                                  title="색상 초기화"
+                                >
+                                  초기화
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                          <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`} style={{ width: `${salesOrderPcbWidth}px`, minWidth: `${salesOrderPcbWidth}px`, maxWidth: `${salesOrderPcbWidth}px` }}>{item.sales_order_number}</td>
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'production_category',
+                          item,
+                          item.production_category,
+                          'px-2 py-1.5 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]',
+                          'select',
+                          ['LG_PCB', 'LG_Socket Board', 'PCB']
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'board_name',
+                          item,
+                          item.board_name,
+                          'px-2 py-1.5 font-medium text-gray-900 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] align-left'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'reference',
+                          item,
+                          item.reference || '-',
+                          'px-2 py-1.5 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-red-500 font-semibold align-left'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'request_date',
+                          item,
+                          formatDbDateToDisplay(item.request_date),
+                          'px-2 py-1.5 text-gray-500 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'estimate_no',
+                          item,
+                          item.estimate_no || '-',
+                          'px-2 py-1.5 text-gray-500 border-y border-r border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'delivery_deadline',
+                          item,
+                          formatDateOrMemo(item.delivery_deadline),
+                          'px-2 py-1.5 text-gray-500 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'client_name',
+                          item,
+                          item.client_name || '-',
+                          'px-2 py-1.5 text-gray-500 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'client_manager',
+                          item,
+                          item.client_manager || '-',
+                          'px-2 py-1.5 text-gray-500 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'hansl_manager',
+                          item,
+                          item.hansl_manager || '-',
+                          'px-2 py-1.5 text-gray-500 border border-gray-200'
+                        )}
+                        <td className="px-2 py-1.5 text-gray-500 border border-gray-200">{item.creator || '-'}</td>
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'revision_count',
+                          item,
+                          item.revision_count,
+                          'px-2 py-1.5 text-gray-500 border border-gray-200',
+                          'number'
+                        )}
+                        {renderQuantityCell(item.id, 'pcb', item)}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'artwork_status',
+                          item,
+                          formatArtworkDisplay(item.artwork_status) || '-',
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'metal_mask',
+                          item,
+                          item.metal_mask || '-',
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'changes_memo',
+                          item,
+                          item.changes_memo || '-',
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'stock_count',
+                          item,
+                          item.stock_count,
+                          'px-2 py-1.5 text-center border border-gray-200',
+                          'number'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'pcb_vendor',
+                          item,
+                          item.pcb_vendor || '-',
+                          'px-2 py-1.5 text-gray-500 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'delivery_schedule',
+                          item,
+                          formatDbDateToDisplay(item.delivery_schedule),
+                          'px-2 py-1.5 text-gray-500 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'pcb_lead_time',
+                          item,
+                          item.pcb_lead_time || '-',
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'received_quantity',
+                          item,
+                          item.received_quantity || 0,
+                          'px-2 py-1.5 text-center border border-gray-200',
+                          'number'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'received_destination',
+                          item,
+                          item.received_destination || '-',
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'parts_organization',
+                          item,
+                          item.parts_organization || '-',
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'assy_hanwha',
+                          item,
+                          formatDateOrMemo(item.assy_hanwha),
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'assy_evertech',
+                          item,
+                          formatDateOrMemo(item.assy_evertech),
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'assy_requested_date',
+                          item,
+                          formatDbDateToDisplay(item.assy_requested_date),
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'final_product_stock',
+                          item,
+                          formatStockInDisplay(item.final_product_stock),
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'qa_passed',
+                          item,
+                          item.qa_passed || '-',
+                          'px-2 py-1.5 text-center border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'qa_failed',
+                          item,
+                          item.qa_failed || '-',
+                          'px-2 py-1.5 text-center border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'qa_notes',
+                          item,
+                          item.qa_notes || '-',
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'design_review',
+                          item,
+                          item.design_review || '-',
+                          'px-2 py-1.5 text-center border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'delivery_quantity',
+                          item,
+                          item.delivery_quantity || 0,
+                          'px-2 py-1.5 text-center border border-gray-200',
+                          'number'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'delivery_date',
+                          item,
+                          formatDbDateToDisplay(item.delivery_date),
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'delivery_destination',
+                          item,
+                          item.delivery_destination || '-',
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        <td className="px-2 py-1 border border-gray-200">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteClick('pcb', item.id)
+                            }}
+                            className="text-red-500 hover:text-red-700 transition-colors font-medium"
+                          >
+                            삭제
+                          </button>
+                        </td>
+                      </tr>
+                    )
+  }
+
+  // CABLE 행 렌더 본문 — MemoRow가 (item, index)로 호출. 내부 커스텀 핸들러는 모두 useStableHandler로 안정화됨.
+  const renderCableRow = (item: any, index: number) => {
+                      const { color: rColor, strike: rStrike } = parseColorState(item.row_color)
+                      const rowBgClass = rColor === 'red' ? 'bg-red-200' :
+                                         rColor === 'green' ? 'bg-emerald-100' :
+                                         rColor === 'yellow' ? 'bg-amber-100' :
+                                         rColor === 'blue' ? 'bg-blue-100' :
+                                         'hover:bg-gray-50/50'
+
+                      return (
+                        <tr key={item.id} data-vrow className={`group transition-colors ${rowBgClass}`}>
+                          <td 
+                            className={`px-2 py-1.5 text-center text-gray-400 sticky left-0 transition-colors ${activeColorPicker?.id === item.id && activeColorPicker?.type === 'cable' ? 'z-20' : 'z-10'} w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer relative color-picker-trigger ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              e.nativeEvent.stopPropagation()
+                              setActiveColorPicker(activeColorPicker?.id === item.id && activeColorPicker?.type === 'cable' ? null : { id: item.id, type: 'cable' })
+                            }}
+                          >
+                            {index + 1}
+                            {activeColorPicker?.id === item.id && activeColorPicker?.type === 'cable' && (
+                              <div className="absolute left-[38px] top-1/2 -translate-y-1/2 bg-white border border-gray-200 rounded-md shadow-lg p-1.5 z-50 flex items-center gap-1.5 color-picker-popover">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, 'yellow'); }}
+                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors text-[10px] text-amber-700 font-medium shrink-0"
+                                  title="신규"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                  <span>신규</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, 'blue'); }}
+                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors text-[10px] text-blue-700 font-medium shrink-0"
+                                  title="재발주"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                  <span>재발주</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, 'red'); }}
+                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 border border-red-200 hover:bg-red-100 transition-colors text-[10px] text-red-700 font-medium shrink-0"
+                                  title="취소"
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                                  <span>취소</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, null, true); }}
+                                  className="flex items-center justify-center px-2 py-0.5 rounded-full border border-gray-300 hover:bg-gray-100 transition-colors text-[10px] text-gray-600 font-bold shrink-0 bg-white"
+                                  title="취소선"
+                                >
+                                  -
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, null); }}
+                                  className="text-[10px] text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 shrink-0 font-medium transition-colors"
+                                  title="색상 초기화"
+                                >
+                                  초기화
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                          <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`} style={{ width: `${salesOrderCableWidth}px`, minWidth: `${salesOrderCableWidth}px`, maxWidth: `${salesOrderCableWidth}px` }}>{item.sales_order_number}</td>
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'production_category',
+                          item,
+                          item.production_category,
+                          'px-2 py-1.5 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]',
+                          'select',
+                          ['LG_Cable', 'LG_Case', 'Cable', 'Case']
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'board_name',
+                          item,
+                          item.board_name,
+                          'px-2 py-1.5 font-medium text-gray-900 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] align-left'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'reference',
+                          item,
+                          item.reference || '-',
+                          'px-2 py-1.5 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-red-500 font-semibold align-left'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'request_date',
+                          item,
+                          formatDbDateToDisplay(item.request_date),
+                          'px-2 py-1.5 text-gray-500 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'estimate_no',
+                          item,
+                          item.estimate_no || '-',
+                          'px-2 py-1.5 text-gray-500 border-y border-r border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'delivery_deadline',
+                          item,
+                          formatDateOrMemo(item.delivery_deadline),
+                          'px-2 py-1.5 text-gray-500 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'client_name',
+                          item,
+                          item.client_name || '-',
+                          'px-2 py-1.5 text-gray-500 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'client_manager',
+                          item,
+                          item.client_manager || '-',
+                          'px-2 py-1.5 text-gray-500 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'hansl_manager',
+                          item,
+                          item.hansl_manager || '-',
+                          'px-2 py-1.5 text-gray-500 border border-gray-200'
+                        )}
+                        <td className="px-2 py-1.5 text-gray-500 border border-gray-200">{item.creator || '-'}</td>
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'revision_count',
+                          item,
+                          item.revision_count,
+                          'px-2 py-1.5 text-gray-500 border border-gray-200',
+                          'number'
+                        )}
+                        {renderQuantityCell(item.id, 'cable', item)}
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'spec_details',
+                          item,
+                          item.spec_details || '-',
+                          'px-2 py-1.5 text-gray-600 font-normal max-w-sm truncate whitespace-pre-line border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'cable_vendor',
+                          item,
+                          item.cable_vendor || '-',
+                          'px-2 py-1.5 text-gray-500 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'cable_requested_date',
+                          item,
+                          formatDbDateToDisplay(item.cable_requested_date),
+                          'px-2 py-1.5 text-gray-500 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'cable_actual_date',
+                          item,
+                          formatDbDateToDisplay(item.cable_actual_date),
+                          'px-2 py-1.5 text-gray-500 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'delivery_notes',
+                          item,
+                          item.delivery_notes || '-',
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        <td className="px-2 py-1 border border-gray-200">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteClick('cable', item.id)
+                            }}
+                            className="text-red-500 hover:text-red-700 transition-colors font-medium"
+                          >
+                            삭제
+                          </button>
+                        </td>
+                      </tr>
+                    )
+  }
+
   const showPcbTable = pcbFilter.categories.length > 0
   const showCableTable = cableFilter.categories.length > 0
 
@@ -2433,16 +3086,16 @@ export default function ProductionListMain() {
               </button>
             </div>
 
-            <div className="overflow-x-auto">
+            <div ref={pcbScrollRef} onScroll={() => handleVirtualScroll('pcb')} className="overflow-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
               <table className="text-left border-separate border-spacing-0 w-max [&_th]:border-l-0 [&_td]:border-l-0 [&_th]:border-t-0 [&_td]:border-t-0 production-compact-table table-auto">
                 <thead className="whitespace-nowrap">
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 text-center sticky left-0 bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: '40px', minWidth: '40px', maxWidth: '40px' }}>NO.</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[40px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: `${salesOrderPcbWidth}px`, minWidth: `${salesOrderPcbWidth}px`, maxWidth: `${salesOrderPcbWidth}px` }}>제작 번호</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderPcbWidth}px`, width: `${productionCategoryPcbWidth}px`, minWidth: `${productionCategoryPcbWidth}px`, maxWidth: `${productionCategoryPcbWidth}px` }}>제작구분</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth}px`, width: `${pcbBoardWidth}px`, minWidth: `${pcbBoardWidth}px`, maxWidth: `${pcbBoardWidth}px` }}>보드명</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth + pcbBoardWidth}px`, width: `${referencePcbWidth}px`, minWidth: `${referencePcbWidth}px`, maxWidth: `${referencePcbWidth}px` }}>참고</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth + pcbBoardWidth + referencePcbWidth}px`, width: `${requestDatePcbWidth}px`, minWidth: `${requestDatePcbWidth}px`, maxWidth: `${requestDatePcbWidth}px` }}>요청일</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 text-center sticky left-0 bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, width: '40px', minWidth: '40px', maxWidth: '40px' }}>NO.</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[40px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, width: `${salesOrderPcbWidth}px`, minWidth: `${salesOrderPcbWidth}px`, maxWidth: `${salesOrderPcbWidth}px` }}>제작 번호</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, left: `${40 + salesOrderPcbWidth}px`, width: `${productionCategoryPcbWidth}px`, minWidth: `${productionCategoryPcbWidth}px`, maxWidth: `${productionCategoryPcbWidth}px` }}>제작구분</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ zIndex: 40, left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth}px`, width: `${pcbBoardWidth}px`, minWidth: `${pcbBoardWidth}px`, maxWidth: `${pcbBoardWidth}px` }}>보드명</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ zIndex: 40, left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth + pcbBoardWidth}px`, width: `${referencePcbWidth}px`, minWidth: `${referencePcbWidth}px`, maxWidth: `${referencePcbWidth}px` }}>참고</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth + pcbBoardWidth + referencePcbWidth}px`, width: `${requestDatePcbWidth}px`, minWidth: `${requestDatePcbWidth}px`, maxWidth: `${requestDatePcbWidth}px` }}>요청일</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border-y border-r border-gray-200" style={getHeaderStyle('pcb', 'estimate_no', 80)}>견적NO.</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'delivery_deadline', 80)}>납품기한</th>
                     <th colSpan={3} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">PJT 담당자</th>
@@ -2829,345 +3482,18 @@ export default function ProductionListMain() {
                       <td colSpan={36} className="text-center py-6 text-gray-400 border border-gray-200">검색 조건에 맞는 데이터가 없습니다.</td>
                     </tr>
                   ) : (
-                    filteredPcbs.map((item, index) => {
-                      const { color: rColor, strike: rStrike } = parseColorState(item.row_color)
-                      const rowBgClass = rColor === 'red' ? 'bg-red-200' :
-                                         rColor === 'green' ? 'bg-emerald-100' :
-                                         rColor === 'yellow' ? 'bg-amber-100' :
-                                         rColor === 'blue' ? 'bg-blue-100' :
-                                         'hover:bg-gray-50/50'
-
-                      return (
-                        <tr key={item.id} className={`group transition-colors ${rowBgClass}`}>
-                          <td 
-                            className={`px-2 py-1.5 text-center text-gray-400 sticky left-0 transition-colors ${activeColorPicker?.id === item.id && activeColorPicker?.type === 'pcb' ? 'z-20' : 'z-10'} w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer relative color-picker-trigger ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              e.nativeEvent.stopPropagation()
-                              setActiveColorPicker(activeColorPicker?.id === item.id && activeColorPicker?.type === 'pcb' ? null : { id: item.id, type: 'pcb' })
-                            }}
-                          >
-                            {index + 1}
-                            {activeColorPicker?.id === item.id && activeColorPicker?.type === 'pcb' && (
-                              <div className="absolute left-[38px] top-1/2 -translate-y-1/2 bg-white border border-gray-200 rounded-md shadow-lg p-1.5 z-50 flex items-center gap-1.5 color-picker-popover">
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, 'yellow'); }}
-                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors text-[10px] text-amber-700 font-medium shrink-0"
-                                  title="신규"
-                                >
-                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                  <span>신규</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, 'blue'); }}
-                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors text-[10px] text-blue-700 font-medium shrink-0"
-                                  title="재발주"
-                                >
-                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                  <span>재발주</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, 'red'); }}
-                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 border border-red-200 hover:bg-red-100 transition-colors text-[10px] text-red-700 font-medium shrink-0"
-                                  title="취소"
-                                >
-                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                                  <span>취소</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, null, true); }}
-                                  className="flex items-center justify-center px-2 py-0.5 rounded-full border border-gray-300 hover:bg-gray-100 transition-colors text-[10px] text-gray-600 font-bold shrink-0 bg-white"
-                                  title="취소선"
-                                >
-                                  -
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, null); }}
-                                  className="text-[10px] text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 shrink-0 font-medium transition-colors"
-                                  title="색상 초기화"
-                                >
-                                  초기화
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                          <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`} style={{ width: `${salesOrderPcbWidth}px`, minWidth: `${salesOrderPcbWidth}px`, maxWidth: `${salesOrderPcbWidth}px` }}>{item.sales_order_number}</td>
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'production_category',
-                          item,
-                          item.production_category,
-                          'px-2 py-1.5 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]',
-                          'select',
-                          ['LG_PCB', 'LG_Socket Board', 'PCB']
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'board_name',
-                          item,
-                          item.board_name,
-                          'px-2 py-1.5 font-medium text-gray-900 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] align-left'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'reference',
-                          item,
-                          item.reference || '-',
-                          'px-2 py-1.5 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-red-500 font-semibold align-left'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'request_date',
-                          item,
-                          formatDbDateToDisplay(item.request_date),
-                          'px-2 py-1.5 text-gray-500 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'estimate_no',
-                          item,
-                          item.estimate_no || '-',
-                          'px-2 py-1.5 text-gray-500 border-y border-r border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'delivery_deadline',
-                          item,
-                          formatDateOrMemo(item.delivery_deadline),
-                          'px-2 py-1.5 text-gray-500 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'client_name',
-                          item,
-                          item.client_name || '-',
-                          'px-2 py-1.5 text-gray-500 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'client_manager',
-                          item,
-                          item.client_manager || '-',
-                          'px-2 py-1.5 text-gray-500 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'hansl_manager',
-                          item,
-                          item.hansl_manager || '-',
-                          'px-2 py-1.5 text-gray-500 border border-gray-200'
-                        )}
-                        <td className="px-2 py-1.5 text-gray-500 border border-gray-200">{item.creator || '-'}</td>
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'revision_count',
-                          item,
-                          item.revision_count,
-                          'px-2 py-1.5 text-gray-500 border border-gray-200',
-                          'number'
-                        )}
-                        {renderQuantityCell(item.id, 'pcb', item)}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'artwork_status',
-                          item,
-                          formatArtworkDisplay(item.artwork_status) || '-',
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'metal_mask',
-                          item,
-                          item.metal_mask || '-',
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'changes_memo',
-                          item,
-                          item.changes_memo || '-',
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'stock_count',
-                          item,
-                          item.stock_count,
-                          'px-2 py-1.5 text-center border border-gray-200',
-                          'number'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'pcb_vendor',
-                          item,
-                          item.pcb_vendor || '-',
-                          'px-2 py-1.5 text-gray-500 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'delivery_schedule',
-                          item,
-                          formatDbDateToDisplay(item.delivery_schedule),
-                          'px-2 py-1.5 text-gray-500 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'pcb_lead_time',
-                          item,
-                          item.pcb_lead_time || '-',
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'received_quantity',
-                          item,
-                          item.received_quantity || 0,
-                          'px-2 py-1.5 text-center border border-gray-200',
-                          'number'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'received_destination',
-                          item,
-                          item.received_destination || '-',
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'parts_organization',
-                          item,
-                          item.parts_organization || '-',
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'assy_hanwha',
-                          item,
-                          formatDateOrMemo(item.assy_hanwha),
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'assy_evertech',
-                          item,
-                          formatDateOrMemo(item.assy_evertech),
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'assy_requested_date',
-                          item,
-                          formatDbDateToDisplay(item.assy_requested_date),
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'final_product_stock',
-                          item,
-                          formatStockInDisplay(item.final_product_stock),
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'qa_passed',
-                          item,
-                          item.qa_passed || '-',
-                          'px-2 py-1.5 text-center border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'qa_failed',
-                          item,
-                          item.qa_failed || '-',
-                          'px-2 py-1.5 text-center border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'qa_notes',
-                          item,
-                          item.qa_notes || '-',
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'design_review',
-                          item,
-                          item.design_review || '-',
-                          'px-2 py-1.5 text-center border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'delivery_quantity',
-                          item,
-                          item.delivery_quantity || 0,
-                          'px-2 py-1.5 text-center border border-gray-200',
-                          'number'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'delivery_date',
-                          item,
-                          formatDbDateToDisplay(item.delivery_date),
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'delivery_destination',
-                          item,
-                          item.delivery_destination || '-',
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
-                        <td className="px-2 py-1 border border-gray-200">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDeleteClick('pcb', item.id)
-                            }}
-                            className="text-red-500 hover:text-red-700 transition-colors font-medium"
-                          >
-                            삭제
-                          </button>
-                        </td>
-                      </tr>
+                    <>
+                    {pcbTopPad > 0 && (
+                      <tr aria-hidden="true"><td colSpan={36} style={{ height: pcbTopPad, padding: 0, border: 'none' }} /></tr>
+                    )}
+                    {pcbVisibleRows.map((item, vIdx) => (
+                      <MemoRow key={item.id} item={item} index={pcbWin.start + vIdx} sig={rowSig('pcb', item)} widths={pcbColumnWidths} renderRow={renderPcbRow} />
+                    ))}
+                    {pcbBottomPad > 0 && (
+                      <tr aria-hidden="true"><td colSpan={36} style={{ height: pcbBottomPad, padding: 0, border: 'none' }} /></tr>
+                    )}
+                    </>
                     )
-                  }))
                 }
                 </tbody>
               </table>
@@ -3202,16 +3528,16 @@ export default function ProductionListMain() {
               </div>
             )}
 
-            <div className="overflow-x-auto">
+            <div ref={cableScrollRef} onScroll={() => handleVirtualScroll('cable')} className="overflow-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
               <table className="text-left border-separate border-spacing-0 w-max [&_th]:border-l-0 [&_td]:border-l-0 [&_th]:border-t-0 [&_td]:border-t-0 production-compact-table table-auto">
                 <thead className="whitespace-nowrap">
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 text-center sticky left-0 bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: '40px', minWidth: '40px', maxWidth: '40px' }}>NO.</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[40px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ width: `${salesOrderCableWidth}px`, minWidth: `${salesOrderCableWidth}px`, maxWidth: `${salesOrderCableWidth}px` }}>제작 번호</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderCableWidth}px`, width: `${productionCategoryCableWidth}px`, minWidth: `${productionCategoryCableWidth}px`, maxWidth: `${productionCategoryCableWidth}px` }}>제작구분</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ left: `${40 + salesOrderCableWidth + productionCategoryCableWidth}px`, width: `${cableBoardWidth}px`, minWidth: `${cableBoardWidth}px`, maxWidth: `${cableBoardWidth}px` }}>품명</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ left: `${40 + salesOrderCableWidth + productionCategoryCableWidth + cableBoardWidth}px`, width: `${referenceCableWidth}px`, minWidth: `${referenceCableWidth}px`, maxWidth: `${referenceCableWidth}px` }}>참고</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderCableWidth + productionCategoryCableWidth + cableBoardWidth + referenceCableWidth}px`, width: `${requestDateCableWidth}px`, minWidth: `${requestDateCableWidth}px`, maxWidth: `${requestDateCableWidth}px` }}>요청일</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 text-center sticky left-0 bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, width: '40px', minWidth: '40px', maxWidth: '40px' }}>NO.</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[40px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, width: `${salesOrderCableWidth}px`, minWidth: `${salesOrderCableWidth}px`, maxWidth: `${salesOrderCableWidth}px` }}>제작 번호</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, left: `${40 + salesOrderCableWidth}px`, width: `${productionCategoryCableWidth}px`, minWidth: `${productionCategoryCableWidth}px`, maxWidth: `${productionCategoryCableWidth}px` }}>제작구분</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ zIndex: 40, left: `${40 + salesOrderCableWidth + productionCategoryCableWidth}px`, width: `${cableBoardWidth}px`, minWidth: `${cableBoardWidth}px`, maxWidth: `${cableBoardWidth}px` }}>품명</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ zIndex: 40, left: `${40 + salesOrderCableWidth + productionCategoryCableWidth + cableBoardWidth}px`, width: `${referenceCableWidth}px`, minWidth: `${referenceCableWidth}px`, maxWidth: `${referenceCableWidth}px` }}>참고</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, left: `${40 + salesOrderCableWidth + productionCategoryCableWidth + cableBoardWidth + referenceCableWidth}px`, width: `${requestDateCableWidth}px`, minWidth: `${requestDateCableWidth}px`, maxWidth: `${requestDateCableWidth}px` }}>요청일</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border-y border-r border-gray-200" style={getHeaderStyle('cable', 'estimate_no', 80)}>견적NO.</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'delivery_deadline', 80)}>납품기한</th>
                     <th colSpan={3} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">PJT 담당자</th>
@@ -3434,214 +3760,18 @@ export default function ProductionListMain() {
                       <td colSpan={20} className="text-center py-6 text-gray-400 border border-gray-200">검색 조건에 맞는 데이터가 없습니다.</td>
                     </tr>
                   ) : (
-                    filteredCables.map((item, index) => {
-                      const { color: rColor, strike: rStrike } = parseColorState(item.row_color)
-                      const rowBgClass = rColor === 'red' ? 'bg-red-200' :
-                                         rColor === 'green' ? 'bg-emerald-100' :
-                                         rColor === 'yellow' ? 'bg-amber-100' :
-                                         rColor === 'blue' ? 'bg-blue-100' :
-                                         'hover:bg-gray-50/50'
-
-                      return (
-                        <tr key={item.id} className={`group transition-colors ${rowBgClass}`}>
-                          <td 
-                            className={`px-2 py-1.5 text-center text-gray-400 sticky left-0 transition-colors ${activeColorPicker?.id === item.id && activeColorPicker?.type === 'cable' ? 'z-20' : 'z-10'} w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer relative color-picker-trigger ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              e.nativeEvent.stopPropagation()
-                              setActiveColorPicker(activeColorPicker?.id === item.id && activeColorPicker?.type === 'cable' ? null : { id: item.id, type: 'cable' })
-                            }}
-                          >
-                            {index + 1}
-                            {activeColorPicker?.id === item.id && activeColorPicker?.type === 'cable' && (
-                              <div className="absolute left-[38px] top-1/2 -translate-y-1/2 bg-white border border-gray-200 rounded-md shadow-lg p-1.5 z-50 flex items-center gap-1.5 color-picker-popover">
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, 'yellow'); }}
-                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors text-[10px] text-amber-700 font-medium shrink-0"
-                                  title="신규"
-                                >
-                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                                  <span>신규</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, 'blue'); }}
-                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors text-[10px] text-blue-700 font-medium shrink-0"
-                                  title="재발주"
-                                >
-                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                  <span>재발주</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, 'red'); }}
-                                  className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-50 border border-red-200 hover:bg-red-100 transition-colors text-[10px] text-red-700 font-medium shrink-0"
-                                  title="취소"
-                                >
-                                  <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                                  <span>취소</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, null, true); }}
-                                  className="flex items-center justify-center px-2 py-0.5 rounded-full border border-gray-300 hover:bg-gray-100 transition-colors text-[10px] text-gray-600 font-bold shrink-0 bg-white"
-                                  title="취소선"
-                                >
-                                  -
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, null); }}
-                                  className="text-[10px] text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 shrink-0 font-medium transition-colors"
-                                  title="색상 초기화"
-                                >
-                                  초기화
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                          <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`} style={{ width: `${salesOrderCableWidth}px`, minWidth: `${salesOrderCableWidth}px`, maxWidth: `${salesOrderCableWidth}px` }}>{item.sales_order_number}</td>
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'production_category',
-                          item,
-                          item.production_category,
-                          'px-2 py-1.5 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]',
-                          'select',
-                          ['LG_Cable', 'LG_Case', 'Cable', 'Case']
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'board_name',
-                          item,
-                          item.board_name,
-                          'px-2 py-1.5 font-medium text-gray-900 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] align-left'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'reference',
-                          item,
-                          item.reference || '-',
-                          'px-2 py-1.5 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-red-500 font-semibold align-left'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'request_date',
-                          item,
-                          formatDbDateToDisplay(item.request_date),
-                          'px-2 py-1.5 text-gray-500 sticky bg-white group-hover:bg-[#fafafa] transition-colors z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'estimate_no',
-                          item,
-                          item.estimate_no || '-',
-                          'px-2 py-1.5 text-gray-500 border-y border-r border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'delivery_deadline',
-                          item,
-                          formatDateOrMemo(item.delivery_deadline),
-                          'px-2 py-1.5 text-gray-500 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'client_name',
-                          item,
-                          item.client_name || '-',
-                          'px-2 py-1.5 text-gray-500 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'client_manager',
-                          item,
-                          item.client_manager || '-',
-                          'px-2 py-1.5 text-gray-500 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'hansl_manager',
-                          item,
-                          item.hansl_manager || '-',
-                          'px-2 py-1.5 text-gray-500 border border-gray-200'
-                        )}
-                        <td className="px-2 py-1.5 text-gray-500 border border-gray-200">{item.creator || '-'}</td>
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'revision_count',
-                          item,
-                          item.revision_count,
-                          'px-2 py-1.5 text-gray-500 border border-gray-200',
-                          'number'
-                        )}
-                        {renderQuantityCell(item.id, 'cable', item)}
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'spec_details',
-                          item,
-                          item.spec_details || '-',
-                          'px-2 py-1.5 text-gray-600 font-normal max-w-sm truncate whitespace-pre-line border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'cable_vendor',
-                          item,
-                          item.cable_vendor || '-',
-                          'px-2 py-1.5 text-gray-500 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'cable_requested_date',
-                          item,
-                          formatDbDateToDisplay(item.cable_requested_date),
-                          'px-2 py-1.5 text-gray-500 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'cable_actual_date',
-                          item,
-                          formatDbDateToDisplay(item.cable_actual_date),
-                          'px-2 py-1.5 text-gray-500 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'cable',
-                          'delivery_notes',
-                          item,
-                          item.delivery_notes || '-',
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
-                        <td className="px-2 py-1 border border-gray-200">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDeleteClick('cable', item.id)
-                            }}
-                            className="text-red-500 hover:text-red-700 transition-colors font-medium"
-                          >
-                            삭제
-                          </button>
-                        </td>
-                      </tr>
+                    <>
+                    {cableTopPad > 0 && (
+                      <tr aria-hidden="true"><td colSpan={20} style={{ height: cableTopPad, padding: 0, border: 'none' }} /></tr>
+                    )}
+                    {cableVisibleRows.map((item, vIdx) => (
+                      <MemoRow key={item.id} item={item} index={cableWin.start + vIdx} sig={rowSig('cable', item)} widths={cableColumnWidths} renderRow={renderCableRow} />
+                    ))}
+                    {cableBottomPad > 0 && (
+                      <tr aria-hidden="true"><td colSpan={20} style={{ height: cableBottomPad, padding: 0, border: 'none' }} /></tr>
+                    )}
+                    </>
                     )
-                  }))
                 }
                 </tbody>
               </table>
