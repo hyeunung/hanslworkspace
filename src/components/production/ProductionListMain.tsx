@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { productionService, ProductionPcb, ProductionCable } from '@/services/productionService'
-import { Plus, Search, Edit2, X, Filter, Save, RotateCcw, ChevronDown } from 'lucide-react'
+import { Plus, Search, Edit2, X, Filter, Save, RotateCcw, ChevronDown, SlidersHorizontal } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { vendorService } from '@/services/vendorService'
@@ -2929,7 +2929,7 @@ export default function ProductionListMain() {
         {/* Row A: 필터 규칙 (노션식 추가/수정/제거) */}
         <div className="grid grid-cols-[75px_575px_auto] items-center gap-2 pt-2 border-t border-gray-100">
           <span className="text-[10px] font-semibold text-gray-500 uppercase mr-1 flex items-center gap-1">
-            <Filter className="w-3.5 h-3.5" /> 필터:
+            <SlidersHorizontal className="w-3.5 h-3.5" /> 조건:
           </span>
           <div className="flex flex-wrap items-center gap-2">
             {f.rules.map(rule => {
