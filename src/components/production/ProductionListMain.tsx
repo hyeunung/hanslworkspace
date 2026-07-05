@@ -2092,7 +2092,7 @@ export default function ProductionListMain() {
             </span>
             <div
               className="absolute left-0 top-full mt-0.5 z-50 bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
-              style={{ width: '150px' }}
+              style={{ width: 'max-content', minWidth: '150px' }}
               onMouseDown={(e) => e.stopPropagation()}
             >
               <ArtworkStatusEditor
@@ -2105,6 +2105,8 @@ export default function ProductionListMain() {
                 }}
                 onCancel={() => setEditingCell(null)}
               />
+              {/* 색상 피커도 함께 표시 (다른 편집 셀과 동일) */}
+              {renderCellColorPicker(true)}
             </div>
           </td>
         )
