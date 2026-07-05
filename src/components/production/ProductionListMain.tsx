@@ -732,7 +732,7 @@ export default function ProductionListMain() {
   const [modalType, setModalType] = useState<'pcb' | 'cable'>('pcb')
   const [modalAction, setModalAction] = useState<'add' | 'edit'>('add')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'pcb' | 'cable', id: string } | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'pcb' | 'cable', ids: string[] } | null>(null)
 
   // 인라인 셀 수정 상태
   const [editingCell, setEditingCell] = useState<{ id: string, type: 'pcb' | 'cable', field: string } | null>(null)
@@ -1121,7 +1121,8 @@ export default function ProductionListMain() {
 
   // 행 추가 인라인 모드로 전환
   const handleAddClick = async (type: 'pcb' | 'cable') => {
-    const today = new Date().toISOString().split('T')[0]
+    // 날짜 생성은 무조건 한국시간(KST) 기준 — UTC(toISOString)를 쓰면 KST 0~9시에 채번/요청일이 하루 밀린다
+    const today = getKstTodayISO()
     setLoading(true)
     try {
       const nextNo = await productionService.generateNextSalesOrderNumber(today)
@@ -1254,7 +1255,12 @@ export default function ProductionListMain() {
 
   // 인라인 셀 수정 클릭 핸들러: 첫 클릭은 셀 선택만, 이미 선택된 셀을 한 번 더 클릭하면 편집 모드로 진입
   const handleCellClick = useStableHandler((id: string, type: 'pcb' | 'cable', field: string, currentValue: any) => {
-    if (selectedCells.length > 1) return
+    if (selectedCells.length > 1) {
+      // 다중 선택(행 선택/드래그) 상태에서 셀 단일 클릭 = 그 셀만 선택으로 전환 (엑셀과 동일)
+      setSelectedCells([`${id}::${field}`])
+      setFloatingMenuPos(null)
+      return
+    }
     const cellKey = `${id}::${field}`
     const isAlreadySelected = selectedCells.length === 1 && selectedCells[0] === cellKey
     if (isAlreadySelected) {
@@ -2137,22 +2143,100 @@ export default function ProductionListMain() {
     setIsModalOpen(true)
   }
 
-  // 삭제 처리
+  // NO. 셀 클릭: 첫 클릭 = 행 전체 선택, 이미 행이 선택된 상태에서 다시 클릭 = 행 색상 피커
+  const handleRowNoClick = useStableHandler((type: 'pcb' | 'cable', id: string) => {
+    const cols = type === 'pcb' ? pcbColumns : cableColumns
+    const rowCells = cols.map(f => `${id}::${f}`)
+    const isRowSelected =
+      selectedCells.length === rowCells.length && rowCells.every(k => selectedCells.includes(k))
+    if (isRowSelected) {
+      setActiveColorPicker(prev => (prev?.id === id && prev.type === type ? null : { id, type }))
+    } else {
+      setSelectedCells(rowCells)
+      setActiveColorPicker(null)
+      if (editingCell) setEditingCell(null)
+    }
+  })
+
+  // Delete/Backspace 키: 선택이 "행 전체"면 행 삭제(확인 모달), 일부 셀이면 그 셀 값만 비움 (엑셀과 동일한 감각)
+  // 제작번호/제작구분은 행 식별용이라 셀 값 삭제에서 보호된다.
+  const DELETE_PROTECTED_FIELDS = ['sales_order_number', 'production_category']
+  const handleDeleteKey = useStableHandler(async (e: KeyboardEvent) => {
+    if (e.key !== 'Delete' && e.key !== 'Backspace') return
+    const ae = document.activeElement as HTMLElement | null
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return
+    if (editingCell || selectedCells.length === 0) return
+
+    // 선택 셀을 행별로 그룹 (드래그 선택은 한 테이블 안에서만 만들어짐)
+    const byRow = new Map<string, string[]>()
+    for (const key of selectedCells) {
+      const sep = key.indexOf('::')
+      const id = key.slice(0, sep)
+      const field = key.slice(sep + 2)
+      if (!byRow.has(id)) byRow.set(id, [])
+      byRow.get(id)!.push(field)
+    }
+    const firstId = byRow.keys().next().value as string
+    const type: 'pcb' | 'cable' = pcbs.some(p => p.id === firstId) ? 'pcb' : 'cable'
+    const cols = type === 'pcb' ? pcbColumns : cableColumns
+
+    e.preventDefault()
+    // 모든 선택 행이 '행 전체 선택'이면 행 삭제로 간주 → 확인 모달
+    const isFullRows = [...byRow.values()].every(fields => fields.length >= cols.length)
+    if (isFullRows) {
+      setDeleteConfirm({ type, ids: [...byRow.keys()] })
+      return
+    }
+    // 일부 셀 선택 → 해당 셀 값 삭제 (행별로 묶어 한 번에 업데이트)
+    try {
+      let cleared = 0
+      for (const [id, fields] of byRow) {
+        const patch: Record<string, null> = {}
+        for (const f of fields) {
+          if (DELETE_PROTECTED_FIELDS.includes(f)) continue
+          patch[f] = null
+          cleared++
+        }
+        if (Object.keys(patch).length === 0) continue
+        if (type === 'pcb') await productionService.updateProductionPcb(id, patch)
+        else await productionService.updateProductionCable(id, patch)
+      }
+      if (cleared > 0) {
+        toast.success(`선택한 셀 ${cleared}개의 값이 삭제되었습니다.`)
+        setSelectedCells([])
+        loadData()
+      }
+    } catch (err) {
+      console.error(err)
+      toast.error('셀 값 삭제에 실패했습니다.')
+    }
+  })
+  useEffect(() => {
+    const listener = (e: KeyboardEvent) => { handleDeleteKey(e) }
+    window.addEventListener('keydown', listener)
+    return () => window.removeEventListener('keydown', listener)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 삭제 처리 (행 여러 개 동시 삭제 지원 — Delete 키 행 삭제에서 사용)
   const handleDeleteClick = useStableHandler((type: 'pcb' | 'cable', id: string) => {
-    setDeleteConfirm({ type, id })
+    setDeleteConfirm({ type, ids: [id] })
   })
 
   const handleExecuteDelete = async () => {
     if (!deleteConfirm) return
-    const { type, id } = deleteConfirm
+    const { type, ids } = deleteConfirm
     setDeleteConfirm(null)
     try {
-      if (type === 'pcb') {
-        await productionService.deleteProductionPcb(id)
-      } else {
-        await productionService.deleteProductionCable(id)
+      for (const id of ids) {
+        if (type === 'pcb') {
+          await productionService.deleteProductionPcb(id)
+        } else {
+          await productionService.deleteProductionCable(id)
+        }
       }
-      toast.success('성공적으로 삭제되었습니다.')
+      toast.success(ids.length > 1 ? `${ids.length}건이 삭제되었습니다.` : '성공적으로 삭제되었습니다.')
+      setSelectedCells([])
       loadData()
     } catch (err) {
       console.error(err)
@@ -2255,10 +2339,11 @@ export default function ProductionListMain() {
                         <tr key={item.id} data-vrow className={`group transition-colors ${rowBgClass}`}>
                           <td 
                             className={`px-2 py-1.5 text-center text-gray-400 sticky left-0 transition-colors ${activeColorPicker?.id === item.id && activeColorPicker?.type === 'pcb' ? 'z-20' : 'z-10'} w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer relative color-picker-trigger ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
+                            title="클릭: 행 전체 선택 · 다시 클릭: 행 색상"
                             onClick={(e) => {
                               e.stopPropagation()
                               e.nativeEvent.stopPropagation()
-                              setActiveColorPicker(activeColorPicker?.id === item.id && activeColorPicker?.type === 'pcb' ? null : { id: item.id, type: 'pcb' })
+                              handleRowNoClick('pcb', item.id)
                             }}
                           >
                             {index + 1}
@@ -2596,10 +2681,11 @@ export default function ProductionListMain() {
                         <tr key={item.id} data-vrow className={`group transition-colors ${rowBgClass}`}>
                           <td 
                             className={`px-2 py-1.5 text-center text-gray-400 sticky left-0 transition-colors ${activeColorPicker?.id === item.id && activeColorPicker?.type === 'cable' ? 'z-20' : 'z-10'} w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer relative color-picker-trigger ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
+                            title="클릭: 행 전체 선택 · 다시 클릭: 행 색상"
                             onClick={(e) => {
                               e.stopPropagation()
                               e.nativeEvent.stopPropagation()
-                              setActiveColorPicker(activeColorPicker?.id === item.id && activeColorPicker?.type === 'cable' ? null : { id: item.id, type: 'cable' })
+                              handleRowNoClick('cable', item.id)
                             }}
                           >
                             {index + 1}
@@ -4092,7 +4178,9 @@ export default function ProductionListMain() {
             </div>
             <div className="p-4 space-y-4">
               <p className="text-[11px] text-gray-600 leading-relaxed text-center py-2">
-                정말로 이 수주 항목을 삭제하시겠습니까?<br />
+                {deleteConfirm.ids.length > 1
+                  ? <>선택한 <b className="text-red-600">{deleteConfirm.ids.length}개 행</b>을 삭제하시겠습니까?</>
+                  : <>정말로 이 수주 항목을 삭제하시겠습니까?</>}<br />
                 삭제된 데이터는 완전히 유실되며 복구할 수 없습니다.
               </p>
               <div className="border-t border-gray-200 pt-3 flex items-center justify-end gap-2">
