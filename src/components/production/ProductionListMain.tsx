@@ -155,6 +155,17 @@ const OP_LABELS: Record<FilterOp, string> = {
   not_empty: '비어있지 않음',
 }
 
+// 입고 칼럼(완제품입고/실제입고일)은 도메인 용어로 표기: 비어있음=입고대기, 년/월=날짜
+const STOCK_DATE_FIELDS = ['final_product_stock', 'cable_actual_date']
+const opLabelFor = (field: string, op: FilterOp): string => {
+  if (STOCK_DATE_FIELDS.includes(field)) {
+    if (op === 'is_empty') return '입고대기'
+    if (op === 'not_empty') return '입고됨'
+    if (op === 'date_in') return '날짜'
+  }
+  return OP_LABELS[op]
+}
+
 // 칼럼 타입에 따라 선택 가능한 조건 목록
 const opsForField = (field: string): FilterOp[] => {
   if (DATE_ONLY_FIELDS.includes(field)) return ['date_in', 'is_empty', 'not_empty']
@@ -2960,11 +2971,11 @@ export default function ProductionListMain() {
                   <select
                     value={rule.op}
                     onChange={(e) => changeRuleOp(rule, e.target.value as FilterOp)}
-                    style={fitSelect(OP_LABELS[rule.op])}
+                    style={fitSelect(opLabelFor(rule.field, rule.op))}
                     className={selectClass}
                   >
                     {ops.map(op => (
-                      <option key={op} value={op}>{OP_LABELS[op]}</option>
+                      <option key={op} value={op}>{opLabelFor(rule.field, op)}</option>
                     ))}
                   </select>
                   {/* 조건별 값 입력: 년/월 드롭다운 또는 텍스트 */}
