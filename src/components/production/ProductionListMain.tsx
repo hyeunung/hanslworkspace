@@ -129,7 +129,7 @@ const CABLE_CATEGORIES = ['LG_Cable', 'LG_Case', 'Cable', 'Case']
 
 // 순수 날짜 칼럼(YYYY-MM-DD)과 날짜/메모 혼합 칼럼 — 조건(op) 선택지가 달라진다
 const DATE_ONLY_FIELDS = ['request_date', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date']
-const HYBRID_DATE_FIELDS = ['delivery_deadline', 'assy_hanwha', 'assy_evertech']
+const HYBRID_DATE_FIELDS = ['delivery_deadline', 'assy_hanwha', 'assy_evertech', 'final_product_stock']
 
 // 필터 규칙 하나: field 칼럼에 op 조건 적용. contains류는 value, date_in은 year/month 사용.
 type FilterOp = 'date_in' | 'contains' | 'not_contains' | 'is_empty' | 'not_empty'
@@ -332,14 +332,6 @@ const formatDateOrMemo = (value: string | null | undefined): string => {
   const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) return `${m[2]}월 ${m[3]}일`;
   return value;
-};
-
-// 완제품 입고: 오늘(한국시간) 날짜로 'MM월 DD일' 라벨 생성 (정식 표시형식, '입고' 텍스트 없음)
-const buildStockInLabel = (): string => {
-  const kst = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
-  const mm = String(kst.getMonth() + 1).padStart(2, '0');
-  const dd = String(kst.getDate()).padStart(2, '0');
-  return `${mm}월 ${dd}일`;
 };
 
 // 완제품 입고 표시 정규화: 경로별로 섞인 값을 'MM월 DD일'로 통일해 보여준다.
@@ -1302,7 +1294,7 @@ export default function ProductionListMain() {
       } else {
         valueToSave = null
       }
-    } else if (['assy_hanwha', 'assy_evertech', 'delivery_deadline'].includes(field)) {
+    } else if (['assy_hanwha', 'assy_evertech', 'delivery_deadline', 'final_product_stock'].includes(field)) {
       // 날짜 또는 메모 하이브리드: 날짜면 YYYY-MM-DD, 아니면 메모 원문
       valueToSave = toDateOrMemo(val, defaultMonth)
     } else if (['revision_count', 'quantity', 'stock_count', 'received_quantity', 'delivery_quantity'].includes(field)) {
@@ -1343,9 +1335,9 @@ export default function ProductionListMain() {
 
   // 완제품 입고: '입고대기' 버튼 클릭 → 오늘(한국시간) 날짜로 'MM월 DD일 입고' 기록
   const handleStockInPress = useStableHandler((id: string, type: 'pcb' | 'cable', field: string = 'final_product_stock') => {
-    // cable_actual_date는 날짜(ISO) 컬럼이라 오늘 날짜를 YYYY-MM-DD로, final_product_stock은 'MM월 DD일' 라벨로 스탬프
-    const value = field === 'cable_actual_date' ? getKstTodayISO() : buildStockInLabel()
-    handleCellSave({ id, type, field }, value)
+    // 완제품입고/실제입고일 모두 오늘(KST)을 ISO(YYYY-MM-DD)로 스탬프 — 날짜가 곧 입고 기록이자 입고 여부 판단 기준.
+    // 화면에는 formatStockInDisplay가 'MM월 DD일'로 표시한다.
+    handleCellSave({ id, type, field }, getKstTodayISO())
   })
 
   // 색상/스타일 문자열 파싱 (예: 'yellow::strike::bold::redtext' -> { color, strike, bold, redText })
@@ -1638,6 +1630,8 @@ export default function ProductionListMain() {
     }
     
     if (val === null || val === undefined || val === '') return '-'
+    // 완제품입고는 ISO로 저장되고 'MM월 DD일'로 표시되므로 실측도 표시값 기준
+    if (field === 'final_product_stock') return formatStockInDisplay(val.toString())
     // URL은 화면에 '링크'로 축약 표시되므로 폭 실측도 동일 기준으로
     return collapseUrlsForMeasure(val.toString())
   }
