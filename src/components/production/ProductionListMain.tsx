@@ -523,6 +523,75 @@ const formatArtworkDisplay = (raw: string | null | undefined): string => {
   return memo || ''
 }
 
+// 행 추가(입력행) 텍스트 입력 — 칼럼이 좁으면(자기 폭이 6자≈66px 이하) 또는 메모형이면
+// 포커스 시 셀 아래에 넉넉한 말풍선(팝오버) 입력창을 띄워 적은 내용을 보면서 타이핑할 수 있게 한다.
+function AddPopoverInput({
+  value, onChange, placeholder, className, memo = false, listId, inputType = 'text',
+}: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  className: string
+  memo?: boolean
+  listId?: string
+  inputType?: 'text' | 'number'
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false)
+  const decideOpen = () => {
+    const w = wrapRef.current?.getBoundingClientRect().width ?? 999
+    setOpen(memo || w < 66) // 한글 6자 ≈ 60px(@10px) — 그 이하 좁은 칼럼이면 팝오버
+  }
+  return (
+    <div className="relative" ref={wrapRef}>
+      <input
+        type={inputType}
+        list={listId}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onFocus={decideOpen}
+        placeholder={placeholder}
+        className={className}
+      />
+      {open && (
+        <div
+          className="absolute left-0 top-full mt-0.5 z-[60] bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
+          style={{ minWidth: '220px' }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {placeholder && <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">{placeholder}</div>}
+          {memo ? (
+            <textarea
+              autoFocus
+              rows={3}
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              onBlur={() => setOpen(false)}
+              onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false) }}
+              placeholder={`${placeholder ?? ''} (줄바꿈 가능)`}
+              className="w-full bg-white border border-gray-300 rounded px-1.5 py-1 text-[11px] leading-snug focus:outline-none focus:border-[#1777CB] resize-y"
+              style={{ width: '300px' }}
+            />
+          ) : (
+            <input
+              autoFocus
+              type={inputType}
+              list={listId}
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              onBlur={() => setOpen(false)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setOpen(false) }}
+              placeholder={placeholder}
+              className="w-full h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:border-[#1777CB]"
+              style={{ width: '220px' }}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // 행 추가(입력행) 전용 ARTWORK 콤보 입력: 기본은 메모 입력창 하나 —
 // 수동으로 타이핑하거나, 창 클릭 시 아래에 뜨는 드롭다운에서 상태(진행중/업체 확인중/발주완료)를 선택.
 // '발주완료' 선택 시 오늘(KST) 날짜 자동 기록, 같은 항목 재선택 시 해제.
@@ -3448,11 +3517,11 @@ export default function ProductionListMain() {
                         </input>
                       </td>
                       <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth + pcbBoardWidth}px`, width: `${referencePcbWidth}px`, minWidth: `${referencePcbWidth}px`, maxWidth: `${referencePcbWidth}px` }}>
-                        <input
-                          type="text"
+                        <AddPopoverInput
                           value={addingPcbRow.reference || ''}
-                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, reference: e.target.value })}
+                          onChange={(v) => setAddingPcbRow({ ...addingPcbRow, reference: v })}
                           placeholder="참고"
+                          memo={true}
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none text-red-500 font-semibold align-left"
                         />
                       </td>
@@ -3467,11 +3536,11 @@ export default function ProductionListMain() {
                         />
                       </td>
                       <td className="px-1 py-1 border-y border-r border-gray-200">
-                        <input
-                          type="text"
+                        <AddPopoverInput
                           value={addingPcbRow.estimate_no || ''}
-                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, estimate_no: e.target.value })}
+                          onChange={(v) => setAddingPcbRow({ ...addingPcbRow, estimate_no: v })}
                           placeholder="견적NO"
+                          memo={false}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
@@ -3486,22 +3555,22 @@ export default function ProductionListMain() {
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
-                          list="vendors-list"
+                        <AddPopoverInput
+                          listId="vendors-list"
                           value={addingPcbRow.client_name || ''}
-                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, client_name: e.target.value })}
+                          onChange={(v) => setAddingPcbRow({ ...addingPcbRow, client_name: v })}
                           placeholder="업체"
+                          memo={false}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
-                          list="contacts-list-adding-pcb"
+                        <AddPopoverInput
+                          listId="contacts-list-adding-pcb"
                           value={addingPcbRow.client_manager || ''}
-                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, client_manager: e.target.value })}
+                          onChange={(v) => setAddingPcbRow({ ...addingPcbRow, client_manager: v })}
                           placeholder="업체 담당자"
+                          memo={false}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                         <datalist id="contacts-list-adding-pcb">
@@ -3511,12 +3580,12 @@ export default function ProductionListMain() {
                         </datalist>
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
-                          list="employees-list"
+                        <AddPopoverInput
+                          listId="employees-list"
                           value={addingPcbRow.hansl_manager || ''}
-                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, hansl_manager: e.target.value })}
+                          onChange={(v) => setAddingPcbRow({ ...addingPcbRow, hansl_manager: v })}
                           placeholder="HANSL 담당"
+                          memo={false}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
@@ -3548,20 +3617,20 @@ export default function ProductionListMain() {
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
+                        <AddPopoverInput
                           value={addingPcbRow.metal_mask || ''}
-                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, metal_mask: e.target.value })}
+                          onChange={(v) => setAddingPcbRow({ ...addingPcbRow, metal_mask: v })}
                           placeholder="MetalMask"
+                          memo={false}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
+                        <AddPopoverInput
                           value={addingPcbRow.changes_memo || ''}
-                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, changes_memo: e.target.value })}
+                          onChange={(v) => setAddingPcbRow({ ...addingPcbRow, changes_memo: v })}
                           placeholder="변경사항"
+                          memo={true}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
@@ -3575,12 +3644,12 @@ export default function ProductionListMain() {
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
-                          list="vendors-list"
+                        <AddPopoverInput
+                          listId="vendors-list"
                           value={addingPcbRow.pcb_vendor || ''}
-                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, pcb_vendor: e.target.value })}
+                          onChange={(v) => setAddingPcbRow({ ...addingPcbRow, pcb_vendor: v })}
                           placeholder="PCB업체"
+                          memo={false}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
@@ -3595,11 +3664,11 @@ export default function ProductionListMain() {
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
+                        <AddPopoverInput
                           value={addingPcbRow.pcb_lead_time || ''}
-                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, pcb_lead_time: e.target.value })}
+                          onChange={(v) => setAddingPcbRow({ ...addingPcbRow, pcb_lead_time: v })}
                           placeholder="제작기간"
+                          memo={false}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
@@ -3613,20 +3682,20 @@ export default function ProductionListMain() {
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
+                        <AddPopoverInput
                           value={addingPcbRow.received_destination || ''}
-                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, received_destination: e.target.value })}
+                          onChange={(v) => setAddingPcbRow({ ...addingPcbRow, received_destination: v })}
                           placeholder="입고처"
+                          memo={true}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
+                        <AddPopoverInput
                           value={addingPcbRow.parts_organization || ''}
-                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, parts_organization: e.target.value })}
+                          onChange={(v) => setAddingPcbRow({ ...addingPcbRow, parts_organization: v })}
                           placeholder="부품정리"
+                          memo={false}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
@@ -3688,20 +3757,20 @@ export default function ProductionListMain() {
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
+                        <AddPopoverInput
                           value={addingPcbRow.qa_notes || ''}
-                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, qa_notes: e.target.value })}
+                          onChange={(v) => setAddingPcbRow({ ...addingPcbRow, qa_notes: v })}
                           placeholder="비고"
+                          memo={true}
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
+                        <AddPopoverInput
                           value={addingPcbRow.design_review || ''}
-                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, design_review: e.target.value })}
+                          onChange={(v) => setAddingPcbRow({ ...addingPcbRow, design_review: v })}
                           placeholder="디자인리뷰"
+                          memo={true}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] text-center focus:outline-none"
                         />
                       </td>
@@ -3725,11 +3794,11 @@ export default function ProductionListMain() {
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
+                        <AddPopoverInput
                           value={addingPcbRow.delivery_destination || ''}
-                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_destination: e.target.value })}
+                          onChange={(v) => setAddingPcbRow({ ...addingPcbRow, delivery_destination: v })}
                           placeholder="배송처"
+                          memo={true}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
@@ -3881,11 +3950,11 @@ export default function ProductionListMain() {
                         />
                       </td>
                       <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderCableWidth + productionCategoryCableWidth + cableBoardWidth}px`, width: `${referenceCableWidth}px`, minWidth: `${referenceCableWidth}px`, maxWidth: `${referenceCableWidth}px` }}>
-                        <input
-                          type="text"
+                        <AddPopoverInput
                           value={addingCableRow.reference || ''}
-                          onChange={(e) => setAddingCableRow({ ...addingCableRow, reference: e.target.value })}
+                          onChange={(v) => setAddingCableRow({ ...addingCableRow, reference: v })}
                           placeholder="참고"
+                          memo={true}
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none text-red-500 font-semibold align-left"
                         />
                       </td>
@@ -3900,11 +3969,11 @@ export default function ProductionListMain() {
                         />
                       </td>
                       <td className="px-1 py-1 border-y border-r border-gray-200">
-                        <input
-                          type="text"
+                        <AddPopoverInput
                           value={addingCableRow.estimate_no || ''}
-                          onChange={(e) => setAddingCableRow({ ...addingCableRow, estimate_no: e.target.value })}
+                          onChange={(v) => setAddingCableRow({ ...addingCableRow, estimate_no: v })}
                           placeholder="견적NO"
+                          memo={false}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
@@ -3919,22 +3988,22 @@ export default function ProductionListMain() {
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
-                          list="vendors-list"
+                        <AddPopoverInput
+                          listId="vendors-list"
                           value={addingCableRow.client_name || ''}
-                          onChange={(e) => setAddingCableRow({ ...addingCableRow, client_name: e.target.value })}
+                          onChange={(v) => setAddingCableRow({ ...addingCableRow, client_name: v })}
                           placeholder="업체명"
+                          memo={false}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
-                          list="contacts-list-adding-cable"
+                        <AddPopoverInput
+                          listId="contacts-list-adding-cable"
                           value={addingCableRow.client_manager || ''}
-                          onChange={(e) => setAddingCableRow({ ...addingCableRow, client_manager: e.target.value })}
+                          onChange={(v) => setAddingCableRow({ ...addingCableRow, client_manager: v })}
                           placeholder="업체 담당자"
+                          memo={false}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                         <datalist id="contacts-list-adding-cable">
@@ -3944,12 +4013,12 @@ export default function ProductionListMain() {
                         </datalist>
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
-                          list="employees-list"
+                        <AddPopoverInput
+                          listId="employees-list"
                           value={addingCableRow.hansl_manager || ''}
-                          onChange={(e) => setAddingCableRow({ ...addingCableRow, hansl_manager: e.target.value })}
+                          onChange={(v) => setAddingCableRow({ ...addingCableRow, hansl_manager: v })}
                           placeholder="HANSL 담당"
+                          memo={false}
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
@@ -3975,11 +4044,11 @@ export default function ProductionListMain() {
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
+                        <AddPopoverInput
                           value={addingCableRow.spec_details || ''}
-                          onChange={(e) => setAddingCableRow({ ...addingCableRow, spec_details: e.target.value })}
+                          onChange={(v) => setAddingCableRow({ ...addingCableRow, spec_details: v })}
                           placeholder="상세 사양"
+                          memo={true}
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
@@ -4013,11 +4082,11 @@ export default function ProductionListMain() {
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
-                        <input
-                          type="text"
+                        <AddPopoverInput
                           value={addingCableRow.delivery_notes || ''}
-                          onChange={(e) => setAddingCableRow({ ...addingCableRow, delivery_notes: e.target.value })}
+                          onChange={(v) => setAddingCableRow({ ...addingCableRow, delivery_notes: v })}
                           placeholder="납품/비고"
+                          memo={true}
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
