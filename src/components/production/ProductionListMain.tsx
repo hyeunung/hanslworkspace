@@ -168,6 +168,8 @@ const opLabelFor = (field: string, op: FilterOp): string => {
 
 // 칼럼 타입에 따라 선택 가능한 조건 목록
 const opsForField = (field: string): FilterOp[] => {
+  // 입고 칼럼(완제품입고 등)은 날짜/입고대기/입고됨만 — 포함·미포함은 날짜 데이터에 의미 중복
+  if (STOCK_DATE_FIELDS.includes(field)) return ['date_in', 'is_empty', 'not_empty']
   if (DATE_ONLY_FIELDS.includes(field)) return ['date_in', 'is_empty', 'not_empty']
   if (HYBRID_DATE_FIELDS.includes(field)) return ['date_in', 'contains', 'not_contains', 'is_empty', 'not_empty']
   return ['contains', 'not_contains', 'is_empty', 'not_empty']
