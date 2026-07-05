@@ -501,36 +501,57 @@ const formatArtworkDisplay = (raw: string | null | undefined): string => {
   return memo || ''
 }
 
-// 행 추가(입력행) 전용 컴팩트 ARTWORK 입력: 메모 입력이 기본 + 상태는 드롭다운으로 선택.
-// '발주완료' 선택 시 오늘(KST) 날짜가 자동 기록된다.
+// 행 추가(입력행) 전용 ARTWORK 콤보 입력: 기본은 메모 입력창 하나 —
+// 수동으로 타이핑하거나, 창 클릭 시 아래에 뜨는 드롭다운에서 상태(진행중/업체 확인중/발주완료)를 선택.
+// '발주완료' 선택 시 오늘(KST) 날짜 자동 기록, 같은 항목 재선택 시 해제.
 function ArtworkAddInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const parts = parseArtworkStatus(value)
+  const [open, setOpen] = useState(false)
+  const statusLabel =
+    parts.status === 'progress' ? '진행중'
+    : parts.status === 'checking' ? '업체 확인중'
+    : parts.status === 'ordered' ? `${parts.date ? formatKoreanMMDD(parts.date) + ' ' : ''}발주완료`
+    : ''
+  const pick = (code: string) => {
+    if (parts.status === code) {
+      onChange(serializeArtworkStatus({ ...parts, status: '', date: '' }))
+    } else {
+      onChange(serializeArtworkStatus({ status: code, date: code === 'ordered' ? getKstTodayISO() : '', memo: parts.memo }))
+    }
+    setOpen(false)
+  }
   return (
-    <div className="flex flex-col gap-0.5">
-      <select
-        value={parts.status}
-        onChange={(e) => {
-          const code = e.target.value
-          onChange(serializeArtworkStatus({
-            status: code,
-            date: code === 'ordered' ? getKstTodayISO() : '',
-            memo: parts.memo,
-          }))
-        }}
-        className="w-full bg-white border border-gray-300 rounded text-[10px] focus:outline-none"
-      >
-        <option value="">상태 선택</option>
-        <option value="progress">진행중</option>
-        <option value="checking">업체 확인중</option>
-        <option value="ordered">발주완료{parts.status === 'ordered' && parts.date ? ` (${formatKoreanMMDD(parts.date)})` : ''}</option>
-      </select>
-      <input
-        type="text"
-        value={parts.memo}
-        onChange={(e) => onChange(serializeArtworkStatus({ ...parts, memo: e.target.value }))}
-        placeholder="ARTWORK 메모"
-        className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none"
-      />
+    <div className="relative">
+      <div className="flex items-center gap-1 w-full bg-white border border-gray-300 rounded px-1">
+        {statusLabel && (
+          <span className="shrink-0 text-[9px] text-blue-600 font-semibold whitespace-nowrap">{statusLabel} │</span>
+        )}
+        <input
+          type="text"
+          value={parts.memo}
+          onChange={(e) => onChange(serializeArtworkStatus({ ...parts, memo: e.target.value }))}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
+          placeholder="ARTWORK 메모"
+          className="w-full bg-transparent text-[10px] focus:outline-none"
+          style={{ border: 'none', boxShadow: 'none', outline: 'none' }}
+        />
+      </div>
+      {open && (
+        <div className="absolute left-0 top-full mt-0.5 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-0.5 min-w-[120px]">
+          {([['progress', '진행중'], ['checking', '업체 확인중'], ['ordered', '발주완료 (오늘 날짜 기록)']] as const).map(([code, label]) => (
+            <button
+              key={code}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => pick(code)}
+              className={`w-full text-left px-2 py-1 text-[10px] hover:bg-gray-50 transition-colors ${parts.status === code ? 'text-[#1777CB] font-bold' : 'text-gray-700'}`}
+            >
+              {parts.status === code ? '✓ ' : ''}{label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
