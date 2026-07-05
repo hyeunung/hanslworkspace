@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { logger } from '@/lib/logger'
 
 export interface ProductionPcb {
   id: string
@@ -43,6 +44,8 @@ export interface ProductionPcb {
   reference?: string | null
   created_at: string
   updated_at: string
+  deleted_at?: string | null
+  deleted_by?: string | null
 }
 
 export interface ProductionCable {
@@ -71,6 +74,8 @@ export interface ProductionCable {
   reference?: string | null
   created_at: string
   updated_at: string
+  deleted_at?: string | null
+  deleted_by?: string | null
 }
 
 export const productionService = {
@@ -79,7 +84,8 @@ export const productionService = {
    */
   async getProductionPcbs(filters?: { query?: string; startDate?: string; endDate?: string }): Promise<ProductionPcb[]> {
     const supabase = createClient()
-    let query = supabase.from('production_pcbs').select('*')
+    // 소프트 삭제된 행은 제외 (삭제 이력은 DB에 보존되지만 UI에는 노출하지 않는다)
+    let query = supabase.from('production_pcbs').select('*').is('deleted_at', null)
 
     if (filters?.startDate) {
       query = query.gte('request_date', filters.startDate)
@@ -105,7 +111,8 @@ export const productionService = {
    */
   async getProductionCables(filters?: { query?: string; startDate?: string; endDate?: string }): Promise<ProductionCable[]> {
     const supabase = createClient()
-    let query = supabase.from('production_cables').select('*')
+    // 소프트 삭제된 행은 제외 (삭제 이력은 DB에 보존되지만 UI에는 노출하지 않는다)
+    let query = supabase.from('production_cables').select('*').is('deleted_at', null)
 
     if (filters?.startDate) {
       query = query.gte('request_date', filters.startDate)
@@ -189,21 +196,41 @@ export const productionService = {
   },
 
   /**
-   * PCB 삭제
+   * PCB 삭제 (소프트 삭제)
+   * - 실제로 행을 지우지 않고 deleted_at/deleted_by 만 기록한다.
+   * - UI 조회는 deleted_at IS NULL 만 가져오므로 화면에서는 사라지지만 DB에는 이력이 남는다.
    */
   async deleteProductionPcb(id: string): Promise<void> {
     const supabase = createClient()
-    const { error } = await supabase.from('production_pcbs').delete().eq('id', id)
+    const { data: { user } } = await supabase.auth.getUser()
+    const { error } = await supabase
+      .from('production_pcbs')
+      .update({ deleted_at: new Date().toISOString(), deleted_by: user?.email ?? user?.id ?? null })
+      .eq('id', id)
+      .is('deleted_at', null)
     if (error) throw error
+    logger.info('제작현황 PCB 삭제(소프트)', {
+      category: 'production', action: 'soft_delete',
+      target_table: 'production_pcbs', target_id: id,
+    })
   },
 
   /**
-   * 케이블 삭제
+   * 케이블 삭제 (소프트 삭제)
    */
   async deleteProductionCable(id: string): Promise<void> {
     const supabase = createClient()
-    const { error } = await supabase.from('production_cables').delete().eq('id', id)
+    const { data: { user } } = await supabase.auth.getUser()
+    const { error } = await supabase
+      .from('production_cables')
+      .update({ deleted_at: new Date().toISOString(), deleted_by: user?.email ?? user?.id ?? null })
+      .eq('id', id)
+      .is('deleted_at', null)
     if (error) throw error
+    logger.info('제작현황 케이블 삭제(소프트)', {
+      category: 'production', action: 'soft_delete',
+      target_table: 'production_cables', target_id: id,
+    })
   },
 
   /**

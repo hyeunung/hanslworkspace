@@ -308,8 +308,8 @@ export default function PurchaseNewMain() {
     const loadProductionOrders = async () => {
       try {
         const [pcbRes, cableRes] = await Promise.all([
-          supabase.from('production_pcbs').select('sales_order_number, board_name, client_name').order('sales_order_number', { ascending: false }),
-          supabase.from('production_cables').select('sales_order_number, board_name, client_name').order('sales_order_number', { ascending: false })
+          supabase.from('production_pcbs').select('sales_order_number, board_name, client_name').is('deleted_at', null).order('sales_order_number', { ascending: false }),
+          supabase.from('production_cables').select('sales_order_number, board_name, client_name').is('deleted_at', null).order('sales_order_number', { ascending: false })
         ]);
         
         const combined = [
