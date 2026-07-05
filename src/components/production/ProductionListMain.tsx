@@ -233,11 +233,13 @@ const matchesSearch = (item: any, query: string): boolean => {
   const dq = parseSearchDate(q)
   if (!dq) return false
   const mmdd = `-${String(dq.m).padStart(2, '0')}-${String(dq.d).padStart(2, '0')}`
-  return [...DATE_ONLY_FIELDS, ...HYBRID_DATE_FIELDS].some(f => {
-    const v = item[f]
+  const isoHit = (v: unknown): boolean => {
     if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(v)) return false
     return dq.y != null ? v.startsWith(`${dq.y}${mmdd}`) : v.slice(4, 10) === mmdd
-  })
+  }
+  if ([...DATE_ONLY_FIELDS, ...HYBRID_DATE_FIELDS].some(f => isoHit(item[f]))) return true
+  // ARTWORK 발주완료 날짜('ordered|||YYYY-MM-DD|||메모')도 검색 대상
+  return isoHit(parseArtworkStatus(item.artwork_status).date)
 }
 
 // localStorage에 저장된 테이블 필터 복원 (형식이 어긋나면 기본값, 구버전 형식은 규칙으로 변환)
