@@ -127,6 +127,9 @@ const DEFAULT_CATEGORY_ORDER = ['LG_PCB', 'LG_Socket Board', 'LG_Cable', 'LG_Cas
 const PCB_CATEGORIES = ['LG_PCB', 'LG_Socket Board', 'PCB']
 const CABLE_CATEGORIES = ['LG_Cable', 'LG_Case', 'Cable', 'Case']
 
+// 내용이 길어질 수 있는 메모성 텍스트 칼럼 — 편집 시 여러 줄 textarea 팝오버로 띄운다
+const MEMO_TEXT_FIELDS = ['reference', 'changes_memo', 'qa_notes', 'design_review', 'delivery_notes', 'spec_details', 'delivery_destination', 'received_destination']
+
 // 순수 날짜 칼럼(YYYY-MM-DD)과 날짜/메모 혼합 칼럼 — 조건(op) 선택지가 달라진다
 const DATE_ONLY_FIELDS = ['request_date', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date']
 const HYBRID_DATE_FIELDS = ['delivery_deadline', 'assy_hanwha', 'assy_evertech', 'final_product_stock']
@@ -2038,6 +2041,63 @@ export default function ProductionListMain() {
         listId = 'employees-list'
       }
 
+      // 좁은 칼럼이거나 메모성 칼럼은 셀 아래에 말풍선(팝오버)으로 넉넉한 입력창을 띄운다.
+      // 메모성은 여러 줄 textarea, 나머지는 넓은 input.
+      const colW = getColumnWidth(type, field, 0)
+      const isMemoField = MEMO_TEXT_FIELDS.includes(field)
+      const usePopover = isMemoField || colW < 140
+      const commit = () => { handleCellSave({ id, type, field }, editValue); setEditingCell(null) }
+
+      if (usePopover) {
+        // 셀이 오른쪽 끝에 있을 때 팝오버가 화면 밖으로 나가지 않도록 좌/우 정렬 결정
+        return (
+          <td className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
+            <span className="block text-[10px] text-gray-400 truncate px-1">{String(editValue || ' ')}</span>
+            <div
+              className="absolute left-0 top-full mt-0.5 z-[60] bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
+              style={{ minWidth: '220px', maxWidth: '360px' }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">{getColumnTitle(field, type)}</div>
+              {isMemoField ? (
+                <textarea
+                  autoFocus
+                  rows={3}
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onBlur={commit}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commit() }
+                    if (e.key === 'Escape') setEditingCell(null)
+                  }}
+                  placeholder={`${getColumnTitle(field, type)} 입력 (줄바꿈 가능 · Ctrl+Enter 저장)`}
+                  className="w-full bg-white border border-gray-300 rounded px-1.5 py-1 text-[11px] leading-snug focus:outline-none focus:border-[#1777CB] resize-y"
+                  style={{ width: '300px' }}
+                />
+              ) : (
+                <input
+                  autoFocus
+                  type={inputType}
+                  list={listId}
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  onBlur={commit}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') commit()
+                    if (e.key === 'Escape') setEditingCell(null)
+                  }}
+                  placeholder={`${getColumnTitle(field, type)} 입력`}
+                  className="w-full h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:border-[#1777CB]"
+                  style={{ width: '220px' }}
+                />
+              )}
+            </div>
+            {datalistNode}
+            {renderCellColorPicker()}
+          </td>
+        )
+      }
+
       return (
         <td className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
           <input
@@ -2046,15 +2106,9 @@ export default function ProductionListMain() {
             list={listId}
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
-            onBlur={() => {
-              handleCellSave({ id, type, field }, editValue)
-              setEditingCell(null)
-            }}
+            onBlur={commit}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleCellSave({ id, type, field }, editValue)
-                setEditingCell(null)
-              }
+              if (e.key === 'Enter') commit()
               if (e.key === 'Escape') setEditingCell(null)
             }}
             className={`w-full h-5 bg-white border border-gray-300 rounded px-1.5 py-0 text-[10px] focus:outline-none ${field === 'reference' ? 'text-red-500 font-semibold align-left' : ''}${field === 'board_name' ? ' align-left' : ''}`}
