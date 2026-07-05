@@ -208,6 +208,37 @@ const applyFilterRule = (item: any, rule: FilterRule): boolean => {
   }
 }
 
+// ─── 통합 검색: 텍스트 + 날짜 패턴 ─────────────────────────────────
+// '4월 6일' / '04월 06일' / '4/6' / '4-6' / '2026-04-06' / '2026년 4월 6일' 같은 날짜 입력을 인식해
+// 모든 날짜 칼럼(요청일·납품기한·입고일정·완제품입고·실제입고일 등)에서 해당 날짜를 찾는다.
+const parseSearchDate = (q: string): { y: number | null; m: number; d: number } | null => {
+  const s = q.trim()
+  let m = s.match(/^(\d{4})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})\s*일?$/)
+  if (m) return { y: +m[1], m: +m[2], d: +m[3] }
+  m = s.match(/^(\d{1,2})\s*(?:월|[/.-])\s*(\d{1,2})\s*일?$/)
+  if (m) return { y: null, m: +m[1], d: +m[2] }
+  return null
+}
+
+const SEARCH_TEXT_FIELDS = ['sales_order_number', 'board_name', 'client_name']
+const matchesSearch = (item: any, query: string): boolean => {
+  const q = query.trim()
+  if (!q) return true
+  // 텍스트 매치 (기존과 동일한 3개 필드)
+  const ql = q.toLowerCase()
+  const textHit = SEARCH_TEXT_FIELDS.some(f => String(item[f] ?? '').toLowerCase().includes(ql))
+  if (textHit) return true
+  // 날짜 매치: 모든 날짜/혼합 칼럼의 ISO 값에서 (년)월일 일치
+  const dq = parseSearchDate(q)
+  if (!dq) return false
+  const mmdd = `-${String(dq.m).padStart(2, '0')}-${String(dq.d).padStart(2, '0')}`
+  return [...DATE_ONLY_FIELDS, ...HYBRID_DATE_FIELDS].some(f => {
+    const v = item[f]
+    if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(v)) return false
+    return dq.y != null ? v.startsWith(`${dq.y}${mmdd}`) : v.slice(4, 10) === mmdd
+  })
+}
+
 // localStorage에 저장된 테이블 필터 복원 (형식이 어긋나면 기본값, 구버전 형식은 규칙으로 변환)
 const loadTableFilter = (type: 'pcb' | 'cable'): TableFilter => {
   const def = defaultTableFilter(type)
@@ -1031,12 +1062,8 @@ export default function ProductionListMain() {
     // 전체 로드 — 년/월은 클라이언트 표시 필터(matchDateFilter)로 처리한다.
     // 날짜범위를 서버에서 자르면 request_date가 NULL인 행이 영영 안 보이는 문제도 있었음.
     try {
-      const pcbData = await productionService.getProductionPcbs({
-        query: searchQuery
-      })
-      const cableData = await productionService.getProductionCables({
-        query: searchQuery
-      })
+      const pcbData = await productionService.getProductionPcbs()
+      const cableData = await productionService.getProductionCables()
       if (seq !== loadSeqRef.current) return // 더 최신 요청이 있으면 이 응답은 버림
       setPcbs(pcbData)
       setCables(cableData)
@@ -1077,10 +1104,11 @@ export default function ProductionListMain() {
     loadVendors()
   }, [])
 
-  // 검색/필터 변경 시 로드
+  // 최초 로드 (검색은 클라이언트에서 처리 — 날짜 패턴 검색 포함)
   useEffect(() => {
     loadData()
-  }, [searchQuery])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // 실시간 구독 설정
   useEffect(() => {
@@ -1104,7 +1132,7 @@ export default function ProductionListMain() {
       supabase.removeChannel(pcbChannel)
       supabase.removeChannel(cableChannel)
     }
-  }, [searchQuery])
+  }, [])
 
   // 행 색상 피커 바깥 영역 클릭 시 닫기
   useEffect(() => {
@@ -1497,14 +1525,16 @@ export default function ProductionListMain() {
   // 카테고리 + 필터 규칙(AND) 적용 + 드래그한 제작구분 순서대로 그룹핑 (그룹 내부는 기존 정렬(제작번호 내림차순) 유지 — Array.sort는 안정 정렬)
   const filteredPcbs = useMemo(() => pcbs
     .filter(item => pcbFilter.categories.includes(item.production_category))
+    .filter(item => matchesSearch(item, searchQuery))
     .filter(item => pcbFilter.rules.every(rule => applyFilterRule(item, rule)))
     .sort((a, b) => categoryRank(a.production_category) - categoryRank(b.production_category)),
-    [pcbs, pcbFilter, categoryOrder])
+    [pcbs, pcbFilter, categoryOrder, searchQuery])
   const filteredCables = useMemo(() => cables
     .filter(item => cableFilter.categories.includes(item.production_category))
+    .filter(item => matchesSearch(item, searchQuery))
     .filter(item => cableFilter.rules.every(rule => applyFilterRule(item, rule)))
     .sort((a, b) => categoryRank(a.production_category) - categoryRank(b.production_category)),
-    [cables, cableFilter, categoryOrder])
+    [cables, cableFilter, categoryOrder, searchQuery])
 
   // 년도 드롭다운 옵션 = 로드된 데이터에서 해당 날짜 칼럼에 실제 존재하는 년도만 (내림차순)
   const yearsFor = (type: 'pcb' | 'cable', dateField: string): number[] => {
@@ -3147,7 +3177,7 @@ export default function ProductionListMain() {
             <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="제작번호, 보드명, 업체명 검색..."
+              placeholder="제작번호, 보드명, 업체명, 날짜(4월 6일) 검색..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{ paddingLeft: '26px', height: '20px' }}
