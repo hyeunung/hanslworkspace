@@ -135,7 +135,7 @@ const DATE_ONLY_FIELDS = ['request_date', 'delivery_schedule', 'assy_requested_d
 const HYBRID_DATE_FIELDS = ['delivery_deadline', 'assy_hanwha', 'assy_evertech', 'final_product_stock']
 
 // 필터 규칙 하나: field 칼럼에 op 조건 적용. contains류는 value, date_in은 year/month 사용.
-type FilterOp = 'date_in' | 'contains' | 'not_contains' | 'is_empty' | 'not_empty'
+type FilterOp = 'date_in' | 'contains' | 'not_contains' | 'is_empty' | 'not_empty' | 'status_is'
 type FilterRule = {
   id: string
   field: string
@@ -156,20 +156,29 @@ const OP_LABELS: Record<FilterOp, string> = {
   not_contains: '미포함',
   is_empty: '비어있음',
   not_empty: '비어있지 않음',
+  status_is: '상태',
 }
 
 // 입고 칼럼(완제품입고/실제입고일)은 도메인 용어로 표기: 비어있음=입고대기, 비어있지 않음=입고됨
 const STOCK_DATE_FIELDS = ['final_product_stock', 'cable_actual_date']
+// ARTWORK는 상태(진행중/업체확인중/발주완료) + 메모 구조라 전용 조건을 쓴다 (상태 목록은 ARTWORK_STATUS_OPTIONS)
+const ARTWORK_FIELD = 'artwork_status'
 const opLabelFor = (field: string, op: FilterOp): string => {
   if (STOCK_DATE_FIELDS.includes(field)) {
     if (op === 'is_empty') return '입고대기'
     if (op === 'not_empty') return '입고됨'
+  }
+  if (field === ARTWORK_FIELD) {
+    if (op === 'status_is') return '상태'
+    if (op === 'contains') return '메모 포함'
+    if (op === 'not_contains') return '메모 미포함'
   }
   return OP_LABELS[op]
 }
 
 // 칼럼 타입에 따라 선택 가능한 조건 목록
 const opsForField = (field: string): FilterOp[] => {
+  if (field === ARTWORK_FIELD) return ['status_is', 'contains', 'not_contains', 'is_empty', 'not_empty']
   // 입고 칼럼(완제품입고 등)은 날짜/입고대기/입고됨만 — 포함·미포함은 날짜 데이터에 의미 중복
   if (STOCK_DATE_FIELDS.includes(field)) return ['date_in', 'is_empty', 'not_empty']
   if (DATE_ONLY_FIELDS.includes(field)) return ['date_in', 'is_empty', 'not_empty']
@@ -196,7 +205,17 @@ const applyFilterRule = (item: any, rule: FilterRule): boolean => {
   const raw = item[rule.field]
   const s = raw == null ? '' : String(raw).trim()
   const empty = s === '' || s === '-'
+  // ARTWORK: 상태(status_is)는 파싱한 상태로, 포함/미포함은 메모 부분만 검색
+  if (rule.field === ARTWORK_FIELD) {
+    const aw = parseArtworkStatus(s)
+    if (rule.op === 'status_is') return aw.status === rule.value
+    if (rule.op === 'contains') return !rule.value || aw.memo.toLowerCase().includes(rule.value.toLowerCase())
+    if (rule.op === 'not_contains') return !rule.value || !aw.memo.toLowerCase().includes(rule.value.toLowerCase())
+    if (rule.op === 'is_empty') return empty
+    if (rule.op === 'not_empty') return !empty
+  }
   switch (rule.op) {
+    case 'status_is': return true
     case 'is_empty': return empty
     case 'not_empty': return !empty
     case 'contains': return !rule.value || s.toLowerCase().includes(rule.value.toLowerCase())
@@ -3058,13 +3077,20 @@ export default function ProductionListMain() {
     })
 
     // 칼럼 변경 시 새 칼럼이 지원하는 조건으로 보정 (date_in이면 년/월 초기화)
+    // op별 기본 value 계산 (status_is면 첫 상태코드, 포함류면 기존/빈 문자열)
+    const valueForOp = (op: FilterOp, prev?: string): string | undefined => {
+      if (op === 'status_is') return prev && ARTWORK_STATUS_OPTIONS.some(o => o.code === prev) ? prev : ARTWORK_STATUS_OPTIONS[0].code
+      if (op === 'contains' || op === 'not_contains') return prev ?? ''
+      return undefined
+    }
     const changeRuleField = (rule: FilterRule, field: string) => {
       const ops = opsForField(field)
-      const op = ops.includes(rule.op) ? rule.op : ops[0]
+      // ARTWORK로 바꾸면 기본은 상태 선택, 그 외엔 호환되는 기존 조건 유지
+      const op = field === ARTWORK_FIELD ? 'status_is' : (ops.includes(rule.op) ? rule.op : ops[0])
       updateRule(type, rule.id, {
         field,
         op,
-        value: op === 'contains' || op === 'not_contains' ? (rule.value ?? '') : undefined,
+        value: valueForOp(op, rule.value),
         year: op === 'date_in' ? new Date().getFullYear() : null,
         month: op === 'date_in' ? null : null,
       })
@@ -3072,7 +3098,7 @@ export default function ProductionListMain() {
     const changeRuleOp = (rule: FilterRule, op: FilterOp) => {
       updateRule(type, rule.id, {
         op,
-        value: op === 'contains' || op === 'not_contains' ? (rule.value ?? '') : undefined,
+        value: valueForOp(op, rule.value),
         year: op === 'date_in' ? (rule.year ?? new Date().getFullYear()) : null,
         month: op === 'date_in' ? (rule.month ?? null) : null,
       })
@@ -3120,7 +3146,19 @@ export default function ProductionListMain() {
                       <option key={op} value={op}>{opLabelFor(rule.field, op)}</option>
                     ))}
                   </select>
-                  {/* 조건별 값 입력: 년/월 드롭다운 또는 텍스트 */}
+                  {/* 조건별 값 입력: ARTWORK 상태 드롭다운 / 년/월 드롭다운 / 텍스트 */}
+                  {rule.op === 'status_is' && (
+                    <select
+                      value={rule.value ?? ''}
+                      onChange={(e) => updateRule(type, rule.id, { value: e.target.value })}
+                      style={fitSelect(ARTWORK_STATUS_OPTIONS.find(o => o.code === rule.value)?.label ?? '진행중', 700)}
+                      className={`${selectClass} text-[#1777CB] font-bold`}
+                    >
+                      {ARTWORK_STATUS_OPTIONS.map(o => (
+                        <option key={o.code} value={o.code}>{o.label}</option>
+                      ))}
+                    </select>
+                  )}
                   {rule.op === 'date_in' && (
                     <>
                       <select
