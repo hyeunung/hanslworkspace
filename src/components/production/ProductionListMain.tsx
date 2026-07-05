@@ -1973,14 +1973,17 @@ export default function ProductionListMain() {
       cellStyle.maxWidth = `${activeWidth}px`
     }
 
-    const renderCellColorPicker = () => {
+    // inline=true면 팝오버 안(입력창 아래)에 흐름대로 넣고, false면 셀 위에 absolute로 띄운다.
+    const renderCellColorPicker = (inline = false) => {
       const cellVal = item.cell_colors?.[field];
       const { color: activeColor, strike: isCellStruck, bold: isCellBold, redText: isCellRedText } = parseColorState(cellVal);
 
       return (
         <div
-          className="absolute left-0 bottom-full mb-1 bg-white border border-gray-200 rounded-md shadow-lg p-1 z-50 flex flex-col gap-1"
-          style={{ width: 'max-content' }}
+          className={inline
+            ? "mt-1.5 pt-1.5 border-t border-gray-200 flex flex-col gap-1"
+            : "absolute left-0 bottom-full mb-1 bg-white border border-gray-200 rounded-md shadow-lg p-1 z-50 flex flex-col gap-1"}
+          style={inline ? undefined : { width: 'max-content' }}
         >
           {/* 1행: 배경색 */}
           <div className="flex items-center gap-1">
@@ -2204,9 +2207,10 @@ export default function ProductionListMain() {
                   style={{ width: '220px' }}
                 />
               )}
+              {/* 색상 피커를 입력창 바로 아래에 함께 표시 */}
+              {renderCellColorPicker(true)}
             </div>
             {datalistNode}
-            {renderCellColorPicker()}
           </td>
         )
       }
@@ -3547,7 +3551,7 @@ export default function ProductionListMain() {
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, reference: v })}
                           placeholder="참고"
                           memo={true}
-                          className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none text-red-500 font-semibold align-left"
+                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
                       <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth + pcbBoardWidth + referencePcbWidth}px`, width: `${requestDatePcbWidth}px`, minWidth: `${requestDatePcbWidth}px`, maxWidth: `${requestDatePcbWidth}px` }}>
@@ -3980,7 +3984,7 @@ export default function ProductionListMain() {
                           onChange={(v) => setAddingCableRow({ ...addingCableRow, reference: v })}
                           placeholder="참고"
                           memo={true}
-                          className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none text-red-500 font-semibold align-left"
+                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
                       <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderCableWidth + productionCategoryCableWidth + cableBoardWidth + referenceCableWidth}px`, width: `${requestDateCableWidth}px`, minWidth: `${requestDateCableWidth}px`, maxWidth: `${requestDateCableWidth}px` }}>
