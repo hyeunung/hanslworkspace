@@ -1287,16 +1287,14 @@ input[type="number"] {
   text-align: center !important;
 }
 
+/* 제작현황 표의 드롭다운은 화살표(chevron) 없이 — 클릭하면 바로 네이티브 드롭다운이 열린다 */
 .production-compact-table select,
 .adding-row select {
   appearance: none !important;
   -webkit-appearance: none !important;
   -moz-appearance: none !important;
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234b5563' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") !important;
-  background-repeat: no-repeat !important;
-  background-position: right 3px center !important;
-  background-size: 8px 8px !important;
-  padding-right: 12px !important;
+  background-image: none !important;
+  padding-right: 4px !important;
 }
 
 /* 등록 및 수정 모달 컴팩트 스타일 */
