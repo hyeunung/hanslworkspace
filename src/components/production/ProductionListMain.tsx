@@ -3597,23 +3597,6 @@ export default function ProductionListMain() {
         {/* 테이블 2: 케이블 & 케이스 제작현황 (PCB 표가 없으면 이 표가 필터에 붙어 상단 평평) */}
         {showCableTable && (
           <div className={`card-professional overflow-hidden ${!showPcbTable ? 'rounded-t-none' : ''}`}>
-            <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50/50">
-              <div className="flex items-center gap-2">
-                <span className="modal-section-title">Cable & Case 제작 현황</span>
-                <span className="badge-stats bg-blue-50 text-blue-700 border border-blue-200 font-bold">
-                  {filteredCables.length}건
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleAddClick('cable')}
-                className="button-base bg-[#1777CB] hover:bg-[#1265A8] text-white flex items-center gap-1.5 h-8 px-3 business-radius-button"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span className="button-text text-white">행 추가</span>
-              </button>
-            </div>
-
             {/* Cable 테이블 전용 필터 — 자체 접기 토글 (상단 패널과 독립) */}
             <button
               type="button"
@@ -3630,6 +3613,23 @@ export default function ProductionListMain() {
                 {renderFilterToolbar('cable')}
               </div>
             )}
+
+            <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50/50">
+              <div className="flex items-center gap-2">
+                <span className="modal-section-title">Cable & Case 제작 현황</span>
+                <span className="badge-stats bg-blue-50 text-blue-700 border border-blue-200 font-bold">
+                  {filteredCables.length}건
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleAddClick('cable')}
+                className="button-base bg-[#1777CB] hover:bg-[#1265A8] text-white flex items-center gap-1.5 h-8 px-3 business-radius-button"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span className="button-text text-white">행 추가</span>
+              </button>
+            </div>
 
             <div ref={cableScrollRef} onScroll={() => handleVirtualScroll('cable')} className="overflow-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
               <table className="text-left border-separate border-spacing-0 w-max [&_th]:border-l-0 [&_td]:border-l-0 [&_th]:border-t-0 [&_td]:border-t-0 production-compact-table table-auto">
