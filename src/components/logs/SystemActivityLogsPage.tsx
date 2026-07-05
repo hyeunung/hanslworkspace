@@ -38,6 +38,26 @@ interface LogEntry {
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100]
 
+// 화면/기능(모듈) 필터 — 내부 category(=대부분 테이블명) 값을 사용자 친화적 화면 이름으로 묶는다.
+const MODULE_OPTIONS: { key: string; label: string; categories: string[] }[] = [
+  { key: 'production', label: '제작현황', categories: ['production_pcbs', 'production_cables', 'production'] },
+  { key: 'purchase', label: '발주', categories: ['purchase_requests', 'purchase_request_items', 'purchase_receipts', 'purchase'] },
+  { key: 'transaction', label: '거래명세서', categories: ['transaction_statements', 'transaction_statement_items'] },
+  { key: 'bom', label: 'BOM/도면', categories: ['bom_items', 'cad_drawings', 'part_placements', 'bom'] },
+  { key: 'employees', label: '직원관리', categories: ['employees'] },
+  { key: 'vendors', label: '업체관리', categories: ['vendors', 'vendor_contacts'] },
+  { key: 'attendance', label: '근태·연차', categories: ['attendance_records', 'leave', 'holidays'] },
+  { key: 'trip', label: '출장', categories: ['business_trips', 'business_trip_expenses', 'business_trip_expense_receipts', 'business_trip_allowances', 'business_trip_mileages', 'business_trip_tasks', 'trip_expense_places'] },
+  { key: 'card', label: '카드사용', categories: ['card_usages', 'card_usage_receipts'] },
+  { key: 'shipping', label: '배송·택배', categories: ['shipping_companies', 'shipping_company_addresses', 'shipping_contacts', 'shipping_labels'] },
+  { key: 'vehicle', label: '차량신청', categories: ['vehicle_requests'] },
+  { key: 'ai', label: 'AI서비스', categories: ['ai_service_applications'] },
+  { key: 'official', label: '공문', categories: ['official_documents'] },
+  { key: 'support', label: '문의', categories: ['support_inquires', 'support_inquiry_messages'] },
+  { key: 'delivery', label: '납품', categories: ['delivery_orders', 'delivery_order_items'] },
+  { key: 'system', label: '시스템/기타', categories: ['system', 'global_error'] },
+]
+
 export default function SystemActivityLogsPage() {
   const { currentUserRoles } = useAuth()
   const navigate = useNavigate()
@@ -57,6 +77,7 @@ export default function SystemActivityLogsPage() {
   const [error, setError] = useState<string | null>(null)
 
   // 필터 상태
+  const [moduleFilter, setModuleFilter] = useState<string>('all') // 화면/기능
   const [levelFilter, setLevelFilter] = useState<string>('all')
   const [sourceFilter, setSourceFilter] = useState<string>('all')
   const [actionFilter, setActionFilter] = useState<string>('all')
@@ -69,6 +90,34 @@ export default function SystemActivityLogsPage() {
 
   // 선택된 로그 상세 보기
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null)
+
+  // 직원 이메일 → 이름 매핑 (로그의 actor_name이 비어 있어도 이메일로 이름을 복원/검색하기 위함)
+  const [employees, setEmployees] = useState<{ email: string; name: string }[]>([])
+  const [empMap, setEmpMap] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (!isAuthorized) return
+    ;(async () => {
+      try {
+        const supabase = createClient()
+        const { data } = await supabase.from('employees').select('email, name')
+        const list = (data || []).filter((e: any) => e.email) as { email: string; name: string }[]
+        setEmployees(list)
+        const m: Record<string, string> = {}
+        for (const e of list) m[e.email.toLowerCase()] = e.name || ''
+        setEmpMap(m)
+      } catch {
+        // 직원 목록 로드 실패 시에도 로그 화면은 정상 동작(이름 복원만 생략)
+      }
+    })()
+  }, [isAuthorized])
+
+  // 로그 작성자 표시 이름: actor_name이 비면 이메일로 직원 이름을 복원, 시스템 트리거는 '시스템'
+  const resolveActorName = (log: Pick<LogEntry, 'actor_email' | 'actor_name'>) => {
+    if (log.actor_email === 'system_db_trigger') return '시스템'
+    const byEmail = log.actor_email ? empMap[log.actor_email.toLowerCase()] : ''
+    return byEmail || log.actor_name || (log.actor_email ? log.actor_email.split('@')[0] : 'System')
+  }
 
   // 데이터 로드 함수
   const loadLogs = useCallback(async () => {
@@ -94,6 +143,14 @@ export default function SystemActivityLogsPage() {
         query = query.eq('action', actionFilter)
       }
 
+      // 화면/기능(모듈) 필터 → 해당 category 목록으로 조회
+      if (moduleFilter !== 'all') {
+        const mod = MODULE_OPTIONS.find((m) => m.key === moduleFilter)
+        if (mod) {
+          query = query.in('category', mod.categories)
+        }
+      }
+
       // 날짜 필터
       if (dateFilter !== 'all') {
         const now = new Date()
@@ -108,11 +165,23 @@ export default function SystemActivityLogsPage() {
         query = query.gte('created_at', startDate.toISOString())
       }
 
-      // 텍스트 검색
+      // 텍스트 검색 (이메일/이름/메시지 + 직원 이름 → 이메일 해석)
       if (searchQuery.trim()) {
-        query = query.or(
-          `actor_email.ilike.%${searchQuery}%,actor_name.ilike.%${searchQuery}%,message.ilike.%${searchQuery}%`
-        )
+        const q = searchQuery.trim()
+        const orParts = [
+          `actor_email.ilike.%${q}%`,
+          `actor_name.ilike.%${q}%`,
+          `message.ilike.%${q}%`,
+        ]
+        // 이름으로 검색 시: 로그 actor_name이 비어 있으므로 employees에서 이름이 일치하는 이메일을 찾아 함께 조회
+        const matchedEmails = employees
+          .filter((e) => e.name && e.name.toLowerCase().includes(q.toLowerCase()))
+          .map((e) => e.email)
+          .filter(Boolean)
+        if (matchedEmails.length > 0) {
+          orParts.push(`actor_email.in.(${matchedEmails.join(',')})`)
+        }
+        query = query.or(orParts.join(','))
       }
 
       // 페이징 계산
@@ -131,11 +200,11 @@ export default function SystemActivityLogsPage() {
     } finally {
       setLoading(false)
     }
-  }, [isAuthorized, levelFilter, sourceFilter, actionFilter, dateFilter, searchQuery, page, pageSize])
+  }, [isAuthorized, moduleFilter, levelFilter, sourceFilter, actionFilter, dateFilter, searchQuery, page, pageSize, employees])
 
   useEffect(() => {
     setPage(1) // 필터가 바뀌면 첫 페이지로 초기화
-  }, [levelFilter, sourceFilter, actionFilter, dateFilter, searchQuery, pageSize])
+  }, [moduleFilter, levelFilter, sourceFilter, actionFilter, dateFilter, searchQuery, pageSize])
 
   useEffect(() => {
     loadLogs()
@@ -230,7 +299,27 @@ export default function SystemActivityLogsPage() {
 
       {/* 필터링 및 검색 카드 */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 sm:p-5 space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          {/* 화면/기능 (모듈) */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-gray-500 flex items-center gap-1">
+              <Filter className="w-3.5 h-3.5" />
+              화면/기능
+            </label>
+            <select
+              value={moduleFilter}
+              onChange={(e) => setModuleFilter(e.target.value)}
+              className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:border-hansl-500 focus:outline-none"
+            >
+              <option value="all">전체 화면</option>
+              {MODULE_OPTIONS.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* 로그 레벨 */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-500 flex items-center gap-1">
@@ -253,14 +342,14 @@ export default function SystemActivityLogsPage() {
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-500 flex items-center gap-1">
               <Terminal className="w-3.5 h-3.5" />
-              발생처 (Source)
+              기록 출처
             </label>
             <select
               value={sourceFilter}
               onChange={(e) => setSourceFilter(e.target.value)}
               className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:border-hansl-500 focus:outline-none"
             >
-              <option value="all">전체 발생처</option>
+              <option value="all">전체 출처</option>
               <option value="database">Database (트리거)</option>
               <option value="backend">Backend (엣지함수)</option>
               <option value="frontend">Frontend (브라우저)</option>
@@ -350,7 +439,7 @@ export default function SystemActivityLogsPage() {
                 <tr>
                   <th className="py-3.5 px-4 w-[160px]">발생 시간</th>
                   <th className="py-3.5 px-3 w-[80px] text-center">레벨</th>
-                  <th className="py-3.5 px-3 w-[90px] text-center">발생처</th>
+                  <th className="py-3.5 px-3 w-[90px] text-center">출처</th>
                   <th className="py-3.5 px-3 w-[100px] text-center">액션</th>
                   <th className="py-3.5 px-4 w-[150px]">작업자 (Who)</th>
                   <th className="py-3.5 px-4">요약 메시지 (What)</th>
@@ -412,7 +501,7 @@ export default function SystemActivityLogsPage() {
                       <td className="py-3.5 px-4">
                         <div className="max-w-[150px] truncate">
                           <span className="font-semibold text-gray-900 block truncate">
-                            {log.actor_name || 'System'}
+                            {resolveActorName(log)}
                           </span>
                           <span className="text-xs text-gray-400 block truncate">
                             {log.actor_email || '-'}
@@ -507,7 +596,7 @@ export default function SystemActivityLogsPage() {
               <div className="flex justify-between">
                 <span className="text-gray-400 font-medium">작업자</span>
                 <span className="font-semibold text-gray-900">
-                  {selectedLog.actor_name || 'System'} ({selectedLog.actor_email || '-'})
+                  {resolveActorName(selectedLog)} ({selectedLog.actor_email || '-'})
                 </span>
               </div>
               <div className="flex justify-between">
