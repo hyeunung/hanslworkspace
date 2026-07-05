@@ -501,6 +501,40 @@ const formatArtworkDisplay = (raw: string | null | undefined): string => {
   return memo || ''
 }
 
+// 행 추가(입력행) 전용 컴팩트 ARTWORK 입력: 메모 입력이 기본 + 상태는 드롭다운으로 선택.
+// '발주완료' 선택 시 오늘(KST) 날짜가 자동 기록된다.
+function ArtworkAddInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const parts = parseArtworkStatus(value)
+  return (
+    <div className="flex flex-col gap-0.5">
+      <select
+        value={parts.status}
+        onChange={(e) => {
+          const code = e.target.value
+          onChange(serializeArtworkStatus({
+            status: code,
+            date: code === 'ordered' ? getKstTodayISO() : '',
+            memo: parts.memo,
+          }))
+        }}
+        className="w-full bg-white border border-gray-300 rounded text-[10px] focus:outline-none"
+      >
+        <option value="">상태 선택</option>
+        <option value="progress">진행중</option>
+        <option value="checking">업체 확인중</option>
+        <option value="ordered">발주완료{parts.status === 'ordered' && parts.date ? ` (${formatKoreanMMDD(parts.date)})` : ''}</option>
+      </select>
+      <input
+        type="text"
+        value={parts.memo}
+        onChange={(e) => onChange(serializeArtworkStatus({ ...parts, memo: e.target.value }))}
+        placeholder="ARTWORK 메모"
+        className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none"
+      />
+    </div>
+  )
+}
+
 // 상태 선택 칩 + 구분선 + 메모 입력을 함께 제공하는 재사용 에디터
 function ArtworkStatusEditor({
   value,
@@ -3395,7 +3429,7 @@ export default function ProductionListMain() {
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200 align-top">
-                        <ArtworkStatusEditor
+                        <ArtworkAddInput
                           value={addingPcbRow.artwork_status || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, artwork_status: v })}
                         />
