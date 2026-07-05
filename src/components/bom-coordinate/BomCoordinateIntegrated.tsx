@@ -336,6 +336,7 @@ export default function BomCoordinateIntegrated() {
         const { data: pcbData } = await supabase
           .from('production_pcbs')
           .select('sales_order_number, board_name')
+          .is('deleted_at', null)
           .order('sales_order_number', { ascending: false });
         if (pcbData) {
           setProductionPcbs(pcbData);
