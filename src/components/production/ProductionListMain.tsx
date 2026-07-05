@@ -603,7 +603,16 @@ function AddPopoverInput({
 // '발주완료' 선택 시 오늘(KST) 날짜 자동 기록, 같은 항목 재선택 시 해제.
 function ArtworkAddInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const parts = parseArtworkStatus(value)
-  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  // 고정 칼럼 밑으로 스크롤돼도 안 가려지게 드롭다운은 화면 기준 fixed로 띄운다.
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const open = pos !== null
+  const openMenu = () => {
+    const r = wrapRef.current?.getBoundingClientRect()
+    if (!r) return
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - 180))
+    setPos({ top: r.bottom + 2, left })
+  }
   const statusLabel =
     parts.status === 'progress' ? '진행중'
     : parts.status === 'checking' ? '업체 확인중'
@@ -615,11 +624,15 @@ function ArtworkAddInput({ value, onChange }: { value: string; onChange: (v: str
     } else {
       onChange(serializeArtworkStatus({ status: code, date: code === 'ordered' ? getKstTodayISO() : '', memo: parts.memo }))
     }
-    setOpen(false)
+    setPos(null)
   }
   return (
-    <div className="relative">
-      <div className="flex items-center gap-1 w-full bg-white border border-gray-300 rounded px-1">
+    <div className="relative" ref={wrapRef}>
+      {/* 셀 아무 데나 클릭하면 드롭다운이 열린다 (화살표 없음) */}
+      <div
+        className="flex items-center gap-1 w-full bg-white border border-gray-300 rounded px-1 cursor-pointer"
+        onClick={openMenu}
+      >
         {statusLabel && (
           <span className="shrink-0 text-[9px] text-blue-600 font-semibold whitespace-nowrap">{statusLabel} │</span>
         )}
@@ -627,27 +640,33 @@ function ArtworkAddInput({ value, onChange }: { value: string; onChange: (v: str
           type="text"
           value={parts.memo}
           onChange={(e) => onChange(serializeArtworkStatus({ ...parts, memo: e.target.value }))}
-          onFocus={() => setOpen(true)}
-          onBlur={() => setOpen(false)}
+          onFocus={openMenu}
           placeholder="ARTWORK 메모"
           className="w-full bg-transparent text-[10px] focus:outline-none"
           style={{ border: 'none', boxShadow: 'none', outline: 'none' }}
         />
       </div>
-      {open && (
-        <div className="absolute left-0 top-full mt-0.5 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-0.5 w-max min-w-[120px] flex flex-col">
-          {([['progress', '진행중'], ['checking', '업체 확인중'], ['ordered', '발주완료 (오늘 날짜 기록)']] as const).map(([code, label]) => (
-            <button
-              key={code}
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => pick(code)}
-              className={`block w-full text-left whitespace-nowrap px-2 py-1 text-[10px] hover:bg-gray-50 transition-colors ${parts.status === code ? 'text-[#1777CB] font-bold' : 'text-gray-700'}`}
-            >
-              {parts.status === code ? '✓ ' : ''}{label}
-            </button>
-          ))}
-        </div>
+      {open && pos && (
+        <>
+          {/* 바깥 클릭 시 닫힘 */}
+          <div className="fixed inset-0 z-[9998]" onMouseDown={() => setPos(null)} />
+          <div
+            className="fixed z-[9999] bg-white border border-gray-200 rounded-md shadow-lg py-0.5 w-max min-w-[150px] flex flex-col"
+            style={{ top: pos.top, left: pos.left }}
+          >
+            {([['progress', '진행중'], ['checking', '업체 확인중'], ['ordered', '발주완료 (오늘 날짜 기록)']] as const).map(([code, label]) => (
+              <button
+                key={code}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pick(code)}
+                className={`block w-full text-left whitespace-nowrap px-2 py-1 text-[11px] hover:bg-gray-50 transition-colors ${parts.status === code ? 'text-[#1777CB] font-bold' : 'text-gray-700'}`}
+              >
+                {parts.status === code ? '✓ ' : ''}{label}
+              </button>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
