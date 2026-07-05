@@ -538,14 +538,14 @@ function ArtworkAddInput({ value, onChange }: { value: string; onChange: (v: str
         />
       </div>
       {open && (
-        <div className="absolute left-0 top-full mt-0.5 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-0.5 min-w-[120px]">
+        <div className="absolute left-0 top-full mt-0.5 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-0.5 w-max min-w-[120px] flex flex-col">
           {([['progress', '진행중'], ['checking', '업체 확인중'], ['ordered', '발주완료 (오늘 날짜 기록)']] as const).map(([code, label]) => (
             <button
               key={code}
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => pick(code)}
-              className={`w-full text-left px-2 py-1 text-[10px] hover:bg-gray-50 transition-colors ${parts.status === code ? 'text-[#1777CB] font-bold' : 'text-gray-700'}`}
+              className={`block w-full text-left whitespace-nowrap px-2 py-1 text-[10px] hover:bg-gray-50 transition-colors ${parts.status === code ? 'text-[#1777CB] font-bold' : 'text-gray-700'}`}
             >
               {parts.status === code ? '✓ ' : ''}{label}
             </button>
