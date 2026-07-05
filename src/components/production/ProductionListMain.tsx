@@ -585,6 +585,13 @@ export default function ProductionListMain() {
 
   // 필터 패널 접기/펴기 (좌측 사이드바처럼) — 기본값은 '닫힘', 사용자가 명시적으로 '0'(펼침) 저장 시에만 펼침
   const [filterCollapsed, setFilterCollapsed] = useState<boolean>(() => localStorage.getItem('hansl_prod_filter_collapsed') !== '0')
+  // Cable 테이블 필터 자체 접기 (상단 패널과 독립)
+  const [cableFilterCollapsed, setCableFilterCollapsed] = useState<boolean>(() => localStorage.getItem('hansl_prod_filter_collapsed_cable') !== '0')
+  const toggleCableFilterCollapsed = () => setCableFilterCollapsed(prev => {
+    const next = !prev
+    localStorage.setItem('hansl_prod_filter_collapsed_cable', next ? '1' : '0')
+    return next
+  })
   const toggleFilterCollapsed = () => setFilterCollapsed(prev => {
     const next = !prev
     localStorage.setItem('hansl_prod_filter_collapsed', next ? '1' : '0')
@@ -3607,9 +3614,19 @@ export default function ProductionListMain() {
               </button>
             </div>
 
-            {/* Cable 테이블 전용 필터 (PCB 툴바와 동일 형식, 접기 상태 공유) */}
-            {!filterCollapsed && (
-              <div className="px-3 pb-3 space-y-3 border-b border-gray-200">
+            {/* Cable 테이블 전용 필터 — 자체 접기 토글 (상단 패널과 독립) */}
+            <button
+              type="button"
+              onClick={toggleCableFilterCollapsed}
+              className="w-full flex items-center gap-1 px-3 py-0.5 text-[10px] font-semibold text-gray-500 hover:bg-gray-50 transition-colors border-b border-gray-100"
+              title={cableFilterCollapsed ? '필터 펼치기' : '필터 접기'}
+            >
+              <Filter className="w-3 h-3" />
+              <span>필터</span>
+              <ChevronDown className={`w-3 h-3 ml-auto text-gray-400 transition-transform ${cableFilterCollapsed ? '-rotate-90' : ''}`} />
+            </button>
+            {!cableFilterCollapsed && (
+              <div className="px-3 pb-3 pt-1 space-y-3 border-b border-gray-200">
                 {renderFilterToolbar('cable')}
               </div>
             )}
