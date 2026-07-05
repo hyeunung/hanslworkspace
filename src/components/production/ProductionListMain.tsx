@@ -537,10 +537,16 @@ function AddPopoverInput({
   inputType?: 'text' | 'number'
 }) {
   const wrapRef = useRef<HTMLDivElement>(null)
-  const [open, setOpen] = useState(false)
+  // 고정(sticky) 칼럼 안에서 열리면 옆 칼럼에 가려지므로, 팝오버는 화면 기준 fixed로 띄운다.
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const open = pos !== null
   const decideOpen = () => {
-    const w = wrapRef.current?.getBoundingClientRect().width ?? 999
-    setOpen(memo || w < 66) // 한글 6자 ≈ 60px(@10px) — 그 이하 좁은 칼럼이면 팝오버
+    const r = wrapRef.current?.getBoundingClientRect()
+    if (!r) return
+    if (!(memo || r.width < 66)) { setPos(null); return } // 6자(≈66px) 이하 좁은 칼럼/메모형만
+    const W = memo ? 316 : 236
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - W - 8))
+    setPos({ top: r.bottom + 2, left })
   }
   return (
     <div className="relative" ref={wrapRef}>
@@ -553,10 +559,10 @@ function AddPopoverInput({
         placeholder={placeholder}
         className={className}
       />
-      {open && (
+      {open && pos && (
         <div
-          className="absolute left-0 top-full mt-0.5 z-[60] bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
-          style={{ minWidth: '220px' }}
+          className="fixed z-[9999] bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
+          style={{ top: pos.top, left: pos.left }}
           onMouseDown={(e) => e.stopPropagation()}
         >
           {placeholder && <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">{placeholder}</div>}
@@ -566,8 +572,8 @@ function AddPopoverInput({
               rows={3}
               value={value}
               onChange={(e) => onChange(e.target.value)}
-              onBlur={() => setOpen(false)}
-              onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false) }}
+              onBlur={() => setPos(null)}
+              onKeyDown={(e) => { if (e.key === 'Escape') setPos(null) }}
               placeholder={`${placeholder ?? ''} (줄바꿈 가능)`}
               className="w-full bg-white border border-gray-300 rounded px-1.5 py-1 text-[11px] leading-snug focus:outline-none focus:border-[#1777CB] resize-y"
               style={{ width: '300px' }}
@@ -579,8 +585,8 @@ function AddPopoverInput({
               list={listId}
               value={value}
               onChange={(e) => onChange(e.target.value)}
-              onBlur={() => setOpen(false)}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setOpen(false) }}
+              onBlur={() => setPos(null)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setPos(null) }}
               placeholder={placeholder}
               className="w-full h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:border-[#1777CB]"
               style={{ width: '220px' }}
