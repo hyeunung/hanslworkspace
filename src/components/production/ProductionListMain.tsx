@@ -4483,7 +4483,7 @@ export default function ProductionListMain() {
                 {deleteConfirm.ids.length > 1
                   ? <>선택한 <b className="text-red-600">{deleteConfirm.ids.length}개 행</b>을 삭제하시겠습니까?</>
                   : <>정말로 이 수주 항목을 삭제하시겠습니까?</>}<br />
-                삭제된 데이터는 완전히 유실되며 복구할 수 없습니다.
+                삭제하면 목록에서 사라집니다. (삭제 이력은 시스템 로그에 보존됩니다)
               </p>
               <div className="border-t border-gray-200 pt-3 flex items-center justify-end gap-2">
                 <button
