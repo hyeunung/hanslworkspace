@@ -148,20 +148,19 @@ type TableFilter = {
 }
 
 const OP_LABELS: Record<FilterOp, string> = {
-  date_in: '년/월',
+  date_in: '날짜',
   contains: '포함',
   not_contains: '미포함',
   is_empty: '비어있음',
   not_empty: '비어있지 않음',
 }
 
-// 입고 칼럼(완제품입고/실제입고일)은 도메인 용어로 표기: 비어있음=입고대기, 년/월=날짜
+// 입고 칼럼(완제품입고/실제입고일)은 도메인 용어로 표기: 비어있음=입고대기, 비어있지 않음=입고됨
 const STOCK_DATE_FIELDS = ['final_product_stock', 'cable_actual_date']
 const opLabelFor = (field: string, op: FilterOp): string => {
   if (STOCK_DATE_FIELDS.includes(field)) {
     if (op === 'is_empty') return '입고대기'
     if (op === 'not_empty') return '입고됨'
-    if (op === 'date_in') return '날짜'
   }
   return OP_LABELS[op]
 }
