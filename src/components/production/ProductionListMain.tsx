@@ -5,6 +5,7 @@ import { Plus, Search, Edit2, X, Filter, Save, RotateCcw, ChevronDown, SlidersHo
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { vendorService } from '@/services/vendorService'
+import { Calendar } from '@/components/ui/calendar'
 
 
 interface Employee {
@@ -953,6 +954,11 @@ export default function ProductionListMain() {
   const [editingCell, setEditingCell] = useState<{ id: string, type: 'pcb' | 'cable', field: string } | null>(null)
   const [editValue, setEditValue] = useState<string>('')
 
+  // 완제품 입고 날짜 선택 팝오버: '입고대기' 클릭 시 열림 (직접 입력 + 달력 클릭 선택)
+  const [stockInPicker, setStockInPicker] = useState<{ id: string, type: 'pcb' | 'cable', field: string } | null>(null)
+  const [stockInInput, setStockInInput] = useState<string>('')
+  const stockInPopoverRef = useRef<HTMLDivElement | null>(null)
+
   // 로그인 사용자 및 직원 정보
   const { currentUserName, employee } = useAuth()
 
@@ -1546,12 +1552,32 @@ export default function ProductionListMain() {
     }
   })
 
-  // 완제품 입고: '입고대기' 버튼 클릭 → 오늘(한국시간) 날짜로 'MM월 DD일 입고' 기록
+  // 완제품 입고: '입고대기' 버튼 클릭 → 날짜 선택 팝오버 열기 (직접 입력 또는 달력 클릭)
   const handleStockInPress = useStableHandler((id: string, type: 'pcb' | 'cable', field: string = 'final_product_stock') => {
-    // 완제품입고/실제입고일 모두 오늘(KST)을 ISO(YYYY-MM-DD)로 스탬프 — 날짜가 곧 입고 기록이자 입고 여부 판단 기준.
-    // 화면에는 formatStockInDisplay가 'MM월 DD일'로 표시한다.
-    handleCellSave({ id, type, field }, getKstTodayISO())
+    setStockInInput('')
+    setStockInPicker({ id, type, field })
   })
+
+  // 팝오버에서 확정한 입고일 저장 — 달력 선택은 ISO(YYYY-MM-DD)로 스탬프되어 날짜가 곧 입고 기록이자
+  // 입고 여부 판단 기준. 화면에는 formatStockInDisplay가 'MM월 DD일'로 표시한다.
+  // 직접 입력은 handleCellSave가 날짜(예: 7/6)면 날짜로, 아니면 메모 원문으로 해석한다.
+  const commitStockIn = useStableHandler((val: string) => {
+    const target = stockInPicker
+    setStockInPicker(null)
+    if (!target || !val.trim()) return
+    handleCellSave(target, val.trim())
+  })
+
+  // 입고일 팝오버 밖을 클릭하면 닫기
+  useEffect(() => {
+    if (!stockInPicker) return
+    const onDown = (e: MouseEvent) => {
+      if (stockInPopoverRef.current?.contains(e.target as Node)) return
+      setStockInPicker(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [stockInPicker])
 
   // 색상/스타일 문자열 파싱 (예: 'yellow::strike::bold::redtext' -> { color, strike, bold, redText })
   // 각 토큰은 '::'로 구분되며 배경색 / 취소선 / 볼드 / 빨간글자를 중복 지정할 수 있음 (하위호환 유지)
@@ -2312,18 +2338,20 @@ export default function ProductionListMain() {
       ...cellStyle
     } : cellStyle;
 
-    // 완제품 입고: 값이 비어 있으면 '입고대기' 버튼 표시 (클릭 시 오늘 날짜 기록)
+    // 완제품 입고: 값이 비어 있으면 '입고대기' 버튼 표시 (클릭 시 날짜 선택 팝오버)
     const isStockWaiting = (field === 'final_product_stock' || field === 'cable_actual_date') &&
       (item[field] == null ||
        String(item[field]).trim() === '' ||
        String(item[field]).trim() === '-')
+    const isStockPickerOpen = isStockWaiting && !!stockInPicker &&
+      stockInPicker.id === id && stockInPicker.type === type && stockInPicker.field === field
 
     // 선택된 셀은 transition-colors를 제거해 하이라이트가 150ms 페이드 없이 즉시 나타나게 한다
-    const tdClassName = `${computedClassName} cursor-pointer ${item.row_color || item.cell_colors?.[field] ? '' : 'hover:bg-gray-100/50'} transition-colors select-none`
+    const tdClassName = `${computedClassName} cursor-pointer ${item.row_color || item.cell_colors?.[field] ? '' : 'hover:bg-gray-100/50'} transition-colors select-none${isStockPickerOpen ? ' relative' : ''}`
     return (
       <td
         className={isSelected ? tdClassName.replace(/\btransition-colors\b/g, '') : tdClassName}
-        style={selectStyle}
+        style={isStockPickerOpen ? { ...selectStyle, overflow: 'visible', zIndex: 50 } : selectStyle}
         onMouseDown={(e) => handleCellMouseDown(e, id, field, type)}
         onMouseEnter={(e) => handleCellMouseEnter(e, id, field, type)}
         onClick={isStockWaiting
@@ -2332,14 +2360,62 @@ export default function ProductionListMain() {
         title={field === 'board_name' ? item.board_name : undefined}
       >
         {isStockWaiting ? (
-          <button
-            type="button"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); handleStockInPress(id, type, field) }}
-            className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-colors"
-          >
-            입고대기
-          </button>
+          <>
+            <button
+              type="button"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); handleStockInPress(id, type, field) }}
+              className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-colors"
+            >
+              입고대기
+            </button>
+            {isStockPickerOpen && (
+              <div
+                ref={stockInPopoverRef}
+                className="absolute left-0 top-full mt-0.5 z-[60] bg-white border border-gray-300 rounded-md shadow-lg p-1.5 cursor-default text-left"
+                style={{ width: 'max-content' }}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">입고일 — 직접 입력 또는 달력에서 선택</div>
+                <div className="flex items-center gap-1">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={stockInInput}
+                    onChange={(e) => setStockInInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitStockIn(stockInInput)
+                      if (e.key === 'Escape') setStockInPicker(null)
+                    }}
+                    placeholder="예: 7/6"
+                    className="h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:border-[#1777CB]"
+                    style={{ width: '150px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => commitStockIn(stockInInput)}
+                    className="h-6 px-2 rounded text-[10px] font-medium bg-[#1777CB] text-white hover:bg-[#1265A8] transition-colors shrink-0"
+                  >
+                    저장
+                  </button>
+                </div>
+                <Calendar
+                  mode="single"
+                  selected={undefined}
+                  onSelect={(date) => {
+                    if (!date) return
+                    const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+                    commitStockIn(iso)
+                  }}
+                  className="compact-calendar"
+                  defaultMonth={new Date()}
+                  modifiers={{ today: new Date() }}
+                  modifiersClassNames={{ today: 'bg-[#1777CB] text-white font-semibold rounded-md' }}
+                />
+              </div>
+            )}
+          </>
         ) : renderCellValueWithLinks(displayValue, () => setSelectedCells([`${id}::${field}`]))}
       </td>
     )
@@ -2596,7 +2672,10 @@ export default function ProductionListMain() {
     const editing = editingCell && editingCell.type === type && editingCell.id === item.id
       ? `E:${editingCell.field}:${editValue}` : ''
     const picker = activeColorPicker && activeColorPicker.type === type && activeColorPicker.id === item.id ? 'P' : ''
-    return sel + '|' + editing + '|' + picker
+    // 입고일 선택 팝오버가 열린 행은 입력값이 바뀔 때마다 다시 그린다
+    const stockIn = stockInPicker && stockInPicker.type === type && stockInPicker.id === item.id
+      ? `S:${stockInPicker.field}:${stockInInput}` : ''
+    return sel + '|' + editing + '|' + picker + '|' + stockIn
   }
 
   // PCB 행 렌더 본문 — MemoRow가 (item, index)로 호출. 내부 커스텀 핸들러는 모두 useStableHandler로 안정화됨.
