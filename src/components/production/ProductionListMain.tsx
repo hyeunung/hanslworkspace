@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { productionService, ProductionPcb, ProductionCable } from '@/services/productionService'
-import { Plus, Search, Edit2, X, Filter, Save, RotateCcw, ChevronDown, SlidersHorizontal } from 'lucide-react'
+import { Plus, Search, Edit2, X, Filter, Save, RotateCcw, ChevronDown, SlidersHorizontal, Download, Printer, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { vendorService } from '@/services/vendorService'
@@ -120,6 +120,81 @@ const STICKY_FIELDS = ['sales_order_number', 'production_category', 'board_name'
 
 // 제작구분 칩의 기본 표시/그룹 순서 — 드래그로 재정렬 가능. 이 순서대로 테이블이 제작구분별로 위→아래 그룹핑됨
 const DEFAULT_CATEGORY_ORDER = ['LG_PCB', 'LG_Socket Board', 'LG_Cable', 'LG_Case', 'PCB', 'Cable', 'Case']
+
+// ─── 칼럼 숨기기 ─────────────────────────────────────────────────────
+// 좌측 고정(sticky) 칼럼(제작번호~요청일)과 NO./작업은 행 식별·조작용이라 항상 표시하고,
+// 그 외 본문 칼럼은 표별로 숨길 수 있다. 드롭다운 목록의 그룹은 실제 헤더 그룹 구성을 따르고,
+// PCB는 업무 단계 기준 큰 구분선(섹션) 3개로 나눠 섹션 단위 일괄 숨기기/표시를 지원한다.
+type HideableSection = { title: string; groups: { title: string; fields: string[] }[] }
+const HIDEABLE_SECTIONS: Record<'pcb' | 'cable', HideableSection[]> = {
+  pcb: [
+    {
+      title: '견적NO. ~ PCB 제작',
+      groups: [
+        { title: '기본', fields: ['estimate_no', 'delivery_deadline', 'creator'] },
+        { title: 'PJT 담당자', fields: ['client_name', 'client_manager', 'hansl_manager'] },
+        { title: '제작수량', fields: ['revision_count', 'quantity'] },
+        { title: 'ARTWORK', fields: ['artwork_status'] },
+        { title: 'PCB 제작', fields: ['metal_mask', 'changes_memo', 'stock_count', 'pcb_vendor', 'delivery_schedule', 'pcb_lead_time', 'received_quantity', 'received_destination'] },
+      ],
+    },
+    {
+      title: '부품정리 ~ 완제품 입고',
+      groups: [
+        { title: "부품정리 / ASS'Y / 입고", fields: ['parts_organization', 'assy_hanwha', 'assy_evertech', 'assy_requested_date', 'final_product_stock'] },
+      ],
+    },
+    {
+      title: 'IN-House Checking ~ 납품',
+      groups: [
+        { title: 'IN-House Checking / 리뷰', fields: ['qa_passed', 'qa_failed', 'qa_notes', 'design_review'] },
+        { title: '납품', fields: ['delivery_quantity', 'delivery_date', 'delivery_destination'] },
+      ],
+    },
+  ],
+  // Cable 표는 칼럼 수가 적어 섹션 구분 없이 단일 목록
+  cable: [
+    {
+      title: '',
+      groups: [
+        { title: '기본', fields: ['estimate_no', 'delivery_deadline', 'creator'] },
+        { title: 'PJT 담당자', fields: ['client_name', 'client_manager', 'hansl_manager'] },
+        { title: '제작수량', fields: ['revision_count', 'quantity'] },
+        { title: '사양', fields: ['spec_details'] },
+        { title: 'CASE/CABLE 입고', fields: ['cable_vendor', 'cable_requested_date', 'cable_actual_date'] },
+        { title: '납품', fields: ['delivery_notes'] },
+      ],
+    },
+  ],
+}
+
+const hideableFieldsFor = (type: 'pcb' | 'cable'): string[] =>
+  HIDEABLE_SECTIONS[type].flatMap(s => s.groups.flatMap(g => g.fields))
+
+// 그룹 헤더(colSpan) 칼럼 구성 — 숨긴 칼럼 수만큼 colSpan을 줄이고, 전부 숨기면 그룹 헤더째 제거
+const HEADER_SPAN_GROUPS = {
+  pjt: ['client_name', 'client_manager', 'hansl_manager'],
+  makeQty: ['revision_count', 'quantity'],
+  pcbMake: ['metal_mask', 'changes_memo', 'stock_count', 'pcb_vendor', 'delivery_schedule', 'pcb_lead_time', 'received_quantity', 'received_destination'],
+  assy: ['assy_hanwha', 'assy_evertech', 'assy_requested_date'],
+  inHouse: ['qa_passed', 'qa_failed', 'qa_notes'],
+  pcbDelivery: ['delivery_quantity', 'delivery_date', 'delivery_destination'],
+  cableStockIn: ['cable_vendor', 'cable_requested_date', 'cable_actual_date'],
+}
+
+// localStorage에 저장된 숨긴 칼럼 목록 복원 (알 수 없는 필드는 버림)
+const loadHiddenCols = (type: 'pcb' | 'cable'): string[] => {
+  try {
+    const raw = localStorage.getItem(`hansl_prod_hidden_cols_${type}`)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    const valid = hideableFieldsFor(type)
+    return parsed.filter((f: unknown): f is string => typeof f === 'string' && valid.includes(f))
+  } catch {
+    return []
+  }
+}
 
 // ─── 테이블별 필터 (PCB/Cable 각각 독립, 노션식 규칙 기반) ─────────────
 // 위(PCB) 테이블과 아래(Cable) 테이블은 제작구분·칼럼이 서로 달라 필터를 분리한다.
@@ -807,6 +882,49 @@ export default function ProductionListMain() {
     return next
   })
 
+  // 칼럼 숨기기 — 표별 숨긴 칼럼 목록. 토글 즉시 적용 + localStorage 저장.
+  // 행 추가 중에는 입력행 셀이 칼럼 순서대로 하드코딩돼 있어(정렬 어긋남 방지 + 입력 누락 방지) 전 칼럼을 임시 표시한다.
+  const [hiddenCols, setHiddenCols] = useState<Record<'pcb' | 'cable', string[]>>(() => ({
+    pcb: loadHiddenCols('pcb'),
+    cable: loadHiddenCols('cable'),
+  }))
+  const [columnMenuFor, setColumnMenuFor] = useState<'pcb' | 'cable' | null>(null)
+
+  const isColHidden = (type: 'pcb' | 'cable', field: string): boolean => {
+    if (type === 'pcb' ? addingPcbRow : addingCableRow) return false
+    return hiddenCols[type].includes(field)
+  }
+
+  const toggleHiddenCol = (type: 'pcb' | 'cable', field: string) => {
+    setHiddenCols(prev => {
+      const cur = prev[type]
+      const next = cur.includes(field) ? cur.filter(f => f !== field) : [...cur, field]
+      localStorage.setItem(`hansl_prod_hidden_cols_${type}`, JSON.stringify(next))
+      return { ...prev, [type]: next }
+    })
+  }
+
+  const resetHiddenCols = (type: 'pcb' | 'cable') => {
+    setHiddenCols(prev => ({ ...prev, [type]: [] }))
+    localStorage.setItem(`hansl_prod_hidden_cols_${type}`, JSON.stringify([]))
+  }
+
+  // 섹션(구분선 단위) 일괄 숨기기/표시
+  const setSectionHidden = (type: 'pcb' | 'cable', fields: string[], hide: boolean) => {
+    setHiddenCols(prev => {
+      const cur = prev[type]
+      const next = hide
+        ? [...new Set([...cur, ...fields])]
+        : cur.filter(f => !fields.includes(f))
+      localStorage.setItem(`hansl_prod_hidden_cols_${type}`, JSON.stringify(next))
+      return { ...prev, [type]: next }
+    })
+  }
+
+  // 그룹 헤더 colSpan: 그룹 내 표시 중인 칼럼 수 (0이면 그룹 헤더를 렌더하지 않음)
+  const visibleSpan = (type: 'pcb' | 'cable', fields: string[]): number =>
+    fields.filter(f => !isColHidden(type, f)).length
+
   // 제작구분 그룹 순서 — 저장된 순서가 있으면 반영하고, 누락된 기본 카테고리는 뒤에 보강
   const [categoryOrder, setCategoryOrder] = useState<string[]>(() => {
     const saved = localStorage.getItem('hansl_prod_filter_category_order')
@@ -1051,7 +1169,8 @@ export default function ProductionListMain() {
     if ((e.buttons & 1) === 0) return // 왼쪽 버튼이 눌린 상태에서 이동할 때만 드래그로 인정
     if (!isDragging) setIsDragging(true)
 
-    const cols = type === 'pcb' ? pcbColumns : cableColumns
+    // 숨긴 칼럼은 드래그 범위에서 제외 — 안 보이는 셀이 선택돼 Delete로 값이 지워지는 사고 방지
+    const cols = (type === 'pcb' ? pcbColumns : cableColumns).filter(f => !isColHidden(type, f))
     const startRowIdx = getRowIndex(type, dragStartCell.id)
     const endRowIdx = getRowIndex(type, id)
     const startColIdx = cols.indexOf(dragStartCell.field)
@@ -1110,6 +1229,138 @@ export default function ProductionListMain() {
     }
   }, [isDragging, selectedCells])
 
+  // ─── 되돌리기(Undo) 인프라 ──────────────────────────────────────────
+  // 각 변경(텍스트 수정·값삭제·색상·행추가/삭제) 직전에 "이전 상태"를 스택에 쌓고,
+  // Ctrl+Z(편집칸 밖)로 스택에서 꺼내 DB에 되돌려 쓴다. 브라우저 세션(메모리) 한정.
+  type UndoEntry =
+    | { kind: 'restore'; table: 'production_pcbs' | 'production_cables'; rows: Array<{ id: string; data: Record<string, any> }>; label: string }
+    | { kind: 'deleteInserted'; table: 'production_pcbs' | 'production_cables'; id: string; label: string }
+    | { kind: 'reinsert'; table: 'production_pcbs' | 'production_cables'; row: Record<string, any>; label: string }
+  const undoStackRef = useRef<UndoEntry[]>([])
+  const redoStackRef = useRef<UndoEntry[]>([])
+  const undoingRef = useRef(false)
+  const UNDO_LIMIT = 100
+  // 최신 데이터/편집상태를 stale closure 없이 참조하기 위한 ref (렌더마다 갱신)
+  const liveDataRef = useRef<{ pcbs: ProductionPcb[]; cables: ProductionCable[] }>({ pcbs, cables })
+  liveDataRef.current = { pcbs, cables }
+  const editingCellRef = useRef(editingCell)
+  editingCellRef.current = editingCell
+
+  const tableOf = (type: 'pcb' | 'cable') => (type === 'pcb' ? 'production_pcbs' : 'production_cables') as 'production_pcbs' | 'production_cables'
+  // 되돌리기용 행 스냅샷: id/created_at/updated_at 제외한 전체 칼럼을 복사(색상·삭제표식 포함)
+  const UNDO_EXCLUDE = new Set(['id', 'created_at', 'updated_at'])
+  const snapshotRows = (type: 'pcb' | 'cable', ids: string[]): Array<{ id: string; data: Record<string, any> }> => {
+    const list: any[] = type === 'pcb' ? liveDataRef.current.pcbs : liveDataRef.current.cables
+    const rows: Array<{ id: string; data: Record<string, any> }> = []
+    for (const id of ids) {
+      const item = list.find(i => i.id === id)
+      if (!item) continue
+      const data: Record<string, any> = {}
+      for (const k of Object.keys(item)) if (!UNDO_EXCLUDE.has(k)) data[k] = item[k]
+      rows.push({ id, data })
+    }
+    return rows
+  }
+  const pushUndo = (entry: UndoEntry) => {
+    if (entry.kind === 'restore' && entry.rows.length === 0) return
+    redoStackRef.current = [] // 새 작업이 생기면 '다시 실행' 이력은 무효화 (표준 undo/redo 규칙)
+    const s = undoStackRef.current
+    s.push(entry)
+    if (s.length > UNDO_LIMIT) s.shift()
+  }
+  const pushRestoreUndo = (type: 'pcb' | 'cable', ids: string[], label: string) => {
+    pushUndo({ kind: 'restore', table: tableOf(type), rows: snapshotRows(type, ids), label })
+  }
+
+  // 엔트리 하나를 DB에 적용하고, 그 반대 동작(다른 스택에 쌓을 엔트리)을 돌려준다.
+  // 적용 직전의 현재 상태를 스냅샷해 두므로 undo↔redo가 완전히 대칭이 된다.
+  const applyUndoEntry = async (entry: UndoEntry): Promise<UndoEntry | null> => {
+    const supabase = createClient()
+    const type: 'pcb' | 'cable' = entry.table === 'production_pcbs' ? 'pcb' : 'cable'
+    if (entry.kind === 'restore') {
+      const inverseRows = snapshotRows(type, entry.rows.map(r => r.id)) // 적용 전(=반대편이 되돌릴) 상태
+      for (const row of entry.rows) {
+        const { error } = await supabase.from(entry.table)
+          .update({ ...row.data, updated_at: new Date().toISOString() })
+          .eq('id', row.id)
+        if (error) throw error
+      }
+      return { kind: 'restore', table: entry.table, rows: inverseRows, label: entry.label }
+    }
+    if (entry.kind === 'deleteInserted') {
+      // 행 추가 되돌리기 = 방금 만든 행을 완전히 제거. 재실행(redo)을 위해 전체 행을 보관.
+      const list: any[] = type === 'pcb' ? liveDataRef.current.pcbs : liveDataRef.current.cables
+      const full = list.find(i => i.id === entry.id)
+      const { error } = await supabase.from(entry.table).delete().eq('id', entry.id)
+      if (error) throw error
+      return full ? { kind: 'reinsert', table: entry.table, row: { ...full }, label: entry.label } : null
+    }
+    // reinsert: 제거됐던 행을 원래 id/값 그대로 되살림
+    const { error } = await supabase.from(entry.table).insert([entry.row])
+    if (error) throw error
+    return { kind: 'deleteInserted', table: entry.table, id: entry.row.id, label: entry.label }
+  }
+
+  const handleUndo = useStableHandler(async () => {
+    if (undoingRef.current) return
+    const entry = undoStackRef.current.pop()
+    if (!entry) { toast('되돌릴 작업이 없습니다.'); return }
+    undoingRef.current = true
+    try {
+      const inverse = await applyUndoEntry(entry)
+      if (inverse) redoStackRef.current.push(inverse)
+      await loadData()
+      toast.success(`되돌렸습니다 · ${entry.label}`)
+    } catch (err) {
+      console.error(err)
+      undoStackRef.current.push(entry) // 실패 시 항목 보존(재시도 가능)
+      toast.error('되돌리기에 실패했습니다.')
+    } finally {
+      undoingRef.current = false
+    }
+  })
+
+  const handleRedo = useStableHandler(async () => {
+    if (undoingRef.current) return
+    const entry = redoStackRef.current.pop()
+    if (!entry) { toast('다시 실행할 작업이 없습니다.'); return }
+    undoingRef.current = true
+    try {
+      const inverse = await applyUndoEntry(entry)
+      if (inverse) undoStackRef.current.push(inverse)
+      await loadData()
+      toast.success(`다시 실행 · ${entry.label}`)
+    } catch (err) {
+      console.error(err)
+      redoStackRef.current.push(entry)
+      toast.error('다시 실행에 실패했습니다.')
+    } finally {
+      undoingRef.current = false
+    }
+  })
+
+  // Ctrl/Cmd+Z 되돌리기 · Ctrl/Cmd+Shift+Z(또는 Ctrl+Y) 다시 실행
+  // 편집칸(input/textarea/select)·편집모드에서는 브라우저 기본(타이핑 취소)에 양보
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey
+      if (!mod || e.altKey) return
+      const k = (e.key || '').toLowerCase()
+      const isUndo = !e.shiftKey && k === 'z'
+      const isRedo = (e.shiftKey && k === 'z') || (!e.shiftKey && k === 'y')
+      if (!isUndo && !isRedo) return
+      const ae = document.activeElement as HTMLElement | null
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return
+      if (editingCellRef.current) return
+      e.preventDefault()
+      if (isRedo) handleRedo()
+      else handleUndo()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // 일괄 상태 변경 핸들러
   const handleBulkUpdateCellColor = async (colorAction: string | null, toggle: 'strike' | 'bold' | 'redtext' | null = null) => {
     if (selectedCells.length === 0) return
@@ -1150,6 +1401,9 @@ export default function ProductionListMain() {
         }
         updatesByRow[rowId][field] = colorAction
       })
+
+      // 되돌리기: 변경 전 상태 스냅샷
+      pushRestoreUndo(type, Object.keys(updatesByRow), `${selectedCells.length}칸 색상 변경`)
 
       const promises = Object.entries(updatesByRow).map(async ([rowId, fields]) => {
         const rowItem = list.find(i => i.id === rowId)
@@ -1413,6 +1667,7 @@ export default function ProductionListMain() {
         sanitized.hansl_manager = stripEmployeeTitle(sanitized.hansl_manager)
       }
       const created = await productionService.createProductionPcb(sanitized)
+      if (created?.id) pushUndo({ kind: 'deleteInserted', table: 'production_pcbs', id: created.id, label: '행 추가(PCB)' })
       toast.success('신규 PCB 항목이 저장되었습니다.')
       setAddingPcbRow(null)
       // 저장된 행의 요청일이 현재 월/연도 필터 밖이면(예: 6월을 보는데 오늘=7월로 저장),
@@ -1462,6 +1717,7 @@ export default function ProductionListMain() {
         sanitized.hansl_manager = stripEmployeeTitle(sanitized.hansl_manager)
       }
       const created = await productionService.createProductionCable(sanitized)
+      if (created?.id) pushUndo({ kind: 'deleteInserted', table: 'production_cables', id: created.id, label: '행 추가(Cable)' })
       toast.success('신규 Cable/Case 항목이 저장되었습니다.')
       setAddingCableRow(null)
       focusFilterOnRow('cable', created?.request_date)
@@ -1490,7 +1746,7 @@ export default function ProductionListMain() {
   })
 
   // 인라인 셀 수정 저장 핸들러
-  const handleCellSave = useStableHandler(async (currentCell: { id: string, type: 'pcb' | 'cable', field: string }, val: string) => {
+  const handleCellSave = useStableHandler(async (currentCell: { id: string, type: 'pcb' | 'cable', field: string }, val: string, captureUndo = true) => {
     const { id, type, field } = currentCell
     // 날짜 입력의 기본 월 = 해당 테이블 필터에 월이 지정돼 있으면 그 월
     const defaultMonth = defaultMonthFor(type)
@@ -1524,6 +1780,15 @@ export default function ProductionListMain() {
       valueToSave = null
     }
 
+    // 되돌리기: 실제 값이 바뀔 때만 변경 전 행을 스냅샷 (색상 핸들러 경유 호출은 captureUndo=false)
+    if (captureUndo) {
+      const liveList: any[] = type === 'pcb' ? liveDataRef.current.pcbs : liveDataRef.current.cables
+      const before = liveList.find(i => i.id === id)?.[field]
+      if ((before ?? null) !== (valueToSave ?? null)) {
+        pushRestoreUndo(type, [id], `${getColumnTitle(field, type)} 수정`)
+      }
+    }
+
     try {
       if (type === 'pcb') {
         await productionService.updateProductionPcb(id, { [field]: valueToSave })
@@ -1539,6 +1804,7 @@ export default function ProductionListMain() {
 
   // 수량 단위(ea/set) 변경 핸들러
   const handleUpdateQuantityUnit = useStableHandler(async (id: string, type: 'pcb' | 'cable', unit: string) => {
+    pushRestoreUndo(type, [id], '수량 단위 변경')
     try {
       if (type === 'pcb') {
         await productionService.updateProductionPcb(id, { quantity_unit: unit })
@@ -1614,7 +1880,8 @@ export default function ProductionListMain() {
       const list = type === 'pcb' ? filteredPcbs : filteredCables
       const currentItem = list.find(i => i.id === id)
       if (!currentItem) return
-      
+      pushRestoreUndo(type, [id], '행 색상 변경')
+
       const { color: curColor, strike: curStrike } = parseColorState(currentItem.row_color)
       
       let nextColor: string | null = curColor
@@ -1647,6 +1914,8 @@ export default function ProductionListMain() {
     try {
       const supabase = createClient()
       const table = type === 'pcb' ? 'production_pcbs' : 'production_cables'
+      // 되돌리기: 색상+편집중 텍스트를 한 번에 복원하도록 변경 전 행 전체 스냅샷
+      pushRestoreUndo(type, [id], '칸 색상 변경')
       const newCellColors = { ...(currentCellColors || {}) }
 
       const currentVal = newCellColors[field]
@@ -1688,7 +1957,8 @@ export default function ProductionListMain() {
       if (error) throw error
       
       // 색상 선택 시, 입력칸에 수정 중이던 텍스트도 자동으로 함께 저장하고 수정을 완료합니다.
-      await handleCellSave({ id, type, field }, editValue)
+      // (되돌리기 스냅샷은 위에서 이미 잡았으므로 중복 캡처 방지: captureUndo=false)
+      await handleCellSave({ id, type, field }, editValue, false)
       setEditingCell(null)
       toast.success('칸 상태가 변경되었습니다.')
     } catch (err) {
@@ -1877,6 +2147,175 @@ export default function ProductionListMain() {
     return collapseUrlsForMeasure(val.toString())
   }
 
+  // ─── 다운로드/인쇄용: 필터 적용된 화면 그대로 내보내기 ──────────────────
+  // 내보낼 칼럼 = 제작 번호(고정칼럼) + 각 표의 본문 칼럼 목록 (화면에서 숨긴 칼럼은 내보내기에서도 제외)
+  const exportColumnsFor = (type: 'pcb' | 'cable'): string[] =>
+    ['sales_order_number', ...(type === 'pcb' ? pcbColumns : cableColumns).filter(f => !isColHidden(type, f))]
+
+  // 내보내기용 셀 값: 화면 표시와 동일하되 URL은 링크로 축약하지 않고 원문 유지, 빈 값은 공백
+  const getExportValue = (type: 'pcb' | 'cable', field: string, item: any): string => {
+    const val = item?.[field]
+    const dateFields = [
+      'request_date', 'delivery_deadline', 'delivery_schedule',
+      'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date'
+    ]
+    if (dateFields.includes(field)) {
+      const d = formatDbDateToDisplay(val)
+      return d === '-' ? '' : d
+    }
+    if (val === null || val === undefined || val === '') return ''
+    if (field === 'final_product_stock') return formatStockInDisplay(val.toString())
+    return val.toString()
+  }
+
+  const exportRowsFor = (type: 'pcb' | 'cable') => (type === 'pcb' ? filteredPcbs : filteredCables)
+  const exportTitleFor = (type: 'pcb' | 'cable') =>
+    type === 'pcb' ? 'PCB & Socket Board 제작 현황' : 'Cable & Case 제작 현황'
+
+  // 한국시간 기준 YYYYMMDD (파일명/인쇄 헤더용)
+  const kstDateStamp = (): string => {
+    const kst = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+    const y = kst.getFullYear()
+    const m = String(kst.getMonth() + 1).padStart(2, '0')
+    const d = String(kst.getDate()).padStart(2, '0')
+    return `${y}${m}${d}`
+  }
+
+  // 엑셀(.xlsx) 다운로드 — 필터 적용된 현재 표를 그대로 시트로 저장
+  const handleExportExcel = async (type: 'pcb' | 'cable') => {
+    try {
+      const rows = exportRowsFor(type)
+      if (rows.length === 0) {
+        toast.error('내보낼 데이터가 없습니다.')
+        return
+      }
+      const cols = exportColumnsFor(type)
+      const ExcelJS = (await import('exceljs')).default
+      const wb = new ExcelJS.Workbook()
+      const ws = wb.addWorksheet(type === 'pcb' ? 'PCB' : 'Cable')
+
+      // 헤더: NO. + 각 칼럼 제목
+      const headers = ['NO.', ...cols.map(f => getColumnTitle(f, type))]
+      const headerRow = ws.addRow(headers)
+      headerRow.eachCell(cell => {
+        cell.font = { bold: true, size: 10 }
+        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+          bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+          left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+          right: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+        }
+      })
+
+      // 본문
+      rows.forEach((item, i) => {
+        const values = [i + 1, ...cols.map(f => getExportValue(type, f, item))]
+        const r = ws.addRow(values)
+        r.eachCell(cell => {
+          cell.font = { size: 10 }
+          cell.alignment = { vertical: 'top', wrapText: true }
+          cell.border = {
+            top: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+            bottom: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+            left: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+            right: { style: 'hair', color: { argb: 'FFE5E7EB' } },
+          }
+        })
+      })
+
+      // 칼럼 폭: 헤더/본문 최장 길이 기준으로 대략 맞춤 (한글 가중치 고려)
+      ws.columns.forEach((col, idx) => {
+        const field = idx === 0 ? 'NO.' : cols[idx - 1]
+        let max = idx === 0 ? 4 : getColumnTitle(field, type).length * 1.8
+        rows.forEach(item => {
+          if (idx === 0) return
+          const s = getExportValue(type, field, item)
+          const firstLine = s.split('\n').reduce((a, b) => (b.length > a.length ? b : a), '')
+          const w = [...firstLine].reduce((acc, ch) => acc + (ch.charCodeAt(0) > 127 ? 1.8 : 1), 0)
+          if (w > max) max = w
+        })
+        col.width = Math.min(Math.max(max + 2, 6), 50)
+      })
+      ws.views = [{ state: 'frozen', ySplit: 1 }]
+
+      const buffer = await wb.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `제작현황_${type === 'pcb' ? 'PCB' : 'Cable'}_${kstDateStamp()}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      toast.success('엑셀 파일을 다운로드했습니다.')
+    } catch (err) {
+      console.error(err)
+      toast.error('엑셀 다운로드에 실패했습니다.')
+    }
+  }
+
+  // 인쇄 — 필터 적용된 현재 표를 인쇄용 레이아웃(가로, 작은 글씨)으로 새 창에 그려 인쇄창 호출
+  const handlePrint = (type: 'pcb' | 'cable') => {
+    const rows = exportRowsFor(type)
+    if (rows.length === 0) {
+      toast.error('인쇄할 데이터가 없습니다.')
+      return
+    }
+    const cols = exportColumnsFor(type)
+    const esc = (s: string) => s
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/\n/g, '<br/>')
+
+    const headCells = ['NO.', ...cols.map(f => getColumnTitle(f, type))]
+      .map(h => `<th>${esc(h)}</th>`).join('')
+    const bodyRows = rows.map((item, i) => {
+      const tds = [`<td class="c">${i + 1}</td>`, ...cols.map(f =>
+        `<td>${esc(getExportValue(type, f, item))}</td>`)].join('')
+      return `<tr>${tds}</tr>`
+    }).join('')
+
+    const kst = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
+    const stamp = `${kst.getFullYear()}-${String(kst.getMonth() + 1).padStart(2, '0')}-${String(kst.getDate()).padStart(2, '0')}`
+    const title = `${exportTitleFor(type)} (${rows.length}건)`
+
+    const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"/>
+<title>${esc(title)}</title>
+<style>
+  @page { size: A4 landscape; margin: 8mm; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; margin: 0; color: #111; }
+  h1 { font-size: 13px; margin: 0 0 2px; }
+  .meta { font-size: 9px; color: #666; margin-bottom: 6px; }
+  table { border-collapse: collapse; width: 100%; table-layout: auto; }
+  th, td { border: 0.5px solid #cbd1d8; padding: 2px 4px; font-size: 8px; line-height: 1.25;
+           text-align: left; vertical-align: top; word-break: break-word; }
+  th { background: #f3f4f6; font-weight: 700; text-align: center; }
+  td.c { text-align: center; }
+  tr { page-break-inside: avoid; }
+  thead { display: table-header-group; }
+</style></head>
+<body>
+  <h1>${esc(title)}</h1>
+  <div class="meta">출력일: ${stamp} · 필터 적용된 화면 기준</div>
+  <table><thead><tr>${headCells}</tr></thead><tbody>${bodyRows}</tbody></table>
+</body></html>`
+
+    const w = window.open('', '_blank')
+    if (!w) {
+      toast.error('팝업이 차단되어 인쇄창을 열 수 없습니다. 팝업 허용 후 다시 시도해주세요.')
+      return
+    }
+    w.document.open()
+    w.document.write(html)
+    w.document.close()
+    w.focus()
+    // 렌더 완료 후 인쇄창 호출
+    setTimeout(() => { w.print() }, 300)
+  }
+
   // 칼럼 너비 = Max(헤더 실측, 가장 긴 본문 실측) + 좌우 여백(5px씩) [+ 비고정 칼럼은 우측 보더 1px]
   const computeColumnWidth = (type: 'pcb' | 'cable', field: string): number => {
     // 1. 헤더 실측 (table-header-text: 600 굵기, letter-spacing 0.02em)
@@ -1932,6 +2371,7 @@ export default function ProductionListMain() {
   }
 
   const getHeaderStyle = (type: 'pcb' | 'cable', field: string, defaultWidth: number): React.CSSProperties => {
+    if (isColHidden(type, field)) return { display: 'none' } // 숨긴 칼럼: 헤더 셀을 레이아웃에서 제거
     const w = getColumnWidth(type, field, defaultWidth)
     return {
       width: `${w}px`,
@@ -1962,6 +2402,7 @@ export default function ProductionListMain() {
     inputType: 'text' | 'number' | 'select' = 'text',
     selectOptions: string[] = []
   ) => {
+    if (isColHidden(type, field)) return null // 숨긴 칼럼은 셀 자체를 렌더하지 않음 (헤더 display:none과 짝)
     const isEditing = editingCell?.id === id && editingCell?.type === type && editingCell?.field === field
     const cellStyle: React.CSSProperties = {}
 
@@ -2423,6 +2864,7 @@ export default function ProductionListMain() {
 
   // 수량 셀: 숫자(인라인 편집) + 단위(ea/set) 드롭다운. 배경색은 tr에서 상속됨
   const renderQuantityCell = (id: string, type: 'pcb' | 'cable', item: any) => {
+    if (isColHidden(type, 'quantity')) return null
     const isEditing = editingCell?.id === id && editingCell?.type === type && editingCell?.field === 'quantity'
     const unit = item.quantity_unit || 'ea'
     return (
@@ -2538,6 +2980,8 @@ export default function ProductionListMain() {
     }
     // 일부 셀 선택 → 해당 셀 값 삭제 (행별로 묶어 한 번에 업데이트)
     try {
+      // 되돌리기: 값 삭제 전 대상 행들을 미리 스냅샷 (실제 삭제가 있었을 때만 스택에 반영)
+      const undoRows = snapshotRows(type, [...byRow.keys()])
       let cleared = 0
       for (const [id, fields] of byRow) {
         const patch: Record<string, null> = {}
@@ -2551,6 +2995,7 @@ export default function ProductionListMain() {
         else await productionService.updateProductionCable(id, patch)
       }
       if (cleared > 0) {
+        pushUndo({ kind: 'restore', table: tableOf(type), rows: undoRows, label: `${cleared}칸 값 삭제` })
         toast.success(`선택한 셀 ${cleared}개의 값이 삭제되었습니다.`)
         setSelectedCells([])
         loadData()
@@ -2576,6 +3021,8 @@ export default function ProductionListMain() {
     if (!deleteConfirm) return
     const { type, ids } = deleteConfirm
     setDeleteConfirm(null)
+    // 되돌리기: 삭제 전 대상 행 스냅샷 (복원 시 deleted_at=null 로 되돌아가 다시 보임)
+    pushRestoreUndo(type, ids, ids.length > 1 ? `${ids.length}건 삭제` : '삭제')
     try {
       for (const id of ids) {
         if (type === 'pcb') {
@@ -2626,9 +3073,11 @@ export default function ProductionListMain() {
         }
 
         if (modalAction === 'add') {
-          await productionService.createProductionPcb(payload)
+          const created = await productionService.createProductionPcb(payload)
+          if (created?.id) pushUndo({ kind: 'deleteInserted', table: 'production_pcbs', id: created.id, label: '행 추가(PCB)' })
           toast.success('신규 PCB 항목이 추가되었습니다.')
         } else if (selectedId) {
+          pushRestoreUndo('pcb', [selectedId], 'PCB 항목 수정')
           await productionService.updateProductionPcb(selectedId, payload)
           toast.success('PCB 항목이 수정되었습니다.')
         }
@@ -2650,9 +3099,11 @@ export default function ProductionListMain() {
         }
 
         if (modalAction === 'add') {
-          await productionService.createProductionCable(payload)
+          const created = await productionService.createProductionCable(payload)
+          if (created?.id) pushUndo({ kind: 'deleteInserted', table: 'production_cables', id: created.id, label: '행 추가(Cable)' })
           toast.success('신규 케이블/케이스 항목이 추가되었습니다.')
         } else if (selectedId) {
+          pushRestoreUndo('cable', [selectedId], '케이블/케이스 항목 수정')
           await productionService.updateProductionCable(selectedId, payload)
           toast.success('케이블/케이스 항목이 수정되었습니다.')
         }
@@ -2675,7 +3126,10 @@ export default function ProductionListMain() {
     // 입고일 선택 팝오버가 열린 행은 입력값이 바뀔 때마다 다시 그린다
     const stockIn = stockInPicker && stockInPicker.type === type && stockInPicker.id === item.id
       ? `S:${stockInPicker.field}:${stockInInput}` : ''
-    return sel + '|' + editing + '|' + picker + '|' + stockIn
+    // 숨긴 칼럼 구성(행 추가 중엔 전 칼럼 표시)이 바뀌면 모든 행을 다시 그려야 한다
+    const adding = type === 'pcb' ? !!addingPcbRow : !!addingCableRow
+    const cols = adding ? 'ALL' : hiddenCols[type].join(',')
+    return sel + '|' + editing + '|' + picker + '|' + stockIn + '|' + cols
   }
 
   // PCB 행 렌더 본문 — MemoRow가 (item, index)로 호출. 내부 커스텀 핸들러는 모두 useStableHandler로 안정화됨.
@@ -2822,7 +3276,9 @@ export default function ProductionListMain() {
                           item.hansl_manager || '-',
                           'px-2 py-1.5 text-gray-500 border border-gray-200'
                         )}
-                        <td className="px-2 py-1.5 text-gray-500 border border-gray-200">{item.creator || '-'}</td>
+                        {!isColHidden('pcb', 'creator') && (
+                          <td className="px-2 py-1.5 text-gray-500 border border-gray-200">{item.creator || '-'}</td>
+                        )}
                         {renderEditableCell(
                           item.id,
                           'pcb',
@@ -3164,7 +3620,9 @@ export default function ProductionListMain() {
                           item.hansl_manager || '-',
                           'px-2 py-1.5 text-gray-500 border border-gray-200'
                         )}
-                        <td className="px-2 py-1.5 text-gray-500 border border-gray-200">{item.creator || '-'}</td>
+                        {!isColHidden('cable', 'creator') && (
+                          <td className="px-2 py-1.5 text-gray-500 border border-gray-200">{item.creator || '-'}</td>
+                        )}
                         {renderEditableCell(
                           item.id,
                           'cable',
@@ -3229,6 +3687,112 @@ export default function ProductionListMain() {
                         </td>
                       </tr>
                     )
+  }
+
+  // 칼럼 표시 설정 드롭다운 — 발주 목록의 '칼럼 설정'과 같은 개념이되, 적용 버튼 없이 클릭 즉시 반영 + 자동 저장.
+  // PCB는 업무 단계 섹션 3개(구분선)로 나뉘고, 섹션 제목 옆 버튼으로 섹션 전체를 한번에 숨기기/표시할 수 있다.
+  const renderColumnMenu = (type: 'pcb' | 'cable') => {
+    const sections = HIDEABLE_SECTIONS[type]
+    const total = hideableFieldsFor(type).length
+    const hiddenCount = hiddenCols[type].length
+    const open = columnMenuFor === type
+    const adding = type === 'pcb' ? !!addingPcbRow : !!addingCableRow
+    return (
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setColumnMenuFor(prev => (prev === type ? null : type))}
+          title="표시할 칼럼 선택"
+          className="button-base bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 flex items-center gap-1.5 h-8 px-3 business-radius-button"
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5" />
+          <span className="button-text">칼럼</span>
+          {hiddenCount > 0 && (
+            <span className="text-[10px] font-bold text-[#1777CB]">{total - hiddenCount}/{total}</span>
+          )}
+        </button>
+        {open && (
+          <>
+            {/* 바깥 클릭 시 닫힘 */}
+            <div className="fixed inset-0 z-[9998]" onMouseDown={() => setColumnMenuFor(null)} />
+            <div className="absolute right-0 top-full mt-1 z-[9999] bg-white border border-gray-200 rounded-md shadow-lg pb-2 w-[380px]">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
+                <span className="text-[11px] font-semibold text-gray-700">
+                  칼럼 표시 설정 <span className="text-gray-400 font-normal">({total - hiddenCount}/{total})</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => resetHiddenCols(type)}
+                  className="text-[10px] text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 font-medium transition-colors flex items-center gap-1"
+                  title="숨긴 칼럼을 모두 다시 표시"
+                >
+                  <RotateCcw className="w-2.5 h-2.5" />
+                  전체 표시
+                </button>
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto px-3 pt-2">
+                {sections.map((sec, si) => {
+                  const secFields = sec.groups.flatMap(g => g.fields)
+                  const allHidden = secFields.every(f => hiddenCols[type].includes(f))
+                  return (
+                    <div key={si} className={si > 0 ? 'border-t-2 border-gray-200 mt-2.5 pt-2' : ''}>
+                      {sec.title && (
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold text-gray-600">{sec.title}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSectionHidden(type, secFields, !allHidden)}
+                            className={`text-[9px] font-medium border rounded px-1.5 py-0.5 transition-colors flex items-center gap-1 ${
+                              allHidden
+                                ? 'text-[#1777CB] border-blue-200 bg-blue-50 hover:bg-blue-100'
+                                : 'text-gray-500 border-gray-200 bg-gray-50 hover:bg-gray-100 hover:text-gray-800'
+                            }`}
+                            title={allHidden ? '이 구간의 칼럼을 모두 표시' : '이 구간의 칼럼을 모두 숨기기'}
+                          >
+                            {allHidden ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+                            {allHidden ? '모두 표시' : '모두 숨기기'}
+                          </button>
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        {sec.groups.map(g => (
+                          <div key={g.title}>
+                            <div className="text-[9px] font-bold text-gray-400 mb-0.5">{g.title}</div>
+                            <div className="grid grid-cols-2 gap-x-2">
+                              {g.fields.map(f => {
+                                const hidden = hiddenCols[type].includes(f)
+                                return (
+                                  <button
+                                    key={f}
+                                    type="button"
+                                    onClick={() => toggleHiddenCol(type, f)}
+                                    className={`flex items-center gap-1.5 py-1 px-1 rounded text-left hover:bg-gray-50 transition-colors ${hidden ? 'text-gray-400' : 'text-gray-700'}`}
+                                  >
+                                    {hidden
+                                      ? <EyeOff className="w-3 h-3 text-gray-300 shrink-0" />
+                                      : <Eye className="w-3 h-3 text-[#1777CB] shrink-0" />}
+                                    <span className="text-[11px] truncate">{getColumnTitle(f, type)}</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              {adding && (
+                <div className="px-3 pt-2 mt-1.5 text-[9px] text-amber-600 border-t border-gray-100">
+                  행 추가 중에는 입력 누락 방지를 위해 모든 칼럼이 임시로 표시됩니다.
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    )
   }
 
   const showPcbTable = pcbFilter.categories.length > 0
@@ -3533,14 +4097,35 @@ export default function ProductionListMain() {
                   {filteredPcbs.length}건
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => handleAddClick('pcb')}
-                className="button-base bg-[#1777CB] hover:bg-[#1265A8] text-white flex items-center gap-1.5 h-8 px-3 business-radius-button"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span className="button-text text-white">행 추가</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {renderColumnMenu('pcb')}
+                <button
+                  type="button"
+                  onClick={() => handleExportExcel('pcb')}
+                  title="필터 적용된 화면을 엑셀로 다운로드"
+                  className="button-base bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 flex items-center gap-1.5 h-8 px-3 business-radius-button"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="button-text">다운로드</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePrint('pcb')}
+                  title="필터 적용된 화면을 인쇄"
+                  className="button-base bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 flex items-center gap-1.5 h-8 px-3 business-radius-button"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span className="button-text">인쇄</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddClick('pcb')}
+                  className="button-base bg-[#1777CB] hover:bg-[#1265A8] text-white flex items-center gap-1.5 h-8 px-3 business-radius-button"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span className="button-text text-white">행 추가</span>
+                </button>
+              </div>
             </div>
 
             <div ref={pcbScrollRef} onScroll={() => handleVirtualScroll('pcb')} className="overflow-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
@@ -3555,17 +4140,29 @@ export default function ProductionListMain() {
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth + pcbBoardWidth + referencePcbWidth}px`, width: `${requestDatePcbWidth}px`, minWidth: `${requestDatePcbWidth}px`, maxWidth: `${requestDatePcbWidth}px` }}>요청일</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border-y border-r border-gray-200" style={getHeaderStyle('pcb', 'estimate_no', 80)}>견적NO.</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'delivery_deadline', 80)}>납품기한</th>
-                    <th colSpan={3} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">PJT 담당자</th>
+                    {visibleSpan('pcb', HEADER_SPAN_GROUPS.pjt) > 0 && (
+                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.pjt)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">PJT 담당자</th>
+                    )}
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'creator', 80)}>작성자</th>
-                    <th colSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">제작수량</th>
+                    {visibleSpan('pcb', HEADER_SPAN_GROUPS.makeQty) > 0 && (
+                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.makeQty)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">제작수량</th>
+                    )}
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'artwork_status', 80)}>ARTWORK</th>
-                    <th colSpan={8} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center bg-blue-50/20 font-bold">PCB 제작</th>
+                    {visibleSpan('pcb', HEADER_SPAN_GROUPS.pcbMake) > 0 && (
+                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.pcbMake)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center bg-blue-50/20 font-bold">PCB 제작</th>
+                    )}
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center font-bold" style={getHeaderStyle('pcb', 'parts_organization', 96)}>부품정리</th>
-                    <th colSpan={3} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center font-bold">ASS'Y</th>
+                    {visibleSpan('pcb', HEADER_SPAN_GROUPS.assy) > 0 && (
+                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.assy)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center font-bold">ASS'Y</th>
+                    )}
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 font-bold" style={getHeaderStyle('pcb', 'final_product_stock', 80)}>완제품 입고</th>
-                    <th colSpan={3} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">IN-House Checking</th>
+                    {visibleSpan('pcb', HEADER_SPAN_GROUPS.inHouse) > 0 && (
+                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.inHouse)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">IN-House Checking</th>
+                    )}
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={getHeaderStyle('pcb', 'design_review', 80)}>디자인리뷰</th>
-                    <th colSpan={3} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">납품</th>
+                    {visibleSpan('pcb', HEADER_SPAN_GROUPS.pcbDelivery) > 0 && (
+                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.pcbDelivery)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">납품</th>
+                    )}
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={{ width: '56px', minWidth: '56px', maxWidth: '56px' }}>작업</th>
                   </tr>
                   <tr className="bg-gray-50 border-b border-gray-200">
@@ -3973,7 +4570,22 @@ export default function ProductionListMain() {
               <ChevronDown className={`w-3 h-3 ml-auto text-gray-400 transition-transform ${cableFilterCollapsed ? '-rotate-90' : ''}`} />
             </button>
             {!cableFilterCollapsed && (
-              <div className="px-3 pb-3 pt-1 space-y-3 border-b border-gray-200">
+              <div className="px-3 pb-3 pt-3 space-y-3 border-b border-gray-200">
+                {/* Row 1: 통합 검색창 (PCB 표와 동일 — 검색어는 두 표에 공통 적용) */}
+                <div className="flex items-center">
+                  <div className="relative w-[240px] flex-shrink-0 h-5 flex items-center">
+                    <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="제작번호, 품명, 업체명, 날짜(4월 6일) 검색..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      style={{ paddingLeft: '26px', height: '20px' }}
+                      className="w-full block business-radius-input border border-gray-300 bg-white text-gray-700 pr-3 text-[11px]"
+                    />
+                  </div>
+                </div>
+
                 {renderFilterToolbar('cable')}
               </div>
             )}
@@ -3985,14 +4597,35 @@ export default function ProductionListMain() {
                   {filteredCables.length}건
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => handleAddClick('cable')}
-                className="button-base bg-[#1777CB] hover:bg-[#1265A8] text-white flex items-center gap-1.5 h-8 px-3 business-radius-button"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span className="button-text text-white">행 추가</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {renderColumnMenu('cable')}
+                <button
+                  type="button"
+                  onClick={() => handleExportExcel('cable')}
+                  title="필터 적용된 화면을 엑셀로 다운로드"
+                  className="button-base bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 flex items-center gap-1.5 h-8 px-3 business-radius-button"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="button-text">다운로드</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePrint('cable')}
+                  title="필터 적용된 화면을 인쇄"
+                  className="button-base bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 flex items-center gap-1.5 h-8 px-3 business-radius-button"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span className="button-text">인쇄</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAddClick('cable')}
+                  className="button-base bg-[#1777CB] hover:bg-[#1265A8] text-white flex items-center gap-1.5 h-8 px-3 business-radius-button"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span className="button-text text-white">행 추가</span>
+                </button>
+              </div>
             </div>
 
             <div ref={cableScrollRef} onScroll={() => handleVirtualScroll('cable')} className="overflow-auto" style={{ maxHeight: 'calc(100vh - 220px)' }}>
@@ -4007,11 +4640,17 @@ export default function ProductionListMain() {
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, left: `${40 + salesOrderCableWidth + productionCategoryCableWidth + cableBoardWidth + referenceCableWidth}px`, width: `${requestDateCableWidth}px`, minWidth: `${requestDateCableWidth}px`, maxWidth: `${requestDateCableWidth}px` }}>요청일</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border-y border-r border-gray-200" style={getHeaderStyle('cable', 'estimate_no', 80)}>견적NO.</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'delivery_deadline', 80)}>납품기한</th>
-                    <th colSpan={3} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">PJT 담당자</th>
+                    {visibleSpan('cable', HEADER_SPAN_GROUPS.pjt) > 0 && (
+                      <th colSpan={visibleSpan('cable', HEADER_SPAN_GROUPS.pjt)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">PJT 담당자</th>
+                    )}
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'creator', 80)}>작성자</th>
-                    <th colSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">제작수량</th>
+                    {visibleSpan('cable', HEADER_SPAN_GROUPS.makeQty) > 0 && (
+                      <th colSpan={visibleSpan('cable', HEADER_SPAN_GROUPS.makeQty)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">제작수량</th>
+                    )}
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'spec_details', 250)}>사양</th>
-                    <th colSpan={3} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center bg-blue-50/20 font-bold">CASE/CABLE 입고</th>
+                    {visibleSpan('cable', HEADER_SPAN_GROUPS.cableStockIn) > 0 && (
+                      <th colSpan={visibleSpan('cable', HEADER_SPAN_GROUPS.cableStockIn)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center bg-blue-50/20 font-bold">CASE/CABLE 입고</th>
+                    )}
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 font-bold" style={getHeaderStyle('cable', 'delivery_notes', 150)}>납품/비고</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={{ width: '56px', minWidth: '56px', maxWidth: '56px' }}>작업</th>
                   </tr>
