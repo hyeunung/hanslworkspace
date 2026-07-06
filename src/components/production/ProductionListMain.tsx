@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { productionService, ProductionPcb, ProductionCable } from '@/services/productionService'
 import { Plus, Search, Edit2, X, Filter, Save, RotateCcw, ChevronDown, SlidersHorizontal, Download, Printer, Eye, EyeOff, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
@@ -691,6 +692,18 @@ const getKstTodayISO = (): string => {
   return `${y}-${m}-${d}`
 }
 
+// 납품기한 경고: 한국시간 기준 기한 하루 전(D-1)이 되는 날부터 true (기한 당일·경과 포함)
+// 값이 ISO 날짜(YYYY-MM-DD)가 아닌 메모 텍스트면 판정하지 않는다.
+const isDeadlineUrgent = (value: string | null | undefined): boolean => {
+  if (!value) return false
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!m) return false
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]))
+  d.setUTCDate(d.getUTCDate() - 1)
+  const dMinus1 = d.toISOString().slice(0, 10)
+  return getKstTodayISO() >= dMinus1
+}
+
 // 'YYYY-MM-DD' -> 'MM월DD일'
 const formatKoreanMMDD = (iso: string): string => {
   const p = iso.split('-')
@@ -1153,6 +1166,56 @@ const MemoRow = React.memo(
 )
 MemoRow.displayName = 'MemoRow'
 
+// ─── 앵커 고정 포털 팝오버 ─────────────────────────────────────────────
+// 셀/버튼에 붙는 팝오버를 document.body로 포털해 테이블·카드의 overflow에 잘리지 않게 띄운다.
+// anchorEl 바로 아래에 fixed로 배치하고, 화면 우/하단을 벗어나면 안쪽(위쪽)으로 보정한다.
+// 스크롤·리사이즈 시 앵커를 따라 재배치. (React 이벤트는 포털을 넘어 부모로 버블되므로 기존 stopPropagation 동작 유지)
+function AnchoredPortal({ anchorEl, children, align = 'left', gap = 2, zIndex = 9999 }: {
+  anchorEl: HTMLElement | null
+  children: React.ReactNode
+  align?: 'left' | 'right'
+  gap?: number
+  zIndex?: number
+}) {
+  const boxRef = useRef<HTMLDivElement | null>(null)
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
+  useLayoutEffect(() => {
+    if (!anchorEl) return
+    const place = () => {
+      const a = anchorEl.getBoundingClientRect()
+      const w = boxRef.current?.offsetWidth ?? 0
+      const h = boxRef.current?.offsetHeight ?? 0
+      let left = align === 'right' ? a.right - w : a.left
+      let top = a.bottom + gap
+      if (left + w > window.innerWidth - 8) left = window.innerWidth - 8 - w
+      if (left < 8) left = 8
+      // 아래 공간이 부족하면 앵커 위로 뒤집기 (위도 부족하면 화면 안으로 클램프)
+      if (top + h > window.innerHeight - 8) top = Math.max(8, a.top - gap - h)
+      setPos({ left, top })
+    }
+    place()
+    // 내용 크기가 렌더 후 확정되거나 이후 변하는 팝오버(가변 폭 메모, 정렬 규칙 추가 등)를 따라 재배치
+    const raf = requestAnimationFrame(place)
+    const ro = boxRef.current ? new ResizeObserver(place) : null
+    if (boxRef.current) ro?.observe(boxRef.current)
+    window.addEventListener('scroll', place, true)
+    window.addEventListener('resize', place)
+    return () => {
+      cancelAnimationFrame(raf)
+      ro?.disconnect()
+      window.removeEventListener('scroll', place, true)
+      window.removeEventListener('resize', place)
+    }
+  }, [anchorEl, align, gap])
+  if (!anchorEl) return null
+  return createPortal(
+    <div ref={boxRef} style={{ position: 'fixed', left: pos?.left ?? -9999, top: pos?.top ?? -9999, zIndex }}>
+      {children}
+    </div>,
+    document.body
+  )
+}
+
 export default function ProductionListMain() {
   const [pcbs, setPcbs] = useState<ProductionPcb[]>([])
   const [cables, setCables] = useState<ProductionCable[]>([])
@@ -1451,6 +1514,11 @@ export default function ProductionListMain() {
   // 인라인 셀 수정 상태
   const [editingCell, setEditingCell] = useState<{ id: string, type: 'pcb' | 'cable', field: string } | null>(null)
   const [editValue, setEditValue] = useState<string>('')
+  // 편집 팝오버 포털 앵커 = 편집 중인 셀(td) — 팝오버를 body로 띄워 테이블 스크롤 영역에 잘리지 않게 한다
+  const [editAnchorEl, setEditAnchorEl] = useState<HTMLElement | null>(null)
+  const editAnchorRefCb = useCallback((el: HTMLTableCellElement | null) => setEditAnchorEl(el), [])
+  // 정렬/칼럼 메뉴 포털 앵커 = 클릭한 버튼 (메뉴는 한 번에 하나만 열림)
+  const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null)
   // 줄바꿈 셀 접힘/펼침 상태 (key: `${id}::${field}`) — 펼치면 해당 셀만 세로로 확장
   const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set())
   const toggleCellExpand = (id: string, field: string) => {
@@ -2224,18 +2292,22 @@ export default function ProductionListMain() {
     const { id, type, field } = currentCell
     const valueToSave = normalizeCellValueForSave(type, field, val, id)
 
+    // 납품 분할 그룹의 병합된 앞 칼럼 수정 → 그룹 전체 행에 같은 값 저장 (값이 어긋나면 병합이 풀림)
+    const targetIds = type === 'pcb' && !HEADER_SPAN_GROUPS.pcbDelivery.includes(field)
+      ? pcbGroupSiblings(id) : [id]
+
     // 되돌리기: 실제 값이 바뀔 때만 변경 전 행을 스냅샷 (색상 핸들러 경유 호출은 captureUndo=false)
     if (captureUndo) {
       const liveList: any[] = type === 'pcb' ? liveDataRef.current.pcbs : liveDataRef.current.cables
       const before = liveList.find(i => i.id === id)?.[field]
       if ((before ?? null) !== (valueToSave ?? null)) {
-        pushRestoreUndo(type, [id], `${getColumnTitle(field, type)} 수정`)
+        pushRestoreUndo(type, targetIds, `${getColumnTitle(field, type)} 수정`)
       }
     }
 
     try {
       if (type === 'pcb') {
-        await productionService.updateProductionPcb(id, { [field]: valueToSave })
+        await Promise.all(targetIds.map(tid => productionService.updateProductionPcb(tid, { [field]: valueToSave })))
       } else {
         await productionService.updateProductionCable(id, { [field]: valueToSave })
       }
@@ -2254,6 +2326,8 @@ export default function ProductionListMain() {
     // 안전장치: 선택된 셀 중 해당 필드인 것만 대상으로 삼는다(같은 칼럼 다중선택 전제).
     const rowIds = Array.from(new Set(
       selectedCells.filter(k => k.split('::')[1] === field).map(k => k.split('::')[0])
+        // 납품 분할 그룹의 병합된 앞 칼럼이면 그룹 전체 행으로 확장 (값이 어긋나면 병합이 풀림)
+        .flatMap(rid => type === 'pcb' && !HEADER_SPAN_GROUPS.pcbDelivery.includes(field) ? pcbGroupSiblings(rid) : [rid])
     ))
     if (rowIds.length === 0) return
 
@@ -2432,7 +2506,9 @@ export default function ProductionListMain() {
       const list = type === 'pcb' ? filteredPcbs : filteredCables
       const currentItem = list.find(i => i.id === id)
       if (!currentItem) return
-      pushRestoreUndo(type, [id], '행 색상 변경')
+      // 납품 분할 그룹이면 그룹 전체 행의 색을 함께 변경 (색이 어긋나면 병합이 풀림)
+      const targetIds = type === 'pcb' ? pcbGroupSiblings(id) : [id]
+      pushRestoreUndo(type, targetIds, '행 색상 변경')
 
       const { color: curColor, strike: curStrike } = parseColorState(currentItem.row_color)
       
@@ -2449,9 +2525,9 @@ export default function ProductionListMain() {
       }
       
       const serialized = serializeColorState(nextColor, nextStrike)
-      const { error } = await supabase.from(table).update({ row_color: serialized }).eq('id', id)
+      const { error } = await supabase.from(table).update({ row_color: serialized }).in('id', targetIds)
       if (error) throw error
-      
+
       loadData()
       setActiveColorPicker(null)
       toast.success('행 상태가 변경되었습니다.')
@@ -2466,8 +2542,11 @@ export default function ProductionListMain() {
     try {
       const supabase = createClient()
       const table = type === 'pcb' ? 'production_pcbs' : 'production_cables'
+      // 납품 분할 그룹의 병합된 앞 칼럼이면 그룹 전체 행의 칸 색을 함께 변경 (색이 어긋나면 병합이 풀림)
+      const targetIds = type === 'pcb' && !HEADER_SPAN_GROUPS.pcbDelivery.includes(field)
+        ? pcbGroupSiblings(id) : [id]
       // 되돌리기: 색상+편집중 텍스트를 한 번에 복원하도록 변경 전 행 전체 스냅샷
-      pushRestoreUndo(type, [id], '칸 색상 변경')
+      pushRestoreUndo(type, targetIds, '칸 색상 변경')
       const newCellColors = { ...(currentCellColors || {}) }
 
       const currentVal = newCellColors[field]
@@ -2505,8 +2584,16 @@ export default function ProductionListMain() {
         newCellColors[field] = serialized
       }
       
-      const { error } = await supabase.from(table).update({ cell_colors: newCellColors }).eq('id', id)
-      if (error) throw error
+      // 형제 행은 각자의 cell_colors에 같은 필드 값만 반영 (납품 칸 색상 등 행별 차이는 보존)
+      const results = await Promise.all(targetIds.map(tid => {
+        if (tid === id) return supabase.from(table).update({ cell_colors: newCellColors }).eq('id', tid)
+        const sibling = (type === 'pcb' ? filteredPcbs : filteredCables).find(i => i.id === tid)
+        const siblingColors = { ...((sibling as any)?.cell_colors || {}) }
+        if (serialized === null) { delete siblingColors[field] } else { siblingColors[field] = serialized }
+        return supabase.from(table).update({ cell_colors: siblingColors }).eq('id', tid)
+      }))
+      const failed = results.find(r => r.error)
+      if (failed?.error) throw failed.error
       
       // 색상 선택 시, 입력칸에 수정 중이던 텍스트도 자동으로 함께 저장하고 수정을 완료합니다.
       // (되돌리기 스냅샷은 위에서 이미 잡았으므로 중복 캡처 방지: captureUndo=false)
@@ -2565,6 +2652,37 @@ export default function ProductionListMain() {
     }),
     [cables, cableFilter, categoryOrder, cableSearch, cableSort])
 
+  // ─── 납품 분할 그룹: 납품 3칸(수량/일자/배송처) 외 모든 값이 같은 '연속' 행을 한 묶음으로 본다 ───
+  // 분할 행은 앞 칼럼이 전부 동일 복제이므로, 렌더 시 첫 행의 앞 칼럼을 rowSpan으로 병합해
+  // 앞부분은 한 행처럼 보이고 납품 칸만 행 단위로 나뉘게 한다. (정렬로 떨어져 있으면 병합하지 않음)
+  const pcbGroupInfo = useMemo(() => {
+    const keyOf = (item: any) => {
+      const { id, created_at, updated_at, delivery_quantity, delivery_date, delivery_destination, cell_colors, ...rest } = item
+      // 납품 칸의 셀 색상은 행마다 달라도 병합 판정에 영향 없도록 키에서 제외
+      let cc = cell_colors
+      if (cc && typeof cc === 'object') {
+        const { delivery_quantity: _a, delivery_date: _b, delivery_destination: _c, ...ccRest } = cc
+        cc = ccRest
+      }
+      return JSON.stringify({ ...rest, cell_colors: cc ?? null })
+    }
+    const map = new Map<string, { pos: number; size: number; ids: string[] }>()
+    const keys = filteredPcbs.map(keyOf)
+    let i = 0
+    while (i < filteredPcbs.length) {
+      let j = i + 1
+      while (j < filteredPcbs.length && keys[j] === keys[i]) j++
+      if (j - i >= 2) {
+        const ids = filteredPcbs.slice(i, j).map((r: any) => r.id)
+        ids.forEach((rid, pos) => map.set(rid, { pos, size: ids.length, ids }))
+      }
+      i = j
+    }
+    return map
+  }, [filteredPcbs])
+  // 분할 그룹 형제 행 id 목록 — 병합된 앞 칼럼 수정 시 그룹 전체에 같은 값을 저장해 병합이 깨지지 않게 한다
+  const pcbGroupSiblings = (id: string): string[] => pcbGroupInfo.get(id)?.ids ?? [id]
+
   // 년도 드롭다운 옵션 = 로드된 데이터에서 해당 날짜 칼럼에 실제 존재하는 년도만 (내림차순)
   const yearsFor = (type: 'pcb' | 'cable', dateField: string): number[] => {
     const list: any[] = type === 'pcb' ? pcbs : cables
@@ -2620,21 +2738,25 @@ export default function ProductionListMain() {
   }, [filteredPcbs.length, filteredCables.length])
 
   // 렌더용 슬라이스/스페이서 (스페이서는 tbody 안 <tr>로 전체 스크롤 높이 유지)
-  const pcbWinEnd = Math.min(pcbWin.end, filteredPcbs.length)
-  const pcbVisibleRows = filteredPcbs.slice(pcbWin.start, pcbWinEnd)
-  const pcbTopPad = Math.round(pcbWin.start * rowHeightRef.current.pcb)
+  // 납품 분할 그룹이 창 경계에서 잘리면 rowSpan 병합의 첫 행이 빠져 레이아웃이 깨지므로 그룹 경계까지 확장
+  let pcbWinStart = pcbWin.start
+  while (pcbWinStart > 0 && (pcbGroupInfo.get(filteredPcbs[pcbWinStart]?.id)?.pos ?? 0) > 0) pcbWinStart--
+  let pcbWinEnd = Math.min(pcbWin.end, filteredPcbs.length)
+  while (pcbWinEnd < filteredPcbs.length && (pcbGroupInfo.get(filteredPcbs[pcbWinEnd]?.id)?.pos ?? 0) > 0) pcbWinEnd++
+  const pcbVisibleRows = filteredPcbs.slice(pcbWinStart, pcbWinEnd)
+  const pcbTopPad = Math.round(pcbWinStart * rowHeightRef.current.pcb)
   const pcbBottomPad = Math.round((filteredPcbs.length - pcbWinEnd) * rowHeightRef.current.pcb)
   const cableWinEnd = Math.min(cableWin.end, filteredCables.length)
   const cableVisibleRows = filteredCables.slice(cableWin.start, cableWinEnd)
   const cableTopPad = Math.round(cableWin.start * rowHeightRef.current.cable)
   const cableBottomPad = Math.round((filteredCables.length - cableWinEnd) * rowHeightRef.current.cable)
 
-  // 셀에 표시되는 폰트 굵기: 실제 렌더링 클래스(font-semibold/medium)와 동일하게 맞춰야 실측이 정확함
-  const getFieldFontWeight = (field: string, hasValue: boolean): number => {
+  // 셀에 표시되는 폰트 굵기: 실제 렌더링 클래스(font-semibold/medium/bold)와 동일하게 맞춰야 실측이 정확함
+  const getFieldFontWeight = (field: string, value: unknown): number => {
     if (field === 'reference' || field === 'sales_order_number') return 600
     if (field === 'board_name') return 500
-    const isDateField = field.endsWith('_date') || field.endsWith('_deadline') || field.endsWith('_schedule') || field === 'final_product_stock'
-    if (isDateField && hasValue) return field === 'delivery_date' ? 400 : 600 // 납품 일자는 볼드 제외
+    // 납품기한은 D-1 경고 시에만 볼드, 나머지 날짜 칼럼은 일반 굵기
+    if (field === 'delivery_deadline' && isDeadlineUrgent(value as string | null | undefined)) return 700
     return 400
   }
 
@@ -2892,13 +3014,12 @@ export default function ProductionListMain() {
       // 줄바꿈 셀은 접힘 상태(첫 줄 + `(+N)🔽` 배지) 기준으로 폭을 잡아 가로로 길어지지 않게 한다.
       let multilineExtra = 0
       if (valStr.includes('\n')) { valStr = valStr.split('\n')[0]; multilineExtra = 34 }
-      const hasValue = item[field] !== null && item[field] !== undefined && item[field] !== ''
       // 취소선 셀은 font-normal(400)로 렌더되므로 같은 굵기로 측정 (renderEditableCell의 isStruck 로직과 동일)
       const cState = parseColorState(item.cell_colors?.[field])
       const rState = parseColorState(item.row_color)
       const isStruck = cState.strike === 'strike' ? true : cState.strike === 'nostrike' ? false : (rState.strike === 'strike')
       const isBold = cState.bold || rState.bold
-      const weight = isBold ? 700 : (isStruck ? 400 : getFieldFontWeight(field, hasValue))
+      const weight = isBold ? 700 : (isStruck ? 400 : getFieldFontWeight(field, item[field]))
       const w = measureText(valStr, weight) + multilineExtra
       if (w > maxValWidth) maxValWidth = w
     }
@@ -3162,12 +3283,13 @@ export default function ProductionListMain() {
       const editCellStyle = { ...cellStyle, overflow: 'visible', zIndex: 50 }
       if (field === 'artwork_status') {
         return (
-          <td className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
+          <td ref={editAnchorRefCb} className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
             <span className="text-[10px] text-gray-400 truncate block px-1">
               {formatArtworkDisplay(editValue) || ' '}
             </span>
+            <AnchoredPortal anchorEl={editAnchorEl}>
             <div
-              className="absolute left-0 top-full mt-0.5 z-50 bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
+              className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
               style={{ width: 'max-content', minWidth: '150px' }}
               onMouseDown={(e) => e.stopPropagation()}
             >
@@ -3184,17 +3306,19 @@ export default function ProductionListMain() {
               {/* 색상 피커도 함께 표시 (다른 편집 셀과 동일) */}
               {renderCellColorPicker(true)}
             </div>
+            </AnchoredPortal>
           </td>
         )
       }
       if (field === 'parts_organization') {
         return (
-          <td className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
+          <td ref={editAnchorRefCb} className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
             <span className="text-[10px] text-gray-400 truncate block px-1">
               {formatPartsDisplay(editValue) || ' '}
             </span>
+            <AnchoredPortal anchorEl={editAnchorEl}>
             <div
-              className="absolute left-0 top-full mt-0.5 z-50 bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
+              className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
               style={{ width: 'max-content', minWidth: '150px' }}
               onMouseDown={(e) => e.stopPropagation()}
             >
@@ -3211,6 +3335,7 @@ export default function ProductionListMain() {
               {/* 색상 피커도 함께 표시 (다른 편집 셀과 동일) */}
               {renderCellColorPicker(true)}
             </div>
+            </AnchoredPortal>
           </td>
         )
       }
@@ -3279,24 +3404,25 @@ export default function ProductionListMain() {
         while (memoWidth < longestLinePx && memoWidth < 750) memoWidth += 150
         // 세로도 줄 수만큼 다 보이게 (최소 3줄) — 화면을 벗어날 만큼 길 때만 maxHeight로 잘리고 스크롤
         const memoRows = Math.max(3, memoLines.length)
-        // 셀이 오른쪽 끝에 있을 때 팝오버가 화면 밖으로 나가지 않도록 좌/우 정렬 결정
+        // 팝오버는 body 포털(AnchoredPortal)로 띄워 테이블 스크롤 영역에 잘리지 않고, 화면 경계 보정도 포털이 담당
         return (
-          <td className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
+          <td ref={editAnchorRefCb} className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
             <span className="block text-[10px] text-gray-400 truncate px-1">{String(editValue || ' ')}</span>
-            {/* 메모는 폭을 컨테이너에 직접 지정 — textarea 인라인 width만 바꾸면 absolute 컨테이너의
+            {/* 메모는 폭을 컨테이너에 직접 지정 — textarea 인라인 width만 바꾸면 컨테이너의
                 shrink-to-fit 재계산이 안 일어나는(Chromium) 문제가 있어 컨테이너 폭으로 제어한다. */}
+            <AnchoredPortal anchorEl={editAnchorEl}>
             <div
-              className="absolute left-0 top-full mt-0.5 z-[60] bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
+              className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
               style={isMemoField
                 ? { width: `${memoWidth + 14}px`, maxWidth: '780px' }
                 : { minWidth: '220px', maxWidth: '360px' }}
               onMouseDown={(e) => e.stopPropagation()}
             >
               {field === 'delivery_quantity' && type === 'pcb' ? (
-                // 납품 수량: 제목 좌측 끝에 `[N]분할` — N개 행으로 분할 (앞 칼럼 복제, 납품 3칸은 빈 상태)
+                // 납품 수량: 제목 좌측 끝에 개수 입력 + 분할 버튼 — N개 행으로 분할 (앞 칼럼 복제, 납품 3칸은 빈 상태)
                 <div className="flex items-center justify-between gap-2 mb-1 px-0.5" data-split-ui>
                   <span className="flex items-center text-[9px] text-gray-500 shrink-0">
-                    [<input
+                    <input
                       ref={splitInputRef}
                       type="number"
                       min={2}
@@ -3312,7 +3438,7 @@ export default function ProductionListMain() {
                       }}
                       className="w-7 h-4 border border-gray-300 rounded px-0.5 text-[9px] text-center focus:outline-none focus:border-[#1777CB]"
                       title="분할 개수"
-                    />]
+                    />
                     <button
                       type="button"
                       onMouseDown={(e) => { e.preventDefault(); e.stopPropagation() }}
@@ -3372,6 +3498,7 @@ export default function ProductionListMain() {
               {/* 색상 피커를 입력창 바로 아래에 함께 표시 */}
               {renderCellColorPicker(true)}
             </div>
+            </AnchoredPortal>
             {datalistNode}
           </td>
         )
@@ -3401,9 +3528,14 @@ export default function ProductionListMain() {
     let computedClassName = cellClassName
     const isDateField = field.endsWith('_date') || field.endsWith('_deadline') || field.endsWith('_schedule') || field === 'final_product_stock';
     const hasValue = item[field] !== null && item[field] !== undefined && item[field] !== '';
-    if (isDateField && hasValue && field !== 'delivery_date') {
-      // 납품 일자는 볼드/진한색 제외 → 다른 칼럼(tbody 기본 text-gray-700)과 동일하게
-      computedClassName += ' font-semibold text-gray-900'
+    if (isDateField && hasValue) {
+      if (field === 'delivery_deadline' && isDeadlineUrgent(item[field])) {
+        // 납품기한: 한국시간 기준 D-1이 된 순간부터 빨간색 볼드 + 밑줄로 경고
+        computedClassName = computedClassName.replace('text-gray-500', '') + ' font-bold text-red-600 underline'
+      } else {
+        // 그 외 날짜 칼럼은 볼드 없이 검정 텍스트
+        computedClassName += ' text-gray-900'
+      }
     }
 
     const cState = parseColorState(item.cell_colors?.[field]);
@@ -3423,7 +3555,10 @@ export default function ProductionListMain() {
         .replace('text-gray-900', '')
         .replace('text-gray-500', '')
         .replace('text-red-500', '')
+        .replace('text-red-600', '')
         .replace('font-semibold', '')
+        .replace('font-bold', '')
+        .replace('underline', '')
         + ' line-through text-gray-400 font-normal'
     }
 
@@ -3814,8 +3949,10 @@ export default function ProductionListMain() {
   // 행 하나의 렌더에 영향을 주는 '그 행 관련' UI 상태 요약 — 이 값이 바뀐 행만 다시 그린다
   const rowSig = (type: 'pcb' | 'cable', item: any): string => {
     const sel = selectedCells.length ? selectedCells.filter(k => k.startsWith(item.id + '::')).join(',') : ''
+    // 편집 팝오버는 셀(td) 마운트 후 앵커가 잡혀야 body 포털이 뜨므로, 앵커 유무도 시그니처에 포함해
+    // 앵커가 설정되는 재렌더가 MemoRow 메모이즈에 막히지 않게 한다
     const editing = editingCell && editingCell.type === type && editingCell.id === item.id
-      ? `E:${editingCell.field}:${editValue}` : ''
+      ? `E:${editingCell.field}:${editValue}:${editAnchorEl ? 'A' : 'a'}` : ''
     const picker = activeColorPicker && activeColorPicker.type === type && activeColorPicker.id === item.id ? 'P' : ''
     // 입고일 선택 팝오버가 열린 행은 입력값이 바뀔 때마다 다시 그린다
     const stockIn = stockInPicker && stockInPicker.type === type && stockInPicker.id === item.id
@@ -3826,7 +3963,10 @@ export default function ProductionListMain() {
     // 이 행에서 펼쳐진 줄바꿈 셀 목록 — 펼침/접힘 토글 시 행을 다시 그리기 위해 시그니처에 포함
     const expanded = expandedCells.size
       ? [...expandedCells].filter(k => k.startsWith(item.id + '::')).join(',') : ''
-    return sel + '|' + editing + '|' + picker + '|' + stockIn + '|' + cols + '|' + expanded
+    // 납품 분할 그룹 내 위치/크기 — 그룹 구성이 바뀌면(분할/삭제/정렬) rowSpan 병합을 다시 그린다
+    const g = type === 'pcb' ? pcbGroupInfo.get(item.id) : undefined
+    const grp = g ? `G${g.pos}/${g.size}` : ''
+    return sel + '|' + editing + '|' + picker + '|' + stockIn + '|' + cols + '|' + expanded + '|' + grp
   }
 
   // PCB 행 렌더 본문 — MemoRow가 (item, index)로 호출. 내부 커스텀 핸들러는 모두 useStableHandler로 안정화됨.
@@ -3838,9 +3978,16 @@ export default function ProductionListMain() {
                                          rColor === 'blue' ? 'bg-blue-100' :
                                          'hover:bg-gray-50/50'
 
-                      return (
-                        <tr key={item.id} data-vrow className={`group transition-colors ${rowBgClass}`}>
-                          <td 
+                      // 납품 분할 그룹: 첫 행은 앞 칼럼을 rowSpan으로 병합해 그룹 전체 높이를 차지하고,
+                      // 이어지는 행(pos>0)은 앞 칼럼 없이 납품 3칸+삭제만 렌더한다.
+                      const grp = pcbGroupInfo.get(item.id)
+                      const isGroupCont = !!grp && grp.pos > 0
+                      const groupSpan = grp && grp.pos === 0 ? grp.size : undefined
+
+                      // 앞 칼럼(납품 3칸 이전 전부) — 분할 그룹 첫 행이면 각 셀에 rowSpan 주입
+                      const frontCellsRaw = isGroupCont ? null : (
+                        <>
+                          <td
                             className={`px-2 py-1.5 text-center text-gray-400 sticky left-0 transition-colors ${activeColorPicker?.id === item.id && activeColorPicker?.type === 'pcb' ? 'z-20' : 'z-10'} w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer relative color-picker-trigger ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
                             title="클릭: 행 전체 선택 · 다시 클릭: 행 색상"
                             onClick={(e) => {
@@ -4134,6 +4281,16 @@ export default function ProductionListMain() {
                           item.design_review || '-',
                           'px-2 py-1.5 text-center border border-gray-200'
                         )}
+                        </>
+                      )
+                      const frontCells = frontCellsRaw == null ? null : (groupSpan
+                        ? React.Children.map(frontCellsRaw.props.children, (el: any) =>
+                            React.isValidElement(el) ? React.cloneElement(el as React.ReactElement<any>, { rowSpan: groupSpan }) : el)
+                        : frontCellsRaw)
+
+                      return (
+                        <tr key={item.id} data-vrow className={`group transition-colors ${rowBgClass}`}>
+                          {frontCells}
                         {renderEditableCell(
                           item.id,
                           'pcb',
@@ -4401,7 +4558,7 @@ export default function ProductionListMain() {
       <div className="relative">
         <button
           type="button"
-          onClick={() => setSortMenuFor(prev => (prev === type ? null : type))}
+          onClick={(e) => { setMenuAnchorEl(e.currentTarget as HTMLElement); setSortMenuFor(prev => (prev === type ? null : type)) }}
           title={active ? `정렬 ${rules.length}개 적용됨` : '정렬 추가'}
           className={`badge-stats cursor-pointer border flex items-center gap-1 transition-colors ${
             active
@@ -4415,8 +4572,10 @@ export default function ProductionListMain() {
         {open && (
           <>
             <div className="fixed inset-0 z-[9998]" onMouseDown={() => setSortMenuFor(null)} />
-            {/* 패널 폭은 내용에 맞춤(w-max) — 고정 폭(w-[320px])이면 짧은 규칙에도 넓게 남아 어색. 최소/최대만 제한 */}
-            <div className="absolute left-0 top-full mt-1 z-[9999] bg-white border border-gray-200 rounded-md shadow-lg w-max min-w-[200px] max-w-[340px]">
+            {/* 패널 폭은 내용에 맞춤(w-max) — 고정 폭(w-[320px])이면 짧은 규칙에도 넓게 남아 어색. 최소/최대만 제한.
+                body 포털로 띄워 카드 overflow-hidden에 잘리지 않게 한다. */}
+            <AnchoredPortal anchorEl={menuAnchorEl} gap={4}>
+            <div className="bg-white border border-gray-200 rounded-md shadow-lg w-max min-w-[200px] max-w-[340px]">
               <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-100">
                 <span className="text-[11px] font-semibold text-gray-700">정렬</span>
                 {active && (
@@ -4499,6 +4658,7 @@ export default function ProductionListMain() {
                 </button>
               </div>
             </div>
+            </AnchoredPortal>
           </>
         )}
       </div>
@@ -4517,7 +4677,7 @@ export default function ProductionListMain() {
       <div className="relative">
         <button
           type="button"
-          onClick={() => setColumnMenuFor(prev => (prev === type ? null : type))}
+          onClick={(e) => { setMenuAnchorEl(e.currentTarget as HTMLElement); setColumnMenuFor(prev => (prev === type ? null : type)) }}
           title="표시할 칼럼 선택"
           className="button-base bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 flex items-center gap-1.5 h-8 px-3 business-radius-button"
         >
@@ -4531,7 +4691,9 @@ export default function ProductionListMain() {
           <>
             {/* 바깥 클릭 시 닫힘 */}
             <div className="fixed inset-0 z-[9998]" onMouseDown={() => setColumnMenuFor(null)} />
-            <div className="absolute right-0 top-full mt-1 z-[9999] bg-white border border-gray-200 rounded-md shadow-lg pb-2 w-[380px]">
+            {/* body 포털로 띄워 카드 overflow-hidden에 잘리지 않게 한다 (버튼 우측 정렬) */}
+            <AnchoredPortal anchorEl={menuAnchorEl} align="right" gap={4}>
+            <div className="bg-white border border-gray-200 rounded-md shadow-lg pb-2 w-[380px]">
               <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
                 <span className="text-[11px] font-semibold text-gray-700">
                   칼럼 표시 설정 <span className="text-gray-400 font-normal">({total - hiddenCount}/{total})</span>
@@ -4605,6 +4767,7 @@ export default function ProductionListMain() {
                 </div>
               )}
             </div>
+            </AnchoredPortal>
           </>
         )}
       </div>
@@ -5401,7 +5564,7 @@ export default function ProductionListMain() {
                       <tr aria-hidden="true"><td colSpan={36} style={{ height: pcbTopPad, padding: 0, border: 'none' }} /></tr>
                     )}
                     {pcbVisibleRows.map((item, vIdx) => (
-                      <MemoRow key={item.id} item={item} index={pcbWin.start + vIdx} sig={rowSig('pcb', item)} widths={pcbColumnWidths} renderRow={renderPcbRow} />
+                      <MemoRow key={item.id} item={item} index={pcbWinStart + vIdx} sig={rowSig('pcb', item)} widths={pcbColumnWidths} renderRow={renderPcbRow} />
                     ))}
                     {pcbBottomPad > 0 && (
                       <tr aria-hidden="true"><td colSpan={36} style={{ height: pcbBottomPad, padding: 0, border: 'none' }} /></tr>
