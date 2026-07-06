@@ -461,6 +461,12 @@ export default function SupportMain() {
     } else {
       setLockedPurchaseId(null)
     }
+
+    // ✅ 헤더 배지 클릭 등에서 관리자 모드 직행: /support?tab=vendor_admin
+    // (렌더 단계에서 isLeadBuyer 조건으로 한 번 더 걸러지므로 일반 사용자에겐 영향 없음)
+    if (params.get('tab') === 'vendor_admin') {
+      setActiveTab('vendor_admin')
+    }
   }, [location.search])
 
   // ✅ 고정 purchaseId가 있으면 바로 상세를 불러와 자동 선택 + 직원명/기간 자동 설정

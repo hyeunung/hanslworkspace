@@ -58,6 +58,8 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [pendingInquiryCount, setPendingInquiryCount] = useState(0)
+  // lead buyer: 미처리 업체등록 요청 건수 (배지 클릭 시 관리자 모드 직행 판단용)
+  const [pendingVendorRequestCount, setPendingVendorRequestCount] = useState(0)
   const [pendingStatementCount, setPendingStatementCount] = useState(0)
   const [pendingApplicationCount, setPendingApplicationCount] = useState(0)
   const [otherPendingCount, setOtherPendingCount] = useState(0)
@@ -203,6 +205,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
   }, [isAdmin])
 
   // 일반 사용자: 내 미처리 문의(open+in_progress) 건수 표시
+  // lead buyer: 내 미처리 문의 + 미처리 업체등록 요청(전체) 합산 표시
   useEffect(() => {
     if (isAdmin) return
 
@@ -218,28 +221,54 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
       }
       if (!currentUserId) return
 
-      const { count, error } = await supabase
+      let query = supabase
         .from('support_inquires')
         .select('id', { count: 'exact', head: true })
-        .eq('user_id', currentUserId)
         .in('status', ['open', 'in_progress'])
+
+      if (isLeadBuyer) {
+        // 내 문의 + 업체등록 요청(전체) — or 조건이라 중복 카운트 없음
+        query = query.or(`user_id.eq.${currentUserId},inquiry_type.eq.new_vendor`)
+      } else {
+        query = query.eq('user_id', currentUserId)
+      }
+
+      const { count, error } = await query
 
       if (!cancelled) {
         if (!error && typeof count === 'number') setPendingInquiryCount(count)
+      }
+
+      // lead buyer: 관리자 모드 직행 판단용 업체등록 요청 건수
+      if (isLeadBuyer) {
+        const { count: vendorCount, error: vendorError } = await supabase
+          .from('support_inquires')
+          .select('id', { count: 'exact', head: true })
+          .eq('inquiry_type', 'new_vendor')
+          .in('status', ['open', 'in_progress'])
+
+        if (!cancelled && !vendorError && typeof vendorCount === 'number') {
+          setPendingVendorRequestCount(vendorCount)
+        }
       }
     }
 
     loadMyPendingCount()
 
-    // 실시간 구독(문의 변경 시 내 건만 재조회)
+    // 실시간 구독(문의 변경 시 내 건 + (lead buyer면) 업체등록 요청 재조회)
     if (!subscription) {
       subscription = supportService.subscribeToInquiries((payload) => {
         if (!currentUserId) {
           loadMyPendingCount()
           return
         }
-        const newRow = payload?.new as { user_id?: string } | undefined
-        const oldRow = payload?.old as { user_id?: string } | undefined
+        const newRow = payload?.new as { user_id?: string; inquiry_type?: string } | undefined
+        const oldRow = payload?.old as { user_id?: string; inquiry_type?: string } | undefined
+        const isVendorRow = newRow?.inquiry_type === 'new_vendor' || oldRow?.inquiry_type === 'new_vendor'
+        if (isLeadBuyer && isVendorRow) {
+          loadMyPendingCount()
+          return
+        }
         if (newRow?.user_id !== currentUserId && oldRow?.user_id !== currentUserId) return
         loadMyPendingCount()
       })
@@ -249,7 +278,7 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
       cancelled = true
       if (subscription) subscription.unsubscribe()
     }
-  }, [isAdmin])
+  }, [isAdmin, isLeadBuyer])
 
   // 거래명세서 배지 카운트 - 역할별로 쿼리가 다름 (FixedNavigation과 동일 규칙)
   // - superadmin: status IN ('failed','rejected')
@@ -556,10 +585,11 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
             <span className="hidden group-hover:inline text-xs font-medium text-gray-600">공문</span>
           </button>
 
-          {/* 문의하기 진입 버튼 (항상 표시, 미처리 문의 배지 포함) */}
+          {/* 문의하기 진입 버튼 (항상 표시, 미처리 문의 배지 포함)
+              lead buyer + 미처리 업체등록 요청이 있으면 관리자 모드로 직행 */}
           <button
             type="button"
-            onClick={() => navigate('/support')}
+            onClick={() => navigate(isLeadBuyer && pendingVendorRequestCount > 0 ? '/support?tab=vendor_admin' : '/support')}
             className="group relative ml-1 inline-flex items-center justify-center h-9 rounded-lg hover:bg-gray-50 transition-colors px-2 min-w-[36px]"
             title="문의하기"
             aria-label={pendingInquiryCount > 0 ? `문의하기 (미처리 ${pendingInquiryCount}건)` : '문의하기 페이지 열기'}
