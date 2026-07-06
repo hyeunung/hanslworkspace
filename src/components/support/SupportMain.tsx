@@ -1993,130 +1993,142 @@ ${itemsText}`;
                   </Select>
                 </div>
 
-                {/* 업체등록 요청: 신규 업체 정보 + 담당자 입력 */}
+                {/* 업체등록 요청: 신규 업체 정보 + 담당자 입력 (item_add 폼과 동일한 compact 디자인) */}
                 {inquiryType === 'new_vendor' && (
                   <div className="space-y-3 p-4 bg-gray-50 business-radius-card border border-gray-200">
                     <div className="modal-section-title text-gray-900">신규 업체 정보</div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-gray-500 font-medium">업체명 <span className="text-red-500">*</span></label>
-                        <Input
-                          value={newVendorForm.vendor_name}
-                          onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_name: e.target.value }))}
-                          placeholder="업체명을 입력하세요"
-                          className="business-radius-input"
-                        />
+
+                    <div className="space-y-2">
+                      <div className="flex flex-col lg:flex-row lg:items-center gap-2">
+                        <div className="flex-[2] min-w-0">
+                          <Input
+                            type="text"
+                            value={newVendorForm.vendor_name}
+                            onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_name: e.target.value }))}
+                            placeholder="업체명 *"
+                            className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                          />
+                        </div>
+                        <div className="flex-[1.5] min-w-0">
+                          <Input
+                            type="text"
+                            value={newVendorForm.vendor_alias}
+                            onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_alias: e.target.value }))}
+                            placeholder="참조명 (영문명, 약칭 등)"
+                            className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                          />
+                        </div>
+                        <div className="flex-[1.5] min-w-0">
+                          <Input
+                            type="text"
+                            value={newVendorForm.vendor_phone}
+                            onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_phone: e.target.value }))}
+                            placeholder="전화번호"
+                            className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                          />
+                        </div>
+                        <div className="flex-[1.5] min-w-0">
+                          <Input
+                            type="text"
+                            value={newVendorForm.vendor_fax}
+                            onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_fax: e.target.value }))}
+                            placeholder="팩스번호"
+                            className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                          />
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-gray-500 font-medium">참조명</label>
-                        <Input
-                          value={newVendorForm.vendor_alias}
-                          onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_alias: e.target.value }))}
-                          placeholder="영문명, 약칭 등"
-                          className="business-radius-input"
-                        />
+                      <div className="flex flex-col lg:flex-row lg:items-center gap-2">
+                        <div className="flex-[1.5] min-w-0">
+                          <Input
+                            type="text"
+                            value={newVendorForm.vendor_payment_schedule}
+                            onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_payment_schedule: e.target.value }))}
+                            placeholder="결제조건 (월말결제 등)"
+                            className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                          />
+                        </div>
+                        <div className="flex-[3] min-w-0">
+                          <Input
+                            type="text"
+                            value={newVendorForm.vendor_address}
+                            onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_address: e.target.value }))}
+                            placeholder="주소"
+                            className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                          />
+                        </div>
+                        <div className="flex-[2] min-w-0">
+                          <Input
+                            type="text"
+                            value={newVendorForm.note}
+                            onChange={(e) => setNewVendorForm(prev => ({ ...prev, note: e.target.value }))}
+                            placeholder="비고"
+                            className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                          />
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-gray-500 font-medium">전화번호</label>
-                        <Input
-                          value={newVendorForm.vendor_phone}
-                          onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_phone: e.target.value }))}
-                          placeholder="02-1234-5678"
-                          className="business-radius-input"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] text-gray-500 font-medium">팩스번호</label>
-                        <Input
-                          value={newVendorForm.vendor_fax}
-                          onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_fax: e.target.value }))}
-                          placeholder="02-1234-5679"
-                          className="business-radius-input"
-                        />
-                      </div>
-                      <div className="space-y-1 sm:col-span-2">
-                        <label className="text-[10px] text-gray-500 font-medium">결제조건</label>
-                        <Input
-                          value={newVendorForm.vendor_payment_schedule}
-                          onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_payment_schedule: e.target.value }))}
-                          placeholder="월말결제, 현금결제 등"
-                          className="business-radius-input"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-gray-500 font-medium">주소</label>
-                      <Textarea
-                        value={newVendorForm.vendor_address}
-                        onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_address: e.target.value }))}
-                        placeholder="주소를 입력하세요"
-                        className="business-radius-input min-h-[48px]"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-gray-500 font-medium">비고</label>
-                      <Textarea
-                        value={newVendorForm.note}
-                        onChange={(e) => setNewVendorForm(prev => ({ ...prev, note: e.target.value }))}
-                        placeholder="메모 사항을 입력하세요"
-                        className="business-radius-input min-h-[40px]"
-                      />
                     </div>
 
                     {/* 담당자 */}
                     <div className="space-y-2 pt-2 border-t border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div className="modal-section-title text-gray-900">업체 담당자 (선택)</div>
-                        <button
-                          type="button"
-                          onClick={() => setNewVendorContacts(prev => [...prev, { id: createRowId(), contact_name: '', position: '', contact_phone: '', contact_email: '' }])}
-                          className="text-[10px] text-blue-600 hover:text-blue-800 flex items-center gap-0.5 font-medium"
-                        >
-                          <Plus className="w-3 h-3" />
-                          담당자 추가
-                        </button>
-                      </div>
-                      <div className="space-y-1.5">
+                      <div className="modal-section-title text-gray-900">업체 담당자 (선택)</div>
+                      <div className="space-y-2">
                         {newVendorContacts.map((row) => (
-                          <div key={row.id} className="flex items-center gap-1.5">
-                            <input
-                              type="text"
-                              value={row.contact_name}
-                              onChange={(e) => setNewVendorContacts(prev => prev.map(r => r.id === row.id ? { ...r, contact_name: e.target.value } : r))}
-                              placeholder="이름"
-                              className="h-7 px-2.5 py-1 text-[11px] leading-none text-gray-800 placeholder:text-gray-400 border border-gray-300 bg-white business-radius-input focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 shadow-sm w-24 flex-shrink-0"
-                            />
-                            <input
-                              type="text"
-                              value={row.position}
-                              onChange={(e) => setNewVendorContacts(prev => prev.map(r => r.id === row.id ? { ...r, position: e.target.value } : r))}
-                              placeholder="직함"
-                              className="h-7 px-2.5 py-1 text-[11px] leading-none text-gray-800 placeholder:text-gray-400 border border-gray-300 bg-white business-radius-input focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 shadow-sm w-20 flex-shrink-0"
-                            />
-                            <input
-                              type="text"
-                              value={row.contact_phone}
-                              onChange={(e) => setNewVendorContacts(prev => prev.map(r => r.id === row.id ? { ...r, contact_phone: e.target.value } : r))}
-                              placeholder="연락처"
-                              className="h-7 px-2.5 py-1 text-[11px] leading-none text-gray-800 placeholder:text-gray-400 border border-gray-300 bg-white business-radius-input focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 shadow-sm w-28 flex-shrink-0"
-                            />
-                            <input
-                              type="text"
-                              value={row.contact_email}
-                              onChange={(e) => setNewVendorContacts(prev => prev.map(r => r.id === row.id ? { ...r, contact_email: e.target.value } : r))}
-                              placeholder="이메일"
-                              className="h-7 px-2.5 py-1 text-[11px] leading-none text-gray-800 placeholder:text-gray-400 border border-gray-300 bg-white business-radius-input focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 shadow-sm flex-1 min-w-0"
-                            />
+                          <div key={row.id} className="flex flex-col lg:flex-row lg:items-center gap-2">
+                            <div className="flex-[1] min-w-0">
+                              <Input
+                                type="text"
+                                value={row.contact_name}
+                                onChange={(e) => setNewVendorContacts(prev => prev.map(r => r.id === row.id ? { ...r, contact_name: e.target.value } : r))}
+                                placeholder="이름"
+                                className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                              />
+                            </div>
+                            <div className="flex-[1] min-w-0">
+                              <Input
+                                type="text"
+                                value={row.position}
+                                onChange={(e) => setNewVendorContacts(prev => prev.map(r => r.id === row.id ? { ...r, position: e.target.value } : r))}
+                                placeholder="직함"
+                                className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                              />
+                            </div>
+                            <div className="flex-[1.5] min-w-0">
+                              <Input
+                                type="text"
+                                value={row.contact_phone}
+                                onChange={(e) => setNewVendorContacts(prev => prev.map(r => r.id === row.id ? { ...r, contact_phone: e.target.value } : r))}
+                                placeholder="연락처"
+                                className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                              />
+                            </div>
+                            <div className="flex-[2] min-w-0">
+                              <Input
+                                type="text"
+                                value={row.contact_email}
+                                onChange={(e) => setNewVendorContacts(prev => prev.map(r => r.id === row.id ? { ...r, contact_email: e.target.value } : r))}
+                                placeholder="이메일"
+                                className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                              />
+                            </div>
                             <button
                               type="button"
                               onClick={() => setNewVendorContacts(prev => prev.filter(r => r.id !== row.id))}
-                              className="text-red-500 hover:text-red-700 p-1 flex-shrink-0"
+                              className="button-action-danger shrink-0"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="w-3.5 h-3.5 mr-1" />
+                              삭제
                             </button>
                           </div>
                         ))}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => setNewVendorContacts(prev => [...prev, { id: createRowId(), contact_name: '', position: '', contact_phone: '', contact_email: '' }])}
+                        className="button-action-secondary"
+                      >
+                        <Plus className="w-3.5 h-3.5 mr-1" />
+                        담당자 추가
+                      </button>
                     </div>
                   </div>
                 )}
