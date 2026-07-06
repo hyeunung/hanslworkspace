@@ -30,6 +30,7 @@ import { DatePickerPopover } from '@/components/ui/date-picker-popover'
 import { DateRange } from 'react-day-picker'
 import PurchaseDetailModal from '@/components/purchase/PurchaseDetailModal'
 import ReactSelect, { type StylesConfig } from 'react-select'
+import VendorRequestAdminPanel from '@/components/support/VendorRequestAdminPanel'
 
 type SupportPurchaseRequest = {
   id: number
@@ -122,6 +123,35 @@ type PriceChangePayloadItem = {
   new_amount?: number | null
 }
 
+// 업체등록 요청 폼 (신규 업체 정보 + 담당자)
+type NewVendorFormState = {
+  vendor_name: string
+  vendor_alias: string
+  vendor_phone: string
+  vendor_fax: string
+  vendor_payment_schedule: string
+  vendor_address: string
+  note: string
+}
+
+type NewVendorContactRow = {
+  id: string
+  contact_name: string
+  position: string
+  contact_phone: string
+  contact_email: string
+}
+
+const emptyNewVendorForm: NewVendorFormState = {
+  vendor_name: '',
+  vendor_alias: '',
+  vendor_phone: '',
+  vendor_fax: '',
+  vendor_payment_schedule: '',
+  vendor_address: '',
+  note: ''
+}
+
 export default function SupportMain() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -160,6 +190,13 @@ export default function SupportMain() {
   const purchaseSelectLabel = inquiryType === 'delete' ? '삭제할 발주요청 선택' : '발주요청 선택'
   const messageLabel = inquiryType === 'delete' ? '삭제 사유' : '내용'
 
+  // 업체등록 요청 (new_vendor) 폼
+  const [newVendorForm, setNewVendorForm] = useState<NewVendorFormState>(emptyNewVendorForm)
+  const [newVendorContacts, setNewVendorContacts] = useState<NewVendorContactRow[]>([])
+
+  // lead buyer 전용 탭: 문의하기 / 관리자 모드(업체등록 요청 관리)
+  const [activeTab, setActiveTab] = useState<'inquiry' | 'vendor_admin'>('inquiry')
+
   // ✅ 입고 지연 알림(DeliveryDateWarningModal)에서 진입한 경우: 입고일 변경 요청으로 화면 고정
   const [lockedInquiryType, setLockedInquiryType] = useState<string | null>(null)
   const [lockedPurchaseId, setLockedPurchaseId] = useState<number | null>(null)
@@ -179,7 +216,10 @@ export default function SupportMain() {
     if (inquiryType === 'item_add' && itemAddRows.length === 0) {
       setItemAddRows([{ id: createRowId(), itemName: '', specification: '', quantity: '', unit: 'EA', unitPrice: '', remark: '' }])
     }
-  }, [inquiryType, quantityChangeRows.length, priceChangeRows.length, itemAddRows.length])
+    if (inquiryType === 'new_vendor' && newVendorContacts.length === 0) {
+      setNewVendorContacts([{ id: createRowId(), contact_name: '', position: '', contact_phone: '', contact_email: '' }])
+    }
+  }, [inquiryType, quantityChangeRows.length, priceChangeRows.length, itemAddRows.length, newVendorContacts.length])
 
   // 문의 목록 관련
   const [inquiries, setInquiries] = useState<SupportInquiry[]>([])
@@ -579,11 +619,15 @@ export default function SupportMain() {
     { value: 'quantity_change', label: '수량 변경 요청' },
     { value: 'price_change', label: '단가/합계 금액 변경 요청' },
     { value: 'item_add', label: '품목 추가 요청' },
+    { value: 'new_vendor', label: '업체등록 요청' },
     { value: 'bug', label: '오류 신고' },
     { value: 'modify', label: '수정 요청' },
     { value: 'delete', label: '삭제 요청' },
     { value: 'other', label: '기타 문의' }
   ]
+
+  // lead buyer는 관리자 모드(업체등록 요청 관리) 탭 사용 가능
+  const isLeadBuyer = currentUserRoles.includes('lead buyer')
 
   const selectedPurchaseItems = Array.isArray(selectedPurchase?.purchase_request_items)
     ? [...selectedPurchase.purchase_request_items].sort((a: { line_number?: number }, b: { line_number?: number }) => {
@@ -822,7 +866,7 @@ export default function SupportMain() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    const messageOptionalTypes = ['quantity_change', 'price_change', 'item_add', 'delivery_date_change']
+    const messageOptionalTypes = ['quantity_change', 'price_change', 'item_add', 'delivery_date_change', 'new_vendor']
     if (!inquiryType || (!message && !messageOptionalTypes.includes(inquiryType))) {
       toast.error('모든 필드를 입력해주세요.')
       return
@@ -1037,6 +1081,49 @@ export default function SupportMain() {
       inquiryPayload = { items: itemsPayload }
     }
 
+    if (inquiryType === 'new_vendor') {
+      if (!newVendorForm.vendor_name.trim()) {
+        toast.error('업체명을 입력해주세요.')
+        setLoading(false)
+        return
+      }
+
+      // 이름이 입력된 담당자만 payload에 포함
+      const contactsPayload = newVendorContacts
+        .filter(row => row.contact_name.trim())
+        .map(row => ({
+          contact_name: row.contact_name.trim(),
+          position: row.position.trim(),
+          contact_phone: row.contact_phone.trim(),
+          contact_email: row.contact_email.trim()
+        }))
+
+      inquiryPayload = {
+        vendor: {
+          vendor_name: newVendorForm.vendor_name.trim(),
+          vendor_alias: newVendorForm.vendor_alias.trim(),
+          vendor_phone: newVendorForm.vendor_phone.trim(),
+          vendor_fax: newVendorForm.vendor_fax.trim(),
+          vendor_payment_schedule: newVendorForm.vendor_payment_schedule.trim(),
+          vendor_address: newVendorForm.vendor_address.trim(),
+          note: newVendorForm.note.trim()
+        },
+        contacts: contactsPayload
+      }
+
+      summaryLines.push(`업체명: ${newVendorForm.vendor_name.trim()}`)
+      if (newVendorForm.vendor_alias.trim()) summaryLines.push(`참조명: ${newVendorForm.vendor_alias.trim()}`)
+      if (newVendorForm.vendor_phone.trim()) summaryLines.push(`전화번호: ${newVendorForm.vendor_phone.trim()}`)
+      if (newVendorForm.vendor_fax.trim()) summaryLines.push(`팩스번호: ${newVendorForm.vendor_fax.trim()}`)
+      if (newVendorForm.vendor_payment_schedule.trim()) summaryLines.push(`결제조건: ${newVendorForm.vendor_payment_schedule.trim()}`)
+      if (newVendorForm.vendor_address.trim()) summaryLines.push(`주소: ${newVendorForm.vendor_address.trim()}`)
+      if (newVendorForm.note.trim()) summaryLines.push(`비고: ${newVendorForm.note.trim()}`)
+      contactsPayload.forEach((c, idx) => {
+        const parts = [c.contact_name, c.position, c.contact_phone, c.contact_email].filter(Boolean)
+        summaryLines.push(`담당자${idx + 1}: ${parts.join(' / ')}`)
+      })
+    }
+
     if (inquiryType === 'delete') {
       if (deleteTarget === 'statement') {
         // 거래명세서 삭제
@@ -1161,6 +1248,15 @@ ${itemsText}`;
         }
       }
 
+      // ✅ 업체등록 요청이면 lead buyer에게 푸시 알림 (실패해도 접수 흐름은 유지)
+      if (inquiryType === 'new_vendor') {
+        void supportService.notifyLeadBuyersNewVendorRequest({
+          requesterName: currentUserName || currentUserEmail,
+          vendorName: newVendorForm.vendor_name.trim(),
+          inquiryId: result.inquiryId
+        })
+      }
+
       toast.success('문의가 접수되었습니다.')
       const createdId = result.inquiryId
       // 폼 초기화
@@ -1174,6 +1270,8 @@ ${itemsText}`;
       setDeleteTarget('purchase')
       setSelectedStatement(null)
       setStatements([])
+      setNewVendorForm(emptyNewVendorForm)
+      setNewVendorContacts([])
       // 목록 새로고침
       loadInquiries()
 
@@ -1635,6 +1733,7 @@ ${itemsText}`;
       case 'price_change': return '단가/합계 금액 변경 요청'
       case 'item_add': return '품목 추가 요청'
       case 'delete': return '삭제 요청'
+      case 'new_vendor': return '업체등록 요청'
       case 'annual_leave': return '연차 문의'
       case 'attendance': return '근태 문의'
       case 'other': return '기타 문의'
@@ -1654,6 +1753,31 @@ ${itemsText}`;
           <div className="mt-1 text-gray-600">
             <div>현재 입고요청일: {p.current_date || '-'}</div>
             <div>변경 입고일: {p.requested_date || '-'}</div>
+          </div>
+        </div>
+      )
+    }
+
+    if (inquiry.inquiry_type === 'new_vendor') {
+      const p = payload as { vendor?: { vendor_name?: string; vendor_alias?: string; vendor_phone?: string; vendor_fax?: string; vendor_payment_schedule?: string; vendor_address?: string; note?: string }; contacts?: Array<{ contact_name?: string; position?: string; contact_phone?: string; contact_email?: string }> }
+      if (!p.vendor) return null
+      const contacts = Array.isArray(p.contacts) ? p.contacts : []
+      return (
+        <div>
+          <span className="modal-value text-gray-700">업체등록 요청:</span>
+          <div className="mt-1 text-gray-600 space-y-0.5">
+            <div>업체명: {p.vendor.vendor_name || '-'}</div>
+            {p.vendor.vendor_alias && <div>참조명: {p.vendor.vendor_alias}</div>}
+            {p.vendor.vendor_phone && <div>전화번호: {p.vendor.vendor_phone}</div>}
+            {p.vendor.vendor_fax && <div>팩스번호: {p.vendor.vendor_fax}</div>}
+            {p.vendor.vendor_payment_schedule && <div>결제조건: {p.vendor.vendor_payment_schedule}</div>}
+            {p.vendor.vendor_address && <div>주소: {p.vendor.vendor_address}</div>}
+            {p.vendor.note && <div>비고: {p.vendor.note}</div>}
+            {contacts.map((c, idx) => (
+              <div key={`contact-${idx}`}>
+                담당자{idx + 1}: {[c.contact_name, c.position, c.contact_phone, c.contact_email].filter(Boolean).join(' / ') || '-'}
+              </div>
+            ))}
           </div>
         </div>
       )
@@ -1786,15 +1910,49 @@ ${itemsText}`;
       <div className="w-full max-w-none mx-0 px-3 sm:px-4 lg:px-5 pb-6">
         {/* 헤더 */}
         <div className="mb-4">
-          <h1 className="page-title text-gray-900">문의하기</h1>
+          {/* lead buyer 전용: 좌측 상단 모드 전환 탭 (문의하기 / 관리자 모드) */}
+          {isLeadBuyer && (
+            <div className="inline-flex items-center gap-0.5 mb-3 p-0.5 bg-gray-100 business-radius-card border border-gray-200">
+              <button
+                type="button"
+                onClick={() => setActiveTab('inquiry')}
+                className={`px-3 h-7 inline-flex items-center justify-center text-[12px] leading-none font-medium business-radius-input transition-colors ${
+                  activeTab === 'inquiry'
+                    ? 'bg-white text-[#1777CB] shadow-sm border border-gray-200'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                문의하기
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('vendor_admin')}
+                className={`px-3 h-7 inline-flex items-center justify-center text-[12px] leading-none font-medium business-radius-input transition-colors ${
+                  activeTab === 'vendor_admin'
+                    ? 'bg-white text-[#1777CB] shadow-sm border border-gray-200'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                관리자 모드
+              </button>
+            </div>
+          )}
+          <h1 className="page-title text-gray-900">
+            {isLeadBuyer && activeTab === 'vendor_admin' ? '업체등록 요청 관리' : '문의하기'}
+          </h1>
           <p className="page-subtitle text-gray-600 mt-1">
-            {isAdmin 
-              ? '모든 문의를 관리하고 답변할 수 있습니다'
-              : '시스템 사용 중 궁금하신 점이나 개선사항을 알려주세요'}
+            {isLeadBuyer && activeTab === 'vendor_admin'
+              ? '직원들이 요청한 신규 업체 등록 건을 확인하고 중복 없이 등록할 수 있습니다'
+              : isAdmin
+                ? '모든 문의를 관리하고 답변할 수 있습니다'
+                : '시스템 사용 중 궁금하신 점이나 개선사항을 알려주세요'}
           </p>
         </div>
 
-        <div className={`${isAdmin ? 'w-full' : 'grid grid-cols-1 xl:grid-cols-2 gap-4'}`}>
+        {/* lead buyer 관리자 모드: 업체등록 요청 관리 패널 */}
+        {isLeadBuyer && activeTab === 'vendor_admin' && <VendorRequestAdminPanel />}
+
+        <div className={`${isLeadBuyer && activeTab === 'vendor_admin' ? 'hidden' : ''} ${isAdmin ? 'w-full' : 'grid grid-cols-1 xl:grid-cols-2 gap-4'}`}>
           {/* 문의 작성 폼 - superadmin이 아닌 경우에만 표시 */}
           {!isAdmin && (
             <Card className="business-radius-card border border-gray-200 shadow-sm">
@@ -1834,6 +1992,134 @@ ${itemsText}`;
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* 업체등록 요청: 신규 업체 정보 + 담당자 입력 */}
+                {inquiryType === 'new_vendor' && (
+                  <div className="space-y-3 p-4 bg-gray-50 business-radius-card border border-gray-200">
+                    <div className="modal-section-title text-gray-900">신규 업체 정보</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-gray-500 font-medium">업체명 <span className="text-red-500">*</span></label>
+                        <Input
+                          value={newVendorForm.vendor_name}
+                          onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_name: e.target.value }))}
+                          placeholder="업체명을 입력하세요"
+                          className="business-radius-input"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-gray-500 font-medium">참조명</label>
+                        <Input
+                          value={newVendorForm.vendor_alias}
+                          onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_alias: e.target.value }))}
+                          placeholder="영문명, 약칭 등"
+                          className="business-radius-input"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-gray-500 font-medium">전화번호</label>
+                        <Input
+                          value={newVendorForm.vendor_phone}
+                          onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_phone: e.target.value }))}
+                          placeholder="02-1234-5678"
+                          className="business-radius-input"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-gray-500 font-medium">팩스번호</label>
+                        <Input
+                          value={newVendorForm.vendor_fax}
+                          onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_fax: e.target.value }))}
+                          placeholder="02-1234-5679"
+                          className="business-radius-input"
+                        />
+                      </div>
+                      <div className="space-y-1 sm:col-span-2">
+                        <label className="text-[10px] text-gray-500 font-medium">결제조건</label>
+                        <Input
+                          value={newVendorForm.vendor_payment_schedule}
+                          onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_payment_schedule: e.target.value }))}
+                          placeholder="월말결제, 현금결제 등"
+                          className="business-radius-input"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-gray-500 font-medium">주소</label>
+                      <Textarea
+                        value={newVendorForm.vendor_address}
+                        onChange={(e) => setNewVendorForm(prev => ({ ...prev, vendor_address: e.target.value }))}
+                        placeholder="주소를 입력하세요"
+                        className="business-radius-input min-h-[48px]"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-gray-500 font-medium">비고</label>
+                      <Textarea
+                        value={newVendorForm.note}
+                        onChange={(e) => setNewVendorForm(prev => ({ ...prev, note: e.target.value }))}
+                        placeholder="메모 사항을 입력하세요"
+                        className="business-radius-input min-h-[40px]"
+                      />
+                    </div>
+
+                    {/* 담당자 */}
+                    <div className="space-y-2 pt-2 border-t border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <div className="modal-section-title text-gray-900">업체 담당자 (선택)</div>
+                        <button
+                          type="button"
+                          onClick={() => setNewVendorContacts(prev => [...prev, { id: createRowId(), contact_name: '', position: '', contact_phone: '', contact_email: '' }])}
+                          className="text-[10px] text-blue-600 hover:text-blue-800 flex items-center gap-0.5 font-medium"
+                        >
+                          <Plus className="w-3 h-3" />
+                          담당자 추가
+                        </button>
+                      </div>
+                      <div className="space-y-1.5">
+                        {newVendorContacts.map((row) => (
+                          <div key={row.id} className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={row.contact_name}
+                              onChange={(e) => setNewVendorContacts(prev => prev.map(r => r.id === row.id ? { ...r, contact_name: e.target.value } : r))}
+                              placeholder="이름"
+                              className="h-7 px-2.5 py-1 text-[11px] leading-none text-gray-800 placeholder:text-gray-400 border border-gray-300 bg-white business-radius-input focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 shadow-sm w-24 flex-shrink-0"
+                            />
+                            <input
+                              type="text"
+                              value={row.position}
+                              onChange={(e) => setNewVendorContacts(prev => prev.map(r => r.id === row.id ? { ...r, position: e.target.value } : r))}
+                              placeholder="직함"
+                              className="h-7 px-2.5 py-1 text-[11px] leading-none text-gray-800 placeholder:text-gray-400 border border-gray-300 bg-white business-radius-input focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 shadow-sm w-20 flex-shrink-0"
+                            />
+                            <input
+                              type="text"
+                              value={row.contact_phone}
+                              onChange={(e) => setNewVendorContacts(prev => prev.map(r => r.id === row.id ? { ...r, contact_phone: e.target.value } : r))}
+                              placeholder="연락처"
+                              className="h-7 px-2.5 py-1 text-[11px] leading-none text-gray-800 placeholder:text-gray-400 border border-gray-300 bg-white business-radius-input focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 shadow-sm w-28 flex-shrink-0"
+                            />
+                            <input
+                              type="text"
+                              value={row.contact_email}
+                              onChange={(e) => setNewVendorContacts(prev => prev.map(r => r.id === row.id ? { ...r, contact_email: e.target.value } : r))}
+                              placeholder="이메일"
+                              className="h-7 px-2.5 py-1 text-[11px] leading-none text-gray-800 placeholder:text-gray-400 border border-gray-300 bg-white business-radius-input focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 shadow-sm flex-1 min-w-0"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setNewVendorContacts(prev => prev.filter(r => r.id !== row.id))}
+                              className="text-red-500 hover:text-red-700 p-1 flex-shrink-0"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* 삭제 대상 선택 (발주 vs 거래명세서) */}
                 {inquiryType === 'delete' && (
