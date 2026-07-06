@@ -2813,7 +2813,7 @@ export default function ProductionListMain() {
             {isStockPickerOpen && (
               <div
                 ref={stockInPopoverRef}
-                className="stockin-popover absolute left-0 top-full mt-0.5 z-[60] bg-white border border-gray-300 rounded-md shadow-lg p-1.5 cursor-default text-left"
+                className="absolute left-0 top-full mt-0.5 z-[60] bg-white border border-gray-300 rounded-md shadow-lg p-1.5 cursor-default text-left"
                 style={{ width: 'max-content' }}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
@@ -2836,7 +2836,7 @@ export default function ProductionListMain() {
                   <button
                     type="button"
                     onClick={() => commitStockIn(stockInInput)}
-                    className="inline-flex items-center justify-center h-6 box-border px-2.5 rounded border border-[#1777CB] bg-[#1777CB] text-white text-[11px] leading-none font-medium hover:bg-[#1265A8] hover:border-[#1265A8] transition-colors shrink-0"
+                    className="inline-flex items-center justify-center h-[15px] box-border px-1.5 rounded border border-[#1777CB] bg-[#1777CB] text-white text-[10px] leading-none font-medium hover:bg-[#1265A8] hover:border-[#1265A8] transition-colors shrink-0"
                   >
                     저장
                   </button>
