@@ -1675,6 +1675,12 @@ export default function ProductionListMain() {
   const [stockInInput, setStockInInput] = useState<string>('')
   const stockInPopoverRef = useRef<HTMLDivElement | null>(null)
 
+  // 제작번호 선택 팝오버: 재발주 시 자동 채번된 번호를 기존 제작번호로 바꿀 수 있게 한다
+  // (셀 클릭 → 기존 번호 목록, 타이핑 = 필터, 클릭/Enter = 선택)
+  const [orderNoPicker, setOrderNoPicker] = useState<{ id: string, type: 'pcb' | 'cable' } | null>(null)
+  const [orderNoInput, setOrderNoInput] = useState<string>('')
+  const orderNoPopoverRef = useRef<HTMLDivElement | null>(null)
+
   // 로그인 사용자 및 직원 정보
   const { currentUserName, employee } = useAuth()
 
@@ -2579,6 +2585,26 @@ export default function ProductionListMain() {
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [stockInPicker])
+
+  // 제작번호 팝오버에서 기존 번호 선택 → 해당 행의 제작번호 변경
+  // handleCellSave 경유라 되돌리기 스냅샷 + 납품 분할 그룹 전체 동일 적용이 그대로 동작한다
+  const commitOrderNo = useStableHandler((val: string) => {
+    const target = orderNoPicker
+    setOrderNoPicker(null)
+    if (!target || !val.trim()) return
+    handleCellSave({ id: target.id, type: target.type, field: 'sales_order_number' }, val.trim())
+  })
+
+  // 제작번호 팝오버 밖을 클릭하면 닫기
+  useEffect(() => {
+    if (!orderNoPicker) return
+    const onDown = (e: MouseEvent) => {
+      if (orderNoPopoverRef.current?.contains(e.target as Node)) return
+      setOrderNoPicker(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [orderNoPicker])
 
   // 색상/스타일 문자열 파싱 (예: 'yellow::strike::bold::redtext' -> { color, strike, bold, redText })
   // 각 토큰은 '::'로 구분되며 배경색 / 취소선 / 볼드 / 빨간글자를 중복 지정할 수 있음 (하위호환 유지)
@@ -3838,6 +3864,79 @@ export default function ProductionListMain() {
     )
   }
 
+  // 제작번호 셀: 자동 채번된 번호를 표시하되, 클릭하면 기존 제작번호 목록에서 선택해 변경할 수 있다.
+  // (동일 제작번호 재발주 케이스) 타이핑하면 목록이 필터링되고, 항목 클릭 또는 Enter(첫 항목)로 선택.
+  // 임의 번호 직접 입력은 허용하지 않는다 — 채번 체계 보호를 위해 기존 번호 선택만 가능.
+  const renderSalesOrderCell = (type: 'pcb' | 'cable', item: any, width: number, rColor: string | null, rStrike: 'strike' | 'nostrike' | null) => {
+    const isOpen = orderNoPicker?.id === item.id && orderNoPicker?.type === type
+    let options: string[] = []
+    if (isOpen) {
+      const q = orderNoInput.trim().toLowerCase()
+      // 제작번호는 PCB/Cable 공용 채번이라 두 테이블의 번호를 모두 후보로 제시한다
+      const set = new Set<string>()
+      for (const r of [...pcbs, ...cables] as any[]) {
+        if (r.sales_order_number && r.sales_order_number !== item.sales_order_number) set.add(r.sales_order_number)
+      }
+      options = Array.from(set)
+        .filter(no => !q || no.toLowerCase().includes(q))
+        .sort((a, b) => b.localeCompare(a))
+    }
+    return (
+      <td
+        className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
+        style={{ width: `${width}px`, minWidth: `${width}px`, maxWidth: `${width}px` }}
+        title="클릭: 기존 제작번호에서 선택해 변경 (재발주)"
+        onClick={(e) => {
+          e.stopPropagation()
+          setOrderNoInput('')
+          setOrderNoPicker({ id: item.id, type })
+        }}
+      >
+        {item.sales_order_number}
+        {isOpen && (
+          <CellPopoverPortal
+            innerRef={orderNoPopoverRef}
+            className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5 cursor-default text-left"
+            style={{ width: '200px' }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">기존 제작번호로 변경 — 타이핑하면 필터링</div>
+            <input
+              autoFocus
+              type="text"
+              value={orderNoInput}
+              onChange={(e) => setOrderNoInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && options.length > 0) commitOrderNo(options[0])
+                if (e.key === 'Escape') setOrderNoPicker(null)
+              }}
+              placeholder={item.sales_order_number}
+              className="w-full h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:border-[#1777CB]"
+            />
+            <div className="mt-1 max-h-[220px] overflow-y-auto flex flex-col">
+              {options.length === 0 ? (
+                <span className="text-[10px] text-gray-400 px-1 py-1">일치하는 제작번호 없음</span>
+              ) : options.slice(0, 100).map(no => (
+                <button
+                  key={no}
+                  type="button"
+                  onClick={() => commitOrderNo(no)}
+                  className="text-left text-[11px] font-medium text-gray-800 px-1.5 py-[3px] rounded hover:bg-blue-50 hover:text-[#1777CB] transition-colors"
+                >
+                  {no}
+                </button>
+              ))}
+              {options.length > 100 && (
+                <span className="text-[9px] text-gray-400 px-1 py-0.5">… 외 {options.length - 100}개 — 타이핑으로 좁혀주세요</span>
+              )}
+            </div>
+          </CellPopoverPortal>
+        )}
+      </td>
+    )
+  }
+
   // 행 수정 모달 열기
   const handleEditClick = (type: 'pcb' | 'cable', item: any) => {
     setFormFields({
@@ -4059,6 +4158,9 @@ export default function ProductionListMain() {
     // 입고일 선택 팝오버가 열린 행은 입력값이 바뀔 때마다 다시 그린다
     const stockIn = stockInPicker && stockInPicker.type === type && stockInPicker.id === item.id
       ? `S:${stockInPicker.field}:${stockInInput}` : ''
+    // 제작번호 선택 팝오버가 열린 행도 필터 입력값이 바뀔 때마다 다시 그린다
+    const orderNo = orderNoPicker && orderNoPicker.type === type && orderNoPicker.id === item.id
+      ? `N:${orderNoInput}` : ''
     // 숨긴 칼럼 구성(행 추가 중엔 전 칼럼 표시)이 바뀌면 모든 행을 다시 그려야 한다
     const adding = type === 'pcb' ? !!addingPcbRow : !!addingCableRow
     const cols = adding ? 'ALL' : hiddenCols[type].join(',')
@@ -4068,7 +4170,7 @@ export default function ProductionListMain() {
     // 납품 분할 그룹 내 위치/크기 — 그룹 구성이 바뀌면(분할/삭제/정렬) rowSpan 병합을 다시 그린다
     const g = type === 'pcb' ? pcbGroupInfo.get(item.id) : undefined
     const grp = g ? `G${g.pos}/${g.size}` : ''
-    return sel + '|' + editing + '|' + picker + '|' + stockIn + '|' + cols + '|' + expanded + '|' + grp
+    return sel + '|' + editing + '|' + picker + '|' + stockIn + '|' + orderNo + '|' + cols + '|' + expanded + '|' + grp
   }
 
   // PCB 행 렌더 본문 — MemoRow가 (item, index)로 호출. 내부 커스텀 핸들러는 모두 useStableHandler로 안정화됨.
@@ -4147,9 +4249,8 @@ export default function ProductionListMain() {
                               </div>
                             )}
                           </td>
-                          {!isColHidden('pcb', 'sales_order_number') && (
-                          <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`} style={{ width: `${salesOrderPcbWidth}px`, minWidth: `${salesOrderPcbWidth}px`, maxWidth: `${salesOrderPcbWidth}px` }}>{item.sales_order_number}</td>
-                          )}
+                          {!isColHidden('pcb', 'sales_order_number') &&
+                            renderSalesOrderCell('pcb', item, salesOrderPcbWidth, rColor, rStrike)}
                         {renderEditableCell(
                           item.id,
                           'pcb',
@@ -4503,9 +4604,8 @@ export default function ProductionListMain() {
                               </div>
                             )}
                           </td>
-                          {!isColHidden('cable', 'sales_order_number') && (
-                          <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`} style={{ width: `${salesOrderCableWidth}px`, minWidth: `${salesOrderCableWidth}px`, maxWidth: `${salesOrderCableWidth}px` }}>{item.sales_order_number}</td>
-                          )}
+                          {!isColHidden('cable', 'sales_order_number') &&
+                            renderSalesOrderCell('cable', item, salesOrderCableWidth, rColor, rStrike)}
                         {renderEditableCell(
                           item.id,
                           'cable',
