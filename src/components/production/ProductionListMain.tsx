@@ -1094,6 +1094,37 @@ export default function ProductionListMain() {
     })
   }
 
+  // 납품 분할: 납품 수량 팝오버의 `[N]분할` — 같은 제작 행(앞 칼럼 전부 동일)을 N개로 만들어
+  // 분할 납품(같은 제작번호, 납품처/일자/수량만 다름)을 행 단위로 입력할 수 있게 한다.
+  // 새 행들은 납품 3칸(수량/일자/배송처)이 빈 상태로 시작한다. (수량 입력이 납품 입력의 시작이므로)
+  const splitInputRef = useRef<HTMLInputElement | null>(null)
+  const handleSplitDelivery = useStableHandler(async (id: string, n: number) => {
+    if (!Number.isInteger(n) || n < 2 || n > 50) {
+      toast.error('분할 개수는 2~50 사이 숫자로 입력해주세요.')
+      return
+    }
+    const item = pcbs.find(p => p.id === id)
+    if (!item) return
+    try {
+      const supabase = createClient()
+      // 앞 칼럼은 그대로 복사, 납품 3칸만 비움 (id/타임스탬프 제외)
+      const { id: _id, created_at: _c, updated_at: _u, ...rest } = item as any
+      const copy = { ...rest, delivery_quantity: null, delivery_date: null, delivery_destination: null }
+      const payloads = Array.from({ length: n - 1 }, () => ({ ...copy }))
+      const { data, error } = await supabase.from('production_pcbs').insert(payloads).select('id')
+      if (error) throw error
+      for (const r of (data || [])) {
+        pushUndo({ kind: 'deleteInserted', table: 'production_pcbs', id: r.id, label: `납품 ${n}분할` })
+      }
+      setEditingCell(null)
+      toast.success(`납품이 ${n}개 행으로 분할되었습니다. 각 행에 수량/일자/배송처를 입력하세요.`)
+      await loadData()
+    } catch (err) {
+      console.error(err)
+      toast.error('분할에 실패했습니다.')
+    }
+  })
+
   // 완제품 입고 날짜 선택 팝오버: '입고대기' 클릭 시 열림 (직접 입력 + 달력 클릭 선택)
   const [stockInPicker, setStockInPicker] = useState<{ id: string, type: 'pcb' | 'cable', field: string } | null>(null)
   const [stockInInput, setStockInInput] = useState<string>('')
@@ -2715,7 +2746,45 @@ export default function ProductionListMain() {
               style={{ minWidth: '220px', maxWidth: '360px' }}
               onMouseDown={(e) => e.stopPropagation()}
             >
-              <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">{getColumnTitle(field, type)}</div>
+              {field === 'delivery_quantity' && type === 'pcb' ? (
+                // 납품 수량: 제목 좌측 끝에 `[N]분할` — N개 행으로 분할 (앞 칼럼 복제, 납품 3칸은 빈 상태)
+                <div className="flex items-center justify-between gap-2 mb-1 px-0.5" data-split-ui>
+                  <span className="flex items-center text-[9px] text-gray-500 shrink-0">
+                    [<input
+                      ref={splitInputRef}
+                      type="number"
+                      min={2}
+                      max={50}
+                      defaultValue={2}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          handleSplitDelivery(id, parseInt(splitInputRef.current?.value || '', 10))
+                        }
+                        if (e.key === 'Escape') setEditingCell(null)
+                      }}
+                      className="w-7 h-4 border border-gray-300 rounded px-0.5 text-[9px] text-center focus:outline-none focus:border-[#1777CB]"
+                      title="분할 개수"
+                    />]
+                    <button
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation() }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleSplitDelivery(id, parseInt(splitInputRef.current?.value || '', 10))
+                      }}
+                      className="ml-0.5 px-1.5 py-0 rounded border border-[#1777CB]/40 bg-blue-50 text-[#1777CB] text-[9px] font-semibold hover:bg-blue-100 transition-colors"
+                      title="이 제작 항목을 N개 납품 행으로 분할"
+                    >
+                      분할
+                    </button>
+                  </span>
+                  <span className="text-[9px] font-semibold text-gray-400">{getColumnTitle(field, type)}</span>
+                </div>
+              ) : (
+                <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">{getColumnTitle(field, type)}</div>
+              )}
               {isMemoField ? (
                 <textarea
                   autoFocus
@@ -2738,7 +2807,12 @@ export default function ProductionListMain() {
                   list={listId}
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
-                  onBlur={commit}
+                  onBlur={(e) => {
+                    // 분할 입력칸으로 포커스가 이동한 경우엔 저장/닫기하지 않는다 (팝오버 유지)
+                    const to = e.relatedTarget as HTMLElement | null
+                    if (to && to.closest?.('[data-split-ui]')) return
+                    commit()
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') commit()
                     if (e.key === 'Escape') setEditingCell(null)
