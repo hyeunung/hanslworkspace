@@ -218,6 +218,29 @@ const CABLE_CATEGORIES = ['LG_Cable', 'LG_Case', 'Cable', 'Case']
 // 내용이 길어질 수 있는 메모성 텍스트 칼럼 — 편집 시 여러 줄 textarea 팝오버로 띄운다
 const MEMO_TEXT_FIELDS = ['reference', 'changes_memo', 'qa_notes', 'design_review', 'delivery_notes', 'spec_details', 'delivery_destination', 'received_destination']
 
+// 같은 칼럼 다중선택 시 '값'을 일괄 편집할 수 있는 필드들. 여기 없는 필드는 색상/스타일 일괄변경만 가능.
+// (단일 클릭으로 편집 가능한 필드와 동일하게 맞춘 화이트리스트)
+const BULK_VALUE_EDITABLE = new Set<string>([
+  // 날짜 / 하이브리드(날짜·메모)
+  'request_date', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date',
+  'assy_hanwha', 'assy_evertech', 'delivery_deadline', 'final_product_stock',
+  // 숫자
+  'revision_count', 'quantity', 'stock_count', 'received_quantity', 'delivery_quantity',
+  // 메모/텍스트
+  ...MEMO_TEXT_FIELDS,
+  'board_name', 'client_name', 'pcb_vendor', 'client_manager', 'hansl_manager', 'metal_mask', 'estimate_no', 'sales_order_number',
+  // select / 특수 편집기
+  'production_category', 'artwork_status', 'parts_organization',
+])
+
+// select 칼럼의 옵션 (단일 클릭 편집기와 동일)
+const bulkSelectOptions = (type: 'pcb' | 'cable', field: string): string[] | null => {
+  if (field === 'production_category') {
+    return type === 'pcb' ? ['LG_PCB', 'LG_Socket Board', 'PCB'] : ['LG_Cable', 'LG_Case', 'Cable', 'Case']
+  }
+  return null
+}
+
 // 순수 날짜 칼럼(YYYY-MM-DD)과 날짜/메모 혼합 칼럼 — 조건(op) 선택지가 달라진다
 const DATE_ONLY_FIELDS = ['request_date', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date']
 const HYBRID_DATE_FIELDS = ['delivery_deadline', 'assy_hanwha', 'assy_evertech', 'final_product_stock']
@@ -1491,6 +1514,8 @@ export default function ProductionListMain() {
   const [isDragging, setIsDragging] = useState(false)
   const dragStartCellRef = useRef<{ id: string; field: string; type: 'pcb' | 'cable' } | null>(null)
   const [floatingMenuPos, setFloatingMenuPos] = useState<{ x: number; y: number } | null>(null)
+  // 같은 칼럼 다중선택 시 값 일괄 입력용 편집값 (플로팅 메뉴 안 편집기 상태)
+  const [bulkEditValue, setBulkEditValue] = useState('')
 
   const pcbColumns = [
     'production_category',
@@ -1601,6 +1626,22 @@ export default function ProductionListMain() {
         setIsDragging(false)
         if (selectedCells.length > 1) {
           setFloatingMenuPos({ x: e.clientX, y: e.clientY })
+          // 값 편집기 프리필: 선택 셀이 모두 같은 칼럼이고 현재 값도 동일하면 그 값을 미리 채운다
+          // (단일 클릭 편집기가 현재값을 보여주는 것과 동일한 감각). 값이 제각각이면 빈칸.
+          const fields = Array.from(new Set(selectedCells.map(k => k.split('::')[1])))
+          if (fields.length === 1) {
+            const field = fields[0]
+            const type = dragStartCellRef.current?.type || 'pcb'
+            const list = type === 'pcb' ? liveDataRef.current.pcbs : liveDataRef.current.cables
+            const vals = Array.from(new Set(selectedCells.map(k => {
+              const rid = k.split('::')[0]
+              const v = (list.find(i => i.id === rid) as any)?.[field]
+              return v === null || v === undefined ? '' : String(v)
+            })))
+            setBulkEditValue(vals.length === 1 ? vals[0] : '')
+          } else {
+            setBulkEditValue('')
+          }
         }
       }
     }
@@ -2143,13 +2184,11 @@ export default function ProductionListMain() {
     }
   })
 
-  // 인라인 셀 수정 저장 핸들러
-  const handleCellSave = useStableHandler(async (currentCell: { id: string, type: 'pcb' | 'cable', field: string }, val: string, captureUndo = true) => {
-    const { id, type, field } = currentCell
+  // 셀 값 정규화: 필드별 저장 형식(날짜/하이브리드/숫자/담당자)으로 변환.
+  // 단일 저장(handleCellSave)과 일괄 저장(handleBulkUpdateCellValue)이 동일 규칙을 쓰도록 공유한다.
+  const normalizeCellValueForSave = (type: 'pcb' | 'cable', field: string, val: string, id: string): any => {
     // 날짜 입력의 기본 월 = 해당 테이블 필터에 월이 지정돼 있으면 그 월
     const defaultMonth = defaultMonthFor(type)
-
-    // 날짜 컬럼 보정
     let valueToSave: any = val
     if (['request_date', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date'].includes(field)) {
       if (val) {
@@ -2177,6 +2216,13 @@ export default function ProductionListMain() {
     } else if (val === '') {
       valueToSave = null
     }
+    return valueToSave
+  }
+
+  // 인라인 셀 수정 저장 핸들러
+  const handleCellSave = useStableHandler(async (currentCell: { id: string, type: 'pcb' | 'cable', field: string }, val: string, captureUndo = true) => {
+    const { id, type, field } = currentCell
+    const valueToSave = normalizeCellValueForSave(type, field, val, id)
 
     // 되돌리기: 실제 값이 바뀔 때만 변경 전 행을 스냅샷 (색상 핸들러 경유 호출은 captureUndo=false)
     if (captureUndo) {
@@ -2199,6 +2245,114 @@ export default function ProductionListMain() {
       toast.error('수정에 실패했습니다.')
     }
   })
+
+  // 여러 셀이 모두 같은 칼럼일 때, 단일 편집과 동일한 규칙으로 값을 일괄 저장한다.
+  // (색상/스타일 일괄 변경 handleBulkUpdateCellColor 와 짝을 이루는 '값' 일괄 변경)
+  const handleBulkUpdateCellValue = async (field: string, rawVal: string) => {
+    if (selectedCells.length === 0) return
+    const type = dragStartCellRef.current?.type || 'pcb'
+    // 안전장치: 선택된 셀 중 해당 필드인 것만 대상으로 삼는다(같은 칼럼 다중선택 전제).
+    const rowIds = Array.from(new Set(
+      selectedCells.filter(k => k.split('::')[1] === field).map(k => k.split('::')[0])
+    ))
+    if (rowIds.length === 0) return
+
+    // 되돌리기: 변경 전 상태 스냅샷
+    pushRestoreUndo(type, rowIds, `${getColumnTitle(field, type)} ${rowIds.length}칸 일괄수정`)
+    try {
+      const promises = rowIds.map(id => {
+        const valueToSave = normalizeCellValueForSave(type, field, rawVal, id)
+        return type === 'pcb'
+          ? productionService.updateProductionPcb(id, { [field]: valueToSave })
+          : productionService.updateProductionCable(id, { [field]: valueToSave })
+      })
+      await Promise.all(promises)
+      loadData()
+      setSelectedCells([])
+      setFloatingMenuPos(null)
+      toast.success(`${rowIds.length}개 칸이 수정되었습니다.`)
+    } catch (err) {
+      console.error(err)
+      toast.error('일괄 수정에 실패했습니다.')
+    }
+  }
+
+  // 같은 칼럼 다중선택 시, 단일 클릭 편집기와 동일한 입력 UI를 플로팅 메뉴 안에 렌더한다.
+  const renderBulkValueEditor = (type: 'pcb' | 'cable', field: string) => {
+    const label = getColumnTitle(field, type)
+    const commit = () => handleBulkUpdateCellValue(field, bulkEditValue)
+    const close = () => { setSelectedCells([]); setFloatingMenuPos(null) }
+    const applyBtn = (extra = '') => (
+      <button
+        type="button"
+        onClick={commit}
+        className={`text-[10px] font-medium text-white bg-[#1777CB] hover:bg-[#1265A8] rounded px-2 shrink-0 ${extra}`}
+      >
+        적용
+      </button>
+    )
+    const wrap = (inner: React.ReactNode) => (
+      <div className="flex flex-col gap-1 pb-1.5 border-b border-gray-100" onMouseDown={(e) => e.stopPropagation()}>
+        <span className="text-[9px] font-semibold text-gray-500 select-none">{label} · {selectedCells.length}칸 일괄 입력</span>
+        {inner}
+      </div>
+    )
+
+    if (field === 'artwork_status') {
+      return wrap(<ArtworkStatusEditor value={bulkEditValue} onChange={setBulkEditValue} autoFocusMemo onCommit={commit} onCancel={close} />)
+    }
+    if (field === 'parts_organization') {
+      return wrap(<PartsStatusEditor value={bulkEditValue} onChange={setBulkEditValue} autoFocusMemo onCommit={commit} onCancel={close} />)
+    }
+
+    const opts = bulkSelectOptions(type, field)
+    if (opts) {
+      return wrap(
+        <div className="flex items-center gap-1">
+          <select
+            autoFocus
+            value={bulkEditValue}
+            onChange={(e) => setBulkEditValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') close() }}
+            className="h-6 bg-white border border-gray-300 rounded px-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-[#1777CB] min-w-[120px]"
+          >
+            <option value="">-- 선택 --</option>
+            {opts.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+          {applyBtn('py-0.5')}
+        </div>
+      )
+    }
+
+    const isMemo = MEMO_TEXT_FIELDS.includes(field)
+    const isNumber = ['revision_count', 'quantity', 'stock_count', 'received_quantity', 'delivery_quantity'].includes(field)
+    return wrap(
+      <div className="flex items-start gap-1">
+        {isMemo ? (
+          <textarea
+            autoFocus
+            value={bulkEditValue}
+            onChange={(e) => setBulkEditValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) commit(); if (e.key === 'Escape') close() }}
+            rows={2}
+            placeholder="입력 후 적용 (Ctrl+Enter)"
+            className="bg-white border border-gray-300 rounded px-1.5 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-[#1777CB] w-[220px] resize-y"
+          />
+        ) : (
+          <input
+            autoFocus
+            type={isNumber ? 'number' : 'text'}
+            value={bulkEditValue}
+            onChange={(e) => setBulkEditValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') close() }}
+            placeholder="입력 후 Enter"
+            className="h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-[#1777CB] w-[160px]"
+          />
+        )}
+        {applyBtn('py-1')}
+      </div>
+    )
+  }
 
   // 수량 단위(ea/set) 변경 핸들러
   const handleUpdateQuantityUnit = useStableHandler(async (id: string, type: 'pcb' | 'cable', unit: string) => {
@@ -5954,14 +6108,21 @@ export default function ProductionListMain() {
       </datalist>
 
       {/* 드래그 선택 시 나타나는 일괄 상태 변경 플로팅 툴바 */}
-      {floatingMenuPos && selectedCells.length > 1 && (
-        <div 
-          className="fixed bg-white border border-gray-200 rounded-md shadow-2xl p-1.5 z-[999] flex items-center gap-1.5 floating-bulk-picker animate-in fade-in slide-in-from-bottom-2 duration-150"
-          style={{ 
-            left: `${floatingMenuPos.x}px`, 
-            top: `${floatingMenuPos.y - 42}px` 
+      {floatingMenuPos && selectedCells.length > 1 && (() => {
+        const bulkType = dragStartCellRef.current?.type || 'pcb'
+        const bulkFields = Array.from(new Set(selectedCells.map(k => k.split('::')[1])))
+        const bulkField = bulkFields.length === 1 ? bulkFields[0] : null
+        const canBulkValue = !!bulkField && BULK_VALUE_EDITABLE.has(bulkField)
+        return (
+        <div
+          className="fixed bg-white border border-gray-200 rounded-md shadow-2xl p-1.5 z-[999] flex flex-col gap-1.5 floating-bulk-picker animate-in fade-in slide-in-from-bottom-2 duration-150"
+          style={{
+            left: `${floatingMenuPos.x}px`,
+            top: `${floatingMenuPos.y - (canBulkValue ? 100 : 42)}px`
           }}
         >
+          {canBulkValue && renderBulkValueEditor(bulkType, bulkField!)}
+          <div className="flex items-center gap-1.5">
           <span className="text-[10px] font-semibold text-gray-500 px-1 border-r border-gray-100 mr-0.5 select-none">
             {selectedCells.length}개 선택됨:
           </span>
@@ -6035,8 +6196,10 @@ export default function ProductionListMain() {
           >
             닫기
           </button>
+          </div>
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }
