@@ -4566,8 +4566,18 @@ export default function ProductionListMain() {
               value={pcbSearch}
               onChange={(e) => setPcbSearch(e.target.value)}
               style={{ paddingLeft: '26px', height: '20px' }}
-              className="w-full block business-radius-input border border-gray-300 bg-white text-gray-700 pr-3 text-[11px]"
+              className="w-full block business-radius-input border border-gray-300 bg-white text-gray-700 pr-6 text-[11px]"
             />
+            {pcbSearch && (
+              <button
+                type="button"
+                onClick={() => setPcbSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                title="검색어 지우기"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -5075,8 +5085,18 @@ export default function ProductionListMain() {
                       value={cableSearch}
                       onChange={(e) => setCableSearch(e.target.value)}
                       style={{ paddingLeft: '26px', height: '20px' }}
-                      className="w-full block business-radius-input border border-gray-300 bg-white text-gray-700 pr-3 text-[11px]"
+                      className="w-full block business-radius-input border border-gray-300 bg-white text-gray-700 pr-6 text-[11px]"
                     />
+                    {cableSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setCableSearch('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                        title="검색어 지우기"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 </div>
 
