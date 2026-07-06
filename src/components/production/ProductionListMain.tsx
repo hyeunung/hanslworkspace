@@ -122,12 +122,18 @@ const STICKY_FIELDS = ['sales_order_number', 'production_category', 'board_name'
 const DEFAULT_CATEGORY_ORDER = ['LG_PCB', 'LG_Socket Board', 'LG_Cable', 'LG_Case', 'PCB', 'Cable', 'Case']
 
 // ─── 칼럼 숨기기 ─────────────────────────────────────────────────────
-// 좌측 고정(sticky) 칼럼(제작번호~요청일)과 NO./작업은 행 식별·조작용이라 항상 표시하고,
-// 그 외 본문 칼럼은 표별로 숨길 수 있다. 드롭다운 목록의 그룹은 실제 헤더 그룹 구성을 따르고,
+// NO./작업은 행 식별·조작용이라 항상 표시하되, 좌측 고정 칼럼(제작번호~요청일)과
+// 그 외 본문 칼럼은 모두 표별로 숨길 수 있다. 드롭다운 목록의 그룹은 실제 헤더 그룹 구성을 따르고,
 // PCB는 업무 단계 기준 큰 구분선(섹션) 3개로 나눠 섹션 단위 일괄 숨기기/표시를 지원한다.
 type HideableSection = { title: string; groups: { title: string; fields: string[] }[] }
 const HIDEABLE_SECTIONS: Record<'pcb' | 'cable', HideableSection[]> = {
   pcb: [
+    {
+      title: '기본정보 (좌측고정)',
+      groups: [
+        { title: '기본정보', fields: ['sales_order_number', 'production_category', 'board_name', 'reference', 'request_date'] },
+      ],
+    },
     {
       title: '견적NO. ~ PCB 제작',
       groups: [
@@ -155,7 +161,13 @@ const HIDEABLE_SECTIONS: Record<'pcb' | 'cable', HideableSection[]> = {
   // Cable 표는 칼럼 수가 적어 섹션 구분 없이 단일 목록
   cable: [
     {
-      title: '',
+      title: '기본정보 (좌측고정)',
+      groups: [
+        { title: '기본정보', fields: ['sales_order_number', 'production_category', 'board_name', 'reference', 'request_date'] },
+      ],
+    },
+    {
+      title: '견적NO. ~ 납품',
       groups: [
         { title: '기본', fields: ['estimate_no', 'delivery_deadline', 'creator'] },
         { title: 'PJT 담당자', fields: ['client_name', 'client_manager', 'hansl_manager'] },
@@ -2148,9 +2160,9 @@ export default function ProductionListMain() {
   }
 
   // ─── 다운로드/인쇄용: 필터 적용된 화면 그대로 내보내기 ──────────────────
-  // 내보낼 칼럼 = 제작 번호(고정칼럼) + 각 표의 본문 칼럼 목록 (화면에서 숨긴 칼럼은 내보내기에서도 제외)
+  // 내보낼 칼럼 = 제작 번호 + 각 표의 본문 칼럼 목록 (화면에서 숨긴 칼럼은 좌측 고정 칼럼 포함 모두 내보내기에서도 제외)
   const exportColumnsFor = (type: 'pcb' | 'cable'): string[] =>
-    ['sales_order_number', ...(type === 'pcb' ? pcbColumns : cableColumns).filter(f => !isColHidden(type, f))]
+    ['sales_order_number', ...(type === 'pcb' ? pcbColumns : cableColumns)].filter(f => !isColHidden(type, f))
 
   // 내보내기용 셀 값: 화면 표시와 동일하되 URL은 링크로 축약하지 않고 원문 유지, 빈 값은 공백
   const getExportValue = (type: 'pcb' | 'cable', field: string, item: any): string => {
@@ -2391,6 +2403,35 @@ export default function ProductionListMain() {
   const requestDatePcbWidth = getColumnWidth('pcb', 'request_date', 80)
   const requestDateCableWidth = getColumnWidth('cable', 'request_date', 80)
 
+  // 숨겨진 칼럼을 고려한 sticky 칼럼의 좌측 위치 동적 계산
+  // NO.(40px 고정) 다음부터 STICKY_FIELDS 순서대로, 앞의 sticky 칼럼 중 '표시 중인' 것만 폭을 누적한다.
+  const stickyLeftFor = (type: 'pcb' | 'cable', field: string): number => {
+    const NO_WIDTH = 40 // 좌측 NO. 칼럼 고정 폭
+    let left = NO_WIDTH
+    const widths: Record<string, number> = type === 'pcb'
+      ? { sales_order_number: salesOrderPcbWidth, production_category: productionCategoryPcbWidth, board_name: pcbBoardWidth, reference: referencePcbWidth, request_date: requestDatePcbWidth }
+      : { sales_order_number: salesOrderCableWidth, production_category: productionCategoryCableWidth, board_name: cableBoardWidth, reference: referenceCableWidth, request_date: requestDateCableWidth }
+
+    for (const f of STICKY_FIELDS) {
+      if (f === field) return left
+      if (!isColHidden(type, f)) left += widths[f] || 0
+    }
+    return left
+  }
+
+  // sticky 헤더(th) 전용 스타일: 숨김이면 레이아웃에서 제거, 아니면 동적 left + 칼럼 폭
+  const getStickyHeaderStyle = (type: 'pcb' | 'cable', field: string): React.CSSProperties => {
+    if (isColHidden(type, field)) return { display: 'none' }
+    const w = getColumnWidth(type, field, 0)
+    return {
+      zIndex: 40,
+      left: `${stickyLeftFor(type, field)}px`,
+      width: `${w}px`,
+      minWidth: `${w}px`,
+      maxWidth: `${w}px`,
+    }
+  }
+
   // 인라인 수정용 공통 렌더러 함수
   const renderEditableCell = (
     id: string,
@@ -2406,34 +2447,15 @@ export default function ProductionListMain() {
     const isEditing = editingCell?.id === id && editingCell?.type === type && editingCell?.field === field
     const cellStyle: React.CSSProperties = {}
 
-    const activeSalesWidth = type === 'pcb' ? salesOrderPcbWidth : salesOrderCableWidth
-    const activeProdCatWidth = type === 'pcb' ? productionCategoryPcbWidth : productionCategoryCableWidth
-    const activeBoardWidth = type === 'pcb' ? pcbBoardWidth : cableBoardWidth
-    const activeRefWidth = type === 'pcb' ? referencePcbWidth : referenceCableWidth
-    const activeReqDateWidth = type === 'pcb' ? requestDatePcbWidth : requestDateCableWidth
-    const stickyBase = 40 + activeSalesWidth // NO.(40px 고정) + 제작 번호(동적)
-
-    if (field === 'production_category') {
-      cellStyle.left = `${stickyBase}px`
-      cellStyle.width = `${activeProdCatWidth}px`
-      cellStyle.minWidth = `${activeProdCatWidth}px`
-      cellStyle.maxWidth = `${activeProdCatWidth}px`
-    } else if (field === 'board_name') {
-      cellStyle.left = `${stickyBase + activeProdCatWidth}px`
-      cellStyle.width = `${activeBoardWidth}px`
-      cellStyle.minWidth = `${activeBoardWidth}px`
-      cellStyle.maxWidth = `${activeBoardWidth}px`
-    } else if (field === 'reference') {
-      cellStyle.left = `${stickyBase + activeProdCatWidth + activeBoardWidth}px`
-      cellStyle.width = `${activeRefWidth}px`
-      cellStyle.minWidth = `${activeRefWidth}px`
-      cellStyle.maxWidth = `${activeRefWidth}px`
-    } else if (field === 'request_date') {
-      cellStyle.left = `${stickyBase + activeProdCatWidth + activeBoardWidth + activeRefWidth}px`
-      cellStyle.width = `${activeReqDateWidth}px`
-      cellStyle.minWidth = `${activeReqDateWidth}px`
-      cellStyle.maxWidth = `${activeReqDateWidth}px`
+    if (STICKY_FIELDS.includes(field)) {
+      // sticky 칼럼: 숨겨진 칼럼을 고려한 left 위치 + 해당 칼럼 폭
+      const w = getColumnWidth(type, field, 0)
+      cellStyle.left = `${stickyLeftFor(type, field)}px`
+      cellStyle.width = `${w}px`
+      cellStyle.minWidth = `${w}px`
+      cellStyle.maxWidth = `${w}px`
     } else {
+      // 본문 칼럼
       const activeWidth = getColumnWidth(type, field, 0)
       cellStyle.width = `${activeWidth}px`
       cellStyle.minWidth = `${activeWidth}px`
@@ -3201,7 +3223,9 @@ export default function ProductionListMain() {
                               </div>
                             )}
                           </td>
+                          {!isColHidden('pcb', 'sales_order_number') && (
                           <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`} style={{ width: `${salesOrderPcbWidth}px`, minWidth: `${salesOrderPcbWidth}px`, maxWidth: `${salesOrderPcbWidth}px` }}>{item.sales_order_number}</td>
+                          )}
                         {renderEditableCell(
                           item.id,
                           'pcb',
@@ -3545,7 +3569,9 @@ export default function ProductionListMain() {
                               </div>
                             )}
                           </td>
+                          {!isColHidden('cable', 'sales_order_number') && (
                           <td className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`} style={{ width: `${salesOrderCableWidth}px`, minWidth: `${salesOrderCableWidth}px`, maxWidth: `${salesOrderCableWidth}px` }}>{item.sales_order_number}</td>
+                          )}
                         {renderEditableCell(
                           item.id,
                           'cable',
@@ -4133,11 +4159,11 @@ export default function ProductionListMain() {
                 <thead className="whitespace-nowrap">
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 text-center sticky left-0 bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, width: '40px', minWidth: '40px', maxWidth: '40px' }}>NO.</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[40px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, width: `${salesOrderPcbWidth}px`, minWidth: `${salesOrderPcbWidth}px`, maxWidth: `${salesOrderPcbWidth}px` }}>제작 번호</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, left: `${40 + salesOrderPcbWidth}px`, width: `${productionCategoryPcbWidth}px`, minWidth: `${productionCategoryPcbWidth}px`, maxWidth: `${productionCategoryPcbWidth}px` }}>제작구분</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ zIndex: 40, left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth}px`, width: `${pcbBoardWidth}px`, minWidth: `${pcbBoardWidth}px`, maxWidth: `${pcbBoardWidth}px` }}>보드명</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ zIndex: 40, left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth + pcbBoardWidth}px`, width: `${referencePcbWidth}px`, minWidth: `${referencePcbWidth}px`, maxWidth: `${referencePcbWidth}px` }}>참고</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth + pcbBoardWidth + referencePcbWidth}px`, width: `${requestDatePcbWidth}px`, minWidth: `${requestDatePcbWidth}px`, maxWidth: `${requestDatePcbWidth}px` }}>요청일</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={getStickyHeaderStyle('pcb', 'sales_order_number')}>제작 번호</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={getStickyHeaderStyle('pcb', 'production_category')}>제작구분</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={getStickyHeaderStyle('pcb', 'board_name')}>보드명</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={getStickyHeaderStyle('pcb', 'reference')}>참고</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={getStickyHeaderStyle('pcb', 'request_date')}>요청일</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border-y border-r border-gray-200" style={getHeaderStyle('pcb', 'estimate_no', 80)}>견적NO.</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'delivery_deadline', 80)}>납품기한</th>
                     {visibleSpan('pcb', HEADER_SPAN_GROUPS.pjt) > 0 && (
@@ -4633,11 +4659,11 @@ export default function ProductionListMain() {
                 <thead className="whitespace-nowrap">
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 text-center sticky left-0 bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, width: '40px', minWidth: '40px', maxWidth: '40px' }}>NO.</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky left-[40px] bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, width: `${salesOrderCableWidth}px`, minWidth: `${salesOrderCableWidth}px`, maxWidth: `${salesOrderCableWidth}px` }}>제작 번호</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, left: `${40 + salesOrderCableWidth}px`, width: `${productionCategoryCableWidth}px`, minWidth: `${productionCategoryCableWidth}px`, maxWidth: `${productionCategoryCableWidth}px` }}>제작구분</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ zIndex: 40, left: `${40 + salesOrderCableWidth + productionCategoryCableWidth}px`, width: `${cableBoardWidth}px`, minWidth: `${cableBoardWidth}px`, maxWidth: `${cableBoardWidth}px` }}>품명</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={{ zIndex: 40, left: `${40 + salesOrderCableWidth + productionCategoryCableWidth + cableBoardWidth}px`, width: `${referenceCableWidth}px`, minWidth: `${referenceCableWidth}px`, maxWidth: `${referenceCableWidth}px` }}>참고</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, left: `${40 + salesOrderCableWidth + productionCategoryCableWidth + cableBoardWidth + referenceCableWidth}px`, width: `${requestDateCableWidth}px`, minWidth: `${requestDateCableWidth}px`, maxWidth: `${requestDateCableWidth}px` }}>요청일</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={getStickyHeaderStyle('cable', 'sales_order_number')}>제작 번호</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={getStickyHeaderStyle('cable', 'production_category')}>제작구분</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={getStickyHeaderStyle('cable', 'board_name')}>품명</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={getStickyHeaderStyle('cable', 'reference')}>참고</th>
+                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={getStickyHeaderStyle('cable', 'request_date')}>요청일</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border-y border-r border-gray-200" style={getHeaderStyle('cable', 'estimate_no', 80)}>견적NO.</th>
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'delivery_deadline', 80)}>납품기한</th>
                     {visibleSpan('cable', HEADER_SPAN_GROUPS.pjt) > 0 && (
