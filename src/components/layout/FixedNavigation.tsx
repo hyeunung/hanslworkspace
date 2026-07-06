@@ -8,7 +8,6 @@ import {
   FileText,
   FileCheck,
   X,
-  MessageCircle,
   Receipt,
   Package,
   FileEdit,
@@ -125,7 +124,6 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
     }
   }, [isAdmin])
 
-  const supportBadge = pendingInquiryCount
   const statementBadge = pendingStatementCount
 
   // 거래명세서 배지 카운트 - 역할별로 쿼리가 다름 (우선순위: superadmin > lead buyer > 담당자)
@@ -678,36 +676,6 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                     </>
                   )}
                 </Link>
-                <div className="border-t border-gray-200 my-1" />
-                <Link
-                  to="/support"
-                  className={cn(
-                    'flex items-center h-10 rounded-lg transition-colors whitespace-nowrap',
-                    isExpanded ? 'px-3 gap-3' : 'justify-center w-10',
-                    pathname === '/support'
-                      ? 'bg-hansl-50 text-hansl-600 border border-hansl-200'
-                      : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
-                  )}
-                >
-                  <div className="relative flex-shrink-0">
-                    <MessageCircle className="w-4 h-4" />
-                    {!isExpanded && renderIconBadge(supportBadge)}
-                  </div>
-                  {isExpanded && (
-                    <>
-                      <span className="text-sm font-medium flex-1">문의하기</span>
-                      {supportBadge > 0 && (
-                        <span className={cn(
-                          "text-[11px] font-bold rounded-full px-1.5 py-0.5 min-w-[20px] text-center",
-                          pathname === '/support'
-                            ? "bg-hansl-200 text-hansl-700" : "bg-red-100 text-red-700"
-                        )}>
-                          {supportBadge > 99 ? '99+' : supportBadge}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </Link>
               </div>
             )}
           </div>
@@ -916,27 +884,6 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
                     {pendingApplicationCount > 99 ? '99+' : pendingApplicationCount}
                   </span>
                 )}
-              </Link>
-              <div className="border-t border-gray-200 my-1" />
-              <Link
-                to="/support"
-                onClick={onClose}
-                className={cn(
-                  'flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors',
-                  pathname === '/support'
-                    ? 'bg-hansl-50 text-hansl-600 border-l-2 border-hansl-500'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                )}
-              >
-                <div className="relative">
-                <MessageCircle className="w-4 h-4" />
-                  {supportBadge > 0 && (
-                    <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
-                      {supportBadge > 99 ? '99+' : supportBadge}
-                    </span>
-                  )}
-                </div>
-                <span className="text-sm font-medium">문의하기</span>
               </Link>
             </div>
           )}

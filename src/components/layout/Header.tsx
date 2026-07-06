@@ -556,21 +556,24 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
             <span className="hidden group-hover:inline text-xs font-medium text-gray-600">공문</span>
           </button>
 
-          {/* 로고 오른쪽 알림 배지 */}
-          {pendingInquiryCount > 0 && (
-            <button
-              type="button"
-              onClick={() => navigate('/support')}
-              className="relative ml-2 inline-flex items-center justify-center w-9 h-9 rounded-lg hover:bg-gray-50 transition-colors"
-              title="미처리 문의 보기"
-              aria-label={`문의 알림 ${pendingInquiryCount}건`}
-            >
-              <MessageCircle className="w-4 h-4 text-gray-600" />
+          {/* 문의하기 진입 버튼 (항상 표시, 미처리 문의 배지 포함) */}
+          <button
+            type="button"
+            onClick={() => navigate('/support')}
+            className="group relative ml-1 inline-flex items-center justify-center h-9 rounded-lg hover:bg-gray-50 transition-colors px-2 min-w-[36px]"
+            title="문의하기"
+            aria-label={pendingInquiryCount > 0 ? `문의하기 (미처리 ${pendingInquiryCount}건)` : '문의하기 페이지 열기'}
+          >
+            <MessageCircle className="w-4 h-4 text-gray-600 group-hover:hidden" />
+            <span className="hidden group-hover:inline text-xs font-medium text-gray-600">문의하기</span>
+            {pendingInquiryCount > 0 && (
               <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center text-[10px] font-bold text-white bg-red-500 rounded-full px-1">
                 {(pendingInquiryCount > 99) ? '99+' : pendingInquiryCount}
               </span>
-            </button>
-          )}
+            )}
+          </button>
+
+          {/* 로고 오른쪽 알림 배지 */}
           {pendingStatementCount > 0 && (
             <button
               type="button"
