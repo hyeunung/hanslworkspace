@@ -6729,9 +6729,14 @@ ${itemsText}`
       <DialogContent 
         className="overflow-hidden bg-white rounded-lg shadow-sm border-0 w-full sm:w-auto max-w-[calc(100vw-48px)] sm:max-w-[calc(100vw-80px)] lg:max-w-[90vw] xl:max-w-[85vw] h-[95vh] sm:h-auto sm:max-h-[90vh] lg:max-h-[85vh] sm:rounded-lg flex flex-col" 
         showCloseButton={false}
-        onPointerDownOutside={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => {
+          // 편집 중이거나 명세서 뷰어가 열려 있으면 바깥 클릭으로 닫히지 않음
+          if (isEditing || isStatementViewerOpen) e.preventDefault()
+        }}
         onFocusOutside={(e) => e.preventDefault()}
-        onInteractOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => {
+          if (isEditing || isStatementViewerOpen) e.preventDefault()
+        }}
       >
         <DialogHeader className="sr-only">
           <DialogTitle>발주 상세 정보</DialogTitle>

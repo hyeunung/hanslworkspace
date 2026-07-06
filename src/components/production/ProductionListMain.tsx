@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { productionService, ProductionPcb, ProductionCable } from '@/services/productionService'
@@ -311,6 +311,24 @@ const defaultTableFilter = (type: 'pcb' | 'cable'): TableFilter => ({
   categories: type === 'pcb' ? [...PCB_CATEGORIES] : [...CABLE_CATEGORIES],
   rules: defaultRules(type),
 })
+
+// ─── 저장 아이콘(파랑) 판정: "기본값에서 바꿔서 저장해둔 상태"인지 ──────────
+// 규칙 비교는 id 제외(id는 세션마다 새로 발급됨). 저장 원본(raw JSON)과 상태 양쪽 모두 처리.
+const normalizeRulesForCompare = (rules: any[]): string =>
+  JSON.stringify((rules || []).map(r => ({
+    f: r.field, o: r.op,
+    v: typeof r.value === 'string' ? r.value : null,
+    y: typeof r.year === 'number' ? r.year : null,
+    m: typeof r.month === 'number' ? r.month : null,
+  })))
+const rulesEqualDefault = (type: 'pcb' | 'cable', rules: any[]): boolean =>
+  normalizeRulesForCompare(rules) === normalizeRulesForCompare(defaultRules(type))
+const catsEqualDefault = (type: 'pcb' | 'cable', cats: string[]): boolean => {
+  const def = type === 'pcb' ? PCB_CATEGORIES : CABLE_CATEGORIES
+  return Array.isArray(cats) && cats.length === def.length && def.every(c => cats.includes(c))
+}
+const categoryOrderIsDefault = (order: string[]): boolean =>
+  JSON.stringify(order) === JSON.stringify(DEFAULT_CATEGORY_ORDER)
 
 // ─── 테이블별 정렬 (노션식: 칼럼 + 방향 규칙 목록, 우선순위 순) ──────────────
 // 제작구분(카테고리)은 항상 그룹 기준(1차 정렬)이라 정렬 대상에서 제외한다.
@@ -655,6 +673,65 @@ const renderCellValueWithLinks = (value: React.ReactNode, onLinkClick?: () => vo
     ) : (
       part
     )
+  )
+}
+
+// ─── 셀 팝오버를 브라우저 최상위 레이어로 ─────────────────────────────
+// 셀 편집/입고일/색상 팝오버가 테이블 스크롤 박스(overflow)에 잘려 아래쪽 행에서는
+// 스크롤해야 보이던 문제 해결: body 포털 + fixed로 테이블 박스 위에 겹쳐 띄운다.
+// 기본은 셀 아래에 붙고, 화면 아래 공간이 부족하면 셀 위로 뒤집는다(prefer='above'는 그 반대).
+// 숨김 span을 td 안에 남겨 앵커(td) 위치를 추적하고, 표 스크롤/리사이즈/내용 변화에 따라 재배치한다.
+function CellPopoverPortal({ prefer = 'below', innerRef, className, style, children, ...rest }: {
+  prefer?: 'below' | 'above'
+  innerRef?: React.MutableRefObject<HTMLDivElement | null>
+  className?: string
+  style?: React.CSSProperties
+  children: React.ReactNode
+} & Omit<React.HTMLAttributes<HTMLDivElement>, 'className' | 'style' | 'children'>) {
+  const anchorRef = useRef<HTMLSpanElement | null>(null)
+  const boxRef = useRef<HTMLDivElement | null>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  React.useLayoutEffect(() => {
+    const update = () => {
+      const td = anchorRef.current?.closest('td')
+      const box = boxRef.current
+      if (!td || !box) return
+      const r = td.getBoundingClientRect()
+      const bw = box.offsetWidth
+      const bh = box.offsetHeight
+      const left = Math.max(4, Math.min(r.left, window.innerWidth - bw - 8))
+      const below = r.bottom + 2
+      const above = r.top - bh - 2
+      let top = prefer === 'above' ? above : below
+      if (prefer === 'below' && below + bh > window.innerHeight - 4 && above >= 4) top = above
+      if (prefer === 'above' && above < 4) top = below
+      setPos(p => (p && Math.abs(p.top - top) < 1 && Math.abs(p.left - left) < 1 ? p : { top, left }))
+    }
+    update()
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null
+    if (boxRef.current) ro?.observe(boxRef.current)
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      ro?.disconnect()
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [prefer])
+  return (
+    <span ref={anchorRef} className="hidden">
+      {createPortal(
+        <div
+          ref={(el) => { boxRef.current = el; if (innerRef) innerRef.current = el }}
+          className={className}
+          style={{ ...style, position: 'fixed', top: pos ? pos.top : -9999, left: pos ? pos.left : -9999, zIndex: 100 }}
+          {...rest}
+        >
+          {children}
+        </div>,
+        document.body
+      )}
+    </span>
   )
 }
 
@@ -1236,9 +1313,17 @@ export default function ProductionListMain() {
   // 저장됨 = 저장 이력 있음 && 저장 이후 그 섹션을 건드리지 않음.
   type FilterSectionFlags = { pcb: { rules: boolean; cats: boolean }; cable: { rules: boolean; cats: boolean } }
   const [filterHasSaved, setFilterHasSaved] = useState<FilterSectionFlags>(() => {
-    const p = localStorage.getItem('hansl_prod_filter_pcb') !== null
-    const c = localStorage.getItem('hansl_prod_filter_cable') !== null
-    return { pcb: { rules: p, cats: p }, cable: { rules: c, cats: c } }
+    // 파랑(저장됨) = 기본값과 "다른" 내용이 저장돼 있을 때만. 키가 있어도 내용이 기본값이면 흰색.
+    const calc = (type: 'pcb' | 'cable') => {
+      if (localStorage.getItem(`hansl_prod_filter_${type}`) === null) return { rules: false, cats: false }
+      const f = loadTableFilter(type)
+      const orderCustom = !categoryOrderIsDefault(restoreCategoryOrder())
+      return {
+        rules: !rulesEqualDefault(type, f.rules),
+        cats: !catsEqualDefault(type, f.categories) || orderCustom,
+      }
+    }
+    return { pcb: calc('pcb'), cable: calc('cable') }
   })
   const [filterDirty, setFilterDirty] = useState<FilterSectionFlags>(() => ({
     pcb: { rules: false, cats: false }, cable: { rules: false, cats: false },
@@ -1448,7 +1533,8 @@ export default function ProductionListMain() {
       categories: Array.isArray(stored.categories) ? stored.categories : cur.categories,
       rules: cur.rules,
     }))
-    setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], rules: true } }))
+    // 기본값 그대로 저장한 경우엔 파랑 표시 안 함 (파랑 = 기본값에서 바꿔 저장한 상태)
+    setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], rules: !rulesEqualDefault(type, cur.rules) } }))
     setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], rules: false } }))
     toast.success('조건 필터가 저장되었습니다.')
   }
@@ -1462,7 +1548,9 @@ export default function ProductionListMain() {
       rules: Array.isArray(stored.rules) ? stored.rules : cur.rules,
     }))
     localStorage.setItem('hansl_prod_filter_category_order', JSON.stringify(categoryOrder))
-    setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], cats: true } }))
+    // 기본값 그대로(전체 선택 + 기본 순서) 저장한 경우엔 파랑 표시 안 함
+    const catsCustom = !catsEqualDefault(type, cur.categories) || !categoryOrderIsDefault(categoryOrder)
+    setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], cats: catsCustom } }))
     setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], cats: false } }))
     toast.success('제작구분 필터가 저장되었습니다.')
   }
@@ -1470,12 +1558,36 @@ export default function ProductionListMain() {
   const handleResetRules = (type: 'pcb' | 'cable') => {
     // 기본 세팅 = 입고대기 + 요청일 현재 년도(월 전체)
     setFilterFor(type, { rules: defaultRules(type) })
+    // 저장본의 규칙도 기본값으로 되돌림 — 안 그러면 새로고침 시 이전 저장 규칙이 되살아나고 아이콘도 다시 파랑이 됨
+    const stored = readStoredFilter(type)
+    const catsStillCustom = Array.isArray(stored.categories) && !catsEqualDefault(type, stored.categories)
+    if (catsStillCustom) {
+      localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({ categories: stored.categories, rules: defaultRules(type) }))
+    } else {
+      localStorage.removeItem(`hansl_prod_filter_${type}`)
+    }
+    setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], rules: false } }))
+    setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], rules: false } }))
     toast.info('필터가 기본값으로 초기화되었습니다.')
   }
 
   const handleResetCategoryFilter = (type: 'pcb' | 'cable') => {
     setFilterFor(type, { categories: type === 'pcb' ? [...PCB_CATEGORIES] : [...CABLE_CATEGORIES] })
     setCategoryOrder([...DEFAULT_CATEGORY_ORDER])
+    // 저장본의 제작구분/그룹순서도 기본값으로 되돌림 (규칙이 커스텀이면 규칙만 보존)
+    localStorage.removeItem('hansl_prod_filter_category_order')
+    const stored = readStoredFilter(type)
+    const rulesStillCustom = Array.isArray(stored.rules) && !rulesEqualDefault(type, stored.rules)
+    if (rulesStillCustom) {
+      localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({
+        categories: type === 'pcb' ? [...PCB_CATEGORIES] : [...CABLE_CATEGORIES],
+        rules: stored.rules,
+      }))
+    } else {
+      localStorage.removeItem(`hansl_prod_filter_${type}`)
+    }
+    setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], cats: false } }))
+    setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], cats: false } }))
     toast.info('제작구분 필터가 초기화되었습니다.')
   }
 
@@ -1514,10 +1626,7 @@ export default function ProductionListMain() {
   // 인라인 셀 수정 상태
   const [editingCell, setEditingCell] = useState<{ id: string, type: 'pcb' | 'cable', field: string } | null>(null)
   const [editValue, setEditValue] = useState<string>('')
-  // 편집 팝오버 포털 앵커 = 편집 중인 셀(td) — 팝오버를 body로 띄워 테이블 스크롤 영역에 잘리지 않게 한다
-  const [editAnchorEl, setEditAnchorEl] = useState<HTMLElement | null>(null)
-  const editAnchorRefCb = useCallback((el: HTMLTableCellElement | null) => setEditAnchorEl(el), [])
-  // 정렬/칼럼 메뉴 포털 앵커 = 클릭한 버튼 (메뉴는 한 번에 하나만 열림)
+  // 정렬/칼럼 메뉴 포털 앵커 = 클릭한 버튼 (메뉴는 한 번에 하나만 열림) — 셀 팝오버는 CellPopoverPortal이 담당
   const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null)
   // 줄바꿈 셀 접힘/펼침 상태 (key: `${id}::${field}`) — 펼치면 해당 셀만 세로로 확장
   const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set())
@@ -3175,11 +3284,11 @@ export default function ProductionListMain() {
       const cellVal = item.cell_colors?.[field];
       const { color: activeColor, strike: isCellStruck, bold: isCellBold, redText: isCellRedText } = parseColorState(cellVal);
 
-      return (
+      const pickerBody = (
         <div
           className={inline
             ? "mt-1.5 pt-1.5 border-t border-gray-200 flex flex-col gap-1"
-            : "absolute left-0 bottom-full mb-1 bg-white border border-gray-200 rounded-md shadow-lg p-1 z-50 flex flex-col gap-1"}
+            : "bg-white border border-gray-200 rounded-md shadow-lg p-1 flex flex-col gap-1"}
           style={inline ? undefined : { width: 'max-content' }}
         >
           {/* 1행: 배경색 */}
@@ -3277,18 +3386,19 @@ export default function ProductionListMain() {
           </div>
         </div>
       );
+      // 셀 위에 띄우는 단독 색상피커는 테이블 박스에 잘리지 않게 최상위 레이어로 (기본은 셀 위쪽)
+      return inline ? pickerBody : <CellPopoverPortal prefer="above">{pickerBody}</CellPopoverPortal>;
     };
 
     if (isEditing) {
       const editCellStyle = { ...cellStyle, overflow: 'visible', zIndex: 50 }
       if (field === 'artwork_status') {
         return (
-          <td ref={editAnchorRefCb} className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
+          <td className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
             <span className="text-[10px] text-gray-400 truncate block px-1">
               {formatArtworkDisplay(editValue) || ' '}
             </span>
-            <AnchoredPortal anchorEl={editAnchorEl}>
-            <div
+            <CellPopoverPortal
               className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
               style={{ width: 'max-content', minWidth: '150px' }}
               onMouseDown={(e) => e.stopPropagation()}
@@ -3305,19 +3415,17 @@ export default function ProductionListMain() {
               />
               {/* 색상 피커도 함께 표시 (다른 편집 셀과 동일) */}
               {renderCellColorPicker(true)}
-            </div>
-            </AnchoredPortal>
+            </CellPopoverPortal>
           </td>
         )
       }
       if (field === 'parts_organization') {
         return (
-          <td ref={editAnchorRefCb} className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
+          <td className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
             <span className="text-[10px] text-gray-400 truncate block px-1">
               {formatPartsDisplay(editValue) || ' '}
             </span>
-            <AnchoredPortal anchorEl={editAnchorEl}>
-            <div
+            <CellPopoverPortal
               className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
               style={{ width: 'max-content', minWidth: '150px' }}
               onMouseDown={(e) => e.stopPropagation()}
@@ -3334,8 +3442,7 @@ export default function ProductionListMain() {
               />
               {/* 색상 피커도 함께 표시 (다른 편집 셀과 동일) */}
               {renderCellColorPicker(true)}
-            </div>
-            </AnchoredPortal>
+            </CellPopoverPortal>
           </td>
         )
       }
@@ -3404,14 +3511,12 @@ export default function ProductionListMain() {
         while (memoWidth < longestLinePx && memoWidth < 750) memoWidth += 150
         // 세로도 줄 수만큼 다 보이게 (최소 3줄) — 화면을 벗어날 만큼 길 때만 maxHeight로 잘리고 스크롤
         const memoRows = Math.max(3, memoLines.length)
-        // 팝오버는 body 포털(AnchoredPortal)로 띄워 테이블 스크롤 영역에 잘리지 않고, 화면 경계 보정도 포털이 담당
         return (
-          <td ref={editAnchorRefCb} className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
+          <td className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
             <span className="block text-[10px] text-gray-400 truncate px-1">{String(editValue || ' ')}</span>
             {/* 메모는 폭을 컨테이너에 직접 지정 — textarea 인라인 width만 바꾸면 컨테이너의
                 shrink-to-fit 재계산이 안 일어나는(Chromium) 문제가 있어 컨테이너 폭으로 제어한다. */}
-            <AnchoredPortal anchorEl={editAnchorEl}>
-            <div
+            <CellPopoverPortal
               className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
               style={isMemoField
                 ? { width: `${memoWidth + 14}px`, maxWidth: '780px' }
@@ -3497,8 +3602,7 @@ export default function ProductionListMain() {
               )}
               {/* 색상 피커를 입력창 바로 아래에 함께 표시 */}
               {renderCellColorPicker(true)}
-            </div>
-            </AnchoredPortal>
+            </CellPopoverPortal>
             {datalistNode}
           </td>
         )
@@ -3640,9 +3744,9 @@ export default function ProductionListMain() {
               입고대기
             </button>
             {isStockPickerOpen && (
-              <div
-                ref={stockInPopoverRef}
-                className="absolute left-0 top-full mt-0.5 z-[60] bg-white border border-gray-300 rounded-md shadow-lg p-1.5 cursor-default text-left"
+              <CellPopoverPortal
+                innerRef={stockInPopoverRef}
+                className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5 cursor-default text-left"
                 style={{ width: 'max-content' }}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
@@ -3683,7 +3787,7 @@ export default function ProductionListMain() {
                   modifiers={{ today: new Date() }}
                   modifiersClassNames={{ today: 'bg-[#1777CB] text-white font-semibold rounded-md' }}
                 />
-              </div>
+              </CellPopoverPortal>
             )}
           </>
         ) : renderCellDisplayValue(id, field, displayValue)}
@@ -3949,10 +4053,8 @@ export default function ProductionListMain() {
   // 행 하나의 렌더에 영향을 주는 '그 행 관련' UI 상태 요약 — 이 값이 바뀐 행만 다시 그린다
   const rowSig = (type: 'pcb' | 'cable', item: any): string => {
     const sel = selectedCells.length ? selectedCells.filter(k => k.startsWith(item.id + '::')).join(',') : ''
-    // 편집 팝오버는 셀(td) 마운트 후 앵커가 잡혀야 body 포털이 뜨므로, 앵커 유무도 시그니처에 포함해
-    // 앵커가 설정되는 재렌더가 MemoRow 메모이즈에 막히지 않게 한다
     const editing = editingCell && editingCell.type === type && editingCell.id === item.id
-      ? `E:${editingCell.field}:${editValue}:${editAnchorEl ? 'A' : 'a'}` : ''
+      ? `E:${editingCell.field}:${editValue}` : ''
     const picker = activeColorPicker && activeColorPicker.type === type && activeColorPicker.id === item.id ? 'P' : ''
     // 입고일 선택 팝오버가 열린 행은 입력값이 바뀔 때마다 다시 그린다
     const stockIn = stockInPicker && stockInPicker.type === type && stockInPicker.id === item.id
