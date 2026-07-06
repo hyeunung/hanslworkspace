@@ -2813,7 +2813,7 @@ export default function ProductionListMain() {
             {isStockPickerOpen && (
               <div
                 ref={stockInPopoverRef}
-                className="absolute left-0 top-full mt-0.5 z-[60] bg-white border border-gray-300 rounded-md shadow-lg p-1.5 cursor-default text-left"
+                className="stockin-popover absolute left-0 top-full mt-0.5 z-[60] bg-white border border-gray-300 rounded-md shadow-lg p-1.5 cursor-default text-left"
                 style={{ width: 'max-content' }}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}

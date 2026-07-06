@@ -1287,6 +1287,17 @@ input[type="number"] {
   text-align: center !important;
 }
 
+/* 입고일 선택 팝오버의 입력칸은 위 표 셀 압축 규칙(15px/10px/가운데)에서 제외 —
+   팝오버는 표 위에 뜨는 일반 UI라 저장 버튼(h-6=24px)과 높이·글자 크기를 맞춘다 */
+.production-compact-table .stockin-popover input {
+  height: 24px !important;
+  font-size: 11px !important;
+  line-height: 1.2 !important;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
+  text-align: left !important;
+}
+
 /* 제작현황 표의 드롭다운은 화살표(chevron) 없이 — 클릭하면 바로 네이티브 드롭다운이 열린다 */
 .production-compact-table select,
 .adding-row select {
