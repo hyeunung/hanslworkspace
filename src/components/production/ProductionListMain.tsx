@@ -962,7 +962,9 @@ export default function ProductionListMain() {
   const [addingCableRow, setAddingCableRow] = useState<Omit<ProductionCable, 'id' | 'created_at' | 'updated_at'> | null>(null)
 
   // 필터 및 검색 상태 — PCB/Cable 테이블별 독립 필터 (저장된 필터가 있으면 처음부터 반영)
-  const [searchQuery, setSearchQuery] = useState('')
+  // 검색어도 필터·정렬·칼럼 설정과 마찬가지로 테이블별 독립 (PCB표 검색은 PCB표에만 적용)
+  const [pcbSearch, setPcbSearch] = useState('')
+  const [cableSearch, setCableSearch] = useState('')
   const [pcbFilter, setPcbFilter] = useState<TableFilter>(() => loadTableFilter('pcb'))
   const [cableFilter, setCableFilter] = useState<TableFilter>(() => loadTableFilter('cable'))
 
@@ -2215,22 +2217,22 @@ export default function ProductionListMain() {
   // 제작구분(카테고리)이 항상 1차 정렬(그룹 유지), 사용자 정렬 규칙은 같은 그룹 안에서의 2차 정렬
   const filteredPcbs = useMemo(() => pcbs
     .filter(item => pcbFilter.categories.includes(item.production_category))
-    .filter(item => matchesSearch(item, searchQuery))
+    .filter(item => matchesSearch(item, pcbSearch))
     .filter(item => pcbFilter.rules.every(rule => applyFilterRule(item, rule)))
     .sort((a, b) => {
       const c = categoryRank(a.production_category) - categoryRank(b.production_category)
       return c !== 0 || pcbSort.length === 0 ? c : compareBySortRules(a, b, pcbSort)
     }),
-    [pcbs, pcbFilter, categoryOrder, searchQuery, pcbSort])
+    [pcbs, pcbFilter, categoryOrder, pcbSearch, pcbSort])
   const filteredCables = useMemo(() => cables
     .filter(item => cableFilter.categories.includes(item.production_category))
-    .filter(item => matchesSearch(item, searchQuery))
+    .filter(item => matchesSearch(item, cableSearch))
     .filter(item => cableFilter.rules.every(rule => applyFilterRule(item, rule)))
     .sort((a, b) => {
       const c = categoryRank(a.production_category) - categoryRank(b.production_category)
       return c !== 0 || cableSort.length === 0 ? c : compareBySortRules(a, b, cableSort)
     }),
-    [cables, cableFilter, categoryOrder, searchQuery, cableSort])
+    [cables, cableFilter, categoryOrder, cableSearch, cableSort])
 
   // 년도 드롭다운 옵션 = 로드된 데이터에서 해당 날짜 칼럼에 실제 존재하는 년도만 (내림차순)
   const yearsFor = (type: 'pcb' | 'cable', dateField: string): number[] => {
@@ -4554,15 +4556,15 @@ export default function ProductionListMain() {
         </button>
         {!filterCollapsed && (
         <div className="px-3 pb-3 pt-3 space-y-3 border-t border-gray-100">
-        {/* Row 1: 통합 검색창 */}
+        {/* Row 1: PCB 표 검색창 (이 표에만 적용) */}
         <div className="flex items-center">
           <div className="relative w-[240px] flex-shrink-0 h-5 flex items-center">
             <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="제작번호, 보드명, 업체명, 날짜(4월 6일) 검색..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={pcbSearch}
+              onChange={(e) => setPcbSearch(e.target.value)}
               style={{ paddingLeft: '26px', height: '20px' }}
               className="w-full block business-radius-input border border-gray-300 bg-white text-gray-700 pr-3 text-[11px]"
             />
@@ -5063,15 +5065,15 @@ export default function ProductionListMain() {
             </button>
             {!cableFilterCollapsed && (
               <div className="px-3 pb-3 pt-3 space-y-3 border-b border-gray-200">
-                {/* Row 1: 통합 검색창 (PCB 표와 동일 — 검색어는 두 표에 공통 적용) */}
+                {/* Row 1: Cable 표 검색창 (이 표에만 적용) */}
                 <div className="flex items-center">
                   <div className="relative w-[240px] flex-shrink-0 h-5 flex items-center">
                     <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
                       placeholder="제작번호, 품명, 업체명, 날짜(4월 6일) 검색..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      value={cableSearch}
+                      onChange={(e) => setCableSearch(e.target.value)}
                       style={{ paddingLeft: '26px', height: '20px' }}
                       className="w-full block business-radius-input border border-gray-300 bg-white text-gray-700 pr-3 text-[11px]"
                     />
