@@ -894,6 +894,16 @@ export default function ProductionListMain() {
     return next
   })
 
+  // 테이블 뷰 모드 — 전체/PCB/Cable&Case 중 선택. 선택 시 localStorage에 저장해 재방문 시 복원.
+  const [tableView, setTableView] = useState<'all' | 'pcb' | 'cable'>(() => {
+    const saved = localStorage.getItem('hansl_prod_table_view')
+    return saved === 'pcb' || saved === 'cable' || saved === 'all' ? saved : 'all'
+  })
+  const selectTableView = (v: 'all' | 'pcb' | 'cable') => {
+    setTableView(v)
+    localStorage.setItem('hansl_prod_table_view', v)
+  }
+
   // 칼럼 숨기기 — 표별 숨긴 칼럼 목록. 토글 즉시 적용 + localStorage 저장.
   // 행 추가 중에는 입력행 셀이 칼럼 순서대로 하드코딩돼 있어(정렬 어긋남 방지 + 입력 누락 방지) 전 칼럼을 임시 표시한다.
   const [hiddenCols, setHiddenCols] = useState<Record<'pcb' | 'cable', string[]>>(() => ({
@@ -2128,7 +2138,7 @@ export default function ProductionListMain() {
     if (field === 'reference' || field === 'sales_order_number') return 600
     if (field === 'board_name') return 500
     const isDateField = field.endsWith('_date') || field.endsWith('_deadline') || field.endsWith('_schedule') || field === 'final_product_stock'
-    if (isDateField && hasValue) return 600 // 날짜값 있으면 font-semibold로 표시됨
+    if (isDateField && hasValue) return field === 'delivery_date' ? 400 : 600 // 납품 일자는 볼드 제외
     return 400
   }
 
@@ -2855,7 +2865,8 @@ export default function ProductionListMain() {
     const isDateField = field.endsWith('_date') || field.endsWith('_deadline') || field.endsWith('_schedule') || field === 'final_product_stock';
     const hasValue = item[field] !== null && item[field] !== undefined && item[field] !== '';
     if (isDateField && hasValue) {
-      computedClassName += ' font-semibold text-gray-900'
+      // 납품 일자는 볼드 제외 (텍스트 색만 유지)
+      computedClassName += field === 'delivery_date' ? ' text-gray-900' : ' font-semibold text-gray-900'
     }
 
     const cState = parseColorState(item.cell_colors?.[field]);
@@ -3948,8 +3959,8 @@ export default function ProductionListMain() {
     )
   }
 
-  const showPcbTable = pcbFilter.categories.length > 0
-  const showCableTable = cableFilter.categories.length > 0
+  const showPcbTable = (tableView === 'all' || tableView === 'pcb') && pcbFilter.categories.length > 0
+  const showCableTable = (tableView === 'all' || tableView === 'cable') && cableFilter.categories.length > 0
 
   // 테이블별 필터 툴바 (노션식 규칙 필터 + 제작구분 칩) — PCB/Cable 동일 마크업
   // 규칙 = [칼럼 ▾][조건 ▾][값 | 년 ▾ 월 ▾][×] 이며 노션처럼 추가/수정/제거 가능.
@@ -4202,7 +4213,31 @@ export default function ProductionListMain() {
 
   return (
     <div className="p-4 sm:p-5 bg-gray-50 min-h-screen">
-      {/* 필터 툴바 — 아래 표와 붙이고(rounded-b-none/border-b-0), 헤더로 접기/펴기 */}
+      {/* 테이블 뷰 선택 — 보고 싶은 표만 골라 보기. '행 추가' 버튼과 동일한 크기 (페이지 좌측 상단) */}
+      <div className="mb-3 flex items-center gap-2">
+        {([
+          { key: 'all', label: '전체' },
+          { key: 'pcb', label: 'PCB' },
+          { key: 'cable', label: 'Cable & Case' },
+        ] as const).map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => selectTableView(key)}
+            className={`button-base flex items-center h-8 px-3 business-radius-button border ${
+              tableView === key
+                ? 'bg-[#1777CB] hover:bg-[#1265A8] border-[#1777CB]'
+                : 'bg-white hover:bg-gray-50 border-gray-300'
+            }`}
+          >
+            <span className={`button-text ${tableView === key ? 'text-white' : 'text-gray-700'}`}>{label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* 필터 툴바(PCB 전용) — PCB 뷰(전체/PCB)일 때만 표시. Cable만 볼 때는 Cable 표 자체 필터만 남긴다.
+          아래 표와 붙이고(rounded-b-none/border-b-0), 헤더로 접기/펴기 */}
+      {(tableView === 'all' || tableView === 'pcb') && (
       <div className="card-professional rounded-b-none border-b-0 overflow-hidden">
         {/* 헤더: 좌측 사이드바처럼 접기/펴기 토글 */}
         <button
@@ -4236,6 +4271,7 @@ export default function ProductionListMain() {
         </div>
         )}
       </div>
+      )}
 
       {/* 테이블 영역 (필터와 붙임) */}
       <div className="space-y-6">
