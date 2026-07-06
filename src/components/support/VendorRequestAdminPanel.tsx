@@ -3,6 +3,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Building2, Search, ChevronDown, ChevronUp, Loader2, Plus, Trash2, CheckCircle } from 'lucide-react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { supportService, type SupportInquiry, type NewVendorInquiryPayload } from '@/services/supportService'
 import { vendorService } from '@/services/vendorService'
 import { createClient } from '@/lib/supabase/client'
@@ -57,6 +67,10 @@ export default function VendorRequestAdminPanel() {
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [loadingVendors, setLoadingVendors] = useState(false)
   const [vendorSearch, setVendorSearch] = useState('')
+
+  // 요청 삭제 확인 다이얼로그
+  const [deleteTarget, setDeleteTarget] = useState<SupportInquiry | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const loadInquiries = useCallback(async () => {
     const result = await supportService.getNewVendorInquiries()
@@ -253,6 +267,22 @@ export default function VendorRequestAdminPanel() {
     }
   }
 
+  // 요청 삭제 (lead buyer 권한)
+  const handleDeleteInquiry = async () => {
+    if (!deleteTarget?.id) return
+    setDeleting(true)
+    const result = await supportService.deleteInquiry(deleteTarget.id)
+    if (result.success) {
+      toast.success('업체등록 요청이 삭제되었습니다.')
+      if (expandedId === deleteTarget.id) setExpandedId(null)
+      loadInquiries()
+    } else {
+      toast.error(result.error || '요청 삭제에 실패했습니다.')
+    }
+    setDeleting(false)
+    setDeleteTarget(null)
+  }
+
   const getStatusBadge = (status?: string) => {
     switch (status) {
       case 'open':
@@ -297,10 +327,12 @@ export default function VendorRequestAdminPanel() {
               return (
                 <div key={inquiry.id} className="border border-gray-200 business-radius-card overflow-hidden bg-white">
                   {/* 요청 행 (클릭 시 펼침) */}
-                  <button
-                    type="button"
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => handleToggleExpand(inquiry)}
-                    className="w-full flex items-center justify-between gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left"
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleToggleExpand(inquiry) }}
+                    className="w-full flex items-center justify-between gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left cursor-pointer"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="badge-stats bg-indigo-100 text-indigo-800 flex-shrink-0">업체등록 요청</span>
@@ -316,13 +348,21 @@ export default function VendorRequestAdminPanel() {
                       <span className="text-[11px] text-gray-400">
                         {inquiry.created_at ? format(new Date(inquiry.created_at), 'yyyy-MM-dd HH:mm') : '-'}
                       </span>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(inquiry) }}
+                        className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 business-radius-badge transition-colors"
+                        title="요청 삭제"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                       {isExpanded ? (
                         <ChevronUp className="w-4 h-4 text-gray-400" />
                       ) : (
                         <ChevronDown className="w-4 h-4 text-gray-400" />
                       )}
                     </div>
-                  </button>
+                  </div>
 
                   {/* 펼침: 좌우 분할 (좌: 요청 내역 수정, 우: 업체관리 검색) */}
                   {isExpanded && (
@@ -582,6 +622,32 @@ export default function VendorRequestAdminPanel() {
             })}
           </div>
         )}
+
+        {/* 요청 삭제 확인 다이얼로그 */}
+        <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>업체등록 요청 삭제</AlertDialogTitle>
+              <AlertDialogDescription>
+                {(() => {
+                  const payload = deleteTarget?.inquiry_payload
+                  const vendorName = isNewVendorPayload(payload) ? payload.vendor.vendor_name : ''
+                  return `${vendorName ? `업체명 "${vendorName}" ` : ''}요청(요청자: ${deleteTarget?.user_name || deleteTarget?.user_email || '-'})을 삭제할까요? 삭제하면 되돌릴 수 없습니다.`
+                })()}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>취소</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteInquiry}
+                disabled={deleting}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {deleting ? '삭제 중...' : '삭제'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardContent>
     </Card>
   )
