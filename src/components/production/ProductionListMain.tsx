@@ -2517,7 +2517,7 @@ export default function ProductionListMain() {
       )
     }
     return (
-      <span className="flex items-start gap-1">
+      <span className="flex items-start gap-2">
         {toggleBtn}
         <span className="whitespace-pre-line break-words">{renderCellValueWithLinks(displayValue, onLinkClick)}</span>
       </span>
@@ -2747,13 +2747,26 @@ export default function ProductionListMain() {
       const commit = () => { handleCellSave({ id, type, field }, editValue); setEditingCell(null) }
 
       if (usePopover) {
+        // 메모 입력폭: 가장 긴 줄이 접히지 않고 다 보이도록 300px에서 150px 단위로 계단식 확장 (최대 750px).
+        // 폭이 글자에 딱 맞춰 실시간으로 늘지 않아, 화면상 줄바꿈 = 실제 Enter 줄바꿈으로 구분된다.
+        // 기존 저장된 메모도 편집 열자마자 같은 규칙으로 넓게 열린다.
+        const memoLines = String(editValue ?? '').split('\n')
+        const longestLinePx = Math.max(0, ...memoLines.map(l => measureText(l, 400))) * 1.1 + 28
+        let memoWidth = 300
+        while (memoWidth < longestLinePx && memoWidth < 750) memoWidth += 150
+        // 세로도 줄 수만큼 다 보이게 (최소 3줄) — 화면을 벗어날 만큼 길 때만 maxHeight로 잘리고 스크롤
+        const memoRows = Math.max(3, memoLines.length)
         // 셀이 오른쪽 끝에 있을 때 팝오버가 화면 밖으로 나가지 않도록 좌/우 정렬 결정
         return (
           <td className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
             <span className="block text-[10px] text-gray-400 truncate px-1">{String(editValue || ' ')}</span>
+            {/* 메모는 폭을 컨테이너에 직접 지정 — textarea 인라인 width만 바꾸면 absolute 컨테이너의
+                shrink-to-fit 재계산이 안 일어나는(Chromium) 문제가 있어 컨테이너 폭으로 제어한다. */}
             <div
               className="absolute left-0 top-full mt-0.5 z-[60] bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
-              style={{ minWidth: '220px', maxWidth: '360px' }}
+              style={isMemoField
+                ? { width: `${memoWidth + 14}px`, maxWidth: '780px' }
+                : { minWidth: '220px', maxWidth: '360px' }}
               onMouseDown={(e) => e.stopPropagation()}
             >
               {field === 'delivery_quantity' && type === 'pcb' ? (
@@ -2798,7 +2811,7 @@ export default function ProductionListMain() {
               {isMemoField ? (
                 <textarea
                   autoFocus
-                  rows={3}
+                  rows={memoRows}
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
                   onBlur={commit}
@@ -2808,7 +2821,7 @@ export default function ProductionListMain() {
                   }}
                   placeholder={`${getColumnTitle(field, type)} 입력 (줄바꿈 가능 · Ctrl+Enter 저장)`}
                   className="w-full bg-white border border-gray-300 rounded px-1.5 py-1 text-[11px] leading-snug focus:outline-none focus:border-[#1777CB] resize-y"
-                  style={{ width: '300px' }}
+                  style={{ maxHeight: '55vh' }}
                 />
               ) : (
                 <input
