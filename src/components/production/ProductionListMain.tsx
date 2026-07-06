@@ -2864,9 +2864,9 @@ export default function ProductionListMain() {
     let computedClassName = cellClassName
     const isDateField = field.endsWith('_date') || field.endsWith('_deadline') || field.endsWith('_schedule') || field === 'final_product_stock';
     const hasValue = item[field] !== null && item[field] !== undefined && item[field] !== '';
-    if (isDateField && hasValue) {
-      // 납품 일자는 볼드 제외 (텍스트 색만 유지)
-      computedClassName += field === 'delivery_date' ? ' text-gray-900' : ' font-semibold text-gray-900'
+    if (isDateField && hasValue && field !== 'delivery_date') {
+      // 납품 일자는 볼드/진한색 제외 → 다른 칼럼(tbody 기본 text-gray-700)과 동일하게
+      computedClassName += ' font-semibold text-gray-900'
     }
 
     const cState = parseColorState(item.cell_colors?.[field]);
