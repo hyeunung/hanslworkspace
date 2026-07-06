@@ -1083,6 +1083,16 @@ export default function ProductionListMain() {
   // 인라인 셀 수정 상태
   const [editingCell, setEditingCell] = useState<{ id: string, type: 'pcb' | 'cable', field: string } | null>(null)
   const [editValue, setEditValue] = useState<string>('')
+  // 줄바꿈 셀 접힘/펼침 상태 (key: `${id}::${field}`) — 펼치면 해당 셀만 세로로 확장
+  const [expandedCells, setExpandedCells] = useState<Set<string>>(new Set())
+  const toggleCellExpand = (id: string, field: string) => {
+    const key = `${id}::${field}`
+    setExpandedCells(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+  }
 
   // 완제품 입고 날짜 선택 팝오버: '입고대기' 클릭 시 열림 (직접 입력 + 달력 클릭 선택)
   const [stockInPicker, setStockInPicker] = useState<{ id: string, type: 'pcb' | 'cable', field: string } | null>(null)
@@ -2341,7 +2351,10 @@ export default function ProductionListMain() {
 
     let maxValWidth = 0
     for (const item of rows) {
-      const valStr = getDisplayValueForField(type, field, item)
+      let valStr = getDisplayValueForField(type, field, item)
+      // 줄바꿈 셀은 접힘 상태(첫 줄 + `(+N)🔽` 배지) 기준으로 폭을 잡아 가로로 길어지지 않게 한다.
+      let multilineExtra = 0
+      if (valStr.includes('\n')) { valStr = valStr.split('\n')[0]; multilineExtra = 34 }
       const hasValue = item[field] !== null && item[field] !== undefined && item[field] !== ''
       // 취소선 셀은 font-normal(400)로 렌더되므로 같은 굵기로 측정 (renderEditableCell의 isStruck 로직과 동일)
       const cState = parseColorState(item.cell_colors?.[field])
@@ -2349,7 +2362,7 @@ export default function ProductionListMain() {
       const isStruck = cState.strike === 'strike' ? true : cState.strike === 'nostrike' ? false : (rState.strike === 'strike')
       const isBold = cState.bold || rState.bold
       const weight = isBold ? 700 : (isStruck ? 400 : getFieldFontWeight(field, hasValue))
-      const w = measureText(valStr, weight)
+      const w = measureText(valStr, weight) + multilineExtra
       if (w > maxValWidth) maxValWidth = w
     }
 
@@ -2433,6 +2446,43 @@ export default function ProductionListMain() {
   }
 
   // 인라인 수정용 공통 렌더러 함수
+  // 줄바꿈이 있는 셀: 첫 줄만 + `(+N)` 배지 + 이모티콘 토글. 펼치면 그 셀만 세로로 확장돼 전체 표시.
+  const renderCellDisplayValue = (id: string, field: string, displayValue: any): React.ReactNode => {
+    const onLinkClick = () => setSelectedCells([`${id}::${field}`])
+    if (typeof displayValue !== 'string' || !displayValue.includes('\n')) {
+      return renderCellValueWithLinks(displayValue, onLinkClick)
+    }
+    const lines = displayValue.split('\n')
+    const hidden = lines.length - 1
+    const expanded = expandedCells.has(`${id}::${field}`)
+    const toggleBtn = (
+      <button
+        type="button"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); toggleCellExpand(id, field) }}
+        className="shrink-0 leading-none text-[10px] hover:opacity-70 transition-opacity"
+        title={expanded ? '접기' : '펼치기'}
+      >
+        {expanded ? '🔼' : '🔽'}
+      </button>
+    )
+    if (!expanded) {
+      return (
+        <span className="flex items-center gap-1 whitespace-nowrap min-w-0">
+          <span className="shrink-0 text-[10px] text-gray-400 font-semibold">(+{hidden})</span>
+          {toggleBtn}
+          <span className="truncate min-w-0">{renderCellValueWithLinks(lines[0], onLinkClick)}</span>
+        </span>
+      )
+    }
+    return (
+      <span className="flex items-start gap-1">
+        {toggleBtn}
+        <span className="whitespace-pre-line break-words">{renderCellValueWithLinks(displayValue, onLinkClick)}</span>
+      </span>
+    )
+  }
+
   const renderEditableCell = (
     id: string,
     type: 'pcb' | 'cable',
@@ -2879,7 +2929,7 @@ export default function ProductionListMain() {
               </div>
             )}
           </>
-        ) : renderCellValueWithLinks(displayValue, () => setSelectedCells([`${id}::${field}`]))}
+        ) : renderCellDisplayValue(id, field, displayValue)}
       </td>
     )
   }
@@ -3151,7 +3201,10 @@ export default function ProductionListMain() {
     // 숨긴 칼럼 구성(행 추가 중엔 전 칼럼 표시)이 바뀌면 모든 행을 다시 그려야 한다
     const adding = type === 'pcb' ? !!addingPcbRow : !!addingCableRow
     const cols = adding ? 'ALL' : hiddenCols[type].join(',')
-    return sel + '|' + editing + '|' + picker + '|' + stockIn + '|' + cols
+    // 이 행에서 펼쳐진 줄바꿈 셀 목록 — 펼침/접힘 토글 시 행을 다시 그리기 위해 시그니처에 포함
+    const expanded = expandedCells.size
+      ? [...expandedCells].filter(k => k.startsWith(item.id + '::')).join(',') : ''
+    return sel + '|' + editing + '|' + picker + '|' + stockIn + '|' + cols + '|' + expanded
   }
 
   // PCB 행 렌더 본문 — MemoRow가 (item, index)로 호출. 내부 커스텀 핸들러는 모두 useStableHandler로 안정화됨.
