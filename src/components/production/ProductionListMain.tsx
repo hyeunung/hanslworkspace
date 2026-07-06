@@ -311,6 +311,24 @@ const defaultTableFilter = (type: 'pcb' | 'cable'): TableFilter => ({
   rules: defaultRules(type),
 })
 
+// ─── 저장 아이콘(파랑) 판정: "기본값에서 바꿔서 저장해둔 상태"인지 ──────────
+// 규칙 비교는 id 제외(id는 세션마다 새로 발급됨). 저장 원본(raw JSON)과 상태 양쪽 모두 처리.
+const normalizeRulesForCompare = (rules: any[]): string =>
+  JSON.stringify((rules || []).map(r => ({
+    f: r.field, o: r.op,
+    v: typeof r.value === 'string' ? r.value : null,
+    y: typeof r.year === 'number' ? r.year : null,
+    m: typeof r.month === 'number' ? r.month : null,
+  })))
+const rulesEqualDefault = (type: 'pcb' | 'cable', rules: any[]): boolean =>
+  normalizeRulesForCompare(rules) === normalizeRulesForCompare(defaultRules(type))
+const catsEqualDefault = (type: 'pcb' | 'cable', cats: string[]): boolean => {
+  const def = type === 'pcb' ? PCB_CATEGORIES : CABLE_CATEGORIES
+  return Array.isArray(cats) && cats.length === def.length && def.every(c => cats.includes(c))
+}
+const categoryOrderIsDefault = (order: string[]): boolean =>
+  JSON.stringify(order) === JSON.stringify(DEFAULT_CATEGORY_ORDER)
+
 // ─── 테이블별 정렬 (노션식: 칼럼 + 방향 규칙 목록, 우선순위 순) ──────────────
 // 제작구분(카테고리)은 항상 그룹 기준(1차 정렬)이라 정렬 대상에서 제외한다.
 // 사용자 정렬 규칙은 같은 제작구분 그룹 "안에서" 위→아래 순서를 결정한다.
@@ -1173,9 +1191,17 @@ export default function ProductionListMain() {
   // 저장됨 = 저장 이력 있음 && 저장 이후 그 섹션을 건드리지 않음.
   type FilterSectionFlags = { pcb: { rules: boolean; cats: boolean }; cable: { rules: boolean; cats: boolean } }
   const [filterHasSaved, setFilterHasSaved] = useState<FilterSectionFlags>(() => {
-    const p = localStorage.getItem('hansl_prod_filter_pcb') !== null
-    const c = localStorage.getItem('hansl_prod_filter_cable') !== null
-    return { pcb: { rules: p, cats: p }, cable: { rules: c, cats: c } }
+    // 파랑(저장됨) = 기본값과 "다른" 내용이 저장돼 있을 때만. 키가 있어도 내용이 기본값이면 흰색.
+    const calc = (type: 'pcb' | 'cable') => {
+      if (localStorage.getItem(`hansl_prod_filter_${type}`) === null) return { rules: false, cats: false }
+      const f = loadTableFilter(type)
+      const orderCustom = !categoryOrderIsDefault(restoreCategoryOrder())
+      return {
+        rules: !rulesEqualDefault(type, f.rules),
+        cats: !catsEqualDefault(type, f.categories) || orderCustom,
+      }
+    }
+    return { pcb: calc('pcb'), cable: calc('cable') }
   })
   const [filterDirty, setFilterDirty] = useState<FilterSectionFlags>(() => ({
     pcb: { rules: false, cats: false }, cable: { rules: false, cats: false },
@@ -1385,7 +1411,8 @@ export default function ProductionListMain() {
       categories: Array.isArray(stored.categories) ? stored.categories : cur.categories,
       rules: cur.rules,
     }))
-    setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], rules: true } }))
+    // 기본값 그대로 저장한 경우엔 파랑 표시 안 함 (파랑 = 기본값에서 바꿔 저장한 상태)
+    setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], rules: !rulesEqualDefault(type, cur.rules) } }))
     setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], rules: false } }))
     toast.success('조건 필터가 저장되었습니다.')
   }
@@ -1399,7 +1426,9 @@ export default function ProductionListMain() {
       rules: Array.isArray(stored.rules) ? stored.rules : cur.rules,
     }))
     localStorage.setItem('hansl_prod_filter_category_order', JSON.stringify(categoryOrder))
-    setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], cats: true } }))
+    // 기본값 그대로(전체 선택 + 기본 순서) 저장한 경우엔 파랑 표시 안 함
+    const catsCustom = !catsEqualDefault(type, cur.categories) || !categoryOrderIsDefault(categoryOrder)
+    setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], cats: catsCustom } }))
     setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], cats: false } }))
     toast.success('제작구분 필터가 저장되었습니다.')
   }
@@ -1407,12 +1436,36 @@ export default function ProductionListMain() {
   const handleResetRules = (type: 'pcb' | 'cable') => {
     // 기본 세팅 = 입고대기 + 요청일 현재 년도(월 전체)
     setFilterFor(type, { rules: defaultRules(type) })
+    // 저장본의 규칙도 기본값으로 되돌림 — 안 그러면 새로고침 시 이전 저장 규칙이 되살아나고 아이콘도 다시 파랑이 됨
+    const stored = readStoredFilter(type)
+    const catsStillCustom = Array.isArray(stored.categories) && !catsEqualDefault(type, stored.categories)
+    if (catsStillCustom) {
+      localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({ categories: stored.categories, rules: defaultRules(type) }))
+    } else {
+      localStorage.removeItem(`hansl_prod_filter_${type}`)
+    }
+    setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], rules: false } }))
+    setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], rules: false } }))
     toast.info('필터가 기본값으로 초기화되었습니다.')
   }
 
   const handleResetCategoryFilter = (type: 'pcb' | 'cable') => {
     setFilterFor(type, { categories: type === 'pcb' ? [...PCB_CATEGORIES] : [...CABLE_CATEGORIES] })
     setCategoryOrder([...DEFAULT_CATEGORY_ORDER])
+    // 저장본의 제작구분/그룹순서도 기본값으로 되돌림 (규칙이 커스텀이면 규칙만 보존)
+    localStorage.removeItem('hansl_prod_filter_category_order')
+    const stored = readStoredFilter(type)
+    const rulesStillCustom = Array.isArray(stored.rules) && !rulesEqualDefault(type, stored.rules)
+    if (rulesStillCustom) {
+      localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({
+        categories: type === 'pcb' ? [...PCB_CATEGORIES] : [...CABLE_CATEGORIES],
+        rules: stored.rules,
+      }))
+    } else {
+      localStorage.removeItem(`hansl_prod_filter_${type}`)
+    }
+    setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], cats: false } }))
+    setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], cats: false } }))
     toast.info('제작구분 필터가 초기화되었습니다.')
   }
 
