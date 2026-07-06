@@ -3179,7 +3179,10 @@ export default function ProductionListMain() {
     // 숨긴 칼럼 구성(행 추가 중엔 전 칼럼 표시)이 바뀌면 모든 행을 다시 그려야 한다
     const adding = type === 'pcb' ? !!addingPcbRow : !!addingCableRow
     const cols = adding ? 'ALL' : hiddenCols[type].join(',')
-    return sel + '|' + editing + '|' + picker + '|' + stockIn + '|' + cols
+    // 이 행에서 펼쳐진 줄바꿈 셀 목록 — 펼침/접힘 토글 시 행을 다시 그리기 위해 시그니처에 포함
+    const expanded = expandedCells.size
+      ? [...expandedCells].filter(k => k.startsWith(item.id + '::')).join(',') : ''
+    return sel + '|' + editing + '|' + picker + '|' + stockIn + '|' + cols + '|' + expanded
   }
 
   // PCB 행 렌더 본문 — MemoRow가 (item, index)로 호출. 내부 커스텀 핸들러는 모두 useStableHandler로 안정화됨.
