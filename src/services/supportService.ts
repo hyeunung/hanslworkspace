@@ -816,19 +816,31 @@ class SupportService {
         .eq('email', user.email)
         .single()
 
-      const isAdmin = parseRoles(employee?.roles).includes('superadmin')
+      const roles = parseRoles(employee?.roles)
+      const isAdmin = roles.includes('superadmin')
+      const isLeadBuyer = roles.includes('lead buyer')
 
       // 관리자가 아닌 경우에만 본인 문의 확인
       if (!isAdmin) {
         // 문의 정보 확인 (본인 것인지)
         const { data: inquiry, error: fetchError } = await this.supabase
           .from('support_inquires')
-          .select('user_id, status, resolution_note')
+          .select('user_id, status, resolution_note, inquiry_type')
           .eq('id', inquiryId)
           .single()
 
         if (fetchError || !inquiry) {
           return { success: false, error: '문의를 찾을 수 없습니다.' }
+        }
+
+        // lead buyer는 업체등록 요청 건을 상태 무관하게 삭제 가능 (관리자 모드)
+        if (isLeadBuyer && inquiry.inquiry_type === 'new_vendor') {
+          const { error: lbDeleteError } = await this.supabase
+            .from('support_inquires')
+            .delete()
+            .eq('id', inquiryId)
+          if (lbDeleteError) throw lbDeleteError
+          return { success: true }
         }
 
         // 본인 문의가 아니면 삭제 불가
