@@ -2395,7 +2395,7 @@ export default function ProductionListMain() {
                   <button
                     type="button"
                     onClick={() => commitStockIn(stockInInput)}
-                    className="h-6 px-2 rounded text-[10px] font-medium bg-[#1777CB] text-white hover:bg-[#1265A8] transition-colors shrink-0"
+                    className="inline-flex items-center justify-center h-6 px-2 rounded text-[11px] leading-none font-medium bg-[#1777CB] text-white hover:bg-[#1265A8] transition-colors shrink-0"
                   >
                     저장
                   </button>
