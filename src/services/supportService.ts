@@ -480,14 +480,14 @@ class SupportService {
     }
   }
 
-  // 업체등록 요청 접수 → lead buyer에게 푸시 알림
+  // 업체등록 요청 접수 → lead buyer + superadmin에게 푸시 알림
   async notifyLeadBuyersNewVendorRequest(params: { requesterName: string; vendorName: string; inquiryId?: number }): Promise<void> {
     try {
       await this.supabase.functions.invoke('send_fcm_notification', {
         body: {
           type: 'new_vendor_inquiry',
-          title: '신규 업체 등록 요청이 도착했습니다',
-          body: `[${params.requesterName}] ${params.vendorName} 등록 요청`,
+          title: '🏢 신규 업체 등록 요청',
+          body: `${params.requesterName}님이 업체 등록을 요청했습니다.\n업체명: ${params.vendorName}`,
           data: {
             type: 'new_vendor_inquiry',
             inquiryId: String(params.inquiryId ?? ''),
