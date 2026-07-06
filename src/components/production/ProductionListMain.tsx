@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { productionService, ProductionPcb, ProductionCable } from '@/services/productionService'
 import { Plus, Search, Edit2, X, Filter, Save, RotateCcw, ChevronDown, SlidersHorizontal, Download, Printer, Eye, EyeOff, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
@@ -672,6 +673,65 @@ const renderCellValueWithLinks = (value: React.ReactNode, onLinkClick?: () => vo
     ) : (
       part
     )
+  )
+}
+
+// ─── 셀 팝오버를 브라우저 최상위 레이어로 ─────────────────────────────
+// 셀 편집/입고일/색상 팝오버가 테이블 스크롤 박스(overflow)에 잘려 아래쪽 행에서는
+// 스크롤해야 보이던 문제 해결: body 포털 + fixed로 테이블 박스 위에 겹쳐 띄운다.
+// 기본은 셀 아래에 붙고, 화면 아래 공간이 부족하면 셀 위로 뒤집는다(prefer='above'는 그 반대).
+// 숨김 span을 td 안에 남겨 앵커(td) 위치를 추적하고, 표 스크롤/리사이즈/내용 변화에 따라 재배치한다.
+function CellPopoverPortal({ prefer = 'below', innerRef, className, style, children, ...rest }: {
+  prefer?: 'below' | 'above'
+  innerRef?: React.MutableRefObject<HTMLDivElement | null>
+  className?: string
+  style?: React.CSSProperties
+  children: React.ReactNode
+} & Omit<React.HTMLAttributes<HTMLDivElement>, 'className' | 'style' | 'children'>) {
+  const anchorRef = useRef<HTMLSpanElement | null>(null)
+  const boxRef = useRef<HTMLDivElement | null>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  React.useLayoutEffect(() => {
+    const update = () => {
+      const td = anchorRef.current?.closest('td')
+      const box = boxRef.current
+      if (!td || !box) return
+      const r = td.getBoundingClientRect()
+      const bw = box.offsetWidth
+      const bh = box.offsetHeight
+      const left = Math.max(4, Math.min(r.left, window.innerWidth - bw - 8))
+      const below = r.bottom + 2
+      const above = r.top - bh - 2
+      let top = prefer === 'above' ? above : below
+      if (prefer === 'below' && below + bh > window.innerHeight - 4 && above >= 4) top = above
+      if (prefer === 'above' && above < 4) top = below
+      setPos(p => (p && Math.abs(p.top - top) < 1 && Math.abs(p.left - left) < 1 ? p : { top, left }))
+    }
+    update()
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null
+    if (boxRef.current) ro?.observe(boxRef.current)
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      ro?.disconnect()
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [prefer])
+  return (
+    <span ref={anchorRef} className="hidden">
+      {createPortal(
+        <div
+          ref={(el) => { boxRef.current = el; if (innerRef) innerRef.current = el }}
+          className={className}
+          style={{ ...style, position: 'fixed', top: pos ? pos.top : -9999, left: pos ? pos.left : -9999, zIndex: 100 }}
+          {...rest}
+        >
+          {children}
+        </div>,
+        document.body
+      )}
+    </span>
   )
 }
 
@@ -3118,11 +3178,11 @@ export default function ProductionListMain() {
       const cellVal = item.cell_colors?.[field];
       const { color: activeColor, strike: isCellStruck, bold: isCellBold, redText: isCellRedText } = parseColorState(cellVal);
 
-      return (
+      const pickerBody = (
         <div
           className={inline
             ? "mt-1.5 pt-1.5 border-t border-gray-200 flex flex-col gap-1"
-            : "absolute left-0 bottom-full mb-1 bg-white border border-gray-200 rounded-md shadow-lg p-1 z-50 flex flex-col gap-1"}
+            : "bg-white border border-gray-200 rounded-md shadow-lg p-1 flex flex-col gap-1"}
           style={inline ? undefined : { width: 'max-content' }}
         >
           {/* 1행: 배경색 */}
@@ -3220,6 +3280,8 @@ export default function ProductionListMain() {
           </div>
         </div>
       );
+      // 셀 위에 띄우는 단독 색상피커는 테이블 박스에 잘리지 않게 최상위 레이어로 (기본은 셀 위쪽)
+      return inline ? pickerBody : <CellPopoverPortal prefer="above">{pickerBody}</CellPopoverPortal>;
     };
 
     if (isEditing) {
@@ -3230,8 +3292,8 @@ export default function ProductionListMain() {
             <span className="text-[10px] text-gray-400 truncate block px-1">
               {formatArtworkDisplay(editValue) || ' '}
             </span>
-            <div
-              className="absolute left-0 top-full mt-0.5 z-50 bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
+            <CellPopoverPortal
+              className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
               style={{ width: 'max-content', minWidth: '150px' }}
               onMouseDown={(e) => e.stopPropagation()}
             >
@@ -3247,7 +3309,7 @@ export default function ProductionListMain() {
               />
               {/* 색상 피커도 함께 표시 (다른 편집 셀과 동일) */}
               {renderCellColorPicker(true)}
-            </div>
+            </CellPopoverPortal>
           </td>
         )
       }
@@ -3257,8 +3319,8 @@ export default function ProductionListMain() {
             <span className="text-[10px] text-gray-400 truncate block px-1">
               {formatPartsDisplay(editValue) || ' '}
             </span>
-            <div
-              className="absolute left-0 top-full mt-0.5 z-50 bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
+            <CellPopoverPortal
+              className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
               style={{ width: 'max-content', minWidth: '150px' }}
               onMouseDown={(e) => e.stopPropagation()}
             >
@@ -3274,7 +3336,7 @@ export default function ProductionListMain() {
               />
               {/* 색상 피커도 함께 표시 (다른 편집 셀과 동일) */}
               {renderCellColorPicker(true)}
-            </div>
+            </CellPopoverPortal>
           </td>
         )
       }
@@ -3349,8 +3411,8 @@ export default function ProductionListMain() {
             <span className="block text-[10px] text-gray-400 truncate px-1">{String(editValue || ' ')}</span>
             {/* 메모는 폭을 컨테이너에 직접 지정 — textarea 인라인 width만 바꾸면 absolute 컨테이너의
                 shrink-to-fit 재계산이 안 일어나는(Chromium) 문제가 있어 컨테이너 폭으로 제어한다. */}
-            <div
-              className="absolute left-0 top-full mt-0.5 z-[60] bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
+            <CellPopoverPortal
+              className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
               style={isMemoField
                 ? { width: `${memoWidth + 14}px`, maxWidth: '780px' }
                 : { minWidth: '220px', maxWidth: '360px' }}
@@ -3435,7 +3497,7 @@ export default function ProductionListMain() {
               )}
               {/* 색상 피커를 입력창 바로 아래에 함께 표시 */}
               {renderCellColorPicker(true)}
-            </div>
+            </CellPopoverPortal>
             {datalistNode}
           </td>
         )
@@ -3577,9 +3639,9 @@ export default function ProductionListMain() {
               입고대기
             </button>
             {isStockPickerOpen && (
-              <div
-                ref={stockInPopoverRef}
-                className="absolute left-0 top-full mt-0.5 z-[60] bg-white border border-gray-300 rounded-md shadow-lg p-1.5 cursor-default text-left"
+              <CellPopoverPortal
+                innerRef={stockInPopoverRef}
+                className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5 cursor-default text-left"
                 style={{ width: 'max-content' }}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
@@ -3620,7 +3682,7 @@ export default function ProductionListMain() {
                   modifiers={{ today: new Date() }}
                   modifiersClassNames={{ today: 'bg-[#1777CB] text-white font-semibold rounded-md' }}
                 />
-              </div>
+              </CellPopoverPortal>
             )}
           </>
         ) : renderCellDisplayValue(id, field, displayValue)}
