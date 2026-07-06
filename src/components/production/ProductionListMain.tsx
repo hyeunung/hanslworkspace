@@ -691,6 +691,18 @@ const getKstTodayISO = (): string => {
   return `${y}-${m}-${d}`
 }
 
+// 납품기한 경고: 한국시간 기준 기한 하루 전(D-1)이 되는 날부터 true (기한 당일·경과 포함)
+// 값이 ISO 날짜(YYYY-MM-DD)가 아닌 메모 텍스트면 판정하지 않는다.
+const isDeadlineUrgent = (value: string | null | undefined): boolean => {
+  if (!value) return false
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (!m) return false
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]))
+  d.setUTCDate(d.getUTCDate() - 1)
+  const dMinus1 = d.toISOString().slice(0, 10)
+  return getKstTodayISO() >= dMinus1
+}
+
 // 'YYYY-MM-DD' -> 'MM월DD일'
 const formatKoreanMMDD = (iso: string): string => {
   const p = iso.split('-')
@@ -2629,12 +2641,12 @@ export default function ProductionListMain() {
   const cableTopPad = Math.round(cableWin.start * rowHeightRef.current.cable)
   const cableBottomPad = Math.round((filteredCables.length - cableWinEnd) * rowHeightRef.current.cable)
 
-  // 셀에 표시되는 폰트 굵기: 실제 렌더링 클래스(font-semibold/medium)와 동일하게 맞춰야 실측이 정확함
-  const getFieldFontWeight = (field: string, hasValue: boolean): number => {
+  // 셀에 표시되는 폰트 굵기: 실제 렌더링 클래스(font-semibold/medium/bold)와 동일하게 맞춰야 실측이 정확함
+  const getFieldFontWeight = (field: string, value: unknown): number => {
     if (field === 'reference' || field === 'sales_order_number') return 600
     if (field === 'board_name') return 500
-    const isDateField = field.endsWith('_date') || field.endsWith('_deadline') || field.endsWith('_schedule') || field === 'final_product_stock'
-    if (isDateField && hasValue) return field === 'delivery_date' ? 400 : 600 // 납품 일자는 볼드 제외
+    // 납품기한은 D-1 경고 시에만 볼드, 나머지 날짜 칼럼은 일반 굵기
+    if (field === 'delivery_deadline' && isDeadlineUrgent(value as string | null | undefined)) return 700
     return 400
   }
 
@@ -2892,13 +2904,12 @@ export default function ProductionListMain() {
       // 줄바꿈 셀은 접힘 상태(첫 줄 + `(+N)🔽` 배지) 기준으로 폭을 잡아 가로로 길어지지 않게 한다.
       let multilineExtra = 0
       if (valStr.includes('\n')) { valStr = valStr.split('\n')[0]; multilineExtra = 34 }
-      const hasValue = item[field] !== null && item[field] !== undefined && item[field] !== ''
       // 취소선 셀은 font-normal(400)로 렌더되므로 같은 굵기로 측정 (renderEditableCell의 isStruck 로직과 동일)
       const cState = parseColorState(item.cell_colors?.[field])
       const rState = parseColorState(item.row_color)
       const isStruck = cState.strike === 'strike' ? true : cState.strike === 'nostrike' ? false : (rState.strike === 'strike')
       const isBold = cState.bold || rState.bold
-      const weight = isBold ? 700 : (isStruck ? 400 : getFieldFontWeight(field, hasValue))
+      const weight = isBold ? 700 : (isStruck ? 400 : getFieldFontWeight(field, item[field]))
       const w = measureText(valStr, weight) + multilineExtra
       if (w > maxValWidth) maxValWidth = w
     }
@@ -3401,9 +3412,14 @@ export default function ProductionListMain() {
     let computedClassName = cellClassName
     const isDateField = field.endsWith('_date') || field.endsWith('_deadline') || field.endsWith('_schedule') || field === 'final_product_stock';
     const hasValue = item[field] !== null && item[field] !== undefined && item[field] !== '';
-    if (isDateField && hasValue && field !== 'delivery_date') {
-      // 납품 일자는 볼드/진한색 제외 → 다른 칼럼(tbody 기본 text-gray-700)과 동일하게
-      computedClassName += ' font-semibold text-gray-900'
+    if (isDateField && hasValue) {
+      if (field === 'delivery_deadline' && isDeadlineUrgent(item[field])) {
+        // 납품기한: 한국시간 기준 D-1이 된 순간부터 빨간색 볼드 + 밑줄로 경고
+        computedClassName = computedClassName.replace('text-gray-500', '') + ' font-bold text-red-600 underline'
+      } else {
+        // 그 외 날짜 칼럼은 볼드 없이 검정 텍스트
+        computedClassName += ' text-gray-900'
+      }
     }
 
     const cState = parseColorState(item.cell_colors?.[field]);
@@ -3423,7 +3439,10 @@ export default function ProductionListMain() {
         .replace('text-gray-900', '')
         .replace('text-gray-500', '')
         .replace('text-red-500', '')
+        .replace('text-red-600', '')
         .replace('font-semibold', '')
+        .replace('font-bold', '')
+        .replace('underline', '')
         + ' line-through text-gray-400 font-normal'
     }
 
