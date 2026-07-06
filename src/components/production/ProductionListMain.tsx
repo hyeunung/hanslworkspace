@@ -273,14 +273,17 @@ const OP_LABELS: Record<FilterOp, string> = {
 
 // 입고 칼럼(완제품입고/실제입고일)은 도메인 용어로 표기: 비어있음=입고대기, 비어있지 않음=입고됨
 const STOCK_DATE_FIELDS = ['final_product_stock', 'cable_actual_date']
-// ARTWORK는 상태(진행중/업체확인중/발주완료) + 메모 구조라 전용 조건을 쓴다 (상태 목록은 ARTWORK_STATUS_OPTIONS)
+// ARTWORK/부품정리는 상태 + 메모 하이브리드 구조라 전용 조건(status_is)을 쓴다
+// (상태 목록은 ARTWORK_STATUS_OPTIONS / PARTS_STATUS_OPTIONS, 필터 선택지는 *_FILTER_STATUS_OPTIONS)
 const ARTWORK_FIELD = 'artwork_status'
+const PARTS_FIELD = 'parts_organization'
+const STATUS_FIELDS = [ARTWORK_FIELD, PARTS_FIELD]
 const opLabelFor = (field: string, op: FilterOp): string => {
   if (STOCK_DATE_FIELDS.includes(field)) {
     if (op === 'is_empty') return '입고대기'
     if (op === 'not_empty') return '입고됨'
   }
-  if (field === ARTWORK_FIELD) {
+  if (STATUS_FIELDS.includes(field)) {
     if (op === 'status_is') return '상태'
     if (op === 'contains') return '메모 포함'
     if (op === 'not_contains') return '메모 미포함'
@@ -290,7 +293,7 @@ const opLabelFor = (field: string, op: FilterOp): string => {
 
 // 칼럼 타입에 따라 선택 가능한 조건 목록
 const opsForField = (field: string): FilterOp[] => {
-  if (field === ARTWORK_FIELD) return ['status_is', 'contains', 'not_contains', 'is_empty', 'not_empty']
+  if (STATUS_FIELDS.includes(field)) return ['status_is', 'contains', 'not_contains', 'is_empty', 'not_empty']
   // 입고 칼럼(완제품입고 등)은 날짜/입고대기/입고됨만 — 포함·미포함은 날짜 데이터에 의미 중복
   if (STOCK_DATE_FIELDS.includes(field)) return ['date_in', 'is_empty', 'not_empty']
   if (DATE_ONLY_FIELDS.includes(field)) return ['date_in', 'is_empty', 'not_empty']
@@ -399,12 +402,21 @@ const applyFilterRule = (item: any, rule: FilterRule): boolean => {
   const raw = item[rule.field]
   const s = raw == null ? '' : String(raw).trim()
   const empty = s === '' || s === '-'
-  // ARTWORK: 상태(status_is)는 파싱한 상태로, 포함/미포함은 메모 부분만 검색
+  // ARTWORK: 상태(status_is)는 파싱한 상태 + 엑셀 이관 텍스트 키워드로, 포함/미포함은 메모 부분만 검색
   if (rule.field === ARTWORK_FIELD) {
     const aw = parseArtworkStatus(s)
-    if (rule.op === 'status_is') return aw.status === rule.value
+    if (rule.op === 'status_is') return artworkStatusMatches(aw, rule.value)
     if (rule.op === 'contains') return !rule.value || aw.memo.toLowerCase().includes(rule.value.toLowerCase())
     if (rule.op === 'not_contains') return !rule.value || !aw.memo.toLowerCase().includes(rule.value.toLowerCase())
+    if (rule.op === 'is_empty') return empty
+    if (rule.op === 'not_empty') return !empty
+  }
+  // 부품정리: ARTWORK와 같은 하이브리드(status|||memo) 구조 — 동일하게 처리
+  if (rule.field === PARTS_FIELD) {
+    const p = parsePartsStatus(s)
+    if (rule.op === 'status_is') return partsStatusMatches(p, rule.value)
+    if (rule.op === 'contains') return !rule.value || p.memo.toLowerCase().includes(rule.value.toLowerCase())
+    if (rule.op === 'not_contains') return !rule.value || !p.memo.toLowerCase().includes(rule.value.toLowerCase())
     if (rule.op === 'is_empty') return empty
     if (rule.op === 'not_empty') return !empty
   }
@@ -758,7 +770,31 @@ const ARTWORK_STATUS_OPTIONS: { code: string; label: string }[] = [
   { code: 'ordered', label: '발주완료' },
 ]
 
+// 필터 전용 상태 선택지 — 셀 편집 드롭다운(위 3종)에 더해, 구엑셀 이관/직접 입력 텍스트를 아우른다.
+//  - delivered: '전달 완료' 계열 텍스트 (셀 편집에는 없는 필터 전용 상태)
+//  - text     : 상태 코드도 없고 상태 키워드에도 안 걸리는 순수 직접 입력(예: '한슬 완제품 재고')
+const ARTWORK_FILTER_STATUS_OPTIONS: { code: string; label: string }[] = [
+  ...ARTWORK_STATUS_OPTIONS,
+  { code: 'delivered', label: '전달완료' },
+  { code: 'text', label: '직접입력' },
+]
+
 type ArtworkParts = { status: string; date: string; memo: string }
+
+// 필터 상태 판정 — 드롭다운으로 저장된 상태 코드 외에, 구엑셀 이관 텍스트(예: '4/29 PCB 발주 완료')도
+// 키워드로 같은 상태로 취급한다. 키워드 매칭은 상태 코드가 없는(직접 입력) 값에만 적용해 메모 오탐을 막는다.
+const ARTWORK_LEGACY_PATTERNS: Record<string, RegExp> = {
+  progress: /(작업|진행)\s*중/,
+  checking: /확인\s*중/,
+  ordered: /발주\s*완료/,
+  delivered: /전달\s*완료/,
+}
+const artworkStatusMatches = (aw: ArtworkParts, code: string | undefined): boolean => {
+  const legacy = aw.status ? '' : aw.memo
+  if (code === 'text') return !aw.status && aw.memo.trim() !== '' && !Object.values(ARTWORK_LEGACY_PATTERNS).some(re => re.test(aw.memo))
+  if (!code) return false
+  return aw.status === code || (ARTWORK_LEGACY_PATTERNS[code]?.test(legacy) ?? false)
+}
 
 // 한국시간(KST) 기준 오늘 날짜 'YYYY-MM-DD'
 const getKstTodayISO = (): string => {
@@ -1051,7 +1087,29 @@ const PARTS_STATUS_OPTIONS: { code: string; label: string }[] = [
   { code: 'done', label: '완료' },
 ]
 
+// 필터 전용 상태 선택지 — ARTWORK와 동일하게 직접 입력 텍스트('홀딩' 등)를 잡는 항목을 더한다
+const PARTS_FILTER_STATUS_OPTIONS: { code: string; label: string }[] = [
+  ...PARTS_STATUS_OPTIONS,
+  { code: 'text', label: '직접입력' },
+]
+
 type PartsParts = { status: string; memo: string }
+
+// 필터 상태 판정 — 상태 코드 외에 구엑셀 이관 텍스트('완료'/'진행중')도 같은 상태로 취급 (ARTWORK와 동일 원칙)
+const PARTS_LEGACY_PATTERNS: Record<string, RegExp> = {
+  progress: /진행\s*중/,
+  done: /완료/,
+}
+const partsStatusMatches = (p: PartsParts, code: string | undefined): boolean => {
+  const legacy = p.status ? '' : p.memo
+  if (code === 'text') return !p.status && p.memo.trim() !== '' && !Object.values(PARTS_LEGACY_PATTERNS).some(re => re.test(p.memo))
+  if (!code) return false
+  return p.status === code || (PARTS_LEGACY_PATTERNS[code]?.test(legacy) ?? false)
+}
+
+// 필터 status_is 드롭다운에 쓸 선택지 (칼럼별)
+const filterStatusOptionsFor = (field: string) =>
+  field === PARTS_FIELD ? PARTS_FILTER_STATUS_OPTIONS : ARTWORK_FILTER_STATUS_OPTIONS
 
 const parsePartsStatus = (raw: string | null | undefined): PartsParts => {
   if (!raw) return { status: '', memo: '' }
@@ -5004,20 +5062,23 @@ export default function ProductionListMain() {
     })
 
     // 칼럼 변경 시 새 칼럼이 지원하는 조건으로 보정 (date_in이면 년/월 초기화)
-    // op별 기본 value 계산 (status_is면 첫 상태코드, 포함류면 기존/빈 문자열)
-    const valueForOp = (op: FilterOp, prev?: string): string | undefined => {
-      if (op === 'status_is') return prev && ARTWORK_STATUS_OPTIONS.some(o => o.code === prev) ? prev : ARTWORK_STATUS_OPTIONS[0].code
+    // op별 기본 value 계산 (status_is면 해당 칼럼의 첫 상태코드, 포함류면 기존/빈 문자열)
+    const valueForOp = (field: string, op: FilterOp, prev?: string): string | undefined => {
+      if (op === 'status_is') {
+        const opts = filterStatusOptionsFor(field)
+        return prev && opts.some(o => o.code === prev) ? prev : opts[0].code
+      }
       if (op === 'contains' || op === 'not_contains') return prev ?? ''
       return undefined
     }
     const changeRuleField = (rule: FilterRule, field: string) => {
       const ops = opsForField(field)
-      // ARTWORK로 바꾸면 기본은 상태 선택, 그 외엔 호환되는 기존 조건 유지
-      const op = field === ARTWORK_FIELD ? 'status_is' : (ops.includes(rule.op) ? rule.op : ops[0])
+      // ARTWORK/부품정리로 바꾸면 기본은 상태 선택, 그 외엔 호환되는 기존 조건 유지
+      const op = STATUS_FIELDS.includes(field) ? 'status_is' : (ops.includes(rule.op) ? rule.op : ops[0])
       updateRule(type, rule.id, {
         field,
         op,
-        value: valueForOp(op, rule.value),
+        value: valueForOp(field, op, rule.value),
         year: op === 'date_in' ? new Date().getFullYear() : null,
         month: op === 'date_in' ? null : null,
       })
@@ -5025,7 +5086,7 @@ export default function ProductionListMain() {
     const changeRuleOp = (rule: FilterRule, op: FilterOp) => {
       updateRule(type, rule.id, {
         op,
-        value: valueForOp(op, rule.value),
+        value: valueForOp(rule.field, op, rule.value),
         year: op === 'date_in' ? (rule.year ?? new Date().getFullYear()) : null,
         month: op === 'date_in' ? (rule.month ?? null) : null,
       })
@@ -5073,15 +5134,15 @@ export default function ProductionListMain() {
                       <option key={op} value={op}>{opLabelFor(rule.field, op)}</option>
                     ))}
                   </select>
-                  {/* 조건별 값 입력: ARTWORK 상태 드롭다운 / 년/월 드롭다운 / 텍스트 */}
+                  {/* 조건별 값 입력: 상태 드롭다운(ARTWORK/부품정리) / 년/월 드롭다운 / 텍스트 */}
                   {rule.op === 'status_is' && (
                     <select
                       value={rule.value ?? ''}
                       onChange={(e) => updateRule(type, rule.id, { value: e.target.value })}
-                      style={fitSelect(ARTWORK_STATUS_OPTIONS.find(o => o.code === rule.value)?.label ?? '진행중', 700)}
+                      style={fitSelect(filterStatusOptionsFor(rule.field).find(o => o.code === rule.value)?.label ?? '진행중', 700)}
                       className={`${selectClass} text-[#1777CB] font-bold`}
                     >
-                      {ARTWORK_STATUS_OPTIONS.map(o => (
+                      {filterStatusOptionsFor(rule.field).map(o => (
                         <option key={o.code} value={o.code}>{o.label}</option>
                       ))}
                     </select>
