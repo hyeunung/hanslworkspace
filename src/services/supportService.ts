@@ -22,6 +22,26 @@ export type SupportInquiryType =
   | 'quantity_change'
   | 'price_change'
   | 'item_add'
+  | 'new_vendor'
+
+// 업체등록 요청(new_vendor) payload
+export interface NewVendorInquiryPayload {
+  vendor: {
+    vendor_name: string
+    vendor_alias?: string
+    vendor_phone?: string
+    vendor_fax?: string
+    vendor_payment_schedule?: string
+    vendor_address?: string
+    note?: string
+  }
+  contacts: {
+    contact_name: string
+    position?: string
+    contact_phone?: string
+    contact_email?: string
+  }[]
+}
 
 export type SupportInquiryPayload =
   | {
@@ -74,6 +94,7 @@ export type SupportInquiryPayload =
         remark?: string | null
       }[]
     }
+  | NewVendorInquiryPayload
 
 export interface SupportInquiry {
   id?: number
@@ -423,6 +444,83 @@ class SupportService {
       return { success: true, data: sortedData }
     } catch (e) {
       return { success: false, data: [], error: e instanceof Error ? e.message : '문의 조회 실패' }
+    }
+  }
+
+  // 업체등록 요청 문의 목록 조회 (lead buyer 관리자 모드용)
+  // RLS: lead buyer는 inquiry_type='new_vendor' 문의 전체 조회 가능
+  async getNewVendorInquiries(): Promise<{ success: boolean; data: SupportInquiry[]; error?: string }> {
+    try {
+      const { data, error } = await this.supabase
+        .from('support_inquires')
+        .select('*')
+        .eq('inquiry_type', 'new_vendor')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      return { success: true, data: this.sortInquiriesByStatus(data || []) }
+    } catch (e) {
+      return { success: false, data: [], error: e instanceof Error ? e.message : '업체등록 요청 조회 실패' }
+    }
+  }
+
+  // 업체등록 요청 payload 수정 (lead buyer가 좌측 인풋에서 수정한 내용 저장)
+  async updateInquiryPayload(inquiryId: number, payload: SupportInquiryPayload): Promise<{ success: boolean; error?: string }> {
+    try {
+      const { error } = await this.supabase
+        .from('support_inquires')
+        .update({ inquiry_payload: payload, updated_at: new Date().toISOString() })
+        .eq('id', inquiryId)
+
+      if (error) throw error
+      return { success: true }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : '요청 내역 저장 실패' }
+    }
+  }
+
+  // 업체등록 요청 접수 → lead buyer에게 푸시 알림
+  async notifyLeadBuyersNewVendorRequest(params: { requesterName: string; vendorName: string; inquiryId?: number }): Promise<void> {
+    try {
+      await this.supabase.functions.invoke('send_fcm_notification', {
+        body: {
+          type: 'new_vendor_inquiry',
+          title: '신규 업체 등록 요청이 도착했습니다',
+          body: `[${params.requesterName}] ${params.vendorName} 등록 요청`,
+          data: {
+            type: 'new_vendor_inquiry',
+            inquiryId: String(params.inquiryId ?? ''),
+            vendor_name: params.vendorName,
+            requester_name: params.requesterName
+          }
+        }
+      })
+    } catch (e) {
+      // 알림 실패는 문의 접수 자체를 막지 않음
+      logger.warn('업체등록 요청 알림 발송 실패', { error: e })
+    }
+  }
+
+  // 업체 등록 완료 → 요청자에게 푸시 알림
+  async notifyVendorRegistered(params: { targetEmail: string; vendorName: string; inquiryId?: number }): Promise<void> {
+    try {
+      await this.supabase.functions.invoke('send_fcm_notification', {
+        body: {
+          type: 'new_vendor_registered',
+          targetEmail: params.targetEmail,
+          title: '업체 등록 완료',
+          body: `요청하신 업체(${params.vendorName}) 등록이 완료되었습니다.`,
+          data: {
+            type: 'new_vendor_registered',
+            inquiryId: String(params.inquiryId ?? ''),
+            vendor_name: params.vendorName
+          }
+        }
+      })
+    } catch (e) {
+      // 알림 실패는 등록 처리 자체를 막지 않음
+      logger.warn('업체 등록 완료 알림 발송 실패', { error: e })
     }
   }
 

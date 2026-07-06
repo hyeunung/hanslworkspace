@@ -820,6 +820,25 @@ Deno.serve(async (req)=>{
       const result = await getPurchaseRoleTokens(supabase, ['admin']);
       targetTokens = result.tokens;
       targetEmails = result.emails;
+    } else if (type === 'new_vendor_inquiry') {
+      // 업체등록 요청 문의 접수 → lead buyer에게 알림
+      console.log('🏢 [업체등록 요청 알림] 신규 업체 등록 요청 → lead buyer에게 알림');
+
+      const dataMap = data && typeof data === 'object' ? data : {};
+      const requesterName = dataMap['requester_name'] || '';
+      const vendorName = dataMap['vendor_name'] || '';
+
+      const result = await getPurchaseRoleTokens(supabase, ['lead buyer']);
+      targetTokens = result.tokens;
+      targetEmails = result.emails;
+
+      if (!title) title = '신규 업체 등록 요청이 도착했습니다';
+      if (!body) body = `[${requesterName || '알 수 없음'}] ${vendorName || '업체'} 등록 요청`;
+
+      data = {
+        ...dataMap,
+        type: 'new_vendor_inquiry'
+      };
     } else if (type === 'admin') {
       // 연차/출장 관리자 알림 - roles 기반
       console.log('📋 [연차/출장 알림] roles 기반 관리자 조회');
