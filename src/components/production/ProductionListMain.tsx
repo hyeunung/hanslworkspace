@@ -926,6 +926,183 @@ function ArtworkStatusEditor({
   )
 }
 
+// ─────────────────────────────────────────────────────────────
+// 부품정리(parts_organization) 상태 처리 — ARTWORK와 동일한 방식이나
+// 상태는 '진행중 / 완료' 두 가지, 날짜는 기록하지 않는다.
+// 저장 포맷: 'status|||memo' (구분자 없으면 전체를 메모로 간주)
+//  - status: '' | 'progress' | 'done'
+//  - memo  : 자유 메모
+// ─────────────────────────────────────────────────────────────
+const PARTS_STATUS_OPTIONS: { code: string; label: string }[] = [
+  { code: 'progress', label: '진행중' },
+  { code: 'done', label: '완료' },
+]
+
+type PartsParts = { status: string; memo: string }
+
+const parsePartsStatus = (raw: string | null | undefined): PartsParts => {
+  if (!raw) return { status: '', memo: '' }
+  if (raw.includes('|||')) {
+    const parts = raw.split('|||')
+    return { status: parts[0] || '', memo: parts.slice(1).join('|||') }
+  }
+  // 하위호환: 구분자가 없으면 전체를 메모로 간주
+  return { status: '', memo: raw }
+}
+
+const serializePartsStatus = (p: PartsParts): string => {
+  if (!p.status && !p.memo) return ''
+  if (!p.status) return p.memo // 메모만 있을 때는 원문 저장(하위호환)
+  return `${p.status}|||${p.memo || ''}`
+}
+
+// 셀 표시용 문자열 (예: '완료 │ 추가 메모')
+const formatPartsDisplay = (raw: string | null | undefined): string => {
+  const { status, memo } = parsePartsStatus(raw)
+  let label = ''
+  if (status === 'progress') label = '진행중'
+  else if (status === 'done') label = '완료'
+  if (label && memo) return `${label} │ ${memo}`
+  if (label) return label
+  return memo || ''
+}
+
+// 행 추가(입력행) 전용 부품정리 콤보 입력: 메모 입력창 + 클릭 시 상태 드롭다운(진행중/완료)
+function PartsAddInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const parts = parsePartsStatus(value)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const open = pos !== null
+  const openMenu = () => {
+    const r = wrapRef.current?.getBoundingClientRect()
+    if (!r) return
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - 180))
+    setPos({ top: r.bottom + 2, left })
+  }
+  const statusLabel =
+    parts.status === 'progress' ? '진행중'
+    : parts.status === 'done' ? '완료'
+    : ''
+  const pick = (code: string) => {
+    if (parts.status === code) {
+      onChange(serializePartsStatus({ ...parts, status: '' }))
+    } else {
+      onChange(serializePartsStatus({ status: code, memo: parts.memo }))
+    }
+    setPos(null)
+  }
+  return (
+    <div className="relative" ref={wrapRef}>
+      <div
+        className="flex items-center gap-1 w-full bg-white border border-gray-300 rounded px-1 cursor-pointer"
+        onClick={openMenu}
+      >
+        {statusLabel && (
+          <span className="shrink-0 text-[9px] text-blue-600 font-semibold whitespace-nowrap">{statusLabel} │</span>
+        )}
+        <input
+          type="text"
+          value={parts.memo}
+          onChange={(e) => onChange(serializePartsStatus({ ...parts, memo: e.target.value }))}
+          onFocus={openMenu}
+          placeholder="부품정리 메모"
+          className="w-full bg-transparent text-[10px] focus:outline-none"
+          style={{ border: 'none', boxShadow: 'none', outline: 'none' }}
+        />
+      </div>
+      {open && pos && (
+        <>
+          <div className="fixed inset-0 z-[9998]" onMouseDown={() => setPos(null)} />
+          <div
+            className="fixed z-[9999] bg-white border border-gray-200 rounded-md shadow-lg py-0.5 w-max min-w-[150px] flex flex-col"
+            style={{ top: pos.top, left: pos.left }}
+          >
+            {PARTS_STATUS_OPTIONS.map(({ code, label }) => (
+              <button
+                key={code}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pick(code)}
+                className={`block w-full text-left whitespace-nowrap px-2 py-1 text-[11px] hover:bg-gray-50 transition-colors ${parts.status === code ? 'text-[#1777CB] font-bold' : 'text-gray-700'}`}
+              >
+                {parts.status === code ? '✓ ' : ''}{label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// 상태 선택 칩(진행중/완료) + 구분선 + 메모 입력을 함께 제공하는 재사용 에디터
+function PartsStatusEditor({
+  value,
+  onChange,
+  onCommit,
+  onCancel,
+  autoFocusMemo = false,
+}: {
+  value: string
+  onChange: (v: string) => void
+  onCommit?: () => void
+  onCancel?: () => void
+  autoFocusMemo?: boolean
+}) {
+  const parts = parsePartsStatus(value)
+  const pickStatus = (code: string) => {
+    if (parts.status === code) {
+      onChange(serializePartsStatus({ ...parts, status: '' }))
+    } else {
+      onChange(serializePartsStatus({ ...parts, status: code }))
+    }
+  }
+  const setMemo = (m: string) => onChange(serializePartsStatus({ ...parts, memo: m }))
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-0.5">
+        {PARTS_STATUS_OPTIONS.map(({ code, label }) => {
+          const active = parts.status === code
+          return (
+            <button
+              key={code}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                pickStatus(code)
+              }}
+              className={`text-[10px] leading-tight px-1.5 py-0.5 rounded border text-left transition-colors ${
+                active
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+              }`}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </div>
+      <div className="border-t border-gray-200" />
+      <input
+        type="text"
+        autoFocus={autoFocusMemo}
+        value={parts.memo}
+        onChange={(e) => setMemo(e.target.value)}
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onCommit?.()
+          if (e.key === 'Escape') onCancel?.()
+        }}
+        onBlur={() => onCommit?.()}
+        placeholder="메모"
+        className="w-full h-5 bg-white border border-gray-300 rounded px-1 text-[10px] focus:outline-none"
+      />
+    </div>
+  )
+}
+
 // ─── 행 렌더 격리 유틸 ──────────────────────────────────────────────
 // 항상 같은 함수 객체를 유지하면서 내부는 "최신 렌더"의 로직을 실행한다.
 // MemoRow가 렌더를 스킵한 행의 이벤트 핸들러(이전 렌더의 element에 붙어 있음)가
@@ -2856,6 +3033,33 @@ export default function ProductionListMain() {
           </td>
         )
       }
+      if (field === 'parts_organization') {
+        return (
+          <td className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
+            <span className="text-[10px] text-gray-400 truncate block px-1">
+              {formatPartsDisplay(editValue) || ' '}
+            </span>
+            <div
+              className="absolute left-0 top-full mt-0.5 z-50 bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
+              style={{ width: 'max-content', minWidth: '150px' }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <PartsStatusEditor
+                value={editValue}
+                onChange={setEditValue}
+                autoFocusMemo
+                onCommit={() => {
+                  handleCellSave({ id, type, field }, editValue)
+                  setEditingCell(null)
+                }}
+                onCancel={() => setEditingCell(null)}
+              />
+              {/* 색상 피커도 함께 표시 (다른 편집 셀과 동일) */}
+              {renderCellColorPicker(true)}
+            </div>
+          </td>
+        )
+      }
       if (inputType === 'select') {
         return (
           <td className={`${cellClassName} p-0.5 relative`} style={editCellStyle}>
@@ -2981,10 +3185,11 @@ export default function ProductionListMain() {
                   onChange={(e) => setEditValue(e.target.value)}
                   onBlur={commit}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commit() }
+                    // Enter=저장, Shift+Enter=줄바꿈
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit() }
                     if (e.key === 'Escape') setEditingCell(null)
                   }}
-                  placeholder={`${getColumnTitle(field, type)} 입력 (줄바꿈 가능 · Ctrl+Enter 저장)`}
+                  placeholder={`${getColumnTitle(field, type)} 입력 (Enter 저장 · Shift+Enter 줄바꿈)`}
                   className="w-full bg-white border border-gray-300 rounded px-1.5 py-1 text-[11px] leading-snug focus:outline-none focus:border-[#1777CB] resize-y"
                   style={{ maxHeight: '55vh' }}
                 />
@@ -3708,7 +3913,7 @@ export default function ProductionListMain() {
                           'pcb',
                           'parts_organization',
                           item,
-                          item.parts_organization || '-',
+                          formatPartsDisplay(item.parts_organization) || '-',
                           'px-2 py-1.5 border border-gray-200'
                         )}
                         {renderEditableCell(
@@ -4901,13 +5106,10 @@ export default function ProductionListMain() {
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
-                        <AddPopoverInput
+                      <td className="px-1 py-1 border border-gray-200 align-top">
+                        <PartsAddInput
                           value={addingPcbRow.parts_organization || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, parts_organization: v })}
-                          placeholder="부품정리"
-                          memo={false}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
                       <td className="px-1 py-1 border border-gray-200">
