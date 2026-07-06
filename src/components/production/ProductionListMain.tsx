@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { productionService, ProductionPcb, ProductionCable } from '@/services/productionService'
-import { Plus, Search, Edit2, X, Filter, Save, RotateCcw, ChevronDown, SlidersHorizontal, Download, Printer, Eye, EyeOff } from 'lucide-react'
+import { Plus, Search, Edit2, X, Filter, Save, RotateCcw, ChevronDown, SlidersHorizontal, Download, Printer, Eye, EyeOff, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { vendorService } from '@/services/vendorService'
@@ -288,6 +288,70 @@ const defaultTableFilter = (type: 'pcb' | 'cable'): TableFilter => ({
   rules: defaultRules(type),
 })
 
+// ─── 테이블별 정렬 (노션식: 칼럼 + 방향 규칙 목록, 우선순위 순) ──────────────
+// 제작구분(카테고리)은 항상 그룹 기준(1차 정렬)이라 정렬 대상에서 제외한다.
+// 사용자 정렬 규칙은 같은 제작구분 그룹 "안에서" 위→아래 순서를 결정한다.
+type SortDir = 'asc' | 'desc'
+type SortRule = { id: string; field: string; dir: SortDir }
+
+let sortRuleSeq = 0
+const newSortId = () => `s${++sortRuleSeq}`
+
+// 정렬 가능한 칼럼(제작구분 제외). 라벨은 컴포넌트의 getColumnTitle로 표시.
+const PCB_SORT_FIELDS = ['board_name', 'reference', 'request_date', 'estimate_no', 'delivery_deadline', 'client_name', 'client_manager', 'hansl_manager', 'revision_count', 'quantity', 'artwork_status', 'metal_mask', 'changes_memo', 'stock_count', 'pcb_vendor', 'delivery_schedule', 'pcb_lead_time', 'received_quantity', 'received_destination', 'parts_organization', 'assy_hanwha', 'assy_evertech', 'assy_requested_date', 'final_product_stock', 'qa_passed', 'qa_failed', 'qa_notes', 'design_review', 'delivery_quantity', 'delivery_date', 'delivery_destination']
+const CABLE_SORT_FIELDS = ['board_name', 'reference', 'request_date', 'estimate_no', 'delivery_deadline', 'client_name', 'client_manager', 'hansl_manager', 'revision_count', 'quantity', 'spec_details', 'cable_vendor', 'cable_requested_date', 'cable_actual_date', 'delivery_notes']
+
+// 숫자로 비교할 칼럼 / 날짜(YYYY-MM-DD 선두 매칭)로 비교할 칼럼
+const NUMERIC_SORT_FIELDS = new Set(['revision_count', 'quantity', 'stock_count', 'received_quantity', 'delivery_quantity'])
+const DATE_SORT_FIELDS = new Set(['request_date', 'delivery_deadline', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date', 'final_product_stock'])
+
+// 정렬 비교 키 추출 — 값 없음(null/빈문자)은 null 반환하여 방향과 무관하게 항상 뒤로 보낸다(노션 동작).
+const sortKeyFor = (item: any, field: string): string | number | null => {
+  const raw = item?.[field]
+  if (raw == null || (typeof raw === 'string' && raw.trim() === '')) return null
+  if (NUMERIC_SORT_FIELDS.has(field)) {
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : null
+  }
+  if (DATE_SORT_FIELDS.has(field)) {
+    // 순수 날짜 또는 "YYYY-MM-DD (메모)" 혼합 — 선두 ISO 날짜만 뽑으면 사전식=시간순
+    const m = typeof raw === 'string' ? raw.match(/(\d{4}-\d{2}-\d{2})/) : null
+    return m ? m[1] : null
+  }
+  return typeof raw === 'string' ? raw : String(raw)
+}
+
+// 정렬 규칙 목록(우선순위 순)으로 두 행 비교. 빈 값은 항상 뒤, 동률이면 다음 규칙으로.
+const compareBySortRules = (a: any, b: any, rules: SortRule[]): number => {
+  for (const r of rules) {
+    const ka = sortKeyFor(a, r.field)
+    const kb = sortKeyFor(b, r.field)
+    if (ka == null && kb == null) continue
+    if (ka == null) return 1
+    if (kb == null) return -1
+    let cmp: number
+    if (typeof ka === 'number' && typeof kb === 'number') cmp = ka - kb
+    else cmp = String(ka).localeCompare(String(kb), 'ko')
+    if (cmp !== 0) return r.dir === 'asc' ? cmp : -cmp
+  }
+  return 0
+}
+
+// localStorage에서 저장된 정렬 규칙 복원 (유효한 칼럼/방향만)
+const loadTableSort = (type: 'pcb' | 'cable'): SortRule[] => {
+  try {
+    const saved = localStorage.getItem(`hansl_prod_sort_${type}`)
+    if (saved) {
+      const valid = type === 'pcb' ? PCB_SORT_FIELDS : CABLE_SORT_FIELDS
+      const parsed = JSON.parse(saved) as SortRule[]
+      return parsed
+        .filter(r => r && valid.includes(r.field) && (r.dir === 'asc' || r.dir === 'desc'))
+        .map(r => ({ id: newSortId(), field: r.field, dir: r.dir }))
+    }
+  } catch { /* fall through */ }
+  return []
+}
+
 // 규칙 하나를 행에 적용 (AND 결합은 호출부에서). 값이 없는 셀은 date_in/contains에서 제외된다.
 const applyFilterRule = (item: any, rule: FilterRule): boolean => {
   const raw = item[rule.field]
@@ -386,6 +450,34 @@ const loadTableFilter = (type: 'pcb' | 'cable'): TableFilter => {
   } catch {
     return def
   }
+}
+
+// localStorage에 저장된 제작구분 그룹 순서 복원 (기본 카테고리 보강)
+const restoreCategoryOrder = (): string[] => {
+  try {
+    const saved = localStorage.getItem('hansl_prod_filter_category_order')
+    if (saved) {
+      const parsed = JSON.parse(saved) as string[]
+      const merged = parsed.filter(c => DEFAULT_CATEGORY_ORDER.includes(c))
+      for (const c of DEFAULT_CATEGORY_ORDER) if (!merged.includes(c)) merged.push(c)
+      return merged
+    }
+  } catch { /* fall through */ }
+  return [...DEFAULT_CATEGORY_ORDER]
+}
+
+// 필터 저장 버튼 아이콘.
+//  - 미저장: 기본 lucide Save(회색 아웃라인, 버튼 색 상속)
+//  - 저장됨: 몸통·바깥 테두리는 진파랑(#1777CB), 안쪽 디테일 선만 흰색 (lucide는 선 색이 하나뿐이라 커스텀 SVG로 분리)
+function FilterSaveIcon({ saved }: { saved: boolean }) {
+  if (!saved) return <Save className="w-3.5 h-3.5" />
+  return (
+    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" aria-hidden="true">
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" fill="#1777CB" stroke="#1777CB" strokeWidth="2" strokeLinejoin="round" />
+      <polyline points="17 21 17 13 7 13 7 21" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <polyline points="7 3 7 8 15 8" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
 }
 
 // Date utilities for formatting text inputs (e.g. 7/6 -> 07월 06일)
@@ -873,11 +965,60 @@ export default function ProductionListMain() {
   const [searchQuery, setSearchQuery] = useState('')
   const [pcbFilter, setPcbFilter] = useState<TableFilter>(() => loadTableFilter('pcb'))
   const [cableFilter, setCableFilter] = useState<TableFilter>(() => loadTableFilter('cable'))
+
+  // 필터 "저장됨" 상태 — 조건(규칙) 필터와 제작구분 필터는 서로 독립적으로 저장/초기화된다.
+  // 표(pcb/cable) × 섹션(rules/cats)별로 저장 이력(hasSaved)과 변경 여부(dirty)를 따로 추적한다.
+  // 저장됨 = 저장 이력 있음 && 저장 이후 그 섹션을 건드리지 않음.
+  type FilterSectionFlags = { pcb: { rules: boolean; cats: boolean }; cable: { rules: boolean; cats: boolean } }
+  const [filterHasSaved, setFilterHasSaved] = useState<FilterSectionFlags>(() => {
+    const p = localStorage.getItem('hansl_prod_filter_pcb') !== null
+    const c = localStorage.getItem('hansl_prod_filter_cable') !== null
+    return { pcb: { rules: p, cats: p }, cable: { rules: c, cats: c } }
+  })
+  const [filterDirty, setFilterDirty] = useState<FilterSectionFlags>(() => ({
+    pcb: { rules: false, cats: false }, cable: { rules: false, cats: false },
+  }))
+  const markFilterDirty = (type: 'pcb' | 'cable', section: 'rules' | 'cats') =>
+    setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], [section]: true } }))
+
   const filterFor = (type: 'pcb' | 'cable') => (type === 'pcb' ? pcbFilter : cableFilter)
   const setFilterFor = (type: 'pcb' | 'cable', patch: Partial<TableFilter>) => {
     if (type === 'pcb') setPcbFilter(prev => ({ ...prev, ...patch }))
     else setCableFilter(prev => ({ ...prev, ...patch }))
+    // 패치 내용에 따라 해당 섹션만 dirty 처리 (규칙 vs 제작구분)
+    if ('rules' in patch) markFilterDirty(type, 'rules')
+    if ('categories' in patch) markFilterDirty(type, 'cats')
   }
+
+  // 정렬 상태 — PCB/Cable 독립. 저장된 정렬이 있으면 처음부터 반영하고, 변경 시 즉시 localStorage에 보존.
+  const [pcbSort, setPcbSort] = useState<SortRule[]>(() => loadTableSort('pcb'))
+  const [cableSort, setCableSort] = useState<SortRule[]>(() => loadTableSort('cable'))
+  const [sortMenuFor, setSortMenuFor] = useState<'pcb' | 'cable' | null>(null)
+  const sortFor = (type: 'pcb' | 'cable') => (type === 'pcb' ? pcbSort : cableSort)
+  // 정렬 규칙 갱신 + 즉시 저장 (updater로 이전값 기반 안전 갱신)
+  const commitSort = (type: 'pcb' | 'cable', updater: (prev: SortRule[]) => SortRule[]) => {
+    const setter = type === 'pcb' ? setPcbSort : setCableSort
+    setter(prev => {
+      const next = updater(prev)
+      try {
+        localStorage.setItem(`hansl_prod_sort_${type}`, JSON.stringify(next.map(r => ({ field: r.field, dir: r.dir }))))
+      } catch { /* ignore quota */ }
+      return next
+    })
+  }
+  const addSortRule = (type: 'pcb' | 'cable') => {
+    const fields = type === 'pcb' ? PCB_SORT_FIELDS : CABLE_SORT_FIELDS
+    commitSort(type, prev => {
+      const used = new Set(prev.map(r => r.field))
+      const field = fields.find(f => !used.has(f)) ?? fields[0]
+      return [...prev, { id: newSortId(), field, dir: 'asc' }]
+    })
+  }
+  const updateSortRule = (type: 'pcb' | 'cable', id: string, patch: Partial<SortRule>) =>
+    commitSort(type, prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)))
+  const removeSortRule = (type: 'pcb' | 'cable', id: string) =>
+    commitSort(type, prev => prev.filter(r => r.id !== id))
+  const clearSort = (type: 'pcb' | 'cable') => commitSort(type, () => [])
 
   // 필터 패널 접기/펴기 (좌측 사이드바처럼) — 기본값은 '닫힘', 사용자가 명시적으로 '0'(펼침) 저장 시에만 펼침
   const [filterCollapsed, setFilterCollapsed] = useState<boolean>(() => localStorage.getItem('hansl_prod_filter_collapsed') !== '0')
@@ -948,18 +1089,8 @@ export default function ProductionListMain() {
     fields.filter(f => !isColHidden(type, f)).length
 
   // 제작구분 그룹 순서 — 저장된 순서가 있으면 반영하고, 누락된 기본 카테고리는 뒤에 보강
-  const [categoryOrder, setCategoryOrder] = useState<string[]>(() => {
-    const saved = localStorage.getItem('hansl_prod_filter_category_order')
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved) as string[]
-        const merged = parsed.filter(c => DEFAULT_CATEGORY_ORDER.includes(c))
-        for (const c of DEFAULT_CATEGORY_ORDER) if (!merged.includes(c)) merged.push(c)
-        return merged
-      } catch { /* fall through to default */ }
-    }
-    return [...DEFAULT_CATEGORY_ORDER]
-  })
+  const [categoryOrder, setCategoryOrder] = useState<string[]>(restoreCategoryOrder)
+
   // 드래그 중인 칩 (ref: 드롭 핸들러의 최신값 보장 / state: 시각 표시용)
   const dragCatRef = useRef<string | null>(null)
   const [dragCat, setDragCat] = useState<string | null>(null)
@@ -1001,6 +1132,7 @@ export default function ProductionListMain() {
       let k = 0
       return prev.map(c => (cats.includes(c) ? arr[k++] : c))
     })
+    markFilterDirty(type, 'cats')
   }
 
   // 포인터 기반 드래그 — 네이티브 HTML5 DnD 대신 pointermove/up으로 직접 처리 (실사용/검증 모두 안정적)
@@ -1038,12 +1170,36 @@ export default function ProductionListMain() {
     window.addEventListener('pointerup', onUp)
   }
 
-  // 필터 저장/초기화 — 테이블별 필터 JSON + 공용 그룹 순서
-  const handleSaveFilters = () => {
-    localStorage.setItem('hansl_prod_filter_pcb', JSON.stringify(pcbFilter))
-    localStorage.setItem('hansl_prod_filter_cable', JSON.stringify(cableFilter))
+  // 저장된 필터 JSON을 읽어 오되 형식이 깨졌으면 빈 객체
+  const readStoredFilter = (type: 'pcb' | 'cable'): any => {
+    try { return JSON.parse(localStorage.getItem(`hansl_prod_filter_${type}`) || '{}') } catch { return {} }
+  }
+
+  // 조건(규칙) 필터만 저장 — 같은 키의 제작구분(categories)은 기존 저장값 보존
+  const saveRulesFilter = (type: 'pcb' | 'cable') => {
+    const cur = filterFor(type)
+    const stored = readStoredFilter(type)
+    localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({
+      categories: Array.isArray(stored.categories) ? stored.categories : cur.categories,
+      rules: cur.rules,
+    }))
+    setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], rules: true } }))
+    setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], rules: false } }))
+    toast.success('조건 필터가 저장되었습니다.')
+  }
+
+  // 제작구분 필터만 저장 — 같은 키의 규칙(rules)은 기존 저장값 보존 + 그룹 순서 저장
+  const saveCategoryFilter = (type: 'pcb' | 'cable') => {
+    const cur = filterFor(type)
+    const stored = readStoredFilter(type)
+    localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({
+      categories: cur.categories,
+      rules: Array.isArray(stored.rules) ? stored.rules : cur.rules,
+    }))
     localStorage.setItem('hansl_prod_filter_category_order', JSON.stringify(categoryOrder))
-    toast.success('현재 필터 설정이 저장되었습니다.')
+    setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], cats: true } }))
+    setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], cats: false } }))
+    toast.success('제작구분 필터가 저장되었습니다.')
   }
 
   const handleResetRules = (type: 'pcb' | 'cable') => {
@@ -2056,18 +2212,25 @@ export default function ProductionListMain() {
   }
 
   // 카테고리 + 필터 규칙(AND) 적용 + 드래그한 제작구분 순서대로 그룹핑 (그룹 내부는 기존 정렬(제작번호 내림차순) 유지 — Array.sort는 안정 정렬)
+  // 제작구분(카테고리)이 항상 1차 정렬(그룹 유지), 사용자 정렬 규칙은 같은 그룹 안에서의 2차 정렬
   const filteredPcbs = useMemo(() => pcbs
     .filter(item => pcbFilter.categories.includes(item.production_category))
     .filter(item => matchesSearch(item, searchQuery))
     .filter(item => pcbFilter.rules.every(rule => applyFilterRule(item, rule)))
-    .sort((a, b) => categoryRank(a.production_category) - categoryRank(b.production_category)),
-    [pcbs, pcbFilter, categoryOrder, searchQuery])
+    .sort((a, b) => {
+      const c = categoryRank(a.production_category) - categoryRank(b.production_category)
+      return c !== 0 || pcbSort.length === 0 ? c : compareBySortRules(a, b, pcbSort)
+    }),
+    [pcbs, pcbFilter, categoryOrder, searchQuery, pcbSort])
   const filteredCables = useMemo(() => cables
     .filter(item => cableFilter.categories.includes(item.production_category))
     .filter(item => matchesSearch(item, searchQuery))
     .filter(item => cableFilter.rules.every(rule => applyFilterRule(item, rule)))
-    .sort((a, b) => categoryRank(a.production_category) - categoryRank(b.production_category)),
-    [cables, cableFilter, categoryOrder, searchQuery])
+    .sort((a, b) => {
+      const c = categoryRank(a.production_category) - categoryRank(b.production_category)
+      return c !== 0 || cableSort.length === 0 ? c : compareBySortRules(a, b, cableSort)
+    }),
+    [cables, cableFilter, categoryOrder, searchQuery, cableSort])
 
   // 년도 드롭다운 옵션 = 로드된 데이터에서 해당 날짜 칼럼에 실제 존재하는 년도만 (내림차순)
   const yearsFor = (type: 'pcb' | 'cable', dateField: string): number[] => {
@@ -3866,6 +4029,121 @@ export default function ProductionListMain() {
                     )
   }
 
+  // 정렬 컨트롤 (노션식) — 제목 옆 행수 배지 바로 우측. 클릭 시 팝오버로 정렬 규칙을 추가/변경/제거.
+  // 규칙은 우선순위 순(위=1차)이며, 제작구분 그룹 안에서의 행 순서를 결정한다. 변경 즉시 자동 저장.
+  const renderSortControl = (type: 'pcb' | 'cable') => {
+    const rules = sortFor(type)
+    const fields = type === 'pcb' ? PCB_SORT_FIELDS : CABLE_SORT_FIELDS
+    const open = sortMenuFor === type
+    const active = rules.length > 0
+    return (
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setSortMenuFor(prev => (prev === type ? null : type))}
+          title={active ? `정렬 ${rules.length}개 적용됨` : '정렬 추가'}
+          className={`badge-stats cursor-pointer border flex items-center gap-1 transition-colors ${
+            active
+              ? 'bg-[#1777CB] border-[#1777CB] text-white font-bold hover:bg-[#1265A8]'
+              : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-[#1777CB] hover:border-[#1777CB]'
+          }`}
+        >
+          <ArrowUpDown className="w-3 h-3" />
+          정렬{active ? ` ${rules.length}` : ''}
+        </button>
+        {open && (
+          <>
+            <div className="fixed inset-0 z-[9998]" onMouseDown={() => setSortMenuFor(null)} />
+            {/* 패널 폭은 내용에 맞춤(w-max) — 고정 폭(w-[320px])이면 짧은 규칙에도 넓게 남아 어색. 최소/최대만 제한 */}
+            <div className="absolute left-0 top-full mt-1 z-[9999] bg-white border border-gray-200 rounded-md shadow-lg w-max min-w-[200px] max-w-[340px]">
+              <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-100">
+                <span className="text-[11px] font-semibold text-gray-700">정렬</span>
+                {active && (
+                  <button
+                    type="button"
+                    onClick={() => clearSort(type)}
+                    className="text-[10px] text-gray-500 hover:text-red-600 border border-gray-200 rounded px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 font-medium transition-colors flex items-center gap-1"
+                    title="정렬 모두 제거"
+                  >
+                    <RotateCcw className="w-2.5 h-2.5" /> 초기화
+                  </button>
+                )}
+              </div>
+              <div className="px-2 py-2 space-y-1.5 max-h-[50vh] overflow-y-auto">
+                {rules.length === 0 && (
+                  <div className="px-1 py-2 text-[10px] text-gray-400 whitespace-nowrap">
+                    정렬할 칼럼을 추가하세요.
+                  </div>
+                )}
+                {rules.map((r, i) => (
+                  <div key={r.id} className="flex items-center gap-1.5">
+                    <span className="text-[9px] text-gray-400 w-3 shrink-0 text-center">{i + 1}</span>
+                    {/* 박스 규격은 툴바 버튼(행 추가 등 button-base) 실측과 동일: 높이 22px · radius 토큰.
+                        텍스트는 칼럼 표시 설정 팝오버 항목과 동일한 앱 표준 타이포(11px/400/gray-700, body 자간 상속).
+                        폭은 선택된 칼럼명에 핏(좌10+텍스트+우24 화살표자리). measureText는 10px 기준이라 11px 폰트는 1.1배 보정.
+                        appearance-none + backgroundImage none으로 @tailwindcss/forms 배경 화살표를 없애 커스텀 ChevronDown과 중복 제거.
+                        세로 패딩 0은 인라인 강제(forms의 0.5rem 세로패딩이 @layer 밖이라 py-0로 못 이김) → 텍스트 세로 중앙 유지. */}
+                    <div className="relative shrink-0">
+                      <select
+                        value={r.field}
+                        onChange={(e) => updateSortRule(type, r.id, { field: e.target.value })}
+                        // lineHeight 20px = 박스 22px − 보더 2px. 전역에서 24px가 상속돼 텍스트가 아래로 밀리는 것을 인라인으로 강제 보정
+                        style={{ padding: '0 15px 0 7px', lineHeight: '20px', backgroundImage: 'none', width: `${Math.ceil(measureText(getColumnTitle(r.field, type), 400) * 1.1) + 24}px` }}
+                        className="appearance-none h-[22px] text-[11px] text-gray-700 border border-gray-300 business-radius-input bg-white focus:border-[#1777CB] focus:outline-none"
+                      >
+                        {fields.map(f => (
+                          <option key={f} value={f}>{getColumnTitle(f, type)}</option>
+                        ))}
+                      </select>
+                      <ChevronDown className="w-3 h-3 text-gray-400 absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
+                    {/* 방향: 박스 없이 화살표 아이콘만 — 회색, 선택된 방향은 파랑. 호버 시 title 말풍선 */}
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => updateSortRule(type, r.id, { dir: 'asc' })}
+                        title="오름차순"
+                        className={`p-0.5 rounded transition-colors ${r.dir === 'asc' ? 'text-[#1777CB]' : 'text-gray-400 hover:text-gray-600'}`}
+                      >
+                        <ArrowUp className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateSortRule(type, r.id, { dir: 'desc' })}
+                        title="내림차순"
+                        className={`p-0.5 rounded transition-colors ${r.dir === 'desc' ? 'text-[#1777CB]' : 'text-gray-400 hover:text-gray-600'}`}
+                      >
+                        <ArrowDown className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeSortRule(type, r.id)}
+                      title="이 정렬 제거"
+                      className="p-0.5 rounded-full text-gray-400 hover:text-red-500 hover:bg-gray-100 transition-colors shrink-0 ml-auto"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="px-2 pb-2 pt-1 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => addSortRule(type)}
+                  disabled={rules.length >= fields.length}
+                  className="w-full flex items-center justify-center gap-1 py-1 rounded border border-dashed border-gray-300 text-[11px] text-gray-500 hover:bg-gray-50 hover:text-[#1777CB] hover:border-[#1777CB] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-500 disabled:hover:border-gray-300"
+                >
+                  <Plus className="w-3 h-3" /> 정렬 추가
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
+
   // 칼럼 표시 설정 드롭다운 — 발주 목록의 '칼럼 설정'과 같은 개념이되, 적용 버튼 없이 클릭 즉시 반영 + 자동 저장.
   // PCB는 업무 단계 섹션 3개(구분선)로 나뉘고, 섹션 제목 옆 버튼으로 섹션 전체를 한번에 숨기기/표시할 수 있다.
   const renderColumnMenu = (type: 'pcb' | 'cable') => {
@@ -3982,6 +4260,9 @@ export default function ProductionListMain() {
     const f = filterFor(type)
     const tableCats = type === 'pcb' ? PCB_CATEGORIES : CABLE_CATEGORIES
     const orderedCats = categoryOrder.filter(c => tableCats.includes(c))
+    // 조건(규칙)/제작구분 섹션별 '저장됨' 상태 — 서로 독립
+    const rulesSaved = filterHasSaved[type].rules && !filterDirty[type].rules
+    const catsSaved = filterHasSaved[type].cats && !filterDirty[type].cats
     // 필터를 걸 수 있는 칼럼 = 그 테이블의 모든 칼럼
     const filterableFields = Object.keys(MIN_COLUMN_WIDTH[type])
     // 브라우저 기본 select 외형(테두리/패딩/화살표/포커스링)을 완전히 제거 — 알약 안에서 텍스트처럼 보이게
@@ -4142,11 +4423,15 @@ export default function ProductionListMain() {
             <div className="h-4 w-px bg-gray-300 mx-1.5" />
             <button
               type="button"
-              onClick={handleSaveFilters}
-              className="p-1 hover:bg-gray-100 rounded-md text-gray-500 hover:text-blue-600 transition-colors"
-              title="필터 저장"
+              onClick={() => saveRulesFilter(type)}
+              className={`p-1 rounded-md transition-colors ${
+                rulesSaved
+                  ? 'text-[#1777CB] hover:bg-blue-50'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-blue-600'
+              }`}
+              title={rulesSaved ? '조건 필터 저장됨' : '조건 필터 저장'}
             >
-              <Save className="w-3.5 h-3.5" />
+              <FilterSaveIcon saved={rulesSaved} />
             </button>
             <button
               type="button"
@@ -4203,11 +4488,15 @@ export default function ProductionListMain() {
             <div className="h-4 w-px bg-gray-300 mx-1.5" />
             <button
               type="button"
-              onClick={handleSaveFilters}
-              className="p-1 hover:bg-gray-100 rounded-md text-gray-500 hover:text-blue-600 transition-colors"
-              title="필터 저장"
+              onClick={() => saveCategoryFilter(type)}
+              className={`p-1 rounded-md transition-colors ${
+                catsSaved
+                  ? 'text-[#1777CB] hover:bg-blue-50'
+                  : 'text-gray-500 hover:bg-gray-100 hover:text-blue-600'
+              }`}
+              title={catsSaved ? '제작구분 필터 저장됨' : '제작구분 필터 저장'}
             >
-              <Save className="w-3.5 h-3.5" />
+              <FilterSaveIcon saved={catsSaved} />
             </button>
             <button
               type="button"
@@ -4298,6 +4587,7 @@ export default function ProductionListMain() {
                 <span className="badge-stats bg-blue-50 text-blue-700 border border-blue-200 font-bold">
                   {filteredPcbs.length}건
                 </span>
+                {renderSortControl('pcb')}
               </div>
               <div className="flex items-center gap-2">
                 {renderColumnMenu('pcb')}
@@ -4798,6 +5088,7 @@ export default function ProductionListMain() {
                 <span className="badge-stats bg-blue-50 text-blue-700 border border-blue-200 font-bold">
                   {filteredCables.length}건
                 </span>
+                {renderSortControl('cable')}
               </div>
               <div className="flex items-center gap-2">
                 {renderColumnMenu('cable')}
