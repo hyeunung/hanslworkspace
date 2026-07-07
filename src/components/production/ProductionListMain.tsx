@@ -1423,6 +1423,9 @@ export default function ProductionListMain() {
   const defaultsAppliedRef = useRef(false)
   const [viewsMenuFor, setViewsMenuFor] = useState<'pcb' | 'cable' | null>(null)
   const [viewsAnchor, setViewsAnchor] = useState<HTMLElement | null>(null)
+  // 저장 필터 이름 인라인 입력 모드 — window.prompt 대신 드롭다운 안 입력창으로 이름을 정한다
+  const [namingViewFor, setNamingViewFor] = useState<'pcb' | 'cable' | null>(null)
+  const [newViewName, setNewViewName] = useState('')
 
   // 표별 스냅샷(현재 조건+제작구분+그룹순서)을 만든다 — 저장 필터/기본값 공통 payload
   const snapshotFilter = (type: 'pcb' | 'cable'): FilterDefaultSnapshot => {
@@ -1468,13 +1471,19 @@ export default function ProductionListMain() {
     })
   }, [filterViewsLoaded, filterViewsConfig])
 
-  // 현재 필터를 이름 붙여 저장 (무제한)
-  const handleSaveView = async (type: 'pcb' | 'cable') => {
-    const name = window.prompt('저장할 필터 이름을 입력하세요.')?.trim()
+  // 현재 필터를 이름 붙여 저장 (무제한) — 인라인 입력창에서 확정된 이름으로 저장
+  const commitSaveView = async (type: 'pcb' | 'cable') => {
+    const name = newViewName.trim()
     if (!name) return
     const view = { id: `v${Date.now()}`, name, scope: type, ...snapshotFilter(type) }
     const ok = await saveView(view)
     toast[ok ? 'success' : 'error'](ok ? `필터 "${name}" 저장됨` : '필터 저장에 실패했습니다.')
+    if (ok) {
+      setNamingViewFor(null)
+      setNewViewName('')
+      setViewsMenuFor(null)
+      setViewsAnchor(null)
+    }
   }
 
   // 저장 필터 불러오기
@@ -1735,6 +1744,19 @@ export default function ProductionListMain() {
   }
 
   const handleResetRules = (type: 'pcb' | 'cable') => {
+    // 시작 기본값을 저장해 뒀으면 코드 기본값이 아니라 그 저장된 기본값으로 되돌린다
+    const savedDefault = filterViewsConfig.defaults[type]
+    if (savedDefault) {
+      const rules = fromStoredRules(savedDefault.rules)
+      setFilterFor(type, { rules })
+      const stored = readStoredFilter(type)
+      const cats = Array.isArray(stored.categories) ? stored.categories : (type === 'pcb' ? [...PCB_CATEGORIES] : [...CABLE_CATEGORIES])
+      localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({ categories: cats, rules }))
+      setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], rules: !rulesEqualDefault(type, rules) } }))
+      setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], rules: false } }))
+      toast.info('저장된 시작 기본값으로 초기화되었습니다.')
+      return
+    }
     // 기본 세팅 = 입고대기 + 요청일 현재 년도(월 전체)
     setFilterFor(type, { rules: defaultRules(type) })
     // 저장본의 규칙도 기본값으로 되돌림 — 안 그러면 새로고침 시 이전 저장 규칙이 되살아나고 아이콘도 다시 파랑이 됨
@@ -1751,6 +1773,28 @@ export default function ProductionListMain() {
   }
 
   const handleResetCategoryFilter = (type: 'pcb' | 'cable') => {
+    // 시작 기본값을 저장해 뒀으면 그 저장된 제작구분/그룹순서로 되돌린다
+    const savedDefault = filterViewsConfig.defaults[type]
+    if (savedDefault) {
+      const validCats = type === 'pcb' ? PCB_CATEGORIES : CABLE_CATEGORIES
+      const cats = Array.isArray(savedDefault.categories) ? savedDefault.categories.filter(c => validCats.includes(c)) : [...validCats]
+      setFilterFor(type, { categories: cats })
+      let order = categoryOrder
+      if (Array.isArray(savedDefault.categoryOrder) && savedDefault.categoryOrder.length) {
+        order = savedDefault.categoryOrder.filter(c => DEFAULT_CATEGORY_ORDER.includes(c))
+        for (const c of DEFAULT_CATEGORY_ORDER) if (!order.includes(c)) order.push(c)
+        setCategoryOrder(order)
+        localStorage.setItem('hansl_prod_filter_category_order', JSON.stringify(order))
+      }
+      const stored = readStoredFilter(type)
+      const rules = Array.isArray(stored.rules) ? stored.rules : filterFor(type).rules
+      localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({ categories: cats, rules }))
+      const catsCustom = !catsEqualDefault(type, cats) || !categoryOrderIsDefault(order)
+      setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], cats: catsCustom } }))
+      setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], cats: false } }))
+      toast.info('저장된 시작 기본값으로 초기화되었습니다.')
+      return
+    }
     setFilterFor(type, { categories: type === 'pcb' ? [...PCB_CATEGORIES] : [...CABLE_CATEGORIES] })
     setCategoryOrder([...DEFAULT_CATEGORY_ORDER])
     // 저장본의 제작구분/그룹순서도 기본값으로 되돌림 (규칙이 커스텀이면 규칙만 보존)
@@ -5339,6 +5383,7 @@ export default function ProductionListMain() {
             <button
               type="button"
               onClick={(e) => {
+                setNamingViewFor(null); setNewViewName('')
                 if (viewsMenuFor === type) { setViewsMenuFor(null); setViewsAnchor(null) }
                 else { setViewsMenuFor(type); setViewsAnchor(e.currentTarget) }
               }}
@@ -5448,17 +5493,51 @@ export default function ProductionListMain() {
         {/* 저장된 필터 드롭다운 — document.body로 포털해 카드 overflow에 잘리지 않게 띄운다 */}
         {viewsMenuFor === type && viewsAnchor && (
           <>
-            <div className="fixed inset-0 z-[9998]" onMouseDown={() => { setViewsMenuFor(null); setViewsAnchor(null) }} />
+            <div className="fixed inset-0 z-[9998]" onMouseDown={() => { setViewsMenuFor(null); setViewsAnchor(null); setNamingViewFor(null) }} />
             <AnchoredPortal anchorEl={viewsAnchor} align="right" zIndex={9999}>
               <div className="bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-[260px] text-[11px]" onMouseDown={(e) => e.stopPropagation()}>
                 {/* 액션: 현재 필터 저장 / 기본값으로 저장 */}
-                <button
-                  type="button"
-                  onClick={() => { handleSaveView(type); setViewsMenuFor(null); setViewsAnchor(null) }}
-                  className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <Bookmark className="w-3.5 h-3.5 text-[#1777CB]" /> 현재 필터를 이름 붙여 저장
-                </button>
+                {namingViewFor === type ? (
+                  // 인라인 이름 입력 — 클릭 즉시 모달 대신 이 입력창에서 이름을 정한다
+                  <div className="flex items-center gap-1 px-2 py-1.5">
+                    <input
+                      autoFocus
+                      type="text"
+                      value={newViewName}
+                      onChange={(e) => setNewViewName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); commitSaveView(type) }
+                        else if (e.key === 'Escape') { setNamingViewFor(null); setNewViewName('') }
+                      }}
+                      placeholder="필터 이름 입력 후 Enter"
+                      className="flex-1 min-w-0 h-[24px] px-2 text-[11px] border border-gray-300 rounded focus:outline-none focus:border-[#1777CB]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => commitSaveView(type)}
+                      disabled={!newViewName.trim()}
+                      className="shrink-0 px-2 h-[24px] rounded text-[11px] text-white bg-[#1777CB] hover:bg-[#1265A8] disabled:bg-gray-300 transition-colors"
+                    >
+                      저장
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setNamingViewFor(null); setNewViewName('') }}
+                      className="shrink-0 p-1 rounded text-gray-400 hover:text-gray-600"
+                      title="취소"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { setNamingViewFor(type); setNewViewName('') }}
+                    className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <Bookmark className="w-3.5 h-3.5 text-[#1777CB]" /> 현재 필터를 이름 붙여 저장
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => { handleSetDefault(type); setViewsMenuFor(null); setViewsAnchor(null) }}
