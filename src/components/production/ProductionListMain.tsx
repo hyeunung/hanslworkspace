@@ -3844,10 +3844,10 @@ export default function ProductionListMain() {
             />
           ) : (
             <span
-              className="cursor-pointer min-w-[14px] text-center"
+              className="cursor-pointer min-w-[14px] text-center text-gray-400"
               onClick={() => handleCellClick(id, type, 'quantity', item.quantity)}
             >
-              {item.quantity ?? ''}
+              {item.quantity ?? '-'}
             </span>
           )}
           <select
