@@ -1459,14 +1459,9 @@ export default function ProductionListMain() {
       const snap = filterViewsConfig.defaults[type]
       if (!snap) return
       applySnapshot(type, snap)
-      const rules = fromStoredRules(snap.rules)
-      const validCats = type === 'pcb' ? PCB_CATEGORIES : CABLE_CATEGORIES
-      const cats = snap.categories.filter(c => validCats.includes(c))
-      // 시작 기본값이므로 '변경 안 함' 상태 + (코드 기본값과 다르면) 저장됨(파랑) 표시
-      setFilterHasSaved(prev => ({ ...prev, [type]: {
-        rules: !rulesEqualDefault(type, rules),
-        cats: !catsEqualDefault(type, cats) || (Array.isArray(snap.categoryOrder) && !categoryOrderIsDefault(snap.categoryOrder)),
-      } }))
+      // 지금 화면이 곧 '시작 기본값'(기준값)이므로 변경 안 함 + 저장됨(파랑) 표시 안 함
+      // — 사용자가 정한 기본값 자체는 '저장 표시' 대상이 아니다
+      setFilterHasSaved(prev => ({ ...prev, [type]: { rules: false, cats: false } }))
       setFilterDirty(prev => ({ ...prev, [type]: { rules: false, cats: false } }))
     })
   }, [filterViewsLoaded, filterViewsConfig])
@@ -1511,13 +1506,10 @@ export default function ProductionListMain() {
   const handleSetDefault = async (type: 'pcb' | 'cable') => {
     const ok = await setDefault(type, snapshotFilter(type))
     if (ok) {
-      // 로컬스토리지 기본값도 갱신 + 저장됨/변경없음 상태 반영
+      // 로컬스토리지 기본값도 갱신. 현재 필터가 곧 '기준값'이 됐으므로
+      // 저장됨(파랑)·변경 표시 모두 끈다 — 기본값 자체는 '저장 표시' 대상이 아니다
       applySnapshot(type, snapshotFilter(type))
-      const cur = filterFor(type)
-      setFilterHasSaved(prev => ({ ...prev, [type]: {
-        rules: !rulesEqualDefault(type, cur.rules),
-        cats: !catsEqualDefault(type, cur.categories) || !categoryOrderIsDefault(categoryOrder),
-      } }))
+      setFilterHasSaved(prev => ({ ...prev, [type]: { rules: false, cats: false } }))
       setFilterDirty(prev => ({ ...prev, [type]: { rules: false, cats: false } }))
     }
     toast[ok ? 'success' : 'error'](ok ? '현재 필터를 기본값으로 저장했습니다.' : '기본값 저장에 실패했습니다.')
@@ -1752,7 +1744,8 @@ export default function ProductionListMain() {
       const stored = readStoredFilter(type)
       const cats = Array.isArray(stored.categories) ? stored.categories : (type === 'pcb' ? [...PCB_CATEGORIES] : [...CABLE_CATEGORIES])
       localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({ categories: cats, rules }))
-      setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], rules: !rulesEqualDefault(type, rules) } }))
+      // 시작 기본값으로 되돌렸으니 현재 = 기준값 → 저장됨(파랑) 표시 안 함
+      setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], rules: false } }))
       setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], rules: false } }))
       toast.info('저장된 시작 기본값으로 초기화되었습니다.')
       return
@@ -1789,8 +1782,8 @@ export default function ProductionListMain() {
       const stored = readStoredFilter(type)
       const rules = Array.isArray(stored.rules) ? stored.rules : filterFor(type).rules
       localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({ categories: cats, rules }))
-      const catsCustom = !catsEqualDefault(type, cats) || !categoryOrderIsDefault(order)
-      setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], cats: catsCustom } }))
+      // 시작 기본값으로 되돌렸으니 현재 = 기준값 → 저장됨(파랑) 표시 안 함
+      setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], cats: false } }))
       setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], cats: false } }))
       toast.info('저장된 시작 기본값으로 초기화되었습니다.')
       return
