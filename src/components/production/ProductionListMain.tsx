@@ -1292,6 +1292,41 @@ function PartsStatusEditor({
   )
 }
 
+// ─── 엑셀식 복사/붙여넣기 TSV 유틸 ─────────────────────────────────
+// 엑셀이 클립보드에 쓰는 형식과 동일: 셀은 탭, 행은 줄바꿈으로 구분.
+// 탭/줄바꿈/따옴표가 든 값은 "..."로 감싼다 (엑셀 규칙 그대로).
+const toTsvCell = (v: any): string => {
+  const s = v === null || v === undefined ? '' : String(v)
+  return /[\t\n\r"]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+}
+
+// 엑셀 호환 TSV 파서: "..." 안의 줄바꿈/탭은 셀 내용으로 취급
+const parseTsvGrid = (text: string): string[][] => {
+  const s = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const rows: string[][] = []
+  let row: string[] = []
+  let cell = ''
+  let inQuotes = false
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        if (s[i + 1] === '"') { cell += '"'; i++ } else inQuotes = false
+      } else cell += ch
+    } else if (ch === '"' && cell === '') {
+      inQuotes = true
+    } else if (ch === '\t') {
+      row.push(cell); cell = ''
+    } else if (ch === '\n') {
+      row.push(cell); rows.push(row); row = []; cell = ''
+    } else cell += ch
+  }
+  row.push(cell); rows.push(row)
+  // 엑셀 복사분은 끝에 개행이 붙어 빈 행이 생기므로 제거
+  while (rows.length && rows[rows.length - 1].every(c => c === '')) rows.pop()
+  return rows
+}
+
 // ─── 행 렌더 격리 유틸 ──────────────────────────────────────────────
 // 항상 같은 함수 객체를 유지하면서 내부는 "최신 렌더"의 로직을 실행한다.
 // MemoRow가 렌더를 스킵한 행의 이벤트 핸들러(이전 렌더의 element에 붙어 있음)가
@@ -4274,6 +4309,158 @@ export default function ProductionListMain() {
     const listener = (e: KeyboardEvent) => { handleDeleteKey(e) }
     window.addEventListener('keydown', listener)
     return () => window.removeEventListener('keydown', listener)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ─── 엑셀식 복사/붙여넣기 ─────────────────────────────────────────
+  // 복사(Ctrl/Cmd+C): 선택 셀들을 TSV로 시스템 클립보드에 복사 — 엑셀에 그대로 붙는다.
+  //   편집칸(input) 안에서 텍스트 선택 없이 누르면 칸 전체 값을 복사한다.
+  // 붙여넣기(Ctrl/Cmd+V): 엑셀에서 복사한 N×M 범위를 선택 셀(좌상단 기준)부터 펼쳐서 저장.
+  //   1×1 값을 여러 셀 선택 후 붙여넣으면 선택 전체를 같은 값으로 채운다 (엑셀과 동일).
+  //   편집칸에 붙여넣을 때는 브라우저 기본 동작(복사 내용 전체가 그 칸에 입력)에 양보한다.
+
+  // 현재 선택 셀들의 직사각형 범위(표시 순서 기준). 드래그 선택과 동일하게 숨긴 칼럼은 제외.
+  const getSelectionRect = () => {
+    if (selectedCells.length === 0) return null
+    const firstId = selectedCells[0].slice(0, selectedCells[0].indexOf('::'))
+    const type: 'pcb' | 'cable' = liveDataRef.current.pcbs.some(p => p.id === firstId) ? 'pcb' : 'cable'
+    const cols = (type === 'pcb' ? pcbColumns : cableColumns).filter(f => !isColHidden(type, f))
+    const list: any[] = type === 'pcb' ? filteredPcbs : filteredCables
+    let minRow = Infinity, maxRow = -1, minCol = Infinity, maxCol = -1
+    for (const key of selectedCells) {
+      const sep = key.indexOf('::')
+      const r = list.findIndex(i => i.id === key.slice(0, sep))
+      const c = cols.indexOf(key.slice(sep + 2))
+      if (r === -1 || c === -1) continue // 필터로 사라진 행·숨긴 칼럼은 범위에서 제외
+      if (r < minRow) minRow = r
+      if (r > maxRow) maxRow = r
+      if (c < minCol) minCol = c
+      if (c > maxCol) maxCol = c
+    }
+    if (maxRow === -1 || maxCol === -1) return null
+    return { type, cols, list, minRow, maxRow, minCol, maxCol }
+  }
+
+  const handleCopyKey = useStableHandler((e: KeyboardEvent) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
+    if ((e.key || '').toLowerCase() !== 'c') return
+    const ae = document.activeElement as HTMLElement | null
+    // 드래그 선택 직후 뜨는 '일괄 입력' 편집기는 autoFocus라서, 포커스만 있고 텍스트 선택이 없으면
+    // 사용자 의도(선택한 셀 범위 복사)를 우선한다. 텍스트를 선택했다면 그 텍스트 복사에 양보.
+    const inBulkPicker = !!ae?.closest?.('.floating-bulk-picker')
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) {
+      const el = ae as unknown as HTMLInputElement | HTMLTextAreaElement
+      if ((el.selectionStart ?? 0) !== (el.selectionEnd ?? 0)) return // 텍스트 선택 복사는 브라우저 기본에 양보
+      if (!inBulkPicker) {
+        // 편집칸: 선택 없이 누르면 칸 전체 값 복사
+        const v = el.value || ''
+        if (!v) return
+        e.preventDefault()
+        navigator.clipboard?.writeText(v).then(() => toast.success('셀 내용이 복사되었습니다.')).catch(() => {})
+        return
+      }
+      // 일괄 입력칸에 포커스만 있는 상태 → 아래의 셀 범위 복사로 진행
+    }
+    if (ae && !inBulkPicker && (ae.tagName === 'SELECT' || ae.isContentEditable)) return
+    if (editingCellRef.current) return
+    // 화면 텍스트를 드래그로 선택해 뒀으면 브라우저 기본 복사에 양보
+    const domSel = window.getSelection()
+    if (domSel && !domSel.isCollapsed && String(domSel).trim() !== '') return
+    const rect = getSelectionRect()
+    if (!rect) return
+    const { cols, list, minRow, maxRow, minCol, maxCol } = rect
+    const lines: string[] = []
+    for (let r = minRow; r <= maxRow; r++) {
+      const cells: string[] = []
+      for (let c = minCol; c <= maxCol; c++) cells.push(toTsvCell((list[r] as any)[cols[c]]))
+      lines.push(cells.join('\t'))
+    }
+    e.preventDefault()
+    const count = (maxRow - minRow + 1) * (maxCol - minCol + 1)
+    navigator.clipboard?.writeText(lines.join('\n'))
+      .then(() => toast.success(count > 1 ? `${count}칸이 복사되었습니다.` : '셀 내용이 복사되었습니다.'))
+      .catch(() => toast.error('클립보드 복사에 실패했습니다.'))
+  })
+
+  const handlePasteEvent = useStableHandler(async (e: ClipboardEvent) => {
+    const ae = document.activeElement as HTMLElement | null
+    // 편집칸에 붙여넣을 때는 브라우저 기본 동작에 양보 (복사한 내용 전체가 그 칸에 들어감).
+    // 단, 드래그 선택 직후 autoFocus로 뜨는 '일괄 입력' 편집기는 예외 —
+    // 엑셀처럼 선택한 셀 범위에 붙여넣는 것이 사용자 의도이므로 셀 붙여넣기로 처리한다.
+    const inBulkPicker = !!ae?.closest?.('.floating-bulk-picker')
+    if (ae && !inBulkPicker && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return
+    if (editingCellRef.current) return
+    if (selectedCells.length === 0) return
+    const text = e.clipboardData?.getData('text/plain') ?? ''
+    if (!text) return
+    const grid = parseTsvGrid(text)
+    if (grid.length === 0 || grid[0].length === 0) return
+    const rect = getSelectionRect()
+    if (!rect) return
+    e.preventDefault()
+    const { type, cols, list, minRow, maxRow, minCol, maxCol } = rect
+
+    // 대상 셀 좌표: 1×1 값 + 다중 선택 = 선택 전체 채움, 그 외 = 좌상단부터 N×M 펼침
+    const targets: Array<{ r: number; c: number; val: string }> = []
+    if (grid.length === 1 && grid[0].length === 1 && selectedCells.length > 1) {
+      for (let r = minRow; r <= maxRow; r++) for (let c = minCol; c <= maxCol; c++) targets.push({ r, c, val: grid[0][0] })
+    } else {
+      grid.forEach((rowVals, dr) => rowVals.forEach((val, dc) => {
+        const r = minRow + dr
+        const c = minCol + dc
+        if (r < list.length && c < cols.length) targets.push({ r, c, val }) // 표 밖으로 넘치는 부분은 버림
+      }))
+    }
+
+    const numericFields = ['revision_count', 'quantity', 'stock_count', 'received_quantity', 'delivery_quantity']
+    let skipped = 0
+    const patchByRow = new Map<string, Record<string, any>>()
+    const pastedKeys: string[] = []
+    for (const t of targets) {
+      const field = cols[t.c]
+      if (DELETE_PROTECTED_FIELDS.includes(field)) { skipped++; continue } // 제작번호/제작구분은 행 식별용이라 보호
+      const rowId = list[t.r].id
+      // 엑셀 숫자엔 천단위 콤마가 붙어올 수 있어 숫자칸은 콤마 제거 후 변환
+      const rawVal = numericFields.includes(field) ? t.val.replace(/,/g, '').trim() : t.val
+      const valueToSave = normalizeCellValueForSave(type, field, rawVal, rowId)
+      if (typeof valueToSave === 'number' && Number.isNaN(valueToSave)) { skipped++; continue } // 숫자칸에 문자 등 형식 불일치
+      // 납품 분할 그룹의 병합된 앞 칼럼은 그룹 전체 행에 같은 값 저장 (병합 유지 규칙)
+      const targetIds = type === 'pcb' && !HEADER_SPAN_GROUPS.pcbDelivery.includes(field) ? pcbGroupSiblings(rowId) : [rowId]
+      for (const tid of targetIds) {
+        if (!patchByRow.has(tid)) patchByRow.set(tid, {})
+        patchByRow.get(tid)![field] = valueToSave
+      }
+      pastedKeys.push(`${rowId}::${field}`)
+    }
+    if (patchByRow.size === 0) {
+      if (skipped > 0) toast.error('제작번호/제작구분 칸에는 붙여넣을 수 없습니다.')
+      return
+    }
+
+    pushRestoreUndo(type, [...patchByRow.keys()], `${pastedKeys.length}칸 붙여넣기`)
+    try {
+      await Promise.all([...patchByRow].map(([id, patch]) =>
+        type === 'pcb' ? productionService.updateProductionPcb(id, patch) : productionService.updateProductionCable(id, patch)
+      ))
+      setSelectedCells(pastedKeys) // 엑셀처럼 붙여넣은 범위가 선택된 상태로 남는다
+      setFloatingMenuPos(null)
+      toast.success(`${pastedKeys.length}칸에 붙여넣었습니다.${skipped > 0 ? ` (${skipped}칸은 보호/형식 문제로 제외)` : ''}`)
+      loadData()
+    } catch (err) {
+      console.error(err)
+      toast.error('붙여넣기에 실패했습니다.')
+    }
+  })
+
+  useEffect(() => {
+    const onCopyKey = (e: KeyboardEvent) => { handleCopyKey(e) }
+    const onPaste = (e: ClipboardEvent) => { handlePasteEvent(e) }
+    window.addEventListener('keydown', onCopyKey)
+    document.addEventListener('paste', onPaste)
+    return () => {
+      window.removeEventListener('keydown', onCopyKey)
+      document.removeEventListener('paste', onPaste)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
