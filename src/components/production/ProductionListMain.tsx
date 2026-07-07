@@ -4044,9 +4044,10 @@ export default function ProductionListMain() {
     )
   }
 
-  // 제작번호 셀: 자동 채번된 번호를 표시하되, 클릭하면 기존 제작번호 목록에서 선택해 변경할 수 있다.
-  // (동일 제작번호 재발주 케이스) 타이핑하면 목록이 필터링되고, 항목 클릭 또는 Enter(첫 항목)로 선택.
-  // 임의 번호 직접 입력은 허용하지 않는다 — 채번 체계 보호를 위해 기존 번호 선택만 가능.
+  // 제작번호 셀: 자동 채번된 번호를 표시하되, 클릭하면 제작번호를 변경할 수 있다.
+  // - 기존 번호 목록에서 클릭 선택 (동일 제작번호 재발주 케이스, 타이핑 = 필터)
+  // - 원하는 번호를 직접 타이핑 후 Enter → 입력한 번호 그대로 변경
+  //   (기존 번호와 대소문자만 다르게 일치하면 기존 표기를 그대로 사용해 채번 표기를 통일한다)
   const renderSalesOrderCell = (type: 'pcb' | 'cable', item: any, width: number, rColor: string | null, rStrike: 'strike' | 'nostrike' | null) => {
     const isOpen = orderNoPicker?.id === item.id && orderNoPicker?.type === type
     let options: string[] = []
@@ -4065,7 +4066,7 @@ export default function ProductionListMain() {
       <td
         className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
         style={{ width: `${width}px`, minWidth: `${width}px`, maxWidth: `${width}px` }}
-        title="클릭: 기존 제작번호에서 선택해 변경 (재발주)"
+        title="클릭: 제작번호 변경 — 기존 번호 선택 또는 직접 입력 후 Enter"
         onClick={(e) => {
           e.stopPropagation()
           setOrderNoInput('')
@@ -4081,22 +4082,37 @@ export default function ProductionListMain() {
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">기존 제작번호로 변경 — 타이핑하면 필터링</div>
+            <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">제작번호 변경 — 목록 클릭 또는 직접 입력 후 Enter</div>
             <input
               autoFocus
               type="text"
               value={orderNoInput}
               onChange={(e) => setOrderNoInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && options.length > 0) commitOrderNo(options[0])
+                if (e.key === 'Enter') {
+                  const typed = orderNoInput.trim()
+                  if (!typed) return
+                  // 대소문자만 다른 기존 번호가 있으면 그 표기를 사용, 없으면 입력값 그대로 변경
+                  const exact = options.find(no => no.toLowerCase() === typed.toLowerCase())
+                  commitOrderNo(exact ?? typed)
+                }
                 if (e.key === 'Escape') setOrderNoPicker(null)
               }}
               placeholder={item.sales_order_number}
               className="w-full h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:border-[#1777CB]"
             />
             <div className="mt-1 max-h-[220px] overflow-y-auto flex flex-col">
+              {orderNoInput.trim() && !options.some(no => no.toLowerCase() === orderNoInput.trim().toLowerCase()) && (
+                <button
+                  type="button"
+                  onClick={() => commitOrderNo(orderNoInput.trim())}
+                  className="text-left text-[11px] font-semibold text-[#1777CB] px-1.5 py-[3px] rounded bg-blue-50/60 hover:bg-blue-50 transition-colors"
+                >
+                  '{orderNoInput.trim()}'(으)로 직접 변경 — Enter
+                </button>
+              )}
               {options.length === 0 ? (
-                <span className="text-[10px] text-gray-400 px-1 py-1">일치하는 제작번호 없음</span>
+                !orderNoInput.trim() && <span className="text-[10px] text-gray-400 px-1 py-1">일치하는 제작번호 없음</span>
               ) : options.slice(0, 100).map(no => (
                 <button
                   key={no}
