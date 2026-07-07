@@ -1102,24 +1102,26 @@ const NOTIFY_DATE_LABEL: Record<string, string> = {
   delivery_completed: '배송일',
 }
 
-// 알림 대상 팀 선택 버튼 + 드롭다운 (여러 완료 이벤트 팝오버에서 공용으로 사용). 다른 상태 선택 UI와 동일하게
-// 체크박스 대신 토글 버튼으로 선택 상태를 표시한다.
+// 알림 대상 팀 선택 — "알림" 라벨 + 드롭다운. 같은 팝오버의 메모/날짜 입력과 동일한 인풋 스타일을 쓰고,
+// 팀은 여러 개 선택할 수 있어 native select 대신 같은 모양의 커스텀 드롭다운으로 처리한다.
 function NotifyTeamsPicker({ teams, onChange }: { teams: string[]; onChange: (teams: string[]) => void }) {
   const [open, setOpen] = useState(false)
   const toggle = (team: string) => {
     onChange(teams.includes(team) ? teams.filter(t => t !== team) : [...teams, team])
   }
   return (
-    <div className="relative mb-1" onMouseDown={(e) => e.stopPropagation()}>
+    <div className="relative flex items-center gap-1 mb-1" onMouseDown={(e) => e.stopPropagation()}>
+      <span className="text-[10px] text-gray-500 shrink-0">알림</span>
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setOpen(v => !v) }}
-        className="w-full text-[10px] text-left px-1.5 py-0.5 rounded border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700"
+        className="flex-1 min-w-0 flex items-center justify-between gap-1 h-5 bg-white border border-gray-300 rounded px-1 text-[10px] text-gray-700 focus:outline-none"
       >
-        🔔 알림: {teams.length > 0 ? teams.join(', ') : '선택'}
+        <span className={`truncate ${teams.length > 0 ? '' : 'text-gray-400'}`}>{teams.length > 0 ? teams.join(', ') : '선택'}</span>
+        <ChevronDown className="w-3 h-3 text-gray-400 shrink-0" />
       </button>
       {open && (
-        <div className="absolute z-10 top-full left-0 mt-0.5 bg-white border border-gray-200 rounded-md shadow-lg p-1 flex flex-col gap-0.5 w-max min-w-[100px]" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="absolute z-10 top-full right-0 mt-0.5 bg-white border border-gray-200 rounded-md shadow-lg py-0.5 flex flex-col w-max min-w-[90px]" onMouseDown={(e) => e.stopPropagation()}>
           {NOTIFY_TEAM_OPTIONS.map(team => {
             const active = teams.includes(team)
             return (
@@ -1127,13 +1129,12 @@ function NotifyTeamsPicker({ teams, onChange }: { teams: string[]; onChange: (te
                 key={team}
                 type="button"
                 onClick={() => toggle(team)}
-                className={`text-[10px] leading-tight px-1.5 py-0.5 rounded border text-left whitespace-nowrap transition-colors ${
-                  active
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                className={`flex items-center justify-between gap-2 text-[10px] leading-tight px-1.5 py-1 text-left whitespace-nowrap hover:bg-gray-100 ${
+                  active ? 'text-[#1777CB] font-semibold' : 'text-gray-700'
                 }`}
               >
                 {team}
+                {active && <Check className="w-3 h-3 shrink-0" />}
               </button>
             )
           })}
