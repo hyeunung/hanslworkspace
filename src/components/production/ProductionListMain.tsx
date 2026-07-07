@@ -2100,10 +2100,8 @@ export default function ProductionListMain() {
           dragStartCellRef.current = { ...anchor } // 이어서 드래그하면 앵커 기준으로 계속 확장
           modifierSelectRef.current = true
           if (editingCell) setEditingCell(null)
-          if (sel.length > 1) {
-            setFloatingMenuPos({ x: e.clientX, y: e.clientY })
-            setBulkEditValue(computeBulkPrefill(sel, type))
-          } else setFloatingMenuPos(null)
+          // 일괄 입력 메뉴는 자동으로 띄우지 않는다 — 선택 범위를 한 번 더 클릭하거나 Enter로 연다
+          setFloatingMenuPos(null)
           return
         }
       }
@@ -2122,10 +2120,8 @@ export default function ProductionListMain() {
       dragStartCellRef.current = { id, field, type }
       modifierSelectRef.current = true
       if (editingCell) setEditingCell(null)
-      if (next.length > 1) {
-        setFloatingMenuPos({ x: e.clientX, y: e.clientY })
-        setBulkEditValue(computeBulkPrefill(next, type))
-      } else setFloatingMenuPos(null)
+      // 셀을 추가/제거할 때마다 메뉴가 따라 뜨지 않도록 — 선택 범위 재클릭 또는 Enter로만 연다
+      setFloatingMenuPos(null)
       return
     }
 
@@ -2176,16 +2172,10 @@ export default function ProductionListMain() {
 
   // 드래그 종료 마우스 리스너 및 아웃사이드 클릭 해제 처리
   useEffect(() => {
-    const handleGlobalMouseUp = (e: MouseEvent) => {
-      if (isDragging) {
-        setIsDragging(false)
-        if (selectedCells.length > 1) {
-          setFloatingMenuPos({ x: e.clientX, y: e.clientY })
-          // 값 편집기 프리필: 선택 셀이 모두 같은 칼럼이고 현재 값도 동일하면 그 값을 미리 채운다
-          // (단일 클릭 편집기가 현재값을 보여주는 것과 동일한 감각). 값이 제각각이면 빈칸.
-          setBulkEditValue(computeBulkPrefill(selectedCells, dragStartCellRef.current?.type || 'pcb'))
-        }
-      }
+    const handleGlobalMouseUp = () => {
+      // 드래그 종료 시 일괄 입력 메뉴를 자동으로 띄우지 않는다 —
+      // 선택된 범위를 한 번 더 클릭하거나 Enter를 눌렀을 때만 열린다 (선택 조작 중 메뉴가 방해되지 않게).
+      if (isDragging) setIsDragging(false)
     }
 
     const handleOutsideClick = (e: MouseEvent) => {
