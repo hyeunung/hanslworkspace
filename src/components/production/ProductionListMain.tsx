@@ -415,6 +415,8 @@ const loadTableSort = (type: 'pcb' | 'cable'): SortRule[] => {
 
 // 규칙 하나를 행에 적용 (AND 결합은 호출부에서). 값이 없는 셀은 date_in/contains에서 제외된다.
 const applyFilterRule = (item: any, rule: FilterRule): boolean => {
+  // 칼럼 미선택('칼럼 선택' 상태) 규칙은 아직 필터로 동작하지 않음 (통과)
+  if (!rule.field) return true
   const raw = item[rule.field]
   const s = raw == null ? '' : String(raw).trim()
   const empty = s === '' || s === '-'
@@ -1771,7 +1773,8 @@ export default function ProductionListMain() {
   // 필터 규칙 조작 (노션식 추가/수정/제거)
   const addRule = (type: 'pcb' | 'cable') => {
     const f = filterFor(type)
-    setFilterFor(type, { rules: [...f.rules, { id: newRuleId(), field: 'board_name', op: 'contains', value: '' }] })
+    // 칼럼 미선택 상태로 시작 — 사용자가 '칼럼 선택'에서 직접 고르게 한다 (임의로 보드명이 잡히지 않도록)
+    setFilterFor(type, { rules: [...f.rules, { id: newRuleId(), field: '', op: 'contains', value: '' }] })
   }
   const updateRule = (type: 'pcb' | 'cable', id: string, patch: Partial<FilterRule>) => {
     const f = filterFor(type)
@@ -5233,17 +5236,19 @@ export default function ProductionListMain() {
                   key={rule.id}
                   className="flex items-center gap-1 border border-gray-200 bg-gray-50 rounded-full pl-2 pr-1 h-[22px]"
                 >
-                  {/* 칼럼 선택 */}
+                  {/* 칼럼 선택 — 미선택 시 '칼럼 선택' 안내 문구를 보여주고, 고르기 전엔 조건/값 입력을 숨긴다 */}
                   <select
                     value={rule.field}
                     onChange={(e) => changeRuleField(rule, e.target.value)}
-                    style={fitSelect(getColumnTitle(rule.field, type), 600)}
-                    className={`${selectClass} font-semibold`}
+                    style={fitSelect(rule.field ? getColumnTitle(rule.field, type) : '칼럼 선택', 600)}
+                    className={`${selectClass} font-semibold ${rule.field ? '' : 'text-[#1777CB]'}`}
                   >
+                    {!rule.field && <option value="" disabled>칼럼 선택</option>}
                     {filterableFields.map(k => (
                       <option key={k} value={k}>{getColumnTitle(k, type)}</option>
                     ))}
                   </select>
+                  {rule.field && (<>
                   <span className="text-gray-300">·</span>
                   {/* 조건 선택 */}
                   <select
@@ -5306,6 +5311,7 @@ export default function ProductionListMain() {
                       style={{ border: 'none', borderBottom: '1px solid #d1d5db', boxShadow: 'none', background: 'none', outline: 'none' }}
                     />
                   )}
+                  </>)}
                   {/* 규칙 제거 */}
                   <button
                     type="button"
