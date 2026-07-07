@@ -1,5 +1,22 @@
 [
   {
+    "version": "1.0.1",
+    "date": "2026-07-07",
+    "title": "제작현황 엑셀식 키보드 단축키 추가",
+    "changes": [
+      { "type": "feature", "text": "제작현황 표에서 엑셀처럼 키보드로 셀 선택·이동·편집이 가능해졌습니다. 단축키는 아래와 같습니다." },
+      { "type": "feature", "text": "셀 이동 — 방향키 (윈도우/맥 동일)" },
+      { "type": "feature", "text": "범위 확장 — Shift+방향키 (윈도우/맥 동일)" },
+      { "type": "feature", "text": "데이터 끝 점프 — 윈도우: Ctrl+방향키 · 맥: Cmd+방향키" },
+      { "type": "feature", "text": "끝까지 범위 선택 — 윈도우: Ctrl+Shift+방향키 · 맥: Cmd+Shift+방향키" },
+      { "type": "feature", "text": "행 전체 선택 — Shift+Space (윈도우/맥 동일)" },
+      { "type": "feature", "text": "열 전체 선택 — 윈도우: Ctrl+Space · 맥: Cmd+Shift+Space" },
+      { "type": "feature", "text": "편집 시작 — 윈도우: Enter / F2 · 맥: Enter / fn+F2" },
+      { "type": "feature", "text": "좌우 이동 — Tab / Shift+Tab (윈도우/맥 동일)" },
+      { "type": "feature", "text": "복사/붙여넣기/되돌리기 — 윈도우: Ctrl+C/V/Z · 맥: Cmd+C/V/Z" }
+    ]
+  },
+  {
     "version": "1.0.0",
     "date": "2026-07-06",
     "title": "제작현황추가",

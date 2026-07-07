@@ -1946,13 +1946,19 @@ export default function ProductionListMain() {
   // dragStartCell은 ref로 관리한다: mousedown 시점에 곧바로 selectedCells를 채우면
   // 뒤이은 click에서 "이미 선택됨"으로 오판해 1클릭 편집 진입 버그가 재발한다.
   const [selectedCells, setSelectedCells] = useState<string[]>([])
+  // 셀 개수가 많은 선택(열 전체 등)에서 각 셀의 isSelected 판정이 O(1)이 되도록 Set을 함께 유지
+  const selectedCellsSet = useMemo(() => new Set(selectedCells), [selectedCells])
   const [isDragging, setIsDragging] = useState(false)
   const dragStartCellRef = useRef<{ id: string; field: string; type: 'pcb' | 'cable' } | null>(null)
+  // 키보드 내비게이션용 앵커(선택 시작점)/포커스(활성 셀) — 클릭·드래그·방향키 이동 시 갱신
+  const selAnchorRef = useRef<{ id: string; field: string; type: 'pcb' | 'cable' } | null>(null)
+  const selFocusRef = useRef<{ id: string; field: string; type: 'pcb' | 'cable' } | null>(null)
   const [floatingMenuPos, setFloatingMenuPos] = useState<{ x: number; y: number } | null>(null)
   // 같은 칼럼 다중선택 시 값 일괄 입력용 편집값 (플로팅 메뉴 안 편집기 상태)
   const [bulkEditValue, setBulkEditValue] = useState('')
 
   const pcbColumns = [
+    'sales_order_number',
     'production_category',
     'board_name',
     'reference',
@@ -1988,6 +1994,7 @@ export default function ProductionListMain() {
   ]
 
   const cableColumns = [
+    'sales_order_number',
     'production_category',
     'board_name',
     'reference',
@@ -2017,6 +2024,9 @@ export default function ProductionListMain() {
     // 여기서 곧바로 setSelectedCells를 호출하면 뒤이은 click 핸들러가 "이미 선택된 셀"로 오판해
     // 첫 클릭에 곧장 편집 모드로 들어가버린다 (선택→편집 2단계 클릭이 깨짐).
     dragStartCellRef.current = { id, field, type }
+    // 키보드 내비게이션 기준점도 함께 갱신 (클릭한 셀 = 앵커 = 활성 셀)
+    selAnchorRef.current = { id, field, type }
+    selFocusRef.current = { id, field, type }
     if (editingCell) setEditingCell(null)
     if (floatingMenuPos) setFloatingMenuPos(null)
   })
@@ -2052,6 +2062,7 @@ export default function ProductionListMain() {
     }
     
     setSelectedCells(newSelection)
+    selFocusRef.current = { id, field, type } // 드래그 중 마지막으로 지나간 셀 = 포커스
   })
 
   // 드래그 종료 마우스 리스너 및 아웃사이드 클릭 해제 처리
@@ -3216,9 +3227,9 @@ export default function ProductionListMain() {
   }
 
   // ─── 다운로드/인쇄용: 필터 적용된 화면 그대로 내보내기 ──────────────────
-  // 내보낼 칼럼 = 제작 번호 + 각 표의 본문 칼럼 목록 (화면에서 숨긴 칼럼은 좌측 고정 칼럼 포함 모두 내보내기에서도 제외)
+  // 내보낼 칼럼 = 각 표의 본문 칼럼 목록(제작 번호 포함) (화면에서 숨긴 칼럼은 좌측 고정 칼럼 포함 모두 내보내기에서도 제외)
   const exportColumnsFor = (type: 'pcb' | 'cable'): string[] =>
-    ['sales_order_number', ...(type === 'pcb' ? pcbColumns : cableColumns)].filter(f => !isColHidden(type, f))
+    (type === 'pcb' ? pcbColumns : cableColumns).filter(f => !isColHidden(type, f))
 
   // 내보내기용 셀 값: 화면 표시와 동일하되 URL은 링크로 축약하지 않고 원문 유지, 빈 값은 공백
   const getExportValue = (type: 'pcb' | 'cable', field: string, item: any): string => {
@@ -3739,6 +3750,7 @@ export default function ProductionListMain() {
                 if (e.key === 'Enter') {
                   handleCellSave({ id, type, field }, editValue)
                   setEditingCell(null)
+                  moveSelectionDown(id, type, field)
                 }
                 if (e.key === 'Escape') setEditingCell(null)
               }}
@@ -3848,8 +3860,8 @@ export default function ProductionListMain() {
                   onChange={(e) => setEditValue(e.target.value)}
                   onBlur={commit}
                   onKeyDown={(e) => {
-                    // Enter=저장, Shift+Enter=줄바꿈
-                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit() }
+                    // Enter=저장(후 아래 셀로 이동), Shift+Enter=줄바꿈
+                    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit(); moveSelectionDown(id, type, field) }
                     if (e.key === 'Escape') setEditingCell(null)
                   }}
                   placeholder={`${getColumnTitle(field, type)} 입력 (Enter 저장 · Shift+Enter 줄바꿈)`}
@@ -3870,7 +3882,7 @@ export default function ProductionListMain() {
                     commit()
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') commit()
+                    if (e.key === 'Enter') { commit(); moveSelectionDown(id, type, field) }
                     if (e.key === 'Escape') setEditingCell(null)
                   }}
                   placeholder={`${getColumnTitle(field, type)} 입력`}
@@ -3896,7 +3908,7 @@ export default function ProductionListMain() {
             onChange={(e) => setEditValue(e.target.value)}
             onBlur={commit}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') commit()
+              if (e.key === 'Enter') { commit(); moveSelectionDown(id, type, field) }
               if (e.key === 'Escape') setEditingCell(null)
             }}
             className={`w-full h-5 bg-white border border-gray-300 rounded px-1.5 py-0 text-[10px] focus:outline-none ${field === 'reference' ? 'text-red-500 font-semibold align-left' : ''}${field === 'board_name' ? ' align-left' : ''}`}
@@ -3979,7 +3991,7 @@ export default function ProductionListMain() {
       }
     }
 
-    const isSelected = selectedCells.includes(`${id}::${field}`);
+    const isSelected = selectedCellsSet.has(`${id}::${field}`);
     const isStickyCell = cellClassName.includes('sticky');
     const selectStyle: React.CSSProperties = isSelected ? {
       outline: '1.5px solid #3b82f6',
@@ -4002,6 +4014,7 @@ export default function ProductionListMain() {
     const tdClassName = `${computedClassName} cursor-pointer ${item.row_color || item.cell_colors?.[field] ? '' : 'hover:bg-gray-100/50'} transition-colors select-none${isStockPickerOpen ? ' relative' : ''}`
     return (
       <td
+        data-cell={`${id}::${field}`}
         className={isSelected ? tdClassName.replace(/\btransition-colors\b/g, '') : tdClassName}
         style={isStockPickerOpen ? { ...selectStyle, overflow: 'visible', zIndex: 50 } : selectStyle}
         onMouseDown={(e) => handleCellMouseDown(e, id, field, type)}
@@ -4074,12 +4087,21 @@ export default function ProductionListMain() {
   }
 
   // 수량 셀: 숫자(인라인 편집) + 단위(ea/set) 드롭다운. 배경색은 tr에서 상속됨
+  // 드래그/키보드 셀 선택에 참여하도록 일반 셀과 동일한 선택 표시·핸들러를 붙인다 (ea/set 드롭다운 조작은 선택과 분리)
   const renderQuantityCell = (id: string, type: 'pcb' | 'cable', item: any) => {
     if (isColHidden(type, 'quantity')) return null
     const isEditing = editingCell?.id === id && editingCell?.type === type && editingCell?.field === 'quantity'
     const unit = item.quantity_unit || 'ea'
+    const isSelected = selectedCellsSet.has(`${id}::quantity`)
     return (
-      <td className="px-2 py-1.5 text-gray-500 border border-gray-200">
+      <td
+        data-cell={`${id}::quantity`}
+        className="px-2 py-1.5 text-gray-500 border border-gray-200 cursor-pointer select-none"
+        style={isSelected ? { outline: '1.5px solid #3b82f6', outlineOffset: '-1.5px', backgroundColor: 'rgba(59, 130, 246, 0.1)' } : undefined}
+        onMouseDown={(e) => handleCellMouseDown(e, id, 'quantity', type)}
+        onMouseEnter={(e) => handleCellMouseEnter(e, id, 'quantity', type)}
+        onClick={() => handleCellClick(id, type, 'quantity', item.quantity)}
+      >
         <div className="flex items-center justify-center gap-1">
           {isEditing ? (
             <input
@@ -4089,22 +4111,20 @@ export default function ProductionListMain() {
               onChange={(e) => setEditValue(e.target.value)}
               onBlur={() => { handleCellSave({ id, type, field: 'quantity' }, editValue); setEditingCell(null) }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') { handleCellSave({ id, type, field: 'quantity' }, editValue); setEditingCell(null) }
+                if (e.key === 'Enter') { handleCellSave({ id, type, field: 'quantity' }, editValue); setEditingCell(null); moveSelectionDown(id, type, 'quantity') }
                 if (e.key === 'Escape') setEditingCell(null)
               }}
               className="w-10 h-5 bg-white border border-gray-300 rounded px-1 py-0 text-[10px] text-center focus:outline-none"
             />
           ) : (
-            <span
-              className="cursor-pointer min-w-[14px] text-center text-gray-400"
-              onClick={() => handleCellClick(id, type, 'quantity', item.quantity)}
-            >
+            <span className="min-w-[14px] text-center text-gray-400">
               {item.quantity ?? '-'}
             </span>
           )}
           <select
             value={unit}
             onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
             onChange={(e) => handleUpdateQuantityUnit(id, type, e.target.value)}
             className="h-4 bg-transparent text-[9px] text-gray-400 border border-gray-200 rounded px-0.5 py-0 cursor-pointer focus:outline-none"
           >
@@ -4134,15 +4154,28 @@ export default function ProductionListMain() {
         .filter(no => !q || no.toLowerCase().includes(q))
         .sort((a, b) => b.localeCompare(a))
     }
+    // 일반 셀과 동일한 2단계 조작: 첫 클릭 = 셀 선택(복사/범위선택용), 선택된 상태에서 다시 클릭 = 변경 팝오버.
+    // 고정(sticky) 칼럼이라 반투명 배경 대신 테두리만 표시한다 (가로 스크롤 시 뒤 칼럼 비침 방지).
+    const cellKey = `${item.id}::sales_order_number`
+    const isSelected = selectedCellsSet.has(cellKey)
     return (
       <td
-        className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] transition-colors z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
-        style={{ width: `${width}px`, minWidth: `${width}px`, maxWidth: `${width}px` }}
-        title="클릭: 제작번호 변경 — 기존 번호 선택 또는 직접 입력 후 Enter"
+        data-cell={cellKey}
+        className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer select-none${isSelected ? '' : ' transition-colors'} ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
+        style={{ width: `${width}px`, minWidth: `${width}px`, maxWidth: `${width}px`, ...(isSelected ? { outline: '1.5px solid #3b82f6', outlineOffset: '-1.5px' } : {}) }}
+        title="클릭: 셀 선택 · 다시 클릭: 제작번호 변경 — 기존 번호 선택 또는 직접 입력 후 Enter"
+        onMouseDown={(e) => handleCellMouseDown(e, item.id, 'sales_order_number', type)}
+        onMouseEnter={(e) => handleCellMouseEnter(e, item.id, 'sales_order_number', type)}
         onClick={(e) => {
           e.stopPropagation()
-          setOrderNoInput('')
-          setOrderNoPicker({ id: item.id, type })
+          if (selectedCells.length === 1 && selectedCells[0] === cellKey) {
+            setOrderNoInput('')
+            setOrderNoPicker({ id: item.id, type })
+          } else {
+            setSelectedCells([cellKey])
+            setOrderNoPicker(null)
+            if (floatingMenuPos) setFloatingMenuPos(null)
+          }
         }}
       >
         {item.sales_order_number}
@@ -4246,6 +4279,13 @@ export default function ProductionListMain() {
       setSelectedCells(rowCells)
       setActiveColorPicker(null)
       if (editingCell) setEditingCell(null)
+      // 키보드 내비게이션 기준점: 행의 처음(앵커)~끝(포커스) 보이는 칼럼으로 설정
+      const visible = cols.filter(f => !isColHidden(type, f))
+      if (visible.length > 0) {
+        selAnchorRef.current = { id, field: visible[0], type }
+        selFocusRef.current = { id, field: visible[visible.length - 1], type }
+        dragStartCellRef.current = { id, field: visible[0], type }
+      }
     }
   })
 
@@ -4461,6 +4501,178 @@ export default function ProductionListMain() {
       window.removeEventListener('keydown', onCopyKey)
       document.removeEventListener('paste', onPaste)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ─── 엑셀식 키보드 내비게이션/선택 ─────────────────────────────────
+  // 방향키: 셀 이동 · Shift+방향키: 범위 확장 · Ctrl/Cmd+방향키: 데이터 끝 점프
+  // Ctrl/Cmd+Shift+방향키: 데이터 끝까지 선택 · Shift+Space: 행 전체
+  // Ctrl/Cmd+(Shift+)Space: 열 전체 — macOS는 Ctrl+Space(입력소스)/Cmd+Space(Spotlight)가
+  //   시스템 단축키라 Cmd+Shift+Space를 대안으로 지원
+  // Enter/F2: 편집 시작(선택 셀 재클릭과 동일) · Tab/Shift+Tab: 좌우 이동 · Escape: 선택 해제
+
+  const isEmptyCellVal = (v: any) => v === null || v === undefined || String(v).trim() === ''
+
+  // 엑셀 Ctrl+방향키 규칙: 현재·다음 칸에 값이 이어지면 연속 구간의 끝으로,
+  // 다음 칸이 비었으면 빈 칸들을 건너뛰고 다음 값 있는 칸으로 (없으면 표 가장자리)
+  const dataEdgeFrom = (list: any[], cols: string[], r: number, c: number, dr: number, dc: number) => {
+    const lastR = list.length - 1
+    const lastC = cols.length - 1
+    const inBounds = (rr: number, cc: number) => rr >= 0 && rr <= lastR && cc >= 0 && cc <= lastC
+    const get = (rr: number, cc: number) => (list[rr] as any)?.[cols[cc]]
+    let nr = r + dr, nc = c + dc
+    if (!inBounds(nr, nc)) return { r, c }
+    if (!isEmptyCellVal(get(r, c)) && !isEmptyCellVal(get(nr, nc))) {
+      while (inBounds(nr + dr, nc + dc) && !isEmptyCellVal(get(nr + dr, nc + dc))) { nr += dr; nc += dc }
+      return { r: nr, c: nc }
+    }
+    while (isEmptyCellVal(get(nr, nc))) {
+      if (!inBounds(nr + dr, nc + dc)) return { r: nr, c: nc }
+      nr += dr; nc += dc
+    }
+    return { r: nr, c: nc }
+  }
+
+  // 이동한 셀이 화면에 보이도록 스크롤. 행 가상화 때문에 창 밖 행은 DOM에 없으므로
+  // 행 인덱스×행높이로 세로 스크롤을 먼저 맞추고, 렌더된 다음 프레임에 셀 기준으로 가로/미세 보정한다.
+  const scrollCellIntoView = (type: 'pcb' | 'cable', rowIdx: number, cellKey: string) => {
+    const el = (type === 'pcb' ? pcbScrollRef : cableScrollRef).current
+    if (el) {
+      const rowH = rowHeightRef.current[type]
+      const headerH = (el.querySelector('thead') as HTMLElement | null)?.offsetHeight ?? 0
+      const rowTop = headerH + rowIdx * rowH // 스크롤 콘텐츠 안에서 행의 세로 위치 (thead는 sticky지만 흐름 높이를 차지)
+      if (rowTop < el.scrollTop + headerH) el.scrollTop = rowTop - headerH
+      else if (rowTop + rowH > el.scrollTop + el.clientHeight) el.scrollTop = rowTop + rowH - el.clientHeight
+      // 프로그램적 scrollTop 변경은 환경에 따라 scroll 이벤트가 오지 않을 수 있어 가상창을 직접 재계산
+      recalcWindow(type)
+    }
+    requestAnimationFrame(() => {
+      const td = document.querySelector(`td[data-cell="${CSS.escape(cellKey)}"]`)
+      td?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      recalcWindow(type)
+    })
+  }
+
+  // 현재 선택의 앵커/포커스를 (행/열 인덱스로) 해석. ref가 무효(정렬·필터 변경 등)면 선택 사각형 모서리로 보정.
+  const resolveSelContext = () => {
+    const rect = getSelectionRect()
+    if (!rect) return null
+    const { type, cols, list } = rect
+    const toRC = (cell: { id: string; field: string; type: 'pcb' | 'cable' } | null) => {
+      if (!cell || cell.type !== type) return null
+      const r = list.findIndex(i => i.id === cell.id)
+      const c = cols.indexOf(cell.field)
+      return r === -1 || c === -1 ? null : { r, c }
+    }
+    const anchor = toRC(selAnchorRef.current) ?? { r: rect.minRow, c: rect.minCol }
+    const focus = toRC(selFocusRef.current) ?? { r: rect.maxRow, c: rect.maxCol }
+    return { ...rect, anchor, focus }
+  }
+
+  // 엑셀처럼 Enter 저장 직후 같은 칼럼의 아래 행으로 활성 셀 이동 (마지막 행이면 제자리)
+  const moveSelectionDown = useStableHandler((id: string, type: 'pcb' | 'cable', field: string) => {
+    const list: any[] = type === 'pcb' ? filteredPcbs : filteredCables
+    const idx = list.findIndex(i => i.id === id)
+    if (idx === -1) return
+    const nextIdx = Math.min(idx + 1, list.length - 1)
+    const cell = { id: list[nextIdx].id, field, type }
+    selAnchorRef.current = cell
+    selFocusRef.current = cell
+    dragStartCellRef.current = cell
+    setSelectedCells([`${cell.id}::${field}`])
+    scrollCellIntoView(type, nextIdx, `${cell.id}::${field}`)
+  })
+
+  const handleNavKey = useStableHandler((e: KeyboardEvent) => {
+    if (e.altKey) return
+    const ae = document.activeElement as HTMLElement | null
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return
+    if (editingCellRef.current) return
+    if (selectedCells.length === 0) return
+    // 모달/팝오버(입고일·제작번호 선택 등)가 열려 있으면 그쪽 UI에 양보
+    if (isModalOpen || deleteConfirm || stockInPicker || orderNoPicker) return
+
+    const ARROWS: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }
+    const mod = e.ctrlKey || e.metaKey
+    const isSpace = e.key === ' '
+    const isTab = e.key === 'Tab'
+    if (!(e.key in ARROWS) && !isSpace && !isTab && e.key !== 'Enter' && e.key !== 'F2' && e.key !== 'Escape') return
+
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      setSelectedCells([])
+      setFloatingMenuPos(null)
+      return
+    }
+
+    const ctx = resolveSelContext()
+    if (!ctx) return
+    const { type, cols, list, anchor, focus } = ctx
+    const lastR = list.length - 1
+    const lastC = cols.length - 1
+
+    if (isSpace) {
+      if (e.shiftKey && !mod) {
+        // Shift+Space: 선택 범위에 걸친 행 전체 선택 — NO. 클릭과 동일 (이후 Delete = 행 삭제 확인)
+        e.preventDefault()
+        const allCols = type === 'pcb' ? pcbColumns : cableColumns
+        const minR = Math.min(anchor.r, focus.r), maxR = Math.max(anchor.r, focus.r)
+        const sel: string[] = []
+        for (let r = minR; r <= maxR; r++) for (const f of allCols) sel.push(`${list[r].id}::${f}`)
+        setSelectedCells(sel)
+        setFloatingMenuPos(null)
+      } else if (mod) {
+        // Ctrl/Cmd+Space: 선택 범위에 걸친 열 전체 선택.
+        // Shift 동반(Cmd+Shift+Space)도 허용 — macOS에서 Ctrl+Space는 입력 소스 전환,
+        // Cmd+Space는 Spotlight가 가로채므로 시스템에 안 잡히는 대안 조합이 필요하다.
+        e.preventDefault()
+        const minC = Math.min(anchor.c, focus.c), maxC = Math.max(anchor.c, focus.c)
+        const sel: string[] = []
+        for (const row of list) for (let c = minC; c <= maxC; c++) sel.push(`${row.id}::${cols[c]}`)
+        setSelectedCells(sel)
+        setFloatingMenuPos(null)
+      }
+      return
+    }
+
+    if (e.key === 'Enter' || e.key === 'F2') {
+      if (mod || e.shiftKey || selectedCells.length !== 1) return
+      e.preventDefault()
+      // 선택된 셀을 한 번 더 클릭한 것과 동일하게 처리 → 셀별 편집기/팝오버(입고대기 등)가 그대로 열린다
+      const td = document.querySelector(`td[data-cell="${CSS.escape(selectedCells[0])}"]`) as HTMLElement | null
+      td?.click()
+      return
+    }
+
+    // Tab: 우측 이동(Shift+Tab: 좌측, 항상 단일 선택) · 방향키: 이동/Shift=확장/Ctrl=끝 점프/Ctrl+Shift=끝까지 선택
+    e.preventDefault()
+    const [dr, dc] = isTab ? [0, e.shiftKey ? -1 : 1] : ARROWS[e.key]
+    const extend = !isTab && e.shiftKey
+    const target = (!isTab && mod)
+      ? dataEdgeFrom(list, cols, focus.r, focus.c, dr, dc)
+      : { r: Math.max(0, Math.min(lastR, focus.r + dr)), c: Math.max(0, Math.min(lastC, focus.c + dc)) }
+
+    const focusCell = { id: list[target.r].id, field: cols[target.c], type }
+    selFocusRef.current = focusCell
+    dragStartCellRef.current = focusCell // 일괄 편집기 등 type 파생 로직과 일관성 유지
+    if (extend) {
+      const minR = Math.min(anchor.r, target.r), maxR = Math.max(anchor.r, target.r)
+      const minC = Math.min(anchor.c, target.c), maxC = Math.max(anchor.c, target.c)
+      const sel: string[] = []
+      for (let r = minR; r <= maxR; r++) for (let c = minC; c <= maxC; c++) sel.push(`${list[r].id}::${cols[c]}`)
+      setSelectedCells(sel)
+    } else {
+      selAnchorRef.current = focusCell
+      setSelectedCells([`${focusCell.id}::${focusCell.field}`])
+    }
+    setFloatingMenuPos(null)
+    scrollCellIntoView(type, target.r, `${focusCell.id}::${focusCell.field}`)
+  })
+
+  useEffect(() => {
+    const listener = (e: KeyboardEvent) => { handleNavKey(e) }
+    window.addEventListener('keydown', listener)
+    return () => window.removeEventListener('keydown', listener)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
