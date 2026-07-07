@@ -53,6 +53,7 @@ const MIN_COLUMN_WIDTH: Record<'pcb' | 'cable', Record<string, number>> = {
     pcb_lead_time: 80,
     received_quantity: 60,
     received_destination: 52,
+    pcb_stock_completed: 80,
     parts_organization: 56,
     assy_hanwha: 72,
     assy_evertech: 72,
@@ -65,6 +66,7 @@ const MIN_COLUMN_WIDTH: Record<'pcb' | 'cable', Record<string, number>> = {
     delivery_quantity: 50,
     delivery_date: 60,
     delivery_destination: 135, // 평균 129px
+    delivery_completed: 80,
   },
   // production_cables 실제 데이터의 표시 폭 평균 실측 기준
   cable: {
@@ -86,6 +88,7 @@ const MIN_COLUMN_WIDTH: Record<'pcb' | 'cable', Record<string, number>> = {
     cable_requested_date: 66, // 입고 요청일
     cable_actual_date: 66, // 실제 입고일
     delivery_notes: 85, // 납품/비고 평균 71px
+    delivery_completed: 80,
   },
 }
 
@@ -143,7 +146,7 @@ const HIDEABLE_SECTIONS: Record<'pcb' | 'cable', HideableSection[]> = {
         { title: 'PJT 담당자', fields: ['client_name', 'client_manager', 'hansl_manager'] },
         { title: '제작수량', fields: ['revision_count', 'quantity'] },
         { title: 'ARTWORK', fields: ['artwork_status'] },
-        { title: 'PCB 제작', fields: ['metal_mask', 'changes_memo', 'stock_count', 'pcb_vendor', 'delivery_schedule', 'pcb_lead_time', 'received_quantity', 'received_destination'] },
+        { title: 'PCB 제작', fields: ['metal_mask', 'changes_memo', 'stock_count', 'pcb_vendor', 'delivery_schedule', 'pcb_lead_time', 'received_quantity', 'received_destination', 'pcb_stock_completed'] },
       ],
     },
     {
@@ -156,7 +159,7 @@ const HIDEABLE_SECTIONS: Record<'pcb' | 'cable', HideableSection[]> = {
       title: 'IN-House Checking ~ 납품',
       groups: [
         { title: 'IN-House Checking / 리뷰', fields: ['qa_passed', 'qa_failed', 'qa_notes', 'design_review'] },
-        { title: '납품', fields: ['delivery_quantity', 'delivery_date', 'delivery_destination'] },
+        { title: '납품', fields: ['delivery_quantity', 'delivery_date', 'delivery_destination', 'delivery_completed'] },
       ],
     },
   ],
@@ -176,7 +179,7 @@ const HIDEABLE_SECTIONS: Record<'pcb' | 'cable', HideableSection[]> = {
         { title: '제작수량', fields: ['revision_count', 'quantity'] },
         { title: '사양', fields: ['spec_details'] },
         { title: 'CASE/CABLE 입고', fields: ['cable_vendor', 'cable_requested_date', 'cable_actual_date'] },
-        { title: '납품', fields: ['delivery_notes'] },
+        { title: '납품', fields: ['delivery_notes', 'delivery_completed'] },
       ],
     },
   ],
@@ -189,11 +192,12 @@ const hideableFieldsFor = (type: 'pcb' | 'cable'): string[] =>
 const HEADER_SPAN_GROUPS = {
   pjt: ['client_name', 'client_manager', 'hansl_manager'],
   makeQty: ['revision_count', 'quantity'],
-  pcbMake: ['metal_mask', 'changes_memo', 'stock_count', 'pcb_vendor', 'delivery_schedule', 'pcb_lead_time', 'received_quantity', 'received_destination'],
+  pcbMake: ['metal_mask', 'changes_memo', 'stock_count', 'pcb_vendor', 'delivery_schedule', 'pcb_lead_time', 'received_quantity', 'received_destination', 'pcb_stock_completed'],
   assy: ['assy_hanwha', 'assy_evertech', 'assy_requested_date'],
   inHouse: ['qa_passed', 'qa_failed', 'qa_notes'],
-  pcbDelivery: ['delivery_quantity', 'delivery_date', 'delivery_destination'],
+  pcbDelivery: ['delivery_quantity', 'delivery_date', 'delivery_destination', 'delivery_completed'],
   cableStockIn: ['cable_vendor', 'cable_requested_date', 'cable_actual_date'],
+  cableDelivery: ['delivery_notes', 'delivery_completed'],
 }
 
 // localStorage에 저장된 숨긴 칼럼 목록 복원 (알 수 없는 필드는 버림)
@@ -225,7 +229,7 @@ const MEMO_TEXT_FIELDS = ['reference', 'changes_memo', 'qa_notes', 'design_revie
 const BULK_VALUE_EDITABLE = new Set<string>([
   // 날짜 / 하이브리드(날짜·메모)
   'request_date', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date',
-  'assy_hanwha', 'assy_evertech', 'delivery_deadline', 'final_product_stock',
+  'assy_hanwha', 'assy_evertech', 'delivery_deadline', 'final_product_stock', 'pcb_stock_completed', 'delivery_completed',
   // 숫자
   'revision_count', 'quantity', 'stock_count', 'received_quantity', 'delivery_quantity',
   // 메모/텍스트
@@ -245,7 +249,7 @@ const bulkSelectOptions = (type: 'pcb' | 'cable', field: string): string[] | nul
 
 // 순수 날짜 칼럼(YYYY-MM-DD)과 날짜/메모 혼합 칼럼 — 조건(op) 선택지가 달라진다
 const DATE_ONLY_FIELDS = ['request_date', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date']
-const HYBRID_DATE_FIELDS = ['delivery_deadline', 'assy_hanwha', 'assy_evertech', 'final_product_stock']
+const HYBRID_DATE_FIELDS = ['delivery_deadline', 'assy_hanwha', 'assy_evertech', 'final_product_stock', 'pcb_stock_completed', 'delivery_completed']
 
 // 필터 규칙 하나: field 칼럼에 op 조건 적용. contains류는 value, date_in은 year/month 사용.
 type FilterOp = 'date_in' | 'contains' | 'not_contains' | 'is_empty' | 'not_empty' | 'status_is'
@@ -272,8 +276,15 @@ const OP_LABELS: Record<FilterOp, string> = {
   status_is: '상태',
 }
 
-// 입고 칼럼(완제품입고/실제입고일)은 도메인 용어로 표기: 비어있음=입고대기, 비어있지 않음=입고됨
-const STOCK_DATE_FIELDS = ['final_product_stock', 'cable_actual_date']
+// 입고/배송 칼럼(완제품입고/실제입고일/입고완료/배송완료)은 도메인 용어로 표기: 비어있음=대기, 비어있지 않음=완료
+// 배송완료는 '배송대기/배송완료'로 구분 표기하고 나머지는 '입고대기/입고됨'을 쓴다
+const STOCK_DATE_LABELS: Record<string, [string, string]> = {
+  final_product_stock: ['입고대기', '입고됨'],
+  cable_actual_date: ['입고대기', '입고됨'],
+  pcb_stock_completed: ['입고대기', '입고됨'],
+  delivery_completed: ['배송대기', '배송완료'],
+}
+const STOCK_DATE_FIELDS = Object.keys(STOCK_DATE_LABELS)
 // ARTWORK/부품정리는 상태 + 메모 하이브리드 구조라 전용 조건(status_is)을 쓴다
 // (상태 목록은 ARTWORK_STATUS_OPTIONS / PARTS_STATUS_OPTIONS, 필터 선택지는 *_FILTER_STATUS_OPTIONS)
 const ARTWORK_FIELD = 'artwork_status'
@@ -281,8 +292,9 @@ const PARTS_FIELD = 'parts_organization'
 const STATUS_FIELDS = [ARTWORK_FIELD, PARTS_FIELD]
 const opLabelFor = (field: string, op: FilterOp): string => {
   if (STOCK_DATE_FIELDS.includes(field)) {
-    if (op === 'is_empty') return '입고대기'
-    if (op === 'not_empty') return '입고됨'
+    const [waiting, done] = STOCK_DATE_LABELS[field]
+    if (op === 'is_empty') return waiting
+    if (op === 'not_empty') return done
   }
   if (STATUS_FIELDS.includes(field)) {
     if (op === 'status_is') return '상태'
@@ -359,12 +371,12 @@ let sortRuleSeq = 0
 const newSortId = () => `s${++sortRuleSeq}`
 
 // 정렬 가능한 칼럼(제작구분 제외). 라벨은 컴포넌트의 getColumnTitle로 표시.
-const PCB_SORT_FIELDS = ['board_name', 'reference', 'request_date', 'estimate_no', 'delivery_deadline', 'client_name', 'client_manager', 'hansl_manager', 'revision_count', 'quantity', 'artwork_status', 'metal_mask', 'changes_memo', 'stock_count', 'pcb_vendor', 'delivery_schedule', 'pcb_lead_time', 'received_quantity', 'received_destination', 'parts_organization', 'assy_hanwha', 'assy_evertech', 'assy_requested_date', 'final_product_stock', 'qa_passed', 'qa_failed', 'qa_notes', 'design_review', 'delivery_quantity', 'delivery_date', 'delivery_destination']
-const CABLE_SORT_FIELDS = ['board_name', 'reference', 'request_date', 'estimate_no', 'delivery_deadline', 'client_name', 'client_manager', 'hansl_manager', 'revision_count', 'quantity', 'spec_details', 'cable_vendor', 'cable_requested_date', 'cable_actual_date', 'delivery_notes']
+const PCB_SORT_FIELDS = ['board_name', 'reference', 'request_date', 'estimate_no', 'delivery_deadline', 'client_name', 'client_manager', 'hansl_manager', 'revision_count', 'quantity', 'artwork_status', 'metal_mask', 'changes_memo', 'stock_count', 'pcb_vendor', 'delivery_schedule', 'pcb_lead_time', 'received_quantity', 'received_destination', 'pcb_stock_completed', 'parts_organization', 'assy_hanwha', 'assy_evertech', 'assy_requested_date', 'final_product_stock', 'qa_passed', 'qa_failed', 'qa_notes', 'design_review', 'delivery_quantity', 'delivery_date', 'delivery_destination', 'delivery_completed']
+const CABLE_SORT_FIELDS = ['board_name', 'reference', 'request_date', 'estimate_no', 'delivery_deadline', 'client_name', 'client_manager', 'hansl_manager', 'revision_count', 'quantity', 'spec_details', 'cable_vendor', 'cable_requested_date', 'cable_actual_date', 'delivery_notes', 'delivery_completed']
 
 // 숫자로 비교할 칼럼 / 날짜(YYYY-MM-DD 선두 매칭)로 비교할 칼럼
 const NUMERIC_SORT_FIELDS = new Set(['revision_count', 'quantity', 'stock_count', 'received_quantity', 'delivery_quantity'])
-const DATE_SORT_FIELDS = new Set(['request_date', 'delivery_deadline', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date', 'final_product_stock'])
+const DATE_SORT_FIELDS = new Set(['request_date', 'delivery_deadline', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date', 'final_product_stock', 'pcb_stock_completed', 'delivery_completed'])
 
 // 정렬 비교 키 추출 — 값 없음(null/빈문자)은 null 반환하여 방향과 무관하게 항상 뒤로 보낸다(노션 동작).
 const sortKeyFor = (item: any, field: string): string | number | null => {
@@ -673,6 +685,32 @@ const formatStockInDisplay = (value: string | null | undefined): string => {
   // 그 외(분할입고 수량/재고/회수 메모, 오타 등)는 의미가 있어 원문 유지
   return s;
 };
+
+// 입고완료(PCB 제작) / 배송완료(납품) 표시 정규화: 완제품입고와 달리 'M/D 완료' 형식(0채움 없음)으로 통일
+// - ISO(YYYY-MM-DD) → 'M/D 완료'
+// - 'MM월 DD일'/'M/D' + 선택적 상태어 → 'M/D 완료'
+// - 그 외 메모 원문은 의미가 있어 유지
+const formatCompletedDisplay = (value: string | null | undefined): string => {
+  if (!value) return '-';
+  const s = String(value).trim();
+  if (!s || s === '-') return '-';
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${Number(iso[2])}/${Number(iso[3])} 완료`;
+  const md = s.match(/^(\d{1,2})\s*월\s*(\d{1,2})\s*일(?:\s*(?:입고|완료|납품|배송))?$/);
+  if (md) return `${Number(md[1])}/${Number(md[2])} 완료`;
+  const slash = s.match(/^(\d{1,2})\/(\d{1,2})(?:\s*(?:입고|완료|배송))?$/);
+  if (slash) return `${Number(slash[1])}/${Number(slash[2])} 완료`;
+  return s;
+};
+
+// 입고/배송 대기 버튼 문구·팝오버 라벨: 완제품입고류는 '입고', 배송완료는 '배송'으로 구분
+const STOCK_WAITING_LABEL: Record<string, string> = {
+  final_product_stock: '입고대기',
+  cable_actual_date: '입고대기',
+  pcb_stock_completed: '입고대기',
+  delivery_completed: '배송대기',
+}
+const stockPickerLabel = (field: string): string => field === 'delivery_completed' ? '배송일' : '입고일'
 
 // ─── 셀 내 URL → '링크' 하이퍼링크 표시 ─────────────────────────────
 // 셀 값에 웹사이트 주소가 들어 있으면 긴 URL 대신 '링크' 텍스트로 축약해 새 탭으로 연결한다.
@@ -1953,6 +1991,9 @@ export default function ProductionListMain() {
   // 키보드 내비게이션용 앵커(선택 시작점)/포커스(활성 셀) — 클릭·드래그·방향키 이동 시 갱신
   const selAnchorRef = useRef<{ id: string; field: string; type: 'pcb' | 'cable' } | null>(null)
   const selFocusRef = useRef<{ id: string; field: string; type: 'pcb' | 'cable' } | null>(null)
+  // Shift/Ctrl(Cmd)+클릭 선택을 mousedown에서 처리했음을 뒤이은 click 핸들러에 알리는 플래그
+  // (click이 편집 진입/팝오버 열기로 이어지지 않도록). 매 mousedown마다 새로 계산된다.
+  const modifierSelectRef = useRef(false)
   const [floatingMenuPos, setFloatingMenuPos] = useState<{ x: number; y: number } | null>(null)
   // 같은 칼럼 다중선택 시 값 일괄 입력용 편집값 (플로팅 메뉴 안 편집기 상태)
   const [bulkEditValue, setBulkEditValue] = useState('')
@@ -1979,6 +2020,7 @@ export default function ProductionListMain() {
     'pcb_lead_time',
     'received_quantity',
     'received_destination',
+    'pcb_stock_completed',
     'parts_organization',
     'assy_hanwha',
     'assy_evertech',
@@ -1990,7 +2032,8 @@ export default function ProductionListMain() {
     'design_review',
     'delivery_quantity',
     'delivery_date',
-    'delivery_destination'
+    'delivery_destination',
+    'delivery_completed'
   ]
 
   const cableColumns = [
@@ -2010,7 +2053,8 @@ export default function ProductionListMain() {
     'cable_vendor',
     'cable_requested_date',
     'cable_actual_date',
-    'delivery_notes'
+    'delivery_notes',
+    'delivery_completed'
   ]
 
   const getRowIndex = (type: 'pcb' | 'cable', id: string) => {
@@ -2018,8 +2062,73 @@ export default function ProductionListMain() {
     return list.findIndex(item => item.id === id)
   }
 
+  // 같은 칼럼 다중선택일 때 일괄 입력 편집기에 미리 채울 값 (모두 같은 값이면 그 값, 아니면 빈칸)
+  const computeBulkPrefill = (cells: string[], type: 'pcb' | 'cable'): string => {
+    const fields = Array.from(new Set(cells.map(k => k.split('::')[1])))
+    if (fields.length !== 1) return ''
+    const field = fields[0]
+    const list = type === 'pcb' ? liveDataRef.current.pcbs : liveDataRef.current.cables
+    const vals = Array.from(new Set(cells.map(k => {
+      const rid = k.split('::')[0]
+      const v = (list.find(i => i.id === rid) as any)?.[field]
+      return v === null || v === undefined ? '' : String(v)
+    })))
+    return vals.length === 1 ? vals[0] : ''
+  }
+
   const handleCellMouseDown = useStableHandler((e: React.MouseEvent, id: string, field: string, type: 'pcb' | 'cable') => {
     if (e.button !== 0) return // 마우스 왼쪽 클릭만 지원
+    const mod = e.ctrlKey || e.metaKey
+    // Shift/Ctrl 클릭 선택을 여기서 처리했으면 true — 뒤이은 click 핸들러(편집 진입/팝오버)가 양보한다
+    modifierSelectRef.current = false
+
+    // Shift+클릭: 앵커(마지막 클릭 셀)→클릭 셀 사각 범위 선택 (엑셀과 동일)
+    if (e.shiftKey && !mod && selectedCells.length > 0) {
+      const anchor = selAnchorRef.current
+      if (anchor && anchor.type === type) {
+        const cols = (type === 'pcb' ? pcbColumns : cableColumns).filter(f => !isColHidden(type, f))
+        const list = type === 'pcb' ? filteredPcbs : filteredCables
+        const aR = getRowIndex(type, anchor.id), aC = cols.indexOf(anchor.field)
+        const bR = getRowIndex(type, id), bC = cols.indexOf(field)
+        if (aR !== -1 && aC !== -1 && bR !== -1 && bC !== -1) {
+          const sel: string[] = []
+          for (let r = Math.min(aR, bR); r <= Math.max(aR, bR); r++)
+            for (let c = Math.min(aC, bC); c <= Math.max(aC, bC); c++)
+              sel.push(`${list[r].id}::${cols[c]}`)
+          setSelectedCells(sel)
+          selFocusRef.current = { id, field, type }
+          dragStartCellRef.current = { ...anchor } // 이어서 드래그하면 앵커 기준으로 계속 확장
+          modifierSelectRef.current = true
+          if (editingCell) setEditingCell(null)
+          if (sel.length > 1) {
+            setFloatingMenuPos({ x: e.clientX, y: e.clientY })
+            setBulkEditValue(computeBulkPrefill(sel, type))
+          } else setFloatingMenuPos(null)
+          return
+        }
+      }
+    }
+
+    // Ctrl/Cmd+클릭: 개별 셀 추가/제거 (비연속 다중 선택, 엑셀과 동일)
+    if (mod && !e.shiftKey) {
+      const cellKey = `${id}::${field}`
+      // 다른 테이블의 선택과는 섞을 수 없으므로 테이블이 바뀌면 새로 시작
+      const sameTable = selAnchorRef.current?.type === type && selectedCells.length > 0
+      const base = sameTable ? selectedCells : []
+      const next = base.includes(cellKey) ? base.filter(k => k !== cellKey) : [...base, cellKey]
+      setSelectedCells(next)
+      selAnchorRef.current = { id, field, type }
+      selFocusRef.current = { id, field, type }
+      dragStartCellRef.current = { id, field, type }
+      modifierSelectRef.current = true
+      if (editingCell) setEditingCell(null)
+      if (next.length > 1) {
+        setFloatingMenuPos({ x: e.clientX, y: e.clientY })
+        setBulkEditValue(computeBulkPrefill(next, type))
+      } else setFloatingMenuPos(null)
+      return
+    }
+
     // 실제 드래그로 판명되기 전까지는 ref에만 기록한다.
     // 여기서 곧바로 setSelectedCells를 호출하면 뒤이은 click 핸들러가 "이미 선택된 셀"로 오판해
     // 첫 클릭에 곧장 편집 모드로 들어가버린다 (선택→편집 2단계 클릭이 깨짐).
@@ -2074,20 +2183,7 @@ export default function ProductionListMain() {
           setFloatingMenuPos({ x: e.clientX, y: e.clientY })
           // 값 편집기 프리필: 선택 셀이 모두 같은 칼럼이고 현재 값도 동일하면 그 값을 미리 채운다
           // (단일 클릭 편집기가 현재값을 보여주는 것과 동일한 감각). 값이 제각각이면 빈칸.
-          const fields = Array.from(new Set(selectedCells.map(k => k.split('::')[1])))
-          if (fields.length === 1) {
-            const field = fields[0]
-            const type = dragStartCellRef.current?.type || 'pcb'
-            const list = type === 'pcb' ? liveDataRef.current.pcbs : liveDataRef.current.cables
-            const vals = Array.from(new Set(selectedCells.map(k => {
-              const rid = k.split('::')[0]
-              const v = (list.find(i => i.id === rid) as any)?.[field]
-              return v === null || v === undefined ? '' : String(v)
-            })))
-            setBulkEditValue(vals.length === 1 ? vals[0] : '')
-          } else {
-            setBulkEditValue('')
-          }
+          setBulkEditValue(computeBulkPrefill(selectedCells, dragStartCellRef.current?.type || 'pcb'))
         }
       }
     }
@@ -2614,9 +2710,19 @@ export default function ProductionListMain() {
 
   // 인라인 셀 수정 클릭 핸들러: 첫 클릭은 셀 선택만, 이미 선택된 셀을 한 번 더 클릭하면 편집 모드로 진입
   const handleCellClick = useStableHandler((id: string, type: 'pcb' | 'cable', field: string, currentValue: any) => {
+    if (modifierSelectRef.current) return // Shift/Ctrl+클릭 선택은 mousedown에서 처리됨 — 편집 진입 금지
     if (selectedCells.length > 1) {
-      // 다중 선택(행 선택/드래그) 상태에서 셀 단일 클릭 = 그 셀만 선택으로 전환 (엑셀과 동일)
-      setSelectedCells([`${id}::${field}`])
+      const cellKey = `${id}::${field}`
+      if (selectedCells.includes(cellKey)) {
+        // 다중 선택 범위 "안"을 클릭 → 일괄 입력 메뉴 열기 (드래그 종료 때와 동일한 동작)
+        const td = document.querySelector(`td[data-cell="${CSS.escape(cellKey)}"]`) as HTMLElement | null
+        const r = td?.getBoundingClientRect()
+        setFloatingMenuPos(r ? { x: r.right, y: r.bottom } : { x: window.innerWidth / 2, y: window.innerHeight / 2 })
+        setBulkEditValue(computeBulkPrefill(selectedCells, type))
+        return
+      }
+      // 범위 "밖"을 클릭 = 그 셀만 선택으로 전환 (엑셀과 동일)
+      setSelectedCells([cellKey])
       setFloatingMenuPos(null)
       return
     }
@@ -2652,7 +2758,7 @@ export default function ProductionListMain() {
       } else {
         valueToSave = null
       }
-    } else if (['assy_hanwha', 'assy_evertech', 'delivery_deadline', 'final_product_stock'].includes(field)) {
+    } else if (['assy_hanwha', 'assy_evertech', 'delivery_deadline', 'final_product_stock', 'pcb_stock_completed', 'delivery_completed'].includes(field)) {
       // 날짜 또는 메모 하이브리드: 날짜면 YYYY-MM-DD, 아니면 메모 원문
       valueToSave = toDateOrMemo(val, defaultMonth)
     } else if (['revision_count', 'quantity', 'stock_count', 'received_quantity', 'delivery_quantity'].includes(field)) {
@@ -2824,6 +2930,7 @@ export default function ProductionListMain() {
 
   // 완제품 입고: '입고대기' 버튼 클릭 → 날짜 선택 팝오버 열기 (직접 입력 또는 달력 클릭)
   const handleStockInPress = useStableHandler((id: string, type: 'pcb' | 'cable', field: string = 'final_product_stock') => {
+    if (modifierSelectRef.current) return // Shift/Ctrl+클릭 선택 중에는 팝오버를 열지 않음
     setStockInInput('')
     setStockInPicker({ id, type, field })
   })
@@ -3182,6 +3289,7 @@ export default function ProductionListMain() {
       case 'pcb_lead_time': return '제작 기간(PCB)'
       case 'received_quantity': return '입고(수량)'
       case 'received_destination': return '입고처'
+      case 'pcb_stock_completed': return '입고완료'
       case 'production_type': return '구분'
       case 'parts_organization': return '부품정리'
       case 'assy_hanwha': return '환화'
@@ -3195,6 +3303,7 @@ export default function ProductionListMain() {
       case 'delivery_quantity': return '수량'
       case 'delivery_date': return '일자'
       case 'delivery_destination': return '배송처'
+      case 'delivery_completed': return '배송완료'
       case 'spec_details': return '사양'
       case 'cable_vendor': return '업체'
       case 'cable_requested_date': return '입고 요청일'
@@ -3222,6 +3331,8 @@ export default function ProductionListMain() {
     if (val === null || val === undefined || val === '') return '-'
     // 완제품입고는 ISO로 저장되고 'MM월 DD일'로 표시되므로 실측도 표시값 기준
     if (field === 'final_product_stock') return formatStockInDisplay(val.toString())
+    // 입고완료/배송완료는 ISO로 저장되고 'M/D 완료'로 표시되므로 실측도 표시값 기준
+    if (field === 'pcb_stock_completed' || field === 'delivery_completed') return formatCompletedDisplay(val.toString())
     // URL은 화면에 '링크'로 축약 표시되므로 폭 실측도 동일 기준으로
     return collapseUrlsForMeasure(val.toString())
   }
@@ -3244,6 +3355,7 @@ export default function ProductionListMain() {
     }
     if (val === null || val === undefined || val === '') return ''
     if (field === 'final_product_stock') return formatStockInDisplay(val.toString())
+    if (field === 'pcb_stock_completed' || field === 'delivery_completed') return formatCompletedDisplay(val.toString())
     return val.toString()
   }
 
@@ -3920,7 +4032,7 @@ export default function ProductionListMain() {
     }
 
     let computedClassName = cellClassName
-    const isDateField = field.endsWith('_date') || field.endsWith('_deadline') || field.endsWith('_schedule') || field === 'final_product_stock';
+    const isDateField = field.endsWith('_date') || field.endsWith('_deadline') || field.endsWith('_schedule') || field === 'final_product_stock' || field === 'pcb_stock_completed' || field === 'delivery_completed';
     const hasValue = item[field] !== null && item[field] !== undefined && item[field] !== '';
     if (isDateField && hasValue) {
       if (field === 'delivery_deadline' && isDeadlineUrgent(item[field])) {
@@ -4002,8 +4114,8 @@ export default function ProductionListMain() {
       ...cellStyle
     } : cellStyle;
 
-    // 완제품 입고: 값이 비어 있으면 '입고대기' 버튼 표시 (클릭 시 날짜 선택 팝오버)
-    const isStockWaiting = (field === 'final_product_stock' || field === 'cable_actual_date') &&
+    // 완제품 입고/입고완료/배송완료: 값이 비어 있으면 대기 버튼 표시 (클릭 시 날짜 선택 팝오버)
+    const isStockWaiting = (field === 'final_product_stock' || field === 'cable_actual_date' || field === 'pcb_stock_completed' || field === 'delivery_completed') &&
       (item[field] == null ||
        String(item[field]).trim() === '' ||
        String(item[field]).trim() === '-')
@@ -4032,7 +4144,7 @@ export default function ProductionListMain() {
               onClick={(e) => { e.stopPropagation(); handleStockInPress(id, type, field) }}
               className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-colors"
             >
-              입고대기
+              {STOCK_WAITING_LABEL[field] || '입고대기'}
             </button>
             {isStockPickerOpen && (
               <CellPopoverPortal
@@ -4042,7 +4154,7 @@ export default function ProductionListMain() {
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">입고일 — 직접 입력 또는 달력에서 선택</div>
+                <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">{stockPickerLabel(field)} — 직접 입력 또는 달력에서 선택</div>
                 <div className="flex items-center gap-1">
                   <input
                     autoFocus
@@ -4168,6 +4280,7 @@ export default function ProductionListMain() {
         onMouseEnter={(e) => handleCellMouseEnter(e, item.id, 'sales_order_number', type)}
         onClick={(e) => {
           e.stopPropagation()
+          if (modifierSelectRef.current) return // Shift/Ctrl+클릭 선택은 mousedown에서 처리됨
           if (selectedCells.length === 1 && selectedCells[0] === cellKey) {
             setOrderNoInput('')
             setOrderNoPicker({ id: item.id, type })
@@ -4381,6 +4494,21 @@ export default function ProductionListMain() {
     return { type, cols, list, minRow, maxRow, minCol, maxCol }
   }
 
+  // 선택 셀들을 (행,열) 좌표로 해석 (필터로 사라진 행·숨긴 칼럼 제외).
+  // 반환 개수가 사각 범위 넓이와 같으면 온전한 직사각형 선택, 다르면 Ctrl+클릭 비연속 선택.
+  const resolveSelectedCoords = (list: any[], cols: string[]) => {
+    const idxById = new Map<string, number>()
+    list.forEach((item, i) => idxById.set(item.id, i))
+    const coords: Array<{ r: number; c: number }> = []
+    for (const key of selectedCells) {
+      const sep = key.indexOf('::')
+      const r = idxById.get(key.slice(0, sep)) ?? -1
+      const c = cols.indexOf(key.slice(sep + 2))
+      if (r !== -1 && c !== -1) coords.push({ r, c })
+    }
+    return coords
+  }
+
   const handleCopyKey = useStableHandler((e: KeyboardEvent) => {
     if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
     if ((e.key || '').toLowerCase() !== 'c') return
@@ -4409,6 +4537,13 @@ export default function ProductionListMain() {
     const rect = getSelectionRect()
     if (!rect) return
     const { cols, list, minRow, maxRow, minCol, maxCol } = rect
+    // Ctrl+클릭 비연속 선택이 직사각형을 이루지 않으면 복사 불가 (엑셀과 동일한 제약)
+    const area = (maxRow - minRow + 1) * (maxCol - minCol + 1)
+    if (resolveSelectedCoords(list, cols).length !== area) {
+      e.preventDefault()
+      toast.error('떨어져 있는 다중 선택 범위는 복사할 수 없습니다.')
+      return
+    }
     const lines: string[] = []
     for (let r = minRow; r <= maxRow; r++) {
       const cells: string[] = []
@@ -4440,10 +4575,16 @@ export default function ProductionListMain() {
     e.preventDefault()
     const { type, cols, list, minRow, maxRow, minCol, maxCol } = rect
 
-    // 대상 셀 좌표: 1×1 값 + 다중 선택 = 선택 전체 채움, 그 외 = 좌상단부터 N×M 펼침
+    // 대상 셀 좌표: 1×1 값 + 다중 선택 = 선택된 셀 전체 채움(Ctrl+클릭 비연속 선택 포함),
+    // 그 외 = 좌상단부터 N×M 펼침 (비연속 선택에는 범위 붙여넣기 불가 — 엑셀과 동일)
     const targets: Array<{ r: number; c: number; val: string }> = []
+    const coords = resolveSelectedCoords(list, cols)
+    const isRectSelection = coords.length === (maxRow - minRow + 1) * (maxCol - minCol + 1)
     if (grid.length === 1 && grid[0].length === 1 && selectedCells.length > 1) {
-      for (let r = minRow; r <= maxRow; r++) for (let c = minCol; c <= maxCol; c++) targets.push({ r, c, val: grid[0][0] })
+      for (const { r, c } of coords) targets.push({ r, c, val: grid[0][0] })
+    } else if (!isRectSelection) {
+      toast.error('떨어져 있는 다중 선택 범위에는 붙여넣을 수 없습니다.')
+      return
     } else {
       grid.forEach((rowVals, dr) => rowVals.forEach((val, dc) => {
         const r = minRow + dr
@@ -4636,8 +4777,18 @@ export default function ProductionListMain() {
     }
 
     if (e.key === 'Enter' || e.key === 'F2') {
-      if (mod || e.shiftKey || selectedCells.length !== 1) return
+      if (mod || e.shiftKey) return
       e.preventDefault()
+      if (selectedCells.length > 1) {
+        // 키보드로 잡은 다중 선택에서 Enter → 일괄 입력 메뉴 열기 (드래그 종료 때와 동일)
+        const f = selFocusRef.current
+        const td = (f && document.querySelector(`td[data-cell="${CSS.escape(`${f.id}::${f.field}`)}"]`)
+          || document.querySelector(`td[data-cell="${CSS.escape(selectedCells[0])}"]`)) as HTMLElement | null
+        const r = td?.getBoundingClientRect()
+        setFloatingMenuPos(r ? { x: r.right, y: r.bottom } : { x: window.innerWidth / 2, y: window.innerHeight / 2 })
+        setBulkEditValue(computeBulkPrefill(selectedCells, type))
+        return
+      }
       // 선택된 셀을 한 번 더 클릭한 것과 동일하게 처리 → 셀별 편집기/팝오버(입고대기 등)가 그대로 열린다
       const td = document.querySelector(`td[data-cell="${CSS.escape(selectedCells[0])}"]`) as HTMLElement | null
       td?.click()
@@ -5047,6 +5198,14 @@ export default function ProductionListMain() {
                         {renderEditableCell(
                           item.id,
                           'pcb',
+                          'pcb_stock_completed',
+                          item,
+                          formatCompletedDisplay(item.pcb_stock_completed),
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
                           'parts_organization',
                           item,
                           formatPartsDisplay(item.parts_organization) || '-',
@@ -5149,6 +5308,14 @@ export default function ProductionListMain() {
                           'delivery_destination',
                           item,
                           item.delivery_destination || '-',
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'delivery_completed',
+                          item,
+                          formatCompletedDisplay(item.delivery_completed),
                           'px-2 py-1.5 border border-gray-200'
                         )}
                         <td className="px-2 py-1 border border-gray-200">
@@ -5363,6 +5530,14 @@ export default function ProductionListMain() {
                           'delivery_notes',
                           item,
                           item.delivery_notes || '-',
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'cable',
+                          'delivery_completed',
+                          item,
+                          formatCompletedDisplay(item.delivery_completed),
                           'px-2 py-1.5 border border-gray-200'
                         )}
                         <td className="px-2 py-1 border border-gray-200">
@@ -6179,6 +6354,7 @@ export default function ProductionListMain() {
                     <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'pcb_lead_time', 80)}>제작 기간(PCB)</th>
                     <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={getHeaderStyle('pcb', 'received_quantity', 60)}>입고(수량)</th>
                     <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'received_destination', 80)}>입고처</th>
+                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'pcb_stock_completed', 80)}>입고완료</th>
                     <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'assy_hanwha', 80)}>환화</th>
                     <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'assy_evertech', 80)}>에버텍</th>
                     <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'assy_requested_date', 80)}>입고요청일</th>
@@ -6188,6 +6364,7 @@ export default function ProductionListMain() {
                     <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={getHeaderStyle('pcb', 'delivery_quantity', 60)}>수량</th>
                     <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'delivery_date', 80)}>일자</th>
                     <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'delivery_destination', 100)}>배송처</th>
+                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'delivery_completed', 80)}>배송완료</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[10px] text-gray-500 whitespace-nowrap">
@@ -6397,6 +6574,15 @@ export default function ProductionListMain() {
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
+                      <td className="px-1 py-1 border border-gray-200">
+                        <input
+                          type="text"
+                          value={addingPcbRow.pcb_stock_completed || ''}
+                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, pcb_stock_completed: e.target.value })}
+                          placeholder="예: 7/6"
+                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                        />
+                      </td>
                       <td className="px-1 py-1 border border-gray-200 align-top">
                         <PartsAddInput
                           value={addingPcbRow.parts_organization || ''}
@@ -6506,6 +6692,15 @@ export default function ProductionListMain() {
                           className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
+                      <td className="px-1 py-1 border border-gray-200">
+                        <input
+                          type="text"
+                          value={addingPcbRow.delivery_completed || ''}
+                          onChange={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_completed: e.target.value })}
+                          placeholder="예: 7/6"
+                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                        />
+                      </td>
                       <td className="px-1 py-1 text-center border border-gray-200">
                         <div className="flex items-center justify-center gap-1">
                           <button
@@ -6530,18 +6725,18 @@ export default function ProductionListMain() {
                   )}
                   {filteredPcbs.length === 0 && !addingPcbRow ? (
                     <tr>
-                      <td colSpan={36} className="text-center py-6 text-gray-400 border border-gray-200">검색 조건에 맞는 데이터가 없습니다.</td>
+                      <td colSpan={38} className="text-center py-6 text-gray-400 border border-gray-200">검색 조건에 맞는 데이터가 없습니다.</td>
                     </tr>
                   ) : (
                     <>
                     {pcbTopPad > 0 && (
-                      <tr aria-hidden="true"><td colSpan={36} style={{ height: pcbTopPad, padding: 0, border: 'none' }} /></tr>
+                      <tr aria-hidden="true"><td colSpan={38} style={{ height: pcbTopPad, padding: 0, border: 'none' }} /></tr>
                     )}
                     {pcbVisibleRows.map((item, vIdx) => (
                       <MemoRow key={item.id} item={item} index={pcbWinStart + vIdx} sig={rowSig('pcb', item)} widths={pcbColumnWidths} renderRow={renderPcbRow} />
                     ))}
                     {pcbBottomPad > 0 && (
-                      <tr aria-hidden="true"><td colSpan={36} style={{ height: pcbBottomPad, padding: 0, border: 'none' }} /></tr>
+                      <tr aria-hidden="true"><td colSpan={38} style={{ height: pcbBottomPad, padding: 0, border: 'none' }} /></tr>
                     )}
                     </>
                     )
@@ -6659,7 +6854,9 @@ export default function ProductionListMain() {
                     {visibleSpan('cable', HEADER_SPAN_GROUPS.cableStockIn) > 0 && (
                       <th colSpan={visibleSpan('cable', HEADER_SPAN_GROUPS.cableStockIn)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center bg-blue-50/20 font-bold">CASE/CABLE 입고</th>
                     )}
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 font-bold" style={getHeaderStyle('cable', 'delivery_notes', 150)}>납품/비고</th>
+                    {visibleSpan('cable', HEADER_SPAN_GROUPS.cableDelivery) > 0 && (
+                      <th colSpan={visibleSpan('cable', HEADER_SPAN_GROUPS.cableDelivery)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center font-bold">납품</th>
+                    )}
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={{ width: '56px', minWidth: '56px', maxWidth: '56px' }}>작업</th>
                   </tr>
                   <tr className="bg-gray-50 border-b border-gray-200">
@@ -6671,6 +6868,8 @@ export default function ProductionListMain() {
                     <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'cable_vendor', 80)}>업체</th>
                     <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'cable_requested_date', 80)}>입고 요청일</th>
                     <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'cable_actual_date', 80)}>실제 입고일</th>
+                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'delivery_notes', 150)}>납품/비고</th>
+                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'delivery_completed', 80)}>배송완료</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[10px] text-gray-700 whitespace-nowrap">
@@ -6847,6 +7046,15 @@ export default function ProductionListMain() {
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
+                      <td className="px-1 py-1 border border-gray-200">
+                        <input
+                          type="text"
+                          value={addingCableRow.delivery_completed || ''}
+                          onChange={(e) => setAddingCableRow({ ...addingCableRow, delivery_completed: e.target.value })}
+                          placeholder="예: 7/6"
+                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                        />
+                      </td>
                       <td className="px-1 py-1 text-center border border-gray-200">
                         <div className="flex items-center justify-center gap-1">
                           <button
@@ -6871,18 +7079,18 @@ export default function ProductionListMain() {
                   )}
                   {filteredCables.length === 0 && !addingCableRow ? (
                     <tr>
-                      <td colSpan={20} className="text-center py-6 text-gray-400 border border-gray-200">검색 조건에 맞는 데이터가 없습니다.</td>
+                      <td colSpan={21} className="text-center py-6 text-gray-400 border border-gray-200">검색 조건에 맞는 데이터가 없습니다.</td>
                     </tr>
                   ) : (
                     <>
                     {cableTopPad > 0 && (
-                      <tr aria-hidden="true"><td colSpan={20} style={{ height: cableTopPad, padding: 0, border: 'none' }} /></tr>
+                      <tr aria-hidden="true"><td colSpan={21} style={{ height: cableTopPad, padding: 0, border: 'none' }} /></tr>
                     )}
                     {cableVisibleRows.map((item, vIdx) => (
                       <MemoRow key={item.id} item={item} index={cableWin.start + vIdx} sig={rowSig('cable', item)} widths={cableColumnWidths} renderRow={renderCableRow} />
                     ))}
                     {cableBottomPad > 0 && (
-                      <tr aria-hidden="true"><td colSpan={20} style={{ height: cableBottomPad, padding: 0, border: 'none' }} /></tr>
+                      <tr aria-hidden="true"><td colSpan={21} style={{ height: cableBottomPad, padding: 0, border: 'none' }} /></tr>
                     )}
                     </>
                     )
