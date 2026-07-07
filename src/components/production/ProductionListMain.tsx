@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 're
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { productionService, ProductionPcb, ProductionCable } from '@/services/productionService'
-import { Plus, Search, Edit2, X, Filter, Save, RotateCcw, ChevronDown, SlidersHorizontal, Download, Printer, Eye, EyeOff, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { Plus, Search, Edit2, X, Filter, Save, RotateCcw, ChevronDown, SlidersHorizontal, Download, Printer, Eye, EyeOff, ArrowUpDown, ArrowUp, ArrowDown, Bookmark, Star, Trash2, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
+import { useProductionFilterViews, StoredFilterRule, FilterDefaultSnapshot } from '@/hooks/useProductionFilterViews'
 import { vendorService } from '@/services/vendorService'
 import { Calendar } from '@/components/ui/calendar'
 
@@ -304,6 +305,21 @@ const opsForField = (field: string): FilterOp[] => {
 let filterRuleSeq = 0
 const newRuleId = () => `r${++filterRuleSeq}`
 
+// 저장 필터 ↔ 화면 규칙 변환 — 저장에는 세션 전용 id를 빼고, 복원 시 새 id를 발급한다.
+const toStoredRules = (rules: FilterRule[]): StoredFilterRule[] =>
+  rules.map(({ field, op, value, year, month }) => ({ field, op, value, year: year ?? null, month: month ?? null }))
+const fromStoredRules = (rules: StoredFilterRule[]): FilterRule[] =>
+  (rules || [])
+    .filter(r => r && typeof r.field === 'string' && typeof r.op === 'string' && opsForField(r.field).includes(r.op as FilterOp))
+    .map(r => ({
+      id: newRuleId(),
+      field: r.field,
+      op: r.op as FilterOp,
+      value: typeof r.value === 'string' ? r.value : undefined,
+      year: typeof r.year === 'number' ? r.year : null,
+      month: typeof r.month === 'number' ? r.month : null,
+    }))
+
 // 기본 필터 규칙: 입고대기(입고 칼럼 비어있음) + 요청일이 현재 년도(월 전체)
 const defaultRules = (type: 'pcb' | 'cable'): FilterRule[] => [
   { id: newRuleId(), field: type === 'pcb' ? 'final_product_stock' : 'cable_actual_date', op: 'is_empty' },
@@ -399,6 +415,8 @@ const loadTableSort = (type: 'pcb' | 'cable'): SortRule[] => {
 
 // 규칙 하나를 행에 적용 (AND 결합은 호출부에서). 값이 없는 셀은 date_in/contains에서 제외된다.
 const applyFilterRule = (item: any, rule: FilterRule): boolean => {
+  // 칼럼 미선택('칼럼 선택' 상태) 규칙은 아직 필터로 동작하지 않음 (통과)
+  if (!rule.field) return true
   const raw = item[rule.field]
   const s = raw == null ? '' : String(raw).trim()
   const empty = s === '' || s === '-'
@@ -1398,6 +1416,109 @@ export default function ProductionListMain() {
     if ('categories' in patch) markFilterDirty(type, 'cats')
   }
 
+  // ─── 저장 필터(사용자별·DB 동기화) ───────────────────────────────────
+  // user_ui_settings에 저장된 "이름 붙인 필터 목록"과 "표별 시작 기본값"을 관리한다.
+  // 로컬스토리지 초기화로 즉시 렌더한 뒤, DB 설정이 로드되면 기본값을 한 번 적용해 장치 간 동기화한다.
+  const { config: filterViewsConfig, loaded: filterViewsLoaded, saveView, deleteView, renameView, setDefault } = useProductionFilterViews()
+  const defaultsAppliedRef = useRef(false)
+  const [viewsMenuFor, setViewsMenuFor] = useState<'pcb' | 'cable' | null>(null)
+  const [viewsAnchor, setViewsAnchor] = useState<HTMLElement | null>(null)
+
+  // 표별 스냅샷(현재 조건+제작구분+그룹순서)을 만든다 — 저장 필터/기본값 공통 payload
+  const snapshotFilter = (type: 'pcb' | 'cable'): FilterDefaultSnapshot => {
+    const cur = filterFor(type)
+    return { rules: toStoredRules(cur.rules), categories: [...cur.categories], categoryOrder: [...categoryOrder] }
+  }
+
+  // 스냅샷을 화면/로컬스토리지에 적용한다 (저장 필터 불러오기·기본값 적용 공통 경로)
+  const applySnapshot = (type: 'pcb' | 'cable', snap: FilterDefaultSnapshot) => {
+    const rules = fromStoredRules(snap.rules)
+    const validCats = type === 'pcb' ? PCB_CATEGORIES : CABLE_CATEGORIES
+    const categories = Array.isArray(snap.categories) ? snap.categories.filter(c => validCats.includes(c)) : validCats
+    setFilterFor(type, { rules, categories })
+    if (Array.isArray(snap.categoryOrder) && snap.categoryOrder.length) {
+      const merged = snap.categoryOrder.filter(c => DEFAULT_CATEGORY_ORDER.includes(c))
+      for (const c of DEFAULT_CATEGORY_ORDER) if (!merged.includes(c)) merged.push(c)
+      setCategoryOrder(merged)
+      try { localStorage.setItem('hansl_prod_filter_category_order', JSON.stringify(merged)) } catch { /* ignore */ }
+    }
+    // 로컬스토리지에도 반영해 새로고침·아이콘 상태를 일관되게 유지
+    try {
+      localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({ categories, rules }))
+    } catch { /* ignore quota */ }
+  }
+
+  // DB에 저장된 시작 기본값을 최초 1회 적용 (로컬 초기 렌더 이후 동기화)
+  useEffect(() => {
+    if (!filterViewsLoaded || defaultsAppliedRef.current) return
+    defaultsAppliedRef.current = true
+    ;(['pcb', 'cable'] as const).forEach(type => {
+      const snap = filterViewsConfig.defaults[type]
+      if (!snap) return
+      applySnapshot(type, snap)
+      const rules = fromStoredRules(snap.rules)
+      const validCats = type === 'pcb' ? PCB_CATEGORIES : CABLE_CATEGORIES
+      const cats = snap.categories.filter(c => validCats.includes(c))
+      // 시작 기본값이므로 '변경 안 함' 상태 + (코드 기본값과 다르면) 저장됨(파랑) 표시
+      setFilterHasSaved(prev => ({ ...prev, [type]: {
+        rules: !rulesEqualDefault(type, rules),
+        cats: !catsEqualDefault(type, cats) || (Array.isArray(snap.categoryOrder) && !categoryOrderIsDefault(snap.categoryOrder)),
+      } }))
+      setFilterDirty(prev => ({ ...prev, [type]: { rules: false, cats: false } }))
+    })
+  }, [filterViewsLoaded, filterViewsConfig])
+
+  // 현재 필터를 이름 붙여 저장 (무제한)
+  const handleSaveView = async (type: 'pcb' | 'cable') => {
+    const name = window.prompt('저장할 필터 이름을 입력하세요.')?.trim()
+    if (!name) return
+    const view = { id: `v${Date.now()}`, name, scope: type, ...snapshotFilter(type) }
+    const ok = await saveView(view)
+    toast[ok ? 'success' : 'error'](ok ? `필터 "${name}" 저장됨` : '필터 저장에 실패했습니다.')
+  }
+
+  // 저장 필터 불러오기
+  const handleApplyView = (viewId: string) => {
+    const v = filterViewsConfig.views.find(x => x.id === viewId)
+    if (!v) return
+    applySnapshot(v.scope, { rules: v.rules, categories: v.categories, categoryOrder: v.categoryOrder })
+    setViewsMenuFor(null)
+    toast.success(`필터 "${v.name}" 적용됨`)
+  }
+
+  const handleDeleteView = async (viewId: string, name: string) => {
+    const ok = await deleteView(viewId)
+    toast[ok ? 'success' : 'error'](ok ? `필터 "${name}" 삭제됨` : '삭제에 실패했습니다.')
+  }
+
+  const handleRenameView = async (viewId: string, prevName: string) => {
+    const name = window.prompt('필터 이름 변경', prevName)?.trim()
+    if (!name || name === prevName) return
+    const ok = await renameView(viewId, name)
+    toast[ok ? 'success' : 'error'](ok ? '이름이 변경되었습니다.' : '이름 변경에 실패했습니다.')
+  }
+
+  // 현재 필터를 시작 기본값으로 저장 (다음 접속 시 이 필터로 시작 — 장치 간 동기화)
+  const handleSetDefault = async (type: 'pcb' | 'cable') => {
+    const ok = await setDefault(type, snapshotFilter(type))
+    if (ok) {
+      // 로컬스토리지 기본값도 갱신 + 저장됨/변경없음 상태 반영
+      applySnapshot(type, snapshotFilter(type))
+      const cur = filterFor(type)
+      setFilterHasSaved(prev => ({ ...prev, [type]: {
+        rules: !rulesEqualDefault(type, cur.rules),
+        cats: !catsEqualDefault(type, cur.categories) || !categoryOrderIsDefault(categoryOrder),
+      } }))
+      setFilterDirty(prev => ({ ...prev, [type]: { rules: false, cats: false } }))
+    }
+    toast[ok ? 'success' : 'error'](ok ? '현재 필터를 기본값으로 저장했습니다.' : '기본값 저장에 실패했습니다.')
+  }
+
+  const handleClearDefault = async (type: 'pcb' | 'cable') => {
+    const ok = await setDefault(type, null)
+    toast[ok ? 'info' : 'error'](ok ? '시작 기본값을 해제했습니다.' : '해제에 실패했습니다.')
+  }
+
   // 정렬 상태 — PCB/Cable 독립. 저장된 정렬이 있으면 처음부터 반영하고, 변경 시 즉시 localStorage에 보존.
   const [pcbSort, setPcbSort] = useState<SortRule[]>(() => loadTableSort('pcb'))
   const [cableSort, setCableSort] = useState<SortRule[]>(() => loadTableSort('cable'))
@@ -1652,7 +1773,8 @@ export default function ProductionListMain() {
   // 필터 규칙 조작 (노션식 추가/수정/제거)
   const addRule = (type: 'pcb' | 'cable') => {
     const f = filterFor(type)
-    setFilterFor(type, { rules: [...f.rules, { id: newRuleId(), field: 'board_name', op: 'contains', value: '' }] })
+    // 칼럼 미선택 상태로 시작 — 사용자가 '칼럼 선택'에서 직접 고르게 한다 (임의로 보드명이 잡히지 않도록)
+    setFilterFor(type, { rules: [...f.rules, { id: newRuleId(), field: '', op: 'contains', value: '' }] })
   }
   const updateRule = (type: 'pcb' | 'cable', id: string, patch: Partial<FilterRule>) => {
     const f = filterFor(type)
@@ -5047,10 +5169,13 @@ export default function ProductionListMain() {
     // 조건(규칙)/제작구분 섹션별 '저장됨' 상태 — 서로 독립
     const rulesSaved = filterHasSaved[type].rules && !filterDirty[type].rules
     const catsSaved = filterHasSaved[type].cats && !filterDirty[type].cats
+    // 이 표의 저장 필터 목록 + 시작 기본값 설정 여부
+    const savedViewsForType = filterViewsConfig.views.filter(v => v.scope === type)
+    const hasDefaultForType = !!filterViewsConfig.defaults[type]
     // 필터를 걸 수 있는 칼럼 = 그 테이블의 모든 칼럼
     const filterableFields = Object.keys(MIN_COLUMN_WIDTH[type])
     // 브라우저 기본 select 외형(테두리/패딩/화살표/포커스링)을 완전히 제거 — 알약 안에서 텍스트처럼 보이게
-    const selectClass = 'cursor-pointer bg-transparent border-0 p-0 m-0 appearance-none text-[10px] text-gray-700 focus:outline-none focus:ring-0'
+    const selectClass = 'cursor-pointer bg-transparent border-0 p-0 m-0 appearance-none text-[10px] leading-none text-gray-700 focus:outline-none focus:ring-0'
     const selectStyle: React.CSSProperties = {
       WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none',
       border: 'none', padding: 0, margin: 0, background: 'none', outline: 'none',
@@ -5096,7 +5221,7 @@ export default function ProductionListMain() {
       <>
         {/* Row A: 필터 규칙 (노션식 추가/수정/제거) */}
         <div className="grid grid-cols-[75px_575px_auto] items-center gap-2 pt-2 border-t border-gray-100">
-          <span className="text-[10px] font-semibold text-gray-500 uppercase mr-1 flex items-center gap-1">
+          <span className="text-[10px] font-semibold text-gray-500 uppercase mr-1 flex items-center gap-1 h-[22px] leading-none">
             <SlidersHorizontal className="w-3.5 h-3.5" /> 조건:
           </span>
           <div className="flex flex-wrap items-center gap-2">
@@ -5111,17 +5236,19 @@ export default function ProductionListMain() {
                   key={rule.id}
                   className="flex items-center gap-1 border border-gray-200 bg-gray-50 rounded-full pl-2 pr-1 h-[22px]"
                 >
-                  {/* 칼럼 선택 */}
+                  {/* 칼럼 선택 — 미선택 시 '칼럼 선택' 안내 문구를 보여주고, 고르기 전엔 조건/값 입력을 숨긴다 */}
                   <select
                     value={rule.field}
                     onChange={(e) => changeRuleField(rule, e.target.value)}
-                    style={fitSelect(getColumnTitle(rule.field, type), 600)}
-                    className={`${selectClass} font-semibold`}
+                    style={fitSelect(rule.field ? getColumnTitle(rule.field, type) : '칼럼 선택', 600)}
+                    className={`${selectClass} font-semibold ${rule.field ? '' : 'text-[#1777CB]'}`}
                   >
+                    {!rule.field && <option value="" disabled>칼럼 선택</option>}
                     {filterableFields.map(k => (
                       <option key={k} value={k}>{getColumnTitle(k, type)}</option>
                     ))}
                   </select>
+                  {rule.field && (<>
                   <span className="text-gray-300">·</span>
                   {/* 조건 선택 */}
                   <select
@@ -5184,6 +5311,7 @@ export default function ProductionListMain() {
                       style={{ border: 'none', borderBottom: '1px solid #d1d5db', boxShadow: 'none', background: 'none', outline: 'none' }}
                     />
                   )}
+                  </>)}
                   {/* 규칙 제거 */}
                   <button
                     type="button"
@@ -5207,6 +5335,27 @@ export default function ProductionListMain() {
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
+            {/* 저장된 필터(사용자별·장치 간 동기화) — 불러오기·저장·기본값 설정 */}
+            <button
+              type="button"
+              onClick={(e) => {
+                if (viewsMenuFor === type) { setViewsMenuFor(null); setViewsAnchor(null) }
+                else { setViewsMenuFor(type); setViewsAnchor(e.currentTarget) }
+              }}
+              className={`flex items-center gap-0.5 px-1.5 h-[22px] rounded-full border text-[10px] transition-colors ${
+                viewsMenuFor === type
+                  ? 'border-[#1777CB] text-[#1777CB] bg-blue-50'
+                  : 'border-gray-200 text-gray-500 hover:text-[#1777CB] hover:border-[#1777CB] bg-white'
+              }`}
+              title="저장된 필터 불러오기·저장"
+            >
+              <Bookmark className="w-3 h-3" />
+              저장된 필터
+              {savedViewsForType.length > 0 && (
+                <span className="text-[9px] text-gray-400">({savedViewsForType.length})</span>
+              )}
+              <ChevronDown className="w-3 h-3" />
+            </button>
             <div className="h-4 w-px bg-gray-300 mx-1.5" />
             <button
               type="button"
@@ -5233,7 +5382,7 @@ export default function ProductionListMain() {
 
         {/* Row B: 제작구분 칩 */}
         <div className="grid grid-cols-[75px_575px_auto] items-center gap-2 pt-2 border-t border-gray-100">
-          <span className="text-[10px] font-semibold text-gray-500 uppercase mr-1 flex items-center gap-1">
+          <span className="text-[10px] font-semibold text-gray-500 uppercase mr-1 flex items-center gap-1 h-[22px] leading-none">
             <Filter className="w-3.5 h-3.5" /> 제작구분:
           </span>
           <div
@@ -5295,6 +5444,81 @@ export default function ProductionListMain() {
             </button>
           </div>
         </div>
+
+        {/* 저장된 필터 드롭다운 — document.body로 포털해 카드 overflow에 잘리지 않게 띄운다 */}
+        {viewsMenuFor === type && viewsAnchor && (
+          <>
+            <div className="fixed inset-0 z-[9998]" onMouseDown={() => { setViewsMenuFor(null); setViewsAnchor(null) }} />
+            <AnchoredPortal anchorEl={viewsAnchor} align="right" zIndex={9999}>
+              <div className="bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-[260px] text-[11px]" onMouseDown={(e) => e.stopPropagation()}>
+                {/* 액션: 현재 필터 저장 / 기본값으로 저장 */}
+                <button
+                  type="button"
+                  onClick={() => { handleSaveView(type); setViewsMenuFor(null); setViewsAnchor(null) }}
+                  className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <Bookmark className="w-3.5 h-3.5 text-[#1777CB]" /> 현재 필터를 이름 붙여 저장
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { handleSetDefault(type); setViewsMenuFor(null); setViewsAnchor(null) }}
+                  className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <Star className="w-3.5 h-3.5 text-amber-500" /> 현재 필터를 시작 기본값으로
+                </button>
+                {hasDefaultForType && (
+                  <button
+                    type="button"
+                    onClick={() => { handleClearDefault(type); setViewsMenuFor(null); setViewsAnchor(null) }}
+                    className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left text-gray-500 hover:bg-gray-50 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" /> 시작 기본값 해제
+                  </button>
+                )}
+
+                <div className="my-1 border-t border-gray-100" />
+                <div className="px-3 py-1 text-[9px] font-semibold text-gray-400 uppercase">
+                  저장된 필터 {savedViewsForType.length > 0 && `(${savedViewsForType.length})`}
+                </div>
+                {savedViewsForType.length === 0 ? (
+                  <div className="px-3 py-2 text-[10px] text-gray-400">저장된 필터가 없습니다.</div>
+                ) : (
+                  <div className="max-h-[240px] overflow-y-auto">
+                    {savedViewsForType.map(v => (
+                      <div key={v.id} className="group flex items-center gap-1 px-2 py-1 hover:bg-gray-50 transition-colors">
+                        <button
+                          type="button"
+                          onClick={() => handleApplyView(v.id)}
+                          className="flex-1 flex items-center gap-1.5 min-w-0 text-left text-gray-700"
+                          title="이 필터 적용"
+                        >
+                          <Check className="w-3 h-3 text-gray-300 shrink-0" />
+                          <span className="truncate">{v.name}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRenameView(v.id, v.name)}
+                          className="p-0.5 rounded text-gray-400 hover:text-[#1777CB] opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="이름 변경"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteView(v.id, v.name)}
+                          className="p-0.5 rounded text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="삭제"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </AnchoredPortal>
+          </>
+        )}
       </>
     )
   }
