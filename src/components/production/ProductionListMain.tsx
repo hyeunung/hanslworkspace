@@ -3524,6 +3524,16 @@ export default function ProductionListMain() {
       if (w > maxValWidth) maxValWidth = w
     }
 
+    // 입고/배송 칼럼: 값이 빈 셀은 '-' 텍스트가 아니라 대기 버튼(라벨 + px-2 패딩 16px + 보더 2px)으로
+    // 렌더되므로, 버튼 폭을 실측 하한으로 반영해 스타일 폭과 실제 콘텐츠 폭이 어긋나지 않게 한다.
+    if (STOCK_DATE_FIELDS.includes(field) && rows.some(r => {
+      const v = r?.[field]
+      return v == null || String(v).trim() === '' || String(v).trim() === '-'
+    })) {
+      const btnWidth = measureText(STOCK_WAITING_LABEL[field] || '입고대기', 500) + 18
+      if (btnWidth > maxValWidth) maxValWidth = btnWidth
+    }
+
     // 3. 좌우 여백 5px씩 + (border-r을 쓰는 비고정 칼럼은 border-box라 1px 보정)
     const borderAllowance = STICKY_FIELDS.includes(field) ? 0 : 1
     const contentWidth = Math.max(titleWidth, maxValWidth) + COLUMN_PADDING_SIDE * 2 + borderAllowance
