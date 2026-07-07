@@ -48,6 +48,11 @@ export interface ProductionPcb {
   updated_at: string
   deleted_at?: string | null
   deleted_by?: string | null
+  // 제작현황 알림 대상 팀 (완료 이벤트별로 선택된 팀 배열, 예: ["CM팀","생산팀"])
+  artwork_notify_teams?: string[]
+  pcb_stock_notify_teams?: string[]
+  parts_notify_teams?: string[]
+  final_product_notify_teams?: string[]
 }
 
 export interface ProductionCable {
@@ -79,6 +84,8 @@ export interface ProductionCable {
   updated_at: string
   deleted_at?: string | null
   deleted_by?: string | null
+  // 납품 배송완료 알림 대상 팀
+  delivery_notify_teams?: string[]
 }
 
 export const productionService = {

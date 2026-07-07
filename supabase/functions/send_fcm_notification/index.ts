@@ -524,7 +524,7 @@ Deno.serve(async (req)=>{
     console.log('✅ [DEBUG] Supabase 클라이언트 초기화 완료');
     // 요청 파싱
     const requestData = await req.json();
-    let { type, title, body, data = {}, requester_department, requester_name, user_email, fcm_tokens, is_manager_request, skip_db_notification, purchase_order_number, vendor_name, payment_category, status, middle_manager_status, progress_type, targetEmail, notificationType } = requestData;
+    let { type, title, body, data = {}, requester_department, requester_name, user_email, fcm_tokens, is_manager_request, skip_db_notification, purchase_order_number, vendor_name, payment_category, status, middle_manager_status, progress_type, targetEmail, notificationType, teams, individuals } = requestData;
     // Firebase Access Token 획득 (실패해도 계속 진행)
     let accessToken = null;
     let projectId = null;
@@ -910,6 +910,41 @@ Deno.serve(async (req)=>{
         targetEmails = emails;
         console.log(`📊 [연차/출장 알림] 총 ${tokens.length}명에게 전송 예정`);
       }
+    } else if (type === 'production_teams') {
+      // 제작현황: 팀 배열(CM팀/생산팀/CAD/연구소) + 개인 배열 기반 발송
+      console.log('🏭 [제작현황 알림] 대상 팀:', teams, '개인:', individuals);
+      const teamList = Array.isArray(teams) ? teams : [];
+      const individualList = Array.isArray(individuals) ? individuals : [];
+      const tokens = [];
+      const emails = [];
+      const processedEmails = new Set();
+
+      for (const team of teamList) {
+        const result = (team === 'CAD' || team === '연구소')
+          ? await getDepartmentTokens(supabase, team)
+          : await getRoleTokens(supabase, team);
+        result.emails.forEach((email, idx) => {
+          if (!processedEmails.has(email)) {
+            tokens.push(result.tokens[idx]);
+            emails.push(email);
+            processedEmails.add(email);
+          }
+        });
+      }
+
+      for (const email of individualList) {
+        if (processedEmails.has(email)) continue;
+        const userToken = await getUserToken(supabase, email);
+        if (userToken) {
+          tokens.push(userToken);
+          emails.push(email);
+          processedEmails.add(email);
+        }
+      }
+
+      targetTokens = tokens;
+      targetEmails = emails;
+      console.log(`📊 [제작현황 알림] 총 ${tokens.length}명에게 전송 예정`);
     } else if (type === 'manager') {
       // 부서 관리자 메시지 처리
       if (is_manager_request && requester_department) {

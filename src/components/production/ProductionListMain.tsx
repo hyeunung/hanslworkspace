@@ -1057,6 +1057,92 @@ function ArtworkAddInput({ value, onChange }: { value: string; onChange: (v: str
   )
 }
 
+// 제작현황 알림 대상 팀 — send_fcm_notification의 production_teams 타입과 1:1 대응
+const NOTIFY_TEAM_OPTIONS = ['CM팀', '생산팀', 'CAD', '연구소']
+
+// 완료 이벤트 필드 → 알림 대상 저장 칼럼(jsonb 배열)
+const NOTIFY_TEAMS_COLUMN: Record<string, string> = {
+  artwork_status: 'artwork_notify_teams',
+  parts_organization: 'parts_notify_teams',
+  pcb_stock_completed: 'pcb_stock_notify_teams',
+  final_product_stock: 'final_product_notify_teams',
+  delivery_completed: 'delivery_notify_teams',
+}
+
+// 필드별 기본 알림 대상 (버튼에 미리 체크되어 표시, 눌러서 변경 가능) — 완제품입고/납품은 기본값 없음("선택")
+const NOTIFY_TEAMS_DEFAULT: Record<string, string[]> = {
+  artwork_status: ['생산팀'],
+  parts_organization: ['생산팀'],
+  pcb_stock_completed: ['생산팀'],
+}
+
+const NOTIFY_TITLES: Record<string, string> = {
+  artwork_status: 'ARTWORK 완료',
+  parts_organization: '부품정리 완료',
+  pcb_stock_completed: 'PCB 입고완료',
+  final_product_stock: '완제품 입고',
+  delivery_completed: '납품 배송완료',
+}
+
+// 푸시 본문 — 이메일과 동일한 어투로 통일
+const NOTIFY_BODY_TEXT: Record<string, string> = {
+  artwork_status: 'ARTWORK가 완료되었습니다.',
+  parts_organization: '부품정리가 완료되었습니다.',
+  pcb_stock_completed: 'PCB 입고가 완료되었습니다.',
+  final_product_stock: '완제품이 입고가되었습니다.',
+  delivery_completed: '배송이 완료되었습니다.',
+}
+
+// 푸시 본문 날짜 줄 라벨 — 칼럼마다 의미가 달라 라벨을 구분한다
+const NOTIFY_DATE_LABEL: Record<string, string> = {
+  artwork_status: '완료일',
+  parts_organization: '완료일',
+  pcb_stock_completed: '입고일',
+  final_product_stock: '입고일',
+  delivery_completed: '배송일',
+}
+
+// 알림 대상 팀 선택 버튼 + 드롭다운 (여러 완료 이벤트 팝오버에서 공용으로 사용). 다른 상태 선택 UI와 동일하게
+// 체크박스 대신 토글 버튼으로 선택 상태를 표시한다.
+function NotifyTeamsPicker({ teams, onChange }: { teams: string[]; onChange: (teams: string[]) => void }) {
+  const [open, setOpen] = useState(false)
+  const toggle = (team: string) => {
+    onChange(teams.includes(team) ? teams.filter(t => t !== team) : [...teams, team])
+  }
+  return (
+    <div className="relative mb-1" onMouseDown={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen(v => !v) }}
+        className="w-full text-[10px] text-left px-1.5 py-0.5 rounded border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700"
+      >
+        🔔 알림: {teams.length > 0 ? teams.join(', ') : '선택'}
+      </button>
+      {open && (
+        <div className="absolute z-10 top-full left-0 mt-0.5 bg-white border border-gray-200 rounded-md shadow-lg p-1 flex flex-col gap-0.5 w-max min-w-[100px]" onMouseDown={(e) => e.stopPropagation()}>
+          {NOTIFY_TEAM_OPTIONS.map(team => {
+            const active = teams.includes(team)
+            return (
+              <button
+                key={team}
+                type="button"
+                onClick={() => toggle(team)}
+                className={`text-[10px] leading-tight px-1.5 py-0.5 rounded border text-left whitespace-nowrap transition-colors ${
+                  active
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
+                }`}
+              >
+                {team}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // 상태 선택 칩 + 구분선 + 메모 입력을 함께 제공하는 재사용 에디터
 function ArtworkStatusEditor({
   value,
@@ -1064,12 +1150,16 @@ function ArtworkStatusEditor({
   onCommit,
   onCancel,
   autoFocusMemo = false,
+  notifyTeams,
+  onNotifyTeamsChange,
 }: {
   value: string
   onChange: (v: string) => void
   onCommit?: () => void
   onCancel?: () => void
   autoFocusMemo?: boolean
+  notifyTeams?: string[]
+  onNotifyTeamsChange?: (teams: string[]) => void
 }) {
   const parts = parseArtworkStatus(value)
   const pickStatus = (code: string) => {
@@ -1086,6 +1176,9 @@ function ArtworkStatusEditor({
 
   return (
     <div className="flex flex-col gap-1">
+      {onNotifyTeamsChange && (
+        <NotifyTeamsPicker teams={notifyTeams || []} onChange={onNotifyTeamsChange} />
+      )}
       <div className="flex flex-col gap-0.5">
         {ARTWORK_STATUS_OPTIONS.map(({ code, label }) => {
           const active = parts.status === code
@@ -1269,12 +1362,16 @@ function PartsStatusEditor({
   onCommit,
   onCancel,
   autoFocusMemo = false,
+  notifyTeams,
+  onNotifyTeamsChange,
 }: {
   value: string
   onChange: (v: string) => void
   onCommit?: () => void
   onCancel?: () => void
   autoFocusMemo?: boolean
+  notifyTeams?: string[]
+  onNotifyTeamsChange?: (teams: string[]) => void
 }) {
   const parts = parsePartsStatus(value)
   const pickStatus = (code: string) => {
@@ -1288,6 +1385,9 @@ function PartsStatusEditor({
 
   return (
     <div className="flex flex-col gap-1">
+      {onNotifyTeamsChange && (
+        <NotifyTeamsPicker teams={notifyTeams || []} onChange={onNotifyTeamsChange} />
+      )}
       <div className="flex flex-col gap-0.5">
         {PARTS_STATUS_OPTIONS.map(({ code, label }) => {
           const active = parts.status === code
@@ -1963,6 +2063,8 @@ export default function ProductionListMain() {
   // 완제품 입고 날짜 선택 팝오버: '입고대기' 클릭 시 열림 (직접 입력 + 달력 클릭 선택)
   const [stockInPicker, setStockInPicker] = useState<{ id: string, type: 'pcb' | 'cable', field: string } | null>(null)
   const [stockInInput, setStockInInput] = useState<string>('')
+  // 완료 이벤트(ARTWORK/PCB입고완료/부품정리/완제품입고/납품배송완료)에서 선택된 알림 대상 팀
+  const [notifyTeams, setNotifyTeams] = useState<string[]>([])
   const stockInPopoverRef = useRef<HTMLDivElement | null>(null)
 
   // 제작번호 선택 팝오버: 재발주 시 자동 채번된 번호를 기존 제작번호로 바꿀 수 있게 한다
@@ -1997,6 +2099,8 @@ export default function ProductionListMain() {
   const [floatingMenuPos, setFloatingMenuPos] = useState<{ x: number; y: number } | null>(null)
   // 같은 칼럼 다중선택 시 값 일괄 입력용 편집값 (플로팅 메뉴 안 편집기 상태)
   const [bulkEditValue, setBulkEditValue] = useState('')
+  // 일괄 입력 시 선택된 알림 대상 팀 (완료 이벤트 칼럼에서만 사용)
+  const [bulkNotifyTeams, setBulkNotifyTeams] = useState<string[]>([])
 
   const pcbColumns = [
     'sales_order_number',
@@ -2709,6 +2813,7 @@ export default function ProductionListMain() {
         const r = td?.getBoundingClientRect()
         setFloatingMenuPos(r ? { x: r.right, y: r.bottom } : { x: window.innerWidth / 2, y: window.innerHeight / 2 })
         setBulkEditValue(computeBulkPrefill(selectedCells, type))
+        if (NOTIFY_TEAMS_COLUMN[field]) setBulkNotifyTeams(NOTIFY_TEAMS_DEFAULT[field] || [])
         return
       }
       // 범위 "밖"을 클릭 = 그 셀만 선택으로 전환 (엑셀과 동일)
@@ -2721,6 +2826,7 @@ export default function ProductionListMain() {
     if (isAlreadySelected) {
       setEditingCell({ id, type, field })
       setEditValue(currentValue === null || currentValue === undefined ? '' : String(currentValue))
+      if (NOTIFY_TEAMS_COLUMN[field]) setNotifyTeams(NOTIFY_TEAMS_DEFAULT[field] || [])
     } else {
       setSelectedCells([cellKey])
     }
@@ -2761,19 +2867,63 @@ export default function ProductionListMain() {
     return valueToSave
   }
 
+  // 완료 이벤트에서 저장된 값으로부터 "완료일" 표기용 문자열을 뽑아낸다 (칼럼마다 저장 형식이 다름)
+  const getCompletionDateForField = (field: string, valueToSave: any): string => {
+    if (field === 'artwork_status') {
+      return parseArtworkStatus(String(valueToSave ?? '')).date || ''
+    }
+    if (field === 'parts_organization') {
+      return getKstTodayISO()
+    }
+    // pcb_stock_completed / final_product_stock / delivery_completed: 날짜-또는-메모 하이브리드, 날짜면 그대로 사용
+    return typeof valueToSave === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(valueToSave) ? valueToSave : ''
+  }
+
+  // 완료 이벤트 저장 시 선택된 팀에게 푸시 발송 (이메일은 Make.com이 notify_teams 칼럼 변경을 감지해 별도 발송)
+  const sendProductionTeamsPush = async (field: string, teams: string[], boardLabel: string, orderNumber?: string, completionDate?: string) => {
+    if (teams.length === 0) return
+    try {
+      const supabase = createClient()
+      const title = `✅ ${NOTIFY_TITLES[field] || '제작현황 알림'}`
+      // 라벨 폭을 맞춰(3자 라벨엔 전각 공백 1칸 추가) 콜론 위치를 정렬한다
+      const padLabel = (label: string) => (label.length === 3 ? `${label}　` : label)
+      const dateLabel = padLabel(NOTIFY_DATE_LABEL[field] || '완료일')
+      const bodyLines = [
+        `제작번호 : ${orderNumber || '-'}`,
+        `${padLabel('보드명')} : ${boardLabel}`,
+        completionDate ? `${dateLabel} : ${completionDate}` : null,
+        NOTIFY_BODY_TEXT[field] || '상태가 갱신되었습니다.',
+      ].filter(Boolean)
+      await supabase.functions.invoke('send_fcm_notification', {
+        body: {
+          type: 'production_teams',
+          teams,
+          title,
+          body: bodyLines.join('\n'),
+          data: { type: 'production_status_change', field },
+        },
+      })
+    } catch (err) {
+      console.error('제작현황 알림 발송 실패:', err)
+    }
+  }
+
   // 인라인 셀 수정 저장 핸들러
-  const handleCellSave = useStableHandler(async (currentCell: { id: string, type: 'pcb' | 'cable', field: string }, val: string, captureUndo = true) => {
+  const handleCellSave = useStableHandler(async (currentCell: { id: string, type: 'pcb' | 'cable', field: string }, val: string, captureUndo = true, notifyTeamsOverride?: string[]) => {
     const { id, type, field } = currentCell
     const valueToSave = normalizeCellValueForSave(type, field, val, id)
+    const notifyColumn = NOTIFY_TEAMS_COLUMN[field]
+    const extraPayload = notifyColumn && notifyTeamsOverride !== undefined ? { [notifyColumn]: notifyTeamsOverride } : {}
 
     // 납품 분할 그룹의 병합된 앞 칼럼 수정 → 그룹 전체 행에 같은 값 저장 (값이 어긋나면 병합이 풀림)
     const targetIds = type === 'pcb' && !HEADER_SPAN_GROUPS.pcbDelivery.includes(field)
       ? pcbGroupSiblings(id) : [id]
 
     // 되돌리기: 실제 값이 바뀔 때만 변경 전 행을 스냅샷 (색상 핸들러 경유 호출은 captureUndo=false)
+    const liveList: any[] = type === 'pcb' ? liveDataRef.current.pcbs : liveDataRef.current.cables
+    const beforeRow = liveList.find(i => i.id === id)
     if (captureUndo) {
-      const liveList: any[] = type === 'pcb' ? liveDataRef.current.pcbs : liveDataRef.current.cables
-      const before = liveList.find(i => i.id === id)?.[field]
+      const before = beforeRow?.[field]
       if ((before ?? null) !== (valueToSave ?? null)) {
         pushRestoreUndo(type, targetIds, `${getColumnTitle(field, type)} 수정`)
       }
@@ -2781,11 +2931,17 @@ export default function ProductionListMain() {
 
     try {
       if (type === 'pcb') {
-        await Promise.all(targetIds.map(tid => productionService.updateProductionPcb(tid, { [field]: valueToSave })))
+        await Promise.all(targetIds.map(tid => productionService.updateProductionPcb(tid, { [field]: valueToSave, ...extraPayload })))
       } else {
-        await productionService.updateProductionCable(id, { [field]: valueToSave })
+        await productionService.updateProductionCable(id, { [field]: valueToSave, ...extraPayload })
       }
       loadData()
+      if (notifyColumn && notifyTeamsOverride && notifyTeamsOverride.length > 0) {
+        const boardLabel = beforeRow?.board_name || beforeRow?.sales_order_number || '제작 건'
+        const orderNumber = beforeRow?.sales_order_number || ''
+        const completionDate = getCompletionDateForField(field, valueToSave)
+        sendProductionTeamsPush(field, notifyTeamsOverride, boardLabel, orderNumber, completionDate)
+      }
     } catch (err) {
       console.error(err)
       toast.error('수정에 실패했습니다.')
@@ -2794,7 +2950,7 @@ export default function ProductionListMain() {
 
   // 여러 셀이 모두 같은 칼럼일 때, 단일 편집과 동일한 규칙으로 값을 일괄 저장한다.
   // (색상/스타일 일괄 변경 handleBulkUpdateCellColor 와 짝을 이루는 '값' 일괄 변경)
-  const handleBulkUpdateCellValue = async (field: string, rawVal: string) => {
+  const handleBulkUpdateCellValue = async (field: string, rawVal: string, notifyTeamsOverride?: string[]) => {
     if (selectedCells.length === 0) return
     const type = dragStartCellRef.current?.type || 'pcb'
     // 안전장치: 선택된 셀 중 해당 필드인 것만 대상으로 삼는다(같은 칼럼 다중선택 전제).
@@ -2805,20 +2961,33 @@ export default function ProductionListMain() {
     ))
     if (rowIds.length === 0) return
 
+    const notifyColumn = NOTIFY_TEAMS_COLUMN[field]
+    const extraPayload = notifyColumn && notifyTeamsOverride !== undefined ? { [notifyColumn]: notifyTeamsOverride } : {}
+
     // 되돌리기: 변경 전 상태 스냅샷
     pushRestoreUndo(type, rowIds, `${getColumnTitle(field, type)} ${rowIds.length}칸 일괄수정`)
     try {
       const promises = rowIds.map(id => {
         const valueToSave = normalizeCellValueForSave(type, field, rawVal, id)
         return type === 'pcb'
-          ? productionService.updateProductionPcb(id, { [field]: valueToSave })
-          : productionService.updateProductionCable(id, { [field]: valueToSave })
+          ? productionService.updateProductionPcb(id, { [field]: valueToSave, ...extraPayload })
+          : productionService.updateProductionCable(id, { [field]: valueToSave, ...extraPayload })
       })
       await Promise.all(promises)
       loadData()
       setSelectedCells([])
       setFloatingMenuPos(null)
       toast.success(`${rowIds.length}개 칸이 수정되었습니다.`)
+      if (notifyColumn && notifyTeamsOverride && notifyTeamsOverride.length > 0) {
+        const liveList: any[] = type === 'pcb' ? liveDataRef.current.pcbs : liveDataRef.current.cables
+        rowIds.forEach(id => {
+          const row = liveList.find(i => i.id === id)
+          const boardLabel = row?.board_name || row?.sales_order_number || '제작 건'
+          const orderNumber = row?.sales_order_number || ''
+          const completionDate = getCompletionDateForField(field, normalizeCellValueForSave(type, field, rawVal, id))
+          sendProductionTeamsPush(field, notifyTeamsOverride, boardLabel, orderNumber, completionDate)
+        })
+      }
     } catch (err) {
       console.error(err)
       toast.error('일괄 수정에 실패했습니다.')
@@ -2828,7 +2997,8 @@ export default function ProductionListMain() {
   // 같은 칼럼 다중선택 시, 단일 클릭 편집기와 동일한 입력 UI를 플로팅 메뉴 안에 렌더한다.
   const renderBulkValueEditor = (type: 'pcb' | 'cable', field: string) => {
     const label = getColumnTitle(field, type)
-    const commit = () => handleBulkUpdateCellValue(field, bulkEditValue)
+    const notifyColumn = NOTIFY_TEAMS_COLUMN[field]
+    const commit = () => handleBulkUpdateCellValue(field, bulkEditValue, notifyColumn ? bulkNotifyTeams : undefined)
     const close = () => { setSelectedCells([]); setFloatingMenuPos(null) }
     const applyBtn = (extra = '') => (
       <button
@@ -2842,6 +3012,9 @@ export default function ProductionListMain() {
     const wrap = (inner: React.ReactNode) => (
       <div className="flex flex-col gap-1 pb-1.5 border-b border-gray-100" onMouseDown={(e) => e.stopPropagation()}>
         <span className="text-[9px] font-semibold text-gray-500 select-none">{label} · {selectedCells.length}칸 일괄 입력</span>
+        {notifyColumn && (
+          <NotifyTeamsPicker teams={bulkNotifyTeams} onChange={setBulkNotifyTeams} />
+        )}
         {inner}
       </div>
     )
@@ -2922,6 +3095,7 @@ export default function ProductionListMain() {
   const handleStockInPress = useStableHandler((id: string, type: 'pcb' | 'cable', field: string = 'final_product_stock') => {
     if (modifierSelectRef.current) return // Shift/Ctrl+클릭 선택 중에는 팝오버를 열지 않음
     setStockInInput('')
+    setNotifyTeams(NOTIFY_TEAMS_DEFAULT[field] || [])
     setStockInPicker({ id, type, field })
   })
 
@@ -2930,9 +3104,10 @@ export default function ProductionListMain() {
   // 직접 입력은 handleCellSave가 날짜(예: 7/6)면 날짜로, 아니면 메모 원문으로 해석한다.
   const commitStockIn = useStableHandler((val: string) => {
     const target = stockInPicker
+    const teams = notifyTeams
     setStockInPicker(null)
     if (!target || !val.trim()) return
-    handleCellSave(target, val.trim())
+    handleCellSave(target, val.trim(), true, teams)
   })
 
   // 입고일 팝오버 밖을 클릭하면 닫기
@@ -3808,8 +3983,10 @@ export default function ProductionListMain() {
                 value={editValue}
                 onChange={setEditValue}
                 autoFocusMemo
+                notifyTeams={notifyTeams}
+                onNotifyTeamsChange={setNotifyTeams}
                 onCommit={() => {
-                  handleCellSave({ id, type, field }, editValue)
+                  handleCellSave({ id, type, field }, editValue, true, notifyTeams)
                   setEditingCell(null)
                 }}
                 onCancel={() => setEditingCell(null)}
@@ -3835,8 +4012,10 @@ export default function ProductionListMain() {
                 value={editValue}
                 onChange={setEditValue}
                 autoFocusMemo
+                notifyTeams={notifyTeams}
+                onNotifyTeamsChange={setNotifyTeams}
                 onCommit={() => {
-                  handleCellSave({ id, type, field }, editValue)
+                  handleCellSave({ id, type, field }, editValue, true, notifyTeams)
                   setEditingCell(null)
                 }}
                 onCancel={() => setEditingCell(null)}
@@ -4154,6 +4333,9 @@ export default function ProductionListMain() {
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
               >
+                {NOTIFY_TEAMS_COLUMN[field] && (
+                  <NotifyTeamsPicker teams={notifyTeams} onChange={setNotifyTeams} />
+                )}
                 <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">{stockPickerLabel(field)} — 직접 입력 또는 달력에서 선택</div>
                 <div className="flex items-center gap-1">
                   <input
@@ -4787,6 +4969,8 @@ export default function ProductionListMain() {
         const r = td?.getBoundingClientRect()
         setFloatingMenuPos(r ? { x: r.right, y: r.bottom } : { x: window.innerWidth / 2, y: window.innerHeight / 2 })
         setBulkEditValue(computeBulkPrefill(selectedCells, type))
+        const bulkField = f?.field || selectedCells[0].split('::')[1]
+        if (NOTIFY_TEAMS_COLUMN[bulkField]) setBulkNotifyTeams(NOTIFY_TEAMS_DEFAULT[bulkField] || [])
         return
       }
       // 선택된 셀을 한 번 더 클릭한 것과 동일하게 처리 → 셀별 편집기/팝오버(입고대기 등)가 그대로 열린다
