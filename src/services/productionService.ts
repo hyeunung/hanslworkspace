@@ -26,6 +26,7 @@ export interface ProductionPcb {
   pcb_lead_time?: string
   received_quantity?: number
   received_destination?: string
+  pcb_stock_completed?: string
   production_type?: string
   parts_organization?: string
   assy_hanwha?: string
@@ -39,6 +40,7 @@ export interface ProductionPcb {
   delivery_quantity?: number
   delivery_date?: string
   delivery_destination?: string
+  delivery_completed?: string
   row_color?: string | null
   cell_colors?: Record<string, string | null> | null
   reference?: string | null
@@ -69,6 +71,7 @@ export interface ProductionCable {
   cable_requested_date?: string
   cable_actual_date?: string
   delivery_notes?: string
+  delivery_completed?: string
   row_color?: string | null
   cell_colors?: Record<string, string | null> | null
   reference?: string | null
