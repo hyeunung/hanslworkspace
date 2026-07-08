@@ -24,7 +24,8 @@ import PurchaseDetailModal from '@/components/purchase/PurchaseDetailModal'
 import DeliveryDateWarningModal, { useDeliveryWarningCount } from '@/components/purchase/DeliveryDateWarningModal'
 
 import { toast } from 'sonner'
-import type { DashboardData, Purchase } from '@/types/purchase'
+import type { DashboardData, Purchase, PurchaseRequestItem, PurchaseRequestWithDetails } from '@/types/purchase'
+import { generatePurchaseOrderExcelJS, PurchaseOrderData } from '@/utils/exceljs/generatePurchaseOrderExcel'
 import { parseRoles } from '@/utils/roleHelper'
 import { useNavigate } from 'react-router-dom'
 import { logger } from '@/lib/logger'
@@ -755,6 +756,139 @@ export default function DashboardMain() {
     setIsModalOpen(true)
   }
 
+  // 엑셀 다운로드 핸들러 (발주내역 테이블과 동일 로직)
+  const handleExcelDownload = useCallback(async (purchase: PurchaseRequestWithDetails) => {
+    try {
+      const { data: purchaseRequest, error: requestError } = await supabase
+        .from('purchase_requests')
+        .select('*')
+        .eq('purchase_order_number', purchase.purchase_order_number)
+        .single()
+
+      if (requestError || !purchaseRequest) {
+        toast.error('해당 발주요청번호의 데이터를 찾을 수 없습니다.')
+        return
+      }
+
+      const { data: orderItems, error: itemsError } = await supabase
+        .from('purchase_request_items')
+        .select('*')
+        .eq('purchase_order_number', purchase.purchase_order_number)
+        .order('line_number')
+
+      if (itemsError || !orderItems || orderItems.length === 0) {
+        toast.error('해당 발주요청번호의 품목 데이터를 찾을 수 없습니다.')
+        return
+      }
+
+      const vendorInfo = {
+        vendor_name: purchase.vendor_name,
+        vendor_phone: '',
+        vendor_fax: '',
+        vendor_contact_name: '',
+        vendor_payment_schedule: ''
+      }
+
+      try {
+        const vendorId = purchaseRequest.vendor_id || purchase.vendor_id
+        const contactId = purchaseRequest.contact_id || purchase.contact_id
+
+        if (vendorId) {
+          const { data: vendorData } = await supabase
+            .from('vendors')
+            .select('vendor_phone, vendor_fax, vendor_payment_schedule')
+            .eq('id', vendorId)
+            .single()
+
+          if (vendorData) {
+            vendorInfo.vendor_phone = vendorData.vendor_phone || ''
+            vendorInfo.vendor_fax = vendorData.vendor_fax || ''
+            vendorInfo.vendor_payment_schedule = vendorData.vendor_payment_schedule || ''
+          }
+        }
+
+        if (contactId) {
+          const { data: contactData } = await supabase
+            .from('vendor_contacts')
+            .select('contact_name, contact_phone, contact_email')
+            .eq('id', contactId)
+            .single()
+          if (contactData) {
+            vendorInfo.vendor_contact_name = contactData.contact_name || ''
+          }
+        }
+      } catch {
+        // 업체 정보 조회 실패는 무시
+      }
+
+      const excelData: PurchaseOrderData = {
+        purchase_order_number: purchaseRequest.purchase_order_number || '',
+        request_date: purchaseRequest.request_date,
+        delivery_request_date: purchaseRequest.delivery_request_date,
+        requester_name: purchaseRequest.requester_name,
+        vendor_name: vendorInfo.vendor_name || '',
+        vendor_contact_name: vendorInfo.vendor_contact_name,
+        vendor_phone: vendorInfo.vendor_phone,
+        vendor_fax: vendorInfo.vendor_fax,
+        project_vendor: purchaseRequest.project_vendor,
+        sales_order_number: purchaseRequest.sales_order_number,
+        project_item: purchaseRequest.project_item,
+        vendor_payment_schedule: vendorInfo.vendor_payment_schedule,
+        items: orderItems.map((item: PurchaseRequestItem) => ({
+          line_number: item.line_number,
+          item_name: item.item_name,
+          specification: item.specification,
+          quantity: item.quantity,
+          unit_price_value: item.unit_price_value,
+          amount_value: item.amount_value,
+          remark: item.remark,
+          currency: purchaseRequest.currency || 'KRW'
+        }))
+      }
+
+      const blob = await generatePurchaseOrderExcelJS(excelData)
+      const downloadFilename = `발주서_${excelData.vendor_name}_${excelData.purchase_order_number}.xlsx`
+
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = downloadFilename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      logger.info('발주서 엑셀 파일 다운로드 완료', {
+        source: 'frontend',
+        category: 'purchase',
+        action: 'export_excel',
+        target_table: 'purchase_requests',
+        target_id: purchase.id?.toString(),
+        purchase_order_number: purchase.purchase_order_number,
+        file_name: downloadFilename
+      })
+
+      toast.success('엑셀 파일이 다운로드되었습니다.')
+
+      try {
+        const canUpdateFlag = currentUserRoles.includes('lead buyer')
+        if (canUpdateFlag) {
+          const { error: downloadFlagErr } = await supabase
+            .from('purchase_requests')
+            .update({ is_po_download: true })
+            .eq('purchase_order_number', purchase.purchase_order_number)
+
+          if (!downloadFlagErr) {
+            loadDashboardData(false, true)
+          }
+        }
+      } catch {
+        // 플래그 업데이트 실패는 무시
+      }
+    } catch {
+      toast.error('엑셀 다운로드에 실패했습니다.')
+    }
+  }, [supabase, currentUserRoles, loadDashboardData])
+
   // 검색 필터링 함수
   const filterItems = useCallback(<T extends { purchase_order_number?: string; vendor_name?: string; purchase_request_items?: Array<{ item_name?: string }> }>(items: T[], searchTerm: string): T[] => {
     if (!searchTerm.trim()) return items
@@ -1475,6 +1609,21 @@ export default function DashboardMain() {
                             }}
                           >
                             <div className="flex items-center gap-2">
+                              {(isSeonJin || (item.middle_manager_status === 'approved' && item.final_manager_status === 'approved')) && (
+                                <img
+                                  src="/excels-icon.svg"
+                                  alt="엑셀 다운로드"
+                                  width="16"
+                                  height="16"
+                                  className={`inline-block align-middle transition-transform p-0.5 rounded cursor-pointer hover:scale-110 flex-shrink-0
+                                    ${item.is_po_download ? 'border border-gray-400' : ''}`}
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
+                                    await handleExcelDownload(item)
+                                  }}
+                                  title={item.is_po_download ? '다운로드 완료' : '엑셀 발주서 다운로드'}
+                                />
+                              )}
                               <span className="card-title">
                                 {item.purchase_order_number || `PO-${item.id.slice(0, 8)}`}
                               </span>
@@ -1482,7 +1631,7 @@ export default function DashboardMain() {
                                 {item.vendor_name || '업체명 없음'}
                               </span>
                               <span className="card-description truncate">
-                                {firstItem?.item_name || '품목'} 
+                                {firstItem?.item_name || '품목'}
                                 {totalItems > 1 && (
                                   <span className="text-gray-400"> 외 {totalItems - 1}건</span>
                                 )}
