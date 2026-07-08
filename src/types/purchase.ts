@@ -215,6 +215,7 @@ export interface PurchaseRequest {
   delivery_completed_at?: string
   is_po_generated: boolean
   po_generated_at?: string
+  is_po_download?: boolean
   is_received?: boolean
   received_at?: string
   created_at: string
