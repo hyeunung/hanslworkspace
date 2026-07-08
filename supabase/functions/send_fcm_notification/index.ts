@@ -915,14 +915,16 @@ Deno.serve(async (req)=>{
       console.log('🏭 [제작현황 알림] 대상 팀:', teams, '개인:', individuals);
       const teamList = Array.isArray(teams) ? teams : [];
       const individualList = Array.isArray(individuals) ? individuals : [];
+      // 팀 단위 알림에서 제외할 인원 (개인 지정 발송은 유지)
+      const PRODUCTION_TEAM_EXCLUDE = 'hyun-woong.jeong@hansl.com';
       const tokens = [];
       const emails = [];
       const processedEmails = new Set();
 
       for (const team of teamList) {
         const result = (team === 'CAD' || team === '연구소')
-          ? await getDepartmentTokens(supabase, team)
-          : await getRoleTokens(supabase, team);
+          ? await getDepartmentTokens(supabase, team, PRODUCTION_TEAM_EXCLUDE)
+          : await getRoleTokens(supabase, team, PRODUCTION_TEAM_EXCLUDE);
         result.emails.forEach((email, idx) => {
           if (!processedEmails.has(email)) {
             tokens.push(result.tokens[idx]);
