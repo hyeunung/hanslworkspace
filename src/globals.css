@@ -21,6 +21,10 @@
     --popover-foreground: 220 20% 12%;
     
     /* Brand Colors - Professional Blue System */
+    /* Hex variables for SVG fills / JS dynamic styles where Tailwind classes can't reach.
+       Tailwind classes: use hansl-500 (primary) / hansl-600 (hover) instead of blue-*. */
+    --hansl-primary: #1777CB;
+    --hansl-primary-hover: #1265A8;
     --primary: 207 61% 45%; /* #1777CB - Main brand */
     --primary-foreground: 0 0% 100%;
     --primary-hover: 207 65% 40%; /* Deeper on hover */

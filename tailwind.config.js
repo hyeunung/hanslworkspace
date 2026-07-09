@@ -52,7 +52,7 @@ module.exports = {
           300: '#85B8EF',  // Medium light for accents
           400: '#4D96E5',  // Medium blue for interactive
           500: '#1777CB',  // Primary brand color
-          600: '#1569B5',  // Hover state for primary
+          600: '#1265A8',  // Hover state for primary
           700: '#105195',  // Active/pressed state
           800: '#0D4178',  // Deep blue for emphasis
           900: '#0A3361',  // Darkest blue for contrast
