@@ -26,9 +26,10 @@ export function SortableHeader({
     <button
       onClick={() => onSort(sortKey)}
       className={cn(
-        "flex items-center gap-1 hover:text-foreground transition-colors",
+        // HANSL 표준(기준: 제작현황 정렬) — 활성 시 hansl 파랑
+        "flex items-center gap-1 hover:text-hansl-500 transition-colors",
         "text-left w-full",
-        isActive && "text-foreground font-semibold",
+        isActive && "text-hansl-500 font-semibold",
         className
       )}
     >

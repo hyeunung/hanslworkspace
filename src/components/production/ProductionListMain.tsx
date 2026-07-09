@@ -48,7 +48,7 @@ function FilterSaveIcon({ saved }: { saved: boolean }) {
   if (!saved) return <Save className="w-3.5 h-3.5" />
   return (
     <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" aria-hidden="true">
-      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" fill="#1777CB" stroke="#1777CB" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" className="fill-hansl-500 stroke-hansl-500" strokeWidth="2" strokeLinejoin="round" />
       <polyline points="17 21 17 13 7 13 7 21" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <polyline points="7 3 7 8 15 8" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
@@ -186,7 +186,7 @@ function AddPopoverInput({
       />
       {open && pos && (
         <div
-          className="fixed z-[9999] bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
+          className="fixed z-[9999] hansl-popover border-gray-300 p-1.5"
           style={{ top: pos.top, left: pos.left }}
           onMouseDown={(e) => e.stopPropagation()}
         >
@@ -200,7 +200,7 @@ function AddPopoverInput({
               onBlur={() => setPos(null)}
               onKeyDown={(e) => { if (e.key === 'Escape') setPos(null) }}
               placeholder={`${placeholder ?? ''} (줄바꿈 가능)`}
-              className="w-full bg-white border border-gray-300 rounded px-1.5 py-1 text-[11px] leading-snug focus:outline-none focus:border-[#1777CB] resize-y"
+              className="hansl-cell-textarea"
               style={{ width: '300px' }}
             />
           ) : (
@@ -213,7 +213,7 @@ function AddPopoverInput({
               onBlur={() => setPos(null)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setPos(null) }}
               placeholder={placeholder}
-              className="w-full h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:border-[#1777CB]"
+              className="hansl-cell-input-lg"
               style={{ width: '220px' }}
             />
           )}
@@ -276,7 +276,7 @@ function ArtworkAddInput({ value, onChange }: { value: string; onChange: (v: str
           {/* 바깥 클릭 시 닫힘 */}
           <div className="fixed inset-0 z-[9998]" onMouseDown={() => setPos(null)} />
           <div
-            className="fixed z-[9999] bg-white border border-gray-200 rounded-md shadow-lg py-0.5 w-max min-w-[150px] flex flex-col"
+            className="fixed z-[9999] hansl-popover py-0.5 w-max min-w-[150px] flex flex-col"
             style={{ top: pos.top, left: pos.left }}
           >
             {([['progress', '진행중'], ['checking', '업체 확인중'], ['ordered', '발주완료 (오늘 날짜 기록)']] as const).map(([code, label]) => (
@@ -285,7 +285,7 @@ function ArtworkAddInput({ value, onChange }: { value: string; onChange: (v: str
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pick(code)}
-                className={`block w-full text-left whitespace-nowrap px-2 py-1 text-[11px] hover:bg-gray-50 transition-colors ${parts.status === code ? 'text-[#1777CB] font-bold' : 'text-gray-700'}`}
+                className={`block w-full text-left whitespace-nowrap px-2 py-1 text-[11px] hover:bg-gray-50 transition-colors ${parts.status === code ? 'text-hansl-500 font-bold' : 'text-gray-700'}`}
               >
                 {parts.status === code ? '✓ ' : ''}{label}
               </button>
@@ -361,7 +361,7 @@ function NotifyTeamsPicker({ teams, onChange }: { teams: string[]; onChange: (te
         <ChevronDown className="w-3 h-3 text-gray-400 shrink-0" />
       </button>
       {open && (
-        <div className="absolute z-10 top-full right-0 mt-0.5 bg-white border border-gray-200 rounded-md shadow-lg py-0.5 flex flex-col w-max min-w-[90px]" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="absolute z-10 top-full right-0 mt-0.5 hansl-popover py-0.5 flex flex-col w-max min-w-[90px]" onMouseDown={(e) => e.stopPropagation()}>
           {NOTIFY_TEAM_OPTIONS.map(team => {
             const active = teams.includes(team)
             return (
@@ -370,7 +370,7 @@ function NotifyTeamsPicker({ teams, onChange }: { teams: string[]; onChange: (te
                 type="button"
                 onClick={() => toggle(team)}
                 className={`flex items-center justify-between gap-2 text-[10px] leading-tight px-1.5 py-1 text-left whitespace-nowrap hover:bg-gray-100 ${
-                  active ? 'text-[#1777CB] font-semibold' : 'text-gray-700'
+                  active ? 'text-hansl-500 font-semibold' : 'text-gray-700'
                 }`}
               >
                 {team}
@@ -513,7 +513,7 @@ function PartsAddInput({ value, onChange }: { value: string; onChange: (v: strin
         <>
           <div className="fixed inset-0 z-[9998]" onMouseDown={() => setPos(null)} />
           <div
-            className="fixed z-[9999] bg-white border border-gray-200 rounded-md shadow-lg py-0.5 w-max min-w-[150px] flex flex-col"
+            className="fixed z-[9999] hansl-popover py-0.5 w-max min-w-[150px] flex flex-col"
             style={{ top: pos.top, left: pos.left }}
           >
             {PARTS_STATUS_OPTIONS.map(({ code, label }) => (
@@ -522,7 +522,7 @@ function PartsAddInput({ value, onChange }: { value: string; onChange: (v: strin
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pick(code)}
-                className={`block w-full text-left whitespace-nowrap px-2 py-1 text-[11px] hover:bg-gray-50 transition-colors ${parts.status === code ? 'text-[#1777CB] font-bold' : 'text-gray-700'}`}
+                className={`block w-full text-left whitespace-nowrap px-2 py-1 text-[11px] hover:bg-gray-50 transition-colors ${parts.status === code ? 'text-hansl-500 font-bold' : 'text-gray-700'}`}
               >
                 {parts.status === code ? '✓ ' : ''}{label}
               </button>
@@ -1923,7 +1923,7 @@ export default function ProductionListMain() {
       <button
         type="button"
         onClick={commit}
-        className={`text-[10px] font-medium text-white bg-[#1777CB] hover:bg-[#1265A8] rounded px-2 shrink-0 ${extra}`}
+        className={`text-[10px] font-medium text-white bg-hansl-500 hover:bg-hansl-600 rounded px-2 shrink-0 ${extra}`}
       >
         적용
       </button>
@@ -1954,7 +1954,7 @@ export default function ProductionListMain() {
             value={bulkEditValue}
             onChange={(e) => setBulkEditValue(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') close() }}
-            className="h-6 bg-white border border-gray-300 rounded px-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-[#1777CB] min-w-[120px]"
+            className="h-6 bg-white border border-gray-300 rounded px-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-hansl-500 min-w-[120px]"
           >
             <option value="">-- 선택 --</option>
             {opts.map(o => <option key={o} value={o}>{o}</option>)}
@@ -1976,7 +1976,7 @@ export default function ProductionListMain() {
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) commit(); if (e.key === 'Escape') close() }}
             rows={2}
             placeholder="입력 후 적용 (Ctrl+Enter)"
-            className="bg-white border border-gray-300 rounded px-1.5 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-[#1777CB] w-[220px] resize-y"
+            className="bg-white border border-gray-300 rounded px-1.5 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-hansl-500 w-[220px] resize-y"
           />
         ) : (
           <input
@@ -1986,7 +1986,7 @@ export default function ProductionListMain() {
             onChange={(e) => setBulkEditValue(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') close() }}
             placeholder="입력 후 Enter"
-            className="h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-[#1777CB] w-[160px]"
+            className="h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-hansl-500 w-[160px]"
           />
         )}
         {applyBtn('py-1')}
@@ -2757,7 +2757,7 @@ export default function ProductionListMain() {
         <div
           className={inline
             ? "mt-1.5 pt-1.5 border-t border-gray-200 flex flex-col gap-1"
-            : "bg-white border border-gray-200 rounded-md shadow-lg p-1 flex flex-col gap-1"}
+            : "hansl-popover p-1 flex flex-col gap-1"}
           style={inline ? undefined : { width: 'max-content' }}
         >
           {/* 1행: 배경색 */}
@@ -2868,7 +2868,7 @@ export default function ProductionListMain() {
               {formatArtworkDisplay(editValue) || ' '}
             </span>
             <CellPopoverPortal
-              className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
+              className="hansl-popover border-gray-300 p-1.5"
               style={{ width: 'max-content', minWidth: '150px' }}
               onMouseDown={(e) => e.stopPropagation()}
             >
@@ -2897,7 +2897,7 @@ export default function ProductionListMain() {
               {formatPartsDisplay(editValue) || ' '}
             </span>
             <CellPopoverPortal
-              className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
+              className="hansl-popover border-gray-300 p-1.5"
               style={{ width: 'max-content', minWidth: '150px' }}
               onMouseDown={(e) => e.stopPropagation()}
             >
@@ -2991,7 +2991,7 @@ export default function ProductionListMain() {
             {/* 메모는 폭을 컨테이너에 직접 지정 — textarea 인라인 width만 바꾸면 컨테이너의
                 shrink-to-fit 재계산이 안 일어나는(Chromium) 문제가 있어 컨테이너 폭으로 제어한다. */}
             <CellPopoverPortal
-              className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5"
+              className="hansl-popover border-gray-300 p-1.5"
               style={isMemoField
                 ? { width: `${memoWidth + 14}px`, maxWidth: '780px' }
                 : { minWidth: '220px', maxWidth: '360px' }}
@@ -3015,7 +3015,7 @@ export default function ProductionListMain() {
                         }
                         if (e.key === 'Escape') setEditingCell(null)
                       }}
-                      className="w-7 h-4 border border-gray-300 rounded px-0.5 text-[9px] text-center focus:outline-none focus:border-[#1777CB]"
+                      className="w-7 h-4 border border-gray-300 rounded px-0.5 text-[9px] text-center focus:outline-none focus:border-hansl-500"
                       title="분할 개수"
                     />
                     <button
@@ -3025,7 +3025,7 @@ export default function ProductionListMain() {
                         e.stopPropagation()
                         handleSplitDelivery(id, parseInt(splitInputRef.current?.value || '', 10))
                       }}
-                      className="ml-0.5 px-1.5 py-0 rounded border border-[#1777CB]/40 bg-blue-50 text-[#1777CB] text-[9px] font-semibold hover:bg-blue-100 transition-colors"
+                      className="ml-0.5 px-1.5 py-0 rounded border border-hansl-500/40 bg-blue-50 text-hansl-500 text-[9px] font-semibold hover:bg-blue-100 transition-colors"
                       title="이 제작 항목을 N개 납품 행으로 분할"
                     >
                       분할
@@ -3049,7 +3049,7 @@ export default function ProductionListMain() {
                     if (e.key === 'Escape') setEditingCell(null)
                   }}
                   placeholder={`${getColumnTitle(field, type)} 입력 (Enter 저장 · Shift+Enter 줄바꿈)`}
-                  className="w-full bg-white border border-gray-300 rounded px-1.5 py-1 text-[11px] leading-snug focus:outline-none focus:border-[#1777CB] resize-y"
+                  className="hansl-cell-textarea"
                   style={{ maxHeight: '55vh' }}
                 />
               ) : (
@@ -3070,7 +3070,7 @@ export default function ProductionListMain() {
                     if (e.key === 'Escape') setEditingCell(null)
                   }}
                   placeholder={`${getColumnTitle(field, type)} 입력`}
-                  className="w-full h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:border-[#1777CB]"
+                  className="hansl-cell-input-lg"
                   style={{ width: '220px' }}
                 />
               )}
@@ -3221,7 +3221,7 @@ export default function ProductionListMain() {
             {isStockPickerOpen && (
               <CellPopoverPortal
                 innerRef={stockInPopoverRef}
-                className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5 cursor-default text-left"
+                className="hansl-popover border-gray-300 p-1.5 cursor-default text-left"
                 style={{ width: 'max-content' }}
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
@@ -3241,13 +3241,13 @@ export default function ProductionListMain() {
                       if (e.key === 'Escape') setStockInPicker(null)
                     }}
                     placeholder="예: 7/6"
-                    className="h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:border-[#1777CB]"
+                    className="h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:border-hansl-500"
                     style={{ width: '150px' }}
                   />
                   <button
                     type="button"
                     onClick={() => commitStockIn(stockInInput)}
-                    className="inline-flex items-center justify-center h-[15px] box-border px-1.5 rounded border border-[#1777CB] bg-[#1777CB] text-white text-[10px] leading-none font-medium hover:bg-[#1265A8] hover:border-[#1265A8] transition-colors shrink-0"
+                    className="inline-flex items-center justify-center h-[15px] box-border px-1.5 rounded border border-hansl-500 bg-hansl-500 text-white text-[10px] leading-none font-medium hover:bg-hansl-600 hover:border-hansl-600 transition-colors shrink-0"
                   >
                     저장
                   </button>
@@ -3263,7 +3263,7 @@ export default function ProductionListMain() {
                   className="compact-calendar"
                   defaultMonth={new Date()}
                   modifiers={{ today: new Date() }}
-                  modifiersClassNames={{ today: 'bg-[#1777CB] text-white font-semibold rounded-md' }}
+                  modifiersClassNames={{ today: 'bg-hansl-500 text-white font-semibold rounded-md' }}
                 />
               </CellPopoverPortal>
             )}
@@ -3370,7 +3370,7 @@ export default function ProductionListMain() {
         {isOpen && (
           <CellPopoverPortal
             innerRef={orderNoPopoverRef}
-            className="bg-white border border-gray-300 rounded-md shadow-lg p-1.5 cursor-default text-left"
+            className="hansl-popover border-gray-300 p-1.5 cursor-default text-left"
             style={{ width: '200px' }}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
@@ -3392,14 +3392,14 @@ export default function ProductionListMain() {
                 if (e.key === 'Escape') setOrderNoPicker(null)
               }}
               placeholder={item.sales_order_number}
-              className="w-full h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:border-[#1777CB]"
+              className="hansl-cell-input-lg"
             />
             <div className="mt-1 max-h-[220px] overflow-y-auto flex flex-col">
               {orderNoInput.trim() && !options.some(no => no.toLowerCase() === orderNoInput.trim().toLowerCase()) && (
                 <button
                   type="button"
                   onClick={() => commitOrderNo(orderNoInput.trim())}
-                  className="text-left text-[11px] font-semibold text-[#1777CB] px-1.5 py-[3px] rounded bg-blue-50/60 hover:bg-blue-50 transition-colors"
+                  className="text-left text-[11px] font-semibold text-hansl-500 px-1.5 py-[3px] rounded bg-blue-50/60 hover:bg-blue-50 transition-colors"
                 >
                   '{orderNoInput.trim()}'(으)로 직접 변경 — Enter
                 </button>
@@ -3411,7 +3411,7 @@ export default function ProductionListMain() {
                   key={no}
                   type="button"
                   onClick={() => commitOrderNo(no)}
-                  className="text-left text-[11px] font-medium text-gray-800 px-1.5 py-[3px] rounded hover:bg-blue-50 hover:text-[#1777CB] transition-colors"
+                  className="text-left text-[11px] font-medium text-gray-800 px-1.5 py-[3px] rounded hover:bg-blue-50 hover:text-hansl-500 transition-colors"
                 >
                   {no}
                 </button>
@@ -4062,7 +4062,7 @@ export default function ProductionListMain() {
                           >
                             {index + 1}
                             {activeColorPicker?.id === item.id && activeColorPicker?.type === 'pcb' && (
-                              <div className="absolute left-[38px] top-1/2 -translate-y-1/2 bg-white border border-gray-200 rounded-md shadow-lg p-1.5 z-50 flex items-center gap-1.5 color-picker-popover">
+                              <div className="absolute left-[38px] top-1/2 -translate-y-1/2 hansl-popover p-1.5 z-50 flex items-center gap-1.5 color-picker-popover">
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('pcb', item.id, 'yellow'); }}
@@ -4433,7 +4433,7 @@ export default function ProductionListMain() {
                           >
                             {index + 1}
                             {activeColorPicker?.id === item.id && activeColorPicker?.type === 'cable' && (
-                              <div className="absolute left-[38px] top-1/2 -translate-y-1/2 bg-white border border-gray-200 rounded-md shadow-lg p-1.5 z-50 flex items-center gap-1.5 color-picker-popover">
+                              <div className="absolute left-[38px] top-1/2 -translate-y-1/2 hansl-popover p-1.5 z-50 flex items-center gap-1.5 color-picker-popover">
                                 <button
                                   type="button"
                                   onClick={(e) => { e.stopPropagation(); e.nativeEvent.stopPropagation(); handleUpdateRowColor('cable', item.id, 'yellow'); }}
@@ -4648,8 +4648,8 @@ export default function ProductionListMain() {
           title={active ? `정렬 ${rules.length}개 적용됨` : '정렬 추가'}
           className={`badge-stats cursor-pointer border flex items-center gap-1 transition-colors ${
             active
-              ? 'bg-[#1777CB] border-[#1777CB] text-white font-bold hover:bg-[#1265A8]'
-              : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-[#1777CB] hover:border-[#1777CB]'
+              ? 'hansl-toggle-on'
+              : 'hansl-toggle-off'
           }`}
         >
           <ArrowUpDown className="w-3 h-3" />
@@ -4661,14 +4661,14 @@ export default function ProductionListMain() {
             {/* 패널 폭은 내용에 맞춤(w-max) — 고정 폭(w-[320px])이면 짧은 규칙에도 넓게 남아 어색. 최소/최대만 제한.
                 body 포털로 띄워 카드 overflow-hidden에 잘리지 않게 한다. */}
             <AnchoredPortal anchorEl={menuAnchorEl} gap={4}>
-            <div className="bg-white border border-gray-200 rounded-md shadow-lg w-max min-w-[200px] max-w-[340px]">
+            <div className="hansl-popover w-max min-w-[200px] max-w-[340px]">
               <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-100">
                 <span className="text-[11px] font-semibold text-gray-700">정렬</span>
                 {active && (
                   <button
                     type="button"
                     onClick={() => clearSort(type)}
-                    className="text-[10px] text-gray-500 hover:text-red-600 border border-gray-200 rounded px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 font-medium transition-colors flex items-center gap-1"
+                    className="hansl-mini-btn hover:text-red-600"
                     title="정렬 모두 제거"
                   >
                     <RotateCcw className="w-2.5 h-2.5" /> 초기화
@@ -4695,7 +4695,7 @@ export default function ProductionListMain() {
                         onChange={(e) => updateSortRule(type, r.id, { field: e.target.value })}
                         // lineHeight 20px = 박스 22px − 보더 2px. 전역에서 24px가 상속돼 텍스트가 아래로 밀리는 것을 인라인으로 강제 보정
                         style={{ padding: '0 15px 0 7px', lineHeight: '20px', backgroundImage: 'none', width: `${Math.ceil(measureText(getColumnTitle(r.field, type), 400) * 1.1) + 24}px` }}
-                        className="appearance-none h-[22px] text-[11px] text-gray-700 border border-gray-300 business-radius-input bg-white focus:border-[#1777CB] focus:outline-none"
+                        className="hansl-select-box"
                       >
                         {fields.map(f => (
                           <option key={f} value={f}>{getColumnTitle(f, type)}</option>
@@ -4709,7 +4709,7 @@ export default function ProductionListMain() {
                         type="button"
                         onClick={() => updateSortRule(type, r.id, { dir: 'asc' })}
                         title="오름차순"
-                        className={`p-0.5 rounded transition-colors ${r.dir === 'asc' ? 'text-[#1777CB]' : 'text-gray-400 hover:text-gray-600'}`}
+                        className={`p-0.5 rounded transition-colors ${r.dir === 'asc' ? 'text-hansl-500' : 'text-gray-400 hover:text-gray-600'}`}
                       >
                         <ArrowUp className="w-3.5 h-3.5" />
                       </button>
@@ -4717,7 +4717,7 @@ export default function ProductionListMain() {
                         type="button"
                         onClick={() => updateSortRule(type, r.id, { dir: 'desc' })}
                         title="내림차순"
-                        className={`p-0.5 rounded transition-colors ${r.dir === 'desc' ? 'text-[#1777CB]' : 'text-gray-400 hover:text-gray-600'}`}
+                        className={`p-0.5 rounded transition-colors ${r.dir === 'desc' ? 'text-hansl-500' : 'text-gray-400 hover:text-gray-600'}`}
                       >
                         <ArrowDown className="w-3.5 h-3.5" />
                       </button>
@@ -4726,7 +4726,7 @@ export default function ProductionListMain() {
                       type="button"
                       onClick={() => removeSortRule(type, r.id)}
                       title="이 정렬 제거"
-                      className="p-0.5 rounded-full text-gray-400 hover:text-red-500 hover:bg-gray-100 transition-colors shrink-0 ml-auto"
+                      className="hansl-close-btn shrink-0 ml-auto"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -4738,7 +4738,7 @@ export default function ProductionListMain() {
                   type="button"
                   onClick={() => addSortRule(type)}
                   disabled={rules.length >= fields.length}
-                  className="w-full flex items-center justify-center gap-1 py-1 rounded border border-dashed border-gray-300 text-[11px] text-gray-500 hover:bg-gray-50 hover:text-[#1777CB] hover:border-[#1777CB] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-500 disabled:hover:border-gray-300"
+                  className="w-full flex items-center justify-center gap-1 py-1 rounded border border-dashed border-gray-300 text-[11px] text-gray-500 hover:bg-gray-50 hover:text-hansl-500 hover:border-hansl-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-500 disabled:hover:border-gray-300"
                 >
                   <Plus className="w-3 h-3" /> 정렬 추가
                 </button>
@@ -4765,12 +4765,12 @@ export default function ProductionListMain() {
           type="button"
           onClick={(e) => { setMenuAnchorEl(e.currentTarget as HTMLElement); setColumnMenuFor(prev => (prev === type ? null : type)) }}
           title="표시할 칼럼 선택"
-          className="button-base bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 flex items-center gap-1.5 h-8 px-3 business-radius-button"
+          className="hansl-btn"
         >
           <SlidersHorizontal className="w-3.5 h-3.5" />
           <span className="button-text">칼럼</span>
           {hiddenCount > 0 && (
-            <span className="text-[10px] font-bold text-[#1777CB]">{total - hiddenCount}/{total}</span>
+            <span className="text-[10px] font-bold text-hansl-500">{total - hiddenCount}/{total}</span>
           )}
         </button>
         {open && (
@@ -4779,7 +4779,7 @@ export default function ProductionListMain() {
             <div className="fixed inset-0 z-[9998]" onMouseDown={() => setColumnMenuFor(null)} />
             {/* body 포털로 띄워 카드 overflow-hidden에 잘리지 않게 한다 (버튼 우측 정렬) */}
             <AnchoredPortal anchorEl={menuAnchorEl} align="right" gap={4}>
-            <div className="bg-white border border-gray-200 rounded-md shadow-lg pb-2 w-[380px]">
+            <div className="hansl-popover pb-2 w-[380px]">
               <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
                 <span className="text-[11px] font-semibold text-gray-700">
                   칼럼 표시 설정 <span className="text-gray-400 font-normal">({total - hiddenCount}/{total})</span>
@@ -4787,7 +4787,7 @@ export default function ProductionListMain() {
                 <button
                   type="button"
                   onClick={() => resetHiddenCols(type)}
-                  className="text-[10px] text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-1.5 py-0.5 bg-gray-50 hover:bg-gray-100 font-medium transition-colors flex items-center gap-1"
+                  className="hansl-mini-btn hover:text-gray-800"
                   title="숨긴 칼럼을 모두 다시 표시"
                 >
                   <RotateCcw className="w-2.5 h-2.5" />
@@ -4808,7 +4808,7 @@ export default function ProductionListMain() {
                             onClick={() => setSectionHidden(type, secFields, !allHidden)}
                             className={`text-[9px] font-medium border rounded px-1.5 py-0.5 transition-colors flex items-center gap-1 ${
                               allHidden
-                                ? 'text-[#1777CB] border-blue-200 bg-blue-50 hover:bg-blue-100'
+                                ? 'text-hansl-500 border-blue-200 bg-blue-50 hover:bg-blue-100'
                                 : 'text-gray-500 border-gray-200 bg-gray-50 hover:bg-gray-100 hover:text-gray-800'
                             }`}
                             title={allHidden ? '이 구간의 칼럼을 모두 표시' : '이 구간의 칼럼을 모두 숨기기'}
@@ -4834,7 +4834,7 @@ export default function ProductionListMain() {
                                   >
                                     {hidden
                                       ? <EyeOff className="w-3 h-3 text-gray-300 shrink-0" />
-                                      : <Eye className="w-3 h-3 text-[#1777CB] shrink-0" />}
+                                      : <Eye className="w-3 h-3 text-hansl-500 shrink-0" />}
                                     <span className="text-[11px] truncate">{getColumnTitle(f, type)}</span>
                                   </button>
                                 )
@@ -4879,7 +4879,7 @@ export default function ProductionListMain() {
     // 필터를 걸 수 있는 칼럼 = 그 테이블의 모든 칼럼
     const filterableFields = Object.keys(MIN_COLUMN_WIDTH[type])
     // 브라우저 기본 select 외형(테두리/패딩/화살표/포커스링)을 완전히 제거 — 알약 안에서 텍스트처럼 보이게
-    const selectClass = 'cursor-pointer bg-transparent border-0 p-0 m-0 appearance-none text-[10px] leading-none text-gray-700 focus:outline-none focus:ring-0'
+    const selectClass = 'hansl-pill-select'
     const selectStyle: React.CSSProperties = {
       WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none',
       border: 'none', padding: 0, margin: 0, background: 'none', outline: 'none',
@@ -4925,7 +4925,7 @@ export default function ProductionListMain() {
       <>
         {/* Row A: 필터 규칙 (노션식 추가/수정/제거) */}
         <div className="grid grid-cols-[75px_575px_auto] items-center gap-2 pt-2 border-t border-gray-100">
-          <span className="text-[10px] font-semibold text-gray-500 uppercase mr-1 flex items-center gap-1 h-[22px] leading-none">
+          <span className="hansl-filter-row-label">
             <SlidersHorizontal className="w-3.5 h-3.5" /> 조건:
           </span>
           <div className="flex flex-wrap items-center gap-2">
@@ -4938,14 +4938,14 @@ export default function ProductionListMain() {
               return (
                 <div
                   key={rule.id}
-                  className="flex items-center gap-1 border border-gray-200 bg-gray-50 rounded-full pl-2 pr-1 h-[22px]"
+                  className="hansl-filter-pill"
                 >
                   {/* 칼럼 선택 — 미선택 시 '칼럼 선택' 안내 문구를 보여주고, 고르기 전엔 조건/값 입력을 숨긴다 */}
                   <select
                     value={rule.field}
                     onChange={(e) => changeRuleField(rule, e.target.value)}
                     style={fitSelect(rule.field ? getColumnTitle(rule.field, type) : '칼럼 선택', 600)}
-                    className={`${selectClass} font-semibold ${rule.field ? '' : 'text-[#1777CB]'}`}
+                    className={`${selectClass} font-semibold ${rule.field ? '' : 'text-hansl-500'}`}
                   >
                     {!rule.field && <option value="" disabled>칼럼 선택</option>}
                     {filterableFields.map(k => (
@@ -4971,7 +4971,7 @@ export default function ProductionListMain() {
                       value={rule.value ?? ''}
                       onChange={(e) => updateRule(type, rule.id, { value: e.target.value })}
                       style={fitSelect(filterStatusOptionsFor(rule.field).find(o => o.code === rule.value)?.label ?? '진행중', 700)}
-                      className={`${selectClass} text-[#1777CB] font-bold`}
+                      className={`${selectClass} text-hansl-500 font-bold`}
                     >
                       {filterStatusOptionsFor(rule.field).map(o => (
                         <option key={o.code} value={o.code}>{o.label}</option>
@@ -4984,7 +4984,7 @@ export default function ProductionListMain() {
                         value={rule.year ?? ''}
                         onChange={(e) => updateRule(type, rule.id, { year: e.target.value === '' ? null : Number(e.target.value) })}
                         style={fitSelect(rule.year != null ? `${rule.year}년` : '전체년도', 700)}
-                        className={`${selectClass} text-[#1777CB] font-bold`}
+                        className={`${selectClass} text-hansl-500 font-bold`}
                       >
                         <option value="">전체년도</option>
                         {years.map(y => (
@@ -4995,7 +4995,7 @@ export default function ProductionListMain() {
                         value={rule.month ?? ''}
                         onChange={(e) => updateRule(type, rule.id, { month: e.target.value === '' ? null : Number(e.target.value) })}
                         style={fitSelect(rule.month != null ? `${rule.month}월` : '전체월', 700)}
-                        className={`${selectClass} text-[#1777CB] font-bold`}
+                        className={`${selectClass} text-hansl-500 font-bold`}
                       >
                         <option value="">전체월</option>
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
@@ -5011,7 +5011,7 @@ export default function ProductionListMain() {
                       onChange={(e) => updateRule(type, rule.id, { value: e.target.value })}
                       placeholder="값"
                       // 전역 input 기본 스타일(테두리 박스/포커스 아웃라인) 무력화 — 알약 안에서 밑줄 입력처럼 보이게
-                      className="w-20 h-[14px] bg-transparent text-[10px] text-gray-700 border-0 border-b border-gray-300 rounded-none focus:border-[#1777CB] focus:outline-none focus:ring-0 px-0.5 py-0"
+                      className="hansl-pill-input"
                       style={{ border: 'none', borderBottom: '1px solid #d1d5db', boxShadow: 'none', background: 'none', outline: 'none' }}
                     />
                   )}
@@ -5021,7 +5021,7 @@ export default function ProductionListMain() {
                     type="button"
                     onClick={() => removeRule(type, rule.id)}
                     title="이 필터 제거"
-                    className="p-0.5 rounded-full text-gray-400 hover:text-red-500 hover:bg-gray-100 transition-colors"
+                    className="hansl-close-btn"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -5032,7 +5032,7 @@ export default function ProductionListMain() {
             <button
               type="button"
               onClick={() => addRule(type)}
-              className="badge-stats cursor-pointer border border-dashed border-gray-300 bg-white text-gray-500 hover:bg-gray-50 hover:text-[#1777CB] hover:border-[#1777CB] transition-all flex items-center gap-0.5"
+              className="hansl-chip-add"
             >
               <Plus className="w-3 h-3" /> 필터
             </button>
@@ -5047,10 +5047,10 @@ export default function ProductionListMain() {
                 if (viewsMenuFor === type) { setViewsMenuFor(null); setViewsAnchor(null) }
                 else { setViewsMenuFor(type); setViewsAnchor(e.currentTarget) }
               }}
-              className={`flex items-center gap-0.5 px-1.5 h-[22px] rounded-full border text-[10px] transition-colors ${
+              className={`hansl-pill-btn ${
                 viewsMenuFor === type
-                  ? 'border-[#1777CB] text-[#1777CB] bg-blue-50'
-                  : 'border-gray-200 text-gray-500 hover:text-[#1777CB] hover:border-[#1777CB] bg-white'
+                  ? 'hansl-pill-btn-on'
+                  : 'hansl-pill-btn-off'
               }`}
               title="저장된 필터 불러오기·저장"
             >
@@ -5067,7 +5067,7 @@ export default function ProductionListMain() {
               onClick={() => saveRulesFilter(type)}
               className={`p-1 rounded-md transition-colors ${
                 rulesSaved
-                  ? 'text-[#1777CB] hover:bg-blue-50'
+                  ? 'text-hansl-500 hover:bg-blue-50'
                   : 'text-gray-500 hover:bg-gray-100 hover:text-blue-600'
               }`}
               title={rulesSaved ? '조건 필터 저장됨' : '조건 필터 저장'}
@@ -5077,7 +5077,7 @@ export default function ProductionListMain() {
             <button
               type="button"
               onClick={() => handleResetRules(type)}
-              className="p-1 hover:bg-gray-100 rounded-md text-gray-500 hover:text-red-600 transition-colors"
+              className="hansl-icon-btn hover:bg-gray-100 hover:text-red-600"
               title="기본 필터로 초기화"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -5087,7 +5087,7 @@ export default function ProductionListMain() {
 
         {/* Row B: 제작구분 칩 */}
         <div className="grid grid-cols-[75px_575px_auto] items-center gap-2 pt-2 border-t border-gray-100">
-          <span className="text-[10px] font-semibold text-gray-500 uppercase mr-1 flex items-center gap-1 h-[22px] leading-none">
+          <span className="hansl-filter-row-label">
             <Filter className="w-3.5 h-3.5" /> 제작구분:
           </span>
           <div
@@ -5115,8 +5115,8 @@ export default function ProductionListMain() {
                     dragCat === cat ? 'opacity-40' : ''
                   } ${
                     isSelected
-                      ? 'bg-[#1777CB] border-[#1777CB] text-white font-bold shadow-sm hover:bg-[#1265A8]'
-                      : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                      ? 'hansl-chip-on'
+                      : 'hansl-chip-off'
                   }`}
                 >
                   {cat}
@@ -5132,7 +5132,7 @@ export default function ProductionListMain() {
               onClick={() => saveCategoryFilter(type)}
               className={`p-1 rounded-md transition-colors ${
                 catsSaved
-                  ? 'text-[#1777CB] hover:bg-blue-50'
+                  ? 'text-hansl-500 hover:bg-blue-50'
                   : 'text-gray-500 hover:bg-gray-100 hover:text-blue-600'
               }`}
               title={catsSaved ? '제작구분 필터 저장됨' : '제작구분 필터 저장'}
@@ -5142,7 +5142,7 @@ export default function ProductionListMain() {
             <button
               type="button"
               onClick={() => handleResetCategoryFilter(type)}
-              className="p-1 hover:bg-gray-100 rounded-md text-gray-500 hover:text-red-600 transition-colors"
+              className="hansl-icon-btn hover:bg-gray-100 hover:text-red-600"
               title="초기화"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -5155,7 +5155,7 @@ export default function ProductionListMain() {
           <>
             <div className="fixed inset-0 z-[9998]" onMouseDown={() => { setViewsMenuFor(null); setViewsAnchor(null); setNamingViewFor(null) }} />
             <AnchoredPortal anchorEl={viewsAnchor} align="right" zIndex={9999}>
-              <div className="bg-white border border-gray-200 rounded-lg shadow-lg py-1 w-[260px] text-[11px]" onMouseDown={(e) => e.stopPropagation()}>
+              <div className="hansl-popover rounded-lg py-1 w-[260px] text-[11px]" onMouseDown={(e) => e.stopPropagation()}>
                 {/* 액션: 현재 필터 저장 / 기본값으로 저장 */}
                 {namingViewFor === type ? (
                   // 인라인 이름 입력 — 클릭 즉시 모달 대신 이 입력창에서 이름을 정한다
@@ -5170,13 +5170,13 @@ export default function ProductionListMain() {
                         else if (e.key === 'Escape') { setNamingViewFor(null); setNewViewName('') }
                       }}
                       placeholder="필터 이름 입력 후 Enter"
-                      className="flex-1 min-w-0 h-[24px] px-2 text-[11px] border border-gray-300 rounded focus:outline-none focus:border-[#1777CB]"
+                      className="flex-1 min-w-0 h-[24px] px-2 text-[11px] border border-gray-300 rounded focus:outline-none focus:border-hansl-500"
                     />
                     <button
                       type="button"
                       onClick={() => commitSaveView(type)}
                       disabled={!newViewName.trim()}
-                      className="shrink-0 px-2 h-[24px] rounded text-[11px] text-white bg-[#1777CB] hover:bg-[#1265A8] disabled:bg-gray-300 transition-colors"
+                      className="shrink-0 px-2 h-[24px] rounded text-[11px] text-white bg-hansl-500 hover:bg-hansl-600 disabled:bg-gray-300 transition-colors"
                     >
                       저장
                     </button>
@@ -5193,15 +5193,15 @@ export default function ProductionListMain() {
                   <button
                     type="button"
                     onClick={() => { setNamingViewFor(type); setNewViewName('') }}
-                    className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="hansl-menu-item"
                   >
-                    <Bookmark className="w-3.5 h-3.5 text-[#1777CB]" /> 현재 필터를 이름 붙여 저장
+                    <Bookmark className="w-3.5 h-3.5 text-hansl-500" /> 현재 필터를 이름 붙여 저장
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={() => { handleSetDefault(type); setViewsMenuFor(null); setViewsAnchor(null) }}
-                  className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left text-gray-700 hover:bg-gray-50 transition-colors"
+                  className="hansl-menu-item"
                 >
                   <Star className="w-3.5 h-3.5 text-amber-500" /> 현재 필터를 시작 기본값으로
                 </button>
@@ -5209,7 +5209,7 @@ export default function ProductionListMain() {
                   <button
                     type="button"
                     onClick={() => { handleClearDefault(type); setViewsMenuFor(null); setViewsAnchor(null) }}
-                    className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left text-gray-500 hover:bg-gray-50 transition-colors"
+                    className="hansl-menu-item text-gray-500"
                   >
                     <X className="w-3.5 h-3.5" /> 시작 기본값 해제
                   </button>
@@ -5237,7 +5237,7 @@ export default function ProductionListMain() {
                         <button
                           type="button"
                           onClick={() => handleRenameView(v.id, v.name)}
-                          className="p-0.5 rounded text-gray-400 hover:text-[#1777CB] opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="p-0.5 rounded text-gray-400 hover:text-hansl-500 opacity-0 group-hover:opacity-100 transition-opacity"
                           title="이름 변경"
                         >
                           <Edit2 className="w-3 h-3" />
@@ -5276,10 +5276,10 @@ export default function ProductionListMain() {
             key={key}
             type="button"
             onClick={() => selectTableView(key)}
-            className={`button-base flex items-center h-8 px-3 business-radius-button border ${
+            className={`hansl-view-btn ${
               tableView === key
-                ? 'bg-[#1777CB] hover:bg-[#1265A8] border-[#1777CB]'
-                : 'bg-white hover:bg-gray-50 border-gray-300'
+                ? 'hansl-view-btn-on'
+                : 'hansl-view-btn-off'
             }`}
           >
             <span className={`button-text ${tableView === key ? 'text-white' : 'text-gray-700'}`}>{label}</span>
@@ -5314,7 +5314,7 @@ export default function ProductionListMain() {
               value={pcbSearch}
               onChange={(e) => setPcbSearch(e.target.value)}
               style={{ paddingLeft: '26px', height: '20px' }}
-              className="w-full block business-radius-input border border-gray-300 bg-white text-gray-700 pr-6 text-[11px]"
+              className="hansl-search-input"
             />
             {pcbSearch && (
               <button
@@ -5344,7 +5344,7 @@ export default function ProductionListMain() {
             <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50/50">
               <div className="flex items-center gap-2">
                 <span className="modal-section-title">PCB & Socket Board 제작 현황</span>
-                <span className="badge-stats bg-blue-50 text-blue-700 border border-blue-200 font-bold">
+                <span className="hansl-count-badge">
                   {filteredPcbs.length}건
                 </span>
                 {renderSortControl('pcb')}
@@ -5355,7 +5355,7 @@ export default function ProductionListMain() {
                   type="button"
                   onClick={() => handleExportExcel('pcb')}
                   title="필터 적용된 화면을 엑셀로 다운로드"
-                  className="button-base bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 flex items-center gap-1.5 h-8 px-3 business-radius-button"
+                  className="hansl-btn"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span className="button-text">다운로드</span>
@@ -5364,7 +5364,7 @@ export default function ProductionListMain() {
                   type="button"
                   onClick={() => handlePrint('pcb')}
                   title="필터 적용된 화면을 인쇄"
-                  className="button-base bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 flex items-center gap-1.5 h-8 px-3 business-radius-button"
+                  className="hansl-btn"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span className="button-text">인쇄</span>
@@ -5372,7 +5372,7 @@ export default function ProductionListMain() {
                 <button
                   type="button"
                   onClick={() => handleAddClick('pcb')}
-                  className="button-base bg-[#1777CB] hover:bg-[#1265A8] text-white flex items-center gap-1.5 h-8 px-3 business-radius-button"
+                  className="hansl-btn-primary"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span className="button-text text-white">행 추가</span>
@@ -5385,63 +5385,63 @@ export default function ProductionListMain() {
                 <thead className="whitespace-nowrap">
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 text-center sticky left-0 bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, width: '40px', minWidth: '40px', maxWidth: '40px' }}>NO.</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={getStickyHeaderStyle('pcb', 'sales_order_number')}>제작 번호</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={getStickyHeaderStyle('pcb', 'production_category')}>제작구분</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={getStickyHeaderStyle('pcb', 'board_name')}>보드명</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={getStickyHeaderStyle('pcb', 'reference')}>참고</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={getStickyHeaderStyle('pcb', 'request_date')}>요청일</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border-y border-r border-gray-200" style={getHeaderStyle('pcb', 'estimate_no', 80)}>견적NO.</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'delivery_deadline', 80)}>납품기한</th>
+                    <th rowSpan={2} className="hansl-th-sticky" style={getStickyHeaderStyle('pcb', 'sales_order_number')}>제작 번호</th>
+                    <th rowSpan={2} className="hansl-th-sticky" style={getStickyHeaderStyle('pcb', 'production_category')}>제작구분</th>
+                    <th rowSpan={2} className="hansl-th-sticky text-center" style={getStickyHeaderStyle('pcb', 'board_name')}>보드명</th>
+                    <th rowSpan={2} className="hansl-th-sticky text-center" style={getStickyHeaderStyle('pcb', 'reference')}>참고</th>
+                    <th rowSpan={2} className="hansl-th-sticky" style={getStickyHeaderStyle('pcb', 'request_date')}>요청일</th>
+                    <th rowSpan={2} className="hansl-th border-y border-r" style={getHeaderStyle('pcb', 'estimate_no', 80)}>견적NO.</th>
+                    <th rowSpan={2} className="hansl-th" style={getHeaderStyle('pcb', 'delivery_deadline', 80)}>납품기한</th>
                     {visibleSpan('pcb', HEADER_SPAN_GROUPS.pjt) > 0 && (
-                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.pjt)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">PJT 담당자</th>
+                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.pjt)} className="hansl-th text-center">PJT 담당자</th>
                     )}
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'creator', 80)}>작성자</th>
+                    <th rowSpan={2} className="hansl-th" style={getHeaderStyle('pcb', 'creator', 80)}>작성자</th>
                     {visibleSpan('pcb', HEADER_SPAN_GROUPS.makeQty) > 0 && (
-                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.makeQty)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">제작수량</th>
+                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.makeQty)} className="hansl-th text-center">제작수량</th>
                     )}
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'artwork_status', 80)}>ARTWORK</th>
+                    <th rowSpan={2} className="hansl-th" style={getHeaderStyle('pcb', 'artwork_status', 80)}>ARTWORK</th>
                     {visibleSpan('pcb', HEADER_SPAN_GROUPS.pcbMake) > 0 && (
-                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.pcbMake)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center bg-blue-50/20 font-bold">PCB 제작</th>
+                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.pcbMake)} className="hansl-th text-center bg-blue-50/20 font-bold">PCB 제작</th>
                     )}
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center font-bold" style={getHeaderStyle('pcb', 'parts_organization', 96)}>부품정리</th>
+                    <th rowSpan={2} className="hansl-th text-center font-bold" style={getHeaderStyle('pcb', 'parts_organization', 96)}>부품정리</th>
                     {visibleSpan('pcb', HEADER_SPAN_GROUPS.assy) > 0 && (
-                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.assy)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center font-bold">ASS'Y</th>
+                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.assy)} className="hansl-th text-center font-bold">ASS'Y</th>
                     )}
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 font-bold" style={getHeaderStyle('pcb', 'final_product_stock', 80)}>완제품 입고</th>
+                    <th rowSpan={2} className="hansl-th font-bold" style={getHeaderStyle('pcb', 'final_product_stock', 80)}>완제품 입고</th>
                     {visibleSpan('pcb', HEADER_SPAN_GROUPS.inHouse) > 0 && (
-                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.inHouse)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">IN-House Checking</th>
+                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.inHouse)} className="hansl-th text-center">IN-House Checking</th>
                     )}
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={getHeaderStyle('pcb', 'design_review', 80)}>디자인리뷰</th>
+                    <th rowSpan={2} className="hansl-th text-center" style={getHeaderStyle('pcb', 'design_review', 80)}>디자인리뷰</th>
                     {visibleSpan('pcb', HEADER_SPAN_GROUPS.pcbDelivery) > 0 && (
-                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.pcbDelivery)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">납품</th>
+                      <th colSpan={visibleSpan('pcb', HEADER_SPAN_GROUPS.pcbDelivery)} className="hansl-th text-center">납품</th>
                     )}
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={{ width: '56px', minWidth: '56px', maxWidth: '56px' }}>작업</th>
+                    <th rowSpan={2} className="hansl-th text-center" style={{ width: '56px', minWidth: '56px', maxWidth: '56px' }}>작업</th>
                   </tr>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'client_name', 80)}>업체</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'client_manager', 80)}>업체 담당자</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'hansl_manager', 80)}>HANSL</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={getHeaderStyle('pcb', 'revision_count', 50)}>횟수</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={getHeaderStyle('pcb', 'quantity', 60)}>수량</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'metal_mask', 80)}>MetalMask</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'changes_memo', 160)}>수정 또는 변경사항</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={getHeaderStyle('pcb', 'stock_count', 60)}>재고</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'pcb_vendor', 80)}>PCB업체</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'delivery_schedule', 80)}>입고(일정)</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'pcb_lead_time', 80)}>제작 기간(PCB)</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={getHeaderStyle('pcb', 'received_quantity', 60)}>입고(수량)</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'received_destination', 80)}>입고처</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'pcb_stock_completed', 80)}>입고완료</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'assy_hanwha', 80)}>환화</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'assy_evertech', 80)}>에버텍</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'assy_requested_date', 80)}>입고요청일</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={getHeaderStyle('pcb', 'qa_passed', 60)}>양품</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={getHeaderStyle('pcb', 'qa_failed', 60)}>불량</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={getHeaderStyle('pcb', 'qa_notes', 120)}>비고</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={getHeaderStyle('pcb', 'delivery_quantity', 60)}>수량</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'delivery_date', 80)}>일자</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'delivery_destination', 100)}>배송처</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('pcb', 'delivery_completed', 80)}>배송완료</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'client_name', 80)}>업체</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'client_manager', 80)}>업체 담당자</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'hansl_manager', 80)}>HANSL</th>
+                    <th className="hansl-th text-center" style={getHeaderStyle('pcb', 'revision_count', 50)}>횟수</th>
+                    <th className="hansl-th text-center" style={getHeaderStyle('pcb', 'quantity', 60)}>수량</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'metal_mask', 80)}>MetalMask</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'changes_memo', 160)}>수정 또는 변경사항</th>
+                    <th className="hansl-th text-center" style={getHeaderStyle('pcb', 'stock_count', 60)}>재고</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'pcb_vendor', 80)}>PCB업체</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'delivery_schedule', 80)}>입고(일정)</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'pcb_lead_time', 80)}>제작 기간(PCB)</th>
+                    <th className="hansl-th text-center" style={getHeaderStyle('pcb', 'received_quantity', 60)}>입고(수량)</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'received_destination', 80)}>입고처</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'pcb_stock_completed', 80)}>입고완료</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'assy_hanwha', 80)}>환화</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'assy_evertech', 80)}>에버텍</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'assy_requested_date', 80)}>입고요청일</th>
+                    <th className="hansl-th text-center" style={getHeaderStyle('pcb', 'qa_passed', 60)}>양품</th>
+                    <th className="hansl-th text-center" style={getHeaderStyle('pcb', 'qa_failed', 60)}>불량</th>
+                    <th className="hansl-th text-center" style={getHeaderStyle('pcb', 'qa_notes', 120)}>비고</th>
+                    <th className="hansl-th text-center" style={getHeaderStyle('pcb', 'delivery_quantity', 60)}>수량</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'delivery_date', 80)}>일자</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'delivery_destination', 100)}>배송처</th>
+                    <th className="hansl-th" style={getHeaderStyle('pcb', 'delivery_completed', 80)}>배송완료</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[10px] text-gray-500 whitespace-nowrap">
@@ -5460,7 +5460,7 @@ export default function ProductionListMain() {
                         <select
                           value={addingPcbRow.production_category}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, production_category: e.target.value })}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         >
                           <option value="LG_PCB">LG_PCB</option>
                           <option value="LG_Socket Board">LG_Socket Board</option>
@@ -5483,7 +5483,7 @@ export default function ProductionListMain() {
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, reference: v })}
                           placeholder="참고"
                           memo={true}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
                       <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderPcbWidth + productionCategoryPcbWidth + pcbBoardWidth + referencePcbWidth}px`, width: `${requestDatePcbWidth}px`, minWidth: `${requestDatePcbWidth}px`, maxWidth: `${requestDatePcbWidth}px` }}>
@@ -5502,37 +5502,37 @@ export default function ProductionListMain() {
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, estimate_no: v })}
                           placeholder="견적NO"
                           memo={false}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingPcbRow.delivery_deadline ? formatDateOrMemo(addingPcbRow.delivery_deadline) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_deadline: e.target.value })}
                           onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_deadline: toDateOrMemo(e.target.value, defaultMonthFor('pcb')) || '' })}
                           placeholder="예: 7/6"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           listId="vendors-list"
                           value={addingPcbRow.client_name || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, client_name: v })}
                           placeholder="업체"
                           memo={false}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           listId="contacts-list-adding-pcb"
                           value={addingPcbRow.client_manager || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, client_manager: v })}
                           placeholder="업체 담당자"
                           memo={false}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                         <datalist id="contacts-list-adding-pcb">
                           {(vendors.find(v => v.vendor_name === addingPcbRow.client_name)?.vendor_contacts || []).map((c: any, i: number) => (
@@ -5540,190 +5540,190 @@ export default function ProductionListMain() {
                           ))}
                         </datalist>
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           listId="employees-list"
                           value={addingPcbRow.hansl_manager || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, hansl_manager: v })}
                           placeholder="HANSL 담당"
                           memo={false}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200 text-gray-500 text-center select-none font-semibold">
+                      <td className="hansl-td-edit text-gray-500 text-center select-none font-semibold">
                         {addingPcbRow.creator || '-'}
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="number"
                           value={addingPcbRow.revision_count}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, revision_count: Number(e.target.value) })}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] text-center focus:outline-none"
+                          className="hansl-cell-input text-center"
                           min="1"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="number"
                           value={addingPcbRow.quantity}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, quantity: Number(e.target.value) })}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] text-center focus:outline-none"
+                          className="hansl-cell-input text-center"
                           min="0"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200 align-top">
+                      <td className="hansl-td-edit align-top">
                         <ArtworkAddInput
                           value={addingPcbRow.artwork_status || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, artwork_status: v })}
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           value={addingPcbRow.metal_mask || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, metal_mask: v })}
                           placeholder="MetalMask"
                           memo={false}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           value={addingPcbRow.changes_memo || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, changes_memo: v })}
                           placeholder="변경사항"
                           memo={true}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="number"
                           value={addingPcbRow.stock_count}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, stock_count: Number(e.target.value) })}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] text-center focus:outline-none"
+                          className="hansl-cell-input text-center"
                           min="0"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           listId="vendors-list"
                           value={addingPcbRow.pcb_vendor || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, pcb_vendor: v })}
                           placeholder="PCB업체"
                           memo={false}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingPcbRow.delivery_schedule ? formatDbDateToDisplay(addingPcbRow.delivery_schedule) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_schedule: e.target.value })}
                           onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_schedule: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor('pcb'))) || '' })}
                           placeholder="예: 7/6"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           value={addingPcbRow.pcb_lead_time || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, pcb_lead_time: v })}
                           placeholder="제작기간"
                           memo={false}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="number"
                           value={addingPcbRow.received_quantity || 0}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, received_quantity: Number(e.target.value) })}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] text-center focus:outline-none"
+                          className="hansl-cell-input text-center"
                           min="0"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           value={addingPcbRow.received_destination || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, received_destination: v })}
                           placeholder="입고처"
                           memo={true}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingPcbRow.pcb_stock_completed || ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, pcb_stock_completed: e.target.value })}
                           placeholder="예: 7/6"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200 align-top">
+                      <td className="hansl-td-edit align-top">
                         <PartsAddInput
                           value={addingPcbRow.parts_organization || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, parts_organization: v })}
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingPcbRow.assy_hanwha ? formatDateOrMemo(addingPcbRow.assy_hanwha) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, assy_hanwha: e.target.value })}
                           onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, assy_hanwha: toDateOrMemo(e.target.value, defaultMonthFor('pcb')) || '' })}
                           placeholder="환화 (날짜/메모)"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingPcbRow.assy_evertech ? formatDateOrMemo(addingPcbRow.assy_evertech) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, assy_evertech: e.target.value })}
                           onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, assy_evertech: toDateOrMemo(e.target.value, defaultMonthFor('pcb')) || '' })}
                           placeholder="에버텍 (날짜/메모)"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingPcbRow.assy_requested_date ? formatDbDateToDisplay(addingPcbRow.assy_requested_date) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, assy_requested_date: e.target.value })}
                           onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, assy_requested_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor('pcb'))) || '' })}
                           placeholder="예: 7/6"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingPcbRow.final_product_stock || ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, final_product_stock: e.target.value })}
                           placeholder="완제품 입고"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingPcbRow.qa_passed || ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, qa_passed: e.target.value })}
                           placeholder="양품"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] text-center focus:outline-none"
+                          className="hansl-cell-input text-center"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingPcbRow.qa_failed || ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, qa_failed: e.target.value })}
                           placeholder="불량"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] text-center focus:outline-none"
+                          className="hansl-cell-input text-center"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           value={addingPcbRow.qa_notes || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, qa_notes: v })}
@@ -5732,50 +5732,50 @@ export default function ProductionListMain() {
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           value={addingPcbRow.design_review || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, design_review: v })}
                           placeholder="디자인리뷰"
                           memo={true}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] text-center focus:outline-none"
+                          className="hansl-cell-input text-center"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="number"
                           value={addingPcbRow.delivery_quantity || 0}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_quantity: Number(e.target.value) })}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] text-center focus:outline-none"
+                          className="hansl-cell-input text-center"
                           min="0"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingPcbRow.delivery_date ? formatDbDateToDisplay(addingPcbRow.delivery_date) : ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_date: e.target.value })}
                           onBlur={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor('pcb'))) || '' })}
                           placeholder="예: 7/6"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           value={addingPcbRow.delivery_destination || ''}
                           onChange={(v) => setAddingPcbRow({ ...addingPcbRow, delivery_destination: v })}
                           placeholder="배송처"
                           memo={true}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingPcbRow.delivery_completed || ''}
                           onChange={(e) => setAddingPcbRow({ ...addingPcbRow, delivery_completed: e.target.value })}
                           placeholder="예: 7/6"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
                       <td className="px-1 py-1 text-center border border-gray-200">
@@ -5850,7 +5850,7 @@ export default function ProductionListMain() {
                       value={cableSearch}
                       onChange={(e) => setCableSearch(e.target.value)}
                       style={{ paddingLeft: '26px', height: '20px' }}
-                      className="w-full block business-radius-input border border-gray-300 bg-white text-gray-700 pr-6 text-[11px]"
+                      className="hansl-search-input"
                     />
                     {cableSearch && (
                       <button
@@ -5872,7 +5872,7 @@ export default function ProductionListMain() {
             <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50/50">
               <div className="flex items-center gap-2">
                 <span className="modal-section-title">Cable & Case 제작 현황</span>
-                <span className="badge-stats bg-blue-50 text-blue-700 border border-blue-200 font-bold">
+                <span className="hansl-count-badge">
                   {filteredCables.length}건
                 </span>
                 {renderSortControl('cable')}
@@ -5883,7 +5883,7 @@ export default function ProductionListMain() {
                   type="button"
                   onClick={() => handleExportExcel('cable')}
                   title="필터 적용된 화면을 엑셀로 다운로드"
-                  className="button-base bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 flex items-center gap-1.5 h-8 px-3 business-radius-button"
+                  className="hansl-btn"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span className="button-text">다운로드</span>
@@ -5892,7 +5892,7 @@ export default function ProductionListMain() {
                   type="button"
                   onClick={() => handlePrint('cable')}
                   title="필터 적용된 화면을 인쇄"
-                  className="button-base bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 flex items-center gap-1.5 h-8 px-3 business-radius-button"
+                  className="hansl-btn"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span className="button-text">인쇄</span>
@@ -5900,7 +5900,7 @@ export default function ProductionListMain() {
                 <button
                   type="button"
                   onClick={() => handleAddClick('cable')}
-                  className="button-base bg-[#1777CB] hover:bg-[#1265A8] text-white flex items-center gap-1.5 h-8 px-3 business-radius-button"
+                  className="hansl-btn-primary"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span className="button-text text-white">행 추가</span>
@@ -5913,40 +5913,40 @@ export default function ProductionListMain() {
                 <thead className="whitespace-nowrap">
                   <tr className="bg-gray-50 border-b border-gray-200">
                     <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 text-center sticky left-0 bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ zIndex: 40, width: '40px', minWidth: '40px', maxWidth: '40px' }}>NO.</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={getStickyHeaderStyle('cable', 'sales_order_number')}>제작 번호</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={getStickyHeaderStyle('cable', 'production_category')}>제작구분</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={getStickyHeaderStyle('cable', 'board_name')}>품명</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] text-center" style={getStickyHeaderStyle('cable', 'reference')}>참고</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 sticky bg-gray-50 z-30 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={getStickyHeaderStyle('cable', 'request_date')}>요청일</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border-y border-r border-gray-200" style={getHeaderStyle('cable', 'estimate_no', 80)}>견적NO.</th>
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'delivery_deadline', 80)}>납품기한</th>
+                    <th rowSpan={2} className="hansl-th-sticky" style={getStickyHeaderStyle('cable', 'sales_order_number')}>제작 번호</th>
+                    <th rowSpan={2} className="hansl-th-sticky" style={getStickyHeaderStyle('cable', 'production_category')}>제작구분</th>
+                    <th rowSpan={2} className="hansl-th-sticky text-center" style={getStickyHeaderStyle('cable', 'board_name')}>품명</th>
+                    <th rowSpan={2} className="hansl-th-sticky text-center" style={getStickyHeaderStyle('cable', 'reference')}>참고</th>
+                    <th rowSpan={2} className="hansl-th-sticky" style={getStickyHeaderStyle('cable', 'request_date')}>요청일</th>
+                    <th rowSpan={2} className="hansl-th border-y border-r" style={getHeaderStyle('cable', 'estimate_no', 80)}>견적NO.</th>
+                    <th rowSpan={2} className="hansl-th" style={getHeaderStyle('cable', 'delivery_deadline', 80)}>납품기한</th>
                     {visibleSpan('cable', HEADER_SPAN_GROUPS.pjt) > 0 && (
-                      <th colSpan={visibleSpan('cable', HEADER_SPAN_GROUPS.pjt)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">PJT 담당자</th>
+                      <th colSpan={visibleSpan('cable', HEADER_SPAN_GROUPS.pjt)} className="hansl-th text-center">PJT 담당자</th>
                     )}
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'creator', 80)}>작성자</th>
+                    <th rowSpan={2} className="hansl-th" style={getHeaderStyle('cable', 'creator', 80)}>작성자</th>
                     {visibleSpan('cable', HEADER_SPAN_GROUPS.makeQty) > 0 && (
-                      <th colSpan={visibleSpan('cable', HEADER_SPAN_GROUPS.makeQty)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center">제작수량</th>
+                      <th colSpan={visibleSpan('cable', HEADER_SPAN_GROUPS.makeQty)} className="hansl-th text-center">제작수량</th>
                     )}
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'spec_details', 250)}>사양</th>
+                    <th rowSpan={2} className="hansl-th" style={getHeaderStyle('cable', 'spec_details', 250)}>사양</th>
                     {visibleSpan('cable', HEADER_SPAN_GROUPS.cableStockIn) > 0 && (
-                      <th colSpan={visibleSpan('cable', HEADER_SPAN_GROUPS.cableStockIn)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center bg-blue-50/20 font-bold">CASE/CABLE 입고</th>
+                      <th colSpan={visibleSpan('cable', HEADER_SPAN_GROUPS.cableStockIn)} className="hansl-th text-center bg-blue-50/20 font-bold">CASE/CABLE 입고</th>
                     )}
                     {visibleSpan('cable', HEADER_SPAN_GROUPS.cableDelivery) > 0 && (
-                      <th colSpan={visibleSpan('cable', HEADER_SPAN_GROUPS.cableDelivery)} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center font-bold">납품</th>
+                      <th colSpan={visibleSpan('cable', HEADER_SPAN_GROUPS.cableDelivery)} className="hansl-th text-center font-bold">납품</th>
                     )}
-                    <th rowSpan={2} className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={{ width: '56px', minWidth: '56px', maxWidth: '56px' }}>작업</th>
+                    <th rowSpan={2} className="hansl-th text-center" style={{ width: '56px', minWidth: '56px', maxWidth: '56px' }}>작업</th>
                   </tr>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'client_name', 80)}>업체</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'client_manager', 80)}>업체 담당자</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'hansl_manager', 80)}>HANSL</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={getHeaderStyle('cable', 'revision_count', 50)}>횟수</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200 text-center" style={getHeaderStyle('cable', 'quantity', 60)}>수량</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'cable_vendor', 80)}>업체</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'cable_requested_date', 80)}>입고 요청일</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'cable_actual_date', 80)}>실제 입고일</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'delivery_notes', 150)}>납품/비고</th>
-                    <th className="px-2 py-[2px] table-header-text text-gray-500 border border-gray-200" style={getHeaderStyle('cable', 'delivery_completed', 80)}>배송완료</th>
+                    <th className="hansl-th" style={getHeaderStyle('cable', 'client_name', 80)}>업체</th>
+                    <th className="hansl-th" style={getHeaderStyle('cable', 'client_manager', 80)}>업체 담당자</th>
+                    <th className="hansl-th" style={getHeaderStyle('cable', 'hansl_manager', 80)}>HANSL</th>
+                    <th className="hansl-th text-center" style={getHeaderStyle('cable', 'revision_count', 50)}>횟수</th>
+                    <th className="hansl-th text-center" style={getHeaderStyle('cable', 'quantity', 60)}>수량</th>
+                    <th className="hansl-th" style={getHeaderStyle('cable', 'cable_vendor', 80)}>업체</th>
+                    <th className="hansl-th" style={getHeaderStyle('cable', 'cable_requested_date', 80)}>입고 요청일</th>
+                    <th className="hansl-th" style={getHeaderStyle('cable', 'cable_actual_date', 80)}>실제 입고일</th>
+                    <th className="hansl-th" style={getHeaderStyle('cable', 'delivery_notes', 150)}>납품/비고</th>
+                    <th className="hansl-th" style={getHeaderStyle('cable', 'delivery_completed', 80)}>배송완료</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[10px] text-gray-700 whitespace-nowrap">
@@ -5965,7 +5965,7 @@ export default function ProductionListMain() {
                         <select
                           value={addingCableRow.production_category}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, production_category: e.target.value })}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         >
                           <option value="LG_Cable">LG_Cable</option>
                           <option value="LG_Case">LG_Case</option>
@@ -5988,7 +5988,7 @@ export default function ProductionListMain() {
                           onChange={(v) => setAddingCableRow({ ...addingCableRow, reference: v })}
                           placeholder="참고"
                           memo={true}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
                       <td className="px-1 py-1 sticky bg-[#f8fbff] z-10 border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb]" style={{ left: `${40 + salesOrderCableWidth + productionCategoryCableWidth + cableBoardWidth + referenceCableWidth}px`, width: `${requestDateCableWidth}px`, minWidth: `${requestDateCableWidth}px`, maxWidth: `${requestDateCableWidth}px` }}>
@@ -6007,37 +6007,37 @@ export default function ProductionListMain() {
                           onChange={(v) => setAddingCableRow({ ...addingCableRow, estimate_no: v })}
                           placeholder="견적NO"
                           memo={false}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingCableRow.delivery_deadline ? formatDateOrMemo(addingCableRow.delivery_deadline) : ''}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, delivery_deadline: e.target.value })}
                           onBlur={(e) => setAddingCableRow({ ...addingCableRow, delivery_deadline: toDateOrMemo(e.target.value, defaultMonthFor('cable')) || '' })}
                           placeholder="예: 7/6"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           listId="vendors-list"
                           value={addingCableRow.client_name || ''}
                           onChange={(v) => setAddingCableRow({ ...addingCableRow, client_name: v })}
                           placeholder="업체명"
                           memo={false}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           listId="contacts-list-adding-cable"
                           value={addingCableRow.client_manager || ''}
                           onChange={(v) => setAddingCableRow({ ...addingCableRow, client_manager: v })}
                           placeholder="업체 담당자"
                           memo={false}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                         <datalist id="contacts-list-adding-cable">
                           {(vendors.find(v => v.vendor_name === addingCableRow.client_name)?.vendor_contacts || []).map((c: any, i: number) => (
@@ -6045,38 +6045,38 @@ export default function ProductionListMain() {
                           ))}
                         </datalist>
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           listId="employees-list"
                           value={addingCableRow.hansl_manager || ''}
                           onChange={(v) => setAddingCableRow({ ...addingCableRow, hansl_manager: v })}
                           placeholder="HANSL 담당"
                           memo={false}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200 text-gray-500 text-center select-none font-semibold">
+                      <td className="hansl-td-edit text-gray-500 text-center select-none font-semibold">
                         {addingCableRow.creator || '-'}
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="number"
                           value={addingCableRow.revision_count}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, revision_count: Number(e.target.value) })}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] text-center focus:outline-none"
+                          className="hansl-cell-input text-center"
                           min="1"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="number"
                           value={addingCableRow.quantity}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, quantity: Number(e.target.value) })}
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] text-center focus:outline-none"
+                          className="hansl-cell-input text-center"
                           min="0"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           value={addingCableRow.spec_details || ''}
                           onChange={(v) => setAddingCableRow({ ...addingCableRow, spec_details: v })}
@@ -6085,36 +6085,36 @@ export default function ProductionListMain() {
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingCableRow.cable_vendor || ''}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, cable_vendor: e.target.value })}
                           placeholder="업체"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingCableRow.cable_requested_date ? formatDbDateToDisplay(addingCableRow.cable_requested_date) : ''}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, cable_requested_date: e.target.value })}
                           onBlur={(e) => setAddingCableRow({ ...addingCableRow, cable_requested_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor('cable'))) || '' })}
                           placeholder="예: 7/6"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingCableRow.cable_actual_date ? formatDbDateToDisplay(addingCableRow.cable_actual_date) : ''}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, cable_actual_date: e.target.value })}
                           onBlur={(e) => setAddingCableRow({ ...addingCableRow, cable_actual_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor('cable'))) || '' })}
                           placeholder="예: 7/6"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <AddPopoverInput
                           value={addingCableRow.delivery_notes || ''}
                           onChange={(v) => setAddingCableRow({ ...addingCableRow, delivery_notes: v })}
@@ -6123,13 +6123,13 @@ export default function ProductionListMain() {
                           className="w-full bg-white border border-gray-300 rounded px-1.5 py-0.5 text-[11px] focus:outline-none"
                         />
                       </td>
-                      <td className="px-1 py-1 border border-gray-200">
+                      <td className="hansl-td-edit">
                         <input
                           type="text"
                           value={addingCableRow.delivery_completed || ''}
                           onChange={(e) => setAddingCableRow({ ...addingCableRow, delivery_completed: e.target.value })}
                           placeholder="예: 7/6"
-                          className="w-full bg-white border border-gray-300 rounded px-1 py-0.5 text-[11px] focus:outline-none"
+                          className="hansl-cell-input"
                         />
                       </td>
                       <td className="px-1 py-1 text-center border border-gray-200">
@@ -6219,7 +6219,7 @@ export default function ProductionListMain() {
                   <select
                     value={formFields.production_category}
                     onChange={(e) => setFormFields({ ...formFields, production_category: e.target.value })}
-                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="hansl-form-input px-2"
                   >
                     {modalType === 'pcb' ? (
                       <>
@@ -6246,7 +6246,7 @@ export default function ProductionListMain() {
                     value={formFields.board_name}
                     onChange={(e) => setFormFields({ ...formFields, board_name: e.target.value })}
                     placeholder="예: Inkjet Trigger Board V1.0"
-                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="hansl-form-input px-2.5"
                     required
                   />
                 </div>
@@ -6260,7 +6260,7 @@ export default function ProductionListMain() {
                     onChange={(e) => setFormFields({ ...formFields, request_date: e.target.value })}
                     onBlur={(e) => setFormFields({ ...formFields, request_date: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor(modalType))) || '' })}
                     placeholder="예: 7/6"
-                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="hansl-form-input px-2.5"
                     required
                   />
                 </div>
@@ -6273,7 +6273,7 @@ export default function ProductionListMain() {
                     value={formFields.estimate_no}
                     onChange={(e) => setFormFields({ ...formFields, estimate_no: e.target.value })}
                     placeholder="입력"
-                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="hansl-form-input px-2.5"
                   />
                 </div>
 
@@ -6286,7 +6286,7 @@ export default function ProductionListMain() {
                     onChange={(e) => setFormFields({ ...formFields, delivery_deadline: e.target.value })}
                     onBlur={(e) => setFormFields({ ...formFields, delivery_deadline: toDateOrMemo(e.target.value, defaultMonthFor(modalType)) || '' })}
                     placeholder="예: 7/6"
-                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="hansl-form-input px-2.5"
                   />
                 </div>
 
@@ -6297,7 +6297,7 @@ export default function ProductionListMain() {
                     type="number"
                     value={formFields.quantity}
                     onChange={(e) => setFormFields({ ...formFields, quantity: e.target.value })}
-                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="hansl-form-input px-2"
                     min="0"
                     required
                   />
@@ -6311,7 +6311,7 @@ export default function ProductionListMain() {
                     value={formFields.client_name}
                     onChange={(e) => setFormFields({ ...formFields, client_name: e.target.value })}
                     placeholder="예: LG생기원, 삼성전자"
-                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="hansl-form-input px-2.5"
                   />
                 </div>
 
@@ -6323,7 +6323,7 @@ export default function ProductionListMain() {
                     value={formFields.client_manager}
                     onChange={(e) => setFormFields({ ...formFields, client_manager: e.target.value })}
                     placeholder="예: 김선범 책임"
-                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="hansl-form-input px-2.5"
                   />
                 </div>
 
@@ -6333,7 +6333,7 @@ export default function ProductionListMain() {
                   <select
                     value={formFields.hansl_manager}
                     onChange={(e) => setFormFields({ ...formFields, hansl_manager: e.target.value })}
-                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="hansl-form-input px-2"
                   >
                     <option value="">-- 선택 --</option>
                     {employees.map(emp => (
@@ -6348,7 +6348,7 @@ export default function ProductionListMain() {
                   <select
                     value={formFields.creator}
                     onChange={(e) => setFormFields({ ...formFields, creator: e.target.value })}
-                    className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="hansl-form-input px-2"
                   >
                     <option value="">-- 선택 --</option>
                     {employees.map(emp => (
@@ -6381,7 +6381,7 @@ export default function ProductionListMain() {
                         value={formFields.metal_mask}
                         onChange={(e) => setFormFields({ ...formFields, metal_mask: e.target.value })}
                         placeholder="입력"
-                        className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="hansl-form-input px-2.5"
                       />
                     </div>
 
@@ -6393,7 +6393,7 @@ export default function ProductionListMain() {
                         value={formFields.pcb_vendor}
                         onChange={(e) => setFormFields({ ...formFields, pcb_vendor: e.target.value })}
                         placeholder="예: 우리기술"
-                        className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="hansl-form-input px-2.5"
                       />
                     </div>
 
@@ -6405,7 +6405,7 @@ export default function ProductionListMain() {
                         onChange={(e) => setFormFields({ ...formFields, delivery_schedule: e.target.value })}
                         onBlur={(e) => setFormFields({ ...formFields, delivery_schedule: formatDisplayDateToDb(parseAndFormatInputDate(e.target.value, defaultMonthFor(modalType))) || '' })}
                         placeholder="예: 7/6"
-                        className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="hansl-form-input px-2.5"
                       />
                     </div>
 
@@ -6415,7 +6415,7 @@ export default function ProductionListMain() {
                         type="number"
                         value={formFields.stock_count}
                         onChange={(e) => setFormFields({ ...formFields, stock_count: e.target.value })}
-                        className="h-8 bg-white border border-[#d2d2d7] rounded-md text-xs px-2 w-full focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="hansl-form-input px-2"
                         min="0"
                       />
                     </div>
