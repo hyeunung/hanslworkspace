@@ -6,6 +6,11 @@ import { useServerSearch } from "@/hooks/useServerSearch";
 import { useColumnSettings } from "@/hooks/useColumnSettings";
 import { usePurchaseTableFilters } from "@/hooks/usePurchaseTableFilters";
 import { usePurchaseSortRules } from "@/hooks/usePurchaseSortRules";
+import { useSavedColumnViews } from "@/hooks/useSavedColumnViews";
+import SavedColumnViewsMenu from "@/components/ui/SavedColumnViewsMenu";
+import { DEFAULT_COLUMN_VISIBILITY } from "@/constants/columnSettings";
+import { ColumnVisibility } from "@/types/columnSettings";
+import { toast } from "sonner";
 import PurchaseCompactTable from "@/components/purchase/PurchaseCompactTable";
 import PurchaseFilterToolbar from "@/components/purchase/PurchaseFilterToolbar";
 import PurchaseSortControl from "@/components/purchase/PurchaseSortControl";
@@ -14,7 +19,7 @@ import PurchaseMonthlySummary from "@/components/purchase/PurchaseMonthlySummary
 import { updatePurchaseInMemory, loadAllPurchaseData } from "@/services/purchaseDataLoader";
 import { isCacheValid, purchaseMemoryCache } from '@/stores/purchaseMemoryStore';
 import DeliveryDateWarningModal, { useDeliveryWarningCount } from "@/components/purchase/DeliveryDateWarningModal";
-import { Package, AlertTriangle, Search, Filter, ChevronDown, X } from "lucide-react";
+import { Package, AlertTriangle, Search, Filter, ChevronDown, X, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
@@ -68,7 +73,33 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
   } = usePurchaseMemory();
 
   // 칼럼 가시성 설정 (DB 저장 — 기기 간 동기화)
-  const { columnVisibility, toggleColumn, resetToDefault } = useColumnSettings();
+  const { columnVisibility, toggleColumn, applyColumnSettings, resetToDefault } = useColumnSettings();
+
+  // 저장된 칼럼 구성 (이름 저장 + 적용, DB 동기화 — 저장된 필터와 동일 UX)
+  const savedColumnViews = useSavedColumnViews<ColumnVisibility>('purchase_columns');
+  const handleSaveColumnView = async (name: string) => {
+    const ok = await savedColumnViews.saveView({ id: `c${Date.now()}`, name, payload: columnVisibility });
+    if (ok) toast.success(`칼럼 구성 '${name}'을(를) 저장했습니다.`);
+    else toast.error('칼럼 구성 저장에 실패했습니다.');
+  };
+  const handleApplyColumnView = (viewId: string) => {
+    const view = savedColumnViews.views.find(v => v.id === viewId);
+    if (!view?.payload) return;
+    // 이후 추가된 신규 칼럼은 기본값으로 채워 적용
+    applyColumnSettings({ ...DEFAULT_COLUMN_VISIBILITY, ...view.payload });
+  };
+  const handleRenameColumnView = async (viewId: string, prevName: string) => {
+    const name = window.prompt('칼럼 구성 이름 변경', prevName)?.trim();
+    if (!name || name === prevName) return;
+    const ok = await savedColumnViews.renameView(viewId, name);
+    if (!ok) toast.error('이름 변경에 실패했습니다.');
+  };
+  const handleDeleteColumnView = async (viewId: string, name: string) => {
+    if (!window.confirm(`저장된 칼럼 구성 '${name}'을(를) 삭제하시겠습니까?`)) return;
+    const ok = await savedColumnViews.deleteView(viewId);
+    if (ok) toast.success('저장된 칼럼 구성을 삭제했습니다.');
+    else toast.error('삭제에 실패했습니다.');
+  };
 
   const currentUserRoles = useMemo(() => parseRoles(currentUser?.roles), [currentUser?.roles]);
   const currentUserName = currentUser?.name || null;
@@ -437,14 +468,30 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
             </div>
             {/* 세로 구분선 */}
             <div className="w-px bg-gray-200 self-stretch mx-3" />
-            {/* 우측 절반: 칼럼 버튼 (클릭 시 드롭다운으로 표시 설정) */}
-            <div className="flex-1 min-w-0 pt-2 border-t border-gray-100">
+            {/* 우측 절반: 칼럼 버튼(드롭다운) + 저장된 칼럼 + 초기화 */}
+            <div className="flex-1 min-w-0 pt-2 border-t border-gray-100 flex items-center gap-1.5">
               <PurchaseColumnMenu
                 columnVisibility={columnVisibility}
                 toggleColumn={toggleColumn}
                 resetToDefault={resetToDefault}
                 currentUserRoles={currentUserRoles}
               />
+              <SavedColumnViewsMenu
+                views={savedColumnViews.views}
+                onSaveCurrent={handleSaveColumnView}
+                onApply={handleApplyColumnView}
+                onRename={handleRenameColumnView}
+                onDelete={handleDeleteColumnView}
+              />
+              <div className="h-4 w-px bg-gray-300 mx-1.5" />
+              <button
+                type="button"
+                onClick={resetToDefault}
+                className="hansl-icon-btn hover:bg-gray-100 hover:text-red-600"
+                title="칼럼 표시 초기화 (모두 표시)"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
             </div>
             </div>
           </div>
