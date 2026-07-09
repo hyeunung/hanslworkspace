@@ -9,7 +9,7 @@ import { usePurchaseSortRules } from "@/hooks/usePurchaseSortRules";
 import PurchaseCompactTable from "@/components/purchase/PurchaseCompactTable";
 import PurchaseFilterToolbar from "@/components/purchase/PurchaseFilterToolbar";
 import PurchaseSortControl from "@/components/purchase/PurchaseSortControl";
-import PurchaseColumnMenu from "@/components/purchase/PurchaseColumnMenu";
+import PurchaseColumnPanel from "@/components/purchase/PurchaseColumnPanel";
 import PurchaseMonthlySummary from "@/components/purchase/PurchaseMonthlySummary";
 import { updatePurchaseInMemory, loadAllPurchaseData } from "@/services/purchaseDataLoader";
 import { isCacheValid, purchaseMemoryCache } from '@/stores/purchaseMemoryStore';
@@ -380,7 +380,9 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
           <ChevronDown className={`w-3 h-3 ml-auto transition-transform ${filterCollapsed ? '-rotate-90' : ''}`} />
         </button>
         {!filterCollapsed && (
-          <div className="px-3 pb-3 pt-3 space-y-3 border-t border-gray-100">
+          <div className="border-t border-gray-100 flex items-stretch">
+          {/* 좌측 절반: 검색 + 조건 필터 */}
+          <div className="flex-1 min-w-0 px-3 pb-3 pt-3 space-y-3">
             {/* 검색란 (제작현황 표준 규격) */}
             <div className="flex items-center">
               <div className="relative w-[240px] flex-shrink-0 h-5 flex items-center">
@@ -433,6 +435,18 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
               handleClearDefault={tableFilters.handleClearDefault}
             />
           </div>
+          {/* 세로 구분선 */}
+          <div className="w-px bg-gray-200 self-stretch" />
+          {/* 우측 절반: 칼럼 표시 설정 */}
+          <div className="flex-1 min-w-0 px-3 pb-3 pt-3">
+            <PurchaseColumnPanel
+              columnVisibility={columnVisibility}
+              toggleColumn={toggleColumn}
+              resetToDefault={resetToDefault}
+              currentUserRoles={currentUserRoles}
+            />
+          </div>
+          </div>
         )}
       </div>
 
@@ -447,14 +461,6 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
               updateSortRule={updateSortRule}
               removeSortRule={removeSortRule}
               clearSort={clearSort}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <PurchaseColumnMenu
-              columnVisibility={columnVisibility}
-              toggleColumn={toggleColumn}
-              resetToDefault={resetToDefault}
-              currentUserRoles={currentUserRoles}
             />
           </div>
         </div>
