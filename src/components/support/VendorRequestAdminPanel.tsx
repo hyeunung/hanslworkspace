@@ -13,12 +13,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { supportService, type SupportInquiry, type NewVendorInquiryPayload } from '@/services/supportService'
+import { supportService, type SupportInquiry, type NewVendorInquiryPayload, type VendorEditInquiryPayload, type ShippingEditInquiryPayload } from '@/services/supportService'
 import { vendorService } from '@/services/vendorService'
+import { shippingService } from '@/services/shippingService'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 import type { Vendor } from '@/types/purchase'
+import type { ShippingAddressFormData } from '@/types/shipping'
 
 type ContactRow = {
   id: string
@@ -48,20 +50,40 @@ const emptyVendorForm: VendorEditForm = {
   note: ''
 }
 
+const emptyShippingEditForm: ShippingAddressFormData = {
+  company_name: '',
+  contact_name_only: '',
+  contact_title: '',
+  contact_memo: '',
+  phone: '',
+  mobile: '',
+  email: '',
+  address: ''
+}
+
 const createRowId = () => `contact-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
 const isNewVendorPayload = (payload: unknown): payload is NewVendorInquiryPayload =>
   !!payload && typeof payload === 'object' && 'vendor' in (payload as Record<string, unknown>)
+
+const isVendorEditPayload = (payload: unknown): payload is VendorEditInquiryPayload =>
+  isNewVendorPayload(payload) && 'vendor_id' in payload
+
+const isShippingEditPayload = (payload: unknown): payload is ShippingEditInquiryPayload =>
+  !!payload && typeof payload === 'object' && 'shipping' in (payload as Record<string, unknown>) && 'address_id' in (payload as Record<string, unknown>)
 
 export default function VendorRequestAdminPanel() {
   const [inquiries, setInquiries] = useState<SupportInquiry[]>([])
   const [loadingList, setLoadingList] = useState(true)
   const [expandedId, setExpandedId] = useState<number | null>(null)
 
-  // 좌측: 요청 내역 수정 폼
+  // 좌측: 요청 내역 수정 폼 (업체등록/수정 요청용)
   const [editForm, setEditForm] = useState<VendorEditForm>(emptyVendorForm)
   const [editContacts, setEditContacts] = useState<ContactRow[]>([])
   const [registering, setRegistering] = useState(false)
+
+  // 좌측: 요청 내역 수정 폼 (택배 주소록 수정 요청용)
+  const [shippingEditForm, setShippingEditForm] = useState<ShippingAddressFormData>(emptyShippingEditForm)
 
   // 우측: 업체관리 검색
   const [vendors, setVendors] = useState<Vendor[]>([])
@@ -98,11 +120,11 @@ export default function VendorRequestAdminPanel() {
     loadVendors()
   }, [loadInquiries, loadVendors])
 
-  // 업체등록 요청 실시간 반영 (신규 접수/상태 변경)
+  // 업체등록/수정 요청 실시간 반영 (신규 접수/상태 변경)
   useEffect(() => {
     const subscription = supportService.subscribeToInquiries((payload) => {
       const row = (payload?.new || payload?.old) as SupportInquiry | undefined
-      if (row?.inquiry_type === 'new_vendor' || !row?.inquiry_type) {
+      if (row?.inquiry_type === 'new_vendor' || row?.inquiry_type === 'vendor_edit' || row?.inquiry_type === 'shipping_edit' || !row?.inquiry_type) {
         loadInquiries()
       }
     })
@@ -139,7 +161,21 @@ export default function VendorRequestAdminPanel() {
       return
     }
     const payload = inquiry.inquiry_payload
-    if (isNewVendorPayload(payload)) {
+    if (isShippingEditPayload(payload)) {
+      setShippingEditForm({
+        company_name: payload.shipping.company_name || '',
+        contact_name_only: payload.shipping.contact_name_only || '',
+        contact_title: payload.shipping.contact_title || '',
+        contact_memo: payload.shipping.contact_memo || '',
+        phone: payload.shipping.phone || '',
+        mobile: payload.shipping.mobile || '',
+        email: payload.shipping.email || '',
+        address: payload.shipping.address || ''
+      })
+      setEditForm(emptyVendorForm)
+      setEditContacts([])
+      setVendorSearch('')
+    } else if (isNewVendorPayload(payload)) {
       setEditForm({
         vendor_name: payload.vendor.vendor_name || '',
         vendor_alias: payload.vendor.vendor_alias || '',
@@ -159,12 +195,18 @@ export default function VendorRequestAdminPanel() {
         }))
       )
       setVendorSearch(payload.vendor.vendor_name || '')
+      setShippingEditForm(emptyShippingEditForm)
     } else {
       setEditForm(emptyVendorForm)
       setEditContacts([])
       setVendorSearch('')
+      setShippingEditForm(emptyShippingEditForm)
     }
     setExpandedId(inquiry.id ?? null)
+  }
+
+  const handleShippingFormChange = (field: keyof ShippingAddressFormData, value: string) => {
+    setShippingEditForm((prev) => ({ ...prev, [field]: value }))
   }
 
   const handleFormChange = (field: keyof VendorEditForm, value: string) => {
@@ -267,6 +309,160 @@ export default function VendorRequestAdminPanel() {
     }
   }
 
+  // 기존업체 수정 요청 확정: 좌측에서 수정된 내용을 실제 vendors/vendor_contacts에 반영 → 문의 완료 처리 → 요청자에게 푸시
+  const handleUpdateVendor = async (inquiry: SupportInquiry) => {
+    if (!inquiry.id) return
+    const payload = inquiry.inquiry_payload
+    if (!isVendorEditPayload(payload)) return
+    if (!editForm.vendor_name.trim()) {
+      toast.error('업체명을 입력해주세요.')
+      return
+    }
+
+    setRegistering(true)
+    try {
+      const vendorData = {
+        vendor_name: editForm.vendor_name.trim(),
+        vendor_alias: editForm.vendor_alias.trim(),
+        vendor_phone: editForm.vendor_phone.trim(),
+        vendor_fax: editForm.vendor_fax.trim(),
+        vendor_payment_schedule: editForm.vendor_payment_schedule.trim(),
+        vendor_address: editForm.vendor_address.trim(),
+        note: editForm.note.trim()
+      }
+
+      const updateResult = await vendorService.updateVendor(payload.vendor_id, vendorData)
+      if (!updateResult.success) {
+        toast.error(updateResult.error || '업체 정보 수정에 실패했습니다.')
+        setRegistering(false)
+        return
+      }
+
+      // 담당자는 요청 내용 그대로 전체 교체 (기존 담당자 삭제 후 재등록)
+      const validContacts = editContacts.filter((c) => c.contact_name.trim())
+      const supabase = createClient()
+      const { error: deleteContactsError } = await supabase
+        .from('vendor_contacts')
+        .delete()
+        .eq('vendor_id', payload.vendor_id)
+      if (deleteContactsError) {
+        toast.error('업체 정보는 수정됐지만 담당자 갱신에 실패했습니다. 업체관리에서 담당자를 확인해주세요.')
+      } else if (validContacts.length > 0) {
+        const { error: contactError } = await supabase
+          .from('vendor_contacts')
+          .insert(
+            validContacts.map((c) => ({
+              vendor_id: payload.vendor_id,
+              contact_name: c.contact_name.trim(),
+              position: c.position.trim(),
+              contact_phone: c.contact_phone.trim(),
+              contact_email: c.contact_email.trim()
+            }))
+          )
+        if (contactError) {
+          toast.error('업체 정보는 수정됐지만 담당자 저장에 실패했습니다. 업체관리에서 담당자를 추가해주세요.')
+        }
+      }
+
+      // 수정된 요청 내역을 payload에 반영 (처리 이력 보존)
+      await supportService.updateInquiryPayload(inquiry.id, {
+        vendor_id: payload.vendor_id,
+        vendor: vendorData,
+        contacts: validContacts.map((c) => ({
+          contact_name: c.contact_name.trim(),
+          position: c.position.trim(),
+          contact_phone: c.contact_phone.trim(),
+          contact_email: c.contact_email.trim()
+        }))
+      })
+
+      // 문의 완료 처리
+      const statusResult = await supportService.updateInquiryStatus(inquiry.id, 'resolved', `업체 정보 수정 완료: ${vendorData.vendor_name}`)
+      if (!statusResult.success) {
+        toast.error(statusResult.error || '업체 정보는 수정됐지만 문의 완료 처리에 실패했습니다.')
+      }
+
+      // 요청자에게 수정 완료 푸시 알림
+      if (inquiry.user_email) {
+        await supportService.notifyVendorEdited({
+          targetEmail: inquiry.user_email,
+          vendorName: vendorData.vendor_name,
+          inquiryId: inquiry.id
+        })
+      }
+
+      toast.success(`업체(${vendorData.vendor_name}) 정보가 수정되었습니다.`)
+      setExpandedId(null)
+      loadInquiries()
+      loadVendors()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '업체 정보 수정 처리 중 오류가 발생했습니다.')
+    } finally {
+      setRegistering(false)
+    }
+  }
+
+  // 택배 주소록 수정 요청 확정: 좌측에서 수정된 내용을 실제 shipping_contacts에 반영 → 문의 완료 처리 → 요청자에게 푸시
+  const handleUpdateShippingAddress = async (inquiry: SupportInquiry) => {
+    if (!inquiry.id) return
+    const payload = inquiry.inquiry_payload
+    if (!isShippingEditPayload(payload)) return
+    if (!shippingEditForm.company_name.trim() || !shippingEditForm.contact_name_only.trim()) {
+      toast.error('상호와 담당자 이름을 입력해주세요.')
+      return
+    }
+
+    setRegistering(true)
+    try {
+      const shippingData: ShippingAddressFormData = {
+        company_name: shippingEditForm.company_name.trim(),
+        contact_name_only: shippingEditForm.contact_name_only.trim(),
+        contact_title: (shippingEditForm.contact_title || '').trim(),
+        contact_memo: (shippingEditForm.contact_memo || '').trim(),
+        phone: (shippingEditForm.phone || '').trim(),
+        mobile: (shippingEditForm.mobile || '').trim(),
+        email: (shippingEditForm.email || '').trim(),
+        address: (shippingEditForm.address || '').trim()
+      }
+
+      const updateResult = await shippingService.updateAddress(payload.address_id, shippingData)
+      if (!updateResult.success) {
+        toast.error(updateResult.error || '택배 주소록 수정에 실패했습니다.')
+        setRegistering(false)
+        return
+      }
+
+      // 수정된 요청 내역을 payload에 반영 (처리 이력 보존)
+      await supportService.updateInquiryPayload(inquiry.id, {
+        address_id: payload.address_id,
+        shipping: shippingData
+      })
+
+      // 문의 완료 처리
+      const statusResult = await supportService.updateInquiryStatus(inquiry.id, 'resolved', `택배 주소록 수정 완료: ${shippingData.company_name}`)
+      if (!statusResult.success) {
+        toast.error(statusResult.error || '주소록은 수정됐지만 문의 완료 처리에 실패했습니다.')
+      }
+
+      // 요청자에게 수정 완료 푸시 알림
+      if (inquiry.user_email) {
+        await supportService.notifyShippingEdited({
+          targetEmail: inquiry.user_email,
+          companyName: shippingData.company_name,
+          inquiryId: inquiry.id
+        })
+      }
+
+      toast.success(`택배 주소록(${shippingData.company_name})이 수정되었습니다.`)
+      setExpandedId(null)
+      loadInquiries()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : '택배 주소록 수정 처리 중 오류가 발생했습니다.')
+    } finally {
+      setRegistering(false)
+    }
+  }
+
   // 요청 삭제 (lead buyer 권한)
   const handleDeleteInquiry = async () => {
     if (!deleteTarget?.id) return
@@ -306,24 +502,28 @@ export default function VendorRequestAdminPanel() {
       <CardHeader className="pb-3 pt-4 px-4">
         <CardTitle className="section-title flex items-center gap-2 text-gray-900">
           <Building2 className="w-4 h-4 text-gray-600" />
-          업체등록 요청 관리
+          업체등록/수정 · 택배 주소록 수정 요청 관리
         </CardTitle>
       </CardHeader>
       <CardContent className="px-4 pb-4">
         {loadingList ? (
           <div className="py-10 flex items-center justify-center text-gray-500 text-[12px]">
             <Loader2 className="w-4 h-4 animate-spin mr-2" />
-            업체등록 요청을 불러오는 중...
+            요청 목록을 불러오는 중...
           </div>
         ) : inquiries.length === 0 ? (
-          <div className="py-10 text-center text-gray-400 text-[12px]">접수된 업체등록 요청이 없습니다.</div>
+          <div className="py-10 text-center text-gray-400 text-[12px]">접수된 요청이 없습니다.</div>
         ) : (
           <div className="space-y-2">
             {inquiries.map((inquiry) => {
               const isExpanded = expandedId === inquiry.id
               const isCompleted = inquiry.status === 'resolved' || inquiry.status === 'closed'
               const payload = inquiry.inquiry_payload
-              const requestedVendorName = isNewVendorPayload(payload) ? payload.vendor.vendor_name : ''
+              const isEditRequest = inquiry.inquiry_type === 'vendor_edit'
+              const isShippingRequest = inquiry.inquiry_type === 'shipping_edit'
+              const requestedVendorName = isShippingEditPayload(payload)
+                ? payload.shipping.company_name
+                : isNewVendorPayload(payload) ? payload.vendor.vendor_name : ''
               return (
                 <div key={inquiry.id} className="border border-gray-200 business-radius-card overflow-hidden bg-white">
                   {/* 요청 행 (클릭 시 펼침) */}
@@ -335,7 +535,9 @@ export default function VendorRequestAdminPanel() {
                     className="w-full flex items-center justify-between gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors text-left cursor-pointer"
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="badge-stats bg-indigo-100 text-indigo-800 flex-shrink-0">업체등록 요청</span>
+                      <span className={`badge-stats flex-shrink-0 ${isShippingRequest ? 'bg-emerald-100 text-emerald-800' : isEditRequest ? 'bg-amber-100 text-amber-800' : 'bg-indigo-100 text-indigo-800'}`}>
+                        {isShippingRequest ? '택배 주소록 수정 요청' : isEditRequest ? '기존업체 수정 요청' : '업체등록 요청'}
+                      </span>
                       {getStatusBadge(inquiry.status)}
                       <span className="text-[12px] font-medium text-gray-900 truncate">
                         {requestedVendorName || inquiry.subject}
@@ -377,6 +579,101 @@ export default function VendorRequestAdminPanel() {
                           </div>
                         )}
 
+                        {isShippingRequest && (
+                          <>
+                            <div className="grid grid-cols-2 gap-2.5">
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-gray-500 font-medium">상호 *</label>
+                                <input
+                                  type="text"
+                                  value={shippingEditForm.company_name}
+                                  onChange={(e) => handleShippingFormChange('company_name', e.target.value)}
+                                  className={inputClass}
+                                  placeholder="상호"
+                                  disabled={isCompleted}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-gray-500 font-medium">담당자 이름 *</label>
+                                <input
+                                  type="text"
+                                  value={shippingEditForm.contact_name_only}
+                                  onChange={(e) => handleShippingFormChange('contact_name_only', e.target.value)}
+                                  className={inputClass}
+                                  placeholder="담당자 이름"
+                                  disabled={isCompleted}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-gray-500 font-medium">직함</label>
+                                <input
+                                  type="text"
+                                  value={shippingEditForm.contact_title || ''}
+                                  onChange={(e) => handleShippingFormChange('contact_title', e.target.value)}
+                                  className={inputClass}
+                                  placeholder="직함"
+                                  disabled={isCompleted}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-gray-500 font-medium">전화번호</label>
+                                <input
+                                  type="text"
+                                  value={shippingEditForm.phone || ''}
+                                  onChange={(e) => handleShippingFormChange('phone', e.target.value)}
+                                  className={inputClass}
+                                  placeholder="전화번호"
+                                  disabled={isCompleted}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-gray-500 font-medium">휴대폰</label>
+                                <input
+                                  type="text"
+                                  value={shippingEditForm.mobile || ''}
+                                  onChange={(e) => handleShippingFormChange('mobile', e.target.value)}
+                                  className={inputClass}
+                                  placeholder="휴대폰"
+                                  disabled={isCompleted}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-gray-500 font-medium">이메일</label>
+                                <input
+                                  type="text"
+                                  value={shippingEditForm.email || ''}
+                                  onChange={(e) => handleShippingFormChange('email', e.target.value)}
+                                  className={inputClass}
+                                  placeholder="이메일"
+                                  disabled={isCompleted}
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] text-gray-500 font-medium">주소</label>
+                              <Textarea
+                                value={shippingEditForm.address || ''}
+                                onChange={(e) => handleShippingFormChange('address', e.target.value)}
+                                className="text-[11px] border border-gray-300 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:outline-none p-2.5 w-full business-radius-input shadow-sm bg-white text-gray-800 min-h-[52px]"
+                                placeholder="주소"
+                                disabled={isCompleted}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] text-gray-500 font-medium">비고</label>
+                              <Textarea
+                                value={shippingEditForm.contact_memo || ''}
+                                onChange={(e) => handleShippingFormChange('contact_memo', e.target.value)}
+                                className="text-[11px] border border-gray-300 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:outline-none p-2.5 w-full business-radius-input shadow-sm bg-white text-gray-800 min-h-[40px]"
+                                placeholder="메모"
+                                disabled={isCompleted}
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        {!isShippingRequest && (
+                        <>
                         <div className="grid grid-cols-2 gap-2.5">
                           <div className="space-y-1">
                             <label className="text-[10px] text-gray-500 font-medium">업체명 *</label>
@@ -524,25 +821,27 @@ export default function VendorRequestAdminPanel() {
                             </div>
                           )}
                         </div>
+                        </>
+                        )}
 
-                        {/* 업체 등록 버튼 */}
+                        {/* 업체/택배 등록/수정 반영 버튼 */}
                         {!isCompleted ? (
                           <div className="flex justify-end pt-2 border-t border-gray-100">
                             <button
                               type="button"
-                              onClick={() => handleRegisterVendor(inquiry)}
+                              onClick={() => (isShippingRequest ? handleUpdateShippingAddress(inquiry) : isEditRequest ? handleUpdateVendor(inquiry) : handleRegisterVendor(inquiry))}
                               disabled={registering}
                               className="button-action-primary shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                             >
                               {registering ? (
                                 <>
                                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  등록 중...
+                                  {isEditRequest || isShippingRequest ? '반영 중...' : '등록 중...'}
                                 </>
                               ) : (
                                 <>
                                   <CheckCircle className="w-3.5 h-3.5" />
-                                  업체 등록
+                                  {isEditRequest || isShippingRequest ? '수정 내용 반영' : '업체 등록'}
                                 </>
                               )}
                             </button>
@@ -555,7 +854,15 @@ export default function VendorRequestAdminPanel() {
                         )}
                       </div>
 
-                      {/* 우측: 업체관리 검색 (중복 업체 확인용) */}
+                      {/* 우측: 업체관리 검색 (중복 업체 확인용) / 택배 요청은 대상이 이미 특정되어 있으므로 생략 */}
+                      {isShippingRequest ? (
+                        <div className="p-4 space-y-2 bg-slate-50/40">
+                          <div className="modal-section-title text-gray-900">참고</div>
+                          <div className="text-[11px] text-gray-500">
+                            택배 주소록 수정 요청은 요청 시점에 이미 대상 주소록이 지정되어 있어 별도 중복 확인이 필요하지 않습니다.
+                          </div>
+                        </div>
+                      ) : (
                       <div className="p-4 space-y-3 bg-slate-50/40">
                         <div className="modal-section-title text-gray-900">업체관리 검색 (중복 확인)</div>
                         <div className="relative">
@@ -615,6 +922,7 @@ export default function VendorRequestAdminPanel() {
                           </>
                         )}
                       </div>
+                      )}
                     </div>
                   )}
                 </div>

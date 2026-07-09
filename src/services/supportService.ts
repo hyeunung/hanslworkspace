@@ -23,6 +23,8 @@ export type SupportInquiryType =
   | 'price_change'
   | 'item_add'
   | 'new_vendor'
+  | 'vendor_edit'
+  | 'shipping_edit'
 
 // 업체등록 요청(new_vendor) payload
 export interface NewVendorInquiryPayload {
@@ -41,6 +43,41 @@ export interface NewVendorInquiryPayload {
     contact_phone?: string
     contact_email?: string
   }[]
+}
+
+// 기존업체 수정 요청(vendor_edit) payload: 수정 대상 업체 id + 수정된 전체 내용
+export interface VendorEditInquiryPayload {
+  vendor_id: number
+  vendor: {
+    vendor_name: string
+    vendor_alias?: string
+    vendor_phone?: string
+    vendor_fax?: string
+    vendor_payment_schedule?: string
+    vendor_address?: string
+    note?: string
+  }
+  contacts: {
+    contact_name: string
+    position?: string
+    contact_phone?: string
+    contact_email?: string
+  }[]
+}
+
+// 택배 주소록 수정 요청(shipping_edit) payload: 수정 대상 주소록(shipping_contacts) id + 수정된 전체 내용
+export interface ShippingEditInquiryPayload {
+  address_id: string
+  shipping: {
+    company_name: string
+    contact_name_only: string
+    contact_title?: string
+    contact_memo?: string
+    phone?: string
+    mobile?: string
+    email?: string
+    address?: string
+  }
 }
 
 export type SupportInquiryPayload =
@@ -95,6 +132,8 @@ export type SupportInquiryPayload =
       }[]
     }
   | NewVendorInquiryPayload
+  | VendorEditInquiryPayload
+  | ShippingEditInquiryPayload
 
 export interface SupportInquiry {
   id?: number
@@ -447,21 +486,21 @@ class SupportService {
     }
   }
 
-  // 업체등록 요청 문의 목록 조회 (lead buyer 관리자 모드용)
-  // RLS: lead buyer는 inquiry_type='new_vendor' 문의 전체 조회 가능
+  // 업체등록/수정 + 택배 주소록 수정 요청 문의 목록 조회 (lead buyer 관리자 모드용)
+  // RLS: lead buyer는 inquiry_type in ('new_vendor','vendor_edit','shipping_edit') 문의 전체 조회 가능
   async getNewVendorInquiries(): Promise<{ success: boolean; data: SupportInquiry[]; error?: string }> {
     try {
       const { data, error } = await this.supabase
         .from('support_inquires')
         .select('*')
-        .eq('inquiry_type', 'new_vendor')
+        .in('inquiry_type', ['new_vendor', 'vendor_edit', 'shipping_edit'])
         .order('created_at', { ascending: false })
 
       if (error) throw error
 
       return { success: true, data: this.sortInquiriesByStatus(data || []) }
     } catch (e) {
-      return { success: false, data: [], error: e instanceof Error ? e.message : '업체등록 요청 조회 실패' }
+      return { success: false, data: [], error: e instanceof Error ? e.message : '업체등록/수정 요청 조회 실패' }
     }
   }
 
@@ -502,6 +541,28 @@ class SupportService {
     }
   }
 
+  // 기존업체 수정 요청 접수 → lead buyer + superadmin에게 푸시 알림
+  async notifyLeadBuyersVendorEditRequest(params: { requesterName: string; vendorName: string; inquiryId?: number }): Promise<void> {
+    try {
+      await this.supabase.functions.invoke('send_fcm_notification', {
+        body: {
+          type: 'vendor_edit_inquiry',
+          title: '✏️ 기존업체 수정 요청',
+          body: `${params.requesterName}님이 업체 정보 수정을 요청했습니다.\n업체명: ${params.vendorName}`,
+          data: {
+            type: 'vendor_edit_inquiry',
+            inquiryId: String(params.inquiryId ?? ''),
+            vendor_name: params.vendorName,
+            requester_name: params.requesterName
+          }
+        }
+      })
+    } catch (e) {
+      // 알림 실패는 문의 접수 자체를 막지 않음
+      logger.warn('기존업체 수정 요청 알림 발송 실패', { error: e })
+    }
+  }
+
   // 업체 등록 완료 → 요청자에게 푸시 알림
   async notifyVendorRegistered(params: { targetEmail: string; vendorName: string; inquiryId?: number }): Promise<void> {
     try {
@@ -521,6 +582,72 @@ class SupportService {
     } catch (e) {
       // 알림 실패는 등록 처리 자체를 막지 않음
       logger.warn('업체 등록 완료 알림 발송 실패', { error: e })
+    }
+  }
+
+  // 업체 정보 수정 완료 → 요청자에게 푸시 알림
+  async notifyVendorEdited(params: { targetEmail: string; vendorName: string; inquiryId?: number }): Promise<void> {
+    try {
+      await this.supabase.functions.invoke('send_fcm_notification', {
+        body: {
+          type: 'vendor_edited',
+          targetEmail: params.targetEmail,
+          title: '업체 정보 수정 완료',
+          body: `요청하신 업체(${params.vendorName}) 정보 수정이 완료되었습니다.`,
+          data: {
+            type: 'vendor_edited',
+            inquiryId: String(params.inquiryId ?? ''),
+            vendor_name: params.vendorName
+          }
+        }
+      })
+    } catch (e) {
+      // 알림 실패는 수정 처리 자체를 막지 않음
+      logger.warn('업체 정보 수정 완료 알림 발송 실패', { error: e })
+    }
+  }
+
+  // 택배 주소록 수정 요청 접수 → lead buyer + superadmin에게 푸시 알림
+  async notifyLeadBuyersShippingEditRequest(params: { requesterName: string; companyName: string; inquiryId?: number }): Promise<void> {
+    try {
+      await this.supabase.functions.invoke('send_fcm_notification', {
+        body: {
+          type: 'shipping_edit_inquiry',
+          title: '📦 택배 주소록 수정 요청',
+          body: `${params.requesterName}님이 택배 주소록 수정을 요청했습니다.\n업체명: ${params.companyName}`,
+          data: {
+            type: 'shipping_edit_inquiry',
+            inquiryId: String(params.inquiryId ?? ''),
+            company_name: params.companyName,
+            requester_name: params.requesterName
+          }
+        }
+      })
+    } catch (e) {
+      // 알림 실패는 문의 접수 자체를 막지 않음
+      logger.warn('택배 주소록 수정 요청 알림 발송 실패', { error: e })
+    }
+  }
+
+  // 택배 주소록 수정 완료 → 요청자에게 푸시 알림
+  async notifyShippingEdited(params: { targetEmail: string; companyName: string; inquiryId?: number }): Promise<void> {
+    try {
+      await this.supabase.functions.invoke('send_fcm_notification', {
+        body: {
+          type: 'shipping_edited',
+          targetEmail: params.targetEmail,
+          title: '택배 주소록 수정 완료',
+          body: `요청하신 택배 주소록(${params.companyName}) 수정이 완료되었습니다.`,
+          data: {
+            type: 'shipping_edited',
+            inquiryId: String(params.inquiryId ?? ''),
+            company_name: params.companyName
+          }
+        }
+      })
+    } catch (e) {
+      // 알림 실패는 수정 처리 자체를 막지 않음
+      logger.warn('택배 주소록 수정 완료 알림 발송 실패', { error: e })
     }
   }
 

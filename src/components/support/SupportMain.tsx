@@ -31,6 +31,10 @@ import { DateRange } from 'react-day-picker'
 import PurchaseDetailModal from '@/components/purchase/PurchaseDetailModal'
 import ReactSelect, { type StylesConfig } from 'react-select'
 import VendorRequestAdminPanel from '@/components/support/VendorRequestAdminPanel'
+import { vendorService } from '@/services/vendorService'
+import type { Vendor } from '@/types/purchase'
+import { shippingService } from '@/services/shippingService'
+import type { ShippingAddress, ShippingAddressFormData } from '@/types/shipping'
 
 type SupportPurchaseRequest = {
   id: number
@@ -152,6 +156,17 @@ const emptyNewVendorForm: NewVendorFormState = {
   note: ''
 }
 
+const emptyShippingEditForm: ShippingAddressFormData = {
+  company_name: '',
+  contact_name_only: '',
+  contact_title: '',
+  contact_memo: '',
+  phone: '',
+  mobile: '',
+  email: '',
+  address: ''
+}
+
 export default function SupportMain() {
   const location = useLocation()
   const navigate = useNavigate()
@@ -190,9 +205,22 @@ export default function SupportMain() {
   const purchaseSelectLabel = inquiryType === 'delete' ? '삭제할 발주요청 선택' : '발주요청 선택'
   const messageLabel = inquiryType === 'delete' ? '삭제 사유' : '내용'
 
-  // 업체등록 요청 (new_vendor) 폼
+  // 업체등록 요청 (new_vendor) 폼 / 기존업체 수정 요청(vendor_edit) 폼 (동일한 필드 구조 재사용)
   const [newVendorForm, setNewVendorForm] = useState<NewVendorFormState>(emptyNewVendorForm)
   const [newVendorContacts, setNewVendorContacts] = useState<NewVendorContactRow[]>([])
+
+  // 기존업체 수정 요청: 수정 대상 업체 검색/선택
+  const [vendorEditCandidates, setVendorEditCandidates] = useState<Vendor[]>([])
+  const [loadingVendorEditCandidates, setLoadingVendorEditCandidates] = useState(false)
+  const [vendorEditSearch, setVendorEditSearch] = useState('')
+  const [selectedVendorForEdit, setSelectedVendorForEdit] = useState<Vendor | null>(null)
+
+  // 택배 주소록 수정 요청 (shipping_edit) 폼: 수정 대상 주소록 검색/선택 + 수정 내용
+  const [shippingEditCandidates, setShippingEditCandidates] = useState<ShippingAddress[]>([])
+  const [loadingShippingEditCandidates, setLoadingShippingEditCandidates] = useState(false)
+  const [shippingEditSearch, setShippingEditSearch] = useState('')
+  const [selectedShippingForEdit, setSelectedShippingForEdit] = useState<ShippingAddress | null>(null)
+  const [shippingEditForm, setShippingEditForm] = useState<ShippingAddressFormData>(emptyShippingEditForm)
 
   // lead buyer 전용 탭: 문의하기 / 관리자 모드(업체등록 요청 관리)
   const [activeTab, setActiveTab] = useState<'inquiry' | 'vendor_admin'>('inquiry')
@@ -219,7 +247,109 @@ export default function SupportMain() {
     if (inquiryType === 'new_vendor' && newVendorContacts.length === 0) {
       setNewVendorContacts([{ id: createRowId(), contact_name: '', position: '', contact_phone: '', contact_email: '' }])
     }
-  }, [inquiryType, quantityChangeRows.length, priceChangeRows.length, itemAddRows.length, newVendorContacts.length])
+    if (inquiryType === 'vendor_edit' && selectedVendorForEdit && newVendorContacts.length === 0) {
+      setNewVendorContacts([{ id: createRowId(), contact_name: '', position: '', contact_phone: '', contact_email: '' }])
+    }
+  }, [inquiryType, quantityChangeRows.length, priceChangeRows.length, itemAddRows.length, newVendorContacts.length, selectedVendorForEdit])
+
+  // 기존업체 수정 요청 선택 시 검색 대상 업체 목록 로드 (검색용, 한 번만)
+  useEffect(() => {
+    if (inquiryType !== 'vendor_edit' || vendorEditCandidates.length > 0 || loadingVendorEditCandidates) return
+    setLoadingVendorEditCandidates(true)
+    vendorService.getVendors().then((result) => {
+      if (result.success) {
+        setVendorEditCandidates(result.data || [])
+      } else {
+        toast.error(result.error || '업체 목록 조회에 실패했습니다.')
+      }
+      setLoadingVendorEditCandidates(false)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inquiryType])
+
+  // 수정 대상 업체 검색 필터 (업체명/참조명/전화번호/주소/담당자)
+  const filteredVendorEditCandidates = vendorEditCandidates.filter((vendor) => {
+    const normalized = vendorEditSearch.trim().toLowerCase()
+    if (!normalized) return true
+    const fields = [vendor.vendor_name, vendor.vendor_alias, vendor.vendor_phone, vendor.vendor_address]
+    const vendorMatch = fields.some((v) => (v || '').toLowerCase().includes(normalized))
+    if (vendorMatch) return true
+    return (vendor.vendor_contacts || []).some((c) => (c.contact_name || '').toLowerCase().includes(normalized))
+  })
+
+  // 수정 대상 업체 선택: 현재 정보를 폼에 채워넣음
+  const handleSelectVendorForEdit = (vendor: Vendor) => {
+    setSelectedVendorForEdit(vendor)
+    setNewVendorForm({
+      vendor_name: vendor.vendor_name || '',
+      vendor_alias: vendor.vendor_alias || '',
+      vendor_phone: vendor.vendor_phone || '',
+      vendor_fax: vendor.vendor_fax || '',
+      vendor_payment_schedule: vendor.vendor_payment_schedule || '',
+      vendor_address: vendor.vendor_address || '',
+      note: vendor.note || ''
+    })
+    setNewVendorContacts(
+      (vendor.vendor_contacts || []).map((c) => ({
+        id: createRowId(),
+        contact_name: c.contact_name || '',
+        position: c.position || '',
+        contact_phone: c.contact_phone || '',
+        contact_email: c.contact_email || ''
+      }))
+    )
+  }
+
+  // 수정 대상 업체 선택 해제 (다시 검색하도록)
+  const handleClearVendorForEdit = () => {
+    setSelectedVendorForEdit(null)
+    setNewVendorForm(emptyNewVendorForm)
+    setNewVendorContacts([])
+  }
+
+  // 택배 주소록 수정 요청 선택 시 검색 대상 주소록 목록 로드 (검색용, 한 번만)
+  useEffect(() => {
+    if (inquiryType !== 'shipping_edit' || shippingEditCandidates.length > 0 || loadingShippingEditCandidates) return
+    setLoadingShippingEditCandidates(true)
+    shippingService.getAddresses().then((result) => {
+      if (result.success) {
+        setShippingEditCandidates(result.data || [])
+      } else {
+        toast.error(result.error || '택배 주소록 조회에 실패했습니다.')
+      }
+      setLoadingShippingEditCandidates(false)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inquiryType])
+
+  // 수정 대상 주소록 검색 필터 (업체명/담당자/전화번호/주소)
+  const filteredShippingEditCandidates = shippingEditCandidates.filter((addr) => {
+    const normalized = shippingEditSearch.trim().toLowerCase()
+    if (!normalized) return true
+    const fields = [addr.company_name, addr.contact_name_only, addr.contact_name, addr.phone, addr.mobile, addr.address]
+    return fields.some((v) => (v || '').toLowerCase().includes(normalized))
+  })
+
+  // 수정 대상 주소록 선택: 현재 정보를 폼에 채워넣음
+  const handleSelectShippingForEdit = (addr: ShippingAddress) => {
+    setSelectedShippingForEdit(addr)
+    setShippingEditForm({
+      company_name: addr.company_name || '',
+      contact_name_only: addr.contact_name_only || addr.contact_name || '',
+      contact_title: addr.contact_title || '',
+      contact_memo: addr.contact_memo || '',
+      phone: addr.phone || '',
+      mobile: addr.mobile || '',
+      email: addr.email || '',
+      address: addr.address || ''
+    })
+  }
+
+  // 수정 대상 주소록 선택 해제 (다시 검색하도록)
+  const handleClearShippingForEdit = () => {
+    setSelectedShippingForEdit(null)
+    setShippingEditForm(emptyShippingEditForm)
+  }
 
   // 문의 목록 관련
   const [inquiries, setInquiries] = useState<SupportInquiry[]>([])
@@ -626,6 +756,8 @@ export default function SupportMain() {
     { value: 'price_change', label: '단가/합계 금액 변경 요청' },
     { value: 'item_add', label: '품목 추가 요청' },
     { value: 'new_vendor', label: '업체등록 요청' },
+    { value: 'vendor_edit', label: '기존업체 수정 요청' },
+    { value: 'shipping_edit', label: '택배 주소록 수정 요청' },
     { value: 'bug', label: '오류 신고' },
     { value: 'modify', label: '수정 요청' },
     { value: 'delete', label: '삭제 요청' },
@@ -872,7 +1004,7 @@ export default function SupportMain() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    const messageOptionalTypes = ['quantity_change', 'price_change', 'item_add', 'delivery_date_change', 'new_vendor']
+    const messageOptionalTypes = ['quantity_change', 'price_change', 'item_add', 'delivery_date_change', 'new_vendor', 'vendor_edit', 'shipping_edit']
     if (!inquiryType || (!message && !messageOptionalTypes.includes(inquiryType))) {
       toast.error('모든 필드를 입력해주세요.')
       return
@@ -1130,6 +1262,95 @@ export default function SupportMain() {
       })
     }
 
+    if (inquiryType === 'vendor_edit') {
+      if (!selectedVendorForEdit) {
+        toast.error('수정할 업체를 검색해서 선택해주세요.')
+        setLoading(false)
+        return
+      }
+      if (!newVendorForm.vendor_name.trim()) {
+        toast.error('업체명을 입력해주세요.')
+        setLoading(false)
+        return
+      }
+
+      // 이름이 입력된 담당자만 payload에 포함
+      const contactsPayload = newVendorContacts
+        .filter(row => row.contact_name.trim())
+        .map(row => ({
+          contact_name: row.contact_name.trim(),
+          position: row.position.trim(),
+          contact_phone: row.contact_phone.trim(),
+          contact_email: row.contact_email.trim()
+        }))
+
+      inquiryPayload = {
+        vendor_id: selectedVendorForEdit.id,
+        vendor: {
+          vendor_name: newVendorForm.vendor_name.trim(),
+          vendor_alias: newVendorForm.vendor_alias.trim(),
+          vendor_phone: newVendorForm.vendor_phone.trim(),
+          vendor_fax: newVendorForm.vendor_fax.trim(),
+          vendor_payment_schedule: newVendorForm.vendor_payment_schedule.trim(),
+          vendor_address: newVendorForm.vendor_address.trim(),
+          note: newVendorForm.note.trim()
+        },
+        contacts: contactsPayload
+      }
+
+      summaryLines.push(`수정 대상 업체: ${selectedVendorForEdit.vendor_name}`)
+      summaryLines.push(`업체명: ${newVendorForm.vendor_name.trim()}`)
+      if (newVendorForm.vendor_alias.trim()) summaryLines.push(`참조명: ${newVendorForm.vendor_alias.trim()}`)
+      if (newVendorForm.vendor_phone.trim()) summaryLines.push(`전화번호: ${newVendorForm.vendor_phone.trim()}`)
+      if (newVendorForm.vendor_fax.trim()) summaryLines.push(`팩스번호: ${newVendorForm.vendor_fax.trim()}`)
+      if (newVendorForm.vendor_payment_schedule.trim()) summaryLines.push(`결제조건: ${newVendorForm.vendor_payment_schedule.trim()}`)
+      if (newVendorForm.vendor_address.trim()) summaryLines.push(`주소: ${newVendorForm.vendor_address.trim()}`)
+      if (newVendorForm.note.trim()) summaryLines.push(`비고: ${newVendorForm.note.trim()}`)
+      contactsPayload.forEach((c, idx) => {
+        const parts = [c.contact_name, c.position, c.contact_phone, c.contact_email].filter(Boolean)
+        summaryLines.push(`담당자${idx + 1}: ${parts.join(' / ')}`)
+      })
+    }
+
+    if (inquiryType === 'shipping_edit') {
+      if (!selectedShippingForEdit) {
+        toast.error('수정할 택배 주소록을 검색해서 선택해주세요.')
+        setLoading(false)
+        return
+      }
+      if (!shippingEditForm.company_name.trim() || !shippingEditForm.contact_name_only.trim()) {
+        toast.error('상호와 담당자 이름을 입력해주세요.')
+        setLoading(false)
+        return
+      }
+
+      const shippingPayload = {
+        company_name: shippingEditForm.company_name.trim(),
+        contact_name_only: shippingEditForm.contact_name_only.trim(),
+        contact_title: (shippingEditForm.contact_title || '').trim(),
+        contact_memo: (shippingEditForm.contact_memo || '').trim(),
+        phone: (shippingEditForm.phone || '').trim(),
+        mobile: (shippingEditForm.mobile || '').trim(),
+        email: (shippingEditForm.email || '').trim(),
+        address: (shippingEditForm.address || '').trim()
+      }
+
+      inquiryPayload = {
+        address_id: selectedShippingForEdit.id,
+        shipping: shippingPayload
+      }
+
+      summaryLines.push(`수정 대상 주소록: ${selectedShippingForEdit.company_name} / ${selectedShippingForEdit.contact_name || '-'}`)
+      summaryLines.push(`상호: ${shippingPayload.company_name}`)
+      summaryLines.push(`담당자: ${shippingPayload.contact_name_only}`)
+      if (shippingPayload.contact_title) summaryLines.push(`직함: ${shippingPayload.contact_title}`)
+      if (shippingPayload.phone) summaryLines.push(`전화번호: ${shippingPayload.phone}`)
+      if (shippingPayload.mobile) summaryLines.push(`휴대폰: ${shippingPayload.mobile}`)
+      if (shippingPayload.email) summaryLines.push(`이메일: ${shippingPayload.email}`)
+      if (shippingPayload.address) summaryLines.push(`주소: ${shippingPayload.address}`)
+      if (shippingPayload.contact_memo) summaryLines.push(`비고: ${shippingPayload.contact_memo}`)
+    }
+
     if (inquiryType === 'delete') {
       if (deleteTarget === 'statement') {
         // 거래명세서 삭제
@@ -1254,11 +1475,25 @@ ${itemsText}`;
         }
       }
 
-      // ✅ 업체등록 요청이면 lead buyer에게 푸시 알림 (실패해도 접수 흐름은 유지)
+      // ✅ 업체등록/수정 요청이면 lead buyer에게 푸시 알림 (실패해도 접수 흐름은 유지)
       if (inquiryType === 'new_vendor') {
         void supportService.notifyLeadBuyersNewVendorRequest({
           requesterName: currentUserName || currentUserEmail,
           vendorName: newVendorForm.vendor_name.trim(),
+          inquiryId: result.inquiryId
+        })
+      }
+      if (inquiryType === 'vendor_edit') {
+        void supportService.notifyLeadBuyersVendorEditRequest({
+          requesterName: currentUserName || currentUserEmail,
+          vendorName: newVendorForm.vendor_name.trim(),
+          inquiryId: result.inquiryId
+        })
+      }
+      if (inquiryType === 'shipping_edit') {
+        void supportService.notifyLeadBuyersShippingEditRequest({
+          requesterName: currentUserName || currentUserEmail,
+          companyName: shippingEditForm.company_name.trim(),
           inquiryId: result.inquiryId
         })
       }
@@ -1278,6 +1513,11 @@ ${itemsText}`;
       setStatements([])
       setNewVendorForm(emptyNewVendorForm)
       setNewVendorContacts([])
+      setSelectedVendorForEdit(null)
+      setVendorEditSearch('')
+      setShippingEditForm(emptyShippingEditForm)
+      setSelectedShippingForEdit(null)
+      setShippingEditSearch('')
       // 목록 새로고침
       loadInquiries()
 
@@ -1740,6 +1980,8 @@ ${itemsText}`;
       case 'item_add': return '품목 추가 요청'
       case 'delete': return '삭제 요청'
       case 'new_vendor': return '업체등록 요청'
+      case 'vendor_edit': return '기존업체 수정 요청'
+      case 'shipping_edit': return '택배 주소록 수정 요청'
       case 'annual_leave': return '연차 문의'
       case 'attendance': return '근태 문의'
       case 'other': return '기타 문의'
@@ -1784,6 +2026,52 @@ ${itemsText}`;
                 담당자{idx + 1}: {[c.contact_name, c.position, c.contact_phone, c.contact_email].filter(Boolean).join(' / ') || '-'}
               </div>
             ))}
+          </div>
+        </div>
+      )
+    }
+
+    if (inquiry.inquiry_type === 'vendor_edit') {
+      const p = payload as { vendor_id?: number; vendor?: { vendor_name?: string; vendor_alias?: string; vendor_phone?: string; vendor_fax?: string; vendor_payment_schedule?: string; vendor_address?: string; note?: string }; contacts?: Array<{ contact_name?: string; position?: string; contact_phone?: string; contact_email?: string }> }
+      if (!p.vendor) return null
+      const contacts = Array.isArray(p.contacts) ? p.contacts : []
+      return (
+        <div>
+          <span className="modal-value text-gray-700">기존업체 수정 요청:</span>
+          <div className="mt-1 text-gray-600 space-y-0.5">
+            <div>업체명: {p.vendor.vendor_name || '-'}</div>
+            {p.vendor.vendor_alias && <div>참조명: {p.vendor.vendor_alias}</div>}
+            {p.vendor.vendor_phone && <div>전화번호: {p.vendor.vendor_phone}</div>}
+            {p.vendor.vendor_fax && <div>팩스번호: {p.vendor.vendor_fax}</div>}
+            {p.vendor.vendor_payment_schedule && <div>결제조건: {p.vendor.vendor_payment_schedule}</div>}
+            {p.vendor.vendor_address && <div>주소: {p.vendor.vendor_address}</div>}
+            {p.vendor.note && <div>비고: {p.vendor.note}</div>}
+            {contacts.map((c, idx) => (
+              <div key={`contact-${idx}`}>
+                담당자{idx + 1}: {[c.contact_name, c.position, c.contact_phone, c.contact_email].filter(Boolean).join(' / ') || '-'}
+              </div>
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    if (inquiry.inquiry_type === 'shipping_edit') {
+      const p = payload as { address_id?: string; shipping?: { company_name?: string; contact_name_only?: string; contact_title?: string; contact_memo?: string; phone?: string; mobile?: string; email?: string; address?: string } }
+      if (!p.shipping) return null
+      const s = p.shipping
+      return (
+        <div>
+          <span className="modal-value text-gray-700">택배 주소록 수정 요청:</span>
+          <div className="mt-1 text-gray-600 space-y-0.5">
+            <div>상호: {s.company_name || '-'}</div>
+            <div>담당자: {s.contact_name_only || '-'}</div>
+            {s.contact_title && <div>직함: {s.contact_title}</div>}
+            {s.phone && <div>전화번호: {s.phone}</div>}
+            {s.mobile && <div>휴대폰: {s.mobile}</div>}
+            {s.email && <div>이메일: {s.email}</div>}
+            {s.address && <div>주소: {s.address}</div>}
+            {s.contact_memo && <div>비고: {s.contact_memo}</div>}
           </div>
         </div>
       )
@@ -1999,10 +2287,68 @@ ${itemsText}`;
                   </Select>
                 </div>
 
-                {/* 업체등록 요청: 신규 업체 정보 + 담당자 입력 (item_add 폼과 동일한 compact 디자인) */}
-                {inquiryType === 'new_vendor' && (
+                {/* 기존업체 수정 요청: 수정할 업체 검색/선택 */}
+                {inquiryType === 'vendor_edit' && !selectedVendorForEdit && (
+                  <div className="space-y-2 p-4 bg-gray-50 business-radius-card border border-gray-200">
+                    <div className="modal-section-title text-gray-900">수정할 업체 검색</div>
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <Input
+                        value={vendorEditSearch}
+                        onChange={(e) => setVendorEditSearch(e.target.value)}
+                        placeholder="업체명, 전화번호, 주소, 담당자 검색"
+                        className="w-full pl-8 business-radius-input h-7 !text-[11px] !leading-tight"
+                      />
+                    </div>
+                    {loadingVendorEditCandidates ? (
+                      <div className="py-6 flex items-center justify-center text-gray-500 text-[11px]">
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        업체 목록을 불러오는 중...
+                      </div>
+                    ) : filteredVendorEditCandidates.length === 0 ? (
+                      <div className="py-6 text-center text-[11px] text-gray-400">검색된 업체가 없습니다.</div>
+                    ) : (
+                      <div className="border border-gray-200 business-radius-card overflow-hidden bg-white max-h-[280px] overflow-y-auto">
+                        {filteredVendorEditCandidates.map((vendor) => (
+                          <button
+                            type="button"
+                            key={vendor.id}
+                            onClick={() => handleSelectVendorForEdit(vendor)}
+                            className="w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left border-b border-gray-100 last:border-0 hover:bg-slate-50 transition-colors"
+                          >
+                            <span className="text-[11px] font-medium text-gray-900 truncate">
+                              {vendor.vendor_name}
+                              {vendor.vendor_alias && <span className="text-gray-400 font-normal ml-1">({vendor.vendor_alias})</span>}
+                            </span>
+                            <span className="text-[10px] text-gray-500 flex-shrink-0">{vendor.vendor_phone || vendor.vendor_address || ''}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {inquiryType === 'vendor_edit' && selectedVendorForEdit && (
+                  <div className="flex items-center justify-between gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 business-radius-card">
+                    <span className="text-[11px] text-indigo-900">
+                      수정 대상: <span className="font-medium">{selectedVendorForEdit.vendor_name}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleClearVendorForEdit}
+                      className="text-[11px] text-indigo-700 hover:text-indigo-900 underline"
+                    >
+                      다시 선택
+                    </button>
+                  </div>
+                )}
+
+                {/* 업체등록/수정 요청: 업체 정보 + 담당자 입력 (item_add 폼과 동일한 compact 디자인) */}
+                {(inquiryType === 'new_vendor' || (inquiryType === 'vendor_edit' && selectedVendorForEdit)) && (
                   <div className="space-y-3 p-4 bg-gray-50 business-radius-card border border-gray-200">
-                    <div className="modal-section-title text-gray-900">신규 업체 정보</div>
+                    <div className="modal-section-title text-gray-900">
+                      {inquiryType === 'vendor_edit' ? '수정할 업체 정보' : '신규 업체 정보'}
+                    </div>
 
                     <div className="space-y-2">
                       <div className="flex flex-col lg:flex-row lg:items-center gap-2">
@@ -2135,6 +2481,148 @@ ${itemsText}`;
                         <Plus className="w-3.5 h-3.5 mr-1" />
                         담당자 추가
                       </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 택배 주소록 수정 요청: 수정할 주소록 검색/선택 */}
+                {inquiryType === 'shipping_edit' && !selectedShippingForEdit && (
+                  <div className="space-y-2 p-4 bg-gray-50 business-radius-card border border-gray-200">
+                    <div className="modal-section-title text-gray-900">수정할 택배 주소록 검색</div>
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <Input
+                        value={shippingEditSearch}
+                        onChange={(e) => setShippingEditSearch(e.target.value)}
+                        placeholder="상호, 담당자, 전화번호, 주소 검색"
+                        className="w-full pl-8 business-radius-input h-7 !text-[11px] !leading-tight"
+                      />
+                    </div>
+                    {loadingShippingEditCandidates ? (
+                      <div className="py-6 flex items-center justify-center text-gray-500 text-[11px]">
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        택배 주소록을 불러오는 중...
+                      </div>
+                    ) : filteredShippingEditCandidates.length === 0 ? (
+                      <div className="py-6 text-center text-[11px] text-gray-400">검색된 주소록이 없습니다.</div>
+                    ) : (
+                      <div className="border border-gray-200 business-radius-card overflow-hidden bg-white max-h-[280px] overflow-y-auto">
+                        {filteredShippingEditCandidates.map((addr) => (
+                          <button
+                            type="button"
+                            key={addr.id}
+                            onClick={() => handleSelectShippingForEdit(addr)}
+                            className="w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left border-b border-gray-100 last:border-0 hover:bg-slate-50 transition-colors"
+                          >
+                            <span className="text-[11px] font-medium text-gray-900 truncate">
+                              {addr.company_name}
+                              <span className="text-gray-400 font-normal ml-1">({addr.contact_name_only || addr.contact_name})</span>
+                            </span>
+                            <span className="text-[10px] text-gray-500 flex-shrink-0">{addr.phone || addr.mobile || addr.address || ''}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {inquiryType === 'shipping_edit' && selectedShippingForEdit && (
+                  <div className="flex items-center justify-between gap-2 px-3 py-2 bg-indigo-50 border border-indigo-200 business-radius-card">
+                    <span className="text-[11px] text-indigo-900">
+                      수정 대상: <span className="font-medium">{selectedShippingForEdit.company_name} / {selectedShippingForEdit.contact_name_only || selectedShippingForEdit.contact_name}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleClearShippingForEdit}
+                      className="text-[11px] text-indigo-700 hover:text-indigo-900 underline"
+                    >
+                      다시 선택
+                    </button>
+                  </div>
+                )}
+
+                {inquiryType === 'shipping_edit' && selectedShippingForEdit && (
+                  <div className="space-y-3 p-4 bg-gray-50 business-radius-card border border-gray-200">
+                    <div className="modal-section-title text-gray-900">수정할 주소록 정보</div>
+                    <div className="space-y-2">
+                      <div className="flex flex-col lg:flex-row lg:items-center gap-2">
+                        <div className="flex-[1.5] min-w-0">
+                          <Input
+                            type="text"
+                            value={shippingEditForm.company_name}
+                            onChange={(e) => setShippingEditForm(prev => ({ ...prev, company_name: e.target.value }))}
+                            placeholder="상호 *"
+                            className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                          />
+                        </div>
+                        <div className="flex-[1] min-w-0">
+                          <Input
+                            type="text"
+                            value={shippingEditForm.contact_name_only}
+                            onChange={(e) => setShippingEditForm(prev => ({ ...prev, contact_name_only: e.target.value }))}
+                            placeholder="담당자 이름 *"
+                            className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                          />
+                        </div>
+                        <div className="flex-[1] min-w-0">
+                          <Input
+                            type="text"
+                            value={shippingEditForm.contact_title || ''}
+                            onChange={(e) => setShippingEditForm(prev => ({ ...prev, contact_title: e.target.value }))}
+                            placeholder="직함"
+                            className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-col lg:flex-row lg:items-center gap-2">
+                        <div className="flex-[1.5] min-w-0">
+                          <Input
+                            type="text"
+                            value={shippingEditForm.phone || ''}
+                            onChange={(e) => setShippingEditForm(prev => ({ ...prev, phone: e.target.value }))}
+                            placeholder="전화번호"
+                            className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                          />
+                        </div>
+                        <div className="flex-[1.5] min-w-0">
+                          <Input
+                            type="text"
+                            value={shippingEditForm.mobile || ''}
+                            onChange={(e) => setShippingEditForm(prev => ({ ...prev, mobile: e.target.value }))}
+                            placeholder="휴대폰"
+                            className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                          />
+                        </div>
+                        <div className="flex-[2] min-w-0">
+                          <Input
+                            type="text"
+                            value={shippingEditForm.email || ''}
+                            onChange={(e) => setShippingEditForm(prev => ({ ...prev, email: e.target.value }))}
+                            placeholder="이메일"
+                            className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-col lg:flex-row lg:items-center gap-2">
+                        <div className="flex-[3] min-w-0">
+                          <Input
+                            type="text"
+                            value={shippingEditForm.address || ''}
+                            onChange={(e) => setShippingEditForm(prev => ({ ...prev, address: e.target.value }))}
+                            placeholder="주소"
+                            className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                          />
+                        </div>
+                        <div className="flex-[2] min-w-0">
+                          <Input
+                            type="text"
+                            value={shippingEditForm.contact_memo || ''}
+                            onChange={(e) => setShippingEditForm(prev => ({ ...prev, contact_memo: e.target.value }))}
+                            placeholder="비고"
+                            className="w-full business-radius-input h-7 !text-[11px] !leading-tight"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
