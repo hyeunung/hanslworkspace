@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { productionService, ProductionPcb, ProductionCable } from '@/services/productionService'
-import { Plus, Search, X, Filter, Save, ChevronDown, Download, Printer, Check } from 'lucide-react'
+import { Plus, Search, X, Filter, Save, ChevronDown, Download, Printer, Check, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProductionFilterViews, FilterDefaultSnapshot } from '@/hooks/useProductionFilterViews'
@@ -12,6 +12,8 @@ import { useStableHandler } from '@/hooks/useStableHandler'
 import { useProductionTableFilters } from '@/hooks/useProductionTableFilters'
 import { useProductionSortRules } from '@/hooks/useProductionSortRules'
 import { useProductionColumnVisibility } from '@/hooks/useProductionColumnVisibility'
+import { useSavedColumnViews } from '@/hooks/useSavedColumnViews'
+import SavedColumnViewsMenu from '@/components/ui/SavedColumnViewsMenu'
 import { Calendar } from '@/components/ui/calendar'
 import {
   stripEmployeeTitle, STATUS_FIELDS,
@@ -647,8 +649,37 @@ export default function ProductionListMain() {
   const {
     tableView, selectTableView,
     hiddenCols, columnMenuFor, setColumnMenuFor,
-    isColHidden, toggleHiddenCol, resetHiddenCols, setSectionHidden, visibleSpan,
+    isColHidden, toggleHiddenCol, resetHiddenCols, applyHiddenCols, setSectionHidden, visibleSpan,
   } = useProductionColumnVisibility({ addingPcbRow, addingCableRow })
+
+  // 저장된 칼럼 구성 (표별 스냅샷, DB user_ui_settings 동기화 — 저장된 필터와 동일 UX)
+  const savedColumnViews = useSavedColumnViews<{ scope: 'pcb' | 'cable'; hidden: string[] }>('production_columns')
+  const columnViewsFor = (type: 'pcb' | 'cable') =>
+    savedColumnViews.views.filter(v => v.payload?.scope === type)
+  const handleSaveColumnView = async (type: 'pcb' | 'cable', name: string) => {
+    const ok = await savedColumnViews.saveView({
+      id: `c${Date.now()}`, name, payload: { scope: type, hidden: hiddenCols[type] },
+    })
+    if (ok) toast.success(`칼럼 구성 '${name}'을(를) 저장했습니다.`)
+    else toast.error('칼럼 구성 저장에 실패했습니다.')
+  }
+  const handleApplyColumnView = (viewId: string) => {
+    const view = savedColumnViews.views.find(v => v.id === viewId)
+    if (!view?.payload) return
+    applyHiddenCols(view.payload.scope, view.payload.hidden ?? [])
+  }
+  const handleRenameColumnView = async (viewId: string, prevName: string) => {
+    const name = window.prompt('칼럼 구성 이름 변경', prevName)?.trim()
+    if (!name || name === prevName) return
+    const ok = await savedColumnViews.renameView(viewId, name)
+    if (!ok) toast.error('이름 변경에 실패했습니다.')
+  }
+  const handleDeleteColumnView = async (viewId: string, name: string) => {
+    if (!window.confirm(`저장된 칼럼 구성 '${name}'을(를) 삭제하시겠습니까?`)) return
+    const ok = await savedColumnViews.deleteView(viewId)
+    if (ok) toast.success('저장된 칼럼 구성을 삭제했습니다.')
+    else toast.error('삭제에 실패했습니다.')
+  }
 
   // 컬럼 좌우 여백 (각각 5px, 총 10px) — globals.css의 .production-compact-table th/td 패딩과 반드시 동일하게 유지
   const COLUMN_PADDING_SIDE = 5
@@ -4300,6 +4331,21 @@ export default function ProductionListMain() {
                   setSectionHidden={setSectionHidden}
                   getColumnTitle={getColumnTitle}
                 />
+                <SavedColumnViewsMenu
+                  views={columnViewsFor('pcb')}
+                  onSaveCurrent={(name) => handleSaveColumnView('pcb', name)}
+                  onApply={handleApplyColumnView}
+                  onRename={handleRenameColumnView}
+                  onDelete={handleDeleteColumnView}
+                />
+                <button
+                  type="button"
+                  onClick={() => resetHiddenCols('pcb')}
+                  className="hansl-icon-btn hover:bg-gray-100 hover:text-red-600"
+                  title="칼럼 표시 초기화 (모두 표시)"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
                 <button
                   type="button"
                   onClick={() => handleExportExcel('pcb')}
@@ -4887,6 +4933,21 @@ export default function ProductionListMain() {
                   setSectionHidden={setSectionHidden}
                   getColumnTitle={getColumnTitle}
                 />
+                <SavedColumnViewsMenu
+                  views={columnViewsFor('cable')}
+                  onSaveCurrent={(name) => handleSaveColumnView('cable', name)}
+                  onApply={handleApplyColumnView}
+                  onRename={handleRenameColumnView}
+                  onDelete={handleDeleteColumnView}
+                />
+                <button
+                  type="button"
+                  onClick={() => resetHiddenCols('cable')}
+                  className="hansl-icon-btn hover:bg-gray-100 hover:text-red-600"
+                  title="칼럼 표시 초기화 (모두 표시)"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
                 <button
                   type="button"
                   onClick={() => handleExportExcel('cable')}

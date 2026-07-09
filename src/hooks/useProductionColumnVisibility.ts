@@ -44,6 +44,12 @@ export function useProductionColumnVisibility({ addingPcbRow, addingCableRow }: 
     localStorage.setItem(hiddenColsStorageKey(type), JSON.stringify([]))
   }
 
+  // 저장된 칼럼 구성 적용 — 숨김 목록을 통째로 교체 (저장된 칼럼 뷰 불러오기용)
+  const applyHiddenCols = (type: 'pcb' | 'cable', fields: string[]) => {
+    setHiddenCols(prev => ({ ...prev, [type]: fields }))
+    localStorage.setItem(hiddenColsStorageKey(type), JSON.stringify(fields))
+  }
+
   // 섹션(구분선 단위) 일괄 숨기기/표시
   const setSectionHidden = (type: 'pcb' | 'cable', fields: string[], hide: boolean) => {
     setHiddenCols(prev => {
@@ -63,6 +69,6 @@ export function useProductionColumnVisibility({ addingPcbRow, addingCableRow }: 
   return {
     tableView, selectTableView,
     hiddenCols, columnMenuFor, setColumnMenuFor,
-    isColHidden, toggleHiddenCol, resetHiddenCols, setSectionHidden, visibleSpan,
+    isColHidden, toggleHiddenCol, resetHiddenCols, applyHiddenCols, setSectionHidden, visibleSpan,
   }
 }
