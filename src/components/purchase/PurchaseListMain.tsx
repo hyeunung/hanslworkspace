@@ -469,7 +469,7 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
             {/* 세로 구분선 */}
             <div className="w-px bg-gray-200 self-stretch mx-3" />
             {/* 우측 절반: 칼럼 버튼(드롭다운) + 저장된 칼럼 + 초기화 */}
-            <div className="flex-1 min-w-0 pt-2 border-t border-gray-100 flex items-center gap-1.5">
+            <div className="flex-1 min-w-0 pt-2 border-t border-gray-100 flex items-center gap-2">
               <PurchaseColumnMenu
                 columnVisibility={columnVisibility}
                 toggleColumn={toggleColumn}
@@ -483,14 +483,14 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
                 onRename={handleRenameColumnView}
                 onDelete={handleDeleteColumnView}
               />
-              <div className="h-4 w-px bg-gray-300 mx-1.5" />
               <button
                 type="button"
                 onClick={resetToDefault}
-                className="hansl-icon-btn hover:bg-gray-100 hover:text-red-600"
+                className="hansl-btn hover:text-red-600"
                 title="칼럼 표시 초기화 (모두 표시)"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
+                <span className="button-text">초기화</span>
               </button>
             </div>
             </div>

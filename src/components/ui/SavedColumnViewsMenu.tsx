@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { Bookmark, Check, ChevronDown, Edit2, Trash2, X } from 'lucide-react'
+import { toast } from 'sonner'
 import { AnchoredPortal } from '@/components/ui/AnchoredPortal'
 
 interface SavedColumnViewsMenuProps {
@@ -20,17 +21,29 @@ export default function SavedColumnViewsMenu({
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null)
   const [naming, setNaming] = useState(false)
   const [newName, setNewName] = useState('')
+  // 저장 await 중 Enter 연타/버튼 재클릭으로 두 번 저장되는 것 방지
+  const savingRef = useRef(false)
 
   const close = () => { setOpen(false); setAnchorEl(null); setNaming(false); setNewName('') }
   const commitSave = async () => {
     const name = newName.trim()
-    if (!name) return
-    await onSaveCurrent(name)
-    close()
+    if (!name || savingRef.current) return
+    if (views.some(v => v.name === name)) {
+      toast.error(`'${name}' 이름의 저장된 칼럼이 이미 있습니다.`)
+      return
+    }
+    savingRef.current = true
+    close() // 입력창 즉시 닫아 중복 트리거 차단 (낙관적 갱신이라 목록엔 바로 반영)
+    try {
+      await onSaveCurrent(name)
+    } finally {
+      savingRef.current = false
+    }
   }
 
   return (
     <>
+      {/* 칼럼 버튼(hansl-btn)과 같은 규격 — 같은 행에서 높낮이/모양 통일 */}
       <button
         type="button"
         onClick={(e) => {
@@ -38,15 +51,15 @@ export default function SavedColumnViewsMenu({
           if (open) close()
           else { setOpen(true); setAnchorEl(e.currentTarget) }
         }}
-        className={`hansl-pill-btn ${open ? 'hansl-pill-btn-on' : 'hansl-pill-btn-off'}`}
+        className="hansl-btn"
         title="저장된 칼럼 구성 불러오기·저장"
       >
-        <Bookmark className="w-3 h-3" />
-        저장된 칼럼
+        <Bookmark className="w-3.5 h-3.5" />
+        <span className="button-text">저장된 칼럼</span>
         {views.length > 0 && (
-          <span className="text-[9px] text-gray-400">({views.length})</span>
+          <span className="text-[10px] font-bold text-hansl-500">{views.length}</span>
         )}
-        <ChevronDown className="w-3 h-3" />
+        <ChevronDown className="w-3 h-3 text-gray-400" />
       </button>
 
       {open && anchorEl && (

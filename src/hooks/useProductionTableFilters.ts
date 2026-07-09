@@ -117,17 +117,27 @@ export function useProductionTableFilters() {
   }, [filterViewsLoaded, filterViewsConfig])
 
   // 현재 필터를 이름 붙여 저장 (무제한) — 인라인 입력창에서 확정된 이름으로 저장
+  // 저장 await 중 Enter 연타/버튼 재클릭으로 같은 뷰가 두 번 저장되는 것을 가드로 차단하고,
+  // 입력창은 즉시 닫는다(낙관적 갱신이라 목록엔 바로 반영됨).
+  const savingViewRef = useRef(false)
   const commitSaveView = async (type: 'pcb' | 'cable') => {
     const name = newViewName.trim()
-    if (!name) return
-    const view = { id: `v${Date.now()}`, name, scope: type, ...snapshotFilter(type) }
-    const ok = await saveView(view)
-    toast[ok ? 'success' : 'error'](ok ? `필터 "${name}" 저장됨` : '필터 저장에 실패했습니다.')
-    if (ok) {
-      setNamingViewFor(null)
-      setNewViewName('')
-      setViewsMenuFor(null)
-      setViewsAnchor(null)
+    if (!name || savingViewRef.current) return
+    if (filterViewsConfig.views.some(v => v.scope === type && v.name === name)) {
+      toast.error(`'${name}' 이름의 저장된 필터가 이미 있습니다.`)
+      return
+    }
+    savingViewRef.current = true
+    setNamingViewFor(null)
+    setNewViewName('')
+    setViewsMenuFor(null)
+    setViewsAnchor(null)
+    try {
+      const view = { id: `v${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, name, scope: type, ...snapshotFilter(type) }
+      const ok = await saveView(view)
+      toast[ok ? 'success' : 'error'](ok ? `필터 "${name}" 저장됨` : '필터 저장에 실패했습니다.')
+    } finally {
+      savingViewRef.current = false
     }
   }
 

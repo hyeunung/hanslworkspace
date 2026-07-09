@@ -4341,10 +4341,11 @@ export default function ProductionListMain() {
                 <button
                   type="button"
                   onClick={() => resetHiddenCols('pcb')}
-                  className="hansl-icon-btn hover:bg-gray-100 hover:text-red-600"
+                  className="hansl-btn hover:text-red-600"
                   title="칼럼 표시 초기화 (모두 표시)"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
+                  <span className="button-text">초기화</span>
                 </button>
                 <button
                   type="button"
@@ -4943,10 +4944,11 @@ export default function ProductionListMain() {
                 <button
                   type="button"
                   onClick={() => resetHiddenCols('cable')}
-                  className="hansl-icon-btn hover:bg-gray-100 hover:text-red-600"
+                  className="hansl-btn hover:text-red-600"
                   title="칼럼 표시 초기화 (모두 표시)"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
+                  <span className="button-text">초기화</span>
                 </button>
                 <button
                   type="button"
