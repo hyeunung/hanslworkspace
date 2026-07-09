@@ -5,9 +5,37 @@ import { productionService, ProductionPcb, ProductionCable } from '@/services/pr
 import { Plus, Search, Edit2, X, Filter, Save, RotateCcw, ChevronDown, SlidersHorizontal, Download, Printer, Eye, EyeOff, ArrowUpDown, ArrowUp, ArrowDown, Bookmark, Star, Trash2, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
-import { useProductionFilterViews, StoredFilterRule, FilterDefaultSnapshot } from '@/hooks/useProductionFilterViews'
+import { useProductionFilterViews, FilterDefaultSnapshot } from '@/hooks/useProductionFilterViews'
 import { vendorService } from '@/services/vendorService'
 import { Calendar } from '@/components/ui/calendar'
+import {
+  stripEmployeeTitle, STATUS_FIELDS,
+  ARTWORK_STATUS_OPTIONS, getKstTodayISO, isDeadlineUrgent, formatKoreanMMDD, parseArtworkStatus, serializeArtworkStatus, formatArtworkDisplay,
+  PARTS_STATUS_OPTIONS, filterStatusOptionsFor,
+  parsePartsStatus, serializePartsStatus, formatPartsDisplay
+} from '@/utils/productionStatus'
+import {
+  formatDbDateToDisplay, formatDisplayDateToDb, parseAndFormatInputDate, toDateOrMemo, formatDateOrMemo, formatStockInDisplay, formatCompletedDisplay,
+  STOCK_WAITING_LABEL, stockPickerLabel
+} from '@/utils/productionDates'
+import {
+  SortRule, newSortId, sortStorageKey, PCB_SORT_FIELDS, CABLE_SORT_FIELDS,
+  compareBySortRules, loadTableSort
+} from '@/utils/productionSort'
+import {
+  DEFAULT_CATEGORY_ORDER, PCB_CATEGORIES, CABLE_CATEGORIES, filterStorageKey, CATEGORY_ORDER_STORAGE_KEY,
+  FilterOp, FilterRule, TableFilter, STOCK_DATE_FIELDS, opLabelFor, opsForField, newRuleId, toStoredRules, fromStoredRules,
+  defaultRules, rulesEqualDefault, catsEqualDefault,
+  categoryOrderIsDefault, applyFilterRule, matchesSearch,
+  loadTableFilter, restoreCategoryOrder
+} from '@/utils/productionFilters'
+import {
+  HEADER_LETTER_SPACING, MIN_COLUMN_WIDTH, measureText,
+  STICKY_FIELDS, HIDEABLE_SECTIONS, hideableFieldsFor, HEADER_SPAN_GROUPS,
+  hiddenColsStorageKey, loadHiddenCols, MEMO_TEXT_FIELDS, BULK_VALUE_EDITABLE, bulkSelectOptions
+} from '@/utils/productionColumns'
+import { toTsvCell, parseTsvGrid } from '@/utils/productionTsv'
+import { parseColorState, serializeColorState } from '@/utils/productionColors'
 
 
 interface Employee {
@@ -16,539 +44,6 @@ interface Employee {
   email: string
 }
 
-// ─── 칼럼 너비 실측 유틸 ─────────────────────────────────────────────
-// 표 셀 폰트(10px)와 동일한 폰트로 캔버스에서 텍스트 폭을 실측한다.
-// 칼럼 너비 = Max(헤더, 가장 긴 본문) + 좌우 여백(COLUMN_PADDING_SIDE)씩
-const TABLE_FONT_STACK = "Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif"
-// 본문 셀 자간: body { font-size:15px; letter-spacing:-0.01em } → computed -0.15px가 셀로 상속됨 (globals.css)
-const BODY_LETTER_SPACING = -0.15
-// 헤더 자간: .table-header-text { letter-spacing:0.02em } @10px = +0.2px (globals.css)
-const HEADER_LETTER_SPACING = 0.2
-// 데이터가 없을 때(빈 표)에도 각 칼럼이 실제 입력 데이터를 담기에 충분한 최소 폭을 갖도록,
-// 각 표(PCB / Cable)의 실제 DB 데이터 평균 길이를 기준으로 산정한 칼럼별 최소 너비(px, 좌우 여백 포함 최종값).
-// 헤더 제목 폭·본문 실측 폭과 함께 Math.max 로 비교되어 '바닥값' 역할만 한다(데이터가 길면 더 넓어짐).
-// PCB와 Cable은 같은 필드라도 평균 데이터 길이가 다르므로(예: 보드명 34자 vs 품명 20자) 표별로 따로 관리한다.
-const MIN_COLUMN_WIDTH: Record<'pcb' | 'cable', Record<string, number>> = {
-  // production_pcbs 실제 데이터의 표시 폭(px, 한글 10px·영문/숫자 5.5px @10px 폰트) 평균 실측 기준
-  pcb: {
-    sales_order_number: 80,
-    production_category: 96,
-    board_name: 200, // 평균 193px
-    reference: 165, // 평균 159px
-    request_date: 60,
-    estimate_no: 66,
-    delivery_deadline: 60,
-    client_name: 60,
-    client_manager: 80, // 평균 72px
-    hansl_manager: 54,
-    creator: 54,
-    revision_count: 46,
-    quantity: 50,
-    artwork_status: 140,
-    metal_mask: 74, // 평균 53px + 헤더 'MetalMask' 기준
-    changes_memo: 96,
-    stock_count: 50,
-    pcb_vendor: 56,
-    delivery_schedule: 64,
-    pcb_lead_time: 80,
-    received_quantity: 60,
-    received_destination: 52,
-    pcb_stock_completed: 80,
-    parts_organization: 56,
-    assy_hanwha: 72,
-    assy_evertech: 72,
-    assy_requested_date: 62,
-    final_product_stock: 80, // 평균 72px
-    qa_passed: 46,
-    qa_failed: 46,
-    qa_notes: 130, // 평균 121px
-    design_review: 115, // 평균 107px
-    delivery_quantity: 50,
-    delivery_date: 60,
-    delivery_destination: 135, // 평균 129px
-    delivery_completed: 80,
-  },
-  // production_cables 실제 데이터의 표시 폭 평균 실측 기준
-  cable: {
-    sales_order_number: 80,
-    production_category: 74,
-    board_name: 145, // 품명 평균 116px
-    reference: 60,
-    request_date: 60,
-    estimate_no: 60, // 평균 46px
-    delivery_deadline: 60,
-    client_name: 56, // 평균 29px + 입력 여유
-    client_manager: 66, // 평균 46px + 헤더 '업체 담당자' 기준
-    hansl_manager: 48,
-    creator: 52,
-    revision_count: 46,
-    quantity: 50,
-    spec_details: 170, // 사양 평균 155px
-    cable_vendor: 56, // 평균 39px
-    cable_requested_date: 66, // 입고 요청일
-    cable_actual_date: 66, // 실제 입고일
-    delivery_notes: 85, // 납품/비고 평균 71px
-    delivery_completed: 80,
-  },
-}
-
-let measureCtx: CanvasRenderingContext2D | null = null
-
-const measureText = (rawText: string, weight: number, letterSpacing: number = BODY_LETTER_SPACING): number => {
-  // HTML 렌더링과 동일하게 연속 공백은 1칸으로, 앞뒤 공백은 제거하고 측정
-  const text = rawText ? rawText.replace(/\s+/g, ' ').trim() : ''
-  if (!text) return 0
-  if (typeof document !== 'undefined') {
-    if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d')
-    if (measureCtx) {
-      measureCtx.font = `${weight} 10px ${TABLE_FONT_STACK}`
-      const ctxAny = measureCtx as any
-      if ('letterSpacing' in ctxAny) {
-        // Chrome/Edge: 캔버스가 자간까지 실측
-        ctxAny.letterSpacing = `${letterSpacing}px`
-        return measureCtx.measureText(text).width
-      }
-      // 자간 미지원 브라우저: 글자 수 × 자간으로 보정
-      return measureCtx.measureText(text).width + text.length * letterSpacing
-    }
-  }
-  // SSR 대비 근사치 (한글 10px, 영문/숫자 5.5px)
-  let len = 0
-  for (let i = 0; i < text.length; i++) {
-    len += text.charCodeAt(i) > 128 ? 10 : 5.5
-  }
-  return len
-}
-
-// 좌측 고정(sticky) 칼럼: 구분선을 border 대신 box-shadow로 그려서 보더 폭 보정이 불필요
-const STICKY_FIELDS = ['sales_order_number', 'production_category', 'board_name', 'reference', 'request_date']
-
-// 제작구분 칩의 기본 표시/그룹 순서 — 드래그로 재정렬 가능. 이 순서대로 테이블이 제작구분별로 위→아래 그룹핑됨
-const DEFAULT_CATEGORY_ORDER = ['LG_PCB', 'LG_Socket Board', 'LG_Cable', 'LG_Case', 'PCB', 'Cable', 'Case']
-
-// ─── 칼럼 숨기기 ─────────────────────────────────────────────────────
-// NO./작업은 행 식별·조작용이라 항상 표시하되, 좌측 고정 칼럼(제작번호~요청일)과
-// 그 외 본문 칼럼은 모두 표별로 숨길 수 있다. 드롭다운 목록의 그룹은 실제 헤더 그룹 구성을 따르고,
-// PCB는 업무 단계 기준 큰 구분선(섹션) 3개로 나눠 섹션 단위 일괄 숨기기/표시를 지원한다.
-type HideableSection = { title: string; groups: { title: string; fields: string[] }[] }
-const HIDEABLE_SECTIONS: Record<'pcb' | 'cable', HideableSection[]> = {
-  pcb: [
-    {
-      title: '기본정보 (좌측고정)',
-      groups: [
-        { title: '기본정보', fields: ['sales_order_number', 'production_category', 'board_name', 'reference', 'request_date'] },
-      ],
-    },
-    {
-      title: '견적NO. ~ PCB 제작',
-      groups: [
-        { title: '기본', fields: ['estimate_no', 'delivery_deadline', 'creator'] },
-        { title: 'PJT 담당자', fields: ['client_name', 'client_manager', 'hansl_manager'] },
-        { title: '제작수량', fields: ['revision_count', 'quantity'] },
-        { title: 'ARTWORK', fields: ['artwork_status'] },
-        { title: 'PCB 제작', fields: ['metal_mask', 'changes_memo', 'stock_count', 'pcb_vendor', 'delivery_schedule', 'pcb_lead_time', 'received_quantity', 'received_destination', 'pcb_stock_completed'] },
-      ],
-    },
-    {
-      title: '부품정리 ~ 완제품 입고',
-      groups: [
-        { title: "부품정리 / ASS'Y / 입고", fields: ['parts_organization', 'assy_hanwha', 'assy_evertech', 'assy_requested_date', 'final_product_stock'] },
-      ],
-    },
-    {
-      title: 'IN-House Checking ~ 납품',
-      groups: [
-        { title: 'IN-House Checking / 리뷰', fields: ['qa_passed', 'qa_failed', 'qa_notes', 'design_review'] },
-        { title: '납품', fields: ['delivery_quantity', 'delivery_date', 'delivery_destination', 'delivery_completed'] },
-      ],
-    },
-  ],
-  // Cable 표는 칼럼 수가 적어 섹션 구분 없이 단일 목록
-  cable: [
-    {
-      title: '기본정보 (좌측고정)',
-      groups: [
-        { title: '기본정보', fields: ['sales_order_number', 'production_category', 'board_name', 'reference', 'request_date'] },
-      ],
-    },
-    {
-      title: '견적NO. ~ 납품',
-      groups: [
-        { title: '기본', fields: ['estimate_no', 'delivery_deadline', 'creator'] },
-        { title: 'PJT 담당자', fields: ['client_name', 'client_manager', 'hansl_manager'] },
-        { title: '제작수량', fields: ['revision_count', 'quantity'] },
-        { title: '사양', fields: ['spec_details'] },
-        { title: 'CASE/CABLE 입고', fields: ['cable_vendor', 'cable_requested_date', 'cable_actual_date'] },
-        { title: '납품', fields: ['delivery_notes', 'delivery_completed'] },
-      ],
-    },
-  ],
-}
-
-const hideableFieldsFor = (type: 'pcb' | 'cable'): string[] =>
-  HIDEABLE_SECTIONS[type].flatMap(s => s.groups.flatMap(g => g.fields))
-
-// 그룹 헤더(colSpan) 칼럼 구성 — 숨긴 칼럼 수만큼 colSpan을 줄이고, 전부 숨기면 그룹 헤더째 제거
-const HEADER_SPAN_GROUPS = {
-  pjt: ['client_name', 'client_manager', 'hansl_manager'],
-  makeQty: ['revision_count', 'quantity'],
-  pcbMake: ['metal_mask', 'changes_memo', 'stock_count', 'pcb_vendor', 'delivery_schedule', 'pcb_lead_time', 'received_quantity', 'received_destination', 'pcb_stock_completed'],
-  assy: ['assy_hanwha', 'assy_evertech', 'assy_requested_date'],
-  inHouse: ['qa_passed', 'qa_failed', 'qa_notes'],
-  pcbDelivery: ['delivery_quantity', 'delivery_date', 'delivery_destination', 'delivery_completed'],
-  cableStockIn: ['cable_vendor', 'cable_requested_date', 'cable_actual_date'],
-  cableDelivery: ['delivery_notes', 'delivery_completed'],
-}
-
-// localStorage에 저장된 숨긴 칼럼 목록 복원 (알 수 없는 필드는 버림)
-const loadHiddenCols = (type: 'pcb' | 'cable'): string[] => {
-  try {
-    const raw = localStorage.getItem(`hansl_prod_hidden_cols_${type}`)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    const valid = hideableFieldsFor(type)
-    return parsed.filter((f: unknown): f is string => typeof f === 'string' && valid.includes(f))
-  } catch {
-    return []
-  }
-}
-
-// ─── 테이블별 필터 (PCB/Cable 각각 독립, 노션식 규칙 기반) ─────────────
-// 위(PCB) 테이블과 아래(Cable) 테이블은 제작구분·칼럼이 서로 달라 필터를 분리한다.
-// 필터 = 규칙(칼럼 + 조건 + 값) 목록의 AND 결합. 노션처럼 규칙을 추가/수정/제거할 수 있고,
-// 기본 필터(입고대기 + 요청일 현재년도)도 일반 규칙이라 X로 제거 가능하다.
-const PCB_CATEGORIES = ['LG_PCB', 'LG_Socket Board', 'PCB']
-const CABLE_CATEGORIES = ['LG_Cable', 'LG_Case', 'Cable', 'Case']
-
-// 내용이 길어질 수 있는 메모성 텍스트 칼럼 — 편집 시 여러 줄 textarea 팝오버로 띄운다
-const MEMO_TEXT_FIELDS = ['reference', 'changes_memo', 'qa_notes', 'design_review', 'delivery_notes', 'spec_details', 'delivery_destination', 'received_destination']
-
-// 같은 칼럼 다중선택 시 '값'을 일괄 편집할 수 있는 필드들. 여기 없는 필드는 색상/스타일 일괄변경만 가능.
-// (단일 클릭으로 편집 가능한 필드와 동일하게 맞춘 화이트리스트)
-const BULK_VALUE_EDITABLE = new Set<string>([
-  // 날짜 / 하이브리드(날짜·메모)
-  'request_date', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date',
-  'assy_hanwha', 'assy_evertech', 'delivery_deadline', 'final_product_stock', 'pcb_stock_completed', 'delivery_completed',
-  // 숫자
-  'revision_count', 'quantity', 'stock_count', 'received_quantity', 'delivery_quantity',
-  // 메모/텍스트
-  ...MEMO_TEXT_FIELDS,
-  'board_name', 'client_name', 'pcb_vendor', 'client_manager', 'hansl_manager', 'metal_mask', 'estimate_no', 'sales_order_number',
-  // select / 특수 편집기
-  'production_category', 'artwork_status', 'parts_organization',
-])
-
-// select 칼럼의 옵션 (단일 클릭 편집기와 동일)
-const bulkSelectOptions = (type: 'pcb' | 'cable', field: string): string[] | null => {
-  if (field === 'production_category') {
-    return type === 'pcb' ? ['LG_PCB', 'LG_Socket Board', 'PCB'] : ['LG_Cable', 'LG_Case', 'Cable', 'Case']
-  }
-  return null
-}
-
-// 순수 날짜 칼럼(YYYY-MM-DD)과 날짜/메모 혼합 칼럼 — 조건(op) 선택지가 달라진다
-const DATE_ONLY_FIELDS = ['request_date', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date']
-const HYBRID_DATE_FIELDS = ['delivery_deadline', 'assy_hanwha', 'assy_evertech', 'final_product_stock', 'pcb_stock_completed', 'delivery_completed']
-
-// 필터 규칙 하나: field 칼럼에 op 조건 적용. contains류는 value, date_in은 year/month 사용.
-type FilterOp = 'date_in' | 'contains' | 'not_contains' | 'is_empty' | 'not_empty' | 'status_is'
-type FilterRule = {
-  id: string
-  field: string
-  op: FilterOp
-  value?: string
-  year?: number | null
-  month?: number | null
-}
-
-type TableFilter = {
-  categories: string[]
-  rules: FilterRule[]
-}
-
-const OP_LABELS: Record<FilterOp, string> = {
-  date_in: '날짜',
-  contains: '포함',
-  not_contains: '미포함',
-  is_empty: '비어있음',
-  not_empty: '비어있지 않음',
-  status_is: '상태',
-}
-
-// 입고/배송 칼럼(완제품입고/실제입고일/입고완료/배송완료)은 도메인 용어로 표기: 비어있음=대기, 비어있지 않음=완료
-// 배송완료는 '배송대기/배송완료'로 구분 표기하고 나머지는 '입고대기/입고됨'을 쓴다
-const STOCK_DATE_LABELS: Record<string, [string, string]> = {
-  final_product_stock: ['입고대기', '입고됨'],
-  cable_actual_date: ['입고대기', '입고됨'],
-  pcb_stock_completed: ['입고대기', '입고됨'],
-  delivery_completed: ['배송대기', '배송완료'],
-}
-const STOCK_DATE_FIELDS = Object.keys(STOCK_DATE_LABELS)
-// ARTWORK/부품정리는 상태 + 메모 하이브리드 구조라 전용 조건(status_is)을 쓴다
-// (상태 목록은 ARTWORK_STATUS_OPTIONS / PARTS_STATUS_OPTIONS, 필터 선택지는 *_FILTER_STATUS_OPTIONS)
-const ARTWORK_FIELD = 'artwork_status'
-const PARTS_FIELD = 'parts_organization'
-const STATUS_FIELDS = [ARTWORK_FIELD, PARTS_FIELD]
-const opLabelFor = (field: string, op: FilterOp): string => {
-  if (STOCK_DATE_FIELDS.includes(field)) {
-    const [waiting, done] = STOCK_DATE_LABELS[field]
-    if (op === 'is_empty') return waiting
-    if (op === 'not_empty') return done
-  }
-  if (STATUS_FIELDS.includes(field)) {
-    if (op === 'status_is') return '상태'
-    if (op === 'contains') return '메모 포함'
-    if (op === 'not_contains') return '메모 미포함'
-  }
-  return OP_LABELS[op]
-}
-
-// 칼럼 타입에 따라 선택 가능한 조건 목록
-const opsForField = (field: string): FilterOp[] => {
-  if (STATUS_FIELDS.includes(field)) return ['status_is', 'contains', 'not_contains', 'is_empty', 'not_empty']
-  // 입고 칼럼(완제품입고 등)은 날짜/입고대기/입고됨만 — 포함·미포함은 날짜 데이터에 의미 중복
-  if (STOCK_DATE_FIELDS.includes(field)) return ['date_in', 'is_empty', 'not_empty']
-  if (DATE_ONLY_FIELDS.includes(field)) return ['date_in', 'is_empty', 'not_empty']
-  if (HYBRID_DATE_FIELDS.includes(field)) return ['date_in', 'contains', 'not_contains', 'is_empty', 'not_empty']
-  return ['contains', 'not_contains', 'is_empty', 'not_empty']
-}
-
-let filterRuleSeq = 0
-const newRuleId = () => `r${++filterRuleSeq}`
-
-// 저장 필터 ↔ 화면 규칙 변환 — 저장에는 세션 전용 id를 빼고, 복원 시 새 id를 발급한다.
-const toStoredRules = (rules: FilterRule[]): StoredFilterRule[] =>
-  rules.map(({ field, op, value, year, month }) => ({ field, op, value, year: year ?? null, month: month ?? null }))
-const fromStoredRules = (rules: StoredFilterRule[]): FilterRule[] =>
-  (rules || [])
-    .filter(r => r && typeof r.field === 'string' && typeof r.op === 'string' && opsForField(r.field).includes(r.op as FilterOp))
-    .map(r => ({
-      id: newRuleId(),
-      field: r.field,
-      op: r.op as FilterOp,
-      value: typeof r.value === 'string' ? r.value : undefined,
-      year: typeof r.year === 'number' ? r.year : null,
-      month: typeof r.month === 'number' ? r.month : null,
-    }))
-
-// 기본 필터 규칙: 입고대기(입고 칼럼 비어있음) + 요청일이 현재 년도(월 전체)
-const defaultRules = (type: 'pcb' | 'cable'): FilterRule[] => [
-  { id: newRuleId(), field: type === 'pcb' ? 'final_product_stock' : 'cable_actual_date', op: 'is_empty' },
-  { id: newRuleId(), field: 'request_date', op: 'date_in', year: new Date().getFullYear(), month: null },
-]
-
-const defaultTableFilter = (type: 'pcb' | 'cable'): TableFilter => ({
-  categories: type === 'pcb' ? [...PCB_CATEGORIES] : [...CABLE_CATEGORIES],
-  rules: defaultRules(type),
-})
-
-// ─── 저장 아이콘(파랑) 판정: "기본값에서 바꿔서 저장해둔 상태"인지 ──────────
-// 규칙 비교는 id 제외(id는 세션마다 새로 발급됨). 저장 원본(raw JSON)과 상태 양쪽 모두 처리.
-const normalizeRulesForCompare = (rules: any[]): string =>
-  JSON.stringify((rules || []).map(r => ({
-    f: r.field, o: r.op,
-    v: typeof r.value === 'string' ? r.value : null,
-    y: typeof r.year === 'number' ? r.year : null,
-    m: typeof r.month === 'number' ? r.month : null,
-  })))
-const rulesEqualDefault = (type: 'pcb' | 'cable', rules: any[]): boolean =>
-  normalizeRulesForCompare(rules) === normalizeRulesForCompare(defaultRules(type))
-const catsEqualDefault = (type: 'pcb' | 'cable', cats: string[]): boolean => {
-  const def = type === 'pcb' ? PCB_CATEGORIES : CABLE_CATEGORIES
-  return Array.isArray(cats) && cats.length === def.length && def.every(c => cats.includes(c))
-}
-const categoryOrderIsDefault = (order: string[]): boolean =>
-  JSON.stringify(order) === JSON.stringify(DEFAULT_CATEGORY_ORDER)
-
-// ─── 테이블별 정렬 (노션식: 칼럼 + 방향 규칙 목록, 우선순위 순) ──────────────
-// 제작구분(카테고리)은 항상 그룹 기준(1차 정렬)이라 정렬 대상에서 제외한다.
-// 사용자 정렬 규칙은 같은 제작구분 그룹 "안에서" 위→아래 순서를 결정한다.
-type SortDir = 'asc' | 'desc'
-type SortRule = { id: string; field: string; dir: SortDir }
-
-let sortRuleSeq = 0
-const newSortId = () => `s${++sortRuleSeq}`
-
-// 정렬 가능한 칼럼(제작구분 제외). 라벨은 컴포넌트의 getColumnTitle로 표시.
-const PCB_SORT_FIELDS = ['board_name', 'reference', 'request_date', 'estimate_no', 'delivery_deadline', 'client_name', 'client_manager', 'hansl_manager', 'revision_count', 'quantity', 'artwork_status', 'metal_mask', 'changes_memo', 'stock_count', 'pcb_vendor', 'delivery_schedule', 'pcb_lead_time', 'received_quantity', 'received_destination', 'pcb_stock_completed', 'parts_organization', 'assy_hanwha', 'assy_evertech', 'assy_requested_date', 'final_product_stock', 'qa_passed', 'qa_failed', 'qa_notes', 'design_review', 'delivery_quantity', 'delivery_date', 'delivery_destination', 'delivery_completed']
-const CABLE_SORT_FIELDS = ['board_name', 'reference', 'request_date', 'estimate_no', 'delivery_deadline', 'client_name', 'client_manager', 'hansl_manager', 'revision_count', 'quantity', 'spec_details', 'cable_vendor', 'cable_requested_date', 'cable_actual_date', 'delivery_notes', 'delivery_completed']
-
-// 숫자로 비교할 칼럼 / 날짜(YYYY-MM-DD 선두 매칭)로 비교할 칼럼
-const NUMERIC_SORT_FIELDS = new Set(['revision_count', 'quantity', 'stock_count', 'received_quantity', 'delivery_quantity'])
-const DATE_SORT_FIELDS = new Set(['request_date', 'delivery_deadline', 'delivery_schedule', 'assy_requested_date', 'delivery_date', 'cable_requested_date', 'cable_actual_date', 'final_product_stock', 'pcb_stock_completed', 'delivery_completed'])
-
-// 정렬 비교 키 추출 — 값 없음(null/빈문자)은 null 반환하여 방향과 무관하게 항상 뒤로 보낸다(노션 동작).
-const sortKeyFor = (item: any, field: string): string | number | null => {
-  const raw = item?.[field]
-  if (raw == null || (typeof raw === 'string' && raw.trim() === '')) return null
-  if (NUMERIC_SORT_FIELDS.has(field)) {
-    const n = Number(raw)
-    return Number.isFinite(n) ? n : null
-  }
-  if (DATE_SORT_FIELDS.has(field)) {
-    // 순수 날짜 또는 "YYYY-MM-DD (메모)" 혼합 — 선두 ISO 날짜만 뽑으면 사전식=시간순
-    const m = typeof raw === 'string' ? raw.match(/(\d{4}-\d{2}-\d{2})/) : null
-    return m ? m[1] : null
-  }
-  return typeof raw === 'string' ? raw : String(raw)
-}
-
-// 정렬 규칙 목록(우선순위 순)으로 두 행 비교. 빈 값은 항상 뒤, 동률이면 다음 규칙으로.
-const compareBySortRules = (a: any, b: any, rules: SortRule[]): number => {
-  for (const r of rules) {
-    const ka = sortKeyFor(a, r.field)
-    const kb = sortKeyFor(b, r.field)
-    if (ka == null && kb == null) continue
-    if (ka == null) return 1
-    if (kb == null) return -1
-    let cmp: number
-    if (typeof ka === 'number' && typeof kb === 'number') cmp = ka - kb
-    else cmp = String(ka).localeCompare(String(kb), 'ko')
-    if (cmp !== 0) return r.dir === 'asc' ? cmp : -cmp
-  }
-  return 0
-}
-
-// localStorage에서 저장된 정렬 규칙 복원 (유효한 칼럼/방향만)
-const loadTableSort = (type: 'pcb' | 'cable'): SortRule[] => {
-  try {
-    const saved = localStorage.getItem(`hansl_prod_sort_${type}`)
-    if (saved) {
-      const valid = type === 'pcb' ? PCB_SORT_FIELDS : CABLE_SORT_FIELDS
-      const parsed = JSON.parse(saved) as SortRule[]
-      return parsed
-        .filter(r => r && valid.includes(r.field) && (r.dir === 'asc' || r.dir === 'desc'))
-        .map(r => ({ id: newSortId(), field: r.field, dir: r.dir }))
-    }
-  } catch { /* fall through */ }
-  return []
-}
-
-// 규칙 하나를 행에 적용 (AND 결합은 호출부에서). 값이 없는 셀은 date_in/contains에서 제외된다.
-const applyFilterRule = (item: any, rule: FilterRule): boolean => {
-  // 칼럼 미선택('칼럼 선택' 상태) 규칙은 아직 필터로 동작하지 않음 (통과)
-  if (!rule.field) return true
-  const raw = item[rule.field]
-  const s = raw == null ? '' : String(raw).trim()
-  const empty = s === '' || s === '-'
-  // ARTWORK: 상태(status_is)는 파싱한 상태 + 엑셀 이관 텍스트 키워드로, 포함/미포함은 메모 부분만 검색
-  if (rule.field === ARTWORK_FIELD) {
-    const aw = parseArtworkStatus(s)
-    if (rule.op === 'status_is') return artworkStatusMatches(aw, rule.value)
-    if (rule.op === 'contains') return !rule.value || aw.memo.toLowerCase().includes(rule.value.toLowerCase())
-    if (rule.op === 'not_contains') return !rule.value || !aw.memo.toLowerCase().includes(rule.value.toLowerCase())
-    if (rule.op === 'is_empty') return empty
-    if (rule.op === 'not_empty') return !empty
-  }
-  // 부품정리: ARTWORK와 같은 하이브리드(status|||memo) 구조 — 동일하게 처리
-  if (rule.field === PARTS_FIELD) {
-    const p = parsePartsStatus(s)
-    if (rule.op === 'status_is') return partsStatusMatches(p, rule.value)
-    if (rule.op === 'contains') return !rule.value || p.memo.toLowerCase().includes(rule.value.toLowerCase())
-    if (rule.op === 'not_contains') return !rule.value || !p.memo.toLowerCase().includes(rule.value.toLowerCase())
-    if (rule.op === 'is_empty') return empty
-    if (rule.op === 'not_empty') return !empty
-  }
-  switch (rule.op) {
-    case 'status_is': return true
-    case 'is_empty': return empty
-    case 'not_empty': return !empty
-    case 'contains': return !rule.value || s.toLowerCase().includes(rule.value.toLowerCase())
-    case 'not_contains': return !rule.value || !s.toLowerCase().includes(rule.value.toLowerCase())
-    case 'date_in': {
-      if (rule.year == null && rule.month == null) return true
-      const m = s.match(/^(\d{4})-(\d{2})/)
-      if (!m) return false
-      if (rule.year != null && Number(m[1]) !== rule.year) return false
-      if (rule.month != null && Number(m[2]) !== rule.month) return false
-      return true
-    }
-  }
-}
-
-// ─── 통합 검색: 텍스트 + 날짜 패턴 ─────────────────────────────────
-// '4월 6일' / '04월 06일' / '4/6' / '4-6' / '2026-04-06' / '2026년 4월 6일' 같은 날짜 입력을 인식해
-// 모든 날짜 칼럼(요청일·납품기한·입고일정·완제품입고·실제입고일 등)에서 해당 날짜를 찾는다.
-const parseSearchDate = (q: string): { y: number | null; m: number; d: number } | null => {
-  const s = q.trim()
-  let m = s.match(/^(\d{4})\s*[-./년]\s*(\d{1,2})\s*[-./월]\s*(\d{1,2})\s*일?$/)
-  if (m) return { y: +m[1], m: +m[2], d: +m[3] }
-  m = s.match(/^(\d{1,2})\s*(?:월|[/.-])\s*(\d{1,2})\s*일?$/)
-  if (m) return { y: null, m: +m[1], d: +m[2] }
-  return null
-}
-
-const SEARCH_TEXT_FIELDS = ['sales_order_number', 'board_name', 'client_name']
-const matchesSearch = (item: any, query: string): boolean => {
-  const q = query.trim()
-  if (!q) return true
-  // 텍스트 매치 (기존과 동일한 3개 필드)
-  const ql = q.toLowerCase()
-  const textHit = SEARCH_TEXT_FIELDS.some(f => String(item[f] ?? '').toLowerCase().includes(ql))
-  if (textHit) return true
-  // 날짜 매치: 모든 날짜/혼합 칼럼의 ISO 값에서 (년)월일 일치
-  const dq = parseSearchDate(q)
-  if (!dq) return false
-  const mmdd = `-${String(dq.m).padStart(2, '0')}-${String(dq.d).padStart(2, '0')}`
-  const isoHit = (v: unknown): boolean => {
-    if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(v)) return false
-    return dq.y != null ? v.startsWith(`${dq.y}${mmdd}`) : v.slice(4, 10) === mmdd
-  }
-  if ([...DATE_ONLY_FIELDS, ...HYBRID_DATE_FIELDS].some(f => isoHit(item[f]))) return true
-  // ARTWORK 발주완료 날짜('ordered|||YYYY-MM-DD|||메모')도 검색 대상
-  return isoHit(parseArtworkStatus(item.artwork_status).date)
-}
-
-// localStorage에 저장된 테이블 필터 복원 (형식이 어긋나면 기본값, 구버전 형식은 규칙으로 변환)
-const loadTableFilter = (type: 'pcb' | 'cable'): TableFilter => {
-  const def = defaultTableFilter(type)
-  try {
-    const raw = localStorage.getItem(`hansl_prod_filter_${type}`)
-    if (!raw) return def
-    const p = JSON.parse(raw)
-    const validCats = type === 'pcb' ? PCB_CATEGORIES : CABLE_CATEGORIES
-    const categories = Array.isArray(p.categories) ? p.categories.filter((c: string) => validCats.includes(c)) : def.categories
-    if (Array.isArray(p.rules)) {
-      const rules: FilterRule[] = p.rules
-        .filter((r: any) => r && typeof r.field === 'string' && typeof r.op === 'string' && opsForField(r.field).includes(r.op))
-        .map((r: any) => ({
-          id: newRuleId(),
-          field: r.field,
-          op: r.op,
-          value: typeof r.value === 'string' ? r.value : undefined,
-          year: typeof r.year === 'number' ? r.year : null,
-          month: typeof r.month === 'number' ? r.month : null,
-        }))
-      return { categories, rules }
-    }
-    // 구버전(waitingOnly/year/month/dateField) 형식 → 규칙으로 변환
-    const rules: FilterRule[] = []
-    if (p.waitingOnly !== false) {
-      rules.push({ id: newRuleId(), field: type === 'pcb' ? 'final_product_stock' : 'cable_actual_date', op: 'is_empty' })
-    }
-    if (typeof p.year === 'number' || typeof p.month === 'number') {
-      rules.push({ id: newRuleId(), field: typeof p.dateField === 'string' ? p.dateField : 'request_date', op: 'date_in', year: typeof p.year === 'number' ? p.year : null, month: typeof p.month === 'number' ? p.month : null })
-    }
-    return { categories, rules }
-  } catch {
-    return def
-  }
-}
-
-// localStorage에 저장된 제작구분 그룹 순서 복원 (기본 카테고리 보강)
-const restoreCategoryOrder = (): string[] => {
-  try {
-    const saved = localStorage.getItem('hansl_prod_filter_category_order')
-    if (saved) {
-      const parsed = JSON.parse(saved) as string[]
-      const merged = parsed.filter(c => DEFAULT_CATEGORY_ORDER.includes(c))
-      for (const c of DEFAULT_CATEGORY_ORDER) if (!merged.includes(c)) merged.push(c)
-      return merged
-    }
-  } catch { /* fall through */ }
-  return [...DEFAULT_CATEGORY_ORDER]
-}
 
 // 필터 저장 버튼 아이콘.
 //  - 미저장: 기본 lucide Save(회색 아웃라인, 버튼 색 상속)
@@ -564,153 +59,6 @@ function FilterSaveIcon({ saved }: { saved: boolean }) {
   )
 }
 
-// Date utilities for formatting text inputs (e.g. 7/6 -> 07월 06일)
-const formatDbDateToDisplay = (dbDate: string | null | undefined): string => {
-  if (!dbDate || dbDate.trim() === '' || dbDate === '-') return '-월 -일';
-  const match = dbDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (match) {
-    return `${match[2]}월 ${match[3]}일`;
-  }
-  return dbDate;
-};
-
-const formatDisplayDateToDb = (displayDate: string | null | undefined): string | null => {
-  if (!displayDate || displayDate.trim() === '' || displayDate === '-') return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(displayDate)) {
-    return displayDate;
-  }
-  const match = displayDate.match(/(\d+)월\s*(\d+)일/);
-  if (match) {
-    const year = new Date().getFullYear();
-    const mm = match[1].padStart(2, '0');
-    const dd = match[2].padStart(2, '0');
-    return `${year}-${mm}-${dd}`;
-  }
-  const numbers = displayDate.match(/\d+/g);
-  if (numbers && numbers.length >= 2) {
-    const year = new Date().getFullYear();
-    const mm = numbers[0].padStart(2, '0');
-    const dd = numbers[1].padStart(2, '0');
-    return `${year}-${mm}-${dd}`;
-  }
-  return null;
-};
-
-const parseAndFormatInputDate = (val: string, defaultMonth?: number | null): string => {
-  if (!val) return '';
-  const clean = val.trim();
-  if (!clean) return '';
-  if (clean.includes('월') && clean.includes('일')) {
-    // 'YYYY년 MM월 DD일'처럼 연도가 있으면 연도를 보존하여 ISO로 승격
-    const ky = clean.match(/(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
-    if (ky) return `${ky[1]}-${ky[2].padStart(2, '0')}-${ky[3].padStart(2, '0')}`;
-    return clean;
-  }
-  const numbers = clean.match(/\d+/g);
-  if (!numbers || numbers.length === 0) return val;
-
-  // 입력에 4자리 연도가 있으면 그 연도를 보존하여 ISO(YYYY-MM-DD)로 반환.
-  // (formatDisplayDateToDb가 ISO 형식은 그대로 통과시키므로 연도가 유지된다)
-  if (numbers.length >= 3 && numbers[0].length === 4) {
-    const yStr = numbers[0];
-    const mm = String(Math.min(12, Math.max(1, parseInt(numbers[1], 10)))).padStart(2, '0');
-    const dd = String(Math.min(31, Math.max(1, parseInt(numbers[2], 10)))).padStart(2, '0');
-    return `${yStr}-${mm}-${dd}`;
-  }
-
-  let month = defaultMonth || (new Date().getMonth() + 1);
-  let day = 1;
-
-  if (numbers.length >= 2) {
-    month = parseInt(numbers[0], 10);
-    day = parseInt(numbers[1], 10);
-  } else if (numbers.length === 1) {
-    day = parseInt(numbers[0], 10);
-  }
-
-  const mStr = String(Math.min(12, Math.max(1, month))).padStart(2, '0');
-  const dStr = String(Math.min(31, Math.max(1, day))).padStart(2, '0');
-  return `${mStr}월 ${dStr}일`;
-};
-
-// ASS'Y(환화/에버텍)처럼 '날짜 또는 메모' 하이브리드 칼럼용 유틸.
-// 입력 '전체'가 날짜 토큰일 때만 날짜로 인식하고, 그 외(숫자가 섞인 메모 포함)는 메모 원문으로 취급한다.
-const isDateLikeInput = (raw: string | null | undefined): boolean => {
-  const s = (raw || '').trim();
-  if (!s) return false;
-  // 2026-07-06 / 2026.7.6 / 2026/07/06
-  if (/^\d{4}\s*[.\-/]\s*\d{1,2}\s*[.\-/]\s*\d{1,2}$/.test(s)) return true;
-  // 7/6 / 12-26 / 7.6
-  if (/^\d{1,2}\s*[.\-/]\s*\d{1,2}$/.test(s)) return true;
-  // 7월 6일 / 2026년 7월 6일 / 7월6일
-  if (/^(\d{4}\s*년\s*)?\d{1,2}\s*월\s*\d{1,2}\s*일$/.test(s)) return true;
-  return false;
-};
-
-// 하이브리드 칼럼 저장값 계산: 날짜 토큰이면 YYYY-MM-DD, 아니면 메모 원문, 빈값이면 null
-const toDateOrMemo = (val: string, defaultMonth?: number | null): string | null => {
-  if (!val || val.trim() === '') return null;
-  if (isDateLikeInput(val)) {
-    const db = formatDisplayDateToDb(parseAndFormatInputDate(val, defaultMonth));
-    if (db) return db;
-  }
-  return val;
-};
-
-// 하이브리드 칼럼 표시값: YYYY-MM-DD -> 'MM월 DD일', 그 외는 메모 원문, 빈값은 '-'
-const formatDateOrMemo = (value: string | null | undefined): string => {
-  if (!value || value.trim() === '' || value === '-') return '-';
-  const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m) return `${m[2]}월 ${m[3]}일`;
-  return value;
-};
-
-// 완제품 입고 표시 정규화: 경로별로 섞인 값을 'MM월 DD일'로 통일해 보여준다.
-// - ISO(YYYY-MM-DD) → 'MM월 DD일' (엑셀 임포트분)
-// - 'MM월 DD일 입고' → 'MM월 DD일' (버튼 스탬프 구형: '입고' 제거)
-// - 그 외(완료/납품/분할입고 메모 등)는 의미가 있어 원문 유지
-const formatStockInDisplay = (value: string | null | undefined): string => {
-  if (!value) return '-';
-  const s = String(value).trim();
-  if (!s || s === '-') return '-';
-  // ISO(YYYY-MM-DD) → MM월 DD일 (엑셀 임포트분)
-  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (iso) return `${iso[2]}월 ${iso[3]}일`;
-  // 'MM월 DD일' + 선택적 상태어(입고/완료/납품) → MM월 DD일
-  const md = s.match(/^(\d{1,2})\s*월\s*(\d{1,2})\s*일(?:\s*(?:입고|완료|납품))?$/);
-  if (md) return `${md[1].padStart(2, '0')}월 ${md[2].padStart(2, '0')}일`;
-  // 'M/D' 또는 'M/D 입고' → MM월 DD일
-  const slash = s.match(/^(\d{1,2})\/(\d{1,2})(?:\s*입고)?$/);
-  if (slash) return `${slash[1].padStart(2, '0')}월 ${slash[2].padStart(2, '0')}일`;
-  // 그 외(분할입고 수량/재고/회수 메모, 오타 등)는 의미가 있어 원문 유지
-  return s;
-};
-
-// 입고완료(PCB 제작) / 배송완료(납품) 표시 정규화: 완제품입고와 달리 'M/D 완료' 형식(0채움 없음)으로 통일
-// - ISO(YYYY-MM-DD) → 'M/D 완료'
-// - 'MM월 DD일'/'M/D' + 선택적 상태어 → 'M/D 완료'
-// - 그 외 메모 원문은 의미가 있어 유지
-const formatCompletedDisplay = (value: string | null | undefined): string => {
-  if (!value) return '-';
-  const s = String(value).trim();
-  if (!s || s === '-') return '-';
-  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (iso) return `${Number(iso[2])}/${Number(iso[3])} 완료`;
-  const md = s.match(/^(\d{1,2})\s*월\s*(\d{1,2})\s*일(?:\s*(?:입고|완료|납품|배송))?$/);
-  if (md) return `${Number(md[1])}/${Number(md[2])} 완료`;
-  const slash = s.match(/^(\d{1,2})\/(\d{1,2})(?:\s*(?:입고|완료|배송))?$/);
-  if (slash) return `${Number(slash[1])}/${Number(slash[2])} 완료`;
-  return s;
-};
-
-// 입고/배송 대기 버튼 문구·팝오버 라벨: 완제품입고류는 '입고', 배송완료는 '배송'으로 구분
-const STOCK_WAITING_LABEL: Record<string, string> = {
-  final_product_stock: '입고대기',
-  cable_actual_date: '입고대기',
-  pcb_stock_completed: '입고대기',
-  delivery_completed: '배송대기',
-}
-const stockPickerLabel = (field: string): string => field === 'delivery_completed' ? '배송일' : '입고일'
 
 // ─── 셀 내 URL → '링크' 하이퍼링크 표시 ─────────────────────────────
 // 셀 값에 웹사이트 주소가 들어 있으면 긴 URL 대신 '링크' 텍스트로 축약해 새 탭으로 연결한다.
@@ -803,110 +151,6 @@ function CellPopoverPortal({ prefer = 'below', innerRef, className, style, child
   )
 }
 
-// HANSL 담당자는 이름만 표시/저장한다. datalist 입력은 자유 텍스트라 "이종근사원"처럼
-// 직함이 붙은 값이 타이핑될 수 있어, 저장 직전에 뒤에 붙은 직함을 제거한다.
-const EMPLOYEE_TITLE_SUFFIX = /(사원|주임|대리|과장|차장|부장|이사|상무|전무|팀장|실장|본부장|소장|대표)$/
-const stripEmployeeTitle = (name: string | null | undefined): string => {
-  if (!name) return ''
-  const trimmed = name.trim()
-  const stripped = trimmed.replace(EMPLOYEE_TITLE_SUFFIX, '').trim()
-  return stripped || trimmed
-};
-
-// ─────────────────────────────────────────────────────────────
-// ARTWORK 상태(하이브리드): 상태 선택(진행중/업체 확인중/발주완료) + 메모
-// 저장 포맷: `<status>|||<date>|||<memo>` (상태 없으면 메모 원문만 저장 → 하위호환)
-//  - status: '' | 'progress' | 'checking' | 'ordered'
-//  - date  : 'YYYY-MM-DD' (ordered일 때 발주완료 누른 당일, 한국시간 기준)
-//  - memo  : 자유 메모
-// ─────────────────────────────────────────────────────────────
-const ARTWORK_STATUS_OPTIONS: { code: string; label: string }[] = [
-  { code: 'progress', label: '진행중' },
-  { code: 'checking', label: '업체 확인중' },
-  { code: 'ordered', label: '발주완료' },
-]
-
-// 필터 전용 상태 선택지 — 셀 편집 드롭다운(위 3종)에 더해, 구엑셀 이관/직접 입력 텍스트를 아우른다.
-//  - delivered: '전달 완료' 계열 텍스트 (셀 편집에는 없는 필터 전용 상태)
-//  - text     : 상태 코드도 없고 상태 키워드에도 안 걸리는 순수 직접 입력(예: '한슬 완제품 재고')
-const ARTWORK_FILTER_STATUS_OPTIONS: { code: string; label: string }[] = [
-  ...ARTWORK_STATUS_OPTIONS,
-  { code: 'delivered', label: '전달완료' },
-  { code: 'text', label: '직접입력' },
-]
-
-type ArtworkParts = { status: string; date: string; memo: string }
-
-// 필터 상태 판정 — 드롭다운으로 저장된 상태 코드 외에, 구엑셀 이관 텍스트(예: '4/29 PCB 발주 완료')도
-// 키워드로 같은 상태로 취급한다. 키워드 매칭은 상태 코드가 없는(직접 입력) 값에만 적용해 메모 오탐을 막는다.
-const ARTWORK_LEGACY_PATTERNS: Record<string, RegExp> = {
-  progress: /(작업|진행)\s*중/,
-  checking: /확인\s*중/,
-  ordered: /발주\s*완료/,
-  delivered: /전달\s*완료/,
-}
-const artworkStatusMatches = (aw: ArtworkParts, code: string | undefined): boolean => {
-  const legacy = aw.status ? '' : aw.memo
-  if (code === 'text') return !aw.status && aw.memo.trim() !== '' && !Object.values(ARTWORK_LEGACY_PATTERNS).some(re => re.test(aw.memo))
-  if (!code) return false
-  return aw.status === code || (ARTWORK_LEGACY_PATTERNS[code]?.test(legacy) ?? false)
-}
-
-// 한국시간(KST) 기준 오늘 날짜 'YYYY-MM-DD'
-const getKstTodayISO = (): string => {
-  const kst = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }))
-  const y = kst.getFullYear()
-  const m = String(kst.getMonth() + 1).padStart(2, '0')
-  const d = String(kst.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
-
-// 납품기한 경고: 한국시간 기준 기한 하루 전(D-1)이 되는 날부터 true (기한 당일·경과 포함)
-// 값이 ISO 날짜(YYYY-MM-DD)가 아닌 메모 텍스트면 판정하지 않는다.
-const isDeadlineUrgent = (value: string | null | undefined): boolean => {
-  if (!value) return false
-  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/)
-  if (!m) return false
-  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]))
-  d.setUTCDate(d.getUTCDate() - 1)
-  const dMinus1 = d.toISOString().slice(0, 10)
-  return getKstTodayISO() >= dMinus1
-}
-
-// 'YYYY-MM-DD' -> 'MM월DD일'
-const formatKoreanMMDD = (iso: string): string => {
-  const p = iso.split('-')
-  if (p.length < 3) return iso
-  return `${p[1]}월${p[2]}일`
-}
-
-const parseArtworkStatus = (raw: string | null | undefined): ArtworkParts => {
-  if (!raw) return { status: '', date: '', memo: '' }
-  if (raw.includes('|||')) {
-    const parts = raw.split('|||')
-    return { status: parts[0] || '', date: parts[1] || '', memo: parts.slice(2).join('|||') }
-  }
-  // 하위호환: 구분자가 없으면 전체를 메모로 간주
-  return { status: '', date: '', memo: raw }
-}
-
-const serializeArtworkStatus = (p: ArtworkParts): string => {
-  if (!p.status && !p.memo) return ''
-  if (!p.status) return p.memo // 메모만 있을 때는 원문 저장(하위호환)
-  return `${p.status}|||${p.date || ''}|||${p.memo || ''}`
-}
-
-// 셀 표시용 문자열 (예: '07월06일 발주완료 │ 추가 메모')
-const formatArtworkDisplay = (raw: string | null | undefined): string => {
-  const { status, date, memo } = parseArtworkStatus(raw)
-  let label = ''
-  if (status === 'progress') label = '진행중'
-  else if (status === 'checking') label = '업체 확인중'
-  else if (status === 'ordered') label = `${date ? formatKoreanMMDD(date) + ' ' : ''}발주완료`
-  if (label && memo) return `${label} │ ${memo}`
-  if (label) return label
-  return memo || ''
-}
 
 // 행 추가(입력행) 텍스트 입력 — 칼럼이 좁으면(자기 폭이 6자≈66px 이하) 또는 메모형이면
 // 포커스 시 셀 아래에 넉넉한 말풍선(팝오버) 입력창을 띄워 적은 내용을 보면서 타이핑할 수 있게 한다.
@@ -1225,68 +469,6 @@ function ArtworkStatusEditor({
   )
 }
 
-// ─────────────────────────────────────────────────────────────
-// 부품정리(parts_organization) 상태 처리 — ARTWORK와 동일한 방식이나
-// 상태는 '진행중 / 완료' 두 가지, 날짜는 기록하지 않는다.
-// 저장 포맷: 'status|||memo' (구분자 없으면 전체를 메모로 간주)
-//  - status: '' | 'progress' | 'done'
-//  - memo  : 자유 메모
-// ─────────────────────────────────────────────────────────────
-const PARTS_STATUS_OPTIONS: { code: string; label: string }[] = [
-  { code: 'progress', label: '진행중' },
-  { code: 'done', label: '완료' },
-]
-
-// 필터 전용 상태 선택지 — ARTWORK와 동일하게 직접 입력 텍스트('홀딩' 등)를 잡는 항목을 더한다
-const PARTS_FILTER_STATUS_OPTIONS: { code: string; label: string }[] = [
-  ...PARTS_STATUS_OPTIONS,
-  { code: 'text', label: '직접입력' },
-]
-
-type PartsParts = { status: string; memo: string }
-
-// 필터 상태 판정 — 상태 코드 외에 구엑셀 이관 텍스트('완료'/'진행중')도 같은 상태로 취급 (ARTWORK와 동일 원칙)
-const PARTS_LEGACY_PATTERNS: Record<string, RegExp> = {
-  progress: /진행\s*중/,
-  done: /완료/,
-}
-const partsStatusMatches = (p: PartsParts, code: string | undefined): boolean => {
-  const legacy = p.status ? '' : p.memo
-  if (code === 'text') return !p.status && p.memo.trim() !== '' && !Object.values(PARTS_LEGACY_PATTERNS).some(re => re.test(p.memo))
-  if (!code) return false
-  return p.status === code || (PARTS_LEGACY_PATTERNS[code]?.test(legacy) ?? false)
-}
-
-// 필터 status_is 드롭다운에 쓸 선택지 (칼럼별)
-const filterStatusOptionsFor = (field: string) =>
-  field === PARTS_FIELD ? PARTS_FILTER_STATUS_OPTIONS : ARTWORK_FILTER_STATUS_OPTIONS
-
-const parsePartsStatus = (raw: string | null | undefined): PartsParts => {
-  if (!raw) return { status: '', memo: '' }
-  if (raw.includes('|||')) {
-    const parts = raw.split('|||')
-    return { status: parts[0] || '', memo: parts.slice(1).join('|||') }
-  }
-  // 하위호환: 구분자가 없으면 전체를 메모로 간주
-  return { status: '', memo: raw }
-}
-
-const serializePartsStatus = (p: PartsParts): string => {
-  if (!p.status && !p.memo) return ''
-  if (!p.status) return p.memo // 메모만 있을 때는 원문 저장(하위호환)
-  return `${p.status}|||${p.memo || ''}`
-}
-
-// 셀 표시용 문자열 (예: '완료 │ 추가 메모')
-const formatPartsDisplay = (raw: string | null | undefined): string => {
-  const { status, memo } = parsePartsStatus(raw)
-  let label = ''
-  if (status === 'progress') label = '진행중'
-  else if (status === 'done') label = '완료'
-  if (label && memo) return `${label} │ ${memo}`
-  if (label) return label
-  return memo || ''
-}
 
 // 행 추가(입력행) 전용 부품정리 콤보 입력: 메모 입력창 + 클릭 시 상태 드롭다운(진행중/완료)
 function PartsAddInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -1431,40 +613,6 @@ function PartsStatusEditor({
   )
 }
 
-// ─── 엑셀식 복사/붙여넣기 TSV 유틸 ─────────────────────────────────
-// 엑셀이 클립보드에 쓰는 형식과 동일: 셀은 탭, 행은 줄바꿈으로 구분.
-// 탭/줄바꿈/따옴표가 든 값은 "..."로 감싼다 (엑셀 규칙 그대로).
-const toTsvCell = (v: any): string => {
-  const s = v === null || v === undefined ? '' : String(v)
-  return /[\t\n\r"]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
-}
-
-// 엑셀 호환 TSV 파서: "..." 안의 줄바꿈/탭은 셀 내용으로 취급
-const parseTsvGrid = (text: string): string[][] => {
-  const s = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-  const rows: string[][] = []
-  let row: string[] = []
-  let cell = ''
-  let inQuotes = false
-  for (let i = 0; i < s.length; i++) {
-    const ch = s[i]
-    if (inQuotes) {
-      if (ch === '"') {
-        if (s[i + 1] === '"') { cell += '"'; i++ } else inQuotes = false
-      } else cell += ch
-    } else if (ch === '"' && cell === '') {
-      inQuotes = true
-    } else if (ch === '\t') {
-      row.push(cell); cell = ''
-    } else if (ch === '\n') {
-      row.push(cell); rows.push(row); row = []; cell = ''
-    } else cell += ch
-  }
-  row.push(cell); rows.push(row)
-  // 엑셀 복사분은 끝에 개행이 붙어 빈 행이 생기므로 제거
-  while (rows.length && rows[rows.length - 1].every(c => c === '')) rows.pop()
-  return rows
-}
 
 // ─── 행 렌더 격리 유틸 ──────────────────────────────────────────────
 // 항상 같은 함수 객체를 유지하면서 내부는 "최신 렌더"의 로직을 실행한다.
@@ -1565,7 +713,7 @@ export default function ProductionListMain() {
   const [filterHasSaved, setFilterHasSaved] = useState<FilterSectionFlags>(() => {
     // 파랑(저장됨) = 기본값과 "다른" 내용이 저장돼 있을 때만. 키가 있어도 내용이 기본값이면 흰색.
     const calc = (type: 'pcb' | 'cable') => {
-      if (localStorage.getItem(`hansl_prod_filter_${type}`) === null) return { rules: false, cats: false }
+      if (localStorage.getItem(filterStorageKey(type)) === null) return { rules: false, cats: false }
       const f = loadTableFilter(type)
       const orderCustom = !categoryOrderIsDefault(restoreCategoryOrder())
       return {
@@ -1617,11 +765,11 @@ export default function ProductionListMain() {
       const merged = snap.categoryOrder.filter(c => DEFAULT_CATEGORY_ORDER.includes(c))
       for (const c of DEFAULT_CATEGORY_ORDER) if (!merged.includes(c)) merged.push(c)
       setCategoryOrder(merged)
-      try { localStorage.setItem('hansl_prod_filter_category_order', JSON.stringify(merged)) } catch { /* ignore */ }
+      try { localStorage.setItem(CATEGORY_ORDER_STORAGE_KEY, JSON.stringify(merged)) } catch { /* ignore */ }
     }
     // 로컬스토리지에도 반영해 새로고침·아이콘 상태를 일관되게 유지
     try {
-      localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({ categories, rules }))
+      localStorage.setItem(filterStorageKey(type), JSON.stringify({ categories, rules }))
     } catch { /* ignore quota */ }
   }
 
@@ -1705,7 +853,7 @@ export default function ProductionListMain() {
     setter(prev => {
       const next = updater(prev)
       try {
-        localStorage.setItem(`hansl_prod_sort_${type}`, JSON.stringify(next.map(r => ({ field: r.field, dir: r.dir }))))
+        localStorage.setItem(sortStorageKey(type), JSON.stringify(next.map(r => ({ field: r.field, dir: r.dir }))))
       } catch { /* ignore quota */ }
       return next
     })
@@ -1766,14 +914,14 @@ export default function ProductionListMain() {
     setHiddenCols(prev => {
       const cur = prev[type]
       const next = cur.includes(field) ? cur.filter(f => f !== field) : [...cur, field]
-      localStorage.setItem(`hansl_prod_hidden_cols_${type}`, JSON.stringify(next))
+      localStorage.setItem(hiddenColsStorageKey(type), JSON.stringify(next))
       return { ...prev, [type]: next }
     })
   }
 
   const resetHiddenCols = (type: 'pcb' | 'cable') => {
     setHiddenCols(prev => ({ ...prev, [type]: [] }))
-    localStorage.setItem(`hansl_prod_hidden_cols_${type}`, JSON.stringify([]))
+    localStorage.setItem(hiddenColsStorageKey(type), JSON.stringify([]))
   }
 
   // 섹션(구분선 단위) 일괄 숨기기/표시
@@ -1783,7 +931,7 @@ export default function ProductionListMain() {
       const next = hide
         ? [...new Set([...cur, ...fields])]
         : cur.filter(f => !fields.includes(f))
-      localStorage.setItem(`hansl_prod_hidden_cols_${type}`, JSON.stringify(next))
+      localStorage.setItem(hiddenColsStorageKey(type), JSON.stringify(next))
       return { ...prev, [type]: next }
     })
   }
@@ -1876,14 +1024,14 @@ export default function ProductionListMain() {
 
   // 저장된 필터 JSON을 읽어 오되 형식이 깨졌으면 빈 객체
   const readStoredFilter = (type: 'pcb' | 'cable'): any => {
-    try { return JSON.parse(localStorage.getItem(`hansl_prod_filter_${type}`) || '{}') } catch { return {} }
+    try { return JSON.parse(localStorage.getItem(filterStorageKey(type)) || '{}') } catch { return {} }
   }
 
   // 조건(규칙) 필터만 저장 — 같은 키의 제작구분(categories)은 기존 저장값 보존
   const saveRulesFilter = (type: 'pcb' | 'cable') => {
     const cur = filterFor(type)
     const stored = readStoredFilter(type)
-    localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({
+    localStorage.setItem(filterStorageKey(type), JSON.stringify({
       categories: Array.isArray(stored.categories) ? stored.categories : cur.categories,
       rules: cur.rules,
     }))
@@ -1897,11 +1045,11 @@ export default function ProductionListMain() {
   const saveCategoryFilter = (type: 'pcb' | 'cable') => {
     const cur = filterFor(type)
     const stored = readStoredFilter(type)
-    localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({
+    localStorage.setItem(filterStorageKey(type), JSON.stringify({
       categories: cur.categories,
       rules: Array.isArray(stored.rules) ? stored.rules : cur.rules,
     }))
-    localStorage.setItem('hansl_prod_filter_category_order', JSON.stringify(categoryOrder))
+    localStorage.setItem(CATEGORY_ORDER_STORAGE_KEY, JSON.stringify(categoryOrder))
     // 기본값 그대로(전체 선택 + 기본 순서) 저장한 경우엔 파랑 표시 안 함
     const catsCustom = !catsEqualDefault(type, cur.categories) || !categoryOrderIsDefault(categoryOrder)
     setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], cats: catsCustom } }))
@@ -1917,7 +1065,7 @@ export default function ProductionListMain() {
       setFilterFor(type, { rules })
       const stored = readStoredFilter(type)
       const cats = Array.isArray(stored.categories) ? stored.categories : (type === 'pcb' ? [...PCB_CATEGORIES] : [...CABLE_CATEGORIES])
-      localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({ categories: cats, rules }))
+      localStorage.setItem(filterStorageKey(type), JSON.stringify({ categories: cats, rules }))
       // 시작 기본값으로 되돌렸으니 현재 = 기준값 → 저장됨(파랑) 표시 안 함
       setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], rules: false } }))
       setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], rules: false } }))
@@ -1930,9 +1078,9 @@ export default function ProductionListMain() {
     const stored = readStoredFilter(type)
     const catsStillCustom = Array.isArray(stored.categories) && !catsEqualDefault(type, stored.categories)
     if (catsStillCustom) {
-      localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({ categories: stored.categories, rules: defaultRules(type) }))
+      localStorage.setItem(filterStorageKey(type), JSON.stringify({ categories: stored.categories, rules: defaultRules(type) }))
     } else {
-      localStorage.removeItem(`hansl_prod_filter_${type}`)
+      localStorage.removeItem(filterStorageKey(type))
     }
     setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], rules: false } }))
     setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], rules: false } }))
@@ -1951,11 +1099,11 @@ export default function ProductionListMain() {
         order = savedDefault.categoryOrder.filter(c => DEFAULT_CATEGORY_ORDER.includes(c))
         for (const c of DEFAULT_CATEGORY_ORDER) if (!order.includes(c)) order.push(c)
         setCategoryOrder(order)
-        localStorage.setItem('hansl_prod_filter_category_order', JSON.stringify(order))
+        localStorage.setItem(CATEGORY_ORDER_STORAGE_KEY, JSON.stringify(order))
       }
       const stored = readStoredFilter(type)
       const rules = Array.isArray(stored.rules) ? stored.rules : filterFor(type).rules
-      localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({ categories: cats, rules }))
+      localStorage.setItem(filterStorageKey(type), JSON.stringify({ categories: cats, rules }))
       // 시작 기본값으로 되돌렸으니 현재 = 기준값 → 저장됨(파랑) 표시 안 함
       setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], cats: false } }))
       setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], cats: false } }))
@@ -1965,16 +1113,16 @@ export default function ProductionListMain() {
     setFilterFor(type, { categories: type === 'pcb' ? [...PCB_CATEGORIES] : [...CABLE_CATEGORIES] })
     setCategoryOrder([...DEFAULT_CATEGORY_ORDER])
     // 저장본의 제작구분/그룹순서도 기본값으로 되돌림 (규칙이 커스텀이면 규칙만 보존)
-    localStorage.removeItem('hansl_prod_filter_category_order')
+    localStorage.removeItem(CATEGORY_ORDER_STORAGE_KEY)
     const stored = readStoredFilter(type)
     const rulesStillCustom = Array.isArray(stored.rules) && !rulesEqualDefault(type, stored.rules)
     if (rulesStillCustom) {
-      localStorage.setItem(`hansl_prod_filter_${type}`, JSON.stringify({
+      localStorage.setItem(filterStorageKey(type), JSON.stringify({
         categories: type === 'pcb' ? [...PCB_CATEGORIES] : [...CABLE_CATEGORIES],
         rules: stored.rules,
       }))
     } else {
-      localStorage.removeItem(`hansl_prod_filter_${type}`)
+      localStorage.removeItem(filterStorageKey(type))
     }
     setFilterHasSaved(prev => ({ ...prev, [type]: { ...prev[type], cats: false } }))
     setFilterDirty(prev => ({ ...prev, [type]: { ...prev[type], cats: false } }))
@@ -3142,32 +2290,6 @@ export default function ProductionListMain() {
     return () => document.removeEventListener('mousedown', onDown)
   }, [orderNoPicker])
 
-  // 색상/스타일 문자열 파싱 (예: 'yellow::strike::bold::redtext' -> { color, strike, bold, redText })
-  // 각 토큰은 '::'로 구분되며 배경색 / 취소선 / 볼드 / 빨간글자를 중복 지정할 수 있음 (하위호환 유지)
-  const COLOR_NAMES = ['yellow', 'blue', 'red', 'green'];
-  const parseColorState = (value: string | null | undefined): { color: string | null, strike: 'strike' | 'nostrike' | null, bold: boolean, redText: boolean } => {
-    const empty = { color: null as string | null, strike: null as 'strike' | 'nostrike' | null, bold: false, redText: false };
-    if (!value) return empty;
-    const result = { ...empty };
-    for (const token of value.split('::')) {
-      if (!token) continue;
-      if (COLOR_NAMES.includes(token)) result.color = token;
-      else if (token === 'strike' || token === 'nostrike') result.strike = token;
-      else if (token === 'bold') result.bold = true;
-      else if (token === 'redtext') result.redText = true;
-    }
-    return result;
-  };
-
-  // 색상/스타일 상태 직렬화 (지정된 항목만 '::'로 이어붙임)
-  const serializeColorState = (color: string | null, strike: 'strike' | 'nostrike' | null, bold = false, redText = false) => {
-    const parts: string[] = [];
-    if (color) parts.push(color);
-    if (strike) parts.push(strike);
-    if (bold) parts.push('bold');
-    if (redText) parts.push('redtext');
-    return parts.length ? parts.join('::') : null;
-  };
 
   // 행 배경색 업데이트 핸들러
   const handleUpdateRowColor = useStableHandler(async (type: 'pcb' | 'cable', id: string, colorAction: string | null, isToggleStrike = false) => {
