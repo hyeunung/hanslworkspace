@@ -1,7 +1,7 @@
 import React from 'react'
 import { Eye, EyeOff, RotateCcw, SlidersHorizontal } from 'lucide-react'
 import { HIDEABLE_SECTIONS, hideableFieldsFor } from '@/utils/productionColumns'
-import { AnchoredPortal } from './AnchoredPortal'
+import { AnchoredPortal } from '@/components/ui/AnchoredPortal'
 
 interface ProductionColumnMenuProps {
   type: 'pcb' | 'cable'

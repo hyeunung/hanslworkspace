@@ -6,7 +6,7 @@ import {
 } from '@/utils/productionFilters'
 import { MIN_COLUMN_WIDTH, measureText } from '@/utils/productionColumns'
 import { ProductionFilterConfig } from '@/hooks/useProductionFilterViews'
-import { AnchoredPortal } from './AnchoredPortal'
+import { AnchoredPortal } from '@/components/ui/AnchoredPortal'
 
 // 필터 저장 버튼 아이콘.
 //  - 미저장: 기본 lucide Save(회색 아웃라인, 버튼 색 상속)

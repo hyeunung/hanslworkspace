@@ -2,7 +2,7 @@ import React from 'react'
 import { ArrowUpDown, ArrowUp, ArrowDown, ChevronDown, Plus, RotateCcw, X } from 'lucide-react'
 import { SortRule, PCB_SORT_FIELDS, CABLE_SORT_FIELDS } from '@/utils/productionSort'
 import { measureText } from '@/utils/productionColumns'
-import { AnchoredPortal } from './AnchoredPortal'
+import { AnchoredPortal } from '@/components/ui/AnchoredPortal'
 
 interface ProductionSortControlProps {
   type: 'pcb' | 'cable'
