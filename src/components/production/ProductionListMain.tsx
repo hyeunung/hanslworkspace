@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { productionService, ProductionPcb, ProductionCable } from '@/services/productionService'
-import { Plus, Search, Edit2, X, Filter, Save, RotateCcw, ChevronDown, SlidersHorizontal, Download, Printer, Eye, EyeOff, ArrowUpDown, ArrowUp, ArrowDown, Bookmark, Star, Trash2, Check } from 'lucide-react'
+import { Plus, Search, X, Filter, Save, ChevronDown, Download, Printer, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProductionFilterViews, FilterDefaultSnapshot } from '@/hooks/useProductionFilterViews'
@@ -41,22 +41,11 @@ import {
 } from '@/utils/productionColumns'
 import { toTsvCell, parseTsvGrid } from '@/utils/productionTsv'
 import { parseColorState, serializeColorState } from '@/utils/productionColors'
+import ProductionSortControl from './ProductionSortControl'
+import ProductionColumnMenu from './ProductionColumnMenu'
+import ProductionFilterToolbar from './ProductionFilterToolbar'
 
 
-
-// 필터 저장 버튼 아이콘.
-//  - 미저장: 기본 lucide Save(회색 아웃라인, 버튼 색 상속)
-//  - 저장됨: 몸통·바깥 테두리는 진파랑(#1777CB), 안쪽 디테일 선만 흰색 (lucide는 선 색이 하나뿐이라 커스텀 SVG로 분리)
-function FilterSaveIcon({ saved }: { saved: boolean }) {
-  if (!saved) return <Save className="w-3.5 h-3.5" />
-  return (
-    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" aria-hidden="true">
-      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" className="fill-hansl-500 stroke-hansl-500" strokeWidth="2" strokeLinejoin="round" />
-      <polyline points="17 21 17 13 7 13 7 21" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <polyline points="7 3 7 8 15 8" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
 
 
 // ─── 셀 내 URL → '링크' 하이퍼링크 표시 ─────────────────────────────
@@ -628,56 +617,6 @@ const MemoRow = React.memo(
   (a, b) => a.item === b.item && a.index === b.index && a.sig === b.sig && a.widths === b.widths
 )
 MemoRow.displayName = 'MemoRow'
-
-// ─── 앵커 고정 포털 팝오버 ─────────────────────────────────────────────
-// 셀/버튼에 붙는 팝오버를 document.body로 포털해 테이블·카드의 overflow에 잘리지 않게 띄운다.
-// anchorEl 바로 아래에 fixed로 배치하고, 화면 우/하단을 벗어나면 안쪽(위쪽)으로 보정한다.
-// 스크롤·리사이즈 시 앵커를 따라 재배치. (React 이벤트는 포털을 넘어 부모로 버블되므로 기존 stopPropagation 동작 유지)
-function AnchoredPortal({ anchorEl, children, align = 'left', gap = 2, zIndex = 9999 }: {
-  anchorEl: HTMLElement | null
-  children: React.ReactNode
-  align?: 'left' | 'right'
-  gap?: number
-  zIndex?: number
-}) {
-  const boxRef = useRef<HTMLDivElement | null>(null)
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
-  useLayoutEffect(() => {
-    if (!anchorEl) return
-    const place = () => {
-      const a = anchorEl.getBoundingClientRect()
-      const w = boxRef.current?.offsetWidth ?? 0
-      const h = boxRef.current?.offsetHeight ?? 0
-      let left = align === 'right' ? a.right - w : a.left
-      let top = a.bottom + gap
-      if (left + w > window.innerWidth - 8) left = window.innerWidth - 8 - w
-      if (left < 8) left = 8
-      // 아래 공간이 부족하면 앵커 위로 뒤집기 (위도 부족하면 화면 안으로 클램프)
-      if (top + h > window.innerHeight - 8) top = Math.max(8, a.top - gap - h)
-      setPos({ left, top })
-    }
-    place()
-    // 내용 크기가 렌더 후 확정되거나 이후 변하는 팝오버(가변 폭 메모, 정렬 규칙 추가 등)를 따라 재배치
-    const raf = requestAnimationFrame(place)
-    const ro = boxRef.current ? new ResizeObserver(place) : null
-    if (boxRef.current) ro?.observe(boxRef.current)
-    window.addEventListener('scroll', place, true)
-    window.addEventListener('resize', place)
-    return () => {
-      cancelAnimationFrame(raf)
-      ro?.disconnect()
-      window.removeEventListener('scroll', place, true)
-      window.removeEventListener('resize', place)
-    }
-  }, [anchorEl, align, gap])
-  if (!anchorEl) return null
-  return createPortal(
-    <div ref={boxRef} style={{ position: 'fixed', left: pos?.left ?? -9999, top: pos?.top ?? -9999, zIndex }}>
-      {children}
-    </div>,
-    document.body
-  )
-}
 
 export default function ProductionListMain() {
   const { pcbs, cables, loading, setLoading, employees, vendors, loadData } = useProductionData()
@@ -4210,634 +4149,8 @@ export default function ProductionListMain() {
                     )
   }
 
-  // 정렬 컨트롤 (노션식) — 제목 옆 행수 배지 바로 우측. 클릭 시 팝오버로 정렬 규칙을 추가/변경/제거.
-  // 규칙은 우선순위 순(위=1차)이며, 제작구분 그룹 안에서의 행 순서를 결정한다. 변경 즉시 자동 저장.
-  const renderSortControl = (type: 'pcb' | 'cable') => {
-    const rules = sortFor(type)
-    const fields = type === 'pcb' ? PCB_SORT_FIELDS : CABLE_SORT_FIELDS
-    const open = sortMenuFor === type
-    const active = rules.length > 0
-    return (
-      <div className="relative">
-        <button
-          type="button"
-          onClick={(e) => { setMenuAnchorEl(e.currentTarget as HTMLElement); setSortMenuFor(prev => (prev === type ? null : type)) }}
-          title={active ? `정렬 ${rules.length}개 적용됨` : '정렬 추가'}
-          className={`badge-stats cursor-pointer border flex items-center gap-1 transition-colors ${
-            active
-              ? 'hansl-toggle-on'
-              : 'hansl-toggle-off'
-          }`}
-        >
-          <ArrowUpDown className="w-3 h-3" />
-          정렬{active ? ` ${rules.length}` : ''}
-        </button>
-        {open && (
-          <>
-            <div className="fixed inset-0 z-[9998]" onMouseDown={() => setSortMenuFor(null)} />
-            {/* 패널 폭은 내용에 맞춤(w-max) — 고정 폭(w-[320px])이면 짧은 규칙에도 넓게 남아 어색. 최소/최대만 제한.
-                body 포털로 띄워 카드 overflow-hidden에 잘리지 않게 한다. */}
-            <AnchoredPortal anchorEl={menuAnchorEl} gap={4}>
-            <div className="hansl-popover w-max min-w-[200px] max-w-[340px]">
-              <div className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-100">
-                <span className="text-[11px] font-semibold text-gray-700">정렬</span>
-                {active && (
-                  <button
-                    type="button"
-                    onClick={() => clearSort(type)}
-                    className="hansl-mini-btn hover:text-red-600"
-                    title="정렬 모두 제거"
-                  >
-                    <RotateCcw className="w-2.5 h-2.5" /> 초기화
-                  </button>
-                )}
-              </div>
-              <div className="px-2 py-2 space-y-1.5 max-h-[50vh] overflow-y-auto">
-                {rules.length === 0 && (
-                  <div className="px-1 py-2 text-[10px] text-gray-400 whitespace-nowrap">
-                    정렬할 칼럼을 추가하세요.
-                  </div>
-                )}
-                {rules.map((r, i) => (
-                  <div key={r.id} className="flex items-center gap-1.5">
-                    <span className="text-[9px] text-gray-400 w-3 shrink-0 text-center">{i + 1}</span>
-                    {/* 박스 규격은 툴바 버튼(행 추가 등 button-base) 실측과 동일: 높이 22px · radius 토큰.
-                        텍스트는 칼럼 표시 설정 팝오버 항목과 동일한 앱 표준 타이포(11px/400/gray-700, body 자간 상속).
-                        폭은 선택된 칼럼명에 핏(좌10+텍스트+우24 화살표자리). measureText는 10px 기준이라 11px 폰트는 1.1배 보정.
-                        appearance-none + backgroundImage none으로 @tailwindcss/forms 배경 화살표를 없애 커스텀 ChevronDown과 중복 제거.
-                        세로 패딩 0은 인라인 강제(forms의 0.5rem 세로패딩이 @layer 밖이라 py-0로 못 이김) → 텍스트 세로 중앙 유지. */}
-                    <div className="relative shrink-0">
-                      <select
-                        value={r.field}
-                        onChange={(e) => updateSortRule(type, r.id, { field: e.target.value })}
-                        // lineHeight 20px = 박스 22px − 보더 2px. 전역에서 24px가 상속돼 텍스트가 아래로 밀리는 것을 인라인으로 강제 보정
-                        style={{ padding: '0 15px 0 7px', lineHeight: '20px', backgroundImage: 'none', width: `${Math.ceil(measureText(getColumnTitle(r.field, type), 400) * 1.1) + 24}px` }}
-                        className="hansl-select-box"
-                      >
-                        {fields.map(f => (
-                          <option key={f} value={f}>{getColumnTitle(f, type)}</option>
-                        ))}
-                      </select>
-                      <ChevronDown className="w-3 h-3 text-gray-400 absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    </div>
-                    {/* 방향: 박스 없이 화살표 아이콘만 — 회색, 선택된 방향은 파랑. 호버 시 title 말풍선 */}
-                    <div className="flex items-center gap-0.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => updateSortRule(type, r.id, { dir: 'asc' })}
-                        title="오름차순"
-                        className={`p-0.5 rounded transition-colors ${r.dir === 'asc' ? 'text-hansl-500' : 'text-gray-400 hover:text-gray-600'}`}
-                      >
-                        <ArrowUp className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateSortRule(type, r.id, { dir: 'desc' })}
-                        title="내림차순"
-                        className={`p-0.5 rounded transition-colors ${r.dir === 'desc' ? 'text-hansl-500' : 'text-gray-400 hover:text-gray-600'}`}
-                      >
-                        <ArrowDown className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeSortRule(type, r.id)}
-                      title="이 정렬 제거"
-                      className="hansl-close-btn shrink-0 ml-auto"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <div className="px-2 pb-2 pt-1 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => addSortRule(type)}
-                  disabled={rules.length >= fields.length}
-                  className="w-full flex items-center justify-center gap-1 py-1 rounded border border-dashed border-gray-300 text-[11px] text-gray-500 hover:bg-gray-50 hover:text-hansl-500 hover:border-hansl-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-500 disabled:hover:border-gray-300"
-                >
-                  <Plus className="w-3 h-3" /> 정렬 추가
-                </button>
-              </div>
-            </div>
-            </AnchoredPortal>
-          </>
-        )}
-      </div>
-    )
-  }
-
-  // 칼럼 표시 설정 드롭다운 — 발주 목록의 '칼럼 설정'과 같은 개념이되, 적용 버튼 없이 클릭 즉시 반영 + 자동 저장.
-  // PCB는 업무 단계 섹션 3개(구분선)로 나뉘고, 섹션 제목 옆 버튼으로 섹션 전체를 한번에 숨기기/표시할 수 있다.
-  const renderColumnMenu = (type: 'pcb' | 'cable') => {
-    const sections = HIDEABLE_SECTIONS[type]
-    const total = hideableFieldsFor(type).length
-    const hiddenCount = hiddenCols[type].length
-    const open = columnMenuFor === type
-    const adding = type === 'pcb' ? !!addingPcbRow : !!addingCableRow
-    return (
-      <div className="relative">
-        <button
-          type="button"
-          onClick={(e) => { setMenuAnchorEl(e.currentTarget as HTMLElement); setColumnMenuFor(prev => (prev === type ? null : type)) }}
-          title="표시할 칼럼 선택"
-          className="hansl-btn"
-        >
-          <SlidersHorizontal className="w-3.5 h-3.5" />
-          <span className="button-text">칼럼</span>
-          {hiddenCount > 0 && (
-            <span className="text-[10px] font-bold text-hansl-500">{total - hiddenCount}/{total}</span>
-          )}
-        </button>
-        {open && (
-          <>
-            {/* 바깥 클릭 시 닫힘 */}
-            <div className="fixed inset-0 z-[9998]" onMouseDown={() => setColumnMenuFor(null)} />
-            {/* body 포털로 띄워 카드 overflow-hidden에 잘리지 않게 한다 (버튼 우측 정렬) */}
-            <AnchoredPortal anchorEl={menuAnchorEl} align="right" gap={4}>
-            <div className="hansl-popover pb-2 w-[380px]">
-              <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
-                <span className="text-[11px] font-semibold text-gray-700">
-                  칼럼 표시 설정 <span className="text-gray-400 font-normal">({total - hiddenCount}/{total})</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => resetHiddenCols(type)}
-                  className="hansl-mini-btn hover:text-gray-800"
-                  title="숨긴 칼럼을 모두 다시 표시"
-                >
-                  <RotateCcw className="w-2.5 h-2.5" />
-                  전체 표시
-                </button>
-              </div>
-              <div className="max-h-[60vh] overflow-y-auto px-3 pt-2">
-                {sections.map((sec, si) => {
-                  const secFields = sec.groups.flatMap(g => g.fields)
-                  const allHidden = secFields.every(f => hiddenCols[type].includes(f))
-                  return (
-                    <div key={si} className={si > 0 ? 'border-t-2 border-gray-200 mt-2.5 pt-2' : ''}>
-                      {sec.title && (
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-bold text-gray-600">{sec.title}</span>
-                          <button
-                            type="button"
-                            onClick={() => setSectionHidden(type, secFields, !allHidden)}
-                            className={`text-[9px] font-medium border rounded px-1.5 py-0.5 transition-colors flex items-center gap-1 ${
-                              allHidden
-                                ? 'text-hansl-500 border-blue-200 bg-blue-50 hover:bg-blue-100'
-                                : 'text-gray-500 border-gray-200 bg-gray-50 hover:bg-gray-100 hover:text-gray-800'
-                            }`}
-                            title={allHidden ? '이 구간의 칼럼을 모두 표시' : '이 구간의 칼럼을 모두 숨기기'}
-                          >
-                            {allHidden ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
-                            {allHidden ? '모두 표시' : '모두 숨기기'}
-                          </button>
-                        </div>
-                      )}
-                      <div className="space-y-2">
-                        {sec.groups.map(g => (
-                          <div key={g.title}>
-                            <div className="text-[9px] font-bold text-gray-400 mb-0.5">{g.title}</div>
-                            <div className="grid grid-cols-2 gap-x-2">
-                              {g.fields.map(f => {
-                                const hidden = hiddenCols[type].includes(f)
-                                return (
-                                  <button
-                                    key={f}
-                                    type="button"
-                                    onClick={() => toggleHiddenCol(type, f)}
-                                    className={`flex items-center gap-1.5 py-1 px-1 rounded text-left hover:bg-gray-50 transition-colors ${hidden ? 'text-gray-400' : 'text-gray-700'}`}
-                                  >
-                                    {hidden
-                                      ? <EyeOff className="w-3 h-3 text-gray-300 shrink-0" />
-                                      : <Eye className="w-3 h-3 text-hansl-500 shrink-0" />}
-                                    <span className="text-[11px] truncate">{getColumnTitle(f, type)}</span>
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-              {adding && (
-                <div className="px-3 pt-2 mt-1.5 text-[9px] text-amber-600 border-t border-gray-100">
-                  행 추가 중에는 입력 누락 방지를 위해 모든 칼럼이 임시로 표시됩니다.
-                </div>
-              )}
-            </div>
-            </AnchoredPortal>
-          </>
-        )}
-      </div>
-    )
-  }
-
   const showPcbTable = (tableView === 'all' || tableView === 'pcb') && pcbFilter.categories.length > 0
   const showCableTable = (tableView === 'all' || tableView === 'cable') && cableFilter.categories.length > 0
-
-  // 테이블별 필터 툴바 (노션식 규칙 필터 + 제작구분 칩) — PCB/Cable 동일 마크업
-  // 규칙 = [칼럼 ▾][조건 ▾][값 | 년 ▾ 월 ▾][×] 이며 노션처럼 추가/수정/제거 가능.
-  // 기본 규칙(입고대기 + 요청일 현재년도)도 일반 규칙이라 X로 제거할 수 있다.
-  const renderFilterToolbar = (type: 'pcb' | 'cable') => {
-    const f = filterFor(type)
-    const tableCats = type === 'pcb' ? PCB_CATEGORIES : CABLE_CATEGORIES
-    const orderedCats = categoryOrder.filter(c => tableCats.includes(c))
-    // 조건(규칙)/제작구분 섹션별 '저장됨' 상태 — 서로 독립
-    const rulesSaved = filterHasSaved[type].rules && !filterDirty[type].rules
-    const catsSaved = filterHasSaved[type].cats && !filterDirty[type].cats
-    // 이 표의 저장 필터 목록 + 시작 기본값 설정 여부
-    const savedViewsForType = filterViewsConfig.views.filter(v => v.scope === type)
-    const hasDefaultForType = !!filterViewsConfig.defaults[type]
-    // 필터를 걸 수 있는 칼럼 = 그 테이블의 모든 칼럼
-    const filterableFields = Object.keys(MIN_COLUMN_WIDTH[type])
-    // 브라우저 기본 select 외형(테두리/패딩/화살표/포커스링)을 완전히 제거 — 알약 안에서 텍스트처럼 보이게
-    const selectClass = 'hansl-pill-select'
-    const selectStyle: React.CSSProperties = {
-      WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none',
-      border: 'none', padding: 0, margin: 0, background: 'none', outline: 'none',
-    }
-    // 네이티브 select는 '가장 긴 옵션' 폭으로 벌어지므로, 현재 선택된 라벨 실측 폭으로 고정한다
-    const fitSelect = (label: string, weight = 400): React.CSSProperties => ({
-      ...selectStyle,
-      width: `${Math.ceil(measureText(label, weight)) + 6}px`,
-    })
-
-    // 칼럼 변경 시 새 칼럼이 지원하는 조건으로 보정 (date_in이면 년/월 초기화)
-    // op별 기본 value 계산 (status_is면 해당 칼럼의 첫 상태코드, 포함류면 기존/빈 문자열)
-    const valueForOp = (field: string, op: FilterOp, prev?: string): string | undefined => {
-      if (op === 'status_is') {
-        const opts = filterStatusOptionsFor(field)
-        return prev && opts.some(o => o.code === prev) ? prev : opts[0].code
-      }
-      if (op === 'contains' || op === 'not_contains') return prev ?? ''
-      return undefined
-    }
-    const changeRuleField = (rule: FilterRule, field: string) => {
-      const ops = opsForField(field)
-      // ARTWORK/부품정리로 바꾸면 기본은 상태 선택, 그 외엔 호환되는 기존 조건 유지
-      const op = STATUS_FIELDS.includes(field) ? 'status_is' : (ops.includes(rule.op) ? rule.op : ops[0])
-      updateRule(type, rule.id, {
-        field,
-        op,
-        value: valueForOp(field, op, rule.value),
-        year: op === 'date_in' ? new Date().getFullYear() : null,
-        month: op === 'date_in' ? null : null,
-      })
-    }
-    const changeRuleOp = (rule: FilterRule, op: FilterOp) => {
-      updateRule(type, rule.id, {
-        op,
-        value: valueForOp(rule.field, op, rule.value),
-        year: op === 'date_in' ? (rule.year ?? new Date().getFullYear()) : null,
-        month: op === 'date_in' ? (rule.month ?? null) : null,
-      })
-    }
-
-    return (
-      <>
-        {/* Row A: 필터 규칙 (노션식 추가/수정/제거) */}
-        <div className="grid grid-cols-[75px_575px_auto] items-center gap-2 pt-2 border-t border-gray-100">
-          <span className="hansl-filter-row-label">
-            <SlidersHorizontal className="w-3.5 h-3.5" /> 조건:
-          </span>
-          <div className="flex flex-wrap items-center gap-2">
-            {f.rules.map(rule => {
-              const ops = opsForField(rule.field)
-              const dataYears = yearsFor(type, rule.field)
-              const years = rule.year != null && !dataYears.includes(rule.year)
-                ? [rule.year, ...dataYears].sort((a, b) => b - a)
-                : dataYears
-              return (
-                <div
-                  key={rule.id}
-                  className="hansl-filter-pill"
-                >
-                  {/* 칼럼 선택 — 미선택 시 '칼럼 선택' 안내 문구를 보여주고, 고르기 전엔 조건/값 입력을 숨긴다 */}
-                  <select
-                    value={rule.field}
-                    onChange={(e) => changeRuleField(rule, e.target.value)}
-                    style={fitSelect(rule.field ? getColumnTitle(rule.field, type) : '칼럼 선택', 600)}
-                    className={`${selectClass} font-semibold ${rule.field ? '' : 'text-hansl-500'}`}
-                  >
-                    {!rule.field && <option value="" disabled>칼럼 선택</option>}
-                    {filterableFields.map(k => (
-                      <option key={k} value={k}>{getColumnTitle(k, type)}</option>
-                    ))}
-                  </select>
-                  {rule.field && (<>
-                  <span className="text-gray-300">·</span>
-                  {/* 조건 선택 */}
-                  <select
-                    value={rule.op}
-                    onChange={(e) => changeRuleOp(rule, e.target.value as FilterOp)}
-                    style={fitSelect(opLabelFor(rule.field, rule.op))}
-                    className={selectClass}
-                  >
-                    {ops.map(op => (
-                      <option key={op} value={op}>{opLabelFor(rule.field, op)}</option>
-                    ))}
-                  </select>
-                  {/* 조건별 값 입력: 상태 드롭다운(ARTWORK/부품정리) / 년/월 드롭다운 / 텍스트 */}
-                  {rule.op === 'status_is' && (
-                    <select
-                      value={rule.value ?? ''}
-                      onChange={(e) => updateRule(type, rule.id, { value: e.target.value })}
-                      style={fitSelect(filterStatusOptionsFor(rule.field).find(o => o.code === rule.value)?.label ?? '진행중', 700)}
-                      className={`${selectClass} text-hansl-500 font-bold`}
-                    >
-                      {filterStatusOptionsFor(rule.field).map(o => (
-                        <option key={o.code} value={o.code}>{o.label}</option>
-                      ))}
-                    </select>
-                  )}
-                  {rule.op === 'date_in' && (
-                    <>
-                      <select
-                        value={rule.year ?? ''}
-                        onChange={(e) => updateRule(type, rule.id, { year: e.target.value === '' ? null : Number(e.target.value) })}
-                        style={fitSelect(rule.year != null ? `${rule.year}년` : '전체년도', 700)}
-                        className={`${selectClass} text-hansl-500 font-bold`}
-                      >
-                        <option value="">전체년도</option>
-                        {years.map(y => (
-                          <option key={y} value={y}>{y}년</option>
-                        ))}
-                      </select>
-                      <select
-                        value={rule.month ?? ''}
-                        onChange={(e) => updateRule(type, rule.id, { month: e.target.value === '' ? null : Number(e.target.value) })}
-                        style={fitSelect(rule.month != null ? `${rule.month}월` : '전체월', 700)}
-                        className={`${selectClass} text-hansl-500 font-bold`}
-                      >
-                        <option value="">전체월</option>
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(m => (
-                          <option key={m} value={m}>{m}월</option>
-                        ))}
-                      </select>
-                    </>
-                  )}
-                  {(rule.op === 'contains' || rule.op === 'not_contains') && (
-                    <input
-                      type="text"
-                      value={rule.value ?? ''}
-                      onChange={(e) => updateRule(type, rule.id, { value: e.target.value })}
-                      placeholder="값"
-                      // 전역 input 기본 스타일(테두리 박스/포커스 아웃라인) 무력화 — 알약 안에서 밑줄 입력처럼 보이게
-                      className="hansl-pill-input"
-                      style={{ border: 'none', borderBottom: '1px solid #d1d5db', boxShadow: 'none', background: 'none', outline: 'none' }}
-                    />
-                  )}
-                  </>)}
-                  {/* 규칙 제거 */}
-                  <button
-                    type="button"
-                    onClick={() => removeRule(type, rule.id)}
-                    title="이 필터 제거"
-                    className="hansl-close-btn"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              )
-            })}
-            {/* 규칙 추가 */}
-            <button
-              type="button"
-              onClick={() => addRule(type)}
-              className="hansl-chip-add"
-            >
-              <Plus className="w-3 h-3" /> 필터
-            </button>
-          </div>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            {/* 저장된 필터(사용자별·장치 간 동기화) — 불러오기·저장·기본값 설정 */}
-            <button
-              type="button"
-              onClick={(e) => {
-                setNamingViewFor(null); setNewViewName('')
-                if (viewsMenuFor === type) { setViewsMenuFor(null); setViewsAnchor(null) }
-                else { setViewsMenuFor(type); setViewsAnchor(e.currentTarget) }
-              }}
-              className={`hansl-pill-btn ${
-                viewsMenuFor === type
-                  ? 'hansl-pill-btn-on'
-                  : 'hansl-pill-btn-off'
-              }`}
-              title="저장된 필터 불러오기·저장"
-            >
-              <Bookmark className="w-3 h-3" />
-              저장된 필터
-              {savedViewsForType.length > 0 && (
-                <span className="text-[9px] text-gray-400">({savedViewsForType.length})</span>
-              )}
-              <ChevronDown className="w-3 h-3" />
-            </button>
-            <div className="h-4 w-px bg-gray-300 mx-1.5" />
-            <button
-              type="button"
-              onClick={() => saveRulesFilter(type)}
-              className={`p-1 rounded-md transition-colors ${
-                rulesSaved
-                  ? 'text-hansl-500 hover:bg-blue-50'
-                  : 'text-gray-500 hover:bg-gray-100 hover:text-blue-600'
-              }`}
-              title={rulesSaved ? '조건 필터 저장됨' : '조건 필터 저장'}
-            >
-              <FilterSaveIcon saved={rulesSaved} />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleResetRules(type)}
-              className="hansl-icon-btn hover:bg-gray-100 hover:text-red-600"
-              title="기본 필터로 초기화"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Row B: 제작구분 칩 */}
-        <div className="grid grid-cols-[75px_575px_auto] items-center gap-2 pt-2 border-t border-gray-100">
-          <span className="hansl-filter-row-label">
-            <Filter className="w-3.5 h-3.5" /> 제작구분:
-          </span>
-          <div
-            ref={chipRefFor(type)}
-            className="flex flex-wrap items-center gap-2 select-none"
-          >
-            {orderedCats.map((cat, i) => {
-              const isSelected = f.categories.includes(cat)
-              const showLeftBar = dropIndex?.type === type && dropIndex.index === i
-              const showRightBar = dropIndex?.type === type && dropIndex.index === orderedCats.length && i === orderedCats.length - 1
-              return (
-                <button
-                  key={cat}
-                  data-cat={cat}
-                  type="button"
-                  onPointerDown={(e) => handleChipPointerDown(e, cat, type)}
-                  title="드래그하여 그룹 순서 변경 · 클릭하여 표시 여부 전환"
-                  style={{
-                    touchAction: 'none',
-                    ...(showLeftBar ? { boxShadow: '-3px 0 0 0 #2563eb' }
-                      : showRightBar ? { boxShadow: '3px 0 0 0 #2563eb' }
-                      : {})
-                  }}
-                  className={`badge-stats cursor-grab active:cursor-grabbing border transition-all ${
-                    dragCat === cat ? 'opacity-40' : ''
-                  } ${
-                    isSelected
-                      ? 'hansl-chip-on'
-                      : 'hansl-chip-off'
-                  }`}
-                >
-                  {cat}
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            <div className="h-4 w-px bg-gray-300 mx-1.5" />
-            <button
-              type="button"
-              onClick={() => saveCategoryFilter(type)}
-              className={`p-1 rounded-md transition-colors ${
-                catsSaved
-                  ? 'text-hansl-500 hover:bg-blue-50'
-                  : 'text-gray-500 hover:bg-gray-100 hover:text-blue-600'
-              }`}
-              title={catsSaved ? '제작구분 필터 저장됨' : '제작구분 필터 저장'}
-            >
-              <FilterSaveIcon saved={catsSaved} />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleResetCategoryFilter(type)}
-              className="hansl-icon-btn hover:bg-gray-100 hover:text-red-600"
-              title="초기화"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* 저장된 필터 드롭다운 — document.body로 포털해 카드 overflow에 잘리지 않게 띄운다 */}
-        {viewsMenuFor === type && viewsAnchor && (
-          <>
-            <div className="fixed inset-0 z-[9998]" onMouseDown={() => { setViewsMenuFor(null); setViewsAnchor(null); setNamingViewFor(null) }} />
-            <AnchoredPortal anchorEl={viewsAnchor} align="right" zIndex={9999}>
-              <div className="hansl-popover rounded-lg py-1 w-[260px] text-[11px]" onMouseDown={(e) => e.stopPropagation()}>
-                {/* 액션: 현재 필터 저장 / 기본값으로 저장 */}
-                {namingViewFor === type ? (
-                  // 인라인 이름 입력 — 클릭 즉시 모달 대신 이 입력창에서 이름을 정한다
-                  <div className="flex items-center gap-1 px-2 py-1.5">
-                    <input
-                      autoFocus
-                      type="text"
-                      value={newViewName}
-                      onChange={(e) => setNewViewName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') { e.preventDefault(); commitSaveView(type) }
-                        else if (e.key === 'Escape') { setNamingViewFor(null); setNewViewName('') }
-                      }}
-                      placeholder="필터 이름 입력 후 Enter"
-                      className="flex-1 min-w-0 h-[24px] px-2 text-[11px] border border-gray-300 rounded focus:outline-none focus:border-hansl-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => commitSaveView(type)}
-                      disabled={!newViewName.trim()}
-                      className="shrink-0 px-2 h-[24px] rounded text-[11px] text-white bg-hansl-500 hover:bg-hansl-600 disabled:bg-gray-300 transition-colors"
-                    >
-                      저장
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setNamingViewFor(null); setNewViewName('') }}
-                      className="shrink-0 p-1 rounded text-gray-400 hover:text-gray-600"
-                      title="취소"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => { setNamingViewFor(type); setNewViewName('') }}
-                    className="hansl-menu-item"
-                  >
-                    <Bookmark className="w-3.5 h-3.5 text-hansl-500" /> 현재 필터를 이름 붙여 저장
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => { handleSetDefault(type); setViewsMenuFor(null); setViewsAnchor(null) }}
-                  className="hansl-menu-item"
-                >
-                  <Star className="w-3.5 h-3.5 text-amber-500" /> 현재 필터를 시작 기본값으로
-                </button>
-                {hasDefaultForType && (
-                  <button
-                    type="button"
-                    onClick={() => { handleClearDefault(type); setViewsMenuFor(null); setViewsAnchor(null) }}
-                    className="hansl-menu-item text-gray-500"
-                  >
-                    <X className="w-3.5 h-3.5" /> 시작 기본값 해제
-                  </button>
-                )}
-
-                <div className="my-1 border-t border-gray-100" />
-                <div className="px-3 py-1 text-[9px] font-semibold text-gray-400 uppercase">
-                  저장된 필터 {savedViewsForType.length > 0 && `(${savedViewsForType.length})`}
-                </div>
-                {savedViewsForType.length === 0 ? (
-                  <div className="px-3 py-2 text-[10px] text-gray-400">저장된 필터가 없습니다.</div>
-                ) : (
-                  <div className="max-h-[240px] overflow-y-auto">
-                    {savedViewsForType.map(v => (
-                      <div key={v.id} className="group flex items-center gap-1 px-2 py-1 hover:bg-gray-50 transition-colors">
-                        <button
-                          type="button"
-                          onClick={() => handleApplyView(v.id)}
-                          className="flex-1 flex items-center gap-1.5 min-w-0 text-left text-gray-700"
-                          title="이 필터 적용"
-                        >
-                          <Check className="w-3 h-3 text-gray-300 shrink-0" />
-                          <span className="truncate">{v.name}</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRenameView(v.id, v.name)}
-                          className="p-0.5 rounded text-gray-400 hover:text-hansl-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="이름 변경"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteView(v.id, v.name)}
-                          className="p-0.5 rounded text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="삭제"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </AnchoredPortal>
-          </>
-        )}
-      </>
-    )
-  }
 
 
   return (
@@ -4906,7 +4219,41 @@ export default function ProductionListMain() {
           </div>
         </div>
 
-        {renderFilterToolbar('pcb')}
+        <ProductionFilterToolbar
+          type="pcb"
+          filterFor={filterFor}
+          categoryOrder={categoryOrder}
+          filterHasSaved={filterHasSaved}
+          filterDirty={filterDirty}
+          filterViewsConfig={filterViewsConfig}
+          getColumnTitle={getColumnTitle}
+          yearsFor={yearsFor}
+          addRule={addRule}
+          updateRule={updateRule}
+          removeRule={removeRule}
+          saveRulesFilter={saveRulesFilter}
+          handleResetRules={handleResetRules}
+          saveCategoryFilter={saveCategoryFilter}
+          handleResetCategoryFilter={handleResetCategoryFilter}
+          chipRefFor={chipRefFor}
+          dragCat={dragCat}
+          dropIndex={dropIndex}
+          handleChipPointerDown={handleChipPointerDown}
+          viewsMenuFor={viewsMenuFor}
+          setViewsMenuFor={setViewsMenuFor}
+          viewsAnchor={viewsAnchor}
+          setViewsAnchor={setViewsAnchor}
+          namingViewFor={namingViewFor}
+          setNamingViewFor={setNamingViewFor}
+          newViewName={newViewName}
+          setNewViewName={setNewViewName}
+          commitSaveView={commitSaveView}
+          handleSetDefault={handleSetDefault}
+          handleClearDefault={handleClearDefault}
+          handleApplyView={handleApplyView}
+          handleRenameView={handleRenameView}
+          handleDeleteView={handleDeleteView}
+        />
         </div>
         )}
       </div>
@@ -4924,10 +4271,35 @@ export default function ProductionListMain() {
                 <span className="hansl-count-badge">
                   {filteredPcbs.length}건
                 </span>
-                {renderSortControl('pcb')}
+                <ProductionSortControl
+                  type="pcb"
+                  sortFor={sortFor}
+                  sortMenuFor={sortMenuFor}
+                  setSortMenuFor={setSortMenuFor}
+                  menuAnchorEl={menuAnchorEl}
+                  setMenuAnchorEl={setMenuAnchorEl}
+                  addSortRule={addSortRule}
+                  updateSortRule={updateSortRule}
+                  removeSortRule={removeSortRule}
+                  clearSort={clearSort}
+                  getColumnTitle={getColumnTitle}
+                />
               </div>
               <div className="flex items-center gap-2">
-                {renderColumnMenu('pcb')}
+                <ProductionColumnMenu
+                  type="pcb"
+                  hiddenCols={hiddenCols}
+                  columnMenuFor={columnMenuFor}
+                  setColumnMenuFor={setColumnMenuFor}
+                  menuAnchorEl={menuAnchorEl}
+                  setMenuAnchorEl={setMenuAnchorEl}
+                  addingPcbRow={addingPcbRow}
+                  addingCableRow={addingCableRow}
+                  toggleHiddenCol={toggleHiddenCol}
+                  resetHiddenCols={resetHiddenCols}
+                  setSectionHidden={setSectionHidden}
+                  getColumnTitle={getColumnTitle}
+                />
                 <button
                   type="button"
                   onClick={() => handleExportExcel('pcb')}
@@ -5442,7 +4814,41 @@ export default function ProductionListMain() {
                   </div>
                 </div>
 
-                {renderFilterToolbar('cable')}
+                <ProductionFilterToolbar
+                  type="cable"
+                  filterFor={filterFor}
+                  categoryOrder={categoryOrder}
+                  filterHasSaved={filterHasSaved}
+                  filterDirty={filterDirty}
+                  filterViewsConfig={filterViewsConfig}
+                  getColumnTitle={getColumnTitle}
+                  yearsFor={yearsFor}
+                  addRule={addRule}
+                  updateRule={updateRule}
+                  removeRule={removeRule}
+                  saveRulesFilter={saveRulesFilter}
+                  handleResetRules={handleResetRules}
+                  saveCategoryFilter={saveCategoryFilter}
+                  handleResetCategoryFilter={handleResetCategoryFilter}
+                  chipRefFor={chipRefFor}
+                  dragCat={dragCat}
+                  dropIndex={dropIndex}
+                  handleChipPointerDown={handleChipPointerDown}
+                  viewsMenuFor={viewsMenuFor}
+                  setViewsMenuFor={setViewsMenuFor}
+                  viewsAnchor={viewsAnchor}
+                  setViewsAnchor={setViewsAnchor}
+                  namingViewFor={namingViewFor}
+                  setNamingViewFor={setNamingViewFor}
+                  newViewName={newViewName}
+                  setNewViewName={setNewViewName}
+                  commitSaveView={commitSaveView}
+                  handleSetDefault={handleSetDefault}
+                  handleClearDefault={handleClearDefault}
+                  handleApplyView={handleApplyView}
+                  handleRenameView={handleRenameView}
+                  handleDeleteView={handleDeleteView}
+                />
               </div>
             )}
 
@@ -5452,10 +4858,35 @@ export default function ProductionListMain() {
                 <span className="hansl-count-badge">
                   {filteredCables.length}건
                 </span>
-                {renderSortControl('cable')}
+                <ProductionSortControl
+                  type="cable"
+                  sortFor={sortFor}
+                  sortMenuFor={sortMenuFor}
+                  setSortMenuFor={setSortMenuFor}
+                  menuAnchorEl={menuAnchorEl}
+                  setMenuAnchorEl={setMenuAnchorEl}
+                  addSortRule={addSortRule}
+                  updateSortRule={updateSortRule}
+                  removeSortRule={removeSortRule}
+                  clearSort={clearSort}
+                  getColumnTitle={getColumnTitle}
+                />
               </div>
               <div className="flex items-center gap-2">
-                {renderColumnMenu('cable')}
+                <ProductionColumnMenu
+                  type="cable"
+                  hiddenCols={hiddenCols}
+                  columnMenuFor={columnMenuFor}
+                  setColumnMenuFor={setColumnMenuFor}
+                  menuAnchorEl={menuAnchorEl}
+                  setMenuAnchorEl={setMenuAnchorEl}
+                  addingPcbRow={addingPcbRow}
+                  addingCableRow={addingCableRow}
+                  toggleHiddenCol={toggleHiddenCol}
+                  resetHiddenCols={resetHiddenCols}
+                  setSectionHidden={setSectionHidden}
+                  getColumnTitle={getColumnTitle}
+                />
                 <button
                   type="button"
                   onClick={() => handleExportExcel('cable')}
