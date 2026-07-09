@@ -1,37 +1,35 @@
 
-import { useState, lazy, Suspense, useEffect, useCallback, useMemo, useTransition, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { usePurchaseMemory } from "@/hooks/usePurchaseMemory";
 import { useServerSearch } from "@/hooks/useServerSearch";
 import { useColumnSettings } from "@/hooks/useColumnSettings";
-import ColumnSettingsDropdown from "@/components/purchase/ColumnSettingsDropdown";
-import FastPurchaseTable from "@/components/purchase/FastPurchaseTable";
-import FilterToolbar, { FilterRule, SortRule } from "@/components/purchase/FilterToolbar";
+import { usePurchaseTableFilters } from "@/hooks/usePurchaseTableFilters";
+import { usePurchaseSortRules } from "@/hooks/usePurchaseSortRules";
+import PurchaseCompactTable from "@/components/purchase/PurchaseCompactTable";
+import PurchaseFilterToolbar from "@/components/purchase/PurchaseFilterToolbar";
+import PurchaseSortControl from "@/components/purchase/PurchaseSortControl";
+import PurchaseColumnMenu from "@/components/purchase/PurchaseColumnMenu";
+import PurchaseMonthlySummary from "@/components/purchase/PurchaseMonthlySummary";
 import { updatePurchaseInMemory, loadAllPurchaseData } from "@/services/purchaseDataLoader";
-import { markPurchaseAsPaymentCompleted, markPurchaseAsReceived, isCacheValid, purchaseMemoryCache } from '@/stores/purchaseMemoryStore';
+import { isCacheValid, purchaseMemoryCache } from '@/stores/purchaseMemoryStore';
 import DeliveryDateWarningModal, { useDeliveryWarningCount } from "@/components/purchase/DeliveryDateWarningModal";
-
-import { Package, Info, AlertTriangle, Search } from "lucide-react";
-import { downloadPurchaseOrderExcel } from '@/utils/excelDownload';
-
-// Lazy load modal for better performance
-const PurchaseItemsModal = lazy(() => import("@/components/purchase/PurchaseItemsModal"));
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Package, AlertTriangle, Search, Filter, ChevronDown, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { parseRoles } from '@/utils/roleHelper';
 import { createClient } from "@/lib/supabase/client";
-import { toast } from "sonner";
-import { Purchase, PurchaseRequestItem } from "@/types/purchase";
-import { hasManagerRole, getRoleCase, filterByEmployeeVisibility } from "@/utils/roleHelper";
-import { filterByEmployee, sortPurchases, calculateTabCounts } from "@/utils/purchaseFilters";
+import { Purchase } from "@/types/purchase";
+import { parseRoles, getRoleCase, filterByEmployeeVisibility } from '@/utils/roleHelper';
+import { calculateTabCounts } from "@/utils/purchaseFilters";
+import { purchaseYearsFor, newPurchaseRuleId, PurchaseOptionsKey } from "@/utils/purchaseTableFilters";
+import { compareByPurchaseSortRules } from "@/utils/purchaseTableSort";
 import { logger } from "@/lib/logger";
 
 interface PurchaseListMainProps {
   showEmailButton?: boolean;
 }
 
-// 화면 상단의 탭(진행상태별) 목록
+// 화면 상단의 진행상태 뷰 버튼 목록 (기존 4탭 → 제작현황식 뷰 버튼)
 const NAV_TABS: { key: string; label: string }[] = [
   { key: 'pending', label: '승인대기' },
   { key: 'purchase', label: '구매 현황' },
@@ -39,115 +37,94 @@ const NAV_TABS: { key: string; label: string }[] = [
   { key: 'done', label: '전체 항목' },
 ];
 
-// 발주 목록 메인 컴포넌트
-export default function PurchaseListMain({ showEmailButton = true }: PurchaseListMainProps) {
+const FILTER_COLLAPSED_KEY = 'hansl_purchase_filter_collapsed';
+
+// 발주 목록 메인 컴포넌트 — 제작현황과 같은 테이블 형식(뷰 버튼 + 노션식 필터 카드 + 컴팩트 표).
+// 데이터 파이프라인(메모리 캐시·탭 필터·서버 폴백 검색·realtime)과 승인/상세 플로우는 기존 유지.
+export default function PurchaseListMain(_props: PurchaseListMainProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const supabase = createClient();
-  const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isWarningModalOpen, setIsWarningModalOpen] = useState(false);
   const hasShownWarningRef = useRef(false);
-  
+
   useEffect(() => {
     hasShownWarningRef.current = false;
   }, []);
-  
-  // 고급 필터 상태 관리
-  const [activeFilters, setActiveFilters] = useState<FilterRule[]>([]);
-  const [sortConfig, setSortConfig] = useState<SortRule | null>({
-    field: 'created_at',
-    direction: 'desc',
-    label: '생성일'
-  });
+
+  // 검색어 + 필터 옵션 데이터
   const [searchTerm, setSearchTerm] = useState('');
   const [availableEmployees, setAvailableEmployees] = useState<string[]>([]);
   const [availableVendors, setAvailableVendors] = useState<string[]>([]);
-  const [vendorAliasMap, setVendorAliasMap] = useState<Record<string, string>>({});
   const [availableContacts, setAvailableContacts] = useState<string[]>([]);
   const [availablePaymentSchedules, setAvailablePaymentSchedules] = useState<string[]>([]);
-  
+
   // 발주 데이터 및 사용자 정보
   const {
     allPurchases: purchases,
     loading,
     currentUser,
     getFilteredPurchases,
-    tabCounts
   } = usePurchaseMemory();
-  
-  // 칼럼 가시성 설정
-  const { columnVisibility, isLoading: isColumnLoading, applyColumnSettings, resetToDefault } = useColumnSettings();
-  
-  // 숨겨진 칼럼이 있는지 확인
-  const hasHiddenColumns = useMemo(() => {
-    if (!columnVisibility) return false;
-    return Object.values(columnVisibility).some(visible => !visible);
-  }, [columnVisibility]);
-  
-  
-  const currentUserRoles = useMemo(() => parseRoles(currentUser?.roles), [currentUser?.roles])
-  
+
+  // 칼럼 가시성 설정 (DB 저장 — 기기 간 동기화)
+  const { columnVisibility, toggleColumn, resetToDefault } = useColumnSettings();
+
+  const currentUserRoles = useMemo(() => parseRoles(currentUser?.roles), [currentUser?.roles]);
   const currentUserName = currentUser?.name || null;
-  
-  // 강제 리렌더링을 위한 더미 상태
-  const [refreshTrigger, setRefreshTrigger] = useState(0)
-  
-  // 탭 카운트를 별도 state로 관리하여 0으로 리셋되는 것 방지
-  const [cachedTabCounts, setCachedTabCounts] = useState({ 
-    pending: 0, 
-    purchase: 0, 
-    receipt: 0, 
-    done: 0 
-  })
-  
-  // 메모리 캐시 기반 강제 새로고침
-  const loadPurchases = useCallback(async () => {
-    logger.debug('🔄 [loadPurchases] 강제 새로고침 트리거')
-    setRefreshTrigger(prev => prev + 1)
+
+  // 노션식 필터 규칙 + 저장뷰 / 다중 정렬
+  const dynamicOptions: Partial<Record<PurchaseOptionsKey, string[]>> = useMemo(() => ({
+    employees: availableEmployees,
+    vendors: availableVendors,
+    contacts: availableContacts,
+    paymentSchedules: availablePaymentSchedules,
+  }), [availableEmployees, availableVendors, availableContacts, availablePaymentSchedules]);
+
+  const tableFilters = usePurchaseTableFilters(dynamicOptions);
+  const { sortRules, addSortRule, updateSortRule, removeSortRule, clearSort } = usePurchaseSortRules();
+
+  // 필터 카드 여닫기 (제작현황과 동일하게 localStorage에 기억)
+  const [filterCollapsed, setFilterCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem(FILTER_COLLAPSED_KEY) !== '0' } catch { return true }
+  });
+  const toggleFilterCollapsed = useCallback(() => {
+    setFilterCollapsed(prev => {
+      const next = !prev;
+      try { localStorage.setItem(FILTER_COLLAPSED_KEY, next ? '1' : '0') } catch { /* 무시 */ }
+      return next;
+    });
   }, []);
-  
+
+  // 강제 리렌더링 트리거 (메모리 캐시 갱신 후 UI 반영용)
+  const [, setRefreshTrigger] = useState(0);
+  const loadPurchases = useCallback(async () => {
+    setRefreshTrigger(prev => prev + 1);
+  }, []);
+
   // Optimistic Update: 메모리 캐시 즉시 업데이트
   const updatePurchaseOptimistic = useCallback((purchaseId: number, updater: (prev: Purchase) => Purchase) => {
-    updatePurchaseInMemory(purchaseId, updater)
+    updatePurchaseInMemory(purchaseId, updater);
   }, []);
-  
-  const isAdmin = currentUserRoles?.includes('superadmin');
-  
-  // roleCase 계산 (탭별 기본 직원 필터용) - 먼저 정의
-  const roleCase = useMemo(() => getRoleCase(currentUserRoles), [currentUserRoles]);
 
-  // 탭별 기본 직원 필터 계산 - 미리 계산하여 성능 최적화
+  // 탭별 기본 직원 필터 (권한별 본인/전체)
+  const roleCase = useMemo(() => getRoleCase(currentUserRoles), [currentUserRoles]);
   const defaultEmployeeByTab = useMemo(() => {
-    // currentUserName이 없으면 기본값 반환
     if (!currentUserName) {
-      logger.warn('[defaultEmployeeByTab] currentUserName이 없음', {
-        currentUser,
-        currentUserRoles
-      });
       return { pending: 'all', purchase: 'all', receipt: 'all', done: 'all' };
     }
-    
-    // 관리자 권한 체크
-    const hasHrRole = currentUserRoles.includes('hr');
-    const hasPurchaseManagerRole = currentUserRoles.includes('purchase_manager');
-    const hasManagerRole = currentUserRoles.some((role: string) => 
+    const hasManagerRole = currentUserRoles.some((role: string) =>
       ['superadmin', 'ceo', 'lead buyer', 'raw_material_manager', 'consumable_manager', 'purchase_manager', 'hr'].includes(role)
     );
-    
-    // 승인 권한자는 pending 탭에서 전체 항목을 봐야 함
     const hasApprovalRole = currentUserRoles.some((role: string) =>
       ['superadmin', 'ceo', 'middle_manager', 'final_approver', 'raw_material_manager', 'consumable_manager'].includes(role)
     );
-
-    const result = {
+    return {
       pending: hasApprovalRole ? 'all' : currentUserName,
       purchase: hasManagerRole ? 'all' : (roleCase === 3 ? 'all' : currentUserName),
-      receipt: 'all', // 입고현황은 요청자 고급필터로 제어
-      done: 'all' // 전체 항목 탭은 항상 모든 항목 표시
+      receipt: 'all', // 입고현황은 요청자 필터 규칙으로 제어
+      done: 'all',
     };
-    
-    return result;
   }, [currentUserName, roleCase, currentUserRoles]);
 
   // URL에서 초기 탭 확인
@@ -159,73 +136,28 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     }
     return 'pending';
   };
-
-  // 탭 상태 관리 - 초기값 설정
-  const initialTab = getInitialTab();
-  const [activeTab, setActiveTab] = useState(initialTab);
-  // selectedEmployee 초기값을 안전하게 설정
+  const [activeTab, setActiveTab] = useState(getInitialTab);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
-  const [isPending, startTransition] = useTransition();
 
-  // 권한별 필터링된 데이터 (메모리 캐시에서 가져옴)
+  // 권한별 필터링된 데이터 (입고 지연 경고용)
   const visiblePurchases = useMemo(() => {
     return filterByEmployeeVisibility(purchases, currentUserRoles);
   }, [purchases, currentUserRoles]);
 
-  // 입고 일정 경고 항목 수 계산 (본인 발주만)
+  // 입고 일정 경고 항목 수 계산 (본인 발주만) + 로딩 후 자동 팝업 (마운트당 1회)
   const deliveryWarningCount = useDeliveryWarningCount(visiblePurchases, currentUserName);
-  
-  // 로딩 완료 후 경고 모달 자동 표시 (마운트당 1회)
   useEffect(() => {
-    // 이미 표시했으면 무시
-    if (hasShownWarningRef.current) {
-      logger.debug('🔍 [입고지연알림] 이미 표시했으므로 스킵', {
-        hasShownWarning: hasShownWarningRef.current,
-        deliveryWarningCount,
-        loading,
-        visiblePurchasesLength: visiblePurchases.length
-      });
-      return;
-    }
-    
-    logger.debug('🔍 [입고지연알림] 모달 표시 조건 체크', {
-      loading,
-      deliveryWarningCount,
-      visiblePurchasesLength: visiblePurchases.length,
-      currentUserName,
-      shouldShow: !loading && deliveryWarningCount > 0 && visiblePurchases.length > 0
-    });
-    
+    if (hasShownWarningRef.current) return;
     if (!loading && deliveryWarningCount > 0 && visiblePurchases.length > 0) {
       const timer = setTimeout(() => {
         if (!hasShownWarningRef.current) {
           hasShownWarningRef.current = true;
-          logger.info('🔍 [입고지연알림] 모달 표시 트리거', {
-            deliveryWarningCount,
-            visiblePurchasesLength: visiblePurchases.length
-          });
           setIsWarningModalOpen(true);
         }
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [loading, deliveryWarningCount, visiblePurchases.length, currentUserName]);
-
-
-  // 초기 selectedEmployee 설정 (defaultEmployeeByTab이 계산된 후)
-  useEffect(() => {
-    if (defaultEmployeeByTab && currentUserName !== null) {
-      const initialEmployeeValue = defaultEmployeeByTab[activeTab as keyof typeof defaultEmployeeByTab];
-      if (initialEmployeeValue !== undefined) {
-        setSelectedEmployee(initialEmployeeValue);
-        logger.info('[초기 selectedEmployee 설정]', {
-          activeTab,
-          initialEmployeeValue,
-          defaultEmployeeByTab
-        });
-      }
-    }
-  }, []); // 최초 마운트 시에만 실행
+  }, [loading, deliveryWarningCount, visiblePurchases.length]);
 
   // URL 쿼리 파라미터 변경 시 탭 상태 동기화
   useEffect(() => {
@@ -239,330 +171,72 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
   // 탭 변경 또는 기본 직원 정보 로드 시 직원 필터 자동 설정
   useEffect(() => {
     const defaultEmp = defaultEmployeeByTab[activeTab as keyof typeof defaultEmployeeByTab];
-    // 'all'도 유효한 값이므로 undefined 체크만 수행
     if (defaultEmp !== undefined) {
       setSelectedEmployee(defaultEmp);
     }
   }, [activeTab, defaultEmployeeByTab]);
 
-  // 입고현황 탭 진입 시 비관리자는 요청자=본인 필터 자동 추가 (관리자는 전체)
+  // 입고현황 탭 진입 시 비관리자는 요청자=본인 필터 규칙 자동 추가 (관리자는 전체)
   useEffect(() => {
     if (activeTab !== 'receipt' || !currentUserName) return;
-
     const isReceiptFullAccess = currentUserRoles.some((role: string) =>
       ['superadmin', 'ceo', 'hr', 'raw_material_manager', 'consumable_manager', 'purchase_manager'].includes(role)
     );
     if (isReceiptFullAccess) return;
-
-    setActiveFilters(prev => {
-      // 함수형 업데이트 내부에서 최신 상태로 dedupe (Strict Mode double-invoke 방지)
+    tableFilters.setRules(prev => {
       if (prev.some(f => f.field === 'requester_name')) return prev;
-      return [...prev, {
-        id: `auto_requester_${Date.now()}`,
-        field: 'requester_name',
-        condition: 'equals',
-        value: currentUserName,
-        label: '요청자'
-      }];
+      return [...prev, { id: newPurchaseRuleId(), field: 'requester_name', op: 'equals', value: currentUserName }];
     });
-  }, [activeTab, currentUserName, currentUserRoles]);
+  }, [activeTab, currentUserName, currentUserRoles, tableFilters.setRules]);
 
   // 캐시 상태 확인 및 필요시 데이터 새로고침
   useEffect(() => {
     const checkAndRefreshCache = async () => {
-      // 캐시가 무효화되었거나 데이터가 없는 경우 새로고침
       if (!isCacheValid() || !purchaseMemoryCache.allPurchases) {
-        logger.info('🔄 [PurchaseListMain] 캐시 무효화 감지, 데이터 새로고침 중...', {
-          isCacheValid: isCacheValid(),
-          hasData: !!purchaseMemoryCache.allPurchases,
-          lastFetch: purchaseMemoryCache.lastFetch
-        });
-        
         try {
           await loadAllPurchaseData(currentUser?.id);
-          logger.info('✅ [PurchaseListMain] 데이터 새로고침 완료');
         } catch (error) {
           logger.error('❌ [PurchaseListMain] 데이터 새로고침 실패:', error);
         }
       }
     };
-    
     checkAndRefreshCache();
-  }, [currentUser?.id, location.key]); // 사용자 또는 화면 이동 시 체크
+  }, [currentUser?.id, location.key]);
 
-  // 필터 옵션 데이터 로드
+  // 필터 옵션 데이터 로드 (요청자/업체/담당자/지출예정일)
   useEffect(() => {
     const loadFilterOptions = async () => {
       try {
-        // 요청자 목록 (employees 테이블)
-        const { data: employees } = await supabase
-          .from('employees')
-          .select('name');
-        
+        const { data: employees } = await supabase.from('employees').select('name');
         if (employees) {
-          const employeeNames = [...new Set(employees.map((e: { name: string }) => e.name).filter(Boolean))];
-          setAvailableEmployees(employeeNames as string[]);
+          setAvailableEmployees([...new Set(employees.map((e: { name: string }) => e.name).filter(Boolean))] as string[]);
         }
-
-        // 업체 목록 (vendors 테이블) - vendor_alias도 검색 대상에 포함
-        const { data: vendors } = await supabase
-          .from('vendors')
-          .select('vendor_name, vendor_alias');
-
+        const { data: vendors } = await supabase.from('vendors').select('vendor_name, vendor_payment_schedule');
         if (vendors) {
-          const vendorNames = [...new Set(vendors.map((v: { vendor_name: string }) => v.vendor_name).filter(Boolean))];
-          setAvailableVendors(vendorNames as string[]);
-          // alias → vendor_name 매핑 (alias 검색 시 vendor_name으로 필터링)
-          const aliasMap: Record<string, string> = {};
-          vendors.forEach((v: { vendor_name: string; vendor_alias?: string }) => {
-            if (v.vendor_alias) {
-              aliasMap[v.vendor_alias.toLowerCase()] = v.vendor_name;
-            }
-          });
-          setVendorAliasMap(aliasMap);
+          setAvailableVendors([...new Set(vendors.map((v: { vendor_name: string }) => v.vendor_name).filter(Boolean))] as string[]);
+          setAvailablePaymentSchedules([...new Set(vendors.map((v: { vendor_payment_schedule?: string }) => v.vendor_payment_schedule).filter(Boolean))] as string[]);
         }
-
-        // 담당자 목록 (vendor_contacts 테이블)
-        const { data: contacts } = await supabase
-          .from('vendor_contacts')
-          .select('contact_name');
-        
+        const { data: contacts } = await supabase.from('vendor_contacts').select('contact_name');
         if (contacts) {
-          const contactNames = [...new Set(contacts.map((c: { contact_name: string }) => c.contact_name).filter(Boolean))];
-          setAvailableContacts(contactNames as string[]);
-        }
-
-        // 지출예정일 목록 (vendors 테이블의 vendor_payment_schedule)
-        const { data: schedules } = await supabase
-          .from('vendors')
-          .select('vendor_payment_schedule');
-        
-        if (schedules) {
-          const scheduleNames = [...new Set(schedules.map((s: { vendor_payment_schedule: string }) => s.vendor_payment_schedule).filter(Boolean))];
-          setAvailablePaymentSchedules(scheduleNames as string[]);
+          setAvailableContacts([...new Set(contacts.map((c: { contact_name: string }) => c.contact_name).filter(Boolean))] as string[]);
         }
       } catch (error) {
         logger.error('필터 옵션 데이터 로드 실패', error);
       }
     };
-
     loadFilterOptions();
   }, [supabase]);
 
-
-  // 상태에 따른 배지 생성 - 메모이제이션 적용
-  const getStatusBadge = useCallback((purchase: Purchase) => {
-    if (purchase.is_received) {
-      return <span className="badge-stats bg-green-500 text-white">입고완료</span>;
-    } else if (purchase.middle_manager_status === 'approved' && purchase.final_manager_status === 'approved') {
-      return <span className="badge-stats bg-blue-500 text-white">구매진행</span>;
-    } else if (purchase.middle_manager_status === 'rejected' || purchase.final_manager_status === 'rejected') {
-      return <span className="badge-stats bg-red-500 text-white">반려</span>;
-    } else {
-      return <span className="badge-stats bg-yellow-500 text-white">승인대기</span>;
-    }
-  }, []);
-
-  // 입고 현황 계산 
-  const getReceiptProgress = (purchase: Purchase) => {
-    if (!purchase.purchase_request_items || purchase.purchase_request_items.length === 0) {
-      return { received: 0, total: 0, percentage: 0 };
-    }
-    
-    const total = purchase.purchase_request_items.length;
-    const received = purchase.purchase_request_items.filter((item: PurchaseRequestItem) =>
-      item.is_received === true
-    ).length;
-    const percentage = total > 0 ? Math.round((received / total) * 100) : 0;
-    
-    return { received, total, percentage };
-  };
-  
-  // 구매 진행 상태 계산
-  const getPurchaseProgress = (purchase: Purchase) => {
-    if (!purchase.purchase_request_items || purchase.purchase_request_items.length === 0) {
-      return { completed: 0, total: 0, percentage: 0 };
-    }
-    
-    const total = purchase.purchase_request_items.length;
-    const completed = purchase.purchase_request_items.filter((item: PurchaseRequestItem) =>
-      item.is_payment_completed === true
-    ).length;
-    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
-    
-    return { completed, total, percentage };
-  };
-
-  // 선진행 체크 함수
-  const isAdvancePayment = (progress_type?: string) => {
-    return progress_type === '선진행' || progress_type?.trim() === '선진행' || progress_type?.includes('선진행');
-  };
-
-  // 필드 값 추출 함수 - useCallback으로 최적화
-  const getFieldValue = useCallback((purchase: Purchase, field: string): unknown => {
-    switch (field) {
-      case 'purchase_order_number':
-        return purchase.purchase_order_number;
-      case 'payment_category':
-        return purchase.payment_category;
-      case 'requester_name':
-        return purchase.requester_name;
-      case 'vendor_name':
-        return purchase.vendor_name;
-      case 'contact_name':
-        // vendor_contacts JOIN 필요 - 현재는 빈 값 반환
-        return '-'; // vendor_contacts JOIN 필요
-      case 'item_name':
-        return purchase.purchase_request_items?.[0]?.item_name || '';
-      case 'specification':
-        return purchase.purchase_request_items?.[0]?.specification || '';
-      case 'quantity':
-        return purchase.purchase_request_items?.[0]?.quantity || 0;
-      case 'unit_price_value':
-        return purchase.purchase_request_items?.[0]?.unit_price_value || 0;
-      case 'total_amount':
-        return purchase.total_amount;
-      case 'remark':
-        return purchase.purchase_request_items?.[0]?.remark || '';
-      case 'project_vendor':
-        return purchase.project_vendor;
-      case 'project_item':
-        return purchase.project_item;
-      case 'sales_order_number':
-        return purchase.sales_order_number;
-      case 'payment_schedule':
-        return purchase.vendor_payment_schedule || '';
-      case 'is_payment_completed':
-        // 전체 구매 완료 상태
-        return purchase.is_payment_completed ? '완료' : '대기';
-      case 'is_received':
-        // 전체 입고 완료 상태
-        return purchase.is_received ? '완료' : '대기';
-      case 'is_statement_received':
-        return purchase.is_statement_received ? '완료' : '대기';
-      case 'is_utk_checked':
-        return purchase.is_utk_checked ? '완료' : '대기';
-      case 'request_date':
-        return purchase.request_date;
-      case 'delivery_request_date':
-        return purchase.delivery_request_date;
-      case 'payment_completed_at':
-        return purchase.payment_completed_at;
-      case 'received_at':
-        return purchase.received_at;
-      case 'created_at':
-        return purchase.created_at;
-      case 'statement_received_at':
-        return purchase.purchase_request_items?.[0]?.statement_received_date || null;
-      default:
-        return null;
-    }
-  }, []);
-
-  // 필터 조건 적용 함수 - useCallback으로 최적화
-  const applyFilterCondition = useCallback((fieldValue: unknown, condition: string, filterValue: unknown, filterField?: string): boolean => {
-    if (fieldValue === null || fieldValue === undefined) {
-      return condition === 'is_empty';
-    }
-
-    // 날짜 범위 필터 특별 처리 (시작일~종료일)
-    if (filterField === 'date_range' && filterValue && typeof filterValue === 'string' && filterValue.includes('~')) {
-      if (!fieldValue) return false;
-
-      const [startDate, endDate] = filterValue.split('~');
-      const fieldDate = new Date(fieldValue as string);
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-
-      // 시작일과 종료일 포함하여 범위 내에 있는지 확인
-      return fieldDate >= start && fieldDate <= end;
-    }
-
-    // 월별 범위 필터 특별 처리 (시작월~종료월)
-    if (filterField === 'date_month' && filterValue && typeof filterValue === 'string' && filterValue.includes('~')) {
-      if (!fieldValue) return false;
-
-      const [startMonth, endMonth] = filterValue.split('~');
-      const fieldDate = new Date(fieldValue as string);
-      const start = new Date(`${startMonth}-01`);
-      const end = new Date(`${endMonth}-01`);
-
-      // 월 범위 비교 (해당 월의 마지막 날까지 포함)
-      const endOfMonth = new Date(end.getFullYear(), end.getMonth() + 1, 0, 23, 59, 59);
-      return fieldDate >= start && fieldDate <= endOfMonth;
-    }
-
-    // 월별 필터 특별 처리 (단일 월)
-    if (filterField && (filterField === 'date_month' || filterField.endsWith('_month'))) {
-      if (!filterValue) return true;
-
-      const fieldDate = new Date(fieldValue as string);
-      const filterValueStr = String(filterValue);
-      const [filterYear, filterMonth] = filterValueStr.split('-');
-
-      return fieldDate.getFullYear() === parseInt(filterYear) &&
-             (fieldDate.getMonth() + 1) === parseInt(filterMonth);
-    }
-
-    const fieldStr = String(fieldValue).toLowerCase();
-    const filterStr = String(filterValue).toLowerCase();
-
-    switch (condition) {
-      case 'contains':
-        return fieldStr.includes(filterStr);
-      case 'equals':
-        // 날짜 필드의 경우 정확한 날짜 비교
-        if (filterField === 'date_range' || filterStr.match(/^[0-9]{4}-[0-9]{2}-[0-9]{2}/)) {
-          if (!fieldValue) return false;
-          try {
-            const fieldDate = new Date(fieldValue as string).toISOString().split('T')[0];
-            const filterDate = filterStr.split('T')[0];
-            return fieldDate === filterDate;
-          } catch (error) {
-            logger.error('날짜 비교 오류:', error);
-            return false;
-          }
-        }
-        return fieldStr === filterStr;
-      case 'starts_with':
-        return fieldStr.startsWith(filterStr);
-      case 'ends_with':
-        return fieldStr.endsWith(filterStr);
-      case 'is_empty':
-        return !fieldValue || fieldStr.trim() === '';
-      case 'is_not_empty':
-        return !!fieldValue && fieldStr.trim() !== '';
-      case 'greater_than':
-        return Number(fieldValue) > Number(filterValue);
-      case 'less_than':
-        return Number(fieldValue) < Number(filterValue);
-      case 'between':
-        // 범위 필터는 추후 구현
-        return true;
-      case 'after':
-        return new Date(fieldValue as string) > new Date(filterValue as string);
-      case 'before':
-        return new Date(fieldValue as string) < new Date(filterValue as string);
-      case 'not_equals':
-        return fieldStr !== filterStr;
-      default:
-        return true;
-    }
-  }, []);
-
-
-  // 메모리 기반 필터링
+  // ── 필터 파이프라인: 탭/직원/검색/규칙(메모리) → 템플릿 → 서버 폴백 병합 → 다중 정렬 ──
   const baseFilteredPurchases = useMemo(() => {
     const employeeName = selectedEmployee === 'all' || selectedEmployee === '전체' ? null : selectedEmployee;
-    
     return getFilteredPurchases({
       tab: activeTab as 'pending' | 'purchase' | 'receipt' | 'done',
       employeeName,
       searchTerm,
-      advancedFilters: activeFilters,
-      sortConfig: sortConfig ? { key: sortConfig.field, direction: sortConfig.direction } : undefined
+      advancedFilters: tableFilters.advancedFilters,
     });
-  }, [getFilteredPurchases, activeTab, selectedEmployee, searchTerm, activeFilters, sortConfig, purchases]);
+  }, [getFilteredPurchases, activeTab, selectedEmployee, searchTerm, tableFilters.advancedFilters, purchases]);
 
   // 발주/구매 템플릿 데이터만 표시 (기존 데이터 호환: '일반' 및 null 포함)
   const tabFilteredPurchases = useMemo(() => {
@@ -579,339 +253,70 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
     activeTab
   );
 
-  // 메모리 결과 + 서버 결과 병합
+  // 메모리 결과 + 서버 결과 병합 후 다중 정렬 적용
   const displayPurchases = useMemo(() => {
-    if (serverResults.length === 0) return tabFilteredPurchases;
+    let merged = tabFilteredPurchases;
+    if (serverResults.length > 0) {
+      const memoryIds = new Set(tabFilteredPurchases.map(p => p.id));
+      const filteredServer = serverResults
+        .filter(p => !memoryIds.has(p.id))
+        .filter(p => {
+          const t = p.po_template_type;
+          return !t || t === '발주/구매' || t === '일반';
+        });
+      merged = [...tabFilteredPurchases, ...filteredServer];
+    }
+    if (sortRules.length === 0) return merged;
+    return [...merged].sort((a, b) => compareByPurchaseSortRules(a, b, sortRules));
+  }, [tabFilteredPurchases, serverResults, sortRules]);
 
-    const memoryIds = new Set(tabFilteredPurchases.map(p => p.id));
-    const newFromServer = serverResults.filter(p => !memoryIds.has(p.id));
-
-    // 서버 결과에도 템플릿 타입 필터 적용
-    const filteredServer = newFromServer.filter(p => {
-      const t = p.po_template_type;
-      return !t || t === '발주/구매' || t === '일반';
-    });
-
-    return [...tabFilteredPurchases, ...filteredServer];
-  }, [tabFilteredPurchases, serverResults]);
-
-  // 탭별 카운트 계산 및 캐싱
+  // ── 뷰 버튼 건수 배지 ─────────────────────────────────────────────────
+  const [cachedTabCounts, setCachedTabCounts] = useState({ pending: 0, purchase: 0, receipt: 0, done: 0 });
   useEffect(() => {
-    // 데이터가 있을 때만 탭 카운트 업데이트
     if (purchases && purchases.length > 0) {
-      const newCounts = calculateTabCounts(purchases, currentUser);
-      setCachedTabCounts(newCounts);
+      setCachedTabCounts(calculateTabCounts(purchases, currentUser));
     } else if (purchaseMemoryCache.allPurchases && purchaseMemoryCache.allPurchases.length > 0) {
-      // 로컬 state가 비어있으면 캐시에서 직접 계산
-      const newCounts = calculateTabCounts(purchaseMemoryCache.allPurchases, currentUser);
-      setCachedTabCounts(newCounts);
+      setCachedTabCounts(calculateTabCounts(purchaseMemoryCache.allPurchases, currentUser));
     }
   }, [purchases, currentUser]);
 
-  // 표시할 탭 카운트 (캐시된 값 사용)
-  const filteredTabCounts = cachedTabCounts;
-
-  // 검색어 또는 고급필터가 적용된 경우 각 탭별 카운트 계산
+  // 검색어 또는 필터 규칙이 적용된 경우 각 탭별 카운트 재계산
+  const hasActiveFilters = !!searchTerm || tableFilters.advancedFilters.length > 0;
   const filteredTabCountsWithSearch = useMemo(() => {
-    // 검색어나 고급필터가 없으면 기본 카운트 사용
-    if (!searchTerm && activeFilters.length === 0) {
-      return filteredTabCounts;
-    }
-
-    // 각 탭별로 필터링된 카운트 계산
-    const counts = {
-      pending: 0,
-      purchase: 0,
-      receipt: 0,
-      done: 0
-    };
-
-    // 각 탭에 대해 필터링 적용하여 카운트 계산
-    const tabs: Array<keyof typeof counts> = ['pending', 'purchase', 'receipt', 'done'];
-    tabs.forEach(tab => {
+    if (!hasActiveFilters) return cachedTabCounts;
+    const counts = { pending: 0, purchase: 0, receipt: 0, done: 0 };
+    (Object.keys(counts) as Array<keyof typeof counts>).forEach(tab => {
       const filtered = getFilteredPurchases({
         tab,
         employeeName: defaultEmployeeByTab[tab] === 'all' ? null : defaultEmployeeByTab[tab],
         searchTerm,
-        advancedFilters: activeFilters,
-        sortConfig: sortConfig ? { key: sortConfig.field, direction: sortConfig.direction } : undefined
+        advancedFilters: tableFilters.advancedFilters,
       });
       counts[tab] = filtered.length;
     });
-
     return counts;
-  }, [searchTerm, activeFilters, filteredTabCounts, getFilteredPurchases, defaultEmployeeByTab, sortConfig]);
+  }, [hasActiveFilters, searchTerm, tableFilters.advancedFilters, cachedTabCounts, getFilteredPurchases, defaultEmployeeByTab]);
 
-  // 탭 배지 텍스트 결정 함수
   const getTabBadgeText = useCallback((tabKey: string) => {
-    // 검색어나 고급필터가 있는 경우 필터된 카운트 사용
-    if (searchTerm || activeFilters.length > 0) {
+    if (hasActiveFilters) {
       return filteredTabCountsWithSearch[tabKey as keyof typeof filteredTabCountsWithSearch].toString();
     }
-    
-    // 전체항목 탭에 대한 특별 처리 (검색어/필터 없을 때)
-    if (tabKey === 'done') {
-      return "전체";
-    }
-    
-    // 다른 탭들은 기본 카운트 사용
-    return filteredTabCounts[tabKey as keyof typeof filteredTabCounts].toString();
-  }, [searchTerm, activeFilters.length, filteredTabCountsWithSearch, filteredTabCounts]);
+    if (tabKey === 'done') return "전체";
+    return cachedTabCounts[tabKey as keyof typeof cachedTabCounts].toString();
+  }, [hasActiveFilters, filteredTabCountsWithSearch, cachedTabCounts]);
 
+  // 뷰 버튼 클릭 — URL 갱신 + 탭 상태 + 탭별 기본 직원 필터
+  const handleTabClick = useCallback((tabKey: string) => {
+    const searchParams = new URLSearchParams(location.search);
+    searchParams.set('tab', tabKey);
+    navigate({ search: searchParams.toString() }, { replace: true });
+    setActiveTab(tabKey);
+    const newEmployeeValue = defaultEmployeeByTab[tabKey as keyof typeof defaultEmployeeByTab];
+    setSelectedEmployee(newEmployeeValue ?? 'all');
+  }, [location.search, navigate, defaultEmployeeByTab]);
 
-  // 월간 필터 감지 및 합계금액 계산
-  const monthlyFilterSummary = useMemo(() => {
-    // 월간 필터가 활성화되어 있는지 확인
-    const monthFilters = activeFilters.filter(filter => 
-      filter.field === 'date_month' || 
-      (filter.field === 'date_range' && filter.dateField && filter.dateField.includes('_month'))
-    );
-    
-    if (monthFilters.length === 0) return null;
-    
-    // 필터에 나오는 모든 항목의 합계 계산
-    const totalFilteredAmount = tabFilteredPurchases.reduce((sum, purchase) => {
-      if (purchase.purchase_request_items?.length) {
-        const itemsTotal = purchase.purchase_request_items.reduce((itemSum: number, item: PurchaseRequestItem) => {
-          // 발주 카테고리인 경우 세액도 포함
-          const baseAmount = item.amount_value || 0;
-          const taxAmount = (purchase.payment_category === '발주' && item.tax_amount_value) ? item.tax_amount_value : 0;
-          return itemSum + baseAmount + taxAmount;
-        }, 0);
-        return sum + itemsTotal;
-      }
-      // total_amount가 있는 경우, 발주면 세액도 추정 계산
-      const baseAmount = purchase.total_amount || 0;
-      const taxAmount = (purchase.payment_category === '발주') ? baseAmount * 0.1 : 0;
-      return sum + baseAmount + taxAmount;
-    }, 0);
-    
-    const monthFilter = monthFilters[0];
-    const filterValue = monthFilter.value;
-    
-    // 월간 범위 필터인지 단일 월 필터인지 확인
-    if (filterValue && typeof filterValue === 'string' && filterValue.includes('~')) {
-      // 범위 필터 (예: "2024-04~2024-09")
-      const [startMonth, endMonth] = filterValue.split('~');
-      const startDate = new Date(`${startMonth}-01`);
-      const endDate = new Date(`${endMonth}-01`);
-      
-      const monthlyTotals = [];
-      let totalSum = 0;
-      
-      // 각 월별 계산
-      const currentDate = new Date(startDate);
-      while (currentDate <= endDate) {
-        const year = currentDate.getFullYear();
-        const month = currentDate.getMonth() + 1;
-        const monthStr = `${year}-${month.toString().padStart(2, '0')}`;
-        
-        // 해당 월의 데이터 필터링
-        const monthData = tabFilteredPurchases.filter(purchase => {
-          const purchaseDate = new Date(purchase.request_date);
-          return purchaseDate.getFullYear() === year && 
-                 (purchaseDate.getMonth() + 1) === month;
-        });
-        
-        // 해당 월의 합계 계산
-        const monthTotal = monthData.reduce((sum, purchase) => {
-          // items의 amount_value 합계 또는 total_amount 사용
-          if (purchase.purchase_request_items?.length) {
-            const itemsTotal = purchase.purchase_request_items.reduce((itemSum: number, item: PurchaseRequestItem) => {
-              // 발주 카테고리인 경우 세액도 포함
-              const baseAmount = item.amount_value || 0;
-              const taxAmount = (purchase.payment_category === '발주' && item.tax_amount_value) ? item.tax_amount_value : 0;
-              return itemSum + baseAmount + taxAmount;
-            }, 0);
-            return sum + itemsTotal;
-          }
-          // total_amount가 있는 경우, 발주면 세액도 추정 계산
-          const baseAmount = purchase.total_amount || 0;
-          const taxAmount = (purchase.payment_category === '발주') ? baseAmount * 0.1 : 0;
-          return sum + baseAmount + taxAmount;
-        }, 0);
-        
-        monthlyTotals.push({
-          year,
-          month,
-          monthStr,
-          total: monthTotal,
-          count: monthData.length
-        });
-        
-        totalSum += monthTotal;
-        
-        // 다음 월로 이동
-        currentDate.setMonth(currentDate.getMonth() + 1);
-      }
-      
-      return {
-        type: 'range',
-        months: monthlyTotals,
-        grandTotal: totalSum,
-        totalFilteredAmount: totalFilteredAmount // 필터에 나오는 모든 항목의 합계
-      };
-    } else {
-      // 단일 월 필터 (예: "2024-10")
-      const [year, month] = (typeof filterValue === 'string' ? filterValue : '').split('-');
-      const monthData = tabFilteredPurchases.filter(purchase => {
-        const purchaseDate = new Date(purchase.request_date);
-        return purchaseDate.getFullYear() === parseInt(year) && 
-               (purchaseDate.getMonth() + 1) === parseInt(month);
-      });
-      
-      const monthTotal = monthData.reduce((sum, purchase) => {
-        // items의 amount_value 합계 또는 total_amount 사용
-        if (purchase.purchase_request_items?.length) {
-          const itemsTotal = purchase.purchase_request_items.reduce((itemSum: number, item: PurchaseRequestItem) => {
-            // 발주 카테고리인 경우 세액도 포함
-            const baseAmount = item.amount_value || 0;
-            const taxAmount = (purchase.payment_category === '발주' && item.tax_amount_value) ? item.tax_amount_value : 0;
-            return itemSum + baseAmount + taxAmount;
-          }, 0);
-          return sum + itemsTotal;
-        }
-        // total_amount가 있는 경우, 발주면 세액도 추정 계산
-        const baseAmount = purchase.total_amount || 0;
-        const taxAmount = (purchase.payment_category === '발주') ? baseAmount * 0.1 : 0;
-        return sum + baseAmount + taxAmount;
-      }, 0);
-      
-      return {
-        type: 'single',
-        year: parseInt(year),
-        month: parseInt(month),
-        total: monthTotal,
-        count: monthData.length,
-        totalFilteredAmount: totalFilteredAmount // 필터에 나오는 모든 항목의 합계
-      };
-    }
-  }, [activeFilters, tabFilteredPurchases]);
-
-
-  // 엑셀 다운로드 - 공통 함수 사용
-  const handleExcelDownload = async (purchase: Purchase) => {
-    try {
-      await downloadPurchaseOrderExcel(
-        {
-          id: purchase.id,
-          purchase_order_number: purchase.purchase_order_number,
-          vendor_name: purchase.vendor_name || '',
-          vendor_id: purchase.vendor_id?.toString(),
-          contact_id: purchase.contact_id?.toString()
-        },
-        currentUserRoles,
-        () => {
-          // 성공 콜백: 화면 업데이트
-          loadPurchases();
-        }
-      );
-    } catch (error) {
-      logger.error('Excel 다운로드 중 오류 발생', error);
-    }
-  };
-
-  // 최적화된 핸들러들 - 메모이제이션 및 배치 처리
-  const handleReceiptComplete = useCallback(async (purchaseId: number) => {
-    try {
-      const currentTime = new Date().toISOString();
-      
-      // 병렬 처리로 성능 개선
-      const [requestResult, itemsResult] = await Promise.all([
-        supabase
-          .from('purchase_requests')
-          .update({ 
-            is_received: true,
-            received_at: currentTime
-          })
-          .eq('id', purchaseId),
-        supabase
-          .from('purchase_request_items')
-          .update({ 
-            is_received: true,
-            delivery_status: 'received'
-          })
-          .eq('purchase_request_id', purchaseId)
-      ]);
-
-      if (requestResult.error) throw requestResult.error;
-      if (itemsResult.error) throw itemsResult.error;
-      
-      // 🚀 메모리 캐시 즉시 업데이트 (UI 즉시 반영)
-      const memoryUpdated = markPurchaseAsReceived(purchaseId);
-      if (!memoryUpdated) {
-        logger.warn('[PurchaseListMain] 메모리 캐시 입고완료 업데이트 실패', { purchaseId });
-      }
-      
-      toast.success('입고완료 처리되었습니다.');
-      await loadPurchases();
-    } catch (error) {
-      toast.error('처리 중 오류가 발생했습니다.');
-    }
-  }, [supabase, loadPurchases]);
-
-  const handlePaymentComplete = useCallback(async (purchaseId: number) => {
-    try {
-      const currentTime = new Date().toISOString();
-      
-      // 병렬 처리로 성능 개선
-      const [requestResult, itemsResult] = await Promise.all([
-        supabase
-          .from('purchase_requests')
-          .update({ 
-            is_payment_completed: true,
-            payment_completed_at: currentTime
-          })
-          .eq('id', purchaseId),
-        supabase
-          .from('purchase_request_items')
-          .update({ 
-            is_payment_completed: true,
-            payment_completed_at: currentTime
-          })
-          .eq('purchase_request_id', purchaseId)
-      ]);
-
-      if (requestResult.error) throw requestResult.error;
-      if (itemsResult.error) throw itemsResult.error;
-      
-      // 🚀 메모리 캐시 즉시 업데이트 (UI 즉시 반영)
-      const memoryUpdated = markPurchaseAsPaymentCompleted(purchaseId);
-      if (!memoryUpdated) {
-        logger.warn('[PurchaseListMain] 메모리 캐시 업데이트 실패, 데이터 재로드', { purchaseId });
-        await loadPurchases(); // fallback: 메모리 업데이트 실패 시 전체 재로드
-      }
-      
-      toast.success('구매완료 처리되었습니다.');
-    } catch (error) {
-      logger.error('[PurchaseListMain] 구매완료 처리 실패:', error);
-      toast.error('처리 중 오류가 발생했습니다.');
-    }
-  }, [supabase, loadPurchases]);
-
-  const handleItemsClick = useCallback((purchase: Purchase) => {
-    setSelectedPurchase(purchase);
-    setIsModalOpen(true);
-  }, []);
-  
-  // 모달 데이터 메모이제이션 - 불필요한 재계산 방지
-  const modalPurchaseData = useMemo(() => {
-    if (!selectedPurchase) return null;
-    return {
-      ...selectedPurchase,
-      vendor_name: selectedPurchase.vendor_name || '',
-      project_vendor: selectedPurchase.project_vendor || '',
-      sales_order_number: selectedPurchase.sales_order_number || '',
-      project_item: selectedPurchase.project_item || ''
-    };
-  }, [selectedPurchase]);
-
-  // 경고 모달에서 항목 클릭 시 상세 모달 열기
-  const handleWarningItemClick = useCallback((purchase: Purchase) => {
-    setIsWarningModalOpen(false);
-    setSelectedPurchase(purchase);
-    setIsModalOpen(true);
-  }, []);
+  // 연도 드롭다운 옵션 (month_in 규칙용)
+  const yearsFor = useCallback((dateField: string) => purchaseYearsFor(purchases, dateField), [purchases]);
 
   return (
     <div className="w-full">
@@ -922,7 +327,7 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
             <h1 className="page-title">발주요청 관리</h1>
             <p className="page-subtitle" style={{marginTop:'-2px',marginBottom:'-4px'}}>Purchase Management</p>
           </div>
-          
+
           {/* 입고 지연 경고 버튼 */}
           {deliveryWarningCount > 0 && (
             <Button
@@ -938,242 +343,160 @@ export default function PurchaseListMain({ showEmailButton = true }: PurchaseLis
             </Button>
           )}
         </div>
-
       </div>
 
-      {/* 고급 필터 툴바 */}
-      <div className="mb-3">
-        <FilterToolbar
-          activeFilters={activeFilters}
-          sortConfig={sortConfig}
-          searchTerm={searchTerm}
-          onFiltersChange={setActiveFilters}
-          onSortChange={setSortConfig}
-          onSearchChange={setSearchTerm}
-          availableEmployees={availableEmployees}
-          availableVendors={availableVendors}
-          vendorAliasMap={vendorAliasMap}
-          availableContacts={availableContacts}
-          availablePaymentSchedules={availablePaymentSchedules}
-        >
-          {/* 칼럼 설정 버튼을 필터 툴바와 같은 행에 배치 */}
-          <ColumnSettingsDropdown 
-            isVisible={true} 
-            columnVisibility={columnVisibility}
-            applyColumnSettings={applyColumnSettings}
-            resetToDefault={resetToDefault}
-            isLoading={isColumnLoading}
-            currentUserRoles={currentUserRoles}
-          />
-        </FilterToolbar>
-        
-      </div>
-
-      {/* 진행상태 탭 */}
-      <div className="space-y-3">
-
-        {/* 탭 버튼들 - 모바일 반응형 개선 */}
-        <div className="flex flex-col sm:flex-row sm:space-x-1 space-y-1 sm:space-y-0 bg-gray-50 p-1 business-radius-card border border-gray-200">
-          {NAV_TABS.map((tab) => (
+      {/* 진행상태 뷰 버튼 (기존 4탭 → 제작현황식, 건수 배지 유지) */}
+      <div className="mb-3 flex items-center gap-2 flex-wrap">
+        {NAV_TABS.map((tab) => {
+          const isActive = activeTab === tab.key;
+          return (
             <button
               key={tab.key}
-              onClick={() => {
-                logger.info('[탭 클릭 이벤트]', {
-                  tab: tab.key,
-                  currentActiveTab: activeTab,
-                  currentUser: currentUser?.name,
-                  currentUserRoles,
-                  defaultEmployeeByTab,
-                  isPending
-                });
-                
-                // URL 업데이트 추가 (탭 상태 유지를 위해)
-                const searchParams = new URLSearchParams(location.search);
-                searchParams.set('tab', tab.key);
-                navigate({ search: searchParams.toString() }, { replace: true });
-
-                // startTransition이 문제일 수 있어 직접 상태 업데이트로 변경
-                try {
-                  const newEmployeeValue = defaultEmployeeByTab[tab.key as keyof typeof defaultEmployeeByTab];
-                  
-                  // undefined 체크 추가
-                  if (newEmployeeValue === undefined) {
-                    logger.error('[탭 전환 오류] defaultEmployeeByTab에서 값을 찾을 수 없음', {
-                      tabKey: tab.key,
-                      defaultEmployeeByTab,
-                      availableKeys: Object.keys(defaultEmployeeByTab)
-                    });
-                    // 기본값 사용
-                    setActiveTab(tab.key);
-                    setSelectedEmployee('all');
-                  } else {
-                    setActiveTab(tab.key);
-                    setSelectedEmployee(newEmployeeValue);
-                  }
-                  
-                  logger.info('[탭 전환 성공]', { 
-                    newTab: tab.key,
-                    newEmployee: newEmployeeValue || 'all',
-                    actualNewEmployee: newEmployeeValue
-                  });
-                } catch (error) {
-                  logger.error('[탭 전환 실패]', error);
-                }
-              }}
-              className={`flex-1 flex items-center justify-center space-x-2 py-1.5 px-3 sm:px-4 business-radius-button button-text font-medium transition-colors ${
-                activeTab === tab.key
-                  ? 'text-hansl-600 bg-white shadow-sm border border-gray-200'
-                  : 'text-gray-600 bg-transparent hover:text-gray-900 hover:bg-white/50'
-              }`}
+              type="button"
+              onClick={() => handleTabClick(tab.key)}
+              className={`hansl-view-btn ${isActive ? 'hansl-view-btn-on' : 'hansl-view-btn-off'}`}
             >
-              <span className="whitespace-nowrap">{tab.label}</span>
-              <span 
-                className={
-                  `badge-stats ${
-                    activeTab === tab.key 
-                      ? 'bg-hansl-50 text-hansl-700' 
-                      : 'bg-gray-100 text-gray-600'
-                  }`
-                }
-              >
+              <span className={`button-text ${isActive ? 'text-white' : 'text-gray-700'}`}>{tab.label}</span>
+              <span className={`badge-stats ml-1 ${isActive ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'}`}>
                 {getTabBadgeText(tab.key)}
               </span>
             </button>
-          ))}
-        </div>
+          );
+        })}
+      </div>
 
-        {/* 월간 필터 적용 시 합계금액 표시 */}
-        {monthlyFilterSummary && (
-          <div className="mb-3">
-            {monthlyFilterSummary.type === 'single' ? (
-              // 단일 월 표시 - 컴팩트한 인라인 배지 스타일
-              <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 business-radius-badge px-3 py-2 shadow-sm">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
-                  <span className="card-subtitle text-gray-700">
-                    {monthlyFilterSummary.year}년 {monthlyFilterSummary.month}월
-                  </span>
-                  <span className="badge-text text-gray-500">
-                    {monthlyFilterSummary.count}건
-                  </span>
-                </div>
-                <div className="h-4 w-px bg-blue-300"></div>
-                <span className="modal-value text-blue-700 font-semibold">
-                  ₩{monthlyFilterSummary.totalFilteredAmount?.toLocaleString() || '0'}
-                </span>
+      {/* 월간 필터 적용 시 합계금액 표시 */}
+      <PurchaseMonthlySummary rules={tableFilters.rules} purchases={tabFilteredPurchases} />
+
+      {/* 필터 카드 (여닫이) — 표 카드와 위아래로 붙는다 */}
+      <div className="card-professional rounded-b-none border-b-0 overflow-hidden">
+        <button
+          type="button"
+          onClick={toggleFilterCollapsed}
+          className="w-full flex items-center gap-1 px-3 py-0.5 text-[10px] font-semibold text-gray-500 hover:bg-gray-50 transition-colors"
+        >
+          <Filter className="w-3 h-3" />
+          <span>필터</span>
+          <ChevronDown className={`w-3 h-3 ml-auto transition-transform ${filterCollapsed ? '-rotate-90' : ''}`} />
+        </button>
+        {!filterCollapsed && (
+          <div className="px-3 pb-3 pt-3 space-y-3 border-t border-gray-100">
+            {/* 검색란 (제작현황 표준 규격) */}
+            <div className="flex items-center">
+              <div className="relative w-[240px] flex-shrink-0 h-5 flex items-center">
+                <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="발주번호, 품명, 규격, 업체, 요청자 검색..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  style={{ paddingLeft: '26px', height: '20px' }}
+                  className="hansl-search-input"
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    title="검색어 지우기"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
               </div>
-            ) : (
-              // 월간 범위 표시
-              <Card className="business-radius-card border border-gray-200 shadow-sm">
-                <CardHeader className="pb-3 pt-4 px-4">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
-                      <CardTitle className="section-title text-gray-800">월별 발주요청 총액</CardTitle>
-                    </div>
-                    {/* 총합계를 제목 바로 옆에 표시 */}
-                    <div className="flex items-center gap-2">
-                      <span className="badge-text text-gray-600">
-                        ({monthlyFilterSummary.months?.reduce((sum, m) => sum + m.count, 0) || 0}건)
-                      </span>
-                      <div className="h-4 w-px bg-gray-300"></div>
-                      <span className="modal-value text-gray-500 font-bold">
-                        ₩{monthlyFilterSummary.totalFilteredAmount?.toLocaleString() || '0'}
-                      </span>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="px-4 pb-4">
-                  {/* 월별 데이터 - 가로 스크롤 한 행 */}
-                  <div className="flex gap-2 overflow-x-auto pb-2">
-                    {monthlyFilterSummary.months?.map((monthData) => (
-                      <div 
-                        key={monthData.monthStr} 
-                        className="bg-gray-50 business-radius-card px-3 py-1.5 border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all flex-shrink-0"
-                      >
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="modal-value font-bold text-gray-800 whitespace-nowrap">
-                            {monthData.month}월
-                          </span>
-                          <span className="text-[9px] text-gray-500 whitespace-nowrap">
-                            ({monthData.count})
-                          </span>
-                          <span className="modal-value text-gray-500 font-bold whitespace-nowrap ml-1">
-                            ₩{monthData.total.toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            </div>
+            {/* 노션식 조건 규칙 + 저장된 필터 */}
+            <PurchaseFilterToolbar
+              rules={tableFilters.rules}
+              dynamicOptions={dynamicOptions}
+              yearsFor={yearsFor}
+              addRule={tableFilters.addRule}
+              updateRule={tableFilters.updateRule}
+              changeRuleField={tableFilters.changeRuleField}
+              removeRule={tableFilters.removeRule}
+              resetRules={tableFilters.resetRules}
+              filterViewsConfig={tableFilters.filterViewsConfig}
+              viewsMenuOpen={tableFilters.viewsMenuOpen}
+              setViewsMenuOpen={tableFilters.setViewsMenuOpen}
+              viewsAnchor={tableFilters.viewsAnchor}
+              setViewsAnchor={tableFilters.setViewsAnchor}
+              namingView={tableFilters.namingView}
+              setNamingView={tableFilters.setNamingView}
+              newViewName={tableFilters.newViewName}
+              setNewViewName={tableFilters.setNewViewName}
+              closeViewsMenu={tableFilters.closeViewsMenu}
+              commitSaveView={tableFilters.commitSaveView}
+              handleApplyView={tableFilters.handleApplyView}
+              handleRenameView={tableFilters.handleRenameView}
+              handleDeleteView={tableFilters.handleDeleteView}
+              handleSetDefault={tableFilters.handleSetDefault}
+              handleClearDefault={tableFilters.handleClearDefault}
+            />
           </div>
         )}
-
-        {/* 탭 콘텐츠 */}
-        <Card className="overflow-hidden border border-gray-200 w-full max-w-full">
-          <CardContent className="p-0">
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="w-8 h-8 border-2 border-hansl-500 border-t-transparent rounded-full animate-spin" />
-                <span className="ml-3 card-subtitle">로딩 중...</span>
-              </div>
-            ) : displayPurchases.length === 0 && isSearching ? (
-              <div className="flex items-center justify-center py-12">
-                <Search className="w-6 h-6 text-hansl-500 animate-pulse mr-3" />
-                <span className="card-subtitle">서버에서 추가 검색 중...</span>
-              </div>
-            ) : displayPurchases.length === 0 && searchTerm && hasSearchedServer ? (
-              <div className="text-center py-12">
-                <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">검색 결과가 없습니다</h3>
-                <p className="card-subtitle">전체 데이터를 검색했지만 일치하는 항목이 없습니다.</p>
-              </div>
-            ) : displayPurchases.length === 0 ? (
-              <div className="text-center py-12">
-                <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">발주요청서가 없습니다</h3>
-                <p className="card-subtitle">새로운 발주요청서를 작성해보세요.</p>
-              </div>
-            ) : (
-              <FastPurchaseTable
-                purchases={displayPurchases}
-                activeTab={activeTab}
-                currentUserRoles={currentUserRoles}
-                onRefresh={loadPurchases}
-                onOptimisticUpdate={updatePurchaseOptimistic}
-                onPaymentComplete={handlePaymentComplete}
-                onReceiptComplete={handleReceiptComplete}
-                columnVisibility={columnVisibility}
-              />
-            )}
-          </CardContent>
-        </Card>
       </div>
-      
-      {/* 세부항목 모달 - 성능 최적화된 데이터 사용 */}
-      {modalPurchaseData && (
-        <Suspense fallback={<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div></div>}>
-          <PurchaseItemsModal
-            isOpen={isModalOpen}
-            onClose={() => {
-              setIsModalOpen(false);
-              setSelectedPurchase(null);
-            }}
-            purchase={modalPurchaseData}
-            isAdmin={isAdmin || false}
-            onUpdate={loadPurchases}
+
+      {/* 표 카드 — 제목행(정렬·칼럼 메뉴) + 컴팩트 테이블 */}
+      <div className="card-professional rounded-t-none overflow-hidden">
+        <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50/50">
+          <div className="flex items-center gap-2">
+            <span className="modal-section-title">발주/구매 현황</span>
+            <PurchaseSortControl
+              sortRules={sortRules}
+              addSortRule={addSortRule}
+              updateSortRule={updateSortRule}
+              removeSortRule={removeSortRule}
+              clearSort={clearSort}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <PurchaseColumnMenu
+              columnVisibility={columnVisibility}
+              toggleColumn={toggleColumn}
+              resetToDefault={resetToDefault}
+              currentUserRoles={currentUserRoles}
+            />
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="w-8 h-8 border-2 border-hansl-500 border-t-transparent rounded-full animate-spin" />
+            <span className="ml-3 card-subtitle">로딩 중...</span>
+          </div>
+        ) : displayPurchases.length === 0 && isSearching ? (
+          <div className="flex items-center justify-center py-12">
+            <Search className="w-6 h-6 text-hansl-500 animate-pulse mr-3" />
+            <span className="card-subtitle">서버에서 추가 검색 중...</span>
+          </div>
+        ) : displayPurchases.length === 0 && searchTerm && hasSearchedServer ? (
+          <div className="text-center py-12">
+            <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">검색 결과가 없습니다</h3>
+            <p className="card-subtitle">전체 데이터를 검색했지만 일치하는 항목이 없습니다.</p>
+          </div>
+        ) : displayPurchases.length === 0 ? (
+          <div className="text-center py-12">
+            <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">발주요청서가 없습니다</h3>
+            <p className="card-subtitle">새로운 발주요청서를 작성해보세요.</p>
+          </div>
+        ) : (
+          <PurchaseCompactTable
+            purchases={displayPurchases}
             activeTab={activeTab}
+            currentUserRoles={currentUserRoles}
+            columnVisibility={columnVisibility}
+            onRefresh={loadPurchases}
+            onOptimisticUpdate={updatePurchaseOptimistic}
           />
-        </Suspense>
-      )}
-      
+        )}
+      </div>
+
       {/* 입고 일정 지연 경고 모달 */}
       <DeliveryDateWarningModal
         isOpen={isWarningModalOpen}
         onClose={() => {
-          // 모달 닫고 새로고침 (자동 닫기 + 데이터 최신화)
           setIsWarningModalOpen(false);
           window.location.reload();
         }}

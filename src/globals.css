@@ -1457,6 +1457,11 @@ input[type="number"] {
   text-align: left !important;
 }
 
+/* 금액류 우측정렬 유틸리티 (발주/구매 컴팩트 표의 단가·합계) */
+.production-compact-table .align-right {
+  text-align: right !important;
+}
+
 
 .compact-modal form {
   padding: 12px !important;
