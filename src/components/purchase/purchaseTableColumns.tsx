@@ -67,6 +67,48 @@ const quantityPairText = (p: Purchase) => {
   return q === r && r > 0 ? String(r) : `${q}/${r}`
 }
 
+// 배지/진행바 칼럼의 fitExtra 상수 — 실제 렌더 마크업의 자체 여백/요소 폭 (PurchaseTableCells.tsx 기준)
+const BADGE_PADDING = 12       // .badge-stats → px-1.5(6px)×2
+const UTK_BADGE_PADDING = 14   // badge-utk-* → badge-stats(12) + border 1px×2
+const PROGRESS_BAR_WIDTH = 36  // ProgressBar: 바 w-8(32px) + gap-1(4px)
+
+const paymentCategoryText = (p: Purchase): string => {
+  const c = p.payment_category
+  return c === '발주' ? '발주요청' : c === '구매 요청' ? '구매요청' : c === '현장 결제' ? '현장결제' : c || '-'
+}
+const approvalStatusText = (p: Purchase): string => {
+  const middleApproved = p.middle_manager_status === 'approved'
+  const middleRejected = p.middle_manager_status === 'rejected'
+  const finalApproved = p.final_manager_status === 'approved'
+  const finalRejected = p.final_manager_status === 'rejected'
+  if (middleRejected || finalRejected) return '반려'
+  if (middleApproved && finalApproved) return '승인완료'
+  if (middleApproved) return '1차 승인'
+  return '승인대기'
+}
+const utkStatusText = (p: Purchase): string => (p.is_utk_checked ? '완료' : '대기')
+
+// 구매완료 진행률 % 텍스트 (PaymentProgressBar와 동일 계산, activeTab='done'의 '-' 분기는 별도 처리)
+const paymentProgressPercent = (p: Purchase): number => {
+  if (p.is_payment_completed) return 100
+  const items = p.purchase_request_items || []
+  if (items.length === 0) return 0
+  const completed = items.filter(item => item.is_payment_completed === true).length
+  return Math.round((completed / items.length) * 100)
+}
+const receiptProgressPercent = (p: Purchase): number => {
+  const items = p.purchase_request_items || []
+  if (items.length === 0) return 0
+  const received = items.filter(item => item.is_received === true).length
+  return Math.round((received / items.length) * 100)
+}
+const statementProgressPercent = (p: Purchase): number => {
+  const items = p.purchase_request_items || p.items || []
+  if (items.length === 0) return 0
+  const completed = items.filter(item => item.is_statement_received === true).length
+  return Math.round((completed / items.length) * 100)
+}
+
 // 공통 칼럼 (탭별 배열에서 조합)
 const orderNumber: PurchaseColumnDef = {
   id: 'purchase_order_number', visibilityKey: 'purchase_order_number', label: '발주번호', width: 155, align: 'left',
@@ -81,6 +123,8 @@ const orderNumber: PurchaseColumnDef = {
 const paymentCategory: PurchaseColumnDef = {
   id: 'payment_category', visibilityKey: 'payment_category', label: '결제종류', width: 85,
   render: (p) => <PaymentCategoryBadge purchase={p} />,
+  fitText: paymentCategoryText,
+  fitExtra: () => BADGE_PADDING,
 }
 const requesterName: PurchaseColumnDef = {
   id: 'requester_name', visibilityKey: 'requester_name', label: '요청자', width: 52,
@@ -182,30 +226,48 @@ const paymentSchedule: PurchaseColumnDef = {
 const approvalStatus: PurchaseColumnDef = {
   id: 'approval_status', label: '승인상태', width: 85,
   render: (p) => <ApprovalStatusBadge purchase={p} />,
+  fitText: approvalStatusText,
+  fitExtra: () => BADGE_PADDING,
 }
+// 'purchase' 탭 전용 — activeTab이 항상 'purchase'라 PaymentProgressBar의 '-'(activeTab==='done') 분기는 타지 않는다
 const paymentProgressLead: PurchaseColumnDef = {
   id: 'payment_progress_lead', label: '구매진행', width: 85,
   render: (p, ctx) => <PaymentProgressBar purchase={p} activeTab={ctx.activeTab} />,
+  fitText: (p) => `${paymentProgressPercent(p)}%`,
+  fitExtra: () => PROGRESS_BAR_WIDTH,
 }
+// 'receipt' 탭 전용 — ReceiptProgressBar는 activeTab 분기가 없어 항상 진행바를 그린다
 const receiptProgressLead: PurchaseColumnDef = {
   id: 'receipt_progress_lead', visibilityKey: 'receipt_progress', label: '입고진행', width: 85,
   render: (p) => <ReceiptProgressBar purchase={p} />,
+  fitText: (p) => `${receiptProgressPercent(p)}%`,
+  fitExtra: () => PROGRESS_BAR_WIDTH,
 }
+// 'done' 탭 전용 — StatementProgressBar도 분기 없이 항상 진행바
 const statementProgressLead: PurchaseColumnDef = {
   id: 'statement_progress', visibilityKey: 'statement_progress', label: '거래명세서', width: 85,
   render: (p) => <StatementProgressBar purchase={p} />,
+  fitText: (p) => `${statementProgressPercent(p)}%`,
+  fitExtra: () => PROGRESS_BAR_WIDTH,
 }
 const utkStatus: PurchaseColumnDef = {
   id: 'utk_status', visibilityKey: 'utk_status', label: 'UTK', width: 56,
   render: (p, ctx) => <UtkCell purchase={p} canUtkCheck={ctx.canUtkCheck} onToggleUtkCheck={ctx.onToggleUtkCheck} />,
+  fitText: utkStatusText,
+  fitExtra: () => UTK_BADGE_PADDING,
 }
+// 'done' 탭 전용 — PaymentProgressBar가 activeTab==='done'일 때 구매요청 외 카테고리는 '-'만 표시(바 없음)
 const purchaseProgress: PurchaseColumnDef = {
   id: 'purchase_progress', visibilityKey: 'purchase_progress', label: '구매진행', width: 100,
   render: (p, ctx) => <PaymentProgressBar purchase={p} activeTab={ctx.activeTab} />,
+  fitText: (p) => (p.payment_category !== '구매 요청' ? '-' : `${paymentProgressPercent(p)}%`),
+  fitExtra: (p) => (p.payment_category !== '구매 요청' ? 0 : PROGRESS_BAR_WIDTH),
 }
 const receiptProgress: PurchaseColumnDef = {
   id: 'receipt_progress', visibilityKey: 'receipt_progress', label: '입고진행', width: 100,
   render: (p) => <ReceiptProgressBar purchase={p} />,
+  fitText: (p) => `${receiptProgressPercent(p)}%`,
+  fitExtra: () => PROGRESS_BAR_WIDTH,
 }
 
 // 탭별 칼럼 구성 — 기존 FastPurchaseTable의 탭별 순서와 동일
