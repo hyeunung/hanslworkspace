@@ -3,6 +3,7 @@ import PurchaseDetailModal from '@/components/purchase/PurchaseDetailModal'
 import MobilePurchaseCard from '@/components/purchase/MobilePurchaseCard'
 import { usePurchaseTableActions } from '@/hooks/usePurchaseTableActions'
 import { purchaseColumnsForTab, PurchaseColumnDef, PurchaseCellCtx } from '@/components/purchase/purchaseTableColumns'
+import { measureText, HEADER_LETTER_SPACING } from '@/utils/productionColumns'
 import { Purchase } from '@/types/purchase'
 import { ColumnVisibility, DoneTabColumnId } from '@/types/columnSettings'
 import { RESTRICTED_COLUMNS, AUTHORIZED_ROLES, UTK_AUTHORIZED_ROLES } from '@/constants/columnSettings'
@@ -33,9 +34,10 @@ const tdAlignClass = (align?: 'left' | 'right') =>
   align === 'left' ? 'align-left' : align === 'right' ? 'align-right' : ''
 
 // 행 컴포넌트 — 주입된 칼럼 정의로 셀을 렌더 (메모화)
-const PurchaseCompactRow = memo(({ purchase, columns, ctx, onClick }: {
+const PurchaseCompactRow = memo(({ purchase, columns, widths, ctx, onClick }: {
   purchase: Purchase
   columns: PurchaseColumnDef[]
+  widths: Record<string, number>
   ctx: PurchaseCellCtx
   onClick: (p: Purchase) => void
 }) => {
@@ -46,15 +48,18 @@ const PurchaseCompactRow = memo(({ purchase, columns, ctx, onClick }: {
       style={{ height: ROW_HEIGHT }}
       className={`cursor-pointer transition-colors ${isAdvance ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-100'}`}
     >
-      {columns.map(col => (
-        <td
-          key={col.id}
-          className={`border-b border-r border-gray-100 ${tdAlignClass(col.align)}`}
-          style={{ width: col.width, minWidth: col.width, maxWidth: col.width }}
-        >
-          {col.render(purchase, ctx)}
-        </td>
-      ))}
+      {columns.map(col => {
+        const w = widths[col.id] ?? col.width
+        return (
+          <td
+            key={col.id}
+            className={`border-b border-r border-gray-100 ${tdAlignClass(col.align)}`}
+            style={{ width: w, minWidth: w, maxWidth: w }}
+          >
+            {col.render(purchase, ctx)}
+          </td>
+        )
+      })}
     </tr>
   )
 })
@@ -96,6 +101,37 @@ const PurchaseCompactTable = ({
     onToggleUtkCheck: actions.handleToggleUtkCheck,
   }), [activeTab, canUtkCheck, actions.handleExcelDownload, actions.handleToggleUtkCheck])
 
+  // ── 칼럼폭 실측 핏 (제작현황 지침과 동일) ────────────────────────────────
+  // 폭 = Max(헤더 실측 600, 가장 긴 본문 실측 400) + 좌우 여백 5px씩 + 보더 1px.
+  // 텍스트가 아닌 칼럼(배지/진행바)은 고정 폭, 빈 표일 때는 기본 폭을 바닥값으로 사용.
+  const [fontsLoaded, setFontsLoaded] = useState(false)
+  useEffect(() => {
+    const fonts = (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts
+    fonts?.ready?.then(() => setFontsLoaded(true))
+  }, [])
+  const columnWidths = useMemo(() => {
+    const out: Record<string, number> = {}
+    for (const col of columns) {
+      if (!col.fitText) {
+        out[col.id] = col.width
+        continue
+      }
+      const headerW = measureText(col.label, 600, HEADER_LETTER_SPACING)
+      let maxValW = 0
+      for (const p of purchases) {
+        const w = measureText(col.fitText(p), 400) + (col.fitExtra ? col.fitExtra(p) : 0)
+        if (w > maxValW) maxValW = w
+      }
+      const floor = purchases.length === 0 ? col.width : 0
+      let width = Math.max(Math.max(headerW, maxValW) + 11, floor)
+      // 상한 초과분은 말줄임 처리 (헤더는 항상 온전히 보이게 하한 보장)
+      if (col.fitMax != null) width = Math.max(headerW + 11, Math.min(width, col.fitMax))
+      out[col.id] = Math.ceil(width)
+    }
+    return out
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columns, purchases, fontsLoaded])
+
   // ── 행 가상화 (스크롤 윈도잉 + 스페이서) — 제작현황 패턴 ────────────────
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -136,15 +172,18 @@ const PurchaseCompactTable = ({
         <table className="text-left border-separate border-spacing-0 w-max [&_th]:border-l-0 [&_td]:border-l-0 [&_th]:border-t-0 [&_td]:border-t-0 production-compact-table table-auto">
           <thead className="whitespace-nowrap">
             <tr className="bg-gray-50 border-b border-gray-200">
-              {columns.map(col => (
-                <th
-                  key={col.id}
-                  className="hansl-th border-y border-r"
-                  style={{ width: col.width, minWidth: col.width, maxWidth: col.width }}
-                >
-                  {col.label}
-                </th>
-              ))}
+              {columns.map(col => {
+                const w = columnWidths[col.id] ?? col.width
+                return (
+                  <th
+                    key={col.id}
+                    className="hansl-th border-y border-r"
+                    style={{ width: w, minWidth: w, maxWidth: w }}
+                  >
+                    {col.label}
+                  </th>
+                )
+              })}
             </tr>
           </thead>
           <tbody className="text-[10px] text-gray-500 whitespace-nowrap">
@@ -156,6 +195,7 @@ const PurchaseCompactTable = ({
                 key={purchase.id}
                 purchase={purchase}
                 columns={columns}
+                widths={columnWidths}
                 ctx={ctx}
                 onClick={actions.handleRowClick}
               />

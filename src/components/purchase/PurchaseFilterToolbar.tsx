@@ -79,8 +79,9 @@ export default function PurchaseFilterToolbar({
 
   return (
     <>
-      {/* 필터 규칙 행 (노션식 추가/수정/제거) */}
-      <div className="grid grid-cols-[75px_minmax(0,1fr)_auto] items-center gap-2 pt-2 border-t border-gray-100">
+      {/* 필터 규칙 행 (노션식 추가/수정/제거) — 저장된 필터/초기화는 우측 끝 고정 대신
+          적용된 pill 흐름 바로 뒤에 붙어 함께 늘어난다 (가독성) */}
+      <div className="grid grid-cols-[75px_minmax(0,1fr)] items-center gap-2 pt-2 border-t border-gray-100">
         <span className="hansl-filter-row-label">
           <SlidersHorizontal className="w-3.5 h-3.5" /> 조건:
         </span>
@@ -225,9 +226,8 @@ export default function PurchaseFilterToolbar({
           <button type="button" onClick={addRule} className="hansl-chip-add">
             <Plus className="w-3 h-3" /> 필터
           </button>
-        </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 ml-4">
           {/* 저장된 필터(사용자별·장치 간 동기화) — 불러오기·저장·기본값 설정 */}
           <button
             type="button"
@@ -255,6 +255,7 @@ export default function PurchaseFilterToolbar({
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
+          </div>
         </div>
       </div>
 
