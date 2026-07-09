@@ -68,14 +68,28 @@ export function usePurchaseTableFilters(
   const snapshotRules = useCallback((): StoredPurchaseFilterRule[] =>
     rules.filter(r => r.field).map(({ id: _id, ...rest }) => rest), [rules])
 
+  // 저장 await 중 Enter 연타/버튼 재클릭으로 같은 뷰가 두 번 저장되는 것을 가드로 차단하고,
+  // 입력창은 즉시 닫는다(낙관적 갱신이라 목록엔 바로 반영됨). 같은 이름 중복 저장도 거부.
+  const savingViewRef = useRef(false)
   const commitSaveView = useCallback(async () => {
     const name = newViewName.trim()
-    if (!name) return
-    const view: SavedPurchaseFilterView = { id: `v${Date.now()}`, name, rules: snapshotRules() }
-    const ok = await filterViews.saveView(view)
-    if (ok) toast.success(`필터 '${name}'을(를) 저장했습니다.`)
-    else toast.error('필터 저장에 실패했습니다.')
+    if (!name || savingViewRef.current) return
+    if (filterViews.config.views.some(v => v.name === name)) {
+      toast.error(`'${name}' 이름의 저장된 필터가 이미 있습니다.`)
+      return
+    }
+    savingViewRef.current = true
     closeViewsMenu()
+    try {
+      const view: SavedPurchaseFilterView = {
+        id: `v${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, name, rules: snapshotRules(),
+      }
+      const ok = await filterViews.saveView(view)
+      if (ok) toast.success(`필터 '${name}'을(를) 저장했습니다.`)
+      else toast.error('필터 저장에 실패했습니다.')
+    } finally {
+      savingViewRef.current = false
+    }
   }, [newViewName, snapshotRules, filterViews, closeViewsMenu])
 
   const handleApplyView = useCallback((viewId: string) => {
