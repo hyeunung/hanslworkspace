@@ -236,13 +236,13 @@ export default function PurchaseFilterToolbar({
               if (viewsMenuOpen) { setViewsMenuOpen(false); setViewsAnchor(null) }
               else { setViewsMenuOpen(true); setViewsAnchor(e.currentTarget) }
             }}
-            className={`hansl-pill-btn ${viewsMenuOpen ? 'hansl-pill-btn-on' : 'hansl-pill-btn-off'}`}
+            className={`hansl-ctl-chip ${viewsMenuOpen ? 'hansl-toggle-on' : 'hansl-toggle-off'}`}
             title="저장된 필터 불러오기·저장"
           >
             <Bookmark className="w-3 h-3" />
             저장된 필터
             {savedViews.length > 0 && (
-              <span className="text-[9px] text-gray-400">({savedViews.length})</span>
+              <span className="hansl-ctl-count">({savedViews.length})</span>
             )}
             <ChevronDown className="w-3 h-3" />
           </button>

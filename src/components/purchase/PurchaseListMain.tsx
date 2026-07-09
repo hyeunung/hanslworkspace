@@ -486,11 +486,11 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
               <button
                 type="button"
                 onClick={resetToDefault}
-                className="hansl-btn hover:text-red-600"
+                className="hansl-ctl-chip-reset"
                 title="칼럼 표시 초기화 (모두 표시)"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span className="button-text">초기화</span>
+                <RotateCcw className="w-3 h-3" />
+                초기화
               </button>
             </div>
             </div>
