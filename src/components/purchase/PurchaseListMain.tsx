@@ -380,9 +380,7 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
           <ChevronDown className={`w-3 h-3 ml-auto transition-transform ${filterCollapsed ? '-rotate-90' : ''}`} />
         </button>
         {!filterCollapsed && (
-          <div className="border-t border-gray-100 flex items-stretch">
-          {/* 좌측 절반: 검색 + 조건 필터 */}
-          <div className="flex-1 min-w-0 px-3 pb-3 pt-3 space-y-3">
+          <div className="px-3 pb-3 pt-3 space-y-3 border-t border-gray-100">
             {/* 검색란 (제작현황 표준 규격) */}
             <div className="flex items-center">
               <div className="relative w-[240px] flex-shrink-0 h-5 flex items-center">
@@ -407,7 +405,9 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
                 )}
               </div>
             </div>
-            {/* 노션식 조건 규칙 + 저장된 필터 */}
+            {/* 조건 행만 좌/우 분할: 좌=조건 필터, 구분선, 우=칼럼 버튼 */}
+            <div className="flex items-stretch">
+            <div className="flex-1 min-w-0">
             <PurchaseFilterToolbar
               rules={tableFilters.rules}
               dynamicOptions={dynamicOptions}
@@ -434,18 +434,19 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
               handleSetDefault={tableFilters.handleSetDefault}
               handleClearDefault={tableFilters.handleClearDefault}
             />
-          </div>
-          {/* 세로 구분선 */}
-          <div className="w-px bg-gray-200 self-stretch" />
-          {/* 우측 절반: 칼럼 버튼 (클릭 시 드롭다운으로 표시 설정) */}
-          <div className="flex-1 min-w-0 px-3 pb-3 pt-3">
-            <PurchaseColumnMenu
-              columnVisibility={columnVisibility}
-              toggleColumn={toggleColumn}
-              resetToDefault={resetToDefault}
-              currentUserRoles={currentUserRoles}
-            />
-          </div>
+            </div>
+            {/* 세로 구분선 */}
+            <div className="w-px bg-gray-200 self-stretch mx-3" />
+            {/* 우측 절반: 칼럼 버튼 (클릭 시 드롭다운으로 표시 설정) */}
+            <div className="flex-1 min-w-0 pt-2 border-t border-gray-100">
+              <PurchaseColumnMenu
+                columnVisibility={columnVisibility}
+                toggleColumn={toggleColumn}
+                resetToDefault={resetToDefault}
+                currentUserRoles={currentUserRoles}
+              />
+            </div>
+            </div>
           </div>
         )}
       </div>
