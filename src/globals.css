@@ -461,9 +461,9 @@
   .hansl-toggle-off {
     @apply bg-white border-gray-300 text-gray-500 hover:bg-gray-50 hover:text-hansl-500 hover:border-hansl-500;
   }
-  /* 추가 버튼(+ 필터) — 사용자 확정: 컨트롤 칩 공통 기준 모양 (실선) */
+  /* 추가 버튼(+ 필터) — 점선 유지(추가 동작 표시), 규격은 컨트롤 칩과 동일 */
   .hansl-chip-add {
-    @apply badge-stats cursor-pointer border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 hover:text-hansl-500 hover:border-hansl-500 transition-all flex items-center gap-0.5;
+    @apply badge-stats cursor-pointer border border-dashed border-gray-300 bg-white text-gray-500 hover:bg-gray-50 hover:text-hansl-500 hover:border-hansl-500 transition-all flex items-center gap-0.5;
   }
   /* 컨트롤 칩 공통(+필터와 동일 규격·실선) — 저장된 필터/칼럼/저장된 칼럼/초기화 등 사용자화 버튼 통일용.
      열림/활성 상태는 hansl-toggle-on/off를 함께 사용 */
