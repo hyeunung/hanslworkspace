@@ -9,7 +9,7 @@ import { usePurchaseSortRules } from "@/hooks/usePurchaseSortRules";
 import PurchaseCompactTable from "@/components/purchase/PurchaseCompactTable";
 import PurchaseFilterToolbar from "@/components/purchase/PurchaseFilterToolbar";
 import PurchaseSortControl from "@/components/purchase/PurchaseSortControl";
-import PurchaseColumnPanel from "@/components/purchase/PurchaseColumnPanel";
+import PurchaseColumnMenu from "@/components/purchase/PurchaseColumnMenu";
 import PurchaseMonthlySummary from "@/components/purchase/PurchaseMonthlySummary";
 import { updatePurchaseInMemory, loadAllPurchaseData } from "@/services/purchaseDataLoader";
 import { isCacheValid, purchaseMemoryCache } from '@/stores/purchaseMemoryStore';
@@ -437,9 +437,9 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
           </div>
           {/* 세로 구분선 */}
           <div className="w-px bg-gray-200 self-stretch" />
-          {/* 우측 절반: 칼럼 표시 설정 */}
+          {/* 우측 절반: 칼럼 버튼 (클릭 시 드롭다운으로 표시 설정) */}
           <div className="flex-1 min-w-0 px-3 pb-3 pt-3">
-            <PurchaseColumnPanel
+            <PurchaseColumnMenu
               columnVisibility={columnVisibility}
               toggleColumn={toggleColumn}
               resetToDefault={resetToDefault}
