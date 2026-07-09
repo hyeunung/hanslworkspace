@@ -37,12 +37,12 @@ export default function ProductionColumnMenu({
           type="button"
           onClick={(e) => { setMenuAnchorEl(e.currentTarget as HTMLElement); setColumnMenuFor(prev => (prev === type ? null : type)) }}
           title="표시할 칼럼 선택"
-          className="hansl-btn"
+          className={`hansl-ctl-chip ${open ? 'hansl-toggle-on' : 'hansl-toggle-off'}`}
         >
-          <SlidersHorizontal className="w-3.5 h-3.5" />
-          <span className="button-text">칼럼</span>
+          <SlidersHorizontal className="w-3 h-3" />
+          칼럼
           {hiddenCount > 0 && (
-            <span className="text-[10px] font-bold text-hansl-500">{total - hiddenCount}/{total}</span>
+            <span className="hansl-ctl-count-strong">{total - hiddenCount}/{total}</span>
           )}
         </button>
         {open && (

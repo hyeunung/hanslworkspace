@@ -43,7 +43,7 @@ export default function SavedColumnViewsMenu({
 
   return (
     <>
-      {/* 칼럼 버튼(hansl-btn)과 같은 규격 — 같은 행에서 높낮이/모양 통일 */}
+      {/* 컨트롤 칩 공통 규격(+필터와 동일, 실선) — 사용자 확정 디자인 */}
       <button
         type="button"
         onClick={(e) => {
@@ -51,15 +51,15 @@ export default function SavedColumnViewsMenu({
           if (open) close()
           else { setOpen(true); setAnchorEl(e.currentTarget) }
         }}
-        className="hansl-btn"
+        className={`hansl-ctl-chip ${open ? 'hansl-toggle-on' : 'hansl-toggle-off'}`}
         title="저장된 칼럼 구성 불러오기·저장"
       >
-        <Bookmark className="w-3.5 h-3.5" />
-        <span className="button-text">저장된 칼럼</span>
+        <Bookmark className="w-3 h-3" />
+        저장된 칼럼
         {views.length > 0 && (
-          <span className="text-[10px] font-bold text-hansl-500">{views.length}</span>
+          <span className="hansl-ctl-count">({views.length})</span>
         )}
-        <ChevronDown className="w-3 h-3 text-gray-400" />
+        <ChevronDown className="w-3 h-3" />
       </button>
 
       {open && anchorEl && (

@@ -44,12 +44,12 @@ export default function PurchaseColumnMenu({
         type="button"
         onClick={(e) => { setAnchorEl(e.currentTarget as HTMLElement); setOpen(prev => !prev) }}
         title="표시할 칼럼 선택"
-        className="hansl-btn"
+        className={`hansl-ctl-chip ${open ? 'hansl-toggle-on' : 'hansl-toggle-off'}`}
       >
-        <SlidersHorizontal className="w-3.5 h-3.5" />
-        <span className="button-text">칼럼</span>
+        <SlidersHorizontal className="w-3 h-3" />
+        칼럼
         {shownCount < total && (
-          <span className="text-[10px] font-bold text-hansl-500">{shownCount}/{total}</span>
+          <span className="hansl-ctl-count-strong">{shownCount}/{total}</span>
         )}
       </button>
       {open && (

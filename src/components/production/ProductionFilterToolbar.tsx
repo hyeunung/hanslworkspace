@@ -251,17 +251,17 @@ export default function ProductionFilterToolbar({
                 if (viewsMenuFor === type) { setViewsMenuFor(null); setViewsAnchor(null) }
                 else { setViewsMenuFor(type); setViewsAnchor(e.currentTarget) }
               }}
-              className={`hansl-pill-btn ${
+              className={`hansl-ctl-chip ${
                 viewsMenuFor === type
-                  ? 'hansl-pill-btn-on'
-                  : 'hansl-pill-btn-off'
+                  ? 'hansl-toggle-on'
+                  : 'hansl-toggle-off'
               }`}
               title="저장된 필터 불러오기·저장"
             >
               <Bookmark className="w-3 h-3" />
               저장된 필터
               {savedViewsForType.length > 0 && (
-                <span className="text-[9px] text-gray-400">({savedViewsForType.length})</span>
+                <span className="hansl-ctl-count">({savedViewsForType.length})</span>
               )}
               <ChevronDown className="w-3 h-3" />
             </button>
