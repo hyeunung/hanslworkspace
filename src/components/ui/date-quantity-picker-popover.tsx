@@ -128,7 +128,7 @@ export function DateQuantityPickerPopover({
               today: new Date()
             }}
             modifiersClassNames={{
-              today: "bg-blue-500 text-white font-semibold cursor-pointer hover:bg-blue-600 rounded-md"
+              today: "bg-hansl-500 text-white font-semibold cursor-pointer hover:bg-hansl-600 rounded-md"
             }}
           />
           {!hideQuantityInput && (

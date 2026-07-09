@@ -29,10 +29,10 @@ function PopoverContent({
         align={align}
         sideOffset={sideOffset}
         className={cn(
+          // HANSL 표준 팝오버 박스(기준: 제작현황 드롭다운/팝오버)
           "z-50 w-72",
-          "bg-white text-gray-800 rounded-professional",
-          "border border-gray-200 p-4",
-          "shadow-professional-lg outline-hidden",
+          "hansl-popover text-gray-800 p-3",
+          "outline-hidden",
           "origin-(--radix-popover-content-transform-origin)",
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
           "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",

@@ -36,21 +36,21 @@ function SelectTrigger({
       data-slot="select-trigger"
       data-size={size}
       className={cn(
+        // HANSL 표준(기준: 제작현황 폼/정렬 select) — default h-8·text-xs, sm은 22px 박스
         "flex w-full items-center justify-between gap-2",
-        "rounded-professional border border-gray-300 bg-white",
-        "px-3.5 py-2 text-[14px] text-gray-800",
-        "whitespace-nowrap transition-all duration-200",
-        "hover:border-gray-400",
-        "focus:border-hansl-500 focus:ring-2 focus:ring-hansl-500/20",
+        "rounded-md border border-gray-300 bg-white",
+        "px-2.5 text-xs text-gray-800",
+        "whitespace-nowrap transition-colors",
+        "focus:border-hansl-500 focus:ring-1 focus:ring-hansl-500",
         "focus-visible:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-40 disabled:bg-gray-50",
         "data-[placeholder]:text-gray-400",
-        "data-[size=default]:h-10 data-[size=sm]:h-8",
+        "data-[size=default]:h-8 data-[size=sm]:h-[22px] data-[size=sm]:px-2 data-[size=sm]:text-[11px]",
         "*:data-[slot=select-value]:line-clamp-1",
         "*:data-[slot=select-value]:flex",
         "*:data-[slot=select-value]:items-center",
         "*:data-[slot=select-value]:gap-2",
-        "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
         className
       )}
       {...props}
@@ -75,8 +75,8 @@ function SelectContent({
         data-slot="select-content"
         className={cn(
           "relative z-50 max-h-[min(320px,var(--radix-select-content-available-height))] min-w-[8rem]",
-          "bg-white border border-gray-200 rounded-professional shadow-professional-lg",
-          "text-gray-800 overflow-x-hidden overflow-y-auto",
+          // HANSL 표준 팝오버 박스(기준: 제작현황 드롭다운)
+          "hansl-popover text-gray-800 overflow-x-hidden overflow-y-auto",
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
           "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
           "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
@@ -114,7 +114,8 @@ function SelectLabel({
     <SelectPrimitive.Label
       data-slot="select-label"
       className={cn(
-        "px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider",
+        // 제작현황 팝오버 섹션 라벨과 동일
+        "px-3 py-1 text-[9px] font-semibold text-gray-400 uppercase",
         className
       )}
       {...props}
@@ -131,20 +132,21 @@ function SelectItem({
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "relative flex w-full cursor-default items-center gap-2",
-        "rounded-sm py-2 pr-8 pl-3 text-[13px]",
-        "outline-none select-none transition-colors duration-150",
+        // HANSL 표준 메뉴 아이템(기준: 제작현황 드롭다운 항목 11px)
+        "relative flex w-full cursor-default items-center gap-1.5",
+        "rounded-sm py-1.5 pr-7 pl-3 text-[11px] text-gray-700",
+        "outline-none select-none transition-colors",
         "hover:bg-gray-50 focus:bg-hansl-50 focus:text-hansl-600",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-        "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        "*:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+        "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3",
+        "*:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-1.5",
         className
       )}
       {...props}
     >
-      <span className="absolute right-2 flex size-3.5 items-center justify-center">
+      <span className="absolute right-2 flex size-3 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
-          <CheckIcon className="size-4 text-hansl-500" />
+          <CheckIcon className="size-3 text-hansl-500" />
         </SelectPrimitive.ItemIndicator>
       </span>
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>

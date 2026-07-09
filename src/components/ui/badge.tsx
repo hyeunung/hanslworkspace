@@ -4,31 +4,33 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+// HANSL 표준(기준: 제작현황 카운트 배지 badge-stats) — rounded-lg · px-1.5 py-0.5 · 10px
+// default는 제작현황 'N건' 배지(bg-blue-50/text-blue-700/border-blue-200)와 동일.
 const badgeVariants = cva(
-  "inline-flex items-center justify-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1 [&>svg]:pointer-events-none transition-all duration-150 overflow-hidden uppercase tracking-wider",
+  "inline-flex items-center justify-center business-radius-badge px-1.5 py-0.5 text-[10px] font-medium leading-tight w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-0.5 [&>svg]:pointer-events-none transition-colors overflow-hidden",
   {
     variants: {
       variant: {
         default:
-          "bg-hansl-100 text-hansl-700 border border-hansl-200/50",
+          "bg-blue-50 text-blue-700 border border-blue-200 font-bold",
         secondary:
-          "bg-gray-100 text-gray-700 border border-gray-200/50",
+          "bg-gray-100 text-gray-600 border border-gray-200",
         success:
-          "bg-green-100 text-green-700 border border-green-200/50",
+          "bg-green-50 text-green-700 border border-green-200",
         warning:
-          "bg-amber-100 text-amber-700 border border-amber-200/50",
+          "bg-amber-50 text-amber-700 border border-amber-200",
         destructive:
-          "bg-red-100 text-red-700 border border-red-200/50",
+          "bg-red-50 text-red-700 border border-red-200",
         info:
-          "bg-blue-100 text-blue-700 border border-blue-200/50",
+          "bg-blue-50 text-blue-700 border border-blue-200",
         outline:
           "border border-gray-300 text-gray-600 bg-white",
         pending:
-          "bg-yellow-50 text-yellow-700 border border-yellow-200/50",
+          "bg-yellow-50 text-yellow-700 border border-yellow-200",
         approved:
-          "bg-green-50 text-green-700 border border-green-200/50",
+          "bg-green-50 text-green-700 border border-green-200",
         rejected:
-          "bg-red-50 text-red-700 border border-red-200/50",
+          "bg-red-50 text-red-700 border border-red-200",
       },
     },
     defaultVariants: {

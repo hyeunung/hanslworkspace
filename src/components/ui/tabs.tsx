@@ -43,7 +43,8 @@ const TabsList = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      "inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground",
+      // HANSL 표준(기준: 제작현황 뷰 선택 버튼 그룹) — 배경 없는 칩 나열
+      "inline-flex items-center gap-2",
       className
     )}
       {...props}
@@ -68,7 +69,11 @@ const TabsTrigger = React.forwardRef<
       aria-selected={isActive}
       data-state={isActive ? "active" : "inactive"}
       className={cn(
-        "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+        // HANSL 표준(기준: 제작현황 전체/PCB/Cable 뷰 버튼) — 활성 시 hansl 파랑 채움
+        "hansl-view-btn justify-center whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hansl-500/20 disabled:pointer-events-none disabled:opacity-50",
+        isActive
+          ? "hansl-view-btn-on text-white"
+          : "hansl-view-btn-off text-gray-700",
         className
       )}
       onClick={(e) => {

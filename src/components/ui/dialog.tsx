@@ -94,8 +94,9 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="dialog-header"
       className={cn(
-        "px-6 py-4 border-b border-gray-100",
-        "flex flex-col gap-2 text-left",
+        // HANSL 표준(기준: 제작현황 모달 헤더) — 컴팩트 패딩
+        "px-5 py-3 border-b border-gray-100",
+        "flex flex-col gap-1 text-left",
         className
       )}
       {...props}
@@ -108,7 +109,7 @@ function DialogBody({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="dialog-body"
       className={cn(
-        "px-6 py-5",
+        "px-5 py-4",
         className
       )}
       {...props}
@@ -121,8 +122,8 @@ function DialogFooter({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="dialog-footer"
       className={cn(
-        "px-6 py-4 border-t border-gray-100 bg-gray-50/50",
-        "flex flex-col-reverse gap-3 sm:flex-row sm:justify-end",
+        "px-5 py-3 border-t border-gray-100 bg-gray-50/50",
+        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
         className
       )}
       {...props}
@@ -138,7 +139,8 @@ function DialogTitle({
     <DialogPrimitive.Title
       data-slot="dialog-title"
       className={cn(
-        "text-lg font-semibold text-gray-800 tracking-tight",
+        // 제작현황 모달 제목(modal-title 14px bold) 기준
+        "modal-title",
         className
       )}
       {...props}
@@ -154,7 +156,7 @@ function DialogDescription({
     <DialogPrimitive.Description
       data-slot="dialog-description"
       className={cn(
-        "text-sm text-gray-600 mt-1.5",
+        "modal-subtitle mt-0.5",
         className
       )}
       {...props}

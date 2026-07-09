@@ -12,8 +12,9 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
       <table
         data-slot="table"
         className={cn(
+          // HANSL 표준(기준: 제작현황 컴팩트 표) — 본문 10px
           "w-full caption-bottom",
-          "text-[13px] leading-[1.6]",
+          "text-[10px] text-gray-500",
           "border-collapse",
           className
         )}
@@ -28,8 +29,9 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
     <thead
       data-slot="table-header"
       className={cn(
-        "bg-gray-50/80",
+        "bg-gray-50",
         "border-y border-gray-200",
+        "whitespace-nowrap",
         className
       )}
       {...props}
@@ -81,11 +83,10 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-11 px-4",
+        // HANSL 표준 헤더 셀(기준: 제작현황 hansl-th) — 10px/600 · px-2 py-[2px]
+        "px-2 py-[2px]",
         "text-left align-middle",
-        "text-[12px] font-semibold",
-        "text-gray-700",
-        "uppercase tracking-wider",
+        "table-header-text text-gray-500",
         "whitespace-nowrap",
         "[&:has([role=checkbox])]:pr-0",
         "[&>[role=checkbox]]:translate-y-[2px]",
@@ -101,10 +102,11 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "px-4 py-3",
+        // HANSL 표준 본문 셀(기준: 제작현황) — 10px · px-2 py-1.5
+        "px-2 py-1.5",
         "align-middle",
-        "text-[13px]",
-        "text-gray-800",
+        "text-[10px]",
+        "text-gray-500",
         "whitespace-nowrap",
         "[&:has([role=checkbox])]:pr-0",
         "[&>[role=checkbox]]:translate-y-[2px]",
