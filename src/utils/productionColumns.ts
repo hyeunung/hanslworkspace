@@ -181,6 +181,35 @@ export const HEADER_SPAN_GROUPS = {
   cableDelivery: ['delivery_notes', 'delivery_completed'],
 }
 
+// ─── 필터 칼럼 그룹 접두어 ──────────────────────────────────────────────
+// 표 헤더의 상위 그룹(큰제목, colSpan)에 속한 하위 칼럼은 필터 드롭다운에서
+// '그룹: 칼럼'(예: 'PCB 제작: 입고완료') 형태로 표기해 동명 칼럼(수량 등)을 구분한다.
+// 그룹 구성/명칭은 실제 렌더 헤더(ProductionListMain thead)와 반드시 일치시킨다.
+const COLUMN_GROUP_DEFS: Record<'pcb' | 'cable', { title: string; fields: string[] }[]> = {
+  pcb: [
+    { title: 'PJT 담당자', fields: HEADER_SPAN_GROUPS.pjt },
+    { title: '제작수량', fields: HEADER_SPAN_GROUPS.makeQty },
+    { title: 'PCB 제작', fields: HEADER_SPAN_GROUPS.pcbMake },
+    { title: "ASS'Y", fields: HEADER_SPAN_GROUPS.assy },
+    { title: 'IN-House Checking', fields: HEADER_SPAN_GROUPS.inHouse },
+    { title: '납품', fields: HEADER_SPAN_GROUPS.pcbDelivery },
+  ],
+  cable: [
+    { title: 'PJT 담당자', fields: HEADER_SPAN_GROUPS.pjt },
+    { title: '제작수량', fields: HEADER_SPAN_GROUPS.makeQty },
+    { title: 'CASE/CABLE 입고', fields: HEADER_SPAN_GROUPS.cableStockIn },
+    { title: '납품', fields: HEADER_SPAN_GROUPS.cableDelivery },
+  ],
+}
+
+// field → 상위 그룹 제목 (그룹에 속하지 않는 독립 칼럼은 null)
+export const columnGroupTitleFor = (type: 'pcb' | 'cable', field: string): string | null => {
+  for (const g of COLUMN_GROUP_DEFS[type]) {
+    if (g.fields.includes(field)) return g.title
+  }
+  return null
+}
+
 // localStorage 숨긴 칼럼 저장 키 — 저장/복원이 항상 같은 키를 쓰도록 한곳에서 관리
 export const hiddenColsStorageKey = (type: 'pcb' | 'cable') => `hansl_prod_hidden_cols_${type}`
 
