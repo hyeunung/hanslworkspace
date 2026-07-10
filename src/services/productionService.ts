@@ -53,6 +53,8 @@ export interface ProductionPcb {
   pcb_stock_notify_teams?: string[]
   parts_notify_teams?: string[]
   final_product_notify_teams?: string[]
+  // 신규 등록(행 추가) 알림 대상 팀 — 양승진은 DB 트리거에서 항상 고정 포함
+  new_row_notify_teams?: string[]
 }
 
 export interface ProductionCable {
@@ -86,6 +88,8 @@ export interface ProductionCable {
   deleted_by?: string | null
   // 납품 배송완료 알림 대상 팀
   delivery_notify_teams?: string[]
+  // 신규 등록(행 추가) 알림 대상 팀 — 양승진은 DB 트리거에서 항상 고정 포함
+  new_row_notify_teams?: string[]
 }
 
 export const productionService = {
