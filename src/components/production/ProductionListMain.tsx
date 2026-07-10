@@ -378,6 +378,57 @@ function NotifyTeamsPicker({ teams, onChange }: { teams: string[]; onChange: (te
   )
 }
 
+// 행 추가 전 신규 등록 알림 대상 선택 팝오버 — 양승진은 항상 고정 수신(해제 불가),
+// 부서는 1개 이상 필수 선택(중복 선택 가능). 선택 전에는 행 추가 진행 버튼이 비활성화된다.
+function NewRowNotifyPopover({ onConfirm }: { onConfirm: (teams: string[]) => void }) {
+  const [teams, setTeams] = useState<string[]>([])
+  const toggle = (team: string) => {
+    setTeams(prev => prev.includes(team) ? prev.filter(t => t !== team) : [...prev, team])
+  }
+  return (
+    <div
+      className="add-notify-popover absolute z-50 top-full right-0 mt-1 hansl-popover p-1.5 flex flex-col gap-0.5 w-max min-w-[130px]"
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <span className="text-[10px] text-gray-500 px-1 pb-0.5">신규 등록 알림 대상</span>
+      <div
+        className="flex items-center justify-between gap-2 text-[10px] leading-tight px-1.5 py-1 rounded bg-gray-50 text-gray-500 cursor-default"
+        title="양승진에게는 항상 알림이 발송됩니다"
+      >
+        양승진 (고정)
+        <Check className="w-3 h-3 shrink-0" />
+      </div>
+      {NOTIFY_TEAM_OPTIONS.map(team => {
+        const active = teams.includes(team)
+        return (
+          <button
+            key={team}
+            type="button"
+            onClick={() => toggle(team)}
+            className={`flex items-center justify-between gap-2 text-[10px] leading-tight px-1.5 py-1 text-left whitespace-nowrap rounded hover:bg-gray-100 ${
+              active ? 'text-hansl-500 font-semibold' : 'text-gray-700'
+            }`}
+          >
+            {team}
+            {active && <Check className="w-3 h-3 shrink-0" />}
+          </button>
+        )
+      })}
+      <button
+        type="button"
+        disabled={teams.length === 0}
+        onClick={() => onConfirm(teams)}
+        className="hansl-btn-primary justify-center mt-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <span className="button-text text-white">행 추가</span>
+      </button>
+      {teams.length === 0 && (
+        <span className="text-[9px] text-red-500 px-1">알림 보낼 부서를 1개 이상 선택하세요</span>
+      )}
+    </div>
+  )
+}
+
 // 상태 선택 칩 + 구분선 + 메모 입력을 함께 제공하는 재사용 에디터
 function ArtworkStatusEditor({
   value,
@@ -624,6 +675,9 @@ export default function ProductionListMain() {
   const { pcbs, cables, loading, setLoading, employees, vendors, loadData } = useProductionData()
   const [addingPcbRow, setAddingPcbRow] = useState<Omit<ProductionPcb, 'id' | 'created_at' | 'updated_at'> | null>(null)
   const [addingCableRow, setAddingCableRow] = useState<Omit<ProductionCable, 'id' | 'created_at' | 'updated_at'> | null>(null)
+  // 행 추가 버튼 클릭 시 열리는 신규 등록 알림 대상 선택 팝오버 + 확정된 선택값
+  const [addNotifyPicker, setAddNotifyPicker] = useState<'pcb' | 'cable' | null>(null)
+  const [newRowNotifyTeams, setNewRowNotifyTeams] = useState<string[]>([])
 
   // 필터·검색·저장뷰·제작구분(칩 드래그)·패널 접기 상태 — useProductionTableFilters로 분리
   const {
@@ -1132,7 +1186,19 @@ export default function ProductionListMain() {
     }
   }, [])
 
-  // 행 추가 인라인 모드로 전환
+  // 알림 대상 팝오버 바깥 클릭 시 닫기
+  useEffect(() => {
+    if (!addNotifyPicker) return
+    const close = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (target.closest('.add-notify-popover') || target.closest('.add-notify-trigger')) return
+      setAddNotifyPicker(null)
+    }
+    window.addEventListener('mousedown', close)
+    return () => window.removeEventListener('mousedown', close)
+  }, [addNotifyPicker])
+
+  // 행 추가 인라인 모드로 전환 — 알림 대상 팝오버에서 부서 선택 후에만 호출된다
   const handleAddClick = async (type: 'pcb' | 'cable') => {
     // 날짜 생성은 무조건 한국시간(KST) 기준 — UTC(toISOString)를 쓰면 KST 0~9시에 채번/요청일이 하루 밀린다
     const today = getKstTodayISO()
@@ -1196,6 +1262,10 @@ export default function ProductionListMain() {
       toast.error('보드명을 입력해 주세요.')
       return
     }
+    if (newRowNotifyTeams.length === 0) {
+      toast.error('알림 보낼 부서를 선택해 주세요.')
+      return
+    }
     try {
       // 빈 문자열을 null로 변환하여 데이트/데시멀 컬럼 에러 방지
       const sanitized = { ...addingPcbRow } as any
@@ -1207,10 +1277,13 @@ export default function ProductionListMain() {
       if (sanitized.hansl_manager) {
         sanitized.hansl_manager = stripEmployeeTitle(sanitized.hansl_manager)
       }
+      // 신규 등록 알림(푸시+이메일) 대상 — DB 트리거가 이 칼럼을 읽어 선택된 부서+양승진(고정)에게 발송
+      sanitized.new_row_notify_teams = newRowNotifyTeams
       const created = await productionService.createProductionPcb(sanitized)
       if (created?.id) pushUndo({ kind: 'deleteInserted', table: 'production_pcbs', id: created.id, label: '행 추가(PCB)' })
       toast.success('신규 PCB 항목이 저장되었습니다.')
       setAddingPcbRow(null)
+      setNewRowNotifyTeams([])
       // 저장된 행의 요청일이 현재 월/연도 필터 밖이면(예: 6월을 보는데 오늘=7월로 저장),
       // 저장은 됐지만 목록에 안 보여 "저장이 안 된 것처럼" 보이므로 필터를 해당 행 기준으로 이동시켜 노출
       focusFilterOnRow('pcb', created?.request_date)
@@ -1246,6 +1319,10 @@ export default function ProductionListMain() {
       toast.error('품명을 입력해 주세요.')
       return
     }
+    if (newRowNotifyTeams.length === 0) {
+      toast.error('알림 보낼 부서를 선택해 주세요.')
+      return
+    }
     try {
       // 빈 문자열을 null로 변환하여 데이트/데시멀 컬럼 에러 방지
       const sanitized = { ...addingCableRow } as any
@@ -1257,10 +1334,13 @@ export default function ProductionListMain() {
       if (sanitized.hansl_manager) {
         sanitized.hansl_manager = stripEmployeeTitle(sanitized.hansl_manager)
       }
+      // 신규 등록 알림(푸시+이메일) 대상 — DB 트리거가 이 칼럼을 읽어 선택된 부서+양승진(고정)에게 발송
+      sanitized.new_row_notify_teams = newRowNotifyTeams
       const created = await productionService.createProductionCable(sanitized)
       if (created?.id) pushUndo({ kind: 'deleteInserted', table: 'production_cables', id: created.id, label: '행 추가(Cable)' })
       toast.success('신규 Cable/Case 항목이 저장되었습니다.')
       setAddingCableRow(null)
+      setNewRowNotifyTeams([])
       focusFilterOnRow('cable', created?.request_date)
     } catch (err) {
       console.error(err)
@@ -4365,14 +4445,25 @@ export default function ProductionListMain() {
                   <Printer className="w-3.5 h-3.5" />
                   <span className="button-text">인쇄</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleAddClick('pcb')}
-                  className="hansl-btn-primary"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span className="button-text text-white">행 추가</span>
-                </button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setAddNotifyPicker(v => (v === 'pcb' ? null : 'pcb'))}
+                    className="hansl-btn-primary add-notify-trigger"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span className="button-text text-white">행 추가</span>
+                  </button>
+                  {addNotifyPicker === 'pcb' && (
+                    <NewRowNotifyPopover
+                      onConfirm={(teams) => {
+                        setNewRowNotifyTeams(teams)
+                        setAddNotifyPicker(null)
+                        handleAddClick('pcb')
+                      }}
+                    />
+                  )}
+                </div>
               </div>
             </div>
 
@@ -4968,14 +5059,25 @@ export default function ProductionListMain() {
                   <Printer className="w-3.5 h-3.5" />
                   <span className="button-text">인쇄</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleAddClick('cable')}
-                  className="hansl-btn-primary"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span className="button-text text-white">행 추가</span>
-                </button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setAddNotifyPicker(v => (v === 'cable' ? null : 'cable'))}
+                    className="hansl-btn-primary add-notify-trigger"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span className="button-text text-white">행 추가</span>
+                  </button>
+                  {addNotifyPicker === 'cable' && (
+                    <NewRowNotifyPopover
+                      onConfirm={(teams) => {
+                        setNewRowNotifyTeams(teams)
+                        setAddNotifyPicker(null)
+                        handleAddClick('cable')
+                      }}
+                    />
+                  )}
+                </div>
               </div>
             </div>
 
