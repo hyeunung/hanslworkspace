@@ -4,7 +4,7 @@ import { STATUS_FIELDS, filterStatusOptionsFor } from '@/utils/productionStatus'
 import {
   PCB_CATEGORIES, CABLE_CATEGORIES, FilterOp, FilterRule, TableFilter, opLabelFor, opsForField,
 } from '@/utils/productionFilters'
-import { MIN_COLUMN_WIDTH, measureText } from '@/utils/productionColumns'
+import { MIN_COLUMN_WIDTH, measureText, columnGroupTitleFor } from '@/utils/productionColumns'
 import { ProductionFilterConfig } from '@/hooks/useProductionFilterViews'
 import { AnchoredPortal } from '@/components/ui/AnchoredPortal'
 
@@ -82,6 +82,12 @@ export default function ProductionFilterToolbar({
     const hasDefaultForType = !!filterViewsConfig.defaults[type]
     // 필터를 걸 수 있는 칼럼 = 그 테이블의 모든 칼럼
     const filterableFields = Object.keys(MIN_COLUMN_WIDTH[type])
+    // 상위 그룹(큰제목)에 속한 하위 칼럼은 '그룹: 칼럼'으로 표기해 동명 칼럼(수량 등)을 구분한다
+    const labelFor = (field: string) => {
+      const base = getColumnTitle(field, type)
+      const group = columnGroupTitleFor(type, field)
+      return group ? `${group}: ${base}` : base
+    }
     // 브라우저 기본 select 외형(테두리/패딩/화살표/포커스링)을 완전히 제거 — 알약 안에서 텍스트처럼 보이게
     const selectClass = 'hansl-pill-select'
     const selectStyle: React.CSSProperties = {
@@ -148,12 +154,12 @@ export default function ProductionFilterToolbar({
                   <select
                     value={rule.field}
                     onChange={(e) => changeRuleField(rule, e.target.value)}
-                    style={fitSelect(rule.field ? getColumnTitle(rule.field, type) : '칼럼 선택', 600)}
+                    style={fitSelect(rule.field ? labelFor(rule.field) : '칼럼 선택', 600)}
                     className={`${selectClass} font-semibold ${rule.field ? '' : 'text-hansl-500'}`}
                   >
                     {!rule.field && <option value="" disabled>칼럼 선택</option>}
                     {filterableFields.map(k => (
-                      <option key={k} value={k}>{getColumnTitle(k, type)}</option>
+                      <option key={k} value={k}>{labelFor(k)}</option>
                     ))}
                   </select>
                   {rule.field && (<>
