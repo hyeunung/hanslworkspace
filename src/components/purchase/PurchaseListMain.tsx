@@ -44,6 +44,25 @@ const NAV_TABS: { key: string; label: string }[] = [
 
 const FILTER_COLLAPSED_KEY = 'hansl_purchase_filter_collapsed';
 
+// 뷰 버튼(탭) 순서 저장 — 저장된 순서의 맨 앞 탭이 화면 첫 진입 시 기본 탭이 된다
+const TAB_ORDER_STORAGE_KEY = 'hansl_purchase_tab_order';
+const DEFAULT_TAB_ORDER = NAV_TABS.map(t => t.key);
+const restoreTabOrder = (): string[] => {
+  try {
+    const saved = localStorage.getItem(TAB_ORDER_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        // 저장 이후 추가/삭제된 탭 보정: 알 수 없는 키 제거 + 누락 키는 기본 순서대로 뒤에 추가
+        const merged = parsed.filter((k: string) => DEFAULT_TAB_ORDER.includes(k));
+        for (const k of DEFAULT_TAB_ORDER) if (!merged.includes(k)) merged.push(k);
+        return merged;
+      }
+    }
+  } catch { /* 무시 */ }
+  return [...DEFAULT_TAB_ORDER];
+};
+
 // 발주 목록 메인 컴포넌트 — 제작현황과 같은 테이블 형식(뷰 버튼 + 노션식 필터 카드 + 컴팩트 표).
 // 데이터 파이프라인(메모리 캐시·탭 필터·서버 폴백 검색·realtime)과 승인/상세 플로우는 기존 유지.
 export default function PurchaseListMain(_props: PurchaseListMainProps) {
@@ -158,14 +177,14 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
     };
   }, [currentUserName, roleCase, currentUserRoles]);
 
-  // URL에서 초기 탭 확인
+  // URL에서 초기 탭 확인 — 파라미터 없으면 저장된 탭 순서의 맨 앞 탭
   const getInitialTab = () => {
     const searchParams = new URLSearchParams(location.search);
     const tab = searchParams.get('tab');
-    if (tab && ['pending', 'purchase', 'receipt', 'done'].includes(tab)) {
+    if (tab && DEFAULT_TAB_ORDER.includes(tab)) {
       return tab;
     }
-    return 'pending';
+    return restoreTabOrder()[0];
   };
   const [activeTab, setActiveTab] = useState(getInitialTab);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
@@ -194,7 +213,7 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     const tab = searchParams.get('tab');
-    if (tab && ['pending', 'purchase', 'receipt', 'done'].includes(tab)) {
+    if (tab && DEFAULT_TAB_ORDER.includes(tab)) {
       setActiveTab(tab);
     }
   }, [location.search]);
@@ -346,6 +365,78 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
     setSelectedEmployee(newEmployeeValue ?? 'all');
   }, [location.search, navigate, defaultEmployeeByTab]);
 
+  // ── 뷰 버튼 드래그 순서 변경 (제작현황 제작구분 칩과 동일한 포인터 방식) ──
+  const [tabOrder, setTabOrder] = useState<string[]>(restoreTabOrder);
+  const orderedTabs = useMemo(
+    () => tabOrder.map(k => NAV_TABS.find(t => t.key === k)).filter(Boolean) as typeof NAV_TABS,
+    [tabOrder]
+  );
+  const dragTabRef = useRef<string | null>(null);
+  const [dragTab, setDragTab] = useState<string | null>(null);
+  const [tabDropIndex, setTabDropIndex] = useState<number | null>(null);
+  const tabContainerRef = useRef<HTMLDivElement>(null);
+  const tabDragStartXRef = useRef(0);
+  const tabDragMovedRef = useRef(false);
+  const TAB_DRAG_THRESHOLD = 4; // px 이상 움직이면 드래그, 아니면 클릭(탭 전환)으로 간주
+
+  const computeTabDropIndex = useCallback((clientX: number): number => {
+    const container = tabContainerRef.current;
+    if (!container) return 0;
+    const tabs = Array.from(container.querySelectorAll<HTMLElement>('[data-tabkey]'));
+    for (let i = 0; i < tabs.length; i++) {
+      const r = tabs[i].getBoundingClientRect();
+      if (clientX < r.left + r.width / 2) return i;
+    }
+    return tabs.length;
+  }, []);
+
+  const dropTabAt = useCallback((index: number) => {
+    const from = dragTabRef.current;
+    if (!from) return;
+    setTabOrder(prev => {
+      const fromIdx = prev.indexOf(from);
+      if (fromIdx < 0) return prev;
+      const arr = [...prev];
+      arr.splice(fromIdx, 1);
+      let target = index;
+      if (fromIdx < index) target -= 1;
+      target = Math.max(0, Math.min(arr.length, target));
+      arr.splice(target, 0, from);
+      try { localStorage.setItem(TAB_ORDER_STORAGE_KEY, JSON.stringify(arr)); } catch { /* 무시 */ }
+      return arr;
+    });
+  }, []);
+
+  const handleTabPointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>, tabKey: string) => {
+    if (e.button !== 0) return;
+    dragTabRef.current = tabKey;
+    tabDragStartXRef.current = e.clientX;
+    tabDragMovedRef.current = false;
+    setDragTab(tabKey);
+
+    const onMove = (ev: PointerEvent) => {
+      if (!dragTabRef.current) return;
+      if (!tabDragMovedRef.current && Math.abs(ev.clientX - tabDragStartXRef.current) < TAB_DRAG_THRESHOLD) return;
+      tabDragMovedRef.current = true;
+      setTabDropIndex(computeTabDropIndex(ev.clientX));
+    };
+    const onUp = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      if (tabDragMovedRef.current) {
+        dropTabAt(computeTabDropIndex(ev.clientX)); // 놓은 자리에 삽입
+      } else if (dragTabRef.current) {
+        handleTabClick(dragTabRef.current); // 안 움직였으면 클릭 = 탭 전환
+      }
+      dragTabRef.current = null;
+      tabDragMovedRef.current = false;
+      setDragTab(null);
+      setTabDropIndex(null);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }, [computeTabDropIndex, dropTabAt, handleTabClick]);
+
   // 연도 드롭다운 옵션 (month_in 규칙용)
   const yearsFor = useCallback((dateField: string) => purchaseYearsFor(purchases, dateField), [purchases]);
 
@@ -376,16 +467,25 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
         </div>
       </div>
 
-      {/* 진행상태 뷰 버튼 (기존 4탭 → 제작현황식, 건수 배지 유지) */}
-      <div className="mb-3 flex items-center gap-2 flex-wrap">
-        {NAV_TABS.map((tab) => {
+      {/* 진행상태 뷰 버튼 (기존 4탭 → 제작현황식, 건수 배지 유지 · 드래그로 순서 변경) */}
+      <div ref={tabContainerRef} className="mb-3 flex items-center gap-2 flex-wrap select-none">
+        {orderedTabs.map((tab, i) => {
           const isActive = activeTab === tab.key;
+          const showLeftBar = tabDropIndex === i;
+          const showRightBar = tabDropIndex === orderedTabs.length && i === orderedTabs.length - 1;
           return (
             <button
               key={tab.key}
+              data-tabkey={tab.key}
               type="button"
-              onClick={() => handleTabClick(tab.key)}
-              className={`hansl-view-btn ${isActive ? 'hansl-view-btn-on' : 'hansl-view-btn-off'}`}
+              onPointerDown={(e) => handleTabPointerDown(e, tab.key)}
+              title="드래그하여 탭 순서 변경 · 클릭하여 탭 전환 (맨 앞 탭이 화면 첫 진입 시 열립니다)"
+              style={{
+                touchAction: 'none',
+                ...(showLeftBar ? { boxShadow: '-3px 0 0 0 #2563eb' }
+                  : showRightBar ? { boxShadow: '3px 0 0 0 #2563eb' } : {})
+              }}
+              className={`hansl-view-btn transition-all ${dragTab === tab.key && tabDropIndex !== null ? 'opacity-40' : ''} ${isActive ? 'hansl-view-btn-on' : 'hansl-view-btn-off'}`}
             >
               <span className={`button-text ${isActive ? 'text-white' : 'text-gray-700'}`}>{tab.label}</span>
               <span className={`badge-stats ml-1 ${isActive ? 'bg-white/25 text-white' : 'bg-gray-100 text-gray-600'}`}>
