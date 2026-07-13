@@ -4,7 +4,6 @@ import { Vendor } from '@/types/purchase'
 import { vendorService } from '@/services/vendorService'
 import VendorFilters from '@/components/vendor/VendorFilters'
 import VendorCompactTable from '@/components/vendor/VendorCompactTable'
-import VendorFilterToolbar from '@/components/vendor/VendorFilterToolbar'
 import VendorSortControl from '@/components/vendor/VendorSortControl'
 import VendorColumnMenu, { VendorColumnVisibility } from '@/components/vendor/VendorColumnMenu'
 import VendorModal from '@/components/vendor/VendorModal'
@@ -14,12 +13,11 @@ import { Search, X } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { canEditVendors } from '@/utils/roleHelper'
 import {
-  VendorRow, vendorToRow, applyVendorSearch, applyVendorFilters,
-  compareByVendorSortRules, vendorYearsFor,
+  VendorRow, vendorToRow, applyVendorSearch,
+  compareByVendorSortRules,
   VendorColumnId, VENDOR_COLUMNS_STORAGE_KEY,
 } from '@/utils/vendorTable'
 import { useVendorSortRules } from '@/hooks/useVendorSortRules'
-import { useVendorTableFilters } from '@/hooks/useVendorTableFilters'
 // XLSX는 사용할 때만 동적으로 import (성능 최적화)
 
 type ModalMode = 'create' | 'edit' | 'view'
@@ -79,20 +77,11 @@ export default function VendorMain() {
 
   const rows: VendorRow[] = useMemo(() => vendors.map(vendorToRow), [vendors])
 
-  const dynamicOptions = useMemo(() => ({
-    paymentSchedules: [...new Set(rows.map(r => r.vendor_payment_schedule).filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b, 'ko')),
-  }), [rows])
-
-  const tableFilters = useVendorTableFilters(dynamicOptions)
-  const years = useMemo(() => vendorYearsFor(rows), [rows])
-
-  // 파이프라인: 통합검색 → 조건 규칙 → 다중 정렬 (모두 클라이언트)
+  // 파이프라인: 통합검색 → 다중 정렬 (모두 클라이언트)
   const displayRows = useMemo(() => {
     const searched = applyVendorSearch(rows, searchTerm)
-    const filtered = applyVendorFilters(searched, tableFilters.activeRules)
-    return [...filtered].sort((a, b) => compareByVendorSortRules(a, b, sortCtl.sortRules))
-  }, [rows, searchTerm, tableFilters.activeRules, sortCtl.sortRules])
+    return [...searched].sort((a, b) => compareByVendorSortRules(a, b, sortCtl.sortRules))
+  }, [rows, searchTerm, sortCtl.sortRules])
 
   // 모달 핸들러
   const handleCreateNew = () => {
@@ -203,7 +192,7 @@ export default function VendorMain() {
         canEdit={canEdit}
       />
 
-      {/* 필터 영역 (제작현황 표준): 통합 검색 + 칼럼 표시 + 조건 규칙/저장된 필터 */}
+      {/* 필터 영역: 통합 검색 + 칼럼 표시 (업체관리는 조건 필터 없이 검색만 사용) */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="relative w-[240px] flex-shrink-0 h-5 flex items-center">
@@ -233,32 +222,6 @@ export default function VendorMain() {
             resetToDefault={resetColumns}
           />
         </div>
-        <VendorFilterToolbar
-          rules={tableFilters.rules}
-          dynamicOptions={dynamicOptions}
-          years={years}
-          addRule={tableFilters.addRule}
-          updateRule={tableFilters.updateRule}
-          changeRuleField={tableFilters.changeRuleField}
-          removeRule={tableFilters.removeRule}
-          resetRules={tableFilters.resetRules}
-          filterViewsConfig={tableFilters.filterViewsConfig}
-          viewsMenuOpen={tableFilters.viewsMenuOpen}
-          setViewsMenuOpen={tableFilters.setViewsMenuOpen}
-          viewsAnchor={tableFilters.viewsAnchor}
-          setViewsAnchor={tableFilters.setViewsAnchor}
-          namingView={tableFilters.namingView}
-          setNamingView={tableFilters.setNamingView}
-          newViewName={tableFilters.newViewName}
-          setNewViewName={tableFilters.setNewViewName}
-          closeViewsMenu={tableFilters.closeViewsMenu}
-          commitSaveView={tableFilters.commitSaveView}
-          handleApplyView={tableFilters.handleApplyView}
-          handleRenameView={tableFilters.handleRenameView}
-          handleDeleteView={tableFilters.handleDeleteView}
-          handleSetDefault={tableFilters.handleSetDefault}
-          handleClearDefault={tableFilters.handleClearDefault}
-        />
       </div>
 
       {/* 표 카드 — 제목행(정렬·건수) + 컴팩트 테이블 (행 가상화) */}
