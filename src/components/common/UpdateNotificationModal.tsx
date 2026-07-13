@@ -65,6 +65,13 @@ export default function UpdateNotificationModal() {
                       {entry.title}
                     </p>
                   )}
+                  {entry.image && (
+                    <img
+                      src={entry.image}
+                      alt={entry.title}
+                      className="w-full rounded-md border border-gray-200 mb-2.5"
+                    />
+                  )}
                   <div className="space-y-1.5">
                     {entry.changes.map((change, i) => {
                       const cfg = typeConfig[change.type] || typeConfig.maintenance

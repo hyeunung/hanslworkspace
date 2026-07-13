@@ -844,6 +844,54 @@ Deno.serve(async (req)=>{
         ...dataMap,
         type: 'new_vendor_inquiry'
       };
+    } else if (type === 'vendor_edit_inquiry') {
+      // 기존업체 수정 요청 문의 접수 → lead buyer + superadmin에게 알림
+      console.log('✏️ [기존업체 수정 요청 알림] lead buyer, superadmin에게 알림');
+
+      const dataMap = data && typeof data === 'object' ? data : {};
+      const requesterName = dataMap['requester_name'] || '';
+      const vendorName = dataMap['vendor_name'] || '';
+
+      const result = await getPurchaseRoleTokens(supabase, ['lead buyer', 'superadmin']);
+      targetTokens = result.tokens;
+      targetEmails = result.emails;
+
+      if (!title) title = '✏️ 기존업체 수정 요청';
+      if (!body) {
+        const parts = [];
+        parts.push(`${requesterName || '직원'}님이 업체 정보 수정을 요청했습니다.`);
+        if (vendorName) parts.push(`업체명: ${vendorName}`);
+        body = parts.join('\n');
+      }
+
+      data = {
+        ...dataMap,
+        type: 'vendor_edit_inquiry'
+      };
+    } else if (type === 'shipping_edit_inquiry') {
+      // 택배 주소록 수정 요청 문의 접수 → lead buyer + superadmin에게 알림
+      console.log('📦 [택배 주소록 수정 요청 알림] lead buyer, superadmin에게 알림');
+
+      const dataMap = data && typeof data === 'object' ? data : {};
+      const requesterName = dataMap['requester_name'] || '';
+      const companyName = dataMap['company_name'] || '';
+
+      const result = await getPurchaseRoleTokens(supabase, ['lead buyer', 'superadmin']);
+      targetTokens = result.tokens;
+      targetEmails = result.emails;
+
+      if (!title) title = '📦 택배 주소록 수정 요청';
+      if (!body) {
+        const parts = [];
+        parts.push(`${requesterName || '직원'}님이 택배 주소록 수정을 요청했습니다.`);
+        if (companyName) parts.push(`업체명: ${companyName}`);
+        body = parts.join('\n');
+      }
+
+      data = {
+        ...dataMap,
+        type: 'shipping_edit_inquiry'
+      };
     } else if (type === 'admin') {
       // 연차/출장 관리자 알림 - roles 기반
       console.log('📋 [연차/출장 알림] roles 기반 관리자 조회');
