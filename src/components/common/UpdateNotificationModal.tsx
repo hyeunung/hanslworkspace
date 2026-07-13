@@ -22,10 +22,13 @@ export default function UpdateNotificationModal() {
 
   if (!isOpen || !version) return null
 
+  // 스크린샷이 포함된 안내는 이미지 가독성을 위해 모달을 넓게 사용
+  const hasImage = changes.some((entry) => entry.image)
+
   return (
     <Dialog open={isOpen}>
       <DialogContent
-        maxWidth="sm:max-w-[360px]"
+        maxWidth={hasImage ? 'sm:max-w-[760px]' : 'sm:max-w-[360px]'}
         showCloseButton={false}
         className="p-0 gap-0 business-radius-modal overflow-hidden"
         onPointerDownOutside={(e) => e.preventDefault()}
@@ -54,8 +57,8 @@ export default function UpdateNotificationModal() {
         {/* Divider */}
         <div className="mx-7 border-t border-gray-100" />
 
-        {/* Changes */}
-        <div className="px-7 py-4 max-h-[240px] overflow-y-auto">
+        {/* Changes — 이미지 포함 시 스크롤 영역을 크게 확보 */}
+        <div className={`px-7 py-4 overflow-y-auto ${hasImage ? 'max-h-[65vh]' : 'max-h-[240px]'}`}>
           {changes.length > 0 ? (
             <div className="space-y-3">
               {changes.map((entry) => (
