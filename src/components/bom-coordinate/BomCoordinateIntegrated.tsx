@@ -92,10 +92,12 @@ export default function BomCoordinateIntegrated() {
   });
   const [employees, setEmployees] = useState<{ id: string; name: string }[]>([]);
   const [productionPcbs, setProductionPcbs] = useState<Array<{ sales_order_number: string; board_name: string }>>([]);
+  const [processedCadBoards, setProcessedCadBoards] = useState<Array<{ sales_order_number?: string; board_name: string; status?: 'pending' | 'completed' }>>([]);
   const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [openArtworkManager, setOpenArtworkManager] = useState(false);
+  const [openBoardSelect, setOpenBoardSelect] = useState(false);
   const [openProductionManager, setOpenProductionManager] = useState(false);
   const [processedResult, setProcessedResult] = useState<ProcessedResultState | null>(null);
   const [dragActive, setDragActive] = useState<string | null>(null);
@@ -267,6 +269,38 @@ export default function BomCoordinateIntegrated() {
     return findBestBoardMatch(cadCoreStripped, normalizedProductionPcbsStripped);
   }, [normalizedProductionPcbsRaw, normalizedProductionPcbsStripped]);
 
+  // 이미 보드별정리(cad_drawings)에서 "완료" 처리된 제작번호 집합: 새로 만들기 드롭다운에서 제외
+  // 검토대기(pending) 건은 삭제될 수 있으므로 제외하지 않는다
+  const processedSalesOrderNumbers = useMemo(() => {
+    const set = new Set<string>();
+    processedCadBoards
+      .filter(board => board.status === 'completed')
+      .forEach(board => {
+        const soNum = resolveSalesOrderNumber(board);
+        if (soNum) set.add(soNum);
+      });
+    return set;
+  }, [processedCadBoards, resolveSalesOrderNumber]);
+
+  // 드롭다운에 노출할 제작현황 보드: 이미 정리된 보드는 제외하되, 현재 선택된 값은 유지
+  const availableProductionPcbs = useMemo(() => (
+    productionPcbs.filter(p => (
+      p.sales_order_number === metadata.salesOrderNumber || !processedSalesOrderNumbers.has(p.sales_order_number)
+    ))
+  ), [productionPcbs, processedSalesOrderNumbers, metadata.salesOrderNumber]);
+
+  // 검토대기(pending) 상태로 이미 업로드된 보드: 제작번호 → 보드명. 선택 시 중복 업로드 경고에 사용
+  const pendingBoardNameBySalesOrder = useMemo(() => {
+    const map = new Map<string, string>();
+    processedCadBoards
+      .filter(board => board.status === 'pending')
+      .forEach(board => {
+        const soNum = resolveSalesOrderNumber(board);
+        if (soNum) map.set(soNum, board.board_name);
+      });
+    return map;
+  }, [processedCadBoards, resolveSalesOrderNumber]);
+
   // localStorage 키 생성 (사용자별 분리)
   const getTempStorageKey = (userId: string) => `bom_temp_data_${userId}`;
   
@@ -392,6 +426,15 @@ export default function BomCoordinateIntegrated() {
           .order('sales_order_number', { ascending: false });
         if (pcbData) {
           setProductionPcbs(pcbData);
+        }
+
+        // 이미 BOM/좌표 정리가 완료(completed)되어 저장된 보드 목록 (드롭다운에서 제외하기 위함)
+        // 검토대기(pending) 상태는 삭제될 수 있으므로 계속 노출한다
+        const { data: cadData } = await supabase
+          .from('cad_drawings')
+          .select('sales_order_number, board_name, status');
+        if (cadData) {
+          setProcessedCadBoards(cadData);
         }
 
         // 현재 사용자 정보 로드
@@ -2098,26 +2141,59 @@ function dlFile() {
                   {/* 1. 보드 이름 (제작현황 연동) */}
                   <div className="space-y-1 mb-3.5">
                     <Label className="text-[10px] text-gray-500">보드 이름 (제작현황 연동) <span className="text-red-500">*</span></Label>
-                    <select
-                      value={metadata.salesOrderNumber ? `${metadata.salesOrderNumber}|${metadata.boardName}` : ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (!val) {
-                          setMetadata(prev => ({ ...prev, salesOrderNumber: '', boardName: '' }));
-                        } else {
-                          const [soNum, bName] = val.split('|');
-                          setMetadata(prev => ({ ...prev, salesOrderNumber: soNum, boardName: bName }));
-                        }
-                      }}
-                      className="w-full bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm h-8 px-2 focus:outline-none focus:ring-2 focus:ring-hansl-500"
-                    >
-                      <option value="">-- 제작현황 보드 선택 --</option>
-                      {productionPcbs.map(p => (
-                        <option key={p.sales_order_number} value={`${p.sales_order_number}|${p.board_name}`}>
-                          [{p.sales_order_number}] {p.board_name}
-                        </option>
-                      ))}
-                    </select>
+                    <Popover open={openBoardSelect} onOpenChange={setOpenBoardSelect}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={openBoardSelect}
+                          className="w-full justify-between text-xs h-8 min-h-[32px] px-2 bg-white border-[#d2d2d7] shadow-sm hover:bg-gray-50 font-normal"
+                        >
+                          <span className="truncate">
+                            {metadata.salesOrderNumber
+                              ? `[${metadata.salesOrderNumber}] ${metadata.boardName}`
+                              : '-- 제작현황 보드 선택 --'}
+                          </span>
+                          <ChevronsUpDown className="ml-2 h-3 w-3 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                        <Command>
+                          <CommandInput placeholder="제작번호/보드명 검색..." className="h-8 text-xs" />
+                          <CommandList>
+                            <CommandEmpty>검색 결과 없음</CommandEmpty>
+                            <CommandGroup>
+                              {availableProductionPcbs.map(p => (
+                                <CommandItem
+                                  key={`${p.sales_order_number}|${p.board_name}`}
+                                  value={`${p.sales_order_number} ${p.board_name}`}
+                                  onSelect={() => {
+                                    const pendingBoardName = pendingBoardNameBySalesOrder.get(p.sales_order_number);
+                                    if (pendingBoardName) {
+                                      const proceed = window.confirm(
+                                        `이미 검토대기중인 동일 보드("${pendingBoardName}")가 있습니다.\n계속 진행하시겠습니까?`
+                                      );
+                                      if (!proceed) return;
+                                    }
+                                    setMetadata(prev => ({ ...prev, salesOrderNumber: p.sales_order_number, boardName: p.board_name }));
+                                    setOpenBoardSelect(false);
+                                  }}
+                                  className="text-xs"
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-3 w-3 shrink-0",
+                                      metadata.salesOrderNumber === p.sales_order_number && metadata.boardName === p.board_name ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  <span className="truncate">[{p.sales_order_number}] {p.board_name}</span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                   </div>
 
                   {/* 2. Artwork 담당자, 생산 담당자, 생산 수량, 생성 버튼 (같은 행) */}
