@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { createClient } from '@/lib/supabase/client';
 import { logger } from '@/lib/logger';
 import { toast } from 'sonner';
-import { Package, Upload, FileText, X, AlertCircle, Loader2, Download, Eye, Plus, Check, ChevronsUpDown, RotateCcw, Save, Link2, Trash2 } from 'lucide-react';
+import { Package, Upload, FileText, X, AlertCircle, Loader2, Download, Eye, Plus, Check, ChevronsUpDown, RotateCcw, Save, Link2, Trash2, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -16,7 +16,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import GeneratedPreviewPanel, { type GeneratedPreviewPanelRef } from './GeneratedPreviewPanel';
 import CoordinatePreviewPanel from './CoordinatePreviewPanel';
@@ -33,6 +32,16 @@ import {
   sortCoordinateItems
 } from '@/utils/v7-generator';
 import { parseRefinedBomFile, RefinedParseError } from '@/utils/refined-bom-parser';
+import BomBoardCompactTable from './BomBoardCompactTable';
+import BomBoardFilterToolbar from './BomBoardFilterToolbar';
+import BomBoardSortControl from './BomBoardSortControl';
+import BomBoardColumnMenu, { type BomBoardColumnVisibility } from './BomBoardColumnMenu';
+import { useBomBoardTableFilters } from '@/hooks/useBomBoardTableFilters';
+import { useBomBoardSortRules } from '@/hooks/useBomBoardSortRules';
+import {
+  type BomBoardRow, type BomBoardColumnId, BOM_BOARD_COLUMNS_STORAGE_KEY, bomBoardStatusLabel,
+  applyBomBoardFilters, applyBomBoardSearch, bomBoardYearsFor, compareByBomBoardSortRules,
+} from '@/utils/bomBoardTable';
 import { 
   generateBOMExcelFromTemplate, 
   downloadExcelBlob,
@@ -130,7 +139,6 @@ export default function BomCoordinateIntegrated() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [skipTempDataLoad, setSkipTempDataLoad] = useState(false);
-  const [tooltipOpenId, setTooltipOpenId] = useState<string | null>(null);
 
   // REF 불일치 수 계산 (BOM vs 좌표)
   const { mismatchCount, missingInCoord, missingInBom } = useMemo(() => {
@@ -552,6 +560,52 @@ export default function BomCoordinateIntegrated() {
     loadSavedBoards();
   }, [viewMode, supabase]);
 
+  // ── 보드별 정리 컴팩트 테이블 상태 (통합검색 / 조건필터 / 다중정렬 / 칼럼표시) ──
+  const [boardSearchTerm, setBoardSearchTerm] = useState('');
+  const boardSortCtl = useBomBoardSortRules();
+  const [boardColumnVisibility, setBoardColumnVisibility] = useState<BomBoardColumnVisibility>(() => {
+    try { return JSON.parse(localStorage.getItem(BOM_BOARD_COLUMNS_STORAGE_KEY) || '{}'); } catch { return {}; }
+  });
+  const persistBoardColumns = useCallback((next: BomBoardColumnVisibility) => {
+    setBoardColumnVisibility(next);
+    try { localStorage.setItem(BOM_BOARD_COLUMNS_STORAGE_KEY, JSON.stringify(next)); } catch { /* 무시 */ }
+  }, []);
+  const toggleBoardColumn = useCallback((id: BomBoardColumnId) => {
+    persistBoardColumns({ ...boardColumnVisibility, [id]: boardColumnVisibility[id] === false });
+  }, [boardColumnVisibility, persistBoardColumns]);
+  const resetBoardColumns = useCallback(() => persistBoardColumns({}), [persistBoardColumns]);
+
+  // 목록 행 데이터 (제작번호는 제작현황 매칭 결과로 채움)
+  const boardRows: BomBoardRow[] = useMemo(() => savedBoards.map(b => ({
+    id: b.id,
+    board_name: b.board_name,
+    code_number: b.code_number || '',
+    sales_order_number: resolveSalesOrderNumber(b) || '',
+    artwork_manager: b.artwork_manager || '',
+    production_manager: b.production_manager || '',
+    status: b.status === 'pending' ? 'pending' as const : 'completed' as const,
+    is_migration_unconfirmed: b.is_migration_unconfirmed === true,
+    status_label: bomBoardStatusLabel(b),
+    mismatch_count: b.mismatch_count ?? 0,
+    manual_count: b.manual_count ?? 0,
+    created_at: b.created_at,
+  })), [savedBoards, resolveSalesOrderNumber]);
+
+  const boardDynamicOptions = useMemo(() => ({
+    artworkManagers: [...new Set(boardRows.map(r => r.artwork_manager).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko')),
+    productionManagers: [...new Set(boardRows.map(r => r.production_manager).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko')),
+  }), [boardRows]);
+
+  const boardTableFilters = useBomBoardTableFilters(boardDynamicOptions);
+  const boardYears = useMemo(() => bomBoardYearsFor(boardRows), [boardRows]);
+
+  // 파이프라인: 통합검색 → 조건 규칙 → 다중 정렬 (모두 클라이언트)
+  const displayBoardRows = useMemo(() => {
+    const searched = applyBomBoardSearch(boardRows, boardSearchTerm);
+    const filtered = applyBomBoardFilters(searched, boardTableFilters.activeRules);
+    return [...filtered].sort((a, b) => compareByBomBoardSortRules(a, b, boardSortCtl.sortRules));
+  }, [boardRows, boardSearchTerm, boardTableFilters.activeRules, boardSortCtl.sortRules]);
+
   // 파일명에서 보드 이름 추측
   useEffect(() => {
     if (fileInfo.bomFile) {
@@ -594,7 +648,7 @@ export default function BomCoordinateIntegrated() {
   useEffect(() => {
     if (!fileInfo.refinedFile) return;
 
-    let name = fileInfo.refinedFile.name
+    const name = fileInfo.refinedFile.name
       .replace(/\.(xlsx|xls)$/i, '')
       .replace(/\(\d{4}\)$/, '')          // 신형식 (YYMM) 접미사
       .replace(/_\d{6}(-검사중)?$/, '')    // 구형식 _YYMMDD 접미사
@@ -2017,182 +2071,117 @@ function dlFile() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="flex justify-between items-center mb-4">
-                    <div>
-                      <p className="page-subtitle">검토대기 항목을 클릭하여 검토 및 최종 저장하세요.</p>
+                  <div className="flex justify-between items-center">
+                    <p className="page-subtitle">검토대기 항목을 클릭하여 검토 및 최종 저장하세요.</p>
                   </div>
-                  </div>
-                  <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
-                    <div className="overflow-x-auto">
-                      <Table className="table-auto">
-                        <TableHeader className="bg-gray-50 sticky top-0 z-10">
-                          <TableRow className="h-6">
-                            <TableHead className="w-[50px] text-center !py-1 !h-auto">
-                              <span className="card-description">No</span>
-                            </TableHead>
-                            <TableHead className="w-[120px] !py-1 !h-auto">
-                              <span className="card-description">코드번호</span>
-                            </TableHead>
-                            <TableHead className="w-[100px] !py-1 !h-auto">
-                              <span className="card-description">제작번호</span>
-                            </TableHead>
-                            <TableHead className="min-w-[200px] !py-1 !h-auto">
-                              <span className="card-description">보드명</span>
-                            </TableHead>
-                            <TableHead className="w-[80px] text-center !py-1 !h-auto">
-                              <span className="card-description">불일치</span>
-                            </TableHead>
-                            <TableHead className="w-[100px] text-center !py-1 !h-auto">
-                              <span className="card-description">아트웍 담당</span>
-                            </TableHead>
-                            <TableHead className="w-[100px] text-center !py-1 !h-auto">
-                              <span className="card-description">생산 담당</span>
-                            </TableHead>
-                            <TableHead className="w-[80px] text-center !py-1 !h-auto">
-                              <span className="card-description">상태</span>
-                            </TableHead>
-                            <TableHead className="w-[100px] text-center !py-1 !h-auto">
-                              <span className="card-description">생성일</span>
-                            </TableHead>
-                            <TableHead className="w-[120px] text-center !py-1 !h-auto">
-                              <span className="card-description">액션</span>
-                            </TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {savedBoards.map((board, index) => (
-                            <TableRow 
-                              key={board.id} 
-                              className="hover:bg-gray-50 cursor-pointer"
-                              onClick={() => {
-                                if (board.status === 'pending') {
-                                  // 검토대기 상태 → 미리보기 화면 표시
-                                  handleLoadPendingBoard(board.id);
-                                } else {
-                                  // 완료 상태 → 상세 모달 표시
-                                  setDetailModalBoardId(board.id);
-                                  setIsDetailModalOpen(true);
-                                }
-                              }}
-                            >
-                              <TableCell className="text-center py-1">
-                                <span className="card-subtitle">{index + 1}</span>
-                              </TableCell>
-                              <TableCell className="py-1">
-                                <span className="text-[11px] font-medium text-gray-500">{board.code_number || '-'}</span>
-                              </TableCell>
-                              <TableCell className="py-1">
-                                <span className="text-[11px] font-medium text-gray-500">{resolveSalesOrderNumber(board) || '-'}</span>
-                              </TableCell>
-                              <TableCell className="py-1">
-                                <span className="text-[11px] font-medium text-gray-900">{board.board_name}</span>
-                              </TableCell>
-                              <TableCell className="text-center py-1">
-                                <div className="flex flex-col items-center gap-0.5">
-                                  {(board.mismatch_count ?? 0) > 0 && (
-                                    <Badge className="bg-red-100 text-red-700 hover:bg-red-100 text-[9px] px-1.5 py-0">
-                                      REF {board.mismatch_count}
-                                    </Badge>
-                                  )}
-                                  {(board.manual_count ?? 0) > 0 && (
-                                    <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100 text-[9px] px-1.5 py-0">
-                                      수동 {board.manual_count}
-                                    </Badge>
-                                  )}
-                                  {(board.mismatch_count ?? 0) === 0 && (board.manual_count ?? 0) === 0 && (
-                                    <span className="text-[10px] text-green-600">-</span>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-center py-1">
-                                <span className="text-[10px] text-gray-600">{board.artwork_manager || '-'}</span>
-                              </TableCell>
-                              <TableCell className="text-center py-1">
-                                <span className="text-[10px] text-gray-600">{board.production_manager || '-'}</span>
-                              </TableCell>
-                              <TableCell className="text-center py-1">
-                                {board.status === 'pending' ? (
-                                  <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 text-[9px] px-1.5 py-0.5">검토대기</Badge>
-                                ) : board.is_migration_unconfirmed ? (
-                                  <Badge className="bg-gray-100 text-gray-600 hover:bg-gray-100 text-[9px] px-1.5 py-0.5">이관확인전</Badge>
-                                ) : (
-                                  <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-[9px] px-1.5 py-0.5">완료</Badge>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-center py-1">
-                                <span className="text-[10px] text-gray-500">
-                                {new Date(board.created_at).toLocaleDateString('ko-KR', {
-                                  year: 'numeric',
-                                  month: '2-digit',
-                                  day: '2-digit'
-                                })}
-                                </span>
-                              </TableCell>
-                              <TableCell className="text-center py-1" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex gap-1 justify-center">
-                            <TooltipProvider>
-                              <Tooltip open={tooltipOpenId === board.id} onOpenChange={(open) => { if (!open) setTooltipOpenId(null); }}>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    onClick={() => {
-                                      if (board.status !== 'completed') {
-                                        setTooltipOpenId(board.id);
-                                        setTimeout(() => {
-                                          setTooltipOpenId(prev => prev === board.id ? null : prev);
-                                        }, 2000);
-                                        return;
-                                      }
-                                      handleDownloadSavedBOM(board.id, board.board_name);
-                                    }}
-                                    variant="outline"
-                                    size="sm"
-                                    className={`h-6 px-2 text-[10px] text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200 ${
-                                      board.status !== 'completed' ? 'opacity-40 cursor-not-allowed' : ''
-                                    }`}
-                                  >
-                                    <Download className="w-3 h-3 mr-1" />
-                                    Excel
-                                  </Button>
-                                </TooltipTrigger>
-                                {board.status !== 'completed' && (
-                                  <TooltipContent side="top" className="!bg-gray-900 !text-white !border !border-gray-800 p-2 shadow-lg">
-                                    <div className="flex items-center gap-1.5">
-                                      <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
-                                      <span className="!text-white text-xs font-semibold">최종검토가 완료되지 않았습니다.</span>
-                                    </div>
-                                  </TooltipContent>
-                                )}
-                              </Tooltip>
-                            </TooltipProvider>
-                                  {canDeleteBoard(board) && (
-                            <Button
-                                      onClick={() => handleDeleteSavedBOM(board.id, board.board_name)}
-                              variant="outline"
-                              size="sm"
-                                      disabled={deletingBoardId === board.id}
-                                      className="h-6 px-2 text-[10px] text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                            >
-                                      {deletingBoardId === board.id ? (
-                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                      ) : (
-                                        <Trash2 className="w-3 h-3" />
-                                      )}
-                            </Button>
-                                  )}
-                          </div>
-                              </TableCell>
-                            </TableRow>
-                    ))}
-                        </TableBody>
-                        <tfoot className="bg-gray-50 border-t">
-                          <tr>
-                            <td colSpan={8} className="py-2 px-4">
-                              <span className="card-description">총 {savedBoards.length}개 항목</span>
-                            </td>
-                          </tr>
-                        </tfoot>
-                      </Table>
+
+                  {/* 필터 영역 (제작현황 표준): 통합 검색 + 칼럼 표시 + 조건 규칙/저장된 필터 */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="relative w-[240px] flex-shrink-0 h-5 flex items-center">
+                        <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          placeholder="보드명, 코드번호, 제작번호, 담당자 검색..."
+                          value={boardSearchTerm}
+                          onChange={(e) => setBoardSearchTerm(e.target.value)}
+                          style={{ paddingLeft: '26px', height: '20px' }}
+                          className="hansl-search-input"
+                        />
+                        {boardSearchTerm && (
+                          <button
+                            type="button"
+                            onClick={() => setBoardSearchTerm('')}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                            title="검색어 지우기"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                      <BomBoardColumnMenu
+                        columnVisibility={boardColumnVisibility}
+                        toggleColumn={toggleBoardColumn}
+                        resetToDefault={resetBoardColumns}
+                      />
                     </div>
+                    <BomBoardFilterToolbar
+                      rules={boardTableFilters.rules}
+                      dynamicOptions={boardDynamicOptions}
+                      years={boardYears}
+                      addRule={boardTableFilters.addRule}
+                      updateRule={boardTableFilters.updateRule}
+                      changeRuleField={boardTableFilters.changeRuleField}
+                      removeRule={boardTableFilters.removeRule}
+                      resetRules={boardTableFilters.resetRules}
+                      filterViewsConfig={boardTableFilters.filterViewsConfig}
+                      viewsMenuOpen={boardTableFilters.viewsMenuOpen}
+                      setViewsMenuOpen={boardTableFilters.setViewsMenuOpen}
+                      viewsAnchor={boardTableFilters.viewsAnchor}
+                      setViewsAnchor={boardTableFilters.setViewsAnchor}
+                      namingView={boardTableFilters.namingView}
+                      setNamingView={boardTableFilters.setNamingView}
+                      newViewName={boardTableFilters.newViewName}
+                      setNewViewName={boardTableFilters.setNewViewName}
+                      closeViewsMenu={boardTableFilters.closeViewsMenu}
+                      commitSaveView={boardTableFilters.commitSaveView}
+                      handleApplyView={boardTableFilters.handleApplyView}
+                      handleRenameView={boardTableFilters.handleRenameView}
+                      handleDeleteView={boardTableFilters.handleDeleteView}
+                      handleSetDefault={boardTableFilters.handleSetDefault}
+                      handleClearDefault={boardTableFilters.handleClearDefault}
+                    />
+                  </div>
+
+                  {/* 표 카드 — 제목행(정렬·건수) + 컴팩트 테이블 (행 가상화) */}
+                  <div className="border rounded-lg overflow-hidden bg-white shadow-sm w-fit max-w-full">
+                    <div className="px-4 py-2 border-b border-gray-200 flex items-center gap-2 bg-gray-50/50">
+                      <span className="modal-section-title">보드별 정리 목록</span>
+                      <BomBoardSortControl
+                        sortRules={boardSortCtl.sortRules}
+                        addSortRule={boardSortCtl.addSortRule}
+                        updateSortRule={boardSortCtl.updateSortRule}
+                        removeSortRule={boardSortCtl.removeSortRule}
+                        clearSort={boardSortCtl.clearSort}
+                      />
+                      <span className="badge-stats bg-gray-100 text-gray-600">
+                        {displayBoardRows.length === savedBoards.length
+                          ? `${savedBoards.length}건`
+                          : `${displayBoardRows.length} / ${savedBoards.length}건`}
+                      </span>
+                    </div>
+                    {displayBoardRows.length === 0 ? (
+                      <div className="text-center py-12">
+                        <Search className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                        <p className="text-sm text-gray-500">조건에 맞는 보드가 없습니다.</p>
+                      </div>
+                    ) : (
+                      <BomBoardCompactTable
+                        rows={displayBoardRows}
+                        columnVisibility={boardColumnVisibility}
+                        ctx={{
+                          onRowClick: (row) => {
+                            if (row.status === 'pending') {
+                              // 검토대기 상태 → 미리보기 화면 표시
+                              handleLoadPendingBoard(row.id);
+                            } else {
+                              // 완료 상태 → 상세 모달 표시
+                              setDetailModalBoardId(row.id);
+                              setIsDetailModalOpen(true);
+                            }
+                          },
+                          canDelete: (row) => canDeleteBoard({ status: row.status, production_manager: row.production_manager }),
+                          onDelete: (row) => handleDeleteSavedBOM(row.id, row.board_name),
+                          onDownload: (row) => {
+                            if (row.status !== 'completed') {
+                              toast.error('최종검토가 완료되지 않았습니다.');
+                              return;
+                            }
+                            handleDownloadSavedBOM(row.id, row.board_name);
+                          },
+                        }}
+                      />
+                    )}
                   </div>
                 </div>
               )}
