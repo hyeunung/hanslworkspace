@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import type { User } from '@supabase/supabase-js';
 import { logger } from '@/lib/logger';
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import {
 import { FormValues, FormItem } from "@/types/purchase";
 import { toast } from "sonner";
 import ReactSelect from 'react-select';
+import CreatableSelect from 'react-select/creatable';
 import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon } from 'lucide-react';
@@ -37,6 +38,32 @@ interface EmployeeOption {
   label: string;
 }
 
+// CAD 도면명에는 "_260514_정리본", "[bom]" 등 접미사가 붙어 제작현황 보드명과 exact match가 안 되므로
+// 특수문자 제거 정규화 후 접두어 매칭으로 연결한다
+const normalizeBoardName = (name: string) => (name || '').toLowerCase().replace(/[^a-z0-9가-힣]/g, '');
+const isSameBoard = (a: string, b: string) => {
+  const na = normalizeBoardName(a);
+  const nb = normalizeBoardName(b);
+  if (Math.min(na.length, nb.length) < 6) return na === nb && na.length > 0;
+  return na.startsWith(nb) || nb.startsWith(na);
+};
+
+// 드롭다운 표시용: CAD 도면명 뒤에 붙는 날짜(YYMMDD)·정리본·[bom]·Ref 접미사를 제거한다
+const cleanBoardName = (name: string) => {
+  let n = (name || '').trim();
+  let prev = '';
+  while (n !== prev) {
+    prev = n;
+    n = n
+      .replace(/[_\s.\-]*정리본$/i, '')
+      .replace(/[_.]\d{6}(ref)?$/i, '')
+      .replace(/[_.]ref$/i, '')
+      .replace(/\[bom\]$/i, '')
+      .replace(/[_\s.\-]+$/, '');
+  }
+  return n || name;
+};
+
 export default function PurchaseNewMain() {
   const navigate = useNavigate();
   const supabase = createClient();
@@ -49,8 +76,8 @@ export default function PurchaseNewMain() {
   const [vendorSearchTerm, setVendorSearchTerm] = useState("");
   
   // BOM 연동을 위한 상태
-  const [boards, setBoards] = useState<{ id: string; board_name: string }[]>([]);
-  const [selectedBoard, setSelectedBoard] = useState<{ value: string; label: string } | null>(null);
+  const [boards, setBoards] = useState<{ id: string; board_name: string; sales_order_number: string | null }[]>([]);
+  const [selectedBoard, setSelectedBoard] = useState<{ value: string; label: string; boardName?: string; salesOrderNumber?: string | null } | null>(null);
   const [productionQuantity, setProductionQuantity] = useState<number>(100); // BOM 불러오기 시 사용할 생산 수량
   
   // 초기 사용자 정보 로드
@@ -67,10 +94,11 @@ export default function PurchaseNewMain() {
     const loadBoards = async () => {
       const { data, error } = await supabase
         .from('cad_drawings')
-        .select('id, board_name')
+        .select('id, board_name, sales_order_number')
         .eq('status', 'completed')
-        .order('board_name');
-      
+        .order('board_name')
+        .limit(5000);
+
       if (data && !error) {
         setBoards(data);
       }
@@ -595,9 +623,28 @@ export default function PurchaseNewMain() {
   };
 
   // 보드 선택 시 품목 자동 채우기 핸들러
-  const handleBoardSelect = async (selected: { value: string; label: string } | null) => {
+  const handleBoardSelect = async (selected: { value: string; label: string; boardName?: string; salesOrderNumber?: string | null } | null) => {
     setSelectedBoard(selected);
-    
+
+    if (selected) {
+      // 제작현황 연동 수주번호 자동 처리: 1개면 자동 입력, 아니면 이전 보드의 수주번호가 남지 않게 초기화
+      const linked = Array.from(new Set(
+        productionOrders
+          .filter(p => isSameBoard(selected.boardName ?? selected.label, p.board_name))
+          .map(p => p.sales_order_number)
+      ));
+      if (linked.length === 1) {
+        setValue('sales_order_number', linked[0]);
+        const matched = productionOrders.find(p => p.sales_order_number === linked[0]);
+        if (matched) {
+          setValue('project_item', matched.board_name);
+          if (matched.client_name) setValue('project_vendor', matched.client_name);
+        }
+      } else if (!linked.includes(watch('sales_order_number') || '')) {
+        setValue('sales_order_number', '');
+      }
+    }
+
     if (selected) {
       if (confirm(`"${selected.label}"의 BOM 데이터로 품목 목록을 덮어쓰시겠습니까?\n(기존 입력된 품목은 삭제됩니다)`)) {
         try {
@@ -610,11 +657,13 @@ export default function PurchaseNewMain() {
           if (error) throw error;
           
           if (items && items.length > 0) {
-            // BOM 데이터 매핑
-            const bomRows = items.map((item: { line_number: number; item_name: string; specification?: string; set_count?: number; remark?: string }) => ({
+            // BOM 데이터 매핑 (품목=종류, 규격=품명[+풋프린트])
+            const bomRows = items.map((item: { line_number: number; item_type?: string; item_name: string; specification?: string; set_count?: number; remark?: string }) => ({
               line_number: item.line_number,
-              item_name: item.item_name,
-              specification: item.specification || '',
+              item_name: item.item_type || item.item_name,
+              specification: item.specification && item.specification !== item.item_name
+                ? `${item.item_name} / ${item.specification}`
+                : item.item_name,
               // SET 수량 * 생산 수량 = 총 수량
               quantity: (item.set_count || 0) * productionQuantity,
               unit_price_value: 0, // 단가는 0으로 초기화
@@ -694,7 +743,19 @@ export default function PurchaseNewMain() {
           return false;
         }
       }
-      
+
+      // 보드 선택 시 연동 수주번호가 2개 이상이면 수주번호 선택 필수
+      if (selectedBoard) {
+        const linked = new Set(
+          productionOrders
+            .filter(p => isSameBoard(selectedBoard.boardName ?? selectedBoard.label, p.board_name))
+            .map(p => p.sales_order_number)
+        );
+        if (linked.size >= 2 && !watch('sales_order_number')) {
+          return false;
+        }
+      }
+
       return true;
     }
     
@@ -714,6 +775,9 @@ export default function PurchaseNewMain() {
     watch('payment_category'),
     watch('vendor_id'),
     watch('delivery_request_date'),
+    watch('sales_order_number'),
+    selectedBoard,
+    productionOrders,
     fields
   ]);
 
@@ -1124,6 +1188,39 @@ export default function PurchaseNewMain() {
   const paymentCategory = watch('payment_category');
   const selectedTemplate = watch('po_template_type');
 
+  // 보드명 옵션: 제작번호_보드명 형식 (CAD 기록의 수주번호 우선, 없으면 제작현황 매칭 최신 수주번호)
+  // 표시명은 날짜·정리본 접미사를 제거하고, 보드명이 이미 제작번호로 시작하면 중복으로 붙이지 않는다
+  const boardOptions = useMemo(() => boards.map(b => {
+    const orderNo = b.sales_order_number
+      || productionOrders.find(p => isSameBoard(b.board_name, p.board_name))?.sales_order_number
+      || null;
+    const cleaned = cleanBoardName(b.board_name);
+    return {
+      value: b.id,
+      label: orderNo && !cleaned.toLowerCase().startsWith(orderNo.toLowerCase())
+        ? `${orderNo}_${cleaned}`
+        : cleaned,
+      boardName: b.board_name,
+      salesOrderNumber: orderNo
+    };
+  }), [boards, productionOrders]);
+
+  // 선택된 보드명과 매칭되는 제작현황 수주번호 목록 (재발주: 보드명 동일, 수주번호 상이)
+  const boardLinkedOrders = selectedBoard
+    ? productionOrders.filter(p => isSameBoard(selectedBoard.boardName ?? selectedBoard.label, p.board_name))
+    : productionOrders;
+  // 보드 선택 + 연동 수주번호 2개 이상 → 수주번호 선택 필수
+  const salesOrderRequired = !!selectedBoard
+    && new Set(boardLinkedOrders.map(p => p.sales_order_number)).size >= 2;
+  const salesOrderOptions = Array.from(
+    new Map(boardLinkedOrders.map(p => [p.sales_order_number, p])).values()
+  ).map(p => ({
+    value: p.sales_order_number,
+    label: selectedBoard
+      ? `${p.sales_order_number}${p.client_name ? ` (${p.client_name})` : ''}`
+      : `${p.sales_order_number} — ${p.board_name}${p.client_name ? ` (${p.client_name})` : ''}`
+  }));
+
   return (
     <form 
       onSubmit={(e) => {
@@ -1168,7 +1265,7 @@ export default function PurchaseNewMain() {
 
           {/* 보드명 - 발주/구매에서만 표시 */}
           {watch('po_template_type') === '발주/구매' && (
-          <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+          <div>
             <div>
               <div className="flex items-center gap-1 mb-0.5">
                 <Label className="text-[10px] sm:text-xs">보드명</Label>
@@ -1183,13 +1280,13 @@ export default function PurchaseNewMain() {
               </div>
               <div className="flex items-center gap-1">
                 <ReactSelect
-                  options={boards.map(b => ({ value: b.id, label: b.board_name }))}
+                  options={boardOptions}
                   value={selectedBoard}
                   onChange={handleBoardSelect}
                   placeholder="선택"
                   isClearable
                   isSearchable
-                  className="text-xs flex-1"
+                  className="text-xs flex-1 min-w-0"
                   menuPortalTarget={document.body}
                   styles={{
                     control: (base) => ({
@@ -1206,17 +1303,19 @@ export default function PurchaseNewMain() {
                         boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'
                       }
                     }),
-                    valueContainer: (base) => ({ ...base, padding: '0 6px' }),
+                    valueContainer: (base) => ({ ...base, padding: '0 6px', flexWrap: 'nowrap' }),
+                    singleValue: (base) => ({ ...base, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
                     menuPortal: (base) => ({ ...base, zIndex: 9999 }),
-                    menu: (base) => ({ 
-                      ...base, 
-                      zIndex: 9999, 
+                    menu: (base) => ({
+                      ...base,
+                      zIndex: 9999,
                       fontSize: '0.75rem',
                       minWidth: '160px',
                       width: 'auto',
+                      maxWidth: 'min(90vw, 480px)',
                       whiteSpace: 'nowrap'
                     }),
-                    option: (base) => ({ ...base, padding: '4px 8px', whiteSpace: 'nowrap' }),
+                    option: (base) => ({ ...base, padding: '4px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }),
                     placeholder: (base) => ({ ...base, color: '#9ca3af' }),
                     dropdownIndicator: () => ({ display: 'none' }),
                     clearIndicator: (base) => ({ ...base, padding: '2px' }),
@@ -1583,32 +1682,63 @@ export default function PurchaseNewMain() {
                     />
                   </div>
                   <div>
-                    <Label className="mb-0.5 block text-[10px] sm:text-xs">수주번호</Label>
-                    <Input 
-                      type="text" 
-                      list="production-orders-datalist"
-                      value={watch('sales_order_number') || ''} 
-                      onChange={(e) => {
-                        const val = e.target.value;
+                    <Label className="mb-0.5 block text-[10px] sm:text-xs">수주번호{salesOrderRequired && <span className="text-red-500 ml-0.5">*</span>}</Label>
+                    <CreatableSelect
+                      options={salesOrderOptions}
+                      value={watch('sales_order_number') ? { value: watch('sales_order_number'), label: watch('sales_order_number') } : null}
+                      onChange={(selected) => {
+                        const val = selected?.value || '';
                         setValue('sales_order_number', val);
-                        
-                        // 입력한 수주번호가 제작현황 목록에 존재하면 PJ업체와 Item을 자동 매핑
+
+                        // 선택한 수주번호가 제작현황 목록에 존재하면 PJ업체와 Item을 자동 매핑
                         const matched = productionOrders.find(p => p.sales_order_number === val);
                         if (matched) {
                           setValue('project_item', matched.board_name);
-                          setValue('project_vendor', matched.client_name);
+                          if (matched.client_name) setValue('project_vendor', matched.client_name);
                         }
-                      }} 
-                      placeholder="선택 또는 입력"
-                      className="h-7 bg-white border border-[#d2d2d7] rounded-md text-xs shadow-sm hover:shadow-md focus:shadow-md transition-shadow duration-200"
+                      }}
+                      placeholder="선택/입력"
+                      isClearable
+                      isSearchable
+                      formatCreateLabel={(input) => `"${input}" 직접 입력`}
+                      noOptionsMessage={() => selectedBoard ? '해당 보드명의 수주번호 없음' : '수주번호 없음'}
+                      className="text-xs min-w-0"
+                      menuPortalTarget={document.body}
+                      styles={{
+                        control: (base) => ({
+                          ...base,
+                          minHeight: '28px',
+                          height: '28px',
+                          fontSize: '0.75rem',
+                          backgroundColor: '#fff',
+                          borderColor: '#d2d2d7',
+                          borderRadius: '6px',
+                          boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)',
+                          '&:hover': {
+                            borderColor: '#d2d2d7',
+                            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'
+                          }
+                        }),
+                        valueContainer: (base) => ({ ...base, padding: '0 6px', flexWrap: 'nowrap' }),
+                        singleValue: (base) => ({ ...base, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
+                        menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+                        menu: (base) => ({
+                          ...base,
+                          zIndex: 9999,
+                          fontSize: '0.75rem',
+                          minWidth: '160px',
+                          width: 'auto',
+                          maxWidth: 'min(90vw, 480px)',
+                          whiteSpace: 'nowrap'
+                        }),
+                        option: (base) => ({ ...base, padding: '4px 8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }),
+                        placeholder: (base) => ({ ...base, color: '#9ca3af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }),
+                        dropdownIndicator: () => ({ display: 'none' }),
+                        clearIndicator: (base) => ({ ...base, padding: 0, '& svg': { width: '12px', height: '12px' } }),
+                        indicatorSeparator: () => ({ display: 'none' }),
+                        input: (base) => ({ ...base, margin: 0, padding: 0 })
+                      }}
                     />
-                    <datalist id="production-orders-datalist">
-                      {productionOrders.map(p => (
-                        <option key={p.sales_order_number} value={p.sales_order_number}>
-                          {p.board_name} {p.client_name ? `(${p.client_name})` : ''}
-                        </option>
-                      ))}
-                    </datalist>
                   </div>
                   <div>
                     <Label className="mb-0.5 block text-[10px] sm:text-xs">Item</Label>
@@ -1655,7 +1785,7 @@ export default function PurchaseNewMain() {
                   </SelectContent>
                 </Select>
                   {selectedBoard?.label && (
-                    <span className="text-[11px] text-gray-400">
+                    <span className="text-[11px] text-gray-400 max-w-[200px] sm:max-w-[320px] truncate" title={selectedBoard.label}>
                       보드명: {selectedBoard.label}
                     </span>
                   )}
