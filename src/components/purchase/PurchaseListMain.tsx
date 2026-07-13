@@ -12,6 +12,7 @@ import { DEFAULT_COLUMN_VISIBILITY } from "@/constants/columnSettings";
 import { ColumnVisibility } from "@/types/columnSettings";
 import { toast } from "sonner";
 import PurchaseCompactTable from "@/components/purchase/PurchaseCompactTable";
+import PurchaseInputTable from "@/components/purchase/PurchaseInputTable";
 import PurchaseFilterToolbar from "@/components/purchase/PurchaseFilterToolbar";
 import PurchaseSortControl from "@/components/purchase/PurchaseSortControl";
 import PurchaseColumnMenu from "@/components/purchase/PurchaseColumnMenu";
@@ -43,6 +44,19 @@ const NAV_TABS: { key: string; label: string }[] = [
 ];
 
 const FILTER_COLLAPSED_KEY = 'hansl_purchase_filter_collapsed';
+
+// 표 표시 모드 — 팝업(행 클릭 → 상세 모달) / 인풋(품목 전개 + 인라인 편집)
+const TABLE_MODE_KEY = 'hansl_purchase_table_mode';
+type PurchaseTableMode = 'popup' | 'input';
+const TABLE_MODES: { key: PurchaseTableMode; label: string; title: string }[] = [
+  { key: 'popup', label: '팝업', title: '행 클릭 시 상세 모달로 보기' },
+  { key: 'input', label: '인풋', title: '품목을 모두 펼쳐 표에서 바로 편집' },
+];
+const restoreTableMode = (): PurchaseTableMode => {
+  try {
+    return localStorage.getItem(TABLE_MODE_KEY) === 'input' ? 'input' : 'popup';
+  } catch { return 'popup'; }
+};
 
 // 뷰 버튼(탭) 순서 저장 — 저장된 순서의 맨 앞 탭이 화면 첫 진입 시 기본 탭이 된다
 const TAB_ORDER_STORAGE_KEY = 'hansl_purchase_tab_order';
@@ -155,6 +169,13 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
   // Optimistic Update: 메모리 캐시 즉시 업데이트
   const updatePurchaseOptimistic = useCallback((purchaseId: number, updater: (prev: Purchase) => Purchase) => {
     updatePurchaseInMemory(purchaseId, updater);
+  }, []);
+
+  // 표 표시 모드 (팝업/인풋) — localStorage 유지
+  const [tableMode, setTableMode] = useState<PurchaseTableMode>(restoreTableMode);
+  const changeTableMode = useCallback((mode: PurchaseTableMode) => {
+    setTableMode(mode);
+    try { localStorage.setItem(TABLE_MODE_KEY, mode); } catch { /* 무시 */ }
   }, []);
 
   // 탭별 기본 직원 필터 (권한별 본인/전체)
@@ -607,6 +628,24 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
         <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50/50">
           <div className="flex items-center gap-2">
             <span className="modal-section-title">발주/구매 현황</span>
+            {/* 표 표시 모드 토글 — 팝업(상세 모달) / 인풋(품목 전개 + 인라인 편집) */}
+            <div className="flex items-center rounded-md border border-gray-200 overflow-hidden">
+              {TABLE_MODES.map(m => (
+                <button
+                  key={m.key}
+                  type="button"
+                  onClick={() => changeTableMode(m.key)}
+                  title={m.title}
+                  className={`px-2 py-[2px] text-[10px] font-semibold transition-colors ${
+                    tableMode === m.key
+                      ? 'bg-hansl-500 text-white'
+                      : 'bg-white text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
             <PurchaseSortControl
               sortRules={sortRules}
               addSortRule={addSortRule}
@@ -639,6 +678,15 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
             <h3 className="text-lg font-semibold text-gray-900 mb-2">발주요청서가 없습니다</h3>
             <p className="card-subtitle">새로운 발주요청서를 작성해보세요.</p>
           </div>
+        ) : tableMode === 'input' ? (
+          <PurchaseInputTable
+            purchases={displayPurchases}
+            activeTab={activeTab}
+            currentUserRoles={currentUserRoles}
+            columnVisibility={columnVisibility}
+            onRefresh={loadPurchases}
+            onOptimisticUpdate={updatePurchaseOptimistic}
+          />
         ) : (
           <PurchaseCompactTable
             purchases={displayPurchases}
