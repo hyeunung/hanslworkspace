@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, X, Save, Package, Copy, Check } from "lucide-react";
+import { Plus, X, Save, Package, Copy, Check, RotateCcw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { markCacheStaleAndNotify, invalidatePurchaseMemoryCache } from '@/stores/purchaseMemoryStore';
@@ -63,6 +63,40 @@ const cleanBoardName = (name: string) => {
   }
   return n || name;
 };
+
+const buildDefaultFormValues = (requesterName: string, poTemplateType: string): FormValues => ({
+  progress_type: "",
+  payment_category: "",
+  currency: "KRW",
+  po_template_type: poTemplateType,
+  request_type: "",
+  contacts: [],
+  sales_order_number: '',
+  project_vendor: '',
+  project_item: '',
+  delivery_request_date: '',
+  vendor_id: 0,
+  requester_name: requesterName,
+  items: [
+    {
+      line_number: 1,
+      item_name: "",
+      specification: "",
+      quantity: 1,
+      unit_price_value: 0,
+      unit_price_currency: "KRW",
+      amount_value: 0,
+      amount_currency: "KRW",
+      remark: "",
+      link: "",
+    },
+  ],
+  request_date: new Date().toISOString().slice(0, 10),
+});
+
+// 새 요청 작성 중 임시 저장 - 탭 이동 후 복귀해도 발주요청/초기화 전까지는 유지
+const PURCHASE_DRAFT_KEY_PREFIX = 'purchase_new_draft_';
+const PURCHASE_DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export default function PurchaseNewMain() {
   const navigate = useNavigate();
@@ -204,44 +238,106 @@ export default function PurchaseNewMain() {
   
   // 전체복사 버튼 상태
   const [isCopied, setIsCopied] = useState(false);
-  const [productionOrders, setProductionOrders] = useState<Array<{ sales_order_number: string; board_name: string; client_name: string }>>([]);
+  const [productionOrders, setProductionOrders] = useState<Array<{ sales_order_number: string; board_name: string; client_name: string; created_at: string }>>([]);
 
   const { control, handleSubmit: rhHandleSubmit, watch, setValue, reset, getValues } = useFormRH<FormValues>({
-    defaultValues: {
-      progress_type: "",
-      payment_category: "",
-      currency: "KRW",
-      po_template_type: "",
-      request_type: "",
-      contacts: [],
-      sales_order_number: '',
-      project_vendor: '',
-      project_item: '',
-      delivery_request_date: '',
-      vendor_id: 0,
-      requester_name: "",
-      items: [
-        {
-          line_number: 1,
-          item_name: "",
-          specification: "",
-          quantity: 1,
-          unit_price_value: 0,
-          unit_price_currency: "KRW",
-          amount_value: 0,
-          amount_currency: "KRW",
-          remark: "",
-          link: "",
-        },
-      ],
-      request_date: new Date().toISOString().slice(0, 10),
-    }
+    defaultValues: buildDefaultFormValues("", "")
   });
 
   const { fields, append, remove, update, replace } = useFieldArray({
     control,
     name: "items"
   });
+
+  // 새 요청 임시 저장(초안) - 다른 탭 이동 후 복귀해도 발주요청 완료/초기화 전까지 유지
+  const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftRestoredRef = useRef(false);
+  const saveDraftRef = useRef<() => void>(() => {});
+
+  const getDraftKey = () => (user?.id ? `${PURCHASE_DRAFT_KEY_PREFIX}${user.id}` : null);
+
+  const clearDraft = () => {
+    const key = getDraftKey();
+    if (!key) return;
+    try {
+      localStorage.removeItem(key);
+    } catch (e) {
+      logger.error('발주요청 임시저장 삭제 실패', e);
+    }
+  };
+
+  useEffect(() => {
+    saveDraftRef.current = () => {
+      const key = getDraftKey();
+      if (!key) return;
+      try {
+        localStorage.setItem(key, JSON.stringify({
+          formValues: getValues(),
+          currency,
+          selectedBoard,
+          productionQuantity,
+          addCount,
+          savedAt: Date.now(),
+        }));
+      } catch (e) {
+        logger.error('발주요청 임시저장 실패', e);
+      }
+    };
+  });
+
+  const scheduleDraftSave = () => {
+    if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+    draftSaveTimerRef.current = setTimeout(() => saveDraftRef.current(), 400);
+  };
+
+  // 폼 필드 변경 시 임시 저장
+  useEffect(() => {
+    const subscription = watch(() => scheduleDraftSave());
+    return () => subscription.unsubscribe();
+  }, [watch]);
+
+  // 폼 외부 상태(통화/보드/수량/추가개수) 변경 시 임시 저장
+  useEffect(() => {
+    scheduleDraftSave();
+  }, [currency, selectedBoard, productionQuantity, addCount]);
+
+  // 최초 진입 시 임시 저장된 초안 복원
+  useEffect(() => {
+    if (!user?.id || draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
+    const key = getDraftKey();
+    if (!key) return;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (!saved.savedAt || Date.now() - saved.savedAt > PURCHASE_DRAFT_MAX_AGE_MS) {
+        localStorage.removeItem(key);
+        return;
+      }
+      if (saved.formValues) reset(saved.formValues);
+      if (saved.currency) setCurrency(saved.currency);
+      if (saved.selectedBoard) setSelectedBoard(saved.selectedBoard);
+      if (typeof saved.productionQuantity === 'number') setProductionQuantity(saved.productionQuantity);
+      if (typeof saved.addCount === 'number') setAddCount(saved.addCount);
+    } catch (e) {
+      logger.error('발주요청 임시저장 복원 실패', e);
+    }
+  }, [user?.id]);
+
+  const handleResetForm = () => {
+    if (!confirm('작성 중인 내용을 모두 초기화하시겠습니까?')) return;
+    reset(buildDefaultFormValues(employeeName, '발주/구매'));
+    setVendor("");
+    setSelectedContacts([]);
+    setCurrency("KRW");
+    setSelectedBoard(null);
+    setProductionQuantity(100);
+    setAddCount(1);
+    setError("");
+    clearDraft();
+    toast.success('작성 중인 내용을 초기화했습니다.');
+  };
 
   // 사용자 정보로 구매요청자 기본값 설정
   useEffect(() => {
@@ -336,14 +432,14 @@ export default function PurchaseNewMain() {
     const loadProductionOrders = async () => {
       try {
         const [pcbRes, cableRes] = await Promise.all([
-          supabase.from('production_pcbs').select('sales_order_number, board_name, client_name').is('deleted_at', null).order('sales_order_number', { ascending: false }),
-          supabase.from('production_cables').select('sales_order_number, board_name, client_name').is('deleted_at', null).order('sales_order_number', { ascending: false })
+          supabase.from('production_pcbs').select('sales_order_number, board_name, client_name, created_at').is('deleted_at', null).order('created_at', { ascending: false }),
+          supabase.from('production_cables').select('sales_order_number, board_name, client_name, created_at').is('deleted_at', null).order('created_at', { ascending: false })
         ]);
-        
+
         const combined = [
-          ...(pcbRes.data || []).map((r: any) => ({ sales_order_number: r.sales_order_number, board_name: r.board_name, client_name: r.client_name || '' })),
-          ...(cableRes.data || []).map((r: any) => ({ sales_order_number: r.sales_order_number, board_name: r.board_name, client_name: r.client_name || '' }))
-        ].sort((a, b) => b.sales_order_number.localeCompare(a.sales_order_number));
+          ...(pcbRes.data || []).map((r: any) => ({ sales_order_number: r.sales_order_number, board_name: r.board_name, client_name: r.client_name || '', created_at: r.created_at })),
+          ...(cableRes.data || []).map((r: any) => ({ sales_order_number: r.sales_order_number, board_name: r.board_name, client_name: r.client_name || '', created_at: r.created_at }))
+        ].sort((a, b) => b.created_at.localeCompare(a.created_at));
 
         setProductionOrders(combined);
       } catch (err) {
@@ -968,44 +1064,20 @@ export default function PurchaseNewMain() {
         logger.error('중간관리자 알림 발송 실패', notifyError)
       }
       
-      // 1. 폼 초기화
-      reset({
-        progress_type: "",
-        payment_category: "",
-        currency: "KRW",
-        po_template_type: "",
-        request_type: "",
-        contacts: [],
-        sales_order_number: '',
-        project_vendor: '',
-        project_item: '',
-        delivery_request_date: '',
-        vendor_id: 0,
-        requester_name: employeeName, // 요청자 이름은 유지
-        items: [
-          {
-            line_number: 1,
-            item_name: "",
-            specification: "",
-            quantity: 1,
-            unit_price_value: 0,
-            unit_price_currency: "KRW",
-            amount_value: 0,
-            amount_currency: "KRW",
-            remark: "",
-            link: "",
-          },
-        ],
-        request_date: new Date().toISOString().slice(0, 10),
-      });
-      
+      // 1. 폼 초기화 (요청자 이름은 유지)
+      reset(buildDefaultFormValues(employeeName, ""));
+
       // 2. 상태 초기화
       setVendor("");
       setSelectedContacts([]);
       setCurrency("KRW");
+      setSelectedBoard(null);
+      setProductionQuantity(100);
+      setAddCount(1);
       setError("");
       setLoading(false);
-      
+      clearDraft();
+
       // 3. 성공 팝업 표시
       setSuccessDialogOpen(true);
       
@@ -1190,20 +1262,32 @@ export default function PurchaseNewMain() {
 
   // 보드명 옵션: 제작번호_보드명 형식 (CAD 기록의 수주번호 우선, 없으면 제작현황 매칭 최신 수주번호)
   // 표시명은 날짜·정리본 접미사를 제거하고, 보드명이 이미 제작번호로 시작하면 중복으로 붙이지 않는다
-  const boardOptions = useMemo(() => boards.map(b => {
-    const orderNo = b.sales_order_number
-      || productionOrders.find(p => isSameBoard(b.board_name, p.board_name))?.sales_order_number
-      || null;
-    const cleaned = cleanBoardName(b.board_name);
-    return {
-      value: b.id,
-      label: orderNo && !cleaned.toLowerCase().startsWith(orderNo.toLowerCase())
-        ? `${orderNo}_${cleaned}`
-        : cleaned,
-      boardName: b.board_name,
-      salesOrderNumber: orderNo
-    };
-  }), [boards, productionOrders]);
+  // 정렬: 제작현황(production_pcbs/cables)에 행이 추가된 시각 기준 최신순. 매칭되는 제작현황 행이 없는 보드는 맨 뒤로.
+  const boardOptions = useMemo(() => {
+    const mapped = boards.map(b => {
+      const matchedOrder = productionOrders.find(p => isSameBoard(b.board_name, p.board_name));
+      const orderNo = b.sales_order_number || matchedOrder?.sales_order_number || null;
+      const cleaned = cleanBoardName(b.board_name);
+      return {
+        value: b.id,
+        label: orderNo && !cleaned.toLowerCase().startsWith(orderNo.toLowerCase())
+          ? `${orderNo}_${cleaned}`
+          : cleaned,
+        boardName: b.board_name,
+        salesOrderNumber: orderNo,
+        productionCreatedAt: matchedOrder?.created_at ?? null
+      };
+    });
+
+    return mapped.sort((a, b) => {
+      if (a.productionCreatedAt && b.productionCreatedAt) {
+        return b.productionCreatedAt.localeCompare(a.productionCreatedAt);
+      }
+      if (a.productionCreatedAt) return -1;
+      if (b.productionCreatedAt) return 1;
+      return 0;
+    });
+  }, [boards, productionOrders]);
 
   // 선택된 보드명과 매칭되는 제작현황 수주번호 목록 (재발주: 보드명 동일, 수주번호 상이)
   const boardLinkedOrders = selectedBoard
@@ -1795,10 +1879,19 @@ export default function PurchaseNewMain() {
                 <span className="badge-stats text-hansl-500 text-[10px] px-1.5 py-0.5 whitespace-nowrap flex-shrink-0 bg-hansl-50 business-radius-badge">
                   총액: {totalAmount.toLocaleString('ko-KR')} {currency}
                 </span>
-                <Button 
-                  type="button" 
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleResetForm}
+                  className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-red-50 hover:text-red-600 hover:border-red-300"
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" />
+                  초기화
+                </Button>
+                <Button
+                  type="button"
                   className={`button-base border transition-all duration-200 ${
-                    isCopied 
+                    isCopied
                       ? 'border-green-400 text-green-600 bg-green-50' 
                       : 'border-gray-300 text-gray-600 bg-white hover:bg-blue-50 hover:text-blue-600'
                   }`}
@@ -2124,8 +2217,8 @@ export default function PurchaseNewMain() {
           
           {/* 제출 버튼 */}
           <div className="flex justify-end gap-3 mt-2">
-            <Button 
-              type="button" 
+            <Button
+              type="button"
               variant="outline"
               onClick={() => navigate(-1)}
               className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400"
