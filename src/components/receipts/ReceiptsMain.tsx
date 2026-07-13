@@ -1,64 +1,28 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Search, Filter, Receipt, Printer, Download, Calendar, Plus, Trash2 } from "lucide-react";
+import { Receipt, Search, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import ReceiptDetailModal from "./ReceiptDetailModal";
 import MobileReceiptCard from "./MobileReceiptCard";
 import ReceiptUploadModal from "./ReceiptUploadModal";
+import ReceiptCompactTable from "./ReceiptCompactTable";
+import ReceiptFilterToolbar from "./ReceiptFilterToolbar";
+import ReceiptSortControl from "./ReceiptSortControl";
+import ReceiptColumnMenu, { type ReceiptColumnVisibility } from "./ReceiptColumnMenu";
 import { useReceiptPermissions } from "@/hooks/useReceiptPermissions";
+import { useReceiptTableFilters } from "@/hooks/useReceiptTableFilters";
+import { useReceiptSortRules } from "@/hooks/useReceiptSortRules";
 import type { ReceiptItem, ReceiptGroup } from "@/types/receipt";
-import { formatDate, formatDateISO } from "@/utils/helpers";
+import {
+  type ReceiptColumnId, RECEIPT_COLUMNS_STORAGE_KEY,
+  buildReceiptGroups, buildReceiptRows,
+  applyReceiptSearch, applyReceiptFilters, compareByReceiptSortRules, receiptYearsFor,
+} from "@/utils/receiptTable";
 import { extractStoragePathFromUrl } from "@/utils/receipt";
 import { logger } from "@/lib/logger";
 import { parseRoles } from "@/utils/roleHelper";
-
-function formatKrw(value?: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "-";
-  return `₩${Math.round(value).toLocaleString("ko-KR")}`;
-}
-
-function formatPaymentDate(value?: string | null): string {
-  if (!value) return "-";
-  const dateOnly = value.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) return "-";
-  return dateOnly.slice(2).replace(/-/g, ".");
-}
-
-function formatUploadDate(value?: string | null): string {
-  const isoDate = formatDateISO(value);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return "-";
-  return isoDate.slice(2).replace(/-/g, ".");
-}
-
-function buildGroups(receipts: ReceiptItem[]): ReceiptGroup[] {
-  const groupMap = new Map<string, ReceiptItem[]>();
-  const singles: ReceiptItem[] = [];
-
-  for (const r of receipts) {
-    if (r.group_id) {
-      const list = groupMap.get(r.group_id) || [];
-      list.push(r);
-      groupMap.set(r.group_id, list);
-    } else {
-      singles.push(r);
-    }
-  }
-
-  const groups: ReceiptGroup[] = [];
-  for (const [gid, items] of groupMap) {
-    items.sort((a, b) => new Date(a.uploaded_at).getTime() - new Date(b.uploaded_at).getTime());
-    groups.push({ group_id: gid, receipts: items, primary: items[0], count: items.length });
-  }
-  for (const s of singles) {
-    groups.push({ group_id: null, receipts: [s], primary: s, count: 1 });
-  }
-
-  groups.sort((a, b) => new Date(b.primary.uploaded_at).getTime() - new Date(a.primary.uploaded_at).getTime());
-  return groups;
-}
 
 function printReceiptImages(imageUrls: string[], onPrintDone?: () => void) {
   const printWindow = window.open('', '_blank');
@@ -143,14 +107,10 @@ function printReceiptImages(imageUrls: string[], onPrintDone?: () => void) {
 export default function ReceiptsMain() {
   const [receipts, setReceipts] = useState<ReceiptItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [dateFilter, setDateFilter] = useState("");
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptItem | null>(null);
   const [selectedGroupReceipts, setSelectedGroupReceipts] = useState<ReceiptItem[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [olderPage, setOlderPage] = useState(1);
-  const OLDER_PAGE_SIZE = 20;
 
   const supabase = createClient();
   const { permissions, loading: permissionsLoading } = useReceiptPermissions();
@@ -163,10 +123,10 @@ export default function ReceiptsMain() {
 
   const loadReceipts = useCallback(async () => {
     if (!permissions.canView) return;
-    
+
     try {
       setLoading(true);
-      
+
       const { data, error } = await supabase
         .from('purchase_receipts')
         .select(`
@@ -269,77 +229,62 @@ export default function ReceiptsMain() {
     }
   }, [permissions.canView, supabase]);
 
-  const filteredReceipts = useMemo(() => {
-    let filtered = [...receipts];
-
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      filtered = filtered.filter(receipt => 
-        receipt.file_name.toLowerCase().includes(searchLower) ||
-        receipt.memo?.toLowerCase().includes(searchLower) ||
-        (receipt.ocr_payment_date || "").includes(searchTerm) ||
-        formatDate(receipt.uploaded_at).includes(searchTerm) ||
-        receipt.uploaded_at.includes(searchTerm)
-      );
-    }
-
-    if (dateFilter) {
-      filtered = filtered.filter(receipt => {
-        if (!receipt.uploaded_at) return false;
-        const uploadDate = new Date(receipt.uploaded_at).toISOString().split('T')[0];
-        return uploadDate === dateFilter;
-      });
-    }
-
-    return filtered;
-  }, [receipts, searchTerm, dateFilter]);
-
-  const groupedReceipts = useMemo(() => buildGroups(filteredReceipts), [filteredReceipts]);
-
-  const recentWeekGroups = useMemo(() => {
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    return groupedReceipts.filter((g) => new Date(g.primary.uploaded_at) >= weekAgo);
-  }, [groupedReceipts]);
-
-  const olderGroups = useMemo(() => {
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    return groupedReceipts.filter((g) => new Date(g.primary.uploaded_at) < weekAgo);
-  }, [groupedReceipts]);
-
-  const olderTotalPages = Math.max(1, Math.ceil(olderGroups.length / OLDER_PAGE_SIZE));
-  const pagedOlderGroups = useMemo(() => {
-    const start = (olderPage - 1) * OLDER_PAGE_SIZE;
-    return olderGroups.slice(start, start + OLDER_PAGE_SIZE);
-  }, [olderGroups, olderPage]);
-
-  const visibleGroups = useMemo(
-    () => [...recentWeekGroups, ...pagedOlderGroups],
-    [recentWeekGroups, pagedOlderGroups]
-  );
-
   useEffect(() => {
     if (!permissionsLoading) {
       loadReceipts();
     }
   }, [loadReceipts, permissionsLoading]);
 
-  useEffect(() => {
-    if (olderPage > olderTotalPages) {
-      setOlderPage(olderTotalPages);
+  // ── 컴팩트 테이블 상태 (통합검색 / 조건필터 / 다중정렬 / 칼럼표시) ──
+  const [searchTerm, setSearchTerm] = useState('');
+  const sortCtl = useReceiptSortRules();
+  const [columnVisibility, setColumnVisibility] = useState<ReceiptColumnVisibility>(() => {
+    try { return JSON.parse(localStorage.getItem(RECEIPT_COLUMNS_STORAGE_KEY) || '{}'); } catch { return {}; }
+  });
+  const persistColumns = useCallback((next: ReceiptColumnVisibility) => {
+    setColumnVisibility(next);
+    try { localStorage.setItem(RECEIPT_COLUMNS_STORAGE_KEY, JSON.stringify(next)); } catch { /* 무시 */ }
+  }, []);
+  const toggleColumn = useCallback((id: ReceiptColumnId) => {
+    persistColumns({ ...columnVisibility, [id]: columnVisibility[id] === false });
+  }, [columnVisibility, persistColumns]);
+  const resetColumns = useCallback(() => persistColumns({}), [persistColumns]);
+
+  const groups = useMemo(() => buildReceiptGroups(receipts), [receipts]);
+  const allRows = useMemo(() => buildReceiptRows(groups), [groups]);
+
+  const dynamicOptions = useMemo(() => ({
+    uploaders: [...new Set(allRows.map(r => r.uploader).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko')),
+  }), [allRows]);
+  const years = useMemo(() => receiptYearsFor(allRows), [allRows]);
+
+  const tableFilters = useReceiptTableFilters(dynamicOptions);
+
+  // 파이프라인: 통합검색 → 조건 규칙 → 다중 정렬 (모두 클라이언트, 표는 행 가상화)
+  const displayRows = useMemo(() => {
+    const searched = applyReceiptSearch(allRows, searchTerm);
+    const filtered = applyReceiptFilters(searched, tableFilters.activeRules);
+    return [...filtered].sort((a, b) => compareByReceiptSortRules(a, b, sortCtl.sortRules));
+  }, [allRows, searchTerm, tableFilters.activeRules, sortCtl.sortRules]);
+
+  // 모바일 카드 뷰용 — 표시 행에서 그룹 단위로 중복 제거 (행 순서 유지)
+  const displayGroups = useMemo(() => {
+    const seen = new Set<string>();
+    const out: ReceiptGroup[] = [];
+    for (const r of displayRows) {
+      const key = r.group.group_id || String(r.group.primary.id);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(r.group);
     }
-  }, [olderPage, olderTotalPages]);
+    return out;
+  }, [displayRows]);
 
-  useEffect(() => {
-    setOlderPage(1);
-  }, [searchTerm, dateFilter]);
-
-  const handleViewReceipt = (group: ReceiptGroup) => {
+  const handleViewReceipt = useCallback((group: ReceiptGroup) => {
     setSelectedReceipt(group.primary);
     setSelectedGroupReceipts(group.receipts);
     setIsModalOpen(true);
-  };
+  }, []);
 
   const markGroupAsPrinted = useCallback(async (receiptIds: Array<string | number>) => {
     try {
@@ -362,7 +307,7 @@ export default function ReceiptsMain() {
 
       const roles = parseRoles(employee?.roles);
       const hasPermission = roles.includes('superadmin') || roles.includes('hr') || roles.includes('lead buyer');
-      
+
       if (!hasPermission) {
         toast.error('인쇄완료 처리 권한이 없습니다.');
         return;
@@ -395,7 +340,7 @@ export default function ReceiptsMain() {
     }
   }, [supabase, loadReceipts]);
 
-  const handlePrintGroup = (group: ReceiptGroup) => {
+  const handlePrintGroup = useCallback((group: ReceiptGroup) => {
     const imageUrls = group.receipts
       .filter((r) => r.receipt_image_url)
       .map((r) => r.receipt_image_url);
@@ -407,9 +352,9 @@ export default function ReceiptsMain() {
 
     const receiptIds = group.receipts.map((r) => r.id);
     printReceiptImages(imageUrls, () => markGroupAsPrinted(receiptIds));
-  };
+  }, [markGroupAsPrinted]);
 
-  const handleDownloadReceipt = async (receipt: ReceiptItem) => {
+  const handleDownloadReceipt = useCallback(async (receipt: ReceiptItem) => {
     if (!receipt.receipt_image_url) {
       toast.error('영수증 이미지가 없습니다.');
       return;
@@ -419,11 +364,11 @@ export default function ReceiptsMain() {
       const url = new URL(receipt.receipt_image_url);
       const pathSegments = url.pathname.split('/');
       const bucketIndex = pathSegments.indexOf('receipt-images');
-      
+
       if (bucketIndex === -1) {
         throw new Error('잘못된 영수증 URL입니다');
       }
-      
+
       const filePath = pathSegments.slice(bucketIndex + 1).join('/');
 
       const { data, error } = await supabase.storage
@@ -441,12 +386,12 @@ export default function ReceiptsMain() {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(downloadUrl);
-      
+
       toast.success('영수증 이미지가 다운로드되었습니다.');
     } catch (error) {
       toast.error('다운로드에 실패했습니다.');
     }
-  };
+  }, [supabase]);
 
   const handleDeleteGroup = useCallback(async (group: ReceiptGroup) => {
     if (!permissions.canDelete) {
@@ -504,301 +449,158 @@ export default function ReceiptsMain() {
             <Plus className="w-4 h-4 mr-1" />
             영수증 업로드
           </Button>
-          <span className="badge-stats bg-gray-100 text-gray-600 modal-subtitle">
-            총 {filteredReceipts.length}건
-          </span>
         </div>
       </div>
 
-      {/* 필터 섹션 */}
-      <Card className="mb-4 border border-gray-200">
-        <CardHeader className="bg-white border-b border-gray-200 py-3">
-          <CardTitle className="flex items-center modal-section-title">
-            <Filter className="w-4 h-4 mr-2" />
-            검색 필터
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="py-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-            <div>
-              <label className="block modal-label mb-1">검색</label>
-              <div className="relative">
-                <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400" />
-                <Input
-                  placeholder="파일명, 메모, 업로드일..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-7 modal-subtitle h-9"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block modal-label mb-1">업로드 날짜</label>
-              <Input
-                type="date"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className="modal-subtitle h-9"
-              />
-            </div>
-
-            <div className="flex items-end">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSearchTerm("");
-                  setDateFilter("");
-                }}
-                className="h-9 modal-subtitle"
-              >
-                초기화
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* 영수증 목록 */}
-      <Card className="overflow-hidden border border-gray-200">
-        <CardContent className="p-0">
-          {(loading || permissionsLoading) ? (
+      {(loading || permissionsLoading) ? (
+        <Card className="border border-gray-200">
+          <CardContent className="p-0">
             <div className="flex items-center justify-center py-12">
               <div className="w-8 h-8 border-2 border-hansl-500 border-t-transparent rounded-full animate-spin" />
               <span className="ml-3 card-subtitle">로딩 중...</span>
             </div>
-          ) : !permissions.canView ? (
+          </CardContent>
+        </Card>
+      ) : !permissions.canView ? (
+        <Card className="border border-gray-200">
+          <CardContent className="p-0">
             <div className="text-center py-12">
               <div className="w-12 h-12 text-red-400 mx-auto mb-4">🔒</div>
               <h3 className="modal-section-title mb-2">접근 권한 없음</h3>
               <p className="card-subtitle">영수증 관리에 접근할 권한이 없습니다.</p>
             </div>
-          ) : visibleGroups.length === 0 ? (
-            <div className="text-center py-12">
-              <Receipt className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="modal-section-title mb-2">영수증이 없습니다</h3>
-              <p className="card-subtitle">업로드된 영수증이 없거나 검색 조건에 맞는 결과가 없습니다.</p>
-            </div>
-          ) : (
-            <>
-              {/* 데스크톱 테이블 뷰 */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full min-w-[1400px] table-fixed">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="w-[104px] px-5 py-3 text-center header-title text-gray-600 uppercase tracking-wider">인쇄완료</th>
-                    <th className="w-[104px] px-5 py-3 text-center header-title text-gray-600 uppercase tracking-wider">업로드일</th>
-                    <th className="w-[118px] px-5 py-3 text-center header-title text-gray-600 uppercase tracking-wider">결제일</th>
-                    <th className="w-[188px] px-5 py-3 text-left header-title text-gray-600 uppercase tracking-wider">거래처</th>
-                    <th className="w-[240px] px-5 py-3 text-left header-title text-gray-600 uppercase tracking-wider">품명</th>
-                    <th className="w-[90px] px-5 py-3 text-right header-title text-gray-600 uppercase tracking-wider">수량</th>
-                    <th className="w-[140px] px-5 py-3 text-right header-title text-gray-600 uppercase tracking-wider">단가</th>
-                    <th className="w-[150px] px-5 py-3 text-right header-title text-gray-600 uppercase tracking-wider">합계</th>
-                    <th className="px-5 py-3 text-left header-title text-gray-600 uppercase tracking-wider">메모</th>
-                    {permissions.canViewUploaderInfo && (
-                      <th className="w-[110px] px-5 py-3 text-left header-title text-gray-600 uppercase tracking-wider">등록인</th>
-                    )}
-                    <th className="w-[100px] px-5 py-3 text-center header-title text-gray-600 uppercase tracking-wider">액션</th>
-                    {permissions.canDelete && (
-                      <th className="w-[64px] px-5 py-3 text-center header-title text-gray-600 uppercase tracking-wider">삭제</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {visibleGroups.map((group) => {
-                    const r = group.primary;
-                    const printed = group.receipts.every((item) => !!item.is_printed);
-                    const lineItems = [...group.receipts];
-                    return (
-                      <tr 
-                        key={group.group_id || String(r.id)} 
-                        className="hover:bg-gray-50 transition-colors cursor-pointer"
-                        onClick={() => handleViewReceipt(group)}
-                      >
-                        <td className="px-5 py-3 modal-subtitle text-center whitespace-nowrap">
-                          {printed ? (
-                            <span className="badge-stats bg-green-100 text-green-700">
-                              ✓ 완료
-                            </span>
-                          ) : (
-                            <span className="badge-stats bg-gray-100 text-gray-600">
-                              미완료
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-5 py-3 modal-subtitle text-center text-gray-600 whitespace-nowrap">
-                          {formatUploadDate(r.uploaded_at)}
-                        </td>
-                        <td className="px-5 py-3 modal-subtitle text-center text-gray-700 whitespace-nowrap">
-                          <div className="space-y-1">
-                            {lineItems.map((item) => (
-                              <div key={`payment-date-${item.id}`} className="leading-5">
-                                {formatPaymentDate(item.ocr_payment_date)}
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 modal-subtitle text-gray-700 truncate">
-                          <div className="space-y-1">
-                            {lineItems.map((item) => (
-                              <div key={`merchant-${item.id}`} className="leading-5 truncate">
-                                {item.ocr_merchant_name || "-"}
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 modal-subtitle text-gray-700 truncate">
-                          <div className="space-y-1">
-                            {lineItems.map((item) => (
-                              <div key={`item-${item.id}`} className="leading-5 truncate">
-                                {item.ocr_item_name || "-"}
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 modal-subtitle text-right text-gray-900 whitespace-nowrap">
-                          <div className="space-y-1">
-                            {lineItems.map((item) => (
-                              <div key={`qty-${item.id}`} className="leading-5">
-                                {item.ocr_quantity != null ? item.ocr_quantity.toLocaleString("ko-KR") : "-"}
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 modal-subtitle text-right text-gray-900 whitespace-nowrap">
-                          <div className="space-y-1">
-                            {lineItems.map((item) => (
-                              <div key={`unit-${item.id}`} className="leading-5">
-                                {formatKrw(item.ocr_unit_price)}
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 modal-subtitle text-right text-gray-900 whitespace-nowrap">
-                          <div className="space-y-1">
-                            {lineItems.map((item) => (
-                              <div key={`total-${item.id}`} className="leading-5">
-                                {item.ocr_total_amount != null ? formatKrw(item.ocr_total_amount) : "-"}
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 modal-subtitle text-gray-900">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="truncate">{r.memo || "-"}</span>
-                            {group.count > 1 && (
-                              <span className="inline-flex items-center gap-0.5 badge-stats bg-blue-100 text-blue-700 shrink-0">
-                                {group.count}장
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        {permissions.canViewUploaderInfo && (
-                          <td className="px-5 py-3 modal-subtitle text-gray-600 truncate">
-                            {r.uploaded_by_name || r.uploaded_by}
-                          </td>
-                        )}
-                        <td className="px-5 py-3 modal-subtitle text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handlePrintGroup(group);
-                              }}
-                              className="h-8 w-8 p-0"
-                              title={group.count > 1 ? `${group.count}장 인쇄` : '인쇄'}
-                            >
-                              <Printer className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDownloadReceipt(r);
-                              }}
-                              className="h-8 w-8 p-0"
-                              title="다운로드"
-                            >
-                              <Download className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </td>
-                        {permissions.canDelete && (
-                          <td className="px-5 py-3 modal-subtitle text-center">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteGroup(group);
-                              }}
-                              className="h-8 w-8 p-0 text-red-600 hover:bg-red-50"
-                              title="삭제"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                </table>
-              </div>
-
-              {/* 모바일 카드 뷰 */}
-              <div className="md:hidden space-y-3 p-4">
-                {visibleGroups.map((group) => (
-                  <MobileReceiptCard
-                    key={group.group_id || String(group.primary.id)}
-                    receipt={group.primary}
-                    groupCount={group.count}
-                    onView={() => handleViewReceipt(group)}
-                    onPrint={() => handlePrintGroup(group)}
-                    onDownload={handleDownloadReceipt}
-                    onDelete={permissions.canDelete ? () => handleDeleteGroup(group) : undefined}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {/* 필터 영역 (제작현황 표준): 통합 검색 + 칼럼 표시 + 조건 규칙/저장된 필터 */}
+          <Card className="border border-gray-200">
+            <CardContent className="py-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="relative w-[280px] flex-shrink-0 h-5 flex items-center">
+                  <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="파일명, 메모, 거래처, 품명, 날짜 검색..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    style={{ paddingLeft: '26px', height: '20px' }}
+                    className="hansl-search-input"
                   />
-                ))}
-              </div>
-
-              {/* 이전(7일 이전) 영수증 페이지네이션 */}
-              {olderGroups.length > 0 && (
-                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 bg-gray-50">
-                  <div className="card-subtitle text-gray-600">
-                    최근 7일: {recentWeekGroups.length}건 · 이전 영수증: {olderGroups.length}건
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                      disabled={olderPage <= 1}
-                      onClick={() => setOlderPage((p) => Math.max(1, p - 1))}
+                  {searchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchTerm('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                      title="검색어 지우기"
                     >
-                      이전
-                    </Button>
-                    <span className="badge-stats bg-white text-gray-700">
-                      {olderPage} / {olderTotalPages}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                      disabled={olderPage >= olderTotalPages}
-                      onClick={() => setOlderPage((p) => Math.min(olderTotalPages, p + 1))}
-                    >
-                      다음
-                    </Button>
-                  </div>
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+                <ReceiptColumnMenu
+                  columnVisibility={columnVisibility}
+                  toggleColumn={toggleColumn}
+                  resetToDefault={resetColumns}
+                  excludedIds={permissions.canViewUploaderInfo ? [] : ['uploader']}
+                />
+              </div>
+              <ReceiptFilterToolbar
+                rules={tableFilters.rules}
+                dynamicOptions={dynamicOptions}
+                years={years}
+                addRule={tableFilters.addRule}
+                updateRule={tableFilters.updateRule}
+                changeRuleField={tableFilters.changeRuleField}
+                removeRule={tableFilters.removeRule}
+                resetRules={tableFilters.resetRules}
+                filterViewsConfig={tableFilters.filterViewsConfig}
+                viewsMenuOpen={tableFilters.viewsMenuOpen}
+                setViewsMenuOpen={tableFilters.setViewsMenuOpen}
+                viewsAnchor={tableFilters.viewsAnchor}
+                setViewsAnchor={tableFilters.setViewsAnchor}
+                namingView={tableFilters.namingView}
+                setNamingView={tableFilters.setNamingView}
+                newViewName={tableFilters.newViewName}
+                setNewViewName={tableFilters.setNewViewName}
+                closeViewsMenu={tableFilters.closeViewsMenu}
+                commitSaveView={tableFilters.commitSaveView}
+                handleApplyView={tableFilters.handleApplyView}
+                handleRenameView={tableFilters.handleRenameView}
+                handleDeleteView={tableFilters.handleDeleteView}
+                handleSetDefault={tableFilters.handleSetDefault}
+                handleClearDefault={tableFilters.handleClearDefault}
+              />
+            </CardContent>
+          </Card>
+
+          {/* 표 카드 — 제목행(정렬·건수) + 컴팩트 테이블 (행 가상화) */}
+          <div className="hidden md:block border rounded-lg overflow-hidden bg-white shadow-sm w-fit max-w-full">
+            <div className="px-4 py-2 border-b border-gray-200 flex items-center gap-2 bg-gray-50/50">
+              <span className="modal-section-title">영수증 목록</span>
+              <ReceiptSortControl
+                sortRules={sortCtl.sortRules}
+                addSortRule={sortCtl.addSortRule}
+                updateSortRule={sortCtl.updateSortRule}
+                removeSortRule={sortCtl.removeSortRule}
+                clearSort={sortCtl.clearSort}
+              />
+              <span className="badge-stats bg-gray-100 text-gray-600">
+                {displayRows.length === allRows.length
+                  ? `${allRows.length}건`
+                  : `${displayRows.length} / ${allRows.length}건`}
+              </span>
+            </div>
+            {displayRows.length === 0 ? (
+              <div className="text-center py-12 px-16">
+                <Receipt className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="modal-section-title mb-2">영수증이 없습니다</h3>
+                <p className="card-subtitle">업로드된 영수증이 없거나 검색 조건에 맞는 결과가 없습니다.</p>
+              </div>
+            ) : (
+              <ReceiptCompactTable
+                rows={displayRows}
+                columnVisibility={columnVisibility}
+                ctx={{
+                  onRowClick: (row) => handleViewReceipt(row.group),
+                  onPrint: (row) => handlePrintGroup(row.group),
+                  onDownload: (row) => handleDownloadReceipt(row.receipt),
+                  onDelete: (row) => handleDeleteGroup(row.group),
+                  canDelete: permissions.canDelete,
+                  canViewUploaderInfo: permissions.canViewUploaderInfo,
+                }}
+              />
+            )}
+          </div>
+
+          {/* 모바일 카드 뷰 */}
+          <div className="md:hidden space-y-3">
+            {displayGroups.length === 0 ? (
+              <Card className="border border-gray-200">
+                <CardContent className="p-0">
+                  <div className="text-center py-12">
+                    <Receipt className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="modal-section-title mb-2">영수증이 없습니다</h3>
+                    <p className="card-subtitle">업로드된 영수증이 없거나 검색 조건에 맞는 결과가 없습니다.</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              displayGroups.map((group) => (
+                <MobileReceiptCard
+                  key={group.group_id || String(group.primary.id)}
+                  receipt={group.primary}
+                  groupCount={group.count}
+                  onView={() => handleViewReceipt(group)}
+                  onPrint={() => handlePrintGroup(group)}
+                  onDownload={handleDownloadReceipt}
+                  onDelete={permissions.canDelete ? () => handleDeleteGroup(group) : undefined}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {/* 영수증 상세보기 모달 */}
       {selectedReceipt && (
