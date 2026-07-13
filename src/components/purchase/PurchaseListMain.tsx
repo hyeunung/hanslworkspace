@@ -628,15 +628,20 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
         <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50/50">
           <div className="flex items-center gap-2">
             <span className="modal-section-title">발주/구매 현황</span>
-            {/* 표 표시 모드 토글 — 팝업(상세 모달) / 인풋(품목 전개 + 인라인 편집), 정렬 버튼과 동일 칩 규격 */}
-            <div className="flex items-center gap-1">
-              {TABLE_MODES.map(m => (
+            {/* 표 표시 모드 토글 — 팝업(상세 모달) / 인풋(품목 전개 + 인라인 편집)
+                하나로 붙은 세그먼트, 높이·라운드는 정렬 칩(badge-stats/business-radius-badge) 규격과 동일 */}
+            <div className="inline-flex items-center business-radius-badge border border-gray-300 overflow-hidden bg-white">
+              {TABLE_MODES.map((m, i) => (
                 <button
                   key={m.key}
                   type="button"
                   onClick={() => changeTableMode(m.key)}
                   title={m.title}
-                  className={`hansl-ctl-chip ${tableMode === m.key ? 'hansl-toggle-on' : 'hansl-toggle-off'}`}
+                  className={`px-1.5 py-0.5 text-[10px] leading-tight transition-colors ${i > 0 ? 'border-l border-gray-300' : ''} ${
+                    tableMode === m.key
+                      ? 'bg-hansl-500 text-white font-bold'
+                      : 'bg-white text-gray-500 font-medium hover:bg-gray-50 hover:text-hansl-500'
+                  }`}
                 >
                   {m.label}
                 </button>

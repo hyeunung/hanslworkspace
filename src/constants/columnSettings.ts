@@ -171,9 +171,8 @@ export const COLUMN_INFO_MAP: Record<DoneTabColumnId, ColumnInfo> = DONE_TAB_COL
   {} as Record<DoneTabColumnId, ColumnInfo>
 );
 
-// 필수 칼럼 (숨길 수 없는 칼럼)
+// 필수 칼럼 (숨길 수 없는 칼럼) — 발주번호는 숨김 허용으로 전환 (2026-07)
 export const REQUIRED_COLUMNS: DoneTabColumnId[] = [
-  'purchase_order_number',
   'vendor_name',
   'item_name',
   'specification',
