@@ -290,13 +290,13 @@ export type BomBoardColumnId =
   | 'artwork_manager' | 'production_manager' | 'status' | 'created_at' | 'actions'
 
 export const BOM_BOARD_COLUMN_LABELS: { id: BomBoardColumnId; label: string; required?: boolean }[] = [
+  { id: 'status', label: '상태' },
   { id: 'code_number', label: '코드번호' },
   { id: 'sales_order_number', label: '제작번호' },
   { id: 'board_name', label: '보드명', required: true },
   { id: 'mismatch', label: '불일치' },
   { id: 'artwork_manager', label: '아트웍 담당' },
   { id: 'production_manager', label: '생산 담당' },
-  { id: 'status', label: '상태' },
   { id: 'created_at', label: '생성일' },
   { id: 'actions', label: '액션' },
 ]
