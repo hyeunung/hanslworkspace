@@ -37,13 +37,13 @@ interface ColDef {
 
 const COLUMNS: ColDef[] = [
   { id: 'no', label: 'NO.', width: 40 },
+  { id: 'status', label: '상태', width: 74 },
   { id: 'code_number', label: '코드번호', width: 80, fitText: r => r.code_number || '-' },
   { id: 'sales_order_number', label: '제작번호', width: 80, fitText: r => r.sales_order_number || '-' },
   { id: 'board_name', label: '보드명', width: 200, align: 'left', fitText: r => r.board_name, fitMax: 560 },
   { id: 'mismatch', label: '불일치', width: 72 },
   { id: 'artwork_manager', label: '아트웍 담당', width: 76, fitText: r => r.artwork_manager || '-' },
   { id: 'production_manager', label: '생산 담당', width: 76, fitText: r => r.production_manager || '-' },
-  { id: 'status', label: '상태', width: 74 },
   { id: 'created_at', label: '생성일', width: 78 },
   { id: 'actions', label: '액션', width: 110 },
 ]
