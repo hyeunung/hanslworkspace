@@ -47,6 +47,41 @@ export const ApprovalStatusBadge = memo(({ purchase }: { purchase: Purchase }) =
 })
 ApprovalStatusBadge.displayName = 'ApprovalStatusBadge'
 
+// 승인상태 배지 + 클릭 승인 (인풋 모드 전용) — 다음 단계 승인을 배지 클릭으로 진행
+// 1차 대기+1차 권한 → 1차 승인, 1차 완료+최종 대기+최종 권한 → 최종 승인 (상세 모달 규칙과 동일)
+export const ApprovalActionBadge = memo(({ purchase, canApproveMiddle, canApproveFinal, onApprove }: {
+  purchase: Purchase
+  canApproveMiddle: boolean
+  canApproveFinal: boolean
+  onApprove: (p: Purchase, type: 'middle' | 'final') => Promise<void> | void
+}) => {
+  const { allPurchases } = usePurchaseMemory()
+  const p = allPurchases?.find(x => x.id === purchase.id) || purchase
+
+  const middlePending = p.middle_manager_status === 'pending'
+  const finalPending = p.middle_manager_status === 'approved' && p.final_manager_status === 'pending'
+  const nextType: 'middle' | 'final' | null =
+    middlePending && canApproveMiddle ? 'middle'
+    : finalPending && canApproveFinal ? 'final'
+    : null
+
+  if (!nextType) return <ApprovalStatusBadge purchase={p} />
+  return (
+    <button
+      type="button"
+      onClick={async (e: React.MouseEvent) => {
+        e.stopPropagation()
+        await onApprove(p, nextType)
+      }}
+      className="mx-auto cursor-pointer hover:opacity-80 transition-opacity"
+      title={nextType === 'middle' ? '클릭하여 1차 승인' : '클릭하여 최종 승인'}
+    >
+      <ApprovalStatusBadge purchase={p} />
+    </button>
+  )
+})
+ApprovalActionBadge.displayName = 'ApprovalActionBadge'
+
 // 진행바 공통 렌더 (색상만 주입)
 const ProgressBar = ({ percentage, color }: { percentage: number; color: string }) => (
   <div className="flex items-center justify-center gap-1">

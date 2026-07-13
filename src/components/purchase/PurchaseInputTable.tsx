@@ -198,6 +198,16 @@ const PurchaseInputTable = ({
     canEditAll || (canEditLimited && LIMITED_EDIT_FIELDS.includes(field)),
   [canEditAll, canEditLimited])
 
+  // 승인 권한 — 상세 모달과 동일 규칙 (승인상태 배지 클릭 승인용)
+  const canApproveMiddle = useMemo(
+    () => ['middle_manager', 'superadmin', 'ceo'].some(r => currentUserRoles.includes(r)),
+    [currentUserRoles]
+  )
+  const canApproveFinal = useMemo(
+    () => ['final_approver', 'superadmin', 'ceo'].some(r => currentUserRoles.includes(r)),
+    [currentUserRoles]
+  )
+
   // 칼럼 표시 여부 — PurchaseCompactTable.isColumnVisible과 동일 규칙
   const isColumnVisible = useCallback((columnId?: DoneTabColumnId) => {
     if (!columnId) return true
@@ -221,7 +231,10 @@ const PurchaseInputTable = ({
     canUtkCheck,
     onExcelDownload: actions.handleExcelDownload,
     onToggleUtkCheck: actions.handleToggleUtkCheck,
-  }), [activeTab, canUtkCheck, actions.handleExcelDownload, actions.handleToggleUtkCheck])
+    onApprove: actions.handleApprove,
+    canApproveMiddle,
+    canApproveFinal,
+  }), [activeTab, canUtkCheck, actions.handleExcelDownload, actions.handleToggleUtkCheck, actions.handleApprove, canApproveMiddle, canApproveFinal])
 
   // ── 그룹(발주 1건) 목록 — 품목 line_number 오름차순, 품목 0건은 빈 1행 ──
   const groups = useMemo(() => purchases.map(p => {

@@ -5,7 +5,7 @@ import { formatDateShort } from '@/utils/helpers'
 import {
   ApprovalStatusBadge, PaymentProgressBar, ReceiptProgressBar, StatementProgressBar,
   OrderNumberCell, PaymentCategoryBadge, ProgressTypeBadge, QuantityCell, UnitPriceCell, AmountCell,
-  UtkCell, LinkCell, TextCell, ItemQuantityCell, ItemLinkCell,
+  UtkCell, LinkCell, TextCell, ItemQuantityCell, ItemLinkCell, ApprovalActionBadge,
 } from '@/components/purchase/PurchaseTableCells'
 
 // ─── 발주/구매 컴팩트 테이블 칼럼 정의 (주입식) ───────────────────────────
@@ -18,6 +18,10 @@ export interface PurchaseCellCtx {
   canUtkCheck: boolean
   onExcelDownload: (p: Purchase) => Promise<void> | void
   onToggleUtkCheck: (p: Purchase) => Promise<void> | void
+  // 인풋 모드 전용 — 승인상태 배지 클릭으로 1차/최종 승인 (없으면 배지는 표시 전용)
+  onApprove?: (p: Purchase, type: 'middle' | 'final') => Promise<void> | void
+  canApproveMiddle?: boolean
+  canApproveFinal?: boolean
 }
 
 // 인풋 모드에서 인라인 편집을 허용하는 품목 필드
@@ -273,7 +277,16 @@ const paymentSchedule: PurchaseColumnDef = {
 // 탭별 선두/전용 칼럼
 const approvalStatus: PurchaseColumnDef = {
   id: 'approval_status', label: '승인상태', width: 85,
-  render: (p) => <ApprovalStatusBadge purchase={p} />,
+  render: (p, ctx) => ctx.onApprove ? (
+    <ApprovalActionBadge
+      purchase={p}
+      canApproveMiddle={!!ctx.canApproveMiddle}
+      canApproveFinal={!!ctx.canApproveFinal}
+      onApprove={ctx.onApprove}
+    />
+  ) : (
+    <ApprovalStatusBadge purchase={p} />
+  ),
   fitText: approvalStatusText,
   fitExtra: () => BADGE_PADDING,
 }

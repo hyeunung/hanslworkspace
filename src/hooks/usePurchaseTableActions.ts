@@ -32,6 +32,34 @@ export function usePurchaseTableActions({ currentUserRoles, onRefresh }: UsePurc
     setSelectedPurchaseId(null)
   }, [])
 
+  // 1차/최종 승인 — 상세 모달 handleApprove와 동일 규칙 (인풋 모드 승인상태 배지 클릭 진입점)
+  const handleApprove = useCallback(async (purchase: Purchase, type: 'middle' | 'final') => {
+    if (!purchase?.id) return
+    const approvalType = type === 'middle' ? '1차 승인' : '최종 승인'
+    if (!window.confirm(`발주번호: ${purchase.purchase_order_number}\n\n${approvalType}을 진행하시겠습니까?`)) return
+
+    try {
+      const updateData = type === 'middle'
+        ? { middle_manager_status: 'approved' }
+        : { final_manager_status: 'approved' }
+      const { error } = await supabase
+        .from('purchase_requests')
+        .update(updateData)
+        .eq('id', purchase.id)
+      if (error) throw error
+
+      // 메모리 캐시 즉시 반영 (리스트/배지 실시간 갱신)
+      updatePurchaseInMemory(purchase.id, (prev) => ({ ...prev, ...updateData } as Purchase))
+      toast.success(`${type === 'middle' ? '중간' : '최종'} 승인이 완료되었습니다.`)
+
+      const refreshResult = onRefresh?.(true, { silent: true })
+      if (refreshResult instanceof Promise) await refreshResult
+    } catch (err) {
+      logger.error('승인 처리 실패', { err, purchaseId: purchase.id, type })
+      toast.error('승인 처리 중 오류가 발생했습니다.')
+    }
+  }, [supabase, onRefresh])
+
   // UTK 확인 토글 (전체항목 탭)
   const handleToggleUtkCheck = useCallback(async (purchase: Purchase) => {
     if (!purchase?.id) return
@@ -282,6 +310,7 @@ export function usePurchaseTableActions({ currentUserRoles, onRefresh }: UsePurc
     handleRowClick,
     handleCloseModal,
     handleToggleUtkCheck,
+    handleApprove,
     handleExcelDownload,
     deleteConfirmOpen,
     setDeleteConfirmOpen,
