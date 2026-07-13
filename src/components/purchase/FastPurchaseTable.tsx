@@ -415,7 +415,7 @@ const TableRow = memo(({ purchase, onClick, activeTab, isLeadBuyer, onPaymentCom
   
   return (
     <tr 
-      className={`border-b hover:bg-gray-100 cursor-pointer transition-colors ${isAdvance ? 'bg-red-50 hover:bg-red-100' : ''}`}
+      className={`border-b cursor-pointer ${isAdvance ? 'bg-red-100' : ''}`}
       onClick={() => onClick(purchase)}
     >
       {/* 승인대기 탭에서는 승인상태를 맨 앞에 표시 */}

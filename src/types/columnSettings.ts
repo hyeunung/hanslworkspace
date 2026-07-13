@@ -8,6 +8,7 @@ export type DoneTabColumnId =
   | 'statement_progress'      // 거래명세서 (진행률)
   | 'purchase_order_number'   // 발주번호
   | 'payment_category'        // 결제종류
+  | 'progress_type'           // 진행종류 (일반/선진행)
   | 'requester_name'          // 요청자
   | 'request_date'            // 청구일
   | 'utk_status'              // UTK

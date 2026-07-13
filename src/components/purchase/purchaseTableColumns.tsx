@@ -4,7 +4,7 @@ import { DoneTabColumnId } from '@/types/columnSettings'
 import { formatDateShort } from '@/utils/helpers'
 import {
   ApprovalStatusBadge, PaymentProgressBar, ReceiptProgressBar, StatementProgressBar,
-  OrderNumberCell, PaymentCategoryBadge, QuantityCell, UnitPriceCell, AmountCell,
+  OrderNumberCell, PaymentCategoryBadge, ProgressTypeBadge, QuantityCell, UnitPriceCell, AmountCell,
   UtkCell, LinkCell, TextCell,
 } from '@/components/purchase/PurchaseTableCells'
 
@@ -119,6 +119,14 @@ const orderNumber: PurchaseColumnDef = {
   },
   // 엑셀 아이콘(14px+간격) + 무상샘플 배지 보정
   fitExtra: (p) => 20 + (p.is_free_sample ? 32 : 0),
+}
+const progressTypeText = (p: Purchase): string =>
+  (p.progress_type === '선진행' || p.progress_type?.includes('선진행')) ? '선진행' : '일반'
+const progressType: PurchaseColumnDef = {
+  id: 'progress_type', visibilityKey: 'progress_type', label: '진행종류', width: 68,
+  render: (p) => <ProgressTypeBadge purchase={p} />,
+  fitText: progressTypeText,
+  fitExtra: () => UTK_BADGE_PADDING,
 }
 const paymentCategory: PurchaseColumnDef = {
   id: 'payment_category', visibilityKey: 'payment_category', label: '결제종류', width: 85,
@@ -275,21 +283,21 @@ export const purchaseColumnsForTab = (tab: string): PurchaseColumnDef[] => {
   switch (tab) {
     case 'pending':
       return [
-        approvalStatus, orderNumber, paymentCategory, requesterName, requestDate,
+        approvalStatus, orderNumber, progressType, paymentCategory, requesterName, requestDate,
         vendorName, contactName, deliveryRequestDate, itemName, specification,
         quantityCol('요청수량', false), unitPrice, amountCol('합계'),
         remark, projectVendor, projectItem, salesOrderNumber,
       ]
     case 'purchase':
       return [
-        paymentProgressLead, orderNumber, paymentCategory, requesterName, requestDate,
+        paymentProgressLead, orderNumber, progressType, paymentCategory, requesterName, requestDate,
         vendorName, contactName, deliveryRequestDate, itemName, specification,
         quantityCol('요청수량', false), unitPrice, amountCol('합계'),
         remark, linkCol, projectVendor, projectItem, salesOrderNumber,
       ]
     case 'receipt':
       return [
-        receiptProgressLead, orderNumber, paymentCategory, requesterName, requestDate,
+        receiptProgressLead, orderNumber, progressType, paymentCategory, requesterName, requestDate,
         vendorName, contactName, deliveryRequestDate, revisedDeliveryDate, itemName, specification,
         quantityCol('수량', true), unitPrice, amountCol('합계'),
         remark, projectVendor, projectItem, salesOrderNumber,
@@ -297,7 +305,7 @@ export const purchaseColumnsForTab = (tab: string): PurchaseColumnDef[] => {
     case 'done':
     default:
       return [
-        statementProgressLead, orderNumber, paymentCategory, requesterName, requestDate, utkStatus,
+        statementProgressLead, orderNumber, progressType, paymentCategory, requesterName, requestDate, utkStatus,
         vendorName, contactName, deliveryRequestDate, revisedDeliveryDate, itemName, specification,
         quantityCol('수량', true), unitPrice, amountCol('(총 품목)합계'),
         remark, linkCol, projectVendor, projectItem, salesOrderNumber,
