@@ -599,7 +599,11 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
       </div>
 
       {/* 표 카드 — 제목행(정렬·칼럼 메뉴) + 컴팩트 테이블 */}
-      <div className="card-professional rounded-t-none overflow-hidden">
+      <div
+        className={`card-professional rounded-t-none overflow-hidden ${
+          !loading && displayPurchases.length > 0 ? 'w-fit max-w-full' : 'w-full'
+        }`}
+      >
         <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50/50">
           <div className="flex items-center gap-2">
             <span className="modal-section-title">발주/구매 현황</span>
