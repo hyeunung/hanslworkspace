@@ -10,6 +10,8 @@ interface ChangelogEntry {
   version: string
   date: string
   title: string
+  /** 업데이트 안내 팝업에 표시할 스크린샷 경로 (public 기준, 선택) */
+  image?: string
   changes: { type: string; text: string }[]
 }
 
