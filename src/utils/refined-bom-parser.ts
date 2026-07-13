@@ -42,6 +42,26 @@ const cellNum = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+/** Ref 범위 표기 전개: "U1~U4" → "U1, U2, U3, U4" (좌표 REF 매칭을 위해) */
+export function expandRefRanges(refRaw: string): string {
+  if (!refRaw || !refRaw.includes('~')) return refRaw;
+  return refRaw
+    .split(',')
+    .map(tok => tok.trim())
+    .filter(Boolean)
+    .flatMap(tok => {
+      const m = tok.match(/^([A-Za-z]+)(\d+)\s*~\s*([A-Za-z]*)(\d+)$/);
+      if (!m) return [tok];
+      const [, prefix, startStr, prefix2, endStr] = m;
+      if (prefix2 && prefix2.toUpperCase() !== prefix.toUpperCase()) return [tok];
+      const start = parseInt(startStr, 10);
+      const end = parseInt(endStr, 10);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start || end - start > 500) return [tok];
+      return Array.from({ length: end - start + 1 }, (_, i) => `${prefix}${start + i}`);
+    })
+    .join(', ');
+}
+
 /** 보드명(부품리스트) 시트 파싱 */
 function parseBoardSheet(rows: Row[]): { items: BOMItem[]; productionQuantity: number } | null {
   let headerIdx = -1;
@@ -110,7 +130,7 @@ function parseBoardSheet(rows: Row[]): { items: BOMItem[]; productionQuantity: n
       totalQuantity: qtyVal ?? 0,
       stockQuantity: stockNum ?? 0,
       checkStatus: col.check !== undefined ? cellStr(r[col.check]) : '',
-      refList: col.ref !== undefined ? cellStr(r[col.ref]) : '',
+      refList: col.ref !== undefined ? expandRefRanges(cellStr(r[col.ref])) : '',
       alternativeItem: col.alt !== undefined ? cellStr(r[col.alt]) : '',
       remark,
       isManualRequired: false,

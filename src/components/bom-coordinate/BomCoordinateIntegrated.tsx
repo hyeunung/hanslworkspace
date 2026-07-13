@@ -434,11 +434,21 @@ export default function BomCoordinateIntegrated() {
 
         // 이미 BOM/좌표 정리가 완료(completed)되어 저장된 보드 목록 (드롭다운에서 제외하기 위함)
         // 검토대기(pending) 상태는 삭제될 수 있으므로 계속 노출한다
-        const { data: cadData } = await supabase
-          .from('cad_drawings')
-          .select('sales_order_number, board_name, status');
-        if (cadData) {
-          setProcessedCadBoards(cadData);
+        // PostgREST 1000행 한도 — 이관 보드 포함 시 넘을 수 있어 페이지 단위 조회
+        {
+          const PAGE = 1000;
+          const allCad: Array<{ sales_order_number?: string; board_name: string; status?: 'pending' | 'completed' }> = [];
+          for (let from = 0; ; from += PAGE) {
+            const { data: cadPage, error: cadPageError } = await supabase
+              .from('cad_drawings')
+              .select('sales_order_number, board_name, status')
+              .order('created_at', { ascending: false })
+              .range(from, from + PAGE - 1);
+            if (cadPageError || !cadPage) break;
+            allCad.push(...cadPage);
+            if (cadPage.length < PAGE) break;
+          }
+          setProcessedCadBoards(allCad);
         }
 
         // 현재 사용자 정보 로드
@@ -500,12 +510,20 @@ export default function BomCoordinateIntegrated() {
       
       try {
         setLoadingBoards(true);
-        const { data: boards, error } = await supabase
-          .from('cad_drawings')
-          .select('id, board_name, code_number, sales_order_number, created_at, artwork_manager, production_manager, status, is_migration_unconfirmed')
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
+        // PostgREST 1000행 한도 — 이관 보드 포함 시 넘을 수 있어 페이지 단위 조회
+        const PAGE = 1000;
+        const boards: Array<Record<string, unknown>> = [];
+        for (let from = 0; ; from += PAGE) {
+          const { data: page, error } = await supabase
+            .from('cad_drawings')
+            .select('id, board_name, code_number, sales_order_number, created_at, artwork_manager, production_manager, status, is_migration_unconfirmed')
+            .order('created_at', { ascending: false })
+            .range(from, from + PAGE - 1);
+          if (error) throw error;
+          if (!page) break;
+          boards.push(...page);
+          if (page.length < PAGE) break;
+        }
 
         // 불일치/수동확인 건수 조회
         const { data: mismatchData } = await supabase.rpc('get_board_mismatch_counts');
@@ -516,10 +534,10 @@ export default function BomCoordinateIntegrated() {
           }
         }
 
-        const boardsWithCounts = (boards || []).map((b: { id: string; board_name: string; code_number?: string; created_at: string; artwork_manager?: string; production_manager?: string; status?: string }) => ({
-          ...b,
-          mismatch_count: mismatchMap.get(b.id)?.mismatch_count ?? 0,
-          manual_count: mismatchMap.get(b.id)?.manual_count ?? 0,
+        const boardsWithCounts = boards.map((b) => ({
+          ...(b as unknown as (typeof savedBoards)[number]),
+          mismatch_count: mismatchMap.get(b.id as string)?.mismatch_count ?? 0,
+          manual_count: mismatchMap.get(b.id as string)?.manual_count ?? 0,
         }));
 
         setSavedBoards(boardsWithCounts);

@@ -129,16 +129,21 @@ export default function PurchaseNewMain() {
   // 보드 목록 로드 (BOM 연동)
   useEffect(() => {
     const loadBoards = async () => {
-      const { data, error } = await supabase
-        .from('cad_drawings')
-        .select('id, board_name, sales_order_number, is_migration_unconfirmed')
-        .eq('status', 'completed')
-        .order('board_name')
-        .limit(5000);
-
-      if (data && !error) {
-        setBoards(data);
+      // PostgREST 1000행 한도 — 이관 보드 포함 시 1000개를 넘으므로 페이지 단위로 전부 조회
+      const PAGE = 1000;
+      const all: { id: string; board_name: string; sales_order_number: string | null; is_migration_unconfirmed?: boolean }[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from('cad_drawings')
+          .select('id, board_name, sales_order_number, is_migration_unconfirmed')
+          .eq('status', 'completed')
+          .order('board_name')
+          .range(from, from + PAGE - 1);
+        if (error || !data) break;
+        all.push(...data);
+        if (data.length < PAGE) break;
       }
+      setBoards(all);
     };
     loadBoards();
   }, [supabase]);
