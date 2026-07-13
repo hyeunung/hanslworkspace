@@ -113,10 +113,17 @@ const PurchaseGroupRows = memo(({ purchase, items, columns, widths, ctx, canEdit
   onSaveField: (purchase: Purchase, item: PurchaseRequestItem, field: PurchaseItemEditField, value: string) => void
 }) => {
   const rowCount = Math.max(items.length, 1)
+  const lastColIdx = columns.length - 1
 
-  const renderItemCell = (col: PurchaseColumnDef, item: PurchaseRequestItem | undefined, isLastRow: boolean) => {
+  // 그룹 바깥 4면 테두리(gray-300) — 좌우는 첫/끝 칼럼, 하단은 마지막 행·병합 셀.
+  // 상단은 이전 그룹의 하단선(첫 그룹은 헤더 하단선)이 겸하므로 1px 두께가 유지된다.
+  // 칼럼 사이 세로선은 넣지 않고, 그룹 내부 품목 구분은 연한 가로선(gray-100)만 사용.
+  const sideClasses = (colIdx: number) =>
+    colIdx === 0 ? 'border-l border-l-gray-300' : colIdx === lastColIdx ? 'border-r border-r-gray-300' : ''
+
+  const renderItemCell = (col: PurchaseColumnDef, colIdx: number, item: PurchaseRequestItem | undefined, isLastRow: boolean) => {
     const w = widths[col.id] ?? col.width
-    const borderB = isLastRow ? 'border-b border-gray-300' : 'border-b border-gray-100'
+    const borderB = isLastRow ? 'border-b border-b-gray-300' : 'border-b border-b-gray-100'
     let content: React.ReactNode = <span className="text-gray-400">-</span>
     if (item && col.itemRender) {
       const display = col.itemRender(item, purchase, ctx)
@@ -133,7 +140,7 @@ const PurchaseGroupRows = memo(({ purchase, items, columns, widths, ctx, canEdit
     return (
       <td
         key={col.id}
-        className={`border-r border-gray-100 ${borderB} ${tdAlignClass(col.align)}`}
+        className={`${sideClasses(colIdx)} ${borderB} ${tdAlignClass(col.align)}`}
         style={{ width: w, minWidth: w, maxWidth: w }}
       >
         {content}
@@ -145,7 +152,7 @@ const PurchaseGroupRows = memo(({ purchase, items, columns, widths, ctx, canEdit
     <>
       {Array.from({ length: rowCount }, (_, rowIdx) => (
         <tr key={items[rowIdx]?.id ?? `${purchase.id}-r${rowIdx}`} style={{ height: ROW_HEIGHT }}>
-          {columns.map(col => {
+          {columns.map((col, colIdx) => {
             if (!col.itemRender) {
               // 발주 공통 칼럼 — 그룹 첫 행에서만 rowspan으로 렌더 (세로 중앙 병합)
               if (rowIdx !== 0) return null
@@ -154,14 +161,14 @@ const PurchaseGroupRows = memo(({ purchase, items, columns, widths, ctx, canEdit
                 <td
                   key={col.id}
                   rowSpan={rowCount}
-                  className={`border-r border-gray-100 border-b border-gray-300 ${tdAlignClass(col.align)}`}
+                  className={`${sideClasses(colIdx)} border-b border-b-gray-300 ${tdAlignClass(col.align)}`}
                   style={{ width: w, minWidth: w, maxWidth: w, verticalAlign: 'middle' }}
                 >
                   {col.render(purchase, ctx)}
                 </td>
               )
             }
-            return renderItemCell(col, items[rowIdx], rowIdx === rowCount - 1)
+            return renderItemCell(col, colIdx, items[rowIdx], rowIdx === rowCount - 1)
           })}
         </tr>
       ))}
@@ -371,7 +378,8 @@ const PurchaseInputTable = ({
         className="hidden sm:block overflow-auto"
         style={{ maxHeight: 'calc(100vh - 260px)' }}
       >
-        <table className="text-left border-separate border-spacing-0 w-max [&_th]:border-l-0 [&_td]:border-l-0 [&_th]:border-t-0 [&_td]:border-t-0 production-compact-table table-auto">
+        {/* td 좌측 보더는 그룹 바깥 테두리(첫 칼럼 border-l)로 직접 제어하므로 [&_td]:border-l-0 제외 */}
+        <table className="text-left border-separate border-spacing-0 w-max [&_th]:border-l-0 [&_th]:border-t-0 [&_td]:border-t-0 production-compact-table table-auto">
           <thead className="whitespace-nowrap">
             <tr className="bg-gray-200 border-b border-gray-300">
               {columns.map(col => {
