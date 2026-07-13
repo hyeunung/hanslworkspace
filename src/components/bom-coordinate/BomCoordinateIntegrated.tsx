@@ -32,6 +32,7 @@ import {
   sortBOMItems,
   sortCoordinateItems
 } from '@/utils/v7-generator';
+import { parseRefinedBomFile, RefinedParseError } from '@/utils/refined-bom-parser';
 import { 
   generateBOMExcelFromTemplate, 
   downloadExcelBlob,
@@ -41,6 +42,8 @@ import {
 interface FileInfo {
   bomFile: File | null;
   coordFile: File | null;
+  /** 이미 정리된 정리본 직접 업로드 (BOM/좌표 원본과 상호배타) */
+  refinedFile?: File | null;
   bomUrl?: string;
   coordUrl?: string;
 }
@@ -110,6 +113,7 @@ export default function BomCoordinateIntegrated() {
     artwork_manager?: string;
     production_manager?: string;
     status?: 'pending' | 'completed';
+    is_migration_unconfirmed?: boolean;
     mismatch_count?: number;
     manual_count?: number;
   }>>([]);
@@ -342,7 +346,7 @@ export default function BomCoordinateIntegrated() {
       if (skipIfEmpty) {
         const hasData = processedResult || 
                        (metadata.boardName || metadata.productionManager || metadata.productionQuantity > 0) ||
-                       fileInfo.bomFile || fileInfo.coordFile;
+                       fileInfo.bomFile || fileInfo.coordFile || fileInfo.refinedFile;
         if (hasData) {
           logger.debug('⏭️ 현재 데이터가 있어 임시 데이터 복원 건너뜀');
           return;
@@ -430,11 +434,21 @@ export default function BomCoordinateIntegrated() {
 
         // 이미 BOM/좌표 정리가 완료(completed)되어 저장된 보드 목록 (드롭다운에서 제외하기 위함)
         // 검토대기(pending) 상태는 삭제될 수 있으므로 계속 노출한다
-        const { data: cadData } = await supabase
-          .from('cad_drawings')
-          .select('sales_order_number, board_name, status');
-        if (cadData) {
-          setProcessedCadBoards(cadData);
+        // PostgREST 1000행 한도 — 이관 보드 포함 시 넘을 수 있어 페이지 단위 조회
+        {
+          const PAGE = 1000;
+          const allCad: Array<{ sales_order_number?: string; board_name: string; status?: 'pending' | 'completed' }> = [];
+          for (let from = 0; ; from += PAGE) {
+            const { data: cadPage, error: cadPageError } = await supabase
+              .from('cad_drawings')
+              .select('sales_order_number, board_name, status')
+              .order('created_at', { ascending: false })
+              .range(from, from + PAGE - 1);
+            if (cadPageError || !cadPage) break;
+            allCad.push(...cadPage);
+            if (cadPage.length < PAGE) break;
+          }
+          setProcessedCadBoards(allCad);
         }
 
         // 현재 사용자 정보 로드
@@ -496,12 +510,20 @@ export default function BomCoordinateIntegrated() {
       
       try {
         setLoadingBoards(true);
-        const { data: boards, error } = await supabase
-          .from('cad_drawings')
-          .select('id, board_name, code_number, sales_order_number, created_at, artwork_manager, production_manager, status')
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
+        // PostgREST 1000행 한도 — 이관 보드 포함 시 넘을 수 있어 페이지 단위 조회
+        const PAGE = 1000;
+        const boards: Array<Record<string, unknown>> = [];
+        for (let from = 0; ; from += PAGE) {
+          const { data: page, error } = await supabase
+            .from('cad_drawings')
+            .select('id, board_name, code_number, sales_order_number, created_at, artwork_manager, production_manager, status, is_migration_unconfirmed')
+            .order('created_at', { ascending: false })
+            .range(from, from + PAGE - 1);
+          if (error) throw error;
+          if (!page) break;
+          boards.push(...page);
+          if (page.length < PAGE) break;
+        }
 
         // 불일치/수동확인 건수 조회
         const { data: mismatchData } = await supabase.rpc('get_board_mismatch_counts');
@@ -512,10 +534,10 @@ export default function BomCoordinateIntegrated() {
           }
         }
 
-        const boardsWithCounts = (boards || []).map((b: { id: string; board_name: string; code_number?: string; created_at: string; artwork_manager?: string; production_manager?: string; status?: string }) => ({
-          ...b,
-          mismatch_count: mismatchMap.get(b.id)?.mismatch_count ?? 0,
-          manual_count: mismatchMap.get(b.id)?.manual_count ?? 0,
+        const boardsWithCounts = boards.map((b) => ({
+          ...(b as unknown as (typeof savedBoards)[number]),
+          mismatch_count: mismatchMap.get(b.id as string)?.mismatch_count ?? 0,
+          manual_count: mismatchMap.get(b.id as string)?.manual_count ?? 0,
         }));
 
         setSavedBoards(boardsWithCounts);
@@ -568,6 +590,46 @@ export default function BomCoordinateIntegrated() {
     }
   }, [fileInfo.bomFile, productionPcbs]);
 
+  // 정리본 파일 선택 시: 보드 이름 추측 + 정리본 배너의 제작수량 자동 채움
+  useEffect(() => {
+    if (!fileInfo.refinedFile) return;
+
+    let name = fileInfo.refinedFile.name
+      .replace(/\.(xlsx|xls)$/i, '')
+      .replace(/\(\d{4}\)$/, '')          // 신형식 (YYMM) 접미사
+      .replace(/_\d{6}(-검사중)?$/, '')    // 구형식 _YYMMDD 접미사
+      .replace(/[_\s]*정리본$/, '')
+      .trim();
+
+    const today = new Date();
+    const dateStr = today.getFullYear().toString().slice(2) +
+      (today.getMonth() + 1).toString().padStart(2, '0') +
+      today.getDate().toString().padStart(2, '0');
+    const guessedName = `${name}_${dateStr}_정리본`;
+
+    // 진행중인 제작 현황판 목록에서 매칭 시도 (BOM 업로드와 동일한 규칙)
+    const cleanNameForMatch = name.toLowerCase().trim();
+    const matchedPcb = productionPcbs.find(p => {
+      const cleanPcbName = p.board_name.replace(/_\d{6}_정리본$/, '').replace(/_정리본$/, '').replace(/_\d{6}$/, '').toLowerCase().trim();
+      return cleanPcbName === cleanNameForMatch || p.board_name.toLowerCase().trim() === cleanNameForMatch;
+    });
+
+    if (matchedPcb) {
+      setMetadata(prev => ({ ...prev, boardName: matchedPcb.board_name, salesOrderNumber: matchedPcb.sales_order_number }));
+    } else {
+      setMetadata(prev => ({ ...prev, boardName: guessedName }));
+    }
+
+    // 정리본 배너 행의 제작수량 자동 채움 (아직 입력 전일 때만)
+    parseRefinedBomFile(fileInfo.refinedFile)
+      .then(parsed => {
+        if (parsed.productionQuantity > 0) {
+          setMetadata(prev => prev.productionQuantity > 0 ? prev : { ...prev, productionQuantity: parsed.productionQuantity });
+        }
+      })
+      .catch(() => { /* 처리 시작 시 정식 에러로 안내 */ });
+  }, [fileInfo.refinedFile, productionPcbs]);
+
   const handleDrag = useCallback((e: React.DragEvent, type: string) => {
     e.preventDefault();
     e.stopPropagation();
@@ -578,41 +640,156 @@ export default function BomCoordinateIntegrated() {
     }
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent, type: 'bom' | 'coord') => {
+  const applySelectedFile = useCallback((file: File, type: 'bom' | 'coord' | 'refined') => {
+    if (type === 'bom') {
+      setFileInfo(prev => ({ ...prev, bomFile: file }));
+    } else if (type === 'coord') {
+      setFileInfo(prev => ({ ...prev, coordFile: file }));
+    } else {
+      // 정리본 업로드 시 BOM/좌표 원본은 비운다 (상호배타)
+      setFileInfo(prev => ({ ...prev, refinedFile: file, bomFile: null, coordFile: null, bomUrl: undefined, coordUrl: undefined }));
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, type: 'bom' | 'coord' | 'refined') => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(null);
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0];
-      if (type === 'bom') {
-        setFileInfo(prev => ({ ...prev, bomFile: file }));
-      } else {
-        setFileInfo(prev => ({ ...prev, coordFile: file }));
-      }
+      applySelectedFile(e.dataTransfer.files[0], type);
     }
-  }, []);
+  }, [applySelectedFile]);
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>, type: 'bom' | 'coord') => {
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>, type: 'bom' | 'coord' | 'refined') => {
     if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      if (type === 'bom') {
-        setFileInfo(prev => ({ ...prev, bomFile: file }));
-      } else {
-        setFileInfo(prev => ({ ...prev, coordFile: file }));
-      }
+      applySelectedFile(e.target.files[0], type);
     }
-  }, []);
+    // 같은 파일 재선택도 가능하도록 초기화
+    e.target.value = '';
+  }, [applySelectedFile]);
 
-  const handleRemoveFile = useCallback((type: 'bom' | 'coord') => {
+  const handleRemoveFile = useCallback((type: 'bom' | 'coord' | 'refined') => {
     if (type === 'bom') {
       setFileInfo(prev => ({ ...prev, bomFile: null, bomUrl: undefined }));
-    } else {
+    } else if (type === 'coord') {
       setFileInfo(prev => ({ ...prev, coordFile: null, coordUrl: undefined }));
+    } else {
+      setFileInfo(prev => ({ ...prev, refinedFile: null }));
     }
   }, []);
 
+  // 정리본 직접 업로드 처리 — v7 엔진 가공 없이 정리본을 그대로 읽어 미리보기로 이동
+  const handleProcessRefined = async () => {
+    const refinedFile = fileInfo.refinedFile;
+    if (!refinedFile) return;
+
+    if (!metadata.boardName.trim()) {
+      toast.error('보드 이름을 입력해주세요.');
+      return;
+    }
+    if (metadata.productionQuantity <= 0) {
+      toast.error('생산 수량을 입력해주세요 (1 이상).');
+      return;
+    }
+
+    try {
+      setUploading(true);
+      setStep('processing');
+      setErrorMessage(null);
+      setProgress(10);
+      setLoadingText('정리본 파일 읽는 중...');
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('로그인이 필요합니다.');
+
+      // 1. 정리본 파싱 (클라이언트)
+      const parsed = await parseRefinedBomFile(refinedFile);
+      setProgress(50);
+      setLoadingText('정리본 업로드 중...');
+
+      // 2. Storage 업로드 (원본 파일 링크용 — BOM 슬롯 사용)
+      const timestamp = Date.now();
+      const lastDot = refinedFile.name.lastIndexOf('.');
+      const ext = lastDot > -1 ? refinedFile.name.slice(lastDot) : '';
+      const safeName = (refinedFile.name.slice(0, lastDot > -1 ? lastDot : undefined)
+        .replace(/[^a-zA-Z0-9\-_]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '') || 'file') + ext;
+      const bomPath = `raw/${timestamp}_refined_${safeName}`;
+
+      const uploadResult = await supabase.storage
+        .from('bom-files')
+        .upload(bomPath, refinedFile, { cacheControl: '3600', upsert: true });
+      if (uploadResult.error) throw uploadResult.error;
+
+      setUploadedFilePaths({ bomPath });
+      setOriginalFileNames({ bomName: refinedFile.name });
+      setProgress(85);
+      setLoadingText('미리보기 준비 중...');
+
+      // 미리보기용 코드번호 미리 계산 (실패해도 미리보기는 진행)
+      let previewCodeNumber: string | undefined;
+      try {
+        previewCodeNumber = await generateCodeNumber();
+      } catch (e) {
+        logger.warn('미리보기 코드번호 생성 실패 (계속 진행):', { error: String(e) });
+      }
+
+      const coordinates = [...parsed.topCoordinates, ...parsed.bottomCoordinates];
+      const misapCount = parsed.bomItems.filter(item => {
+        const nameUpper = (item.itemName || '').toUpperCase();
+        return (item.remark || '').includes('미삽') ||
+          nameUpper.includes('_OPEN') || nameUpper.includes('OPEN_') ||
+          nameUpper.includes('_POGO') || nameUpper.includes('POGO_') ||
+          nameUpper.includes('_PAD') || nameUpper.includes('PAD_') ||
+          nameUpper.includes('_NC') || nameUpper.includes('NC_');
+      }).length;
+
+      setProcessedResult({
+        cadDrawingId: `cad_${Date.now()}`,
+        previewCodeNumber,
+        processedData: {
+          bomItems: parsed.bomItems,
+          topCoordinates: parsed.topCoordinates,
+          bottomCoordinates: parsed.bottomCoordinates,
+          coordinates,
+          coordinatesProvided: coordinates.length > 0,
+          summary: {
+            totalItems: parsed.bomItems.length,
+            manualRequiredCount: 0,
+            newPartCount: 0,
+            misapCount,
+          }
+        }
+      });
+
+      setProgress(100);
+      setLoadingText('완료!');
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      toast.success(`정리본을 불러왔습니다. (${parsed.bomItems.length}개 항목) 내용 확인 후 저장해주세요.`);
+      setStep('preview');
+    } catch (error: unknown) {
+      logger.error('Refined processing error:', error);
+      const userMsg = error instanceof RefinedParseError
+        ? error.message
+        : `정리본 처리 중 오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`;
+      toast.error(userMsg);
+      setErrorMessage(userMsg);
+      setUploading(false);
+      setStep('input');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   const handleProcess = async () => {
+    // 정리본 직접 업로드 경로
+    if (fileInfo.refinedFile) {
+      await handleProcessRefined();
+      return;
+    }
+
     if (!fileInfo.bomFile) {
       toast.error('BOM 파일을 선택해주세요.');
       return;
@@ -1006,7 +1183,9 @@ export default function BomCoordinateIntegrated() {
 
       // 2. 원본 파일 정보 저장 (bom_raw_files)
       // BOM만 업로드된 경우 좌표 필드는 null 로 저장 (스키마가 NULLABLE).
-      if (fileInfo.bomFile && uploadedFilePaths?.bomPath) {
+      // 정리본 직접 업로드 모드에서는 정리본 파일이 BOM 슬롯에 저장된다.
+      const rawSourceFile = fileInfo.bomFile ?? fileInfo.refinedFile;
+      if (rawSourceFile && uploadedFilePaths?.bomPath) {
         let bomFileUrl = '';
         let coordFileUrl: string | null = null;
 
@@ -1038,7 +1217,7 @@ export default function BomCoordinateIntegrated() {
             .update({
               bom_file_url: bomFileUrl,
               coordinate_file_url: coordFileUrl,
-              bom_file_name: fileInfo.bomFile.name,
+              bom_file_name: rawSourceFile.name,
               coordinate_file_name: coordFileName,
               uploaded_by: user.email || user.id
             })
@@ -1052,7 +1231,7 @@ export default function BomCoordinateIntegrated() {
               cad_drawing_id: cadDrawingId,
               bom_file_url: bomFileUrl,
               coordinate_file_url: coordFileUrl,
-              bom_file_name: fileInfo.bomFile.name,
+              bom_file_name: rawSourceFile.name,
               coordinate_file_name: coordFileName,
               uploaded_by: user.email || user.id
             });
@@ -1934,6 +2113,8 @@ function dlFile() {
                               <TableCell className="text-center py-1">
                                 {board.status === 'pending' ? (
                                   <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 text-[9px] px-1.5 py-0.5">검토대기</Badge>
+                                ) : board.is_migration_unconfirmed ? (
+                                  <Badge className="bg-gray-100 text-gray-600 hover:bg-gray-100 text-[9px] px-1.5 py-0.5">이관확인전</Badge>
                                 ) : (
                                   <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-[9px] px-1.5 py-0.5">완료</Badge>
                                 )}
@@ -2045,10 +2226,15 @@ function dlFile() {
           <Card>
             <CardContent className="py-4">
               <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-stretch">
-                {/* 왼쪽: 파일 업로드 (50%) */}
-                <div className="w-full lg:w-[50%] grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* 왼쪽: 파일 업로드 (50%) — 정리본 업로드 시 BOM/좌표 칸 숨김, BOM 업로드 시 정리본 칸 숨김 */}
+                <div className={cn(
+                  "w-full lg:w-[50%] grid grid-cols-1 gap-3",
+                  fileInfo.refinedFile ? "sm:grid-cols-1" : fileInfo.bomFile ? "sm:grid-cols-2" : "sm:grid-cols-3"
+                )}>
+                  {!fileInfo.refinedFile && (
+                  <>
                   {/* BOM 파일 업로드 */}
-                  <div 
+                  <div
                     className={cn(
                       "border-2 border-dashed rounded-lg p-2 text-center transition-colors cursor-pointer relative flex flex-col items-center justify-center h-full",
                       dragActive === 'bom' ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300",
@@ -2134,6 +2320,55 @@ function dlFile() {
                       </div>
                     )}
                   </div>
+                  </>
+                  )}
+
+                  {/* 정리본 직접 업로드 — 이미 정리된 정리본이 있을 때 (BOM 업로드와 상호배타) */}
+                  {!fileInfo.bomFile && (
+                  <div
+                    className={cn(
+                      "border-2 border-dashed rounded-lg p-2 text-center transition-colors cursor-pointer relative flex flex-col items-center justify-center h-full",
+                      dragActive === 'refined' ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300",
+                      fileInfo.refinedFile ? "bg-purple-50 border-purple-200" : ""
+                    )}
+                    onDragEnter={(e) => handleDrag(e, 'refined')}
+                    onDragLeave={(e) => handleDrag(e, 'refined')}
+                    onDragOver={(e) => handleDrag(e, 'refined')}
+                    onDrop={(e) => handleDrop(e, 'refined')}
+                    onClick={() => document.getElementById('refined-upload')?.click()}
+                  >
+                    <input
+                      id="refined-upload"
+                      type="file"
+                      className="hidden"
+                      accept=".xlsx,.xls"
+                      onChange={(e) => handleFileSelect(e, 'refined')}
+                    />
+
+                    {fileInfo.refinedFile ? (
+                      <div className="flex flex-col items-center gap-1 w-full px-1">
+                        <span className="text-xs font-bold text-purple-600">정리본</span>
+                        <p className="text-[10px] font-medium text-purple-700 w-full text-center break-all line-clamp-2" title={fileInfo.refinedFile.name}>
+                          {fileInfo.refinedFile.name}
+                        </p>
+                        <p className="text-[9px] text-purple-500">가공 없이 정리본 그대로 등록됩니다</p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="absolute top-1 right-1 p-0 w-4 h-4 min-w-0"
+                          onClick={(e) => { e.stopPropagation(); handleRemoveFile('refined'); }}
+                        >
+                          <X size={12} />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-1">
+                        <span className="text-xs font-bold text-gray-400">정리본(선택)</span>
+                        <p className="text-[10px] font-medium text-gray-700">이미 정리된 정리본 업로드</p>
+                      </div>
+                    )}
+                  </div>
+                  )}
                 </div>
 
                 {/* 오른쪽: 정보 입력 (50%) */}
@@ -2319,8 +2554,8 @@ function dlFile() {
                       <Button 
                         onClick={handleProcess}
                         disabled={
-                          !fileInfo.bomFile || 
-                          !metadata.boardName || 
+                          (!fileInfo.bomFile && !fileInfo.refinedFile) ||
+                          !metadata.boardName ||
                           metadata.productionQuantity <= 0 ||
                           uploading
                         }
@@ -2337,10 +2572,10 @@ function dlFile() {
           </Card>
 
           {/* 안내 메시지 */}
-          {!fileInfo.bomFile && !fileInfo.coordFile && (
+          {!fileInfo.bomFile && !fileInfo.coordFile && !fileInfo.refinedFile && (
             <div className="text-center py-6 sm:py-8 text-gray-500">
               <Package className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 text-gray-300" />
-              <p className="text-xs sm:text-sm px-4">BOM 파일을 업로드하여 시작하세요 (좌표 파일은 선택)</p>
+              <p className="text-xs sm:text-sm px-4">BOM 파일을 업로드하여 시작하세요 (좌표 파일은 선택, 이미 정리된 파일은 정리본 칸에 업로드)</p>
             </div>
           )}
         </div>
@@ -2590,6 +2825,9 @@ function dlFile() {
         onClose={() => {
           setIsDetailModalOpen(false);
           setDetailModalBoardId(null);
+        }}
+        onMigrationConfirmed={(confirmedId) => {
+          setSavedBoards(prev => prev.map(b => b.id === confirmedId ? { ...b, is_migration_unconfirmed: false } : b));
         }}
       />
     </div>

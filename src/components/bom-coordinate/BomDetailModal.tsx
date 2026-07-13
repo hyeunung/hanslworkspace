@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 // native table 태그 사용 (sticky header 지원을 위해)
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, Download, FileText } from 'lucide-react';
+import { Loader2, Download, FileText, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
   generateBOMExcelFromTemplate, 
@@ -19,6 +19,8 @@ interface BomDetailModalProps {
   boardId: string | null;
   isOpen: boolean;
   onClose: () => void;
+  /** 이관 보드 확인 완료 처리 후 목록 갱신용 콜백 */
+  onMigrationConfirmed?: (boardId: string) => void;
 }
 
 interface BoardData {
@@ -28,6 +30,7 @@ interface BoardData {
   production_manager: string;
   production_quantity: number;
   created_at: string;
+  is_migration_unconfirmed: boolean;
   bomItems: BOMItem[];
   topCoordinates: CoordinateItem[];
   bottomCoordinates: CoordinateItem[];
@@ -40,11 +43,12 @@ interface RawFileInfo {
   coordName?: string;
 }
 
-export default function BomDetailModal({ boardId, isOpen, onClose }: BomDetailModalProps) {
+export default function BomDetailModal({ boardId, isOpen, onClose, onMigrationConfirmed }: BomDetailModalProps) {
   const [loading, setLoading] = useState(false);
   const [boardData, setBoardData] = useState<BoardData | null>(null);
   const [rawFile, setRawFile] = useState<RawFileInfo>({});
   const [downloading, setDownloading] = useState(false);
+  const [confirmingMigration, setConfirmingMigration] = useState(false);
   
   const supabase = createClient();
 
@@ -138,6 +142,7 @@ export default function BomDetailModal({ boardId, isOpen, onClose }: BomDetailMo
         production_manager: board.production_manager || '',
         production_quantity: board.production_quantity || 0,
         created_at: board.created_at,
+        is_migration_unconfirmed: board.is_migration_unconfirmed === true,
         bomItems: convertedBOMItems,
         topCoordinates: topCoords,
         bottomCoordinates: bottomCoords,
@@ -274,6 +279,32 @@ iframe { width: 100%; height: calc(100vh - 45px); border: 0; }
     }
   };
 
+  // 이관 보드 확인 완료 처리 — 완료되어야 새요청 선택 시 확인 팝업이 더 이상 뜨지 않음
+  const handleConfirmMigration = async () => {
+    if (!boardData) return;
+    setConfirmingMigration(true);
+    try {
+      const { data: updated, error } = await supabase
+        .from('cad_drawings')
+        .update({ is_migration_unconfirmed: false })
+        .eq('id', boardData.id)
+        .select('id');
+      if (error) throw error;
+      if (!updated || updated.length === 0) {
+        toast.error('확인 완료 처리가 차단되었습니다(RLS). 관리자에게 문의해주세요.');
+        return;
+      }
+      setBoardData(prev => prev ? { ...prev, is_migration_unconfirmed: false } : prev);
+      onMigrationConfirmed?.(boardData.id);
+      toast.success('이관 자료 확인 완료 처리되었습니다.');
+    } catch (error) {
+      logger.error('이관 확인 완료 처리 실패', error);
+      toast.error('확인 완료 처리에 실패했습니다.');
+    } finally {
+      setConfirmingMigration(false);
+    }
+  };
+
   // 미삽 체크 함수 (미리보기와 동일)
   const checkIsMisap = (itemName: string, remark: string) => {
     const nameUpper = (itemName || '').toUpperCase();
@@ -338,6 +369,21 @@ iframe { width: 100%; height: calc(100vh - 45px); border: 0; }
               )}
             </div>
             <div className="flex gap-2">
+              {boardData?.is_migration_unconfirmed && (
+                <Button
+                  onClick={handleConfirmMigration}
+                  disabled={confirmingMigration}
+                  className="h-8 px-3 text-xs bg-hansl-500 hover:bg-hansl-600 text-white"
+                  title="이관된 자료의 내용을 확인했으면 완료 처리해주세요. 완료 전까지 발주 새요청에서 확인 요청 팝업이 계속 표시됩니다."
+                >
+                  {confirmingMigration ? (
+                    <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                  ) : (
+                    <CheckCircle2 className="w-3 h-3 mr-1" />
+                  )}
+                  이관 확인 완료
+                </Button>
+              )}
               <Button
                 onClick={handleDownloadExcel}
                 disabled={downloading || !boardData}

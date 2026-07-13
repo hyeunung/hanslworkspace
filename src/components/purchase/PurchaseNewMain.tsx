@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogC
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -110,9 +111,11 @@ export default function PurchaseNewMain() {
   const [vendorSearchTerm, setVendorSearchTerm] = useState("");
   
   // BOM 연동을 위한 상태
-  const [boards, setBoards] = useState<{ id: string; board_name: string; sales_order_number: string | null }[]>([]);
+  const [boards, setBoards] = useState<{ id: string; board_name: string; sales_order_number: string | null; is_migration_unconfirmed?: boolean }[]>([]);
   const [selectedBoard, setSelectedBoard] = useState<{ value: string; label: string; boardName?: string; salesOrderNumber?: string | null } | null>(null);
   const [productionQuantity, setProductionQuantity] = useState<number>(100); // BOM 불러오기 시 사용할 생산 수량
+  // 이관 자료 확인 요청 팝업 (보드별 정리에서 완료 처리 전까지 선택할 때마다 표시)
+  const [migrationWarnBoardName, setMigrationWarnBoardName] = useState<string | null>(null);
   
   // 초기 사용자 정보 로드
   useEffect(() => {
@@ -126,16 +129,21 @@ export default function PurchaseNewMain() {
   // 보드 목록 로드 (BOM 연동)
   useEffect(() => {
     const loadBoards = async () => {
-      const { data, error } = await supabase
-        .from('cad_drawings')
-        .select('id, board_name, sales_order_number')
-        .eq('status', 'completed')
-        .order('board_name')
-        .limit(5000);
-
-      if (data && !error) {
-        setBoards(data);
+      // PostgREST 1000행 한도 — 이관 보드 포함 시 1000개를 넘으므로 페이지 단위로 전부 조회
+      const PAGE = 1000;
+      const all: { id: string; board_name: string; sales_order_number: string | null; is_migration_unconfirmed?: boolean }[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from('cad_drawings')
+          .select('id, board_name, sales_order_number, is_migration_unconfirmed')
+          .eq('status', 'completed')
+          .order('board_name')
+          .range(from, from + PAGE - 1);
+        if (error || !data) break;
+        all.push(...data);
+        if (data.length < PAGE) break;
       }
+      setBoards(all);
     };
     loadBoards();
   }, [supabase]);
@@ -721,6 +729,11 @@ export default function PurchaseNewMain() {
   // 보드 선택 시 품목 자동 채우기 핸들러
   const handleBoardSelect = async (selected: { value: string; label: string; boardName?: string; salesOrderNumber?: string | null } | null) => {
     setSelectedBoard(selected);
+
+    // 이관된 자료(확인 전)면 보드별 정리에서 확인해달라는 팝업 표시 — 완료 처리 전까지 계속
+    if (selected && boards.find(b => b.id === selected.value)?.is_migration_unconfirmed) {
+      setMigrationWarnBoardName(selected.boardName ?? selected.label);
+    }
 
     if (selected) {
       // 제작현황 연동 수주번호 자동 처리: 1개면 자동 입력, 아니면 이전 보드의 수주번호가 남지 않게 초기화
@@ -2376,6 +2389,38 @@ export default function PurchaseNewMain() {
               className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
             >
               확인
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 이관 자료 확인 요청 팝업 — 보드별 정리에서 완료 처리 전까지 선택할 때마다 표시 */}
+      <AlertDialog open={migrationWarnBoardName !== null} onOpenChange={(open) => { if (!open) setMigrationWarnBoardName(null); }}>
+        <AlertDialogContent className="sm:max-w-[420px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="modal-title">이관된 BOM 자료입니다</AlertDialogTitle>
+            <AlertDialogDescription className="text-[12px] text-gray-600">
+              <span className="font-medium text-gray-800">{migrationWarnBoardName}</span> 보드는 과거 자료에서 이관된 BOM입니다.
+              <br />
+              발주 전 <span className="font-medium text-gray-800">BOM/좌표정리 &gt; 보드별 정리</span>에서 내용을 꼭 확인하고 완료 처리해주세요.
+              완료 처리 전까지 이 안내가 계속 표시됩니다.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => setMigrationWarnBoardName(null)}
+              className="button-base"
+            >
+              닫기
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setMigrationWarnBoardName(null);
+                navigate('/bom-coordinate/list');
+              }}
+              className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
+            >
+              보드별 정리로 이동
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
