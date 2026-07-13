@@ -557,9 +557,7 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
                 )}
               </div>
             </div>
-            {/* 조건 행만 좌/우 분할: 좌=조건 필터, 구분선, 우=칼럼 버튼 */}
-            <div className="flex items-stretch">
-            <div className="flex-1 min-w-0">
+            {/* 조건 행 — 칼럼 버튼은 표 제목행(정렬 옆) 우측 끝으로 이동 */}
             <PurchaseFilterToolbar
               rules={tableFilters.rules}
               dynamicOptions={dynamicOptions}
@@ -586,35 +584,6 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
               handleSetDefault={tableFilters.handleSetDefault}
               handleClearDefault={tableFilters.handleClearDefault}
             />
-            </div>
-            {/* 세로 구분선 */}
-            <div className="w-px bg-gray-200 self-stretch mx-3" />
-            {/* 우측 절반: 칼럼 버튼(드롭다운) + 저장된 칼럼 + 초기화 */}
-            <div className="flex-1 min-w-0 pt-2 border-t border-gray-100 flex items-center gap-2">
-              <PurchaseColumnMenu
-                columnVisibility={columnVisibility}
-                toggleColumn={toggleColumn}
-                resetToDefault={resetToDefault}
-                currentUserRoles={currentUserRoles}
-              />
-              <SavedColumnViewsMenu
-                views={savedColumnViews.views}
-                onSaveCurrent={handleSaveColumnView}
-                onApply={handleApplyColumnView}
-                onRename={handleRenameColumnView}
-                onDelete={handleDeleteColumnView}
-              />
-              <button
-                type="button"
-                onClick={resetToDefault}
-                className="hansl-ctl-chip-reset"
-                title="칼럼 표시 초기화 (모두 표시)"
-              >
-                <RotateCcw className="w-3 h-3" />
-                초기화
-              </button>
-            </div>
-            </div>
           </div>
         )}
       </div>
@@ -649,6 +618,31 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
               removeSortRule={removeSortRule}
               clearSort={clearSort}
             />
+          </div>
+          {/* 칼럼 필터 — 정렬 행 우측 끝: 칼럼 드롭다운 + 저장된 칼럼 + 초기화 */}
+          <div className="flex items-center gap-2">
+            <PurchaseColumnMenu
+              columnVisibility={columnVisibility}
+              toggleColumn={toggleColumn}
+              resetToDefault={resetToDefault}
+              currentUserRoles={currentUserRoles}
+            />
+            <SavedColumnViewsMenu
+              views={savedColumnViews.views}
+              onSaveCurrent={handleSaveColumnView}
+              onApply={handleApplyColumnView}
+              onRename={handleRenameColumnView}
+              onDelete={handleDeleteColumnView}
+            />
+            <button
+              type="button"
+              onClick={resetToDefault}
+              className="hansl-ctl-chip-reset"
+              title="칼럼 표시 초기화 (모두 표시)"
+            >
+              <RotateCcw className="w-3 h-3" />
+              초기화
+            </button>
           </div>
         </div>
 
