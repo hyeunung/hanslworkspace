@@ -1,15 +1,25 @@
 
-import { useMemo, useState, useEffect } from 'react'
-import { Vendor, VendorFilters as VendorFiltersType } from '@/types/purchase'
+import { useMemo, useState, useEffect, useCallback } from 'react'
+import { Vendor } from '@/types/purchase'
 import { vendorService } from '@/services/vendorService'
 import VendorFilters from '@/components/vendor/VendorFilters'
-import VendorTable from '@/components/vendor/VendorTable'
+import VendorCompactTable from '@/components/vendor/VendorCompactTable'
+import VendorFilterToolbar from '@/components/vendor/VendorFilterToolbar'
+import VendorSortControl from '@/components/vendor/VendorSortControl'
+import VendorColumnMenu, { VendorColumnVisibility } from '@/components/vendor/VendorColumnMenu'
 import VendorModal from '@/components/vendor/VendorModal'
 import VendorContactsModal from '@/components/vendor/VendorContactsModal'
 import { toast } from 'sonner'
-import { Search } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { canEditVendors } from '@/utils/roleHelper'
+import {
+  VendorRow, vendorToRow, applyVendorSearch, applyVendorFilters,
+  compareByVendorSortRules, vendorYearsFor,
+  VendorColumnId, VENDOR_COLUMNS_STORAGE_KEY,
+} from '@/utils/vendorTable'
+import { useVendorSortRules } from '@/hooks/useVendorSortRules'
+import { useVendorTableFilters } from '@/hooks/useVendorTableFilters'
 // XLSX는 사용할 때만 동적으로 import (성능 최적화)
 
 type ModalMode = 'create' | 'edit' | 'view'
@@ -21,7 +31,7 @@ export default function VendorMain() {
 
   const [vendors, setVendors] = useState<Vendor[]>([])
   const [loading, setLoading] = useState(true)
-  const [filters, setFilters] = useState<VendorFiltersType>({})
+  const [deletingId, setDeletingId] = useState<number | null>(null)
 
   // 모달 상태
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -52,37 +62,37 @@ export default function VendorMain() {
     loadVendors()
   }, [])
 
-  // 클라이언트 사이드 필터링 (실시간 검색)
-  const filteredVendors = useMemo(() => {
-    const normalizedSearch = (filters.search || '').trim().toLowerCase()
-    if (!normalizedSearch) return vendors
+  // ── 컴팩트 테이블 상태 (통합검색 / 조건필터 / 다중정렬 / 칼럼표시) ──
+  const [searchTerm, setSearchTerm] = useState('')
+  const sortCtl = useVendorSortRules()
+  const [columnVisibility, setColumnVisibility] = useState<VendorColumnVisibility>(() => {
+    try { return JSON.parse(localStorage.getItem(VENDOR_COLUMNS_STORAGE_KEY) || '{}') } catch { return {} }
+  })
+  const persistColumns = useCallback((next: VendorColumnVisibility) => {
+    setColumnVisibility(next)
+    try { localStorage.setItem(VENDOR_COLUMNS_STORAGE_KEY, JSON.stringify(next)) } catch { /* 무시 */ }
+  }, [])
+  const toggleColumn = useCallback((id: VendorColumnId) => {
+    persistColumns({ ...columnVisibility, [id]: columnVisibility[id] === false })
+  }, [columnVisibility, persistColumns])
+  const resetColumns = useCallback(() => persistColumns({}), [persistColumns])
 
-    const includesSearch = (value?: string) =>
-      (value || '').toLowerCase().includes(normalizedSearch)
+  const rows: VendorRow[] = useMemo(() => vendors.map(vendorToRow), [vendors])
 
-    return vendors.filter((vendor) => {
-      const vendorFieldsMatch = [
-        vendor.vendor_name,
-        vendor.vendor_alias,
-        vendor.vendor_phone,
-        vendor.vendor_fax,
-        vendor.vendor_address,
-        vendor.vendor_payment_schedule,
-        vendor.note,
-      ].some(includesSearch)
+  const dynamicOptions = useMemo(() => ({
+    paymentSchedules: [...new Set(rows.map(r => r.vendor_payment_schedule).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'ko')),
+  }), [rows])
 
-      if (vendorFieldsMatch) return true
+  const tableFilters = useVendorTableFilters(dynamicOptions)
+  const years = useMemo(() => vendorYearsFor(rows), [rows])
 
-      return (vendor.vendor_contacts || []).some((contact) =>
-        [
-          contact.contact_name,
-          contact.contact_phone,
-          contact.contact_email,
-          contact.position,
-        ].some(includesSearch)
-      )
-    })
-  }, [vendors, filters.search])
+  // 파이프라인: 통합검색 → 조건 규칙 → 다중 정렬 (모두 클라이언트)
+  const displayRows = useMemo(() => {
+    const searched = applyVendorSearch(rows, searchTerm)
+    const filtered = applyVendorFilters(searched, tableFilters.activeRules)
+    return [...filtered].sort((a, b) => compareByVendorSortRules(a, b, sortCtl.sortRules))
+  }, [rows, searchTerm, tableFilters.activeRules, sortCtl.sortRules])
 
   // 모달 핸들러
   const handleCreateNew = () => {
@@ -125,6 +135,26 @@ export default function VendorMain() {
     loadVendors()
   }
 
+  const handleDelete = async (row: VendorRow) => {
+    if (!canEdit) return
+    if (!confirm(`정말로 '${row.vendor_name}' 업체를 삭제하시겠습니까?`)) return
+
+    setDeletingId(row.id)
+    try {
+      const result = await vendorService.deleteVendor(row.id)
+      if (result.success) {
+        toast.success('업체가 삭제되었습니다.')
+        loadVendors()
+      } else {
+        toast.error(result.error || '삭제에 실패했습니다.')
+      }
+    } catch (error) {
+      toast.error('삭제 중 오류가 발생했습니다.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   // Excel 내보내기 (동적 import로 성능 최적화)
   const handleExport = async () => {
     try {
@@ -165,50 +195,110 @@ export default function VendorMain() {
 
   return (
     <>
-      <div className="space-y-6">
-      {/* 필터 섹션 */}
+      <div className="space-y-4">
+      {/* 상단 헤더 (제목 + Excel 내보내기 + 업체 등록) */}
       <VendorFilters
         onExport={handleExport}
         onCreateNew={handleCreateNew}
         canEdit={canEdit}
       />
 
-      {/* 테이블 섹션 */}
-      <div className="bg-white rounded-lg border">
-        <div className="p-4 border-b">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <h3 className="text-[14px] font-semibold text-gray-900">업체 목록</h3>
-              <div className="relative flex items-center">
-                <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-gray-400" />
-                <input
-                  type="text"
-                  value={filters.search || ''}
-                  onChange={(e) => {
-                    setFilters({
-                      ...filters,
-                      search: e.target.value.trim() || undefined
-                    })
-                  }}
-                  placeholder="검색어를 입력하세요."
-                  className="pl-5 pr-1 h-6 bg-transparent text-[11px] text-gray-700 placeholder:text-gray-400 placeholder:text-[10px] border-0 border-b border-gray-300 focus:border-hansl-500 focus:outline-none focus:ring-0 rounded-none shadow-none appearance-none"
-                />
-              </div>
-            </div>
-            <span className="text-[11px] text-gray-500">
-              {loading ? '로딩 중...' : `총 ${filteredVendors.length}개의 업체`}
-            </span>
+      {/* 필터 영역 (제작현황 표준): 통합 검색 + 칼럼 표시 + 조건 규칙/저장된 필터 */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="relative w-[240px] flex-shrink-0 h-5 flex items-center">
+            <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="업체명, 담당자, 전화번호, 비고 검색..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{ paddingLeft: '26px', height: '20px' }}
+              className="hansl-search-input"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                title="검색어 지우기"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
           </div>
+          <VendorColumnMenu
+            columnVisibility={columnVisibility}
+            toggleColumn={toggleColumn}
+            resetToDefault={resetColumns}
+          />
         </div>
-
-        <VendorTable
-          vendors={filteredVendors}
-          onEdit={handleEdit}
-          onView={handleView}
-          onRefresh={loadVendors}
-          onEditContacts={handleEditContacts}
-          canEdit={canEdit}
+        <VendorFilterToolbar
+          rules={tableFilters.rules}
+          dynamicOptions={dynamicOptions}
+          years={years}
+          addRule={tableFilters.addRule}
+          updateRule={tableFilters.updateRule}
+          changeRuleField={tableFilters.changeRuleField}
+          removeRule={tableFilters.removeRule}
+          resetRules={tableFilters.resetRules}
+          filterViewsConfig={tableFilters.filterViewsConfig}
+          viewsMenuOpen={tableFilters.viewsMenuOpen}
+          setViewsMenuOpen={tableFilters.setViewsMenuOpen}
+          viewsAnchor={tableFilters.viewsAnchor}
+          setViewsAnchor={tableFilters.setViewsAnchor}
+          namingView={tableFilters.namingView}
+          setNamingView={tableFilters.setNamingView}
+          newViewName={tableFilters.newViewName}
+          setNewViewName={tableFilters.setNewViewName}
+          closeViewsMenu={tableFilters.closeViewsMenu}
+          commitSaveView={tableFilters.commitSaveView}
+          handleApplyView={tableFilters.handleApplyView}
+          handleRenameView={tableFilters.handleRenameView}
+          handleDeleteView={tableFilters.handleDeleteView}
+          handleSetDefault={tableFilters.handleSetDefault}
+          handleClearDefault={tableFilters.handleClearDefault}
         />
+      </div>
+
+      {/* 표 카드 — 제목행(정렬·건수) + 컴팩트 테이블 (행 가상화) */}
+      <div className="border rounded-lg overflow-hidden bg-white shadow-sm w-fit max-w-full">
+        <div className="px-4 py-2 border-b border-gray-200 flex items-center gap-2 bg-gray-50/50">
+          <span className="modal-section-title">업체 목록</span>
+          <VendorSortControl
+            sortRules={sortCtl.sortRules}
+            addSortRule={sortCtl.addSortRule}
+            updateSortRule={sortCtl.updateSortRule}
+            removeSortRule={sortCtl.removeSortRule}
+            clearSort={sortCtl.clearSort}
+          />
+          <span className="badge-stats bg-gray-100 text-gray-600">
+            {displayRows.length === vendors.length
+              ? `${vendors.length}건`
+              : `${displayRows.length} / ${vendors.length}건`}
+          </span>
+        </div>
+        {displayRows.length === 0 ? (
+          <div className="text-center py-12 px-16">
+            <Search className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+            <p className="text-sm text-gray-500">
+              {vendors.length === 0 ? '등록된 업체가 없습니다.' : '조건에 맞는 업체가 없습니다.'}
+            </p>
+          </div>
+        ) : (
+          <VendorCompactTable
+            rows={displayRows}
+            columnVisibility={columnVisibility}
+            ctx={{
+              canEdit,
+              onRowClick: (row) => handleView(row.vendor),
+              onEdit: (row) => handleEdit(row.vendor),
+              onDelete: handleDelete,
+              onEditContacts: (row) => handleEditContacts(row.vendor),
+              deletingId,
+            }}
+          />
+        )}
       </div>
 
       {/* 모달 */}
