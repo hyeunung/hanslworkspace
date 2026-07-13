@@ -103,6 +103,7 @@ export default function BomCoordinateIntegrated() {
     id: string;
     board_name: string;
     code_number?: string;
+    sales_order_number?: string;
     created_at: string;
     artwork_manager?: string;
     production_manager?: string;
@@ -214,7 +215,58 @@ export default function BomCoordinateIntegrated() {
 
     return false;
   }, [isAdmin, currentUser, employees]);
-  
+
+  // 제작번호 매칭: cad_drawings.board_name과 production_pcbs.board_name 양쪽 모두
+  // 날짜/버전 접미사(_260703_정리본, [bom], .Ref 등)나 자유 기재 메모(공용파워 n개(코드), (2종) 등)가
+  // 섞여 있어 단순 접두어 일치로는 다 걸러지지 않는다.
+  // 1단계: 메모를 제거하지 않은 원본 이름끼리 먼저 매칭한다 — 같은 보드가 재발주로 production_pcbs에
+  //        여러 건 등록된 경우, 메모 없는 "깨끗한" 후보를 메모가 섞인 후보보다 우선하기 위함.
+  // 2단계: 1단계에서 못 찾을 때만 괄호/대괄호 메모와 "공용파워 n개(코드)" 문구를 제거하고 재시도한다.
+  const stripDateSuffix = (name: string) => name
+    .replace(/_\d{6}_정리본$/, '')
+    .replace(/_정리본$/, '')
+    .replace(/_\d{6}$/, '');
+
+  const stripMemoNoise = (name: string) => name
+    .replace(/[([][^)\]]*[)\]]/g, '') // 괄호/대괄호 메모 제거: (2종), [bom], (HS26R-140) 등
+    .replace(/공용파워[\s\S]*$/, ''); // "공용파워 n개(코드)" 이후 전체 제거
+
+  const normalizeForBoardMatch = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  const findBestBoardMatch = (cadCore: string, pcbCores: Array<{ sales_order_number: string; core: string }>) => {
+    let best: { sales_order_number: string; overlap: number; lengthDiff: number } | null = null;
+    for (const p of pcbCores) {
+      if (p.core.length < 6) continue;
+      const overlap = cadCore.includes(p.core) ? p.core.length : (p.core.includes(cadCore) ? cadCore.length : 0);
+      if (overlap === 0) continue;
+      const lengthDiff = Math.abs(cadCore.length - p.core.length);
+      // 겹치는 길이가 더 길수록 우선, 같으면 길이 차이가 더 적은(=메모가 덜 섞인) 후보를 우선
+      if (!best || overlap > best.overlap || (overlap === best.overlap && lengthDiff < best.lengthDiff)) {
+        best = { sales_order_number: p.sales_order_number, overlap, lengthDiff };
+      }
+    }
+    return best?.sales_order_number;
+  };
+
+  const normalizedProductionPcbsRaw = useMemo(() => (
+    productionPcbs.map(p => ({ sales_order_number: p.sales_order_number, core: normalizeForBoardMatch(p.board_name) }))
+  ), [productionPcbs]);
+
+  const normalizedProductionPcbsStripped = useMemo(() => (
+    productionPcbs.map(p => ({ sales_order_number: p.sales_order_number, core: normalizeForBoardMatch(stripMemoNoise(p.board_name)) }))
+  ), [productionPcbs]);
+
+  const resolveSalesOrderNumber = useCallback((board: { board_name: string; sales_order_number?: string }) => {
+    if (board.sales_order_number) return board.sales_order_number;
+
+    const cadCoreRaw = normalizeForBoardMatch(stripDateSuffix(board.board_name));
+    const rawMatch = findBestBoardMatch(cadCoreRaw, normalizedProductionPcbsRaw);
+    if (rawMatch) return rawMatch;
+
+    const cadCoreStripped = normalizeForBoardMatch(stripDateSuffix(stripMemoNoise(board.board_name)));
+    return findBestBoardMatch(cadCoreStripped, normalizedProductionPcbsStripped);
+  }, [normalizedProductionPcbsRaw, normalizedProductionPcbsStripped]);
+
   // localStorage 키 생성 (사용자별 분리)
   const getTempStorageKey = (userId: string) => `bom_temp_data_${userId}`;
   
@@ -403,7 +455,7 @@ export default function BomCoordinateIntegrated() {
         setLoadingBoards(true);
         const { data: boards, error } = await supabase
           .from('cad_drawings')
-          .select('id, board_name, code_number, created_at, artwork_manager, production_manager, status')
+          .select('id, board_name, code_number, sales_order_number, created_at, artwork_manager, production_manager, status')
           .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -1759,6 +1811,9 @@ function dlFile() {
                             <TableHead className="w-[120px] !py-1 !h-auto">
                               <span className="card-description">코드번호</span>
                             </TableHead>
+                            <TableHead className="w-[100px] !py-1 !h-auto">
+                              <span className="card-description">제작번호</span>
+                            </TableHead>
                             <TableHead className="min-w-[200px] !py-1 !h-auto">
                               <span className="card-description">보드명</span>
                             </TableHead>
@@ -1803,6 +1858,9 @@ function dlFile() {
                               </TableCell>
                               <TableCell className="py-1">
                                 <span className="text-[11px] font-medium text-gray-500">{board.code_number || '-'}</span>
+                              </TableCell>
+                              <TableCell className="py-1">
+                                <span className="text-[11px] font-medium text-gray-500">{resolveSalesOrderNumber(board) || '-'}</span>
                               </TableCell>
                               <TableCell className="py-1">
                                 <span className="text-[11px] font-medium text-gray-900">{board.board_name}</span>
