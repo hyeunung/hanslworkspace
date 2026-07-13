@@ -169,6 +169,18 @@ export const PaymentCategoryBadge = memo(({ purchase }: { purchase: Purchase }) 
 })
 PaymentCategoryBadge.displayName = 'PaymentCategoryBadge'
 
+// 선진행 여부 배지 — 일반은 UTK 대기와 동일 디자인, 선진행은 빨간 배경/흰 텍스트
+export const ProgressTypeBadge = memo(({ purchase }: { purchase: Purchase }) => {
+  const isAdvance = purchase.progress_type === '선진행' || purchase.progress_type?.includes('선진행')
+  if (isAdvance) return <span className="badge-stats bg-red-400 text-white w-full justify-center">선진행</span>
+  return (
+    <span className="badge-utk-pending w-full justify-between">
+      <span>일</span><span>반</span>
+    </span>
+  )
+})
+ProgressTypeBadge.displayName = 'ProgressTypeBadge'
+
 // 수량 셀 — 입고/전체 탭은 "요청수량/입고수량" 병기, 완전 입고 시 입고수량만 검정 표시
 export const QuantityCell = memo(({ purchase, activeTab }: { purchase: Purchase; activeTab: string }) => {
   const items = purchase.purchase_request_items || []

@@ -41,12 +41,11 @@ const PurchaseCompactRow = memo(({ purchase, columns, widths, ctx, onClick }: {
   ctx: PurchaseCellCtx
   onClick: (p: Purchase) => void
 }) => {
-  const isAdvance = purchase.progress_type === '선진행' || purchase.progress_type?.includes('선진행')
   return (
     <tr
       onClick={() => onClick(purchase)}
       style={{ height: ROW_HEIGHT }}
-      className={`cursor-pointer transition-colors ${isAdvance ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-100'}`}
+      className="cursor-pointer"
     >
       {columns.map(col => {
         const w = widths[col.id] ?? col.width
@@ -171,14 +170,14 @@ const PurchaseCompactTable = ({
       >
         <table className="text-left border-separate border-spacing-0 w-max [&_th]:border-l-0 [&_td]:border-l-0 [&_th]:border-t-0 [&_td]:border-t-0 production-compact-table table-auto">
           <thead className="whitespace-nowrap">
-            <tr className="bg-gray-50 border-b border-gray-200">
+            <tr className="bg-gray-200 border-b border-gray-300">
               {columns.map(col => {
                 const w = columnWidths[col.id] ?? col.width
                 return (
                   <th
                     key={col.id}
                     className="hansl-th border-y border-r"
-                    style={{ width: w, minWidth: w, maxWidth: w }}
+                    style={{ width: w, minWidth: w, maxWidth: w, backgroundColor: '#e5e7eb' }}
                   >
                     {col.label}
                   </th>

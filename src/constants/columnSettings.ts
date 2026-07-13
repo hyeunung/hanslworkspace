@@ -26,6 +26,12 @@ export const DONE_TAB_COLUMNS: ColumnInfo[] = [
     defaultVisible: true,
   },
   {
+    id: 'progress_type',
+    label: '진행종류',
+    description: '진행 종류 (일반/선진행)',
+    defaultVisible: true,
+  },
+  {
     id: 'requester_name',
     label: '요청자',
     description: '발주를 요청한 사용자',
@@ -204,6 +210,7 @@ export const COLUMN_GROUPS = [
       'statement_progress',
       'purchase_order_number',
       'payment_category',
+      'progress_type',
       'requester_name',
       'request_date',
       'utk_status',
