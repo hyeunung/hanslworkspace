@@ -1,11 +1,11 @@
 import { ReactNode } from 'react'
-import { Purchase } from '@/types/purchase'
+import { Purchase, PurchaseRequestItem } from '@/types/purchase'
 import { DoneTabColumnId } from '@/types/columnSettings'
 import { formatDateShort } from '@/utils/helpers'
 import {
   ApprovalStatusBadge, PaymentProgressBar, ReceiptProgressBar, StatementProgressBar,
   OrderNumberCell, PaymentCategoryBadge, ProgressTypeBadge, QuantityCell, UnitPriceCell, AmountCell,
-  UtkCell, LinkCell, TextCell,
+  UtkCell, LinkCell, TextCell, ItemQuantityCell, ItemLinkCell,
 } from '@/components/purchase/PurchaseTableCells'
 
 // ─── 발주/구매 컴팩트 테이블 칼럼 정의 (주입식) ───────────────────────────
@@ -20,6 +20,10 @@ export interface PurchaseCellCtx {
   onToggleUtkCheck: (p: Purchase) => Promise<void> | void
 }
 
+// 인풋 모드에서 인라인 편집을 허용하는 품목 필드
+export type PurchaseItemEditField =
+  | 'item_name' | 'specification' | 'quantity' | 'unit_price_value' | 'amount_value' | 'remark'
+
 export interface PurchaseColumnDef {
   id: string
   visibilityKey?: DoneTabColumnId
@@ -32,6 +36,13 @@ export interface PurchaseColumnDef {
   fitText?: (p: Purchase) => string
   fitExtra?: (p: Purchase) => number // 텍스트 외 부가 요소 폭 보정(아이콘/배지 등, px)
   fitMax?: number // 실측 폭 상한 — 극단적으로 긴 값(비고·규격 등)이 칼럼을 폭주시키지 않게, 넘치면 말줄임
+  // ── 인풋 모드(품목 전개) 전용 ──────────────────────────────────────────
+  // itemRender가 있으면 품목 단위 칼럼: 품목 1개당 1셀로 풀린다.
+  // 없으면 발주 공통 칼럼: 그룹 전체를 rowspan으로 세로 병합해 한 번만 표시.
+  itemRender?: (item: PurchaseRequestItem, p: Purchase, ctx: PurchaseCellCtx) => ReactNode
+  itemFitText?: (item: PurchaseRequestItem, p: Purchase) => string
+  editField?: PurchaseItemEditField  // 지정 시 인풋 모드에서 해당 품목 필드 인라인 편집 허용
+  editType?: 'text' | 'number'
 }
 
 // 셀 표시 문자열 (실측용) — 렌더 로직과 동일한 규칙
@@ -169,43 +180,72 @@ const revisedDeliveryDate: PurchaseColumnDef = {
   render: (p) => <>{formatDateShort(p.revised_delivery_request_date)}</>,
   fitText: (p) => formatDateShort(p.revised_delivery_request_date) || '-',
 }
+// 인풋 모드 품목 단위 표시 텍스트 — 수량은 탭에 따라 요청/입고 병기
+const itemQuantityText = (item: PurchaseRequestItem, pair: boolean): string => {
+  const q = item.quantity || 0
+  if (!pair) return String(q)
+  const r = item.received_quantity || 0
+  return q === r && r > 0 ? String(r) : `${q}/${r}`
+}
+
 const itemName: PurchaseColumnDef = {
   id: 'item_name', visibilityKey: 'item_name', label: '품명', width: 176, align: 'left',
   render: (p) => <TextCell value={p.purchase_request_items?.[0]?.item_name} />,
   fitText: (p) => p.purchase_request_items?.[0]?.item_name || '-',
   fitMax: 250,
+  itemRender: (item) => <TextCell value={item.item_name} />,
+  itemFitText: (item) => item.item_name || '-',
+  editField: 'item_name', editType: 'text',
 }
 const specification: PurchaseColumnDef = {
   id: 'specification', visibilityKey: 'specification', label: '규격', width: 260, align: 'left',
   render: (p) => <TextCell value={p.purchase_request_items?.[0]?.specification} />,
   fitText: (p) => p.purchase_request_items?.[0]?.specification || '-',
   fitMax: 360,
+  itemRender: (item) => <TextCell value={item.specification} />,
+  itemFitText: (item) => item.specification || '-',
+  editField: 'specification', editType: 'text',
 }
 const quantityCol = (label: string, pair: boolean): PurchaseColumnDef => ({
   id: 'quantity', visibilityKey: 'quantity', label, width: 70,
   render: (p, ctx) => <QuantityCell purchase={p} activeTab={ctx.activeTab} />,
   fitText: pair ? quantityPairText : quantitySumText,
+  itemRender: (item) => <ItemQuantityCell item={item} pair={pair} />,
+  itemFitText: (item) => itemQuantityText(item, pair),
+  editField: 'quantity', editType: 'number',
 })
 const unitPrice: PurchaseColumnDef = {
   id: 'unit_price', visibilityKey: 'unit_price', label: '단가', width: 100, align: 'right',
   render: (p) => <UnitPriceCell purchase={p} />,
   fitText: unitPriceText,
+  itemRender: (item) => <>{currencyText(item.unit_price_value || 0, item.unit_price_currency || 'KRW')}</>,
+  itemFitText: (item) => currencyText(item.unit_price_value || 0, item.unit_price_currency || 'KRW'),
+  editField: 'unit_price_value', editType: 'number',
 }
 const amountCol = (label: string): PurchaseColumnDef => ({
   id: 'amount', visibilityKey: 'amount', label, width: 100, align: 'right',
   render: (p) => <AmountCell purchase={p} />,
   fitText: amountText,
+  itemRender: (item, p) => <>{currencyText(item.amount_value || 0, item.amount_currency || p.currency || 'KRW')}</>,
+  itemFitText: (item, p) => currencyText(item.amount_value || 0, item.amount_currency || p.currency || 'KRW'),
+  editField: 'amount_value', editType: 'number',
 })
 const remark: PurchaseColumnDef = {
   id: 'remark', visibilityKey: 'remark', label: '비고', width: 165, align: 'left',
   render: (p) => <TextCell value={p.purchase_request_items?.[0]?.remark} />,
   fitText: (p) => p.purchase_request_items?.[0]?.remark || '-',
   fitMax: 240,
+  itemRender: (item) => <TextCell value={item.remark} />,
+  itemFitText: (item) => item.remark || '-',
+  editField: 'remark', editType: 'text',
 }
+// 링크는 클릭=열기 동작과 충돌하므로 인풋 모드에서도 편집 대상에서 제외 (표시만 품목 단위)
 const linkCol: PurchaseColumnDef = {
   id: 'link', visibilityKey: 'link', label: '링크', width: 85, align: 'left',
   render: (p) => <LinkCell purchase={p} />,
   fitText: (p) => (p.purchase_request_items?.[0]?.link ? '링크 보기' : '-'),
+  itemRender: (item) => <ItemLinkCell item={item} />,
+  itemFitText: (item) => (item.link ? '링크 보기' : '-'),
 }
 const projectVendor: PurchaseColumnDef = {
   id: 'project_vendor', visibilityKey: 'project_vendor', label: 'PJ업체', width: 105, align: 'left',

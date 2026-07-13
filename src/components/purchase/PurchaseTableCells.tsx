@@ -249,6 +249,40 @@ export const UtkCell = memo(({ purchase, canUtkCheck, onToggleUtkCheck }: {
 })
 UtkCell.displayName = 'UtkCell'
 
+// 품목 단위 수량 셀 (인풋 모드) — pair면 요청/입고 병기, 완전 입고 시 입고수량만 검정 표시
+export const ItemQuantityCell = memo(({ item, pair }: { item: PurchaseRequestItem; pair: boolean }) => {
+  const q = item.quantity || 0
+  if (!pair) return <>{q}</>
+  const r = item.received_quantity || 0
+  if (q === r && r > 0) return <span className="text-gray-900">{r}</span>
+  const hasReceived = r > 0
+  return (
+    <span className="whitespace-nowrap">
+      <span className={hasReceived ? 'text-gray-400' : ''}>{q}</span>
+      <span className={hasReceived ? '' : 'text-gray-400'}>/{r}</span>
+    </span>
+  )
+})
+ItemQuantityCell.displayName = 'ItemQuantityCell'
+
+// 품목 단위 링크 셀 (인풋 모드)
+export const ItemLinkCell = memo(({ item }: { item: PurchaseRequestItem }) => {
+  if (!item.link) return <span className="text-gray-400">-</span>
+  return (
+    <a
+      href={item.link}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-600 hover:text-blue-800 underline truncate block"
+      title={item.link}
+      onClick={(e) => e.stopPropagation()}
+    >
+      링크 보기
+    </a>
+  )
+})
+ItemLinkCell.displayName = 'ItemLinkCell'
+
 // 링크 셀
 export const LinkCell = memo(({ purchase }: { purchase: Purchase }) => {
   const link = purchase.purchase_request_items?.[0]?.link
