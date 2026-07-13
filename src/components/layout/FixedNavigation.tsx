@@ -377,7 +377,8 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
             {/* 메뉴 아이템들 (제작현황 모드에서 접힌 상태면 아이콘을 모두 숨기고 펼치기 토글만 남김) */}
             {!(isProductionMode && !isExpanded) && (
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              <ul className={cn("pl-2 pt-2 pb-2 space-y-1", isExpanded ? "pr-5" : "pr-2")}>
+              {/* 접힘: 우측 12px+보더는 접기/펼치기 바 영역 — 아이템(w-10)이 바와 겹치지 않게 좌측 밀착 */}
+              <ul className={cn("pt-2 pb-2 space-y-1", isExpanded ? "pl-2 pr-5" : "pl-0.5 pr-[14px]")}>
                 {filteredMenuItems.map((item) => {
                   const Icon = item.icon
                   const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
