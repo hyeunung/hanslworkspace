@@ -1,0 +1,2 @@
+import{j as e,a1 as a}from"./index-CijIeVbv.js";function o({className:o,...r}){return e.jsx("textarea",{"data-slot":"textarea",className:a("flex w-full min-h-16","rounded-md border border-gray-300 bg-white","px-2.5 py-2 text-[11px] text-gray-800 leading-snug","placeholder:text-gray-400","transition-colors resize-y","focus:border-hansl-500 focus:outline-none","focus-visible:outline-none","disabled:cursor-not-allowed disabled:opacity-40 disabled:bg-gray-50",o),...r})}export{o as T};
+//# sourceMappingURL=textarea-CNe9bchd.js.map

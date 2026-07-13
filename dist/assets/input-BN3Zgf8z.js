@@ -1,0 +1,2 @@
+import{r as e,j as a,a1 as s}from"./index-CijIeVbv.js";const t=e.forwardRef(({className:e,type:t,...r},l)=>a.jsx("input",{type:t,className:s("hansl-form-input flex px-2.5","text-gray-800 placeholder:text-gray-400","transition-colors","disabled:cursor-not-allowed disabled:opacity-40 disabled:bg-gray-50","file:border-0 file:bg-transparent file:text-xs file:font-medium",e),ref:l,...r}));t.displayName="Input";export{t as I};
+//# sourceMappingURL=input-BN3Zgf8z.js.map
