@@ -644,7 +644,9 @@ export default function BomCoordinateIntegrated() {
     }
   }, [fileInfo.bomFile, productionPcbs]);
 
-  // 정리본 파일 선택 시: 보드 이름 추측 + 정리본 배너의 제작수량 자동 채움
+  // 정리본 파일 선택 시: 제작현황에 같은 보드명이 있을 때만 자동 매칭 + 배너의 제작수량 자동 채움
+  // (재발주 정리본은 파일명과 실제 수주 보드명이 다를 수 있으므로, 매칭이 없으면
+  //  보드명을 임의로 채우지 않고 사용자가 드롭다운에서 직접 검색·선택하게 둔다)
   useEffect(() => {
     if (!fileInfo.refinedFile) return;
 
@@ -655,12 +657,6 @@ export default function BomCoordinateIntegrated() {
       .replace(/[_\s]*정리본$/, '')
       .trim();
 
-    const today = new Date();
-    const dateStr = today.getFullYear().toString().slice(2) +
-      (today.getMonth() + 1).toString().padStart(2, '0') +
-      today.getDate().toString().padStart(2, '0');
-    const guessedName = `${name}_${dateStr}_정리본`;
-
     // 진행중인 제작 현황판 목록에서 매칭 시도 (BOM 업로드와 동일한 규칙)
     const cleanNameForMatch = name.toLowerCase().trim();
     const matchedPcb = productionPcbs.find(p => {
@@ -670,8 +666,6 @@ export default function BomCoordinateIntegrated() {
 
     if (matchedPcb) {
       setMetadata(prev => ({ ...prev, boardName: matchedPcb.board_name, salesOrderNumber: matchedPcb.sales_order_number }));
-    } else {
-      setMetadata(prev => ({ ...prev, boardName: guessedName }));
     }
 
     // 정리본 배너 행의 제작수량 자동 채움 (아직 입력 전일 때만)
