@@ -75,7 +75,9 @@ const EditableItemCell = memo(({ display, raw, type, align, onSave }: {
   if (!editing) {
     return (
       <div
-        className="w-full min-h-[18px] cursor-text"
+        // leading-[20px]: 셀 내부높이(24-패딩2-보더1≈21px)에 맞춘 줄높이로 텍스트 세로 중앙정렬
+        // (24px 행 높이를 넘지 않도록 20px — 초과 시 행이 늘어나 그룹 가상화 계산이 어긋남)
+        className="w-full cursor-text leading-[20px]"
         title="클릭하여 편집"
         onClick={() => { setValue(raw); cancelledRef.current = false; setEditing(true) }}
       >
