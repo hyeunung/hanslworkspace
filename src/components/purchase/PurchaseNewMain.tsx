@@ -257,6 +257,9 @@ export default function PurchaseNewMain() {
     name: "items"
   });
 
+  // 마지막으로 불러온 보드의 BOM set_count (line_number 기준) — 수량 재계산 시 재사용, DB 재조회/전체 덮어쓰기 방지
+  const bomSetCountByLineRef = useRef<Map<number, number>>(new Map());
+
   // 새 요청 임시 저장(초안) - 다른 탭 이동 후 복귀해도 발주요청 완료/초기화 전까지 유지
   const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draftRestoredRef = useRef(false);
@@ -766,6 +769,11 @@ export default function PurchaseNewMain() {
           if (error) throw error;
           
           if (items && items.length > 0) {
+            // 수량 재계산용 set_count 캐시 (line_number 기준)
+            bomSetCountByLineRef.current = new Map(
+              items.map((item: { line_number: number; set_count?: number }) => [item.line_number, item.set_count || 0])
+            );
+
             // BOM 데이터 매핑 (품목=종류, 규격=품명[+풋프린트])
             const bomRows = items.map((item: { line_number: number; item_type?: string; item_name: string; specification?: string; set_count?: number; remark?: string }) => ({
               line_number: item.line_number,
@@ -782,7 +790,7 @@ export default function PurchaseNewMain() {
               remark: item.remark || '',
               link: ''
             }));
-            
+
             // 기존 항목 전체 교체
             replace(bomRows);
             toast.success(`${items.length}개 품목을 불러왔습니다.`);
@@ -817,10 +825,27 @@ export default function PurchaseNewMain() {
       toast.error('먼저 보드를 선택해주세요.');
       return;
     }
-    
-    // 현재 리스트에 있는 항목들의 수량 업데이트
-    // (단, BOM에서 가져온 항목이라는 보장이 없으므로, 다시 DB에서 가져오는게 안전)
-    handleBoardSelect(selectedBoard);
+
+    const setCountByLine = bomSetCountByLineRef.current;
+    if (setCountByLine.size === 0) {
+      toast.error('먼저 보드를 선택해 품목을 불러와주세요.');
+      return;
+    }
+
+    // 현재 리스트(사용자가 제거한 품목은 제외된 상태)의 수량만 in-place로 재계산
+    // BOM을 다시 불러와 전체를 덮어쓰지 않으므로, 제거했던 품목이 되살아나지 않음
+    let updatedCount = 0;
+    fields.forEach((field, idx) => {
+      const setCount = setCountByLine.get(field.line_number);
+      if (setCount === undefined) return;
+      const newQuantity = setCount * productionQuantity;
+      if (newQuantity !== field.quantity) {
+        update(idx, { ...field, quantity: newQuantity });
+        updatedCount++;
+      }
+    });
+
+    toast.success(updatedCount > 0 ? `${updatedCount}개 품목의 수량을 업데이트했습니다.` : '변경된 수량이 없습니다.');
   };
 
   // 전체 금액 계산
