@@ -164,10 +164,15 @@ function parseBoardSheet(ws) {
       remark = remark ? `${remark} / 재고:${stockRaw}` : `재고:${stockRaw}`;
     }
 
-    const refRaw = col.ref !== undefined ? cellStr(r[col.ref]) : '';
-    // 범위 표기(U1~U4) 전개 — 좌표 REF 매칭을 위해
-    const refList = refRaw
-      ? refRaw.split(',').map(s => s.trim()).filter(Boolean).flatMap(tok => {
+    const refRawCell = col.ref !== undefined ? cellStr(r[col.ref]) : '';
+    // Ref 셀 안의 메모("U51~U54 --> 변경사항")는 비고로 분리 + 범위 표기(U1~U4) 전개
+    const refList = refRawCell
+      ? refRawCell.split(',').map(s => s.trim()).filter(Boolean).flatMap(tok => {
+          const cm = tok.match(/^([A-Za-z]+\d+(?:\s*~\s*[A-Za-z]*\d+)?)\s*(?:-->|→|=>)\s*(.+)$/);
+          if (cm) {
+            remark = remark ? `${remark} / ${cm[2].trim()}` : cm[2].trim();
+            tok = cm[1];
+          }
           const m = tok.match(/^([A-Za-z]+)(\d+)\s*~\s*([A-Za-z]*)(\d+)$/);
           if (!m) return [tok];
           const [, prefix, s0, prefix2, e0] = m;

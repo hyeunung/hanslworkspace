@@ -62,6 +62,23 @@ export function expandRefRanges(refRaw: string): string {
     .join(', ');
 }
 
+/** Ref 셀 토큰에 붙은 메모를 분리: "U51~U54 --> 변경사항" → refs="U51~U54", comment="변경사항" */
+export function splitRefComment(refRaw: string): { refs: string; comment: string } {
+  if (!refRaw) return { refs: '', comment: '' };
+  const refs: string[] = [];
+  const comments: string[] = [];
+  for (const tok of refRaw.split(',').map(s => s.trim()).filter(Boolean)) {
+    const m = tok.match(/^([A-Za-z]+\d+(?:\s*~\s*[A-Za-z]*\d+)?)\s*(?:-->|→|=>)\s*(.+)$/);
+    if (m) {
+      refs.push(m[1]);
+      comments.push(m[2].trim());
+    } else {
+      refs.push(tok);
+    }
+  }
+  return { refs: refs.join(', '), comment: comments.join(' / ') };
+}
+
 /** 보드명(부품리스트) 시트 파싱 */
 function parseBoardSheet(rows: Row[]): { items: BOMItem[]; productionQuantity: number } | null {
   let headerIdx = -1;
@@ -122,6 +139,12 @@ function parseBoardSheet(rows: Row[]): { items: BOMItem[]; productionQuantity: n
       remark = remark ? `${remark} / 재고:${stockRaw}` : `재고:${stockRaw}`;
     }
 
+    // Ref 셀 안의 메모("U51~U54 --> 2.5V에서 3.3V로 변경")는 비고로 분리하고 REF만 남긴다
+    const { refs: refRaw, comment: refComment } = splitRefComment(col.ref !== undefined ? cellStr(r[col.ref]) : '');
+    if (refComment) {
+      remark = remark ? `${remark} / ${refComment}` : refComment;
+    }
+
     items.push({
       lineNumber: noVal ?? line,
       itemType: currentType,
@@ -130,7 +153,7 @@ function parseBoardSheet(rows: Row[]): { items: BOMItem[]; productionQuantity: n
       totalQuantity: qtyVal ?? 0,
       stockQuantity: stockNum ?? 0,
       checkStatus: col.check !== undefined ? cellStr(r[col.check]) : '',
-      refList: col.ref !== undefined ? expandRefRanges(cellStr(r[col.ref])) : '',
+      refList: expandRefRanges(refRaw),
       alternativeItem: col.alt !== undefined ? cellStr(r[col.alt]) : '',
       remark,
       isManualRequired: false,
