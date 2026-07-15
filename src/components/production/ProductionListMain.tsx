@@ -218,7 +218,7 @@ function AddPopoverInput({
 }
 
 // 행 추가(입력행) 전용 ARTWORK 콤보 입력: 기본은 메모 입력창 하나 —
-// 수동으로 타이핑하거나, 창 클릭 시 아래에 뜨는 드롭다운에서 상태(진행중/업체 확인중/발주완료)를 선택.
+// 수동으로 타이핑하거나, 창 클릭 시 아래에 뜨는 드롭다운에서 상태(진행중/업체 확인중/발주완료/한슬 완제품 입고)를 선택.
 // '발주완료' 선택 시 오늘(KST) 날짜 자동 기록, 같은 항목 재선택 시 해제.
 function ArtworkAddInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const parts = parseArtworkStatus(value)
@@ -236,6 +236,7 @@ function ArtworkAddInput({ value, onChange }: { value: string; onChange: (v: str
     parts.status === 'progress' ? '진행중'
     : parts.status === 'checking' ? '업체 확인중'
     : parts.status === 'ordered' ? `${parts.date ? formatKoreanMMDD(parts.date) + ' ' : ''}발주완료`
+    : parts.status === 'stock_in' ? '한슬 완제품 입고'
     : ''
   const pick = (code: string) => {
     if (parts.status === code) {
@@ -273,7 +274,7 @@ function ArtworkAddInput({ value, onChange }: { value: string; onChange: (v: str
             className="fixed z-[9999] hansl-popover py-0.5 w-max min-w-[150px] flex flex-col"
             style={{ top: pos.top, left: pos.left }}
           >
-            {([['progress', '진행중'], ['checking', '업체 확인중'], ['ordered', '발주완료 (오늘 날짜 기록)']] as const).map(([code, label]) => (
+            {([['progress', '진행중'], ['checking', '업체 확인중'], ['ordered', '발주완료 (오늘 날짜 기록)'], ['stock_in', '한슬 완제품 입고']] as const).map(([code, label]) => (
               <button
                 key={code}
                 type="button"
@@ -2813,8 +2814,14 @@ export default function ProductionListMain() {
       ...cellStyle
     } : cellStyle;
 
+    // ARTWORK가 '한슬 완제품 입고'인 행은 이미 완제품 재고가 있어 PCB 제작·완제품 입고 자체가 불필요하므로,
+    // 해당 없음('-')으로 표시하고 입고대기 버튼을 띄우지 않는다.
+    const artworkStockIn = (field === 'final_product_stock' || field === 'pcb_stock_completed') &&
+      parseArtworkStatus(item.artwork_status).status === 'stock_in'
+
     // 완제품 입고/입고완료/배송완료: 값이 비어 있으면 대기 버튼 표시 (클릭 시 날짜 선택 팝오버)
     const isStockWaiting = (field === 'final_product_stock' || field === 'cable_actual_date' || field === 'pcb_stock_completed' || field === 'delivery_completed') &&
+      !artworkStockIn &&
       (item[field] == null ||
        String(item[field]).trim() === '' ||
        String(item[field]).trim() === '-')
@@ -2895,6 +2902,8 @@ export default function ProductionListMain() {
               </CellPopoverPortal>
             )}
           </>
+        ) : artworkStockIn ? (
+          <span className="text-gray-400">-</span>
         ) : renderCellDisplayValue(id, field, displayValue)}
       </td>
     )
