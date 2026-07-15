@@ -554,7 +554,8 @@ export default function FixedNavigation({ role, isOpen = false, onClose, isExpan
 
             {/* 택배/인수증 + 관리 메뉴 + 신청서/문의 - 하단 고정 */}
             {isPurchaseMode && (
-              <div className={cn("pl-2 pt-2 pb-2 border-t border-gray-200 space-y-1", isExpanded ? "pr-5" : "pr-2")}>
+              // 접힘: 상단 메뉴 리스트와 동일하게 우측 접기 바(12px+보더) 영역을 비워 겹침 방지
+              <div className={cn("pt-2 pb-2 border-t border-gray-200 space-y-1", isExpanded ? "pl-2 pr-5" : "pl-0.5 pr-[14px]")}>
                 {(() => {
                   const isShippingActive = pathname === '/shipping' || pathname.startsWith('/shipping/')
                   return (
