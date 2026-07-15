@@ -3013,18 +3013,6 @@ class TransactionStatementService {
    */
   async rejectStatement(statementId: string, reason?: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const { data: { user } } = await this.supabase.auth.getUser();
-
-      let actorName: string | null = null;
-      if (user?.id) {
-        const { data: emp } = await this.supabase
-          .from('employees')
-          .select('name')
-          .eq('id', user.id)
-          .maybeSingle();
-        actorName = (emp as { name?: string } | null)?.name || null;
-      }
-
       const { data: prev } = await this.supabase
         .from('transaction_statements')
         .select('status')
@@ -3032,22 +3020,19 @@ class TransactionStatementService {
         .single();
       const previousStatus = (prev as { status?: string } | null)?.status || null;
 
-      // Audit log를 update 직전에 먼저 INSERT —
+      // Audit log를 update 직전에 먼저 기록 —
       // 그래야 직후 status update가 fire하는 DB fallback 트리거가
       // 2초 dedup 윈도우로 자동 INSERT를 스킵해서, actor 정보 있는 1행만 남는다.
-      await this.supabase
-        .from('transaction_statement_audit_logs')
-        .insert({
-          statement_id: statementId,
-          action: 'rejected',
-          previous_status: previousStatus,
-          new_status: 'rejected',
-          reason: reason || null,
-          actor_id: user?.id || null,
-          actor_name: actorName,
-          actor_email: user?.email || null,
-          source: 'web_reject_button',
-        });
+      // actor_id/actor_name/actor_email은 클라이언트가 보내지 않고 RPC 내부에서
+      // 서버 세션(auth.uid())으로 직접 채운다 — 클라이언트가 타인을 사칭할 수 없도록.
+      await this.supabase.rpc('log_transaction_statement_audit', {
+        p_statement_id: statementId,
+        p_action: 'rejected',
+        p_previous_status: previousStatus,
+        p_new_status: 'rejected',
+        p_reason: reason || null,
+        p_source: 'web_reject_button',
+      });
 
       const updateData: Record<string, unknown> = { status: 'rejected' };
       if (reason) {
