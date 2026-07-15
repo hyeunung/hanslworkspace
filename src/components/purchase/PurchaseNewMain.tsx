@@ -248,6 +248,29 @@ export default function PurchaseNewMain() {
   const [isCopied, setIsCopied] = useState(false);
   const [productionOrders, setProductionOrders] = useState<Array<{ sales_order_number: string; board_name: string; client_name: string; created_at: string }>>([]);
 
+  // 품목 행 드래그 다중선택 (행 어디든 누르고 드래그하면 여러 행 선택, 선택된 행 중 하나라도 삭제하면 전체 삭제)
+  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
+  const isDraggingRowsRef = useRef(false);
+  const dragStartRowRef = useRef<number | null>(null);
+  const itemsTbodyRef = useRef<HTMLTableSectionElement>(null);
+
+  useEffect(() => {
+    const handleMouseUp = () => { isDraggingRowsRef.current = false; };
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, []);
+
+  // 품목 테이블 바깥(빈 곳) 클릭 시 선택 해제 (엑셀처럼)
+  useEffect(() => {
+    const handleDocMouseDown = (e: MouseEvent) => {
+      if (itemsTbodyRef.current && !itemsTbodyRef.current.contains(e.target as Node)) {
+        setSelectedRows(new Set());
+      }
+    };
+    document.addEventListener('mousedown', handleDocMouseDown);
+    return () => document.removeEventListener('mousedown', handleDocMouseDown);
+  }, []);
+
   const { control, handleSubmit: rhHandleSubmit, watch, setValue, reset, getValues } = useFormRH<FormValues>({
     defaultValues: buildDefaultFormValues("", "")
   });
@@ -793,6 +816,7 @@ export default function PurchaseNewMain() {
 
             // 기존 항목 전체 교체
             replace(bomRows);
+            setSelectedRows(new Set());
             toast.success(`${items.length}개 품목을 불러왔습니다.`);
           } else {
             toast.warning('해당 보드의 BOM 데이터가 없습니다.');
@@ -2027,19 +2051,20 @@ export default function PurchaseNewMain() {
                   className="button-base border border-gray-300 text-gray-600 bg-white hover:bg-red-50 hover:text-red-600" 
                   onClick={() => { 
                     if (confirm('모든 품목을 삭제하시겠습니까?')) {
-                      fields.forEach((_idx, index) => remove(fields.length - 1 - index)); 
-                      append({ 
-                        line_number: 1, 
-                        item_name: '', 
-                        specification: '', 
-                        quantity: 1, 
-                        unit_price_value: 0, 
-                        unit_price_currency: currency, 
-                        amount_value: 0, 
-                        amount_currency: currency, 
-                        remark: '', 
-                        link: '' 
+                      fields.forEach((_idx, index) => remove(fields.length - 1 - index));
+                      append({
+                        line_number: 1,
+                        item_name: '',
+                        specification: '',
+                        quantity: 1,
+                        unit_price_value: 0,
+                        unit_price_currency: currency,
+                        amount_value: 0,
+                        amount_currency: currency,
+                        remark: '',
+                        link: ''
                       });
+                      setSelectedRows(new Set());
                     }
                   }}
                 >
@@ -2111,9 +2136,43 @@ export default function PurchaseNewMain() {
                       <th className="px-2 py-2 text-center font-medium text-gray-700 w-10"></th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white">
+                  <tbody className="bg-white" ref={itemsTbodyRef}>
                     {fields.map((item, idx) => (
-                      <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                      <tr
+                        key={idx}
+                        className={`border-b border-gray-100 hover:bg-gray-50 select-none ${selectedRows.has(idx) ? 'bg-blue-200 hover:bg-blue-200' : ''}`}
+                        onMouseDown={(e) => {
+                          // 삭제 버튼 클릭은 선택 상태를 건드리지 않아야 "선택된 행 일괄삭제"가 정상 동작함
+                          if ((e.target as HTMLElement).closest('button')) return;
+                          isDraggingRowsRef.current = true;
+                          const prevAnchor = dragStartRowRef.current;
+                          if (e.ctrlKey || e.metaKey) {
+                            dragStartRowRef.current = idx;
+                            setSelectedRows(prev => {
+                              const next = new Set(prev);
+                              if (next.has(idx)) next.delete(idx); else next.add(idx);
+                              return next;
+                            });
+                          } else if (e.shiftKey && prevAnchor !== null) {
+                            const [lo, hi] = prevAnchor <= idx ? [prevAnchor, idx] : [idx, prevAnchor];
+                            const range = new Set<number>();
+                            for (let i = lo; i <= hi; i++) range.add(i);
+                            setSelectedRows(range);
+                          } else {
+                            dragStartRowRef.current = idx;
+                            setSelectedRows(new Set([idx]));
+                          }
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isDraggingRowsRef.current || dragStartRowRef.current === null) return;
+                          if ((e.buttons & 1) === 0) { isDraggingRowsRef.current = false; return; }
+                          const start = dragStartRowRef.current;
+                          const [lo, hi] = start <= idx ? [start, idx] : [idx, start];
+                          const range = new Set<number>();
+                          for (let i = lo; i <= hi; i++) range.add(i);
+                          setSelectedRows(range);
+                        }}
+                      >
                         <td className="px-2 py-1 text-center text-gray-500">{idx + 1}</td>
                         {/* 품목 */}
                         <td className="px-2 py-1">
@@ -2236,7 +2295,15 @@ export default function PurchaseNewMain() {
                           {fields.length > 1 && (
                             <Button
                               type="button"
-                              onClick={() => remove(idx)}
+                              onClick={() => {
+                                if (selectedRows.size > 1 && selectedRows.has(idx)) {
+                                  remove(Array.from(selectedRows));
+                                  setSelectedRows(new Set());
+                                } else {
+                                  remove(idx);
+                                  setSelectedRows(new Set());
+                                }
+                              }}
                               size="sm"
                               variant="ghost"
                               className="h-6 w-6 p-0 hover:bg-red-50"
@@ -2421,10 +2488,10 @@ export default function PurchaseNewMain() {
 
       {/* 이관 자료 확인 요청 팝업 — 보드별 정리에서 완료 처리 전까지 선택할 때마다 표시 */}
       <AlertDialog open={migrationWarnBoardName !== null} onOpenChange={(open) => { if (!open) setMigrationWarnBoardName(null); }}>
-        <AlertDialogContent className="sm:max-w-[420px]">
+        <AlertDialogContent className="sm:max-w-[420px]" onOpenAutoFocus={(e) => e.preventDefault()}>
           <AlertDialogHeader>
             <AlertDialogTitle className="modal-title">이관된 BOM 자료입니다</AlertDialogTitle>
-            <AlertDialogDescription className="text-[12px] text-gray-600">
+            <AlertDialogDescription className="whitespace-normal text-[12px] text-gray-600">
               <span className="font-medium text-gray-800">{migrationWarnBoardName}</span> 보드는 과거 자료에서 이관된 BOM입니다.
               <br />
               발주 전 <span className="font-medium text-gray-800">BOM/좌표정리 &gt; 보드별 정리</span>에서 내용을 꼭 확인하고 완료 처리해주세요.
