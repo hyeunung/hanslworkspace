@@ -18,6 +18,7 @@ import { Calendar } from '@/components/ui/calendar'
 import {
   stripEmployeeTitle, STATUS_FIELDS,
   ARTWORK_STATUS_OPTIONS, getKstTodayISO, isDeadlineUrgent, formatKoreanMMDD, parseArtworkStatus, serializeArtworkStatus, formatArtworkDisplay,
+  artworkStatusMatches,
   PARTS_STATUS_OPTIONS, filterStatusOptionsFor,
   parsePartsStatus, serializePartsStatus, formatPartsDisplay
 } from '@/utils/productionStatus'
@@ -2815,9 +2816,10 @@ export default function ProductionListMain() {
     } : cellStyle;
 
     // ARTWORK가 '한슬 완제품 입고'인 행은 이미 완제품 재고가 있어 PCB 제작·완제품 입고 자체가 불필요하므로,
-    // 해당 없음('-')으로 표시하고 입고대기 버튼을 띄우지 않는다.
+    // 해당 없음('-')으로 표시하고 입고대기 버튼을 띄우지 않는다. 구엑셀 이관 등 상태 코드 없이
+    // 메모로 "완제품 입고"가 적힌 기존 행도 동일하게 취급한다(artworkStatusMatches가 둘 다 판정).
     const artworkStockIn = (field === 'final_product_stock' || field === 'pcb_stock_completed') &&
-      parseArtworkStatus(item.artwork_status).status === 'stock_in'
+      artworkStatusMatches(parseArtworkStatus(item.artwork_status), 'stock_in')
 
     // 완제품 입고/입고완료/배송완료: 값이 비어 있으면 대기 버튼 표시 (클릭 시 날짜 선택 팝오버)
     const isStockWaiting = (field === 'final_product_stock' || field === 'cable_actual_date' || field === 'pcb_stock_completed' || field === 'delivery_completed') &&
