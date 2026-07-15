@@ -19,19 +19,20 @@ export const PARTS_FIELD = 'parts_organization'
 export const STATUS_FIELDS = [ARTWORK_FIELD, PARTS_FIELD]
 
 // ─────────────────────────────────────────────────────────────
-// ARTWORK 상태(하이브리드): 상태 선택(진행중/업체 확인중/발주완료) + 메모
+// ARTWORK 상태(하이브리드): 상태 선택(진행중/업체 확인중/발주완료/한슬 완제품 입고) + 메모
 // 저장 포맷: `<status>|||<date>|||<memo>` (상태 없으면 메모 원문만 저장 → 하위호환)
-//  - status: '' | 'progress' | 'checking' | 'ordered'
-//  - date  : 'YYYY-MM-DD' (ordered일 때 발주완료 누른 당일, 한국시간 기준)
+//  - status: '' | 'progress' | 'checking' | 'ordered' | 'stock_in'
+//  - date  : 'YYYY-MM-DD' (ordered 선택한 당일, 한국시간 기준. stock_in은 날짜 기록 안 함)
 //  - memo  : 자유 메모
 // ─────────────────────────────────────────────────────────────
 export const ARTWORK_STATUS_OPTIONS: { code: string; label: string }[] = [
   { code: 'progress', label: '진행중' },
   { code: 'checking', label: '업체 확인중' },
   { code: 'ordered', label: '발주완료' },
+  { code: 'stock_in', label: '한슬 완제품 입고' },
 ]
 
-// 필터 전용 상태 선택지 — 셀 편집 드롭다운(위 3종)에 더해, 구엑셀 이관/직접 입력 텍스트를 아우른다.
+// 필터 전용 상태 선택지 — 셀 편집 드롭다운(위 4종)에 더해, 구엑셀 이관/직접 입력 텍스트를 아우른다.
 //  - delivered: '전달 완료' 계열 텍스트 (셀 편집에는 없는 필터 전용 상태)
 //  - text     : 상태 코드도 없고 상태 키워드에도 안 걸리는 순수 직접 입력(예: '한슬 완제품 재고')
 export const ARTWORK_FILTER_STATUS_OPTIONS: { code: string; label: string }[] = [
@@ -49,6 +50,7 @@ export const ARTWORK_LEGACY_PATTERNS: Record<string, RegExp> = {
   checking: /확인\s*중/,
   ordered: /발주\s*완료/,
   delivered: /전달\s*완료/,
+  stock_in: /완제품\s*입고/,
 }
 export const artworkStatusMatches = (aw: ArtworkParts, code: string | undefined): boolean => {
   const legacy = aw.status ? '' : aw.memo
@@ -108,6 +110,7 @@ export const formatArtworkDisplay = (raw: string | null | undefined): string => 
   if (status === 'progress') label = '진행중'
   else if (status === 'checking') label = '업체 확인중'
   else if (status === 'ordered') label = `${date ? formatKoreanMMDD(date) + ' ' : ''}발주완료`
+  else if (status === 'stock_in') label = '한슬 완제품 입고'
   if (label && memo) return `${label} │ ${memo}`
   if (label) return label
   return memo || ''

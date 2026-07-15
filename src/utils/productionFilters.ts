@@ -150,6 +150,13 @@ export const applyFilterRule = (item: any, rule: FilterRule): boolean => {
     if (rule.op === 'is_empty') return empty
     if (rule.op === 'not_empty') return !empty
   }
+  // ARTWORK가 '한슬 완제품 입고'인 행은 PCB 제작·완제품 입고 자체가 불필요한 항목이라
+  // 실제 저장값과 무관하게 입고대기가 아닌 입고완료로 취급한다 (셀 표시는 '-')
+  if ((rule.field === 'pcb_stock_completed' || rule.field === 'final_product_stock') &&
+      parseArtworkStatus(item.artwork_status).status === 'stock_in') {
+    if (rule.op === 'is_empty') return false
+    if (rule.op === 'not_empty') return true
+  }
   // 부품정리: ARTWORK와 같은 하이브리드(status|||memo) 구조 — 동일하게 처리
   if (rule.field === PARTS_FIELD) {
     const p = parsePartsStatus(s)
