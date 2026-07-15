@@ -50,7 +50,9 @@ export const ARTWORK_LEGACY_PATTERNS: Record<string, RegExp> = {
   checking: /확인\s*중/,
   ordered: /발주\s*완료/,
   delivered: /전달\s*완료/,
-  stock_in: /완제품\s*입고/,
+  // '완제품 입고'(신규 문구) 외에 구엑셀 이관 시절부터 쓰던 '한슬 완제품 재고'/'한슬 완제품 사용'류
+  // 문구(순서 무관하게 완제품+재고 또는 완제품+사용이 함께 있으면 매칭)도 같은 상태로 취급한다.
+  stock_in: /(?=.*완제품)(?=.*(?:재고|사용|입고))/,
 }
 export const artworkStatusMatches = (aw: ArtworkParts, code: string | undefined): boolean => {
   const legacy = aw.status ? '' : aw.memo
