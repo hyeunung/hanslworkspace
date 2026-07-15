@@ -837,6 +837,8 @@ export default function ProductionListMain() {
   // Shift/Ctrl(Cmd)+클릭 선택을 mousedown에서 처리했음을 뒤이은 click 핸들러에 알리는 플래그
   // (click이 편집 진입/팝오버 열기로 이어지지 않도록). 매 mousedown마다 새로 계산된다.
   const modifierSelectRef = useRef(false)
+  // NO. 칼럼 드래그로 여러 행을 선택할 때의 시작 행 (셀 단위가 아니라 행 전체 단위로 확장)
+  const rowDragStartRef = useRef<{ id: string; type: 'pcb' | 'cable' } | null>(null)
   const [floatingMenuPos, setFloatingMenuPos] = useState<{ x: number; y: number } | null>(null)
   // 같은 칼럼 다중선택 시 값 일괄 입력용 편집값 (플로팅 메뉴 안 편집기 상태)
   const [bulkEditValue, setBulkEditValue] = useState('')
@@ -3094,8 +3096,28 @@ export default function ProductionListMain() {
   }
 
   // NO. 셀 클릭: 첫 클릭 = 행 전체 선택, 이미 행이 선택된 상태에서 다시 클릭 = 행 색상 피커
-  const handleRowNoClick = useStableHandler((type: 'pcb' | 'cable', id: string) => {
+  // Shift+클릭 = 마지막 선택 기준(앵커) 행부터 클릭한 행까지 범위 전체 선택 (엑셀과 동일)
+  const handleRowNoClick = useStableHandler((e: React.MouseEvent, type: 'pcb' | 'cable', id: string) => {
     const cols = type === 'pcb' ? pcbColumns : cableColumns
+
+    if (e.shiftKey && selAnchorRef.current && selAnchorRef.current.type === type) {
+      const list = type === 'pcb' ? filteredPcbs : filteredCables
+      const aR = getRowIndex(type, selAnchorRef.current.id)
+      const bR = getRowIndex(type, id)
+      if (aR !== -1 && bR !== -1) {
+        const sel: string[] = []
+        for (let r = Math.min(aR, bR); r <= Math.max(aR, bR); r++) {
+          const rowId = list[r].id
+          cols.forEach(f => sel.push(`${rowId}::${f}`))
+        }
+        setSelectedCells(sel)
+        setActiveColorPicker(null)
+        if (editingCell) setEditingCell(null)
+        selFocusRef.current = { id, field: selAnchorRef.current.field, type }
+        return
+      }
+    }
+
     const rowCells = cols.map(f => `${id}::${f}`)
     const isRowSelected =
       selectedCells.length === rowCells.length && rowCells.every(k => selectedCells.includes(k))
@@ -3112,6 +3134,43 @@ export default function ProductionListMain() {
         selFocusRef.current = { id, field: visible[visible.length - 1], type }
         dragStartCellRef.current = { id, field: visible[0], type }
       }
+    }
+  })
+
+  // NO. 셀 mousedown: 드래그 시작 행을 기록만 해둔다 (click과 동일한 이유로 즉시 선택하지 않음)
+  const handleRowNoMouseDown = useStableHandler((e: React.MouseEvent, type: 'pcb' | 'cable', id: string) => {
+    if (e.button !== 0) return
+    rowDragStartRef.current = { id, type }
+  })
+
+  // NO. 셀 위로 드래그: 시작 행~현재 행 사이의 모든 행 전체를 선택 범위로 확장
+  const handleRowNoMouseEnter = useStableHandler((e: React.MouseEvent, type: 'pcb' | 'cable', id: string) => {
+    const dragStart = rowDragStartRef.current
+    if (!dragStart || dragStart.type !== type) return
+    if ((e.buttons & 1) === 0) return // 왼쪽 버튼이 눌린 상태에서 이동할 때만 드래그로 인정
+    if (!isDragging) setIsDragging(true)
+
+    const cols = type === 'pcb' ? pcbColumns : cableColumns
+    const list = type === 'pcb' ? filteredPcbs : filteredCables
+    const startIdx = getRowIndex(type, dragStart.id)
+    const endIdx = getRowIndex(type, id)
+    if (startIdx === -1 || endIdx === -1) return
+
+    const minR = Math.min(startIdx, endIdx)
+    const maxR = Math.max(startIdx, endIdx)
+    const sel: string[] = []
+    for (let r = minR; r <= maxR; r++) {
+      const rowId = list[r].id
+      cols.forEach(f => sel.push(`${rowId}::${f}`))
+    }
+    setSelectedCells(sel)
+    setActiveColorPicker(null)
+
+    // 드래그로 선택 중에도 Shift+클릭/키보드 확장 기준점을 시작 행에 맞춰둔다
+    const visible = cols.filter(f => !isColHidden(type, f))
+    if (visible.length > 0) {
+      selAnchorRef.current = { id: dragStart.id, field: visible[0], type }
+      selFocusRef.current = { id, field: visible[visible.length - 1], type }
     }
   })
 
@@ -3691,11 +3750,13 @@ export default function ProductionListMain() {
                         <>
                           <td
                             className={`px-2 py-1.5 text-center text-gray-400 sticky left-0 transition-colors ${activeColorPicker?.id === item.id && activeColorPicker?.type === 'pcb' ? 'z-20' : 'z-10'} w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer relative color-picker-trigger ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
-                            title="클릭: 행 전체 선택 · 다시 클릭: 행 색상"
+                            title="클릭: 행 전체 선택 · 다시 클릭: 행 색상 · Shift+클릭/드래그: 여러 행 선택"
+                            onMouseDown={(e) => handleRowNoMouseDown(e, 'pcb', item.id)}
+                            onMouseEnter={(e) => handleRowNoMouseEnter(e, 'pcb', item.id)}
                             onClick={(e) => {
                               e.stopPropagation()
                               e.nativeEvent.stopPropagation()
-                              handleRowNoClick('pcb', item.id)
+                              handleRowNoClick(e, 'pcb', item.id)
                             }}
                           >
                             {index + 1}
@@ -4062,11 +4123,13 @@ export default function ProductionListMain() {
                         <tr key={item.id} data-vrow className={`group transition-colors ${rowBgClass}`}>
                           <td 
                             className={`px-2 py-1.5 text-center text-gray-400 sticky left-0 transition-colors ${activeColorPicker?.id === item.id && activeColorPicker?.type === 'cable' ? 'z-20' : 'z-10'} w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer relative color-picker-trigger ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
-                            title="클릭: 행 전체 선택 · 다시 클릭: 행 색상"
+                            title="클릭: 행 전체 선택 · 다시 클릭: 행 색상 · Shift+클릭/드래그: 여러 행 선택"
+                            onMouseDown={(e) => handleRowNoMouseDown(e, 'cable', item.id)}
+                            onMouseEnter={(e) => handleRowNoMouseEnter(e, 'cable', item.id)}
                             onClick={(e) => {
                               e.stopPropagation()
                               e.nativeEvent.stopPropagation()
-                              handleRowNoClick('cable', item.id)
+                              handleRowNoClick(e, 'cable', item.id)
                             }}
                           >
                             {index + 1}
