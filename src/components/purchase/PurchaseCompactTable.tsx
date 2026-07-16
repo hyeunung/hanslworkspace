@@ -191,7 +191,7 @@ const PurchaseCompactTable = ({
             )}
             {windowRows.map(purchase => (
               <PurchaseCompactRow
-                key={purchase.id}
+                key={`${purchase.id}-${purchase.purchase_request_items?.[0]?.id ?? 'all'}`}
                 purchase={purchase}
                 columns={columns}
                 widths={columnWidths}
@@ -210,7 +210,7 @@ const PurchaseCompactTable = ({
       <div className="sm:hidden space-y-3 p-3">
         {purchases.map(purchase => (
           <MobilePurchaseCard
-            key={purchase.id}
+            key={`${purchase.id}-${purchase.purchase_request_items?.[0]?.id ?? 'all'}`}
             purchase={purchase}
             onClick={() => actions.handleRowClick(purchase)}
           />

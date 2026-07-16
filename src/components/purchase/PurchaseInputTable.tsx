@@ -417,7 +417,7 @@ const PurchaseInputTable = ({
             )}
             {windowGroups.map(g => (
               <PurchaseGroupRows
-                key={g.purchase.id}
+                key={`${g.purchase.id}-${g.items[0]?.id ?? 'all'}`}
                 purchase={g.purchase}
                 items={g.items}
                 columns={columns}
@@ -438,7 +438,7 @@ const PurchaseInputTable = ({
       <div className="sm:hidden space-y-3 p-3">
         {purchases.map(purchase => (
           <MobilePurchaseCard
-            key={purchase.id}
+            key={`${purchase.id}-${purchase.purchase_request_items?.[0]?.id ?? 'all'}`}
             purchase={purchase}
             onClick={() => actions.handleRowClick(purchase)}
           />
