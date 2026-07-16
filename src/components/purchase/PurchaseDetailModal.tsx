@@ -2728,29 +2728,45 @@ ${itemsText}`
           // 기존 담당자가 있으면 업데이트, 없으면 생성
           if (contact.id) {
             finalContactId = contact.id
-            const { error: contactUpdateError } = await supabase
-              .from('vendor_contacts')
-              .update({
-                contact_name: contact.contact_name || '',
-                contact_email: contact.contact_email || '',
-                contact_phone: contact.contact_phone || '',
-                position: contact.position || ''
-              })
-              .eq('id', contact.id)
-            
-            if (contactUpdateError) {
-              logger.error('담당자 업데이트 오류:', contactUpdateError)
+            // 🚀 변경 감지: 담당자 필드가 실제로 바뀐 경우에만 UPDATE (이 UI는 담당자 '선택'만 가능해
+            // 필드값은 항상 DB 원본과 동일 → 무조건 UPDATE하던 기존 로직이 저장 지연의 주범이었음)
+            const originalContact = Array.isArray(purchase.vendor_contacts)
+              ? purchase.vendor_contacts.find(c => c.id === contact.id)
+              : undefined
+            const contactChanged = originalContact ? (
+              (contact.contact_name || '') !== (originalContact.contact_name || '') ||
+              (contact.contact_email || '') !== (originalContact.contact_email || '') ||
+              (contact.contact_phone || '') !== (originalContact.contact_phone || '') ||
+              (contact.position || '') !== (originalContact.position || '')
+            ) : false // 원본 목록에 없는 담당자 = 업체 변경으로 방금 DB에서 로드된 값 → 쓸 필요 없음
+
+            if (contactChanged) {
+              const { error: contactUpdateError } = await supabase
+                .from('vendor_contacts')
+                .update({
+                  contact_name: contact.contact_name || '',
+                  contact_email: contact.contact_email || '',
+                  contact_phone: contact.contact_phone || '',
+                  position: contact.position || ''
+                })
+                .eq('id', contact.id)
+
+              if (contactUpdateError) {
+                logger.error('담당자 업데이트 오류:', contactUpdateError)
+              } else {
+                // 즉시 UI 상태 업데이트
+                setPurchase(prev => {
+                  const updated = prev ? {
+                    ...prev,
+                    vendor_contacts: [contact],
+                    contact_id: contact.id,
+                    contact_name: contact.contact_name
+                  } : null
+                  return updated
+                })
+              }
             } else {
-              // 즉시 UI 상태 업데이트
-              setPurchase(prev => {
-                const updated = prev ? {
-                  ...prev,
-                  vendor_contacts: [contact],
-                  contact_id: contact.id,
-                  contact_name: contact.contact_name
-                } : null
-                return updated
-              })
+              logger.debug('[handleSave] Step 2: 담당자 변경 없음 - UPDATE 생략')
             }
           } else if (contact.contact_name) {
             // 새 담당자 생성
