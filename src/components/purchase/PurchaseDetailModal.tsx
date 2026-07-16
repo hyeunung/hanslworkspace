@@ -2135,7 +2135,8 @@ ${itemsText}`
   }, [resolveCardReceiptViewUrl])
 
   // 칼럼 너비 계산 (텍스트 길이 기반)
-  const calculateOptimalColumnWidths = useCallback(() => {
+  const calculateOptimalColumnWidths = useCallback((editingOverride?: boolean) => {
+    const editingState = editingOverride ?? isEditing
     // items와 purchase_request_items 둘 다 확인
     const items = (purchase?.items && purchase.items.length > 0) 
       ? purchase.items 
@@ -2166,8 +2167,8 @@ ${itemsText}`
       { key: 'remarks', minWidth: 150, maxWidth: 150, baseWidth: 150, isFixed: true } // 고정 너비 150px
     )
     
-    // pending 탭이 아닌 경우에만 상태 칼럼 추가
-    if (activeTab !== 'pending') {
+    // pending 탭이 아닌 경우에만 상태 칼럼 추가 (편집 모드에서는 맨 우측 삭제 칼럼으로 대체)
+    if (activeTab !== 'pending' && !editingState) {
       columnConfigs.push(
         { key: 'status', minWidth: 70, maxWidth: 100, baseWidth: 70 } // 입고상태 칼럼 너비 축소
       )
@@ -2195,6 +2196,13 @@ ${itemsText}`
         )
       }
 
+      // 삭제 칼럼 (편집 모드에서만, 맨 우측에 고정 배치)
+      if (activeTab !== 'pending' && editingState) {
+        columnConfigs.push(
+          { key: 'delete_action', minWidth: 60, maxWidth: 60, baseWidth: 60, isFixed: true }
+        )
+      }
+
     const calculatedWidths = columnConfigs.map((config, index) => {
       let maxLength = 4 // 최소 4자
 
@@ -2206,31 +2214,38 @@ ${itemsText}`
           ? '입고상태'
           : '상태'
 
-        // 승인대기탭에서는 상태 칼럼 제외
+        // 승인대기탭 또는 편집 모드(맨 우측 삭제 칼럼으로 대체)에서는 상태 칼럼 제외
         // receipt, done 탭에서는 '요청/실제 입고수량' 형식으로 헤더 길이 계산
-        const quantityHeader = (activeTab === 'receipt' || activeTab === 'done') 
-          ? '요청/실제 입고수량' 
+        const quantityHeader = (activeTab === 'receipt' || activeTab === 'done')
+          ? '요청/실제 입고수량'
           : '요청수량'
-        const baseHeaders = activeTab === 'pending' 
-          ? ['#', '품목명', '규격', quantityHeader, '단가', '합계', purchase?.payment_category === '발주' ? '세액' : null, '비고'].filter(h => h !== null)
-          : ['#', '품목명', '규격', quantityHeader, '단가', '합계', purchase?.payment_category === '발주' ? '세액' : null, '비고', statusHeader].filter(h => h !== null)
+        const baseHeaders = ['#', '품목명', '규격', quantityHeader, '단가', '합계', purchase?.payment_category === '발주' ? '세액' : null, '비고'].filter(h => h !== null) as string[]
+        if (activeTab !== 'pending' && !editingState) {
+          baseHeaders.push(statusHeader)
+        }
+
+        let headers = baseHeaders
         if (activeTab === 'receipt') {
-          const receiptHeaders = [...baseHeaders, '실제입고일']
+          headers = [...baseHeaders, '실제입고일']
           if (showStatementColumns) {
-            receiptHeaders.push('거래명세서 확인', '실거래일', '회계상 입고일')
+            headers.push('거래명세서 확인', '실거래일', '회계상 입고일')
           }
-          return receiptHeaders
         } else if (activeTab === 'done') {
-          const doneHeaders = [...baseHeaders]
+          headers = [...baseHeaders]
           if (showStatementColumns) {
-            doneHeaders.push('거래명세서 확인', '실거래일', '회계상 입고일')
+            headers.push('거래명세서 확인', '실거래일', '회계상 입고일')
             if (showExpenditureColumn) {
-              doneHeaders.push('지출정보')
+              headers.push('지출정보')
             }
           }
-          return doneHeaders
         }
-        return baseHeaders
+
+        // 삭제 헤더 (편집 모드에서만, 맨 우측에 고정 배치)
+        if (activeTab !== 'pending' && editingState) {
+          headers.push('삭제')
+        }
+
+        return headers
       }
       
       const headers = getHeaders()
@@ -2340,7 +2355,7 @@ ${itemsText}`
 
     setColumnWidths(calculatedWidths)
     return calculatedWidths
-  }, [purchase, activeTab, showStatementColumns, showExpenditureColumn])
+  }, [purchase, activeTab, showStatementColumns, showExpenditureColumn, isEditing])
 
   // 상태 표시 텍스트 반환 함수
   const getStatusDisplay = (item: EditablePurchaseItem) => {
@@ -2379,22 +2394,26 @@ ${itemsText}`
     // 비고 칼럼 추가
     baseColumns.push('150px')
     
-    // pending 탭이 아닌 경우에만 상태/삭제 칼럼 추가
-    if (activeTab !== 'pending') {
-      if (isEditing) {
-        baseColumns.push('80px') // 삭제
-      } else {
-        baseColumns.push('80px') // 상태
-      }
+    // pending 탭이 아닌 경우에만 상태 칼럼 추가 (편집 모드에서는 맨 우측 삭제 칼럼으로 대체)
+    if (activeTab !== 'pending' && !isEditing) {
+      baseColumns.push('80px') // 상태
     }
-    
+
+    // 삭제 칼럼(편집 모드, 맨 우측 고정)을 탭별 추가 칼럼 뒤에 붙이기 위한 헬퍼
+    const withTrailingDeleteColumn = (cols: string[]) => {
+      if (activeTab !== 'pending' && isEditing) {
+        cols.push('60px') // 삭제
+      }
+      return cols
+    }
+
     // 탭별 추가 칼럼
     if (activeTab === 'receipt') {
       const receiptColumns = [...baseColumns, '100px'] // 실제입고일
       if (showStatementColumns) {
         receiptColumns.push('100px', '80px', '80px') // 거래명세서 확인, 실거래일, 회계상 입고일
       }
-      return receiptColumns.join(' ')
+      return withTrailingDeleteColumn(receiptColumns).join(' ')
     } else if (activeTab === 'done') {
       const doneColumns = [...baseColumns]
       if (showStatementColumns) {
@@ -2403,10 +2422,10 @@ ${itemsText}`
           doneColumns.push('110px') // 지출정보
         }
       }
-      return doneColumns.join(' ')
+      return withTrailingDeleteColumn(doneColumns).join(' ')
     }
-    
-    return baseColumns.join(' ')
+
+    return withTrailingDeleteColumn(baseColumns).join(' ')
   }
 
   // 레거시 measureColumnWidths 함수 (호환성 유지)
@@ -2441,8 +2460,8 @@ ${itemsText}`
       })
       setEditedItems(sortedItems)
       setDeletedItemIds([])
-      // Edit 모드로 전환하기 전에 현재 너비 계산
-      calculateOptimalColumnWidths()
+      // Edit 모드로 전환하기 전에 현재 너비 계산 (isEditing state가 아직 반영 전이므로 목표 상태를 명시적으로 전달)
+      calculateOptimalColumnWidths(editing)
     }
     setIsEditing(editing)
   }
@@ -2851,7 +2870,38 @@ ${itemsText}`
 
       // 각 아이템 업데이트 또는 생성
       logger.debug(`[handleSave] Step 4: 아이템 저장 시작, 총 ${editedItems.length}개`)
-      
+
+      // 🚀 변경 감지: 편집 진입 시점 원본(currentItems) 스냅샷을 id로 인덱싱
+      // 실제로 값이 바뀐 품목만 UPDATE를 보내 불필요한 DB 왕복을 제거한다.
+      const originalItemsById = new Map<string, EditablePurchaseItem>()
+      ;(currentItems || []).forEach(orig => {
+        if (orig?.id != null) originalItemsById.set(String(orig.id), orig)
+      })
+      const currencyForSave = purchase.currency || 'KRW'
+      const normalizeLinkValue = (v: unknown) => (v && String(v).trim() ? String(v).trim() : null)
+      // UPDATE 페이로드에 실제로 쓰이는 필드만 원본과 비교 (line_number/updated_at 등 미포함)
+      const isExistingItemChanged = (item: EditablePurchaseItem, original?: EditablePurchaseItem) => {
+        if (!original) return true
+        // 원본이 보관(soft delete) 상태였다가 되살아난 경우 → 반드시 재저장(복구)
+        if (original.deleted_at) return true
+        return (
+          (item.item_name || '').trim() !== (original.item_name || '').trim() ||
+          (item.specification || null) !== (original.specification || null) ||
+          safeNumber(item.quantity, 1) !== safeNumber(original.quantity, 1) ||
+          (item.received_quantity != null ? safeNumber(item.received_quantity) : null) !==
+            (original.received_quantity != null ? safeNumber(original.received_quantity) : null) ||
+          safeNumber(item.unit_price_value, 0) !== safeNumber(original.unit_price_value, 0) ||
+          currencyForSave !== (original.unit_price_currency || currencyForSave) ||
+          safeNumber(item.amount_value, 0) !== safeNumber(original.amount_value, 0) ||
+          currencyForSave !== (original.amount_currency || currencyForSave) ||
+          (item.remark || null) !== (original.remark || null) ||
+          normalizeLinkValue(item.link) !== normalizeLinkValue(original.link)
+        )
+      }
+      let updatedCount = 0
+      let insertedCount = 0
+      let skippedCount = 0
+
       // ✅ DB statement timeout/락 경합을 줄이기 위해 순차 처리 (Promise.all 제거)
       for (let index = 0; index < editedItems.length; index++) {
         const item = editedItems[index]
@@ -2886,6 +2936,13 @@ ${itemsText}`
         const finalAmountValue = safeNumber(item.amount_value, 0)
         
         if (isExistingItem) {
+          // 🚀 변경되지 않은 기존 항목은 DB 왕복을 건너뛴다 (저장 속도 개선의 핵심)
+          const original = originalItemsById.get(String(numericItemId))
+          if (!isExistingItemChanged(item, original)) {
+            skippedCount++
+            logger.debug(`[handleSave] 아이템 ${index + 1} 변경 없음 - UPDATE 생략`)
+            continue
+          }
           // 기존 항목 업데이트
           const updateItemResult = await withTimeout(
             supabase
@@ -2913,6 +2970,7 @@ ${itemsText}`
             logger.error('기존 항목 업데이트 오류', error);
             throw error;
           }
+          updatedCount++
           logger.debug(`[handleSave] 아이템 ${index + 1} 업데이트 완료`)
         } else {
           // 새 항목 생성
@@ -2945,10 +3003,11 @@ ${itemsText}`
             logger.error('새 항목 생성 오류', error);
             throw error;
           }
+          insertedCount++
           logger.debug(`[handleSave] 아이템 ${index + 1} 삽입 완료`)
         }
       }
-      logger.debug('[handleSave] Step 4 완료: 모든 아이템 저장됨')
+      logger.debug(`[handleSave] Step 4 완료: 수정 ${updatedCount} / 신규 ${insertedCount} / 변경없음(생략) ${skippedCount}`)
 
       // 🚀 전체완료 함수와 정확히 동일한 패턴 적용 (메모리 캐시 포함)
       const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
@@ -3217,9 +3276,32 @@ ${itemsText}`
     })
   }
 
-  const handleRemoveItem = (index: number) => {
+  // mode 'soft': 기존 방식 - 취소선/하이픈으로 비활성화 표시하고 라인넘버는 그대로 유지
+  // mode 'hard': 목록에서 즉시 제거하고 남은 품목의 라인넘버를 당겨서 재정렬 (실제 DB 삭제는 저장 시 처리)
+  const handleRemoveItem = (index: number, mode: 'soft' | 'hard' = 'soft') => {
     const item = editedItems[index]
-    if (item.id) {
+    if (!item.id) {
+      // 신규(미저장) 품목은 모드와 무관하게 목록에서 바로 제거
+      setEditedItems(prev => prev.filter((_, i) => i !== index).map((it, idx) => ({
+        ...it,
+        stableKey: it.stableKey ?? makeStableKey(it, idx)
+      })))
+      return
+    }
+
+    if (mode === 'hard') {
+      setDeletedItemIds(prev => [...prev, item.id])
+      setEditedItems(prev => {
+        let seq = 0
+        return prev
+          .filter((_, i) => i !== index)
+          .map(it => {
+            if (it.deleted_at) return it
+            seq += 1
+            return { ...it, line_number: seq }
+          })
+      })
+    } else {
       setDeletedItemIds([...deletedItemIds, item.id])
       setEditedItems(prev => prev.map((it, i) => {
         if (i === index) {
@@ -3230,11 +3312,6 @@ ${itemsText}`
         }
         return it
       }))
-    } else {
-      setEditedItems(prev => prev.filter((_, i) => i !== index).map((it, idx) => ({
-        ...it,
-        stableKey: it.stableKey ?? makeStableKey(it, idx)
-      })))
     }
   }
 
@@ -4348,6 +4425,55 @@ ${itemsText}`
     if (dragProps?.setNodeRef) rowProps.ref = dragProps.setNodeRef
     if (dragProps?.style) rowProps.style = dragProps.style as React.CSSProperties
 
+    // 삭제 버튼(또는 복구 버튼) - 데스크톱/모바일 레이아웃에서 공용으로 사용
+    const deleteActionContent = isDeleted ? (
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => handleRestoreItem(index)}
+        className="text-blue-600 hover:bg-blue-50 rounded-lg p-1 h-6 w-6 animate-fade-in"
+        title="품목 복구"
+        disabled={canEditLimited && !canEditAll}
+      >
+        <Undo className="w-3.5 h-3.5" />
+      </Button>
+    ) : (
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-red-600 hover:bg-red-50 rounded-lg p-1 h-6 w-6"
+            disabled={canEditLimited && !canEditAll}
+            title="품목 삭제"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-60 p-2" align="end">
+          <div className="space-y-1">
+            <div className="modal-label text-gray-500 px-1 pb-1">삭제 방식 선택</div>
+            <button
+              type="button"
+              onClick={() => handleRemoveItem(index, 'hard')}
+              className="w-full text-left px-2 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
+            >
+              <div className="text-[12px] font-medium text-gray-800">완전 삭제</div>
+              <div className="text-[10px] text-gray-400">목록에서 바로 제거되고 아래 품목 번호가 당겨집니다</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRemoveItem(index, 'soft')}
+              className="w-full text-left px-2 py-1.5 rounded-md hover:bg-gray-100 transition-colors"
+            >
+              <div className="text-[12px] font-medium text-gray-800">비활성화 표시</div>
+              <div className="text-[10px] text-gray-400">번호는 유지한 채 취소선과 하이픈으로 표시됩니다</div>
+            </button>
+          </div>
+        </PopoverContent>
+      </Popover>
+    )
+
     return (
       <div {...rowProps}>
         {isRowEditing && dragProps && (
@@ -4639,33 +4765,9 @@ ${itemsText}`
             )}
           </div>
           
-          {/* 상태/액션 - 승인대기탭에서는 제외 */}
-          {activeTab !== 'pending' && (
+          {/* 상태/액션 - 승인대기탭 제외, 편집 모드에서는 맨 우측 삭제 칼럼으로 대체되므로 미표시 */}
+          {activeTab !== 'pending' && !isEditing && (
             <div className="text-center flex justify-center items-center">
-              {isEditing ? (
-                isDeleted ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleRestoreItem(index)}
-                    className="text-blue-600 hover:bg-blue-50 rounded-lg p-1 h-6 w-6 animate-fade-in"
-                    title="품목 복구"
-                    disabled={canEditLimited && !canEditAll}
-                  >
-                    <Undo className="w-3.5 h-3.5" />
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleRemoveItem(index)}
-                    className="text-red-600 hover:bg-red-50 rounded-lg p-1 h-6 w-6"
-                    disabled={canEditLimited && !canEditAll}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
-                )
-              ) : (
                 <>
                   {activeTab === 'purchase' && (
                   <div className="flex flex-col items-center gap-1">
@@ -4853,10 +4955,9 @@ ${itemsText}`
                   </div>
                 )}
               </>
-            )}
             </div>
           )}
-          
+
           {/* 실제 입고 날짜 - 입고 탭에서만 표시 (상태 컬럼 오른쪽) */}
           {activeTab === 'receipt' && (
             <div className="text-center flex justify-center items-center pl-2">
@@ -5029,37 +5130,18 @@ ${itemsText}`
             </div>
           )}
 
+          {/* 삭제 - 편집 모드에서만 맨 우측에 고정 배치 */}
+          {activeTab !== 'pending' && isEditing && (
+            <div className="text-center flex justify-center items-center">
+              {deleteActionContent}
+            </div>
+          )}
+
         </div>
-        
+
         {/* Mobile Layout */}
         <div className="block sm:hidden space-y-2">
           <div className="flex justify-between items-start">
-            {isEditing && (
-              <div className="mr-2 flex-shrink-0 self-center">
-                {isDeleted ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleRestoreItem(index)}
-                    className="text-blue-600 hover:bg-blue-50 rounded-lg p-1 h-6 w-6"
-                    title="품목 복구"
-                    disabled={canEditLimited && !canEditAll}
-                  >
-                    <Undo className="w-3.5 h-3.5" />
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleRemoveItem(index)}
-                    className="text-red-600 hover:bg-red-50 rounded-lg p-1 h-6 w-6"
-                    disabled={canEditLimited && !canEditAll}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
-                )}
-              </div>
-            )}
             <div className="flex-1 min-w-0 relative">
               {isRowEditing ? (
                 <Input
@@ -5113,6 +5195,11 @@ ${itemsText}`
                   : `${formatMoney(item.unit_price_value || 0, getItemDisplayCurrency(item))}`} / 단가
               </div>
             </div>
+            {isEditing && (
+              <div className="ml-2 flex-shrink-0 self-center">
+                {deleteActionContent}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2">
@@ -6375,25 +6462,8 @@ ${itemsText}`
                         <div className="text-center">링크</div>
                         <div className="text-center">비고</div>
                         {activeTab !== 'pending' && (
-                          isEditing ? (
-                            <>
-                              <div className="text-center">삭제</div>
-                              {activeTab === 'receipt' && (
-                                <>
-                                  <div className="text-center">실제입고일</div>
-                                </>
-                              )}
-                              {showStatementColumns && (
-                                <>
-                                  <div className="text-center">거래명세서 확인</div>
-                                  <div className="text-center">실거래일</div>
-                                  <div className="text-center">회계상 입고일</div>
-                                  {showExpenditureColumn && <div className="text-center">지출정보</div>}
-                                </>
-                              )}
-                            </>
-                          ) : (
-                            <>
+                          <>
+                            {!isEditing && (
                               <div className="text-center">
                                 {activeTab === 'purchase'
                                   ? '구매상태'
@@ -6401,21 +6471,23 @@ ${itemsText}`
                                   ? '입고상태'
                                   : '상태'}
                               </div>
-                              {activeTab === 'receipt' && (
-                                <>
-                                  <div className="text-center">실제입고일</div>
-                                </>
-                              )}
-                              {showStatementColumns && (
-                                <>
-                                  <div className="text-center">거래명세서 확인</div>
-                                  <div className="text-center">실거래일</div>
-                                  <div className="text-center">회계상 입고일</div>
-                                  {showExpenditureColumn && <div className="text-center">지출정보</div>}
-                                </>
-                              )}
-                            </>
-                          )
+                            )}
+                            {activeTab === 'receipt' && (
+                              <>
+                                <div className="text-center">실제입고일</div>
+                              </>
+                            )}
+                            {showStatementColumns && (
+                              <>
+                                <div className="text-center">거래명세서 확인</div>
+                                <div className="text-center">실거래일</div>
+                                <div className="text-center">회계상 입고일</div>
+                                {showExpenditureColumn && <div className="text-center">지출정보</div>}
+                              </>
+                            )}
+                            {/* 삭제 - 편집 모드에서만 맨 우측에 고정 배치 */}
+                            {isEditing && <div className="text-center">삭제</div>}
+                          </>
                         )}
                       </div>
                       </div>
@@ -6491,17 +6563,13 @@ ${itemsText}`
                       <div></div>
                       {/* 비고 */}
                       <div></div>
-                      {/* 상태 또는 삭제 - pending 탭 제외, 발주인 경우 지출총합 텍스트 표시 */}
-                      {activeTab !== 'pending' && (
-                        isEditing ? (
-                          <div></div>
-                        ) : (
-                          <div className={activeTab === 'done' && purchase.payment_category === '발주' ? "text-right flex items-center justify-end" : ""}>
-                            {activeTab === 'done' && purchase.payment_category === '발주' && (
-                              <span className="text-[11px] text-gray-600 font-medium">지출총합</span>
-                            )}
-                          </div>
-                        )
+                      {/* 상태 - pending 탭 제외, 뷰 모드에서만 표시 (편집 모드에서는 맨 우측 삭제 칼럼으로 대체). 발주인 경우 지출총합 텍스트 표시 */}
+                      {activeTab !== 'pending' && !isEditing && (
+                        <div className={activeTab === 'done' && purchase.payment_category === '발주' ? "text-right flex items-center justify-end" : ""}>
+                          {activeTab === 'done' && purchase.payment_category === '발주' && (
+                            <span className="text-[11px] text-gray-600 font-medium">지출총합</span>
+                          )}
+                        </div>
                       )}
                       {activeTab === 'receipt' && <div></div>}
                       {activeTab === 'receipt' && showStatementColumns && (
@@ -6538,6 +6606,8 @@ ${itemsText}`
                           )}
                         </>
                       )}
+                      {/* 삭제 칼럼 - 편집 모드에서만 맨 우측에 고정 배치 */}
+                      {activeTab !== 'pending' && isEditing && <div></div>}
                         </div>
 
                         {/* 합계+세액 행 (발주인 경우에만) */}
@@ -6575,7 +6645,8 @@ ${itemsText}`
                         <div></div>
                         {/* 나머지 빈 칸들 */}
                         <div></div>
-                        {isEditing ? <div></div> : <div></div>}
+                        {/* 상태 칼럼 - pending 탭 제외, 뷰 모드에서만 표시 (편집 모드에서는 맨 우측 삭제 칼럼으로 대체) */}
+                        {activeTab !== 'pending' && !isEditing && <div></div>}
                         {activeTab === 'receipt' && <div></div>}
                         {activeTab === 'receipt' && showStatementColumns && (
                           <>
@@ -6596,6 +6667,8 @@ ${itemsText}`
                             <div></div>
                           </>
                         )}
+                        {/* 삭제 칼럼 - 편집 모드에서만 맨 우측에 고정 배치 */}
+                        {activeTab !== 'pending' && isEditing && <div></div>}
                           </div>
                         )}
                       </div>
