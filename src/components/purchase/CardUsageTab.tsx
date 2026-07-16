@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
@@ -80,6 +80,8 @@ interface CardUsage {
   business_trip?: { trip_code: string } | null;
   receipts?: CardUsageReceipt[];
 }
+
+type ReceiptEditField = "merchant_name" | "item_name" | "quantity" | "unit_price" | "total_amount" | "remark";
 
 interface CardUsageReceipt {
   id: number;
@@ -257,6 +259,8 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
   // Detail modal
   const [detailUsage, setDetailUsage] = useState<CardUsage | null>(null);
   const [receiptImageUrl, setReceiptImageUrl] = useState<string | null>(null);
+  const [editingReceiptCell, setEditingReceiptCell] = useState<{ receiptId: number; field: ReceiptEditField } | null>(null);
+  const [editingReceiptValue, setEditingReceiptValue] = useState("");
 
   const canApprove = useMemo(() => {
     const roles = parseRoles(currentUser?.roles);
@@ -272,6 +276,17 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
     const roles = parseRoles(currentUser?.roles);
     return roles.includes("superadmin");
   }, [currentUser?.roles]);
+
+  // 영수증 내역 인라인 수정: 관리자는 제작현황처럼 항상, 요청자는 카드반납 전까지 가능
+  const canEditDetailReceipts = useMemo(() => {
+    if (!detailUsage) return false;
+    if (isAppAdmin) return true;
+    return (
+      currentUser?.id === detailUsage.requester_id &&
+      ["approved", "settled"].includes(detailUsage.approval_status) &&
+      !detailUsage.card_returned
+    );
+  }, [detailUsage, currentUser?.id, isAppAdmin]);
 
   const unavailableCards = useMemo(() => {
     const inUse = new Set<string>();
@@ -776,6 +791,127 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
       toast.error("영수증 삭제에 실패했습니다.");
     }
   }, [supabase, loadUsages, detailUsage, usages]);
+
+  const openReceiptImage = useCallback(async (receiptUrl: string) => {
+    if (!receiptUrl) return;
+    const storageInfo = parseReceiptStorageInfo(receiptUrl);
+    if (!storageInfo.path) return;
+    const { data } = await supabase.storage
+      .from(storageInfo.bucket)
+      .createSignedUrl(storageInfo.path, 3600);
+    if (data?.signedUrl) {
+      setReceiptImageUrl(data.signedUrl);
+    } else {
+      toast.error("영수증 이미지를 불러올 수 없습니다.");
+    }
+  }, [supabase]);
+
+  const startEditReceiptCell = useCallback((r: CardUsageReceipt, field: ReceiptEditField) => {
+    if (!canEditDetailReceipts) return;
+    const raw =
+      field === "quantity"
+        ? String(r.quantity ?? "")
+        : field === "unit_price"
+          ? (r.unit_price != null ? r.unit_price.toLocaleString("ko-KR") : "")
+          : field === "total_amount"
+            ? (r.total_amount != null ? r.total_amount.toLocaleString("ko-KR") : "")
+            : (r[field] ?? "");
+    setEditingReceiptCell({ receiptId: r.id, field });
+    setEditingReceiptValue(raw);
+  }, [canEditDetailReceipts]);
+
+  const commitReceiptCell = useCallback(async () => {
+    if (!editingReceiptCell || !detailUsage) return;
+    const { receiptId, field } = editingReceiptCell;
+    const receipt = (detailUsage.receipts || []).find((r) => r.id === receiptId);
+    setEditingReceiptCell(null);
+    if (!receipt) return;
+
+    const value = editingReceiptValue;
+    const update: Record<string, string | number | null> = {};
+    if (field === "merchant_name" || field === "item_name") {
+      const v = value.trim();
+      if (!v) {
+        toast.error(field === "merchant_name" ? "사용처는 필수입니다." : "품명은 필수입니다.");
+        return;
+      }
+      if (v === receipt[field]) return;
+      update[field] = v;
+    } else if (field === "remark") {
+      const v = value.trim() || null;
+      if (v === (receipt.remark || null)) return;
+      update.remark = v;
+    } else if (field === "quantity") {
+      const q = Math.max(parseNumericInput(value) || 1, 1);
+      if (q === receipt.quantity) return;
+      update.quantity = q;
+      if (receipt.unit_price != null) {
+        update.total_amount = Math.min(q * receipt.unit_price, MAX_KRW_AMOUNT);
+      }
+    } else if (field === "unit_price") {
+      const p = value.trim() ? Math.min(parseNumericInput(value), MAX_KRW_AMOUNT) : null;
+      if (p === receipt.unit_price) return;
+      update.unit_price = p;
+      if (p != null) {
+        update.total_amount = Math.min((receipt.quantity || 1) * p, MAX_KRW_AMOUNT);
+      }
+    } else if (field === "total_amount") {
+      const t = Math.min(parseNumericInput(value) || 0, MAX_KRW_AMOUNT);
+      if (t === receipt.total_amount) return;
+      update.total_amount = t;
+      update.unit_price = null;
+    }
+
+    try {
+      const { error } = await supabase.from("card_usage_receipts").update(update).eq("id", receiptId);
+      if (error) throw error;
+      loadUsages();
+    } catch (err) {
+      logger.error("영수증 내역 수정 실패", err);
+      toast.error("영수증 내역 수정에 실패했습니다.");
+    }
+  }, [editingReceiptCell, editingReceiptValue, detailUsage, supabase, loadUsages]);
+
+  // 제작현황과 동일한 클릭-편집 셀: 클릭 → 인풋, Enter/blur 저장, Escape 취소
+  const renderReceiptEditableCell = (
+    r: CardUsageReceipt,
+    field: ReceiptEditField,
+    display: ReactNode,
+    cellClassName: string,
+    numeric?: "int" | "krw"
+  ) => {
+    const isEditing = editingReceiptCell?.receiptId === r.id && editingReceiptCell?.field === field;
+    return (
+      <td
+        className={`${cellClassName} ${canEditDetailReceipts && !isEditing ? "cursor-pointer hover:bg-blue-50" : ""}`}
+        onClick={() => {
+          if (!isEditing) startEditReceiptCell(r, field);
+        }}
+      >
+        {isEditing ? (
+          <Input
+            autoFocus
+            value={editingReceiptValue}
+            onChange={(e) => {
+              const v = e.target.value;
+              setEditingReceiptValue(
+                numeric === "krw" ? formatKrwInput(v) : numeric === "int" ? v.replace(/[^0-9]/g, "") : v
+              );
+            }}
+            onBlur={commitReceiptCell}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+              if (e.key === "Escape") setEditingReceiptCell(null);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className={`h-6 text-xs px-1 min-w-[60px] ${numeric ? "text-right" : ""}`}
+          />
+        ) : (
+          display
+        )}
+      </td>
+    );
+  };
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
@@ -1580,8 +1716,25 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
       </Dialog>
 
       {/* Detail Modal */}
-      <Dialog open={!!detailUsage} onOpenChange={(open) => !open && setDetailUsage(null)}>
-        <DialogContent className="sm:max-w-[600px] p-0 max-h-[85vh] overflow-y-auto">
+      <Dialog
+        open={!!detailUsage}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailUsage(null);
+            setEditingReceiptCell(null);
+          }
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-[680px] p-0 max-h-[85vh] overflow-y-auto"
+          onEscapeKeyDown={(e) => {
+            // 셀 편집 중 Escape는 편집만 취소 (모달은 유지)
+            if (editingReceiptCell) {
+              e.preventDefault();
+              setEditingReceiptCell(null);
+            }
+          }}
+        >
           <DialogHeader className="px-5 pt-4 pb-3 border-b border-gray-100" style={{ gap: 0 }}>
             <DialogTitle className="text-[14px] font-bold leading-tight">카드사용 상세</DialogTitle>
             <p className="page-subtitle leading-tight" style={{ marginTop: "-1px" }}>Card Usage Detail</p>
@@ -1640,10 +1793,13 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
 
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="modal-section-title">영수증 내역</span>
-                  {(currentUser?.id === detailUsage.requester_id || isAppAdmin)
-                    && ["approved", "settled"].includes(detailUsage.approval_status)
-                    && !detailUsage.card_returned && (
+                  <div className="flex items-center gap-2">
+                    <span className="modal-section-title">영수증 내역</span>
+                    {canEditDetailReceipts && (
+                      <span className="card-description">셀을 클릭해 수정</span>
+                    )}
+                  </div>
+                  {canEditDetailReceipts && (
                     <Button
                       className="button-base bg-blue-500 hover:bg-blue-600 text-white"
                       onClick={() => openReceiptModal(detailUsage)}
@@ -1665,39 +1821,45 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                           <th className="px-2 py-1 modal-label text-gray-900 text-right">단가</th>
                           <th className="px-2 py-1 modal-label text-gray-900 text-right">합계</th>
                           <th className="px-2 py-1 modal-label text-gray-900 text-left">비고</th>
+                          <th className="px-2 py-1 modal-label text-gray-900 text-center w-[54px]">영수증</th>
                           <th className="px-2 py-1 modal-label text-gray-900 text-center w-[50px]"></th>
                         </tr>
                       </thead>
                       <tbody>
                         {(detailUsage.receipts || []).map((r) => (
-                          <tr
-                            key={r.id}
-                            className="border-t border-gray-100 hover:bg-blue-50 cursor-pointer"
-                            onClick={async () => {
-                              if (!r.receipt_url) return;
-                              const storageInfo = parseReceiptStorageInfo(r.receipt_url);
-                              if (!storageInfo.path) return;
-                              const { data } = await supabase.storage
-                                .from(storageInfo.bucket)
-                                .createSignedUrl(storageInfo.path, 3600);
-                              if (data?.signedUrl) {
-                                setReceiptImageUrl(data.signedUrl);
-                              } else {
-                                toast.error("영수증 이미지를 불러올 수 없습니다.");
-                              }
-                            }}
-                          >
-                            <td className="px-2 py-1 card-title">{r.merchant_name}</td>
-                            <td className="px-2 py-1 card-title">{r.item_name}</td>
-                            <td className="px-2 py-1 card-title text-right">{r.quantity}</td>
-                            <td className="px-2 py-1 card-title text-right">
-                              {r.unit_price != null ? `₩${r.unit_price.toLocaleString()}` : "-"}
+                          <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50">
+                            {renderReceiptEditableCell(r, "merchant_name", r.merchant_name, "px-2 py-1 card-title")}
+                            {renderReceiptEditableCell(r, "item_name", r.item_name, "px-2 py-1 card-title")}
+                            {renderReceiptEditableCell(r, "quantity", r.quantity, "px-2 py-1 card-title text-right", "int")}
+                            {renderReceiptEditableCell(
+                              r,
+                              "unit_price",
+                              r.unit_price != null ? `₩${r.unit_price.toLocaleString()}` : "-",
+                              "px-2 py-1 card-title text-right",
+                              "krw"
+                            )}
+                            {renderReceiptEditableCell(
+                              r,
+                              "total_amount",
+                              `₩${r.total_amount.toLocaleString()}`,
+                              "px-2 py-1 card-title text-right font-semibold",
+                              "krw"
+                            )}
+                            {renderReceiptEditableCell(r, "remark", r.remark || "-", "px-2 py-1 card-title")}
+                            <td className="px-2 py-1 text-center whitespace-nowrap">
+                              {r.receipt_url ? (
+                                <button
+                                  type="button"
+                                  className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                  onClick={() => openReceiptImage(r.receipt_url)}
+                                >
+                                  영수증
+                                </button>
+                              ) : (
+                                <span className="card-description">-</span>
+                              )}
                             </td>
-                            <td className="px-2 py-1 card-title text-right font-semibold">
-                              ₩{r.total_amount.toLocaleString()}
-                            </td>
-                            <td className="px-2 py-1 card-title">{r.remark || "-"}</td>
-                            <td className="px-2 py-1 text-center" onClick={(e) => e.stopPropagation()}>
+                            <td className="px-2 py-1 text-center">
                               <div className="flex gap-1 justify-center">
                                 {isAppAdmin && (
                                   <button
@@ -1720,7 +1882,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                           <td className="px-2 py-1.5 modal-value text-right text-blue-600">
                             ₩{(detailUsage.receipts || []).reduce((s, r) => s + (r.total_amount || 0), 0).toLocaleString()}
                           </td>
-                          <td colSpan={2}></td>
+                          <td colSpan={3}></td>
                         </tr>
                       </tfoot>
                     </table>
