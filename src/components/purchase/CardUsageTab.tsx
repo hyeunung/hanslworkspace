@@ -1726,7 +1726,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
         }}
       >
         <DialogContent
-          className="sm:max-w-[680px] p-0 max-h-[85vh] overflow-y-auto"
+          className="sm:max-w-[760px] p-0 max-h-[85vh] overflow-y-auto"
           onEscapeKeyDown={(e) => {
             // 셀 편집 중 Escape는 편집만 취소 (모달은 유지)
             if (editingReceiptCell) {
@@ -1741,60 +1741,69 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
           </DialogHeader>
 
           {detailUsage && (
+            <>
             <div className="px-5 py-4 space-y-4">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                <div>
-                  <span className="modal-label block">상태</span>
-                  <div className="mt-0.5">{getStatusBadge(detailUsage.approval_status)}</div>
-                </div>
-                <div>
-                  <span className="modal-label block">신청일</span>
-                  <span className="modal-value">{detailUsage.created_at ? format(new Date(detailUsage.created_at), "yyyy-MM-dd") : "-"}</span>
-                </div>
-                <div>
-                  <span className="modal-label block">법인카드</span>
-                  <span className="modal-value">{detailUsage.card_number}</span>
-                </div>
-                <div>
-                  <span className="modal-label block">출장/카드사용 코드</span>
-                  <span className="modal-value">{detailUsage.business_trip?.trip_code || detailUsage.card_usage_code || "-"}</span>
-                </div>
-                <div>
-                  <span className="modal-label block">요청자</span>
-                  <span className="modal-value">{detailUsage.requester?.name || "-"}</span>
-                </div>
-                <div>
-                  <span className="modal-label block">사용용도</span>
-                  <span className="modal-value">{detailUsage.usage_category}</span>
-                </div>
-                <div>
-                  <span className="modal-label block">사용예정일</span>
-                  <span className="modal-value">
-                    {detailUsage.usage_date_start ? (
-                      detailUsage.usage_date_end && detailUsage.usage_date_end !== detailUsage.usage_date_start
-                        ? `${detailUsage.usage_date_start} ~ ${detailUsage.usage_date_end}`
-                        : detailUsage.usage_date_start
-                    ) : "-"}
-                  </span>
-                </div>
-                {detailUsage.description && (
-                  <div className="col-span-2">
-                    <span className="modal-label block">비고(프로젝트 및 사용처)</span>
-                    <span className="modal-value">{detailUsage.description}</span>
+              {/* 상단 요약 */}
+              <div className="border business-radius-card p-3 bg-gray-50">
+                <div className="grid grid-cols-4 gap-x-4 gap-y-2">
+                  <div>
+                    <p className="modal-label">상태</p>
+                    <div className="mt-0.5">{getStatusBadge(detailUsage.approval_status)}</div>
                   </div>
-                )}
-                {detailUsage.rejection_reason && (
+                  <div>
+                    <p className="modal-label">신청일</p>
+                    <p className="modal-value">{detailUsage.created_at ? format(new Date(detailUsage.created_at), "yyyy-MM-dd") : "-"}</p>
+                  </div>
+                  <div>
+                    <p className="modal-label">법인카드</p>
+                    <p className="modal-value">{detailUsage.card_number}</p>
+                  </div>
+                  <div>
+                    <p className="modal-label">출장/카드사용 코드</p>
+                    <p className="modal-value">{detailUsage.business_trip?.trip_code || detailUsage.card_usage_code || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="modal-label">요청자</p>
+                    <p className="modal-value">{detailUsage.requester?.name || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="modal-label">사용용도</p>
+                    <p className="modal-value">{detailUsage.usage_category}</p>
+                  </div>
                   <div className="col-span-2">
-                    <span className="modal-label block text-red-500">반려사유</span>
-                    <span className="modal-value text-red-600">{detailUsage.rejection_reason}</span>
+                    <p className="modal-label">사용예정일</p>
+                    <p className="modal-value">
+                      {detailUsage.usage_date_start ? (
+                        detailUsage.usage_date_end && detailUsage.usage_date_end !== detailUsage.usage_date_start
+                          ? `${detailUsage.usage_date_start} ~ ${detailUsage.usage_date_end}`
+                          : detailUsage.usage_date_start
+                      ) : "-"}
+                    </p>
+                  </div>
+                </div>
+                {(detailUsage.description || detailUsage.rejection_reason) && (
+                  <div className="mt-2 pt-2 border-t border-gray-200 space-y-1.5">
+                    {detailUsage.description && (
+                      <div>
+                        <p className="modal-label">비고(프로젝트 및 사용처)</p>
+                        <p className="modal-value">{detailUsage.description}</p>
+                      </div>
+                    )}
+                    {detailUsage.rejection_reason && (
+                      <div>
+                        <p className="modal-label text-red-500">반려사유</p>
+                        <p className="modal-value text-red-600">{detailUsage.rejection_reason}</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-2">
+              {/* 영수증 내역 */}
+              <div className="border business-radius-card overflow-hidden">
+                <div className="px-3 py-2 border-b bg-gray-50 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="modal-section-title">영수증 내역</span>
+                    <h3 className="section-title text-gray-800">영수증 내역</h3>
                     {canEditDetailReceipts && (
                       <span className="card-description">셀을 클릭해 수정</span>
                     )}
@@ -1809,87 +1818,98 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                   )}
                 </div>
                 {(detailUsage.receipts || []).length === 0 ? (
-                  <p className="card-subtitle text-center py-4">등록된 영수증이 없습니다.</p>
+                  <p className="card-subtitle text-center py-6">등록된 영수증이 없습니다.</p>
                 ) : (
-                  <div className="border rounded-lg overflow-hidden">
-                    <table className="w-full border-collapse">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-2 py-1 modal-label text-gray-900 text-left">사용처</th>
-                          <th className="px-2 py-1 modal-label text-gray-900 text-left">품명</th>
-                          <th className="px-2 py-1 modal-label text-gray-900 text-right">수량</th>
-                          <th className="px-2 py-1 modal-label text-gray-900 text-right">단가</th>
-                          <th className="px-2 py-1 modal-label text-gray-900 text-right">합계</th>
-                          <th className="px-2 py-1 modal-label text-gray-900 text-left">비고</th>
-                          <th className="px-2 py-1 modal-label text-gray-900 text-center w-[54px]">영수증</th>
-                          <th className="px-2 py-1 modal-label text-gray-900 text-center w-[50px]"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(detailUsage.receipts || []).map((r) => (
-                          <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50">
-                            {renderReceiptEditableCell(r, "merchant_name", r.merchant_name, "px-2 py-1 card-title")}
-                            {renderReceiptEditableCell(r, "item_name", r.item_name, "px-2 py-1 card-title")}
-                            {renderReceiptEditableCell(r, "quantity", r.quantity, "px-2 py-1 card-title text-right", "int")}
-                            {renderReceiptEditableCell(
-                              r,
-                              "unit_price",
-                              r.unit_price != null ? `₩${r.unit_price.toLocaleString()}` : "-",
-                              "px-2 py-1 card-title text-right",
-                              "krw"
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr>
+                        <th className="px-3 py-1.5 modal-label text-gray-900 text-left">사용처</th>
+                        <th className="px-3 py-1.5 modal-label text-gray-900 text-left">품명</th>
+                        <th className="px-3 py-1.5 modal-label text-gray-900 text-right">수량</th>
+                        <th className="px-3 py-1.5 modal-label text-gray-900 text-right">단가</th>
+                        <th className="px-3 py-1.5 modal-label text-gray-900 text-right">합계</th>
+                        <th className="px-3 py-1.5 modal-label text-gray-900 text-left">비고</th>
+                        <th className="px-3 py-1.5 modal-label text-gray-900 text-center w-[58px]">영수증</th>
+                        <th className="px-3 py-1.5 modal-label text-gray-900 text-center w-[50px]"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(detailUsage.receipts || []).map((r) => (
+                        <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50">
+                          {renderReceiptEditableCell(r, "merchant_name", r.merchant_name, "px-3 py-1.5 card-title")}
+                          {renderReceiptEditableCell(r, "item_name", r.item_name, "px-3 py-1.5 card-title")}
+                          {renderReceiptEditableCell(r, "quantity", r.quantity, "px-3 py-1.5 card-title text-right", "int")}
+                          {renderReceiptEditableCell(
+                            r,
+                            "unit_price",
+                            r.unit_price != null ? `₩${r.unit_price.toLocaleString()}` : "-",
+                            "px-3 py-1.5 card-title text-right",
+                            "krw"
+                          )}
+                          {renderReceiptEditableCell(
+                            r,
+                            "total_amount",
+                            `₩${r.total_amount.toLocaleString()}`,
+                            "px-3 py-1.5 card-title text-right font-semibold",
+                            "krw"
+                          )}
+                          {renderReceiptEditableCell(r, "remark", r.remark || "-", "px-3 py-1.5 card-title")}
+                          <td className="px-3 py-1.5 text-center whitespace-nowrap">
+                            {r.receipt_url ? (
+                              <button
+                                type="button"
+                                className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                onClick={() => openReceiptImage(r.receipt_url)}
+                              >
+                                영수증
+                              </button>
+                            ) : (
+                              <span className="card-description">-</span>
                             )}
-                            {renderReceiptEditableCell(
-                              r,
-                              "total_amount",
-                              `₩${r.total_amount.toLocaleString()}`,
-                              "px-2 py-1 card-title text-right font-semibold",
-                              "krw"
-                            )}
-                            {renderReceiptEditableCell(r, "remark", r.remark || "-", "px-2 py-1 card-title")}
-                            <td className="px-2 py-1 text-center whitespace-nowrap">
-                              {r.receipt_url ? (
+                          </td>
+                          <td className="px-3 py-1.5 text-center">
+                            <div className="flex gap-1 justify-center">
+                              {isAppAdmin && (
                                 <button
-                                  type="button"
-                                  className="text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                                  onClick={() => openReceiptImage(r.receipt_url)}
+                                  className="text-gray-300 hover:text-red-500 transition-colors"
+                                  onClick={() => handleDeleteReceipt(r.id, r.receipt_url)}
                                 >
-                                  영수증
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
-                              ) : (
-                                <span className="card-description">-</span>
                               )}
-                            </td>
-                            <td className="px-2 py-1 text-center">
-                              <div className="flex gap-1 justify-center">
-                                {isAppAdmin && (
-                                  <button
-                                    className="text-gray-300 hover:text-red-500 transition-colors"
-                                    onClick={() => handleDeleteReceipt(r.id, r.receipt_url)}
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot className="bg-gray-50 border-t">
-                        <tr>
-                          <td colSpan={4} className="px-2 py-1.5 modal-label text-gray-900 text-right font-semibold">
-                            총 합계
+                            </div>
                           </td>
-                          <td className="px-2 py-1.5 modal-value text-right text-blue-600">
-                            ₩{(detailUsage.receipts || []).reduce((s, r) => s + (r.total_amount || 0), 0).toLocaleString()}
-                          </td>
-                          <td colSpan={3}></td>
                         </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-gray-50 border-t">
+                      <tr>
+                        <td colSpan={4} className="px-3 py-2 modal-label text-gray-900 text-right font-semibold">
+                          총 합계
+                        </td>
+                        <td className="px-3 py-2 modal-value text-right text-blue-600">
+                          ₩{(detailUsage.receipts || []).reduce((s, r) => s + (r.total_amount || 0), 0).toLocaleString()}
+                        </td>
+                        <td colSpan={3}></td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 )}
               </div>
             </div>
+
+            <div className="px-5 py-3 border-t bg-white">
+              <DialogFooter className="gap-2 sm:gap-2 border-none p-0">
+                <Button
+                  variant="outline"
+                  onClick={() => setDetailUsage(null)}
+                  className="button-base border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                >
+                  닫기
+                </Button>
+              </DialogFooter>
+            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>
