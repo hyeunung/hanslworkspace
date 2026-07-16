@@ -263,9 +263,13 @@ export default function PurchaseNewMain() {
   // 품목 테이블 바깥(빈 곳) 클릭 시 선택 해제 (엑셀처럼)
   useEffect(() => {
     const handleDocMouseDown = (e: MouseEvent) => {
-      if (itemsTbodyRef.current && !itemsTbodyRef.current.contains(e.target as Node)) {
-        setSelectedRows(new Set());
-      }
+      const target = e.target as HTMLElement;
+      if (itemsTbodyRef.current && itemsTbodyRef.current.contains(target)) return;
+      // 팝오버(달력 등) 내부 클릭은 제외 — mousedown 시점 리렌더가 팝오버 안의 click 이벤트를 삼켜
+      // 청구일/입고요청일 날짜 선택이 안 되는 문제가 있었음
+      if (target.closest?.('[data-radix-popper-content-wrapper]')) return;
+      // 선택이 없을 때는 상태를 그대로 유지해 불필요한 전체 리렌더 방지
+      setSelectedRows(prev => (prev.size === 0 ? prev : new Set()));
     };
     document.addEventListener('mousedown', handleDocMouseDown);
     return () => document.removeEventListener('mousedown', handleDocMouseDown);
