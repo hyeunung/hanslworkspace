@@ -992,6 +992,45 @@ Deno.serve(async (req)=>{
         }
       }
 
+      // 사용자별 수신 설정(employees.notification_preferences.production_teams) 필터링
+      // 항목 키: 신규 등록은 'production_new_row', 완료 이벤트는 data.field 값
+      // (설정에 키가 없으면 기본 수신, 조회 실패 시에도 기존대로 전원 발송)
+      const prodDataMap = data && typeof data === 'object' ? data : {};
+      const prefKey = prodDataMap['type'] === 'production_new_row'
+        ? 'production_new_row'
+        : (prodDataMap['field'] || null);
+      if (prefKey && emails.length > 0) {
+        const { data: prefRows, error: prefError } = await supabase
+          .from('employees')
+          .select('email, notification_preferences')
+          .in('email', emails);
+        if (prefError) {
+          console.error('❌ [제작현황 알림] 수신 설정 조회 실패(필터 없이 발송):', prefError);
+        } else {
+          const optedOut = new Set(
+            (prefRows || [])
+              .filter((row) => row.notification_preferences?.production_teams?.[prefKey] === false)
+              .map((row) => row.email)
+          );
+          if (optedOut.size > 0) {
+            const filteredTokens = [];
+            const filteredEmails = [];
+            emails.forEach((email, idx) => {
+              if (optedOut.has(email)) {
+                console.log(`  🔕 수신 거부(${prefKey}): ${email}`);
+              } else {
+                filteredTokens.push(tokens[idx]);
+                filteredEmails.push(email);
+              }
+            });
+            tokens.length = 0;
+            tokens.push(...filteredTokens);
+            emails.length = 0;
+            emails.push(...filteredEmails);
+          }
+        }
+      }
+
       targetTokens = tokens;
       targetEmails = emails;
       console.log(`📊 [제작현황 알림] 총 ${tokens.length}명에게 전송 예정`);
