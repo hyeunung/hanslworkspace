@@ -2824,7 +2824,8 @@ ${itemsText}`
       logger.debug('[handleSave] Step 3: 삭제된 항목 처리 시작')
       if (deletedItemIds.length > 0) {
         // RPC(soft_delete_purchase_items)로 보관 처리: RLS SELECT 정책이 deleted_at 직접 쓰기를 막으므로
-        // SECURITY DEFINER RPC로 우회 (+ 남은 품목 line_number 재정렬 트리거)
+        // SECURITY DEFINER RPC로 우회. 남은 품목의 line_number 재정렬은 서버가 아니라
+        // 완전 삭제 시 클라이언트에서 당긴 값을 Step 4의 품목 UPDATE로 저장하는 방식.
         const deleteResult = await withTimeout(
           supabase.rpc('soft_delete_purchase_items', { p_item_ids: deletedItemIds.map(Number) }),
           STEP_TIMEOUT_MS
@@ -2911,7 +2912,9 @@ ${itemsText}`
           safeNumber(item.amount_value, 0) !== safeNumber(original.amount_value, 0) ||
           currencyForSave !== (original.amount_currency || currencyForSave) ||
           (item.remark || null) !== (original.remark || null) ||
-          normalizeLinkValue(item.link) !== normalizeLinkValue(original.link)
+          normalizeLinkValue(item.link) !== normalizeLinkValue(original.link) ||
+          // 완전 삭제/드래그 재정렬로 라인넘버가 당겨진 품목도 저장 대상
+          (item.line_number ?? null) !== (original.line_number ?? null)
         )
       }
       let updatedCount = 0
@@ -2974,6 +2977,7 @@ ${itemsText}`
                 amount_currency: purchase.currency || 'KRW',
                 remark: item.remark || null,
                 link: item.link && String(item.link).trim() ? String(item.link).trim() : null,
+                line_number: item.line_number ?? null,
                 deleted_at: null,
                 updated_at: new Date().toISOString()
               })
