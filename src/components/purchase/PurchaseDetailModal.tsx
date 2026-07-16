@@ -3297,12 +3297,25 @@ ${itemsText}`
   }
 
   // mode 'soft': 기존 방식 - 취소선/하이픈으로 비활성화 표시하고 라인넘버는 그대로 유지
-  // mode 'hard': 목록에서 즉시 제거하고 남은 품목의 라인넘버를 당겨서 재정렬 (실제 DB 삭제는 저장 시 처리)
+  // mode 'hard': 목록에서 즉시 제거하고 삭제된 라인보다 뒤의 품목만 번호를 1씩 당김 (실제 DB 삭제는 저장 시 처리)
+  //              삭제하지 않은 앞쪽 품목의 번호는 어떤 경우에도 그대로 유지 (전체 재부여 금지)
+  const shiftLinesAfterRemoval = (items: EditablePurchaseItem[], removedLine: number | null | undefined) =>
+    removedLine == null
+      ? items
+      : items.map(it =>
+          it.line_number != null && it.line_number > removedLine
+            ? { ...it, line_number: it.line_number - 1 }
+            : it
+        )
+
   const handleRemoveItem = (index: number, mode: 'soft' | 'hard' = 'soft') => {
     const item = editedItems[index]
     if (!item.id) {
-      // 신규(미저장) 품목은 모드와 무관하게 목록에서 바로 제거
-      setEditedItems(prev => prev.filter((_, i) => i !== index).map((it, idx) => ({
+      // 신규(미저장) 품목은 모드와 무관하게 목록에서 바로 제거 + 뒤 품목 번호 당김
+      setEditedItems(prev => shiftLinesAfterRemoval(
+        prev.filter((_, i) => i !== index),
+        item.line_number
+      ).map((it, idx) => ({
         ...it,
         stableKey: it.stableKey ?? makeStableKey(it, idx)
       })))
@@ -3311,16 +3324,10 @@ ${itemsText}`
 
     if (mode === 'hard') {
       setDeletedItemIds(prev => [...prev, item.id])
-      setEditedItems(prev => {
-        let seq = 0
-        return prev
-          .filter((_, i) => i !== index)
-          .map(it => {
-            if (it.deleted_at) return it
-            seq += 1
-            return { ...it, line_number: seq }
-          })
-      })
+      setEditedItems(prev => shiftLinesAfterRemoval(
+        prev.filter((_, i) => i !== index),
+        item.line_number
+      ))
     } else {
       setDeletedItemIds([...deletedItemIds, item.id])
       setEditedItems(prev => prev.map((it, i) => {
