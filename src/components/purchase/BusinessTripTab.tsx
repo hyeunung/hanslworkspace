@@ -3047,7 +3047,8 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                               onClick={() =>
                                 openSettlementModal(
                                   trip,
-                                  !(trip.settlement_status === "submitted" && canApproveSettlement)
+                                  trip.settlement_status === "approved" ||
+                                    !(isOwner || isCompanion || isAppAdmin || canApproveSettlement)
                                 )
                               }
                               className="cursor-pointer"
@@ -3901,12 +3902,15 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                     disabled={
                       settlementSaving ||
                       settlementLoading ||
-                      settlementTrip?.approval_status !== "approved" ||
-                      settlementTrip?.settlement_status === "submitted"
+                      settlementTrip?.approval_status !== "approved"
                     }
                     className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
                   >
-                    {settlementSaving ? "저장 중..." : "정산 제출"}
+                    {settlementSaving
+                      ? "저장 중..."
+                      : settlementTrip?.settlement_status === "submitted"
+                        ? "수정 제출"
+                        : "정산 제출"}
                   </Button>
                   {settlementTrip?.settlement_status === "submitted" && canApproveSettlement && (
                     <Button
