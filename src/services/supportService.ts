@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/client'
 import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { logger } from '@/lib/logger'
 import { parseRoles } from '@/utils/roleHelper'
-import { removePurchaseFromMemory, removeItemFromMemory } from '@/stores/purchaseMemoryStore'
+import { removePurchaseFromMemory, removeItemFromMemory, findPurchaseInMemory, updatePurchaseInMemory } from '@/stores/purchaseMemoryStore'
 
 export interface SupportAttachment {
   url: string
@@ -112,6 +112,7 @@ export type SupportInquiryPayload =
       reason?: string
       delete_target?: 'purchase' | 'statement'
       delete_type?: 'all' | 'items'
+      delete_mode?: 'hard' | 'soft'
       delete_items?: {
         item_id: string
         line_number?: number | null
@@ -383,7 +384,7 @@ class SupportService {
         .select('inquiry_type,inquiry_payload,purchase_request_id')
         .eq('id', inquiryId)
         .maybeSingle()
-      const meta = inquiryMeta as { inquiry_type?: string; purchase_request_id?: number | string | null; inquiry_payload?: { items?: { item_id?: string }[]; delete_target?: string; delete_type?: string; delete_items?: { item_id?: string | number }[]; statement_id?: string } } | null
+      const meta = inquiryMeta as { inquiry_type?: string; purchase_request_id?: number | string | null; inquiry_payload?: { items?: { item_id?: string }[]; delete_target?: string; delete_type?: string; delete_mode?: string; delete_items?: { item_id?: string | number }[]; statement_id?: string } } | null
       const payloadItems = Array.isArray(meta?.inquiry_payload?.items)
         ? meta.inquiry_payload.items
         : []
@@ -421,11 +422,38 @@ class SupportService {
       if (inquiryType === 'delete' && meta?.inquiry_payload?.delete_target !== 'statement' && meta?.purchase_request_id != null) {
         const prid = meta.purchase_request_id
         if (meta?.inquiry_payload?.delete_type === 'items') {
-          // 품목별 삭제: 삭제된 품목만 캐시에서 제거 (line_number 재정렬은 다음 로드 시 동기화)
+          // 품목별 삭제: 삭제된 품목만 캐시에서 제거
           const delItems = Array.isArray(meta?.inquiry_payload?.delete_items) ? meta.inquiry_payload.delete_items : []
+          // hard 모드 번호 당김 반영을 위해 제거 전에 삭제 대상 품목의 line_number 수집
+          const delIds = new Set(delItems.filter(it => it?.item_id != null).map(it => String(it.item_id)))
+          const cachedPurchase = findPurchaseInMemory(prid)
+          const cachedItems = cachedPurchase
+            ? ((cachedPurchase.items && cachedPurchase.items.length > 0) ? cachedPurchase.items : (cachedPurchase.purchase_request_items || []))
+            : []
+          const deletedLines = cachedItems
+            .filter(it => delIds.has(String(it.id)))
+            .map(it => it.line_number)
+            .filter((n): n is number => n != null)
           delItems.forEach((it) => {
             if (it?.item_id != null) removeItemFromMemory(prid, it.item_id)
           })
+          // hard 모드: 서버(RPC)가 당긴 line_number를 캐시에도 동일 규칙으로 반영
+          // (삭제된 라인보다 뒤의 품목만 삭제 라인 수만큼 감소, soft 모드는 번호 유지)
+          if (meta?.inquiry_payload?.delete_mode === 'hard' && deletedLines.length > 0) {
+            updatePurchaseInMemory(prid, (purchase) => {
+              const items = (purchase.items && purchase.items.length > 0) ? purchase.items : (purchase.purchase_request_items || [])
+              const shifted = items.map(it =>
+                it.line_number != null
+                  ? { ...it, line_number: it.line_number - deletedLines.filter(dl => dl < (it.line_number as number)).length }
+                  : it
+              )
+              return {
+                ...purchase,
+                items: purchase.items ? shifted : purchase.items,
+                purchase_request_items: purchase.purchase_request_items ? shifted : purchase.purchase_request_items,
+              }
+            })
+          }
         } else {
           // 발주 전체 삭제: 발주를 캐시에서 즉시 제거
           removePurchaseFromMemory(prid)
