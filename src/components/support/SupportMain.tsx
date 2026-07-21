@@ -198,6 +198,8 @@ export default function SupportMain() {
   const [currentUserName, setCurrentUserName] = useState<string>('')
   const [deleteType, setDeleteType] = useState<'all' | 'items'>('all')
   const [deleteItemIds, setDeleteItemIds] = useState<string[]>([])
+  // 품목별 삭제 요청 시 처리 방식: 'hard' = 완전 삭제(뒤 품목 번호 당김), 'soft' = 비활성화 표시(번호 유지)
+  const [deleteMode, setDeleteMode] = useState<'hard' | 'soft'>('hard')
   const [deleteTarget, setDeleteTarget] = useState<'purchase' | 'statement'>('purchase')
   const [statements, setStatements] = useState<Array<{ id: string; statement_code?: string; vendor_name?: string; statement_date?: string; uploaded_at: string; file_name?: string; total_amount?: number; grand_total?: number; status: string }>>([])
   const [selectedStatement, setSelectedStatement] = useState<typeof statements[0] | null>(null)
@@ -1380,8 +1382,8 @@ export default function SupportMain() {
             specification: targetItem?.specification ?? null,
           }
         })
-        inquiryPayload = { reason: message.trim(), delete_target: 'purchase' as const, delete_type: 'items' as const, delete_items: deleteItemsPayload }
-        summaryLines.push(`[품목별 삭제] ${deleteItemsPayload.map(i =>
+        inquiryPayload = { reason: message.trim(), delete_target: 'purchase' as const, delete_type: 'items' as const, delete_mode: deleteMode, delete_items: deleteItemsPayload }
+        summaryLines.push(`[품목별 삭제 · ${deleteMode === 'hard' ? '완전 삭제(번호 당김)' : '비활성화 표시(번호 유지)'}] ${deleteItemsPayload.map(i =>
           `${i.line_number ?? '-'}번 ${i.item_name} (${i.specification || '-'})`
         ).join(', ')}`)
       } else {
@@ -2139,7 +2141,7 @@ ${itemsText}`;
     }
 
     if (inquiry.inquiry_type === 'delete') {
-      const p = payload as { reason?: string; delete_target?: 'purchase' | 'statement'; delete_type?: 'all' | 'items'; delete_items?: Array<{ item_id: string; line_number?: number | null; item_name: string; specification?: string | null }>; statement_id?: string; statement_info?: string }
+      const p = payload as { reason?: string; delete_target?: 'purchase' | 'statement'; delete_type?: 'all' | 'items'; delete_mode?: 'hard' | 'soft'; delete_items?: Array<{ item_id: string; line_number?: number | null; item_name: string; specification?: string | null }>; statement_id?: string; statement_info?: string }
       if (!p.reason && !p.delete_type && !p.delete_target) return null
 
       const isStatementDelete = p.delete_target === 'statement'
@@ -2156,6 +2158,11 @@ ${itemsText}`;
             {!isStatementDelete && (
               <span className={`badge-stats ${isItemDelete ? 'bg-orange-100 text-orange-800' : 'bg-red-100 text-red-800'}`}>
                 {isItemDelete ? '품목별 삭제' : '전체 삭제'}
+              </span>
+            )}
+            {!isStatementDelete && isItemDelete && (
+              <span className={`badge-stats ${p.delete_mode === 'hard' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-700'}`}>
+                {p.delete_mode === 'hard' ? '완전 삭제 (번호 당김)' : '비활성화 표시 (번호 유지)'}
               </span>
             )}
           </div>
@@ -3148,6 +3155,34 @@ ${itemsText}`;
                         품목별 삭제
                       </button>
                     </div>
+
+                    {deleteType === 'items' && (
+                      <div className="space-y-1.5 mt-2">
+                        <div className="modal-label text-gray-600">삭제 방식 선택</div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setDeleteMode('hard')}
+                            className={`flex-1 text-left px-3 py-2 border business-radius-card transition-colors ${deleteMode === 'hard'
+                              ? 'border-red-400 bg-red-50'
+                              : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                          >
+                            <div className={`text-[12px] font-medium ${deleteMode === 'hard' ? 'text-red-700' : 'text-gray-800'}`}>완전 삭제</div>
+                            <div className="text-[10px] text-gray-400">목록에서 제거되고 아래 품목 번호가 당겨집니다</div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteMode('soft')}
+                            className={`flex-1 text-left px-3 py-2 border business-radius-card transition-colors ${deleteMode === 'soft'
+                              ? 'border-red-400 bg-red-50'
+                              : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                          >
+                            <div className={`text-[12px] font-medium ${deleteMode === 'soft' ? 'text-red-700' : 'text-gray-800'}`}>비활성화 표시</div>
+                            <div className="text-[10px] text-gray-400">번호는 유지한 채 취소선과 하이픈으로 표시됩니다</div>
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {deleteType === 'items' && selectedPurchaseItems.length > 0 && (
                       <div className="space-y-1.5 mt-2">
