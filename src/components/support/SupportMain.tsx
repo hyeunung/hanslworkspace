@@ -378,6 +378,12 @@ export default function SupportMain() {
   const [purchaseMissingOpen, setPurchaseMissingOpen] = useState(false)
   const [purchaseMissingMessage, setPurchaseMissingMessage] = useState('발주내역이 삭제 되었거나 없습니다.')
 
+  // 관리자 전용: 자동 반영이 안 되는 문의(수정/오류/기타) 펼침 시 발주 상세를 인라인으로 표시
+  const INLINE_DETAIL_INQUIRY_TYPES = ['modify', 'bug', 'other'] as const
+  const [inlinePurchaseId, setInlinePurchaseId] = useState<number | null>(null)
+  const [inlinePurchaseLoading, setInlinePurchaseLoading] = useState(false)
+  const [inlinePurchaseInquiryId, setInlinePurchaseInquiryId] = useState<number | null>(null)
+
   // 채팅(대화) 드롭다운(확장 영역 내)
   const [chatMessages, setChatMessages] = useState<SupportInquiryMessage[]>([])
   const [chatLoading, setChatLoading] = useState(false)
@@ -1626,6 +1632,52 @@ ${itemsText}`;
   }
 
   const expandedInquiryObj = inquiries.find((i) => i.id === expandedInquiry) || null
+
+  // 관리자 전용: 수정/오류/기타 문의를 펼치면 연결된 발주의 id를 조회해 인라인 상세를 표시
+  useEffect(() => {
+    setInlinePurchaseId(null)
+    setInlinePurchaseInquiryId(null)
+
+    if (!isAdmin || !expandedInquiryObj?.id) return
+    if (!INLINE_DETAIL_INQUIRY_TYPES.includes(expandedInquiryObj.inquiry_type as typeof INLINE_DETAIL_INQUIRY_TYPES[number])) return
+
+    const inquiry = expandedInquiryObj
+    let cancelled = false
+
+    const resolve = async () => {
+      if (inquiry.purchase_request_id) {
+        if (!cancelled) {
+          setInlinePurchaseId(inquiry.purchase_request_id)
+          setInlinePurchaseInquiryId(inquiry.id!)
+        }
+        return
+      }
+
+      const orderNumber = inquiry.purchase_order_number?.trim()
+      if (!orderNumber) return
+
+      setInlinePurchaseLoading(true)
+      try {
+        const supabase = createClient()
+        const { data } = await supabase
+          .from('purchase_requests')
+          .select('id')
+          .eq('purchase_order_number', orderNumber)
+          .limit(1)
+          .maybeSingle()
+
+        if (!cancelled && data?.id) {
+          setInlinePurchaseId(data.id)
+          setInlinePurchaseInquiryId(inquiry.id!)
+        }
+      } finally {
+        if (!cancelled) setInlinePurchaseLoading(false)
+      }
+    }
+
+    resolve()
+    return () => { cancelled = true }
+  }, [isAdmin, expandedInquiryObj])
 
   // 확장된 문의에 대해 메시지 로드 + 실시간 구독 + (사용자) 알림 읽음 처리
   useEffect(() => {
@@ -3639,6 +3691,34 @@ ${itemsText}`;
                                 </div>
                               </div>
                             </div>
+
+                            {/* 관리자 전용: 자동 반영이 안 되는 문의(수정/오류/기타)는 발주 상세를 인라인으로 표시 */}
+                            {isAdmin &&
+                              INLINE_DETAIL_INQUIRY_TYPES.includes(inquiry.inquiry_type as typeof INLINE_DETAIL_INQUIRY_TYPES[number]) && (
+                                <div className="mt-3 border-t pt-3" onClick={(e) => e.stopPropagation()}>
+                                  <div className="modal-value text-gray-800 mb-2">발주 상세 (바로 수정 가능)</div>
+                                  {inlinePurchaseLoading && inlinePurchaseInquiryId !== inquiry.id ? (
+                                    <div className="flex items-center justify-center py-8">
+                                      <div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+                                    </div>
+                                  ) : inlinePurchaseInquiryId === inquiry.id && inlinePurchaseId ? (
+                                    <div className="border border-gray-200 business-radius-card bg-white p-3">
+                                      <PurchaseDetailModal
+                                        purchaseId={inlinePurchaseId}
+                                        isOpen={true}
+                                        onClose={() => {}}
+                                        embedded
+                                        currentUserRoles={currentUserRoles}
+                                        activeTab="done"
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div className="card-description text-gray-500 text-center py-3 border border-gray-200 business-radius-card bg-white">
+                                      연결된 발주내역이 없습니다.
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                           </div>
                         </div>
                       )}

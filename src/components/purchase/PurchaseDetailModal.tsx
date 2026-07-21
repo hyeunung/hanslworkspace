@@ -6828,9 +6828,67 @@ ${itemsText}`
     </div>
   )
 
-  // embedded가 true면 Dialog 없이 내용만 반환
+  // embedded가 true면 Dialog 없이 내용만 반환 (수정/저장 액션 바 포함)
   if (embedded) {
-    return content
+    return (
+      <>
+        <div className="flex items-center justify-end gap-2 px-1 pb-2">
+          {!isEditing && canEdit && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleEditToggle(true)}
+              className="button-base button-action-secondary h-8 text-xs px-3"
+            >
+              <Edit2 className="w-3.5 h-3.5 mr-1.5" />
+              수정
+            </Button>
+          )}
+          {isEditing && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  handleEditToggle(false)
+                  setEditedPurchase(purchase)
+                  setEditedItems(purchase?.items || [])
+                  setDeletedItemIds([])
+                }}
+                className="button-base button-action-secondary"
+              >
+                <X className="w-4 h-4 mr-2" />
+                취소
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="button-base button-action-primary"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    저장 중...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    저장
+                  </>
+                )}
+              </Button>
+            </>
+          )}
+        </div>
+        {content}
+        <StatementImageViewer
+          isOpen={isStatementViewerOpen}
+          imageUrl={statementViewerUrl}
+          onClose={() => setIsStatementViewerOpen(false)}
+        />
+      </>
+    )
   }
 
   // embedded가 false면 Dialog로 감싸서 반환
