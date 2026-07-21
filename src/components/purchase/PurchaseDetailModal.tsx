@@ -200,7 +200,8 @@ function PurchaseDetailModal({
   const [deleteType, setDeleteType] = useState<'all' | 'items'>('all')
   const [deleteItemIds, setDeleteItemIds] = useState<string[]>([])
   // 품목별 삭제 요청 시 처리 방식: 'hard' = 완전 삭제(뒤 품목 번호 당김), 'soft' = 비활성화 표시(번호 유지)
-  const [deleteMode, setDeleteMode] = useState<'hard' | 'soft'>('hard')
+  // 필수 선택 항목 - 기본 선택 없음(null)
+  const [deleteMode, setDeleteMode] = useState<'hard' | 'soft' | null>(null)
   const [modifyAttachments, setModifyAttachments] = useState<SupportAttachment[]>([])
   const [uploadingModifyImage, setUploadingModifyImage] = useState(false)
   const modifyFileInputRef = useRef<HTMLInputElement>(null)
@@ -300,7 +301,7 @@ function PurchaseDetailModal({
       setItemAddRows([])
       setDeleteType('all')
       setDeleteItemIds([])
-      setDeleteMode('hard')
+      setDeleteMode(null)
       setModifyAttachments([])
     }
   }, [isModifyRequestOpen])
@@ -714,6 +715,11 @@ function PurchaseDetailModal({
 
       if (modifyInquiryType === 'delete') {
         if (deleteType === 'items') {
+          if (deleteMode == null) {
+            toast.error('삭제 방식을 선택해주세요.')
+            setIsSendingModify(false)
+            return
+          }
           if (deleteItemIds.length === 0) {
             toast.error('삭제할 품목을 선택해주세요.')
             setIsSendingModify(false)
@@ -797,7 +803,7 @@ ${itemsText}`
         setItemAddRows([])
         setDeleteType('all')
         setDeleteItemIds([])
-        setDeleteMode('hard')
+        setDeleteMode(null)
         setModifyAttachments([])
       } else {
         toast.error(result.error || '수정 요청 전송 중 오류가 발생했습니다.')
@@ -7248,7 +7254,7 @@ ${itemsText}`
                         <div className="flex gap-3">
                           <button
                             type="button"
-                            onClick={() => { setDeleteType('all'); setDeleteItemIds([]) }}
+                            onClick={() => { setDeleteType('all'); setDeleteItemIds([]); setDeleteMode(null) }}
                             className={`button-base border ${deleteType === 'all'
                               ? 'border-red-400 bg-red-50 text-red-700'
                               : 'border-gray-300 bg-white text-gray-600'}`}
@@ -7268,7 +7274,7 @@ ${itemsText}`
 
                         {deleteType === 'items' && (
                           <div className="space-y-1.5 mt-2">
-                            <div className="modal-label text-gray-600">삭제 방식 선택</div>
+                            <div className="modal-label text-gray-600">삭제 방식 선택 <span className="text-red-500">*</span></div>
                             <div className="flex gap-2">
                               <button
                                 type="button"
