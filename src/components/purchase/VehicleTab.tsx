@@ -62,6 +62,8 @@ interface VehicleRequest {
   rejection_reason: string | null;
   business_trip_id: number | null;
   auto_created_by_trip: boolean;
+  vehicle_code: string | null;
+  requested_card_number: string[] | null;
   created_at: string | null;
   updated_at: string | null;
   requester?: { name: string; department: string | null } | null;
@@ -91,6 +93,19 @@ const COMPANY_VEHICLES = [
   { label: "F150 Raptor", plate: "8381", value: "F150 Raptor 8381" },
   { label: "PORTER", plate: "93부 0351", value: "PORTER 93부 0351" },
 ];
+
+const COMPANY_CARDS = [
+  { label: "출장용", number: "5914", value: "출장용 5914" },
+  { label: "청송", number: "0948", value: "청송 0948" },
+  { label: "공용1", number: "8967", value: "공용1 8967" },
+  { label: "공용2", number: "9976", value: "공용2 9976" },
+  { label: "원자재", number: "4963", value: "원자재 4963" },
+  { label: "기타1", number: "8936", value: "기타1 8936" },
+];
+
+type CompanyCardOption = (typeof COMPANY_CARDS)[number];
+
+const formatCompanyCardOptionLabel = (option: CompanyCardOption) => `${option.label} (${option.number})`;
 
 const VEHICLE_NAME_WIDTH = "90px";
 
@@ -202,6 +217,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
   const [formEndTime, setFormEndTime] = useState("18:00");
   const [datePopoverOpen, setDatePopoverOpen] = useState(false);
   const [formNotes, setFormNotes] = useState("");
+  const [formCardNumbers, setFormCardNumbers] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [successDialogOpen, setSuccessDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -431,6 +447,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
     setFormStartTime("09:00");
     setFormEndTime("18:00");
     setFormNotes("");
+    setFormCardNumbers([]);
   }, [currentUser]);
 
   useEffect(() => {
@@ -457,7 +474,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
 
     try {
       setSubmitting(true);
-      const { error } = await supabase.from("vehicle_requests").insert({
+      const { data: inserted, error } = await supabase.from("vehicle_requests").insert({
         requester_id: currentUser?.id || null,
         use_department: formDepartment,
         purpose: formPurpose,
@@ -469,7 +486,8 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
         start_at: combinedStart.toISOString(),
         end_at: combinedEnd.toISOString(),
         notes: formNotes || null,
-      });
+        requested_card_number: formCardNumbers.length > 0 ? formCardNumbers : null,
+      }).select("vehicle_code").single();
 
       if (error) throw error;
 
@@ -482,6 +500,8 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
             requester_email: currentUser?.email || "",
             vehicle_info: formVehicle,
             purpose: formPurpose,
+            vehicle_code: inserted?.vehicle_code || "",
+            card_numbers: formCardNumbers.join(", "),
           },
         },
       }).catch(() => {});
@@ -510,6 +530,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
     formDriverId,
     formCompanions,
     formNotes,
+    formCardNumbers,
     passengerCount,
     currentUser,
     supabase,
@@ -553,6 +574,8 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                   requester_name: requester.name || "",
                   vehicle_info: req.vehicle_info,
                   purpose: req.purpose,
+                  vehicle_code: req.vehicle_code || "",
+                  card_numbers: (req.requested_card_number || []).join(", "),
                 },
               },
             }).catch(() => {});
@@ -926,6 +949,26 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
               </div>
             </div>
 
+            <div className="doc-form-row">
+              <div className="doc-form-cell">
+                <div className="doc-form-cell-label">법인카드 선택</div>
+                <div className="doc-select-container">
+                  <ReactSelect
+                    isMulti
+                    options={COMPANY_CARDS}
+                    value={COMPANY_CARDS.filter((c) => formCardNumbers.includes(c.value))}
+                    onChange={(opts) => setFormCardNumbers(((opts || []) as unknown as { value: string }[]).map((o) => o.value))}
+                    getOptionLabel={(option) => formatCompanyCardOptionLabel(option as CompanyCardOption)}
+                    placeholder="카드 사용 시 선택 (복수 선택 가능)"
+                    isSearchable={false}
+                    styles={reactSelectStyles}
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                    menuShouldBlockScroll={false}
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="doc-form-row" style={{ borderBottom: "none" }}>
               <div className="doc-form-cell">
                 <div className="doc-form-cell-label">특이사항 (메모)</div>
@@ -1024,7 +1067,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                       요청차량
                     </th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[110px]">
-                      출장코드
+                      요청번호
                     </th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[135px]">
                       운행일시
@@ -1161,7 +1204,12 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                         {req.vehicle_info?.split(" ")[0] || "-"}
                       </td>
                       <td className="px-2 py-1.5 card-title whitespace-nowrap">
-                        {req.business_trip?.trip_code || "-"}
+                        <div className="leading-tight">
+                          <div>{req.vehicle_code || "-"}</div>
+                          {req.business_trip?.trip_code && (
+                            <div className="text-[9.5px] text-gray-500">{req.business_trip.trip_code}</div>
+                          )}
+                        </div>
                       </td>
                       <td className="px-2 py-0.5 whitespace-nowrap">
                         {req.start_at && req.end_at ? (
@@ -1454,6 +1502,23 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                 onChange={(e) => setFormPurpose(e.target.value)}
                 placeholder="거래처 미팅, 현장 출장 등"
                 className="h-[28px] text-xs bg-white border-[#d2d2d7] business-radius-input"
+              />
+            </div>
+
+            {/* 법인카드 선택 (전체폭) */}
+            <div>
+              <Label className="modal-label mb-1.5 block text-[11px]">법인카드 선택</Label>
+              <ReactSelect
+                isMulti
+                options={COMPANY_CARDS}
+                value={COMPANY_CARDS.filter((c) => formCardNumbers.includes(c.value))}
+                onChange={(opts) => setFormCardNumbers(((opts || []) as unknown as { value: string }[]).map((o) => o.value))}
+                getOptionLabel={(option) => formatCompanyCardOptionLabel(option as CompanyCardOption)}
+                placeholder="카드 사용 시 선택 (복수 선택 가능)"
+                isSearchable={false}
+                styles={reactSelectStyles}
+                menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                menuShouldBlockScroll={false}
               />
             </div>
 

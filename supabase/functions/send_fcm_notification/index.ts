@@ -869,6 +869,8 @@ Deno.serve(async (req)=>{
       const requesterEmail = dataMap['requester_email'] || '';
       const vehicleInfo = dataMap['vehicle_info'] || '';
       const purpose = dataMap['purpose'] || '';
+      const vehicleCode = dataMap['vehicle_code'] || '';
+      const cardNumbers = dataMap['card_numbers'] || '';
 
       // 요청자 본인이 담당자 역할이어도 자기 요청 알림은 제외
       const result = await getPurchaseRoleTokens(supabase, ['superadmin', 'admin'], requesterEmail || undefined);
@@ -880,6 +882,8 @@ Deno.serve(async (req)=>{
         const parts = [`${requesterName || '직원'}님이 차량 사용을 요청했습니다.`];
         if (vehicleInfo) parts.push(`차량: ${vehicleInfo}`);
         if (purpose) parts.push(`목적: ${purpose}`);
+        if (cardNumbers) parts.push(`카드: ${cardNumbers}`);
+        if (vehicleCode) parts.push(`요청번호: ${vehicleCode}`);
         body = parts.join('\n');
       }
 
@@ -895,6 +899,8 @@ Deno.serve(async (req)=>{
       const requesterEmail = dataMap['requester_email'] || '';
       const vehicleInfo = dataMap['vehicle_info'] || '';
       const purpose = dataMap['purpose'] || '';
+      const vehicleCode = dataMap['vehicle_code'] || '';
+      const cardNumbers = dataMap['card_numbers'] || '';
 
       if (requesterEmail) {
         const userToken = await getUserToken(supabase, requesterEmail);
@@ -912,6 +918,8 @@ Deno.serve(async (req)=>{
         const parts = [`${requesterName ? requesterName + '님의 ' : ''}차량 사용 요청이 승인되었습니다.`];
         if (vehicleInfo) parts.push(`차량: ${vehicleInfo}`);
         if (purpose) parts.push(`목적: ${purpose}`);
+        if (cardNumbers) parts.push(`카드(${cardNumbers})를 수령해 주세요.`);
+        if (vehicleCode) parts.push(`요청번호: ${vehicleCode}`);
         body = parts.join('\n');
       }
 
