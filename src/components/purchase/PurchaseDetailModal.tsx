@@ -1544,7 +1544,7 @@ ${itemsText}`
       
       // 로컬 상태의 삭제된 항목 유지 및 병합
       const currentDeletedItems = (purchase.items || purchase.purchase_request_items || []).filter(item => item.deleted_at);
-      const uniqueDeletedItems = currentDeletedItems.filter(delItem => !normalizedItems.some(actItem => actItem.id === delItem.id));
+      const uniqueDeletedItems = currentDeletedItems.filter(delItem => !normalizedItems.some(actItem => String(actItem.id) === String(delItem.id)));
       const mergedItems = [...normalizedItems, ...uniqueDeletedItems].sort((a, b) => {
         const la = a?.line_number ?? 999999;
         const lb = b?.line_number ?? 999999;
@@ -1579,7 +1579,7 @@ ${itemsText}`
       
       // 로컬 상태의 삭제된 항목 유지 및 병합
       const currentDeletedItems = (purchase?.items || purchase?.purchase_request_items || []).filter(item => item.deleted_at);
-      const uniqueDeletedItems = currentDeletedItems.filter(delItem => !normalizedItems.some(actItem => actItem.id === delItem.id));
+      const uniqueDeletedItems = currentDeletedItems.filter(delItem => !normalizedItems.some(actItem => String(actItem.id) === String(delItem.id)));
       const mergedItems = [...normalizedItems, ...uniqueDeletedItems].sort((a, b) => {
         const la = a?.line_number ?? 999999;
         const lb = b?.line_number ?? 999999;
@@ -2952,6 +2952,10 @@ ${itemsText}`
       let updatedCount = 0
       let insertedCount = 0
       let skippedCount = 0
+      // 신규 삽입된 품목의 실제 DB id (editedItems 인덱스 기준).
+      // 빈 id('') 항목이 캐시/낙관적 업데이트에 남으면 이후 새로고침으로 온 실제 행과
+      // 다른 품목으로 취급되어 화면에 중복 렌더링되므로, 저장 직후 실제 id를 반영한다.
+      const insertedIdByIndex = new Map<number, string>()
 
       // ✅ DB statement timeout/락 경합을 줄이기 위해 순차 처리 (Promise.all 제거)
       for (let index = 0; index < editedItems.length; index++) {
@@ -3062,24 +3066,41 @@ ${itemsText}`
             created_at: new Date().toISOString()
           };
           
-          // ✅ insert 결과(select/single)는 생략 (속도/타임아웃 개선)
+          // ✅ insert와 같은 요청에서 실제 id를 반환받는다 (별도 조회 왕복 없음).
+          // id를 받아두지 않으면 빈 id 항목이 캐시에 남아 새로고침 데이터와 중복 렌더링됨.
           const insertItemResult = await withTimeout(
             supabase
               .from('purchase_request_items')
-              .insert(insertData),
+              .insert(insertData)
+              .select('id')
+              .single(),
             itemTimeoutMs
-          ) as { error: { message: string } | null }
+          ) as { data: { id: number | string } | null; error: { message: string } | null }
           const error = insertItemResult?.error
 
           if (error) {
             logger.error('새 항목 생성 오류', error);
             throw error;
           }
+          if (insertItemResult?.data?.id != null) {
+            insertedIdByIndex.set(index, String(insertItemResult.data.id))
+          }
           insertedCount++
           logger.debug(`[handleSave] 아이템 ${index + 1} 삽입 완료`)
         }
       }
       logger.debug(`[handleSave] Step 4 완료: 수정 ${updatedCount} / 신규 ${insertedCount} / 변경없음(생략) ${skippedCount}`)
+
+      // 🚀 신규 품목에 실제 DB id를 반영한 최종 배열.
+      // 이후 캐시/낙관적 업데이트/로컬 상태는 전부 이 배열을 사용해
+      // 빈 id 임시 항목이 화면에 중복으로 남는 문제를 차단한다.
+      const savedItems = editedItems.map((it, idx) => {
+        const newId = insertedIdByIndex.get(idx)
+        return newId
+          ? { ...it, id: newId, purchase_request_id: String(purchase.id) }
+          : it
+      })
+      setEditedItems(savedItems)
 
       // 🚀 전체완료 함수와 정확히 동일한 패턴 적용 (메모리 캐시 포함)
       const purchaseIdNumber = purchase ? Number(purchase.id) : NaN
@@ -3110,7 +3131,7 @@ ${itemsText}`
       try {
         if (!Number.isNaN(purchaseIdNumber)) {
           const memoryUpdated = updatePurchaseInMemory(purchaseIdNumber, (prev) => {
-            const totalAmount = editedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
+            const totalAmount = savedItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
             
             return {
               ...prev,
@@ -3127,9 +3148,9 @@ ${itemsText}`
               project_vendor: sourceData?.project_vendor || prev.project_vendor,
               project_item: sourceData?.project_item || prev.project_item,
               total_amount: totalAmount,
-              // 🚀 품목 데이터도 메모리 캐시에 업데이트 (단가 등 실시간 반영)
-              items: editedItems,
-              purchase_request_items: editedItems,
+              // 🚀 품목 데이터도 메모리 캐시에 업데이트 (단가 등 실시간 반영, 실제 id 반영본)
+              items: savedItems,
+              purchase_request_items: savedItems,
               updated_at: new Date().toISOString()
             } as Purchase
           })
@@ -3143,7 +3164,7 @@ ${itemsText}`
         const applyOptimisticUpdate = () => {
           if (!Number.isNaN(purchaseIdNumber) && onOptimisticUpdate) {
             onOptimisticUpdate(purchaseIdNumber, prev => {
-              const finalItems = editedItems // 삭제된 항목이 이미 제외됨
+              const finalItems = savedItems // 실제 DB id 반영본 (삭제된 항목은 별도 처리됨)
               const totalAmount = finalItems.reduce((sum, item) => sum + (item.amount_value || 0), 0)
               
               return {

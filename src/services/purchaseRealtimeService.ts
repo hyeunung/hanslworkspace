@@ -407,7 +407,10 @@ class PurchaseRealtimeService {
       const currentItems = purchase.items || purchase.purchase_request_items || []
 
       // 이미 존재하는지 확인
-      const exists = currentItems.some(item => item.id === itemRecord.id)
+      // ⚠️ 캐시(문자열)와 Realtime payload(숫자)의 id 타입이 다를 수 있으므로 String 정규화 비교.
+      // 엄격 비교(===)를 쓰면 저장 직후 낙관적 업데이트로 넣은 품목과 매치되지 않아
+      // 같은 품목이 캐시에 두 번 들어가 화면에 중복 렌더링된다.
+      const exists = currentItems.some(item => String(item.id) === String(itemRecord.id))
       if (exists) {
         return purchase
       }
@@ -458,7 +461,7 @@ class PurchaseRealtimeService {
     if (!targetPurchaseId && itemRecord.id && purchaseMemoryCache.allPurchases) {
       for (const purchase of purchaseMemoryCache.allPurchases) {
         const items = purchase.items || purchase.purchase_request_items || []
-        const foundItem = items.find(item => item.id === itemRecord.id)
+        const foundItem = items.find(item => String(item.id) === String(itemRecord.id))
         if (foundItem) {
           targetPurchaseId = purchase.id
           logger.info('🔍 [Realtime] item ID로 purchase 찾음:', { itemId: String(itemRecord.id), purchaseId: String(targetPurchaseId) })
@@ -482,7 +485,7 @@ class PurchaseRealtimeService {
       }
 
       const updatedItems = currentItems.map(item => {
-        if (item.id !== itemRecord.id) return item
+        if (String(item.id) !== String(itemRecord.id)) return item
         const merged: PurchaseRequestItem = { ...item, ...itemRecord as PurchaseRequestItem }
         // ✅ Realtime payload가 null/undefined로 들어오는 경우 기존 값 보존 (0으로 롤백 방지)
         if (itemRecord.amount_value === null || itemRecord.amount_value === undefined) {
@@ -534,7 +537,7 @@ class PurchaseRealtimeService {
     if (!targetPurchaseId && record.id && purchaseMemoryCache.allPurchases) {
       for (const purchase of purchaseMemoryCache.allPurchases) {
         const items = purchase.items || purchase.purchase_request_items || []
-        const foundItem = items.find(item => item.id === record.id)
+        const foundItem = items.find(item => String(item.id) === String(record.id))
         if (foundItem) {
           targetPurchaseId = purchase.id
           logger.info('🔍 [Realtime] item ID로 purchase 찾음 (삭제):', { itemId: String(record.id), purchaseId: String(targetPurchaseId) })
