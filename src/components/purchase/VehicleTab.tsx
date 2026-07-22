@@ -33,6 +33,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
+import { AnchoredPortal } from "@/components/ui/AnchoredPortal";
 
 const VEHICLE_APPROVER_ROLES = ["hr", "superadmin"];
 
@@ -120,6 +121,65 @@ const formatVehicleOption = (option: { label: string; plate: string; value: stri
     <span className="text-gray-500">{option.plate}</span>
   </div>
 );
+
+// 운행지 미리 정의된 선택지 — 클릭 한 번으로 입력, 그 외에는 직접 타이핑
+const ROUTE_PRESET_OPTIONS = ["택배"];
+
+// 운행지 입력란: 직접 입력 + 미리 정의된 선택지 드롭다운
+function RouteAutocompleteInput({ value, onChange, className, placeholder }: {
+  value: string;
+  onChange: (v: string) => void;
+  className?: string;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<HTMLInputElement | null>(null);
+
+  // 입력값이 비어있거나 선택지 일부와 일치할 때만 노출
+  const filtered = useMemo(() => {
+    const q = value.trim();
+    if (!q) return ROUTE_PRESET_OPTIONS;
+    return ROUTE_PRESET_OPTIONS.filter((o) => o.includes(q) && o !== q);
+  }, [value]);
+
+  return (
+    <>
+      <Input
+        ref={setAnchorEl}
+        value={value}
+        onChange={(e) => {
+          onChange(e.target.value);
+          if (!open) setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        placeholder={placeholder}
+        className={className}
+      />
+      {open && filtered.length > 0 && (
+        <AnchoredPortal anchorEl={anchorEl}>
+          <div className="w-[160px] bg-white border border-gray-200 rounded-md shadow-lg py-1">
+            {filtered.map((o) => (
+              <button
+                key={o}
+                type="button"
+                // onBlur보다 먼저 선택이 확정되도록 mousedown에서 처리
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onChange(o);
+                  setOpen(false);
+                }}
+                className="w-full text-left px-2.5 py-1.5 text-xs font-medium text-gray-900 hover:bg-gray-50 transition-colors"
+              >
+                {o}
+              </button>
+            ))}
+          </div>
+        </AnchoredPortal>
+      )}
+    </>
+  );
+}
 
 const VEHICLE_NOTICE = `[차량신청자 주의사항]
 1. 차량 사용 후 반드시 주행거리, 주유상태를 확인하고 반납하여 주시기 바랍니다.
@@ -833,9 +893,9 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
             <div className="doc-form-row">
               <div className="doc-form-cell">
                 <div className="doc-form-cell-label">운행지 <span className="required">*</span></div>
-                <Input
+                <RouteAutocompleteInput
                   value={formRoute}
-                  onChange={(e) => setFormRoute(e.target.value)}
+                  onChange={setFormRoute}
                   placeholder="입력"
                   className="doc-form-input"
                 />
@@ -1383,9 +1443,9 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label className="modal-label mb-1.5 block text-[11px]">운행지<span className="text-red-500 ml-0.5">*</span></Label>
-                <Input
+                <RouteAutocompleteInput
                   value={formRoute}
-                  onChange={(e) => setFormRoute(e.target.value)}
+                  onChange={setFormRoute}
                   placeholder="입력"
                   className="h-[28px] text-xs bg-white border-[#d2d2d7] business-radius-input"
                 />
