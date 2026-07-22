@@ -815,6 +815,32 @@ Deno.serve(async (req)=>{
         ...dataMap,
         type: 'card_usage_approved',
       };
+    } else if (type === 'card_usage_requested') {
+      console.log('💳 [카드 알림] 신규 카드 사용 요청 → superadmin, hr, admin에게 알림');
+
+      const dataMap = data && typeof data === 'object' ? data : {};
+      const requesterName = dataMap['requester_name'] || '';
+      const requesterEmail = dataMap['requester_email'] || '';
+      const cardNumber = dataMap['card_number'] || '';
+      const usageCategory = dataMap['usage_category'] || '';
+
+      // 요청자 본인이 담당자 역할이어도 자기 요청 알림은 제외
+      const result = await getPurchaseRoleTokens(supabase, ['superadmin', 'hr', 'admin'], requesterEmail || undefined);
+      targetTokens = result.tokens;
+      targetEmails = result.emails;
+
+      if (!title) title = '💳 새 카드 사용 요청';
+      if (!body) {
+        const parts = [`${requesterName || '직원'}님이 카드 사용을 요청했습니다.`];
+        if (cardNumber) parts.push(`카드: ${cardNumber}`);
+        if (usageCategory) parts.push(`용도: ${usageCategory}`);
+        body = parts.join('\n');
+      }
+
+      data = {
+        ...dataMap,
+        type: 'card_usage_requested',
+      };
     } else if (type === 'ai_service_reviewed') {
       console.log('🤖 [AI 서비스 신청서 알림] 검토완료 -> admin에게 알림');
       const result = await getPurchaseRoleTokens(supabase, ['admin']);
