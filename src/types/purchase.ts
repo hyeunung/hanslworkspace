@@ -170,6 +170,8 @@ export interface PurchaseRequestItem {
   created_at: string
   updated_at: string
   deleted_at?: string | null
+  // 삭제 방식: 'hard' = 완전 삭제(목록에서 계속 숨김), 'soft' = 비활성화 표시(취소선으로 계속 노출)
+  delete_mode?: 'hard' | 'soft' | null
 }
 
 export interface PurchaseRequest {

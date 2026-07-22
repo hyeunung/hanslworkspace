@@ -182,6 +182,8 @@ function PurchaseDetailModal({
   const [editedPurchase, setEditedPurchase] = useState<PurchaseRequestWithDetails | null>(null)
   const [editedItems, setEditedItems] = useState<EditablePurchaseItem[]>([])
   const [deletedItemIds, setDeletedItemIds] = useState<string[]>([])
+  // deletedItemIds 중 '완전 삭제'로 지정된 것만 별도 추적 (저장 시 delete_mode 구분에 사용)
+  const [hardDeletedItemIds, setHardDeletedItemIds] = useState<string[]>([])
   const [userRoles, setUserRoles] = useState<string[]>([])
   const [currentUserName, setCurrentUserName] = useState<string>('')
   const [columnWidths, setColumnWidths] = useState<number[]>([])
@@ -1037,12 +1039,12 @@ ${itemsText}`
   }, [purchase, purchaseId, allPurchases, lastFetch, normalizeItems]); // purchase 객체 전체를 의존성으로 사용하여 실시간 업데이트 보장
 
   // 화면 표시용 순서: 편집 중에는 편집 상태 순서를 그대로, 보기 모드에서는 line_number 오름차순
-  // 보기 모드에서는 삭제된 품목(완전 삭제/비활성화 표시 모두)을 노출하지 않는다.
-  // DB에는 두 삭제 방식을 구분하는 컬럼이 없어 저장 후에는 구별이 불가능하므로,
-  // 완전 삭제된 품목이 번호가 어긋난 채로 다시 보이는 문제를 막기 위해 일괄적으로 숨긴다.
+  // 보기 모드에서는 완전 삭제(delete_mode='hard')된 품목만 숨기고,
+  // 비활성화 표시(delete_mode='soft')는 원래 약속대로 취소선과 함께 계속 노출한다.
+  // delete_mode가 없는 레거시 삭제 품목은 백필로 'soft' 처리되어 있어 계속 노출된다.
   const displayItems = useMemo(() => {
     if (isEditing) return editedItems || []
-    const base = (currentItems || []).filter(item => !item.deleted_at)
+    const base = (currentItems || []).filter(item => !(item.deleted_at && item.delete_mode === 'hard'))
     return [...base].sort((a, b) => {
       const la = a?.line_number ?? 999999
       const lb = b?.line_number ?? 999999
@@ -2474,6 +2476,7 @@ ${itemsText}`
       })
       setEditedItems(sortedItems)
       setDeletedItemIds([])
+      setHardDeletedItemIds([])
       // Edit 모드로 전환하기 전에 현재 너비 계산 (isEditing state가 아직 반영 전이므로 목표 상태를 명시적으로 전달)
       calculateOptimalColumnWidths(editing)
     }
@@ -2846,15 +2849,23 @@ ${itemsText}`
         // RPC(soft_delete_purchase_items)로 보관 처리: RLS SELECT 정책이 deleted_at 직접 쓰기를 막으므로
         // SECURITY DEFINER RPC로 우회. 남은 품목의 line_number 재정렬은 서버가 아니라
         // 완전 삭제 시 클라이언트에서 당긴 값을 Step 4의 품목 UPDATE로 저장하는 방식.
-        const deleteResult = await withTimeout(
-          supabase.rpc('soft_delete_purchase_items', { p_item_ids: deletedItemIds.map(Number) }),
-          STEP_TIMEOUT_MS
-        ) as { error: { message: string } | null }
-        const deleteError = deleteResult?.error
+        // delete_mode도 함께 기록해야 보기 모드에서 완전 삭제/비활성화 표시를 구분해 노출할 수 있으므로
+        // hard/soft 그룹을 나눠 각각 호출한다.
+        const hardIds = deletedItemIds.filter(id => hardDeletedItemIds.includes(id))
+        const softIds = deletedItemIds.filter(id => !hardDeletedItemIds.includes(id))
 
-        if (deleteError) {
-          logger.error('품목 삭제 에러:', deleteError)
-          throw deleteError
+        for (const [ids, mode] of [[hardIds, 'hard'], [softIds, 'soft']] as const) {
+          if (ids.length === 0) continue
+          const deleteResult = await withTimeout(
+            supabase.rpc('soft_delete_purchase_items', { p_item_ids: ids.map(Number), p_delete_mode: mode }),
+            STEP_TIMEOUT_MS
+          ) as { error: { message: string } | null }
+          const deleteError = deleteResult?.error
+
+          if (deleteError) {
+            logger.error('품목 삭제 에러:', deleteError)
+            throw deleteError
+          }
         }
       }
       logger.debug('[handleSave] Step 3 완료')
@@ -2894,6 +2905,7 @@ ${itemsText}`
         toast.success('모든 품목이 삭제되어 발주요청이 삭제되었습니다.')
         handleEditToggle(false)
         setDeletedItemIds([])
+        setHardDeletedItemIds([])
         onClose() // 모달 닫기
         
         // 데이터 새로고침
@@ -2945,6 +2957,26 @@ ${itemsText}`
       for (let index = 0; index < editedItems.length; index++) {
         const item = editedItems[index]
         if (item.deleted_at) {
+          // 완전 삭제로 다른 품목의 라인넘버가 당겨진 뒤, 같은 편집 세션에서 이 품목을
+          // 비활성화 표시로 삭제한 경우: 삭제 품목이라 아래 UPDATE 루프는 건너뛰지만,
+          // 로컬에서 이미 당겨진 line_number를 저장하지 않으면 활성 품목과 번호가 충돌한다.
+          const numericItemId = item.id ? Number(item.id) : null
+          if (numericItemId && !Number.isNaN(numericItemId) && numericItemId > 0) {
+            const original = originalItemsById.get(String(numericItemId))
+            if (original && (item.line_number ?? null) !== (original.line_number ?? null)) {
+              const lineFixResult = await withTimeout(
+                supabase
+                  .from('purchase_request_items')
+                  .update({ line_number: item.line_number ?? null, updated_at: new Date().toISOString() })
+                  .eq('id', numericItemId),
+                60000
+              ) as { error: { message: string } | null }
+              if (lineFixResult?.error) {
+                logger.error('삭제된 품목 라인넘버 보정 오류', lineFixResult.error)
+                throw lineFixResult.error
+              }
+            }
+          }
           continue
         }
         const itemTimeoutMs = 60000
@@ -3150,6 +3182,7 @@ ${itemsText}`
       toast.success('발주 내역이 성공적으로 저장되었습니다.')
       handleEditToggle(false)
       setDeletedItemIds([])
+      setHardDeletedItemIds([])
       
       logger.debug('[handleSave] 저장 완료! 로딩 해제')
       
@@ -3344,6 +3377,7 @@ ${itemsText}`
 
     if (mode === 'hard') {
       setDeletedItemIds(prev => [...prev, item.id])
+      setHardDeletedItemIds(prev => [...prev, item.id])
       setEditedItems(prev => shiftLinesAfterRemoval(
         prev.filter((_, i) => i !== index),
         item.line_number
@@ -3354,7 +3388,8 @@ ${itemsText}`
         if (i === index) {
           return {
             ...it,
-            deleted_at: new Date().toISOString()
+            deleted_at: new Date().toISOString(),
+            delete_mode: 'soft'
           }
         }
         return it
@@ -3366,12 +3401,14 @@ ${itemsText}`
     const item = editedItems[index]
     if (item.id) {
       setDeletedItemIds(prev => prev.filter(id => id !== item.id))
+      setHardDeletedItemIds(prev => prev.filter(id => id !== item.id))
       setEditedItems(prev => prev.map((it, i) => {
         if (i === index) {
-          const { deleted_at, ...rest } = it
+          const { deleted_at, delete_mode, ...rest } = it
           return {
             ...rest,
-            deleted_at: undefined
+            deleted_at: undefined,
+            delete_mode: undefined
           }
         }
         return it
@@ -6863,6 +6900,7 @@ ${itemsText}`
                   setEditedPurchase(purchase)
                   setEditedItems(purchase?.items || [])
                   setDeletedItemIds([])
+                  setHardDeletedItemIds([])
                 }}
                 className="button-base button-action-secondary"
               >
@@ -7561,6 +7599,7 @@ ${itemsText}`
                         setEditedPurchase(purchase)
                         setEditedItems(purchase?.items || [])
                         setDeletedItemIds([])
+                        setHardDeletedItemIds([])
                       }}
                       className="button-base button-action-secondary"
                     >
