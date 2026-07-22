@@ -447,6 +447,20 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
         description: formDescription.trim() || null,
       });
       if (error) throw error;
+
+      // 담당자(superadmin/hr/admin)에게 신규 요청 푸시 알림
+      supabase.functions.invoke("send_fcm_notification", {
+        body: {
+          type: "card_usage_requested",
+          data: {
+            requester_name: currentUser?.name || "",
+            requester_email: currentUser?.email || "",
+            card_number: formCard.value,
+            usage_category: category,
+          },
+        },
+      }).catch(() => {});
+
       if (isCreateMode) {
         resetForm();
       } else {
