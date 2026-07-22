@@ -1037,9 +1037,12 @@ ${itemsText}`
   }, [purchase, purchaseId, allPurchases, lastFetch, normalizeItems]); // purchase 객체 전체를 의존성으로 사용하여 실시간 업데이트 보장
 
   // 화면 표시용 순서: 편집 중에는 편집 상태 순서를 그대로, 보기 모드에서는 line_number 오름차순
+  // 보기 모드에서는 삭제된 품목(완전 삭제/비활성화 표시 모두)을 노출하지 않는다.
+  // DB에는 두 삭제 방식을 구분하는 컬럼이 없어 저장 후에는 구별이 불가능하므로,
+  // 완전 삭제된 품목이 번호가 어긋난 채로 다시 보이는 문제를 막기 위해 일괄적으로 숨긴다.
   const displayItems = useMemo(() => {
     if (isEditing) return editedItems || []
-    const base = currentItems || []
+    const base = (currentItems || []).filter(item => !item.deleted_at)
     return [...base].sort((a, b) => {
       const la = a?.line_number ?? 999999
       const lb = b?.line_number ?? 999999
@@ -2673,7 +2676,13 @@ ${itemsText}`
       toast.error('저장할 데이터가 없습니다.')
       return
     }
-    
+
+    // 🚀 재진입 방지: 저장이 이미 진행 중이면 중복 실행 차단 (품목 중복 저장 방지)
+    if (isSavingRef.current) {
+      logger.warn('[handleSave] 이미 저장 진행 중 - 중복 호출 차단')
+      return
+    }
+
     // 🚀 저장 로딩 상태 시작
     lastSaveAtRef.current = Date.now()
     // state 업데이트 전 ref도 즉시 갱신 (useEffect 타이밍 지연 방지)
@@ -6318,7 +6327,7 @@ ${itemsText}`
                     <Package className="w-4 h-4 mr-2 text-gray-600" />
                     품목 리스트
                     <span className="ml-2 badge-stats bg-gray-500 text-white">
-                      {currentItems?.length || 0}개
+                      {(isEditing ? editedItems?.length : displayItems?.length) || 0}개
                     </span>
                     {isEditing ? (
                       <ReactSelect
