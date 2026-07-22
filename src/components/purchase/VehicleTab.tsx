@@ -122,11 +122,11 @@ const formatVehicleOption = (option: { label: string; plate: string; value: stri
   </div>
 );
 
-// 운행지 미리 정의된 선택지 — 클릭 한 번으로 입력, 그 외에는 직접 타이핑
-const ROUTE_PRESET_OPTIONS = ["택배"];
+// 사용목적 미리 정의된 선택지 — 클릭 한 번으로 입력, 그 외에는 직접 타이핑
+const PURPOSE_PRESET_OPTIONS = ["택배"];
 
-// 운행지 입력란: 직접 입력 + 미리 정의된 선택지 드롭다운
-function RouteAutocompleteInput({ value, onChange, className, placeholder }: {
+// 사용목적 입력란: 직접 입력 + 미리 정의된 선택지 드롭다운
+function PurposeAutocompleteInput({ value, onChange, className, placeholder }: {
   value: string;
   onChange: (v: string) => void;
   className?: string;
@@ -138,8 +138,8 @@ function RouteAutocompleteInput({ value, onChange, className, placeholder }: {
   // 입력값이 비어있거나 선택지 일부와 일치할 때만 노출
   const filtered = useMemo(() => {
     const q = value.trim();
-    if (!q) return ROUTE_PRESET_OPTIONS;
-    return ROUTE_PRESET_OPTIONS.filter((o) => o.includes(q) && o !== q);
+    if (!q) return PURPOSE_PRESET_OPTIONS;
+    return PURPOSE_PRESET_OPTIONS.filter((o) => o.includes(q) && o !== q);
   }, [value]);
 
   return (
@@ -893,9 +893,9 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
             <div className="doc-form-row">
               <div className="doc-form-cell">
                 <div className="doc-form-cell-label">운행지 <span className="required">*</span></div>
-                <RouteAutocompleteInput
+                <Input
                   value={formRoute}
-                  onChange={setFormRoute}
+                  onChange={(e) => setFormRoute(e.target.value)}
                   placeholder="입력"
                   className="doc-form-input"
                 />
@@ -1000,9 +1000,9 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
             <div className="doc-form-row">
               <div className="doc-form-cell">
                 <div className="doc-form-cell-label">사용목적 <span className="required">*</span></div>
-                <Input
+                <PurposeAutocompleteInput
                   value={formPurpose}
-                  onChange={(e) => setFormPurpose(e.target.value)}
+                  onChange={setFormPurpose}
                   placeholder="거래처 미팅, 현장 출장 등"
                   className="doc-form-input"
                 />
@@ -1443,9 +1443,9 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label className="modal-label mb-1.5 block text-[11px]">운행지<span className="text-red-500 ml-0.5">*</span></Label>
-                <RouteAutocompleteInput
+                <Input
                   value={formRoute}
-                  onChange={setFormRoute}
+                  onChange={(e) => setFormRoute(e.target.value)}
                   placeholder="입력"
                   className="h-[28px] text-xs bg-white border-[#d2d2d7] business-radius-input"
                 />
@@ -1557,9 +1557,9 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
             {/* 사용목적 (텍스트 인풋 - 전체폭) */}
             <div>
               <Label className="modal-label mb-1.5 block text-[11px]">사용목적<span className="text-red-500 ml-0.5">*</span></Label>
-              <Input
+              <PurposeAutocompleteInput
                 value={formPurpose}
-                onChange={(e) => setFormPurpose(e.target.value)}
+                onChange={setFormPurpose}
                 placeholder="거래처 미팅, 현장 출장 등"
                 className="h-[28px] text-xs bg-white border-[#d2d2d7] business-radius-input"
               />
