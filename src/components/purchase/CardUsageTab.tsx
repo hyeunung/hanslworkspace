@@ -497,7 +497,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
       if (usage?.requester_id && !usage.business_trip_id) {
         const { data: requester } = await supabase
           .from("employees")
-          .select("email")
+          .select("email, name")
           .eq("id", usage.requester_id)
           .single();
 
@@ -507,6 +507,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
               type: "card_usage_approved",
               data: {
                 requester_email: requester.email,
+                requester_name: requester.name || "",
                 card_number: usage.card_number,
                 usage_category: usage.usage_category,
               },

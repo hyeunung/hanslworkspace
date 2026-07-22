@@ -785,27 +785,47 @@ Deno.serve(async (req)=>{
         type: 'business_trip_approved',
       };
     } else if (type === 'card_usage_approved') {
-      console.log('💳 [카드 알림] 카드 사용 승인 → 요청자에게 알림');
+      console.log('💳 [카드 알림] 카드 사용 승인 → 요청자 + lead buyer에게 알림');
 
       const dataMap = data && typeof data === 'object' ? data : {};
       const requesterEmail = dataMap['requester_email'] || '';
+      const requesterName = dataMap['requester_name'] || '';
       const cardNumber = dataMap['card_number'] || '';
       const usageCategory = dataMap['usage_category'] || '';
+
+      const tokens = [];
+      const emails = [];
+      const processedEmails = new Set();
 
       if (requesterEmail) {
         const userToken = await getUserToken(supabase, requesterEmail);
         if (userToken) {
-          targetTokens = [userToken];
-          targetEmails = [requesterEmail];
+          tokens.push(userToken);
+          emails.push(requesterEmail);
+          processedEmails.add(requesterEmail);
           console.log(`  ✅ 요청자에게 알림: ${requesterEmail}`);
         } else {
           console.log(`  ❌ 요청자 FCM 토큰 없음: ${requesterEmail}`);
         }
       }
 
-      if (!title) title = '💳 카드 사용 승인 완료';
+      // lead buyer에게도 승인 완료 알림 (요청자와 중복 시 제외)
+      const leadBuyerResult = await getPurchaseRoleTokens(supabase, ['lead buyer']);
+      leadBuyerResult.emails.forEach((email, idx) => {
+        if (!processedEmails.has(email)) {
+          tokens.push(leadBuyerResult.tokens[idx]);
+          emails.push(email);
+          processedEmails.add(email);
+          console.log(`  ✅ lead buyer에게 알림: ${email}`);
+        }
+      });
+
+      targetTokens = tokens;
+      targetEmails = emails;
+
+      if (!title) title = '✅ 카드 사용 승인 완료';
       if (!body) {
-        const parts = ['카드 사용 요청이 승인되었습니다.'];
+        const parts = [`${requesterName ? requesterName + '님의 ' : ''}카드 사용 요청이 승인되었습니다.`];
         if (cardNumber) parts.push(`카드: ${cardNumber}`);
         if (usageCategory) parts.push(`용도: ${usageCategory}`);
         body = parts.join('\n');
