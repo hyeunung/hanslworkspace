@@ -861,6 +861,64 @@ Deno.serve(async (req)=>{
         ...dataMap,
         type: 'card_usage_requested',
       };
+    } else if (type === 'vehicle_requested') {
+      console.log('🚗 [차량 알림] 신규 차량 사용 요청 → superadmin, admin에게 알림');
+
+      const dataMap = data && typeof data === 'object' ? data : {};
+      const requesterName = dataMap['requester_name'] || '';
+      const requesterEmail = dataMap['requester_email'] || '';
+      const vehicleInfo = dataMap['vehicle_info'] || '';
+      const purpose = dataMap['purpose'] || '';
+
+      // 요청자 본인이 담당자 역할이어도 자기 요청 알림은 제외
+      const result = await getPurchaseRoleTokens(supabase, ['superadmin', 'admin'], requesterEmail || undefined);
+      targetTokens = result.tokens;
+      targetEmails = result.emails;
+
+      if (!title) title = '🚗 새 차량 사용 요청';
+      if (!body) {
+        const parts = [`${requesterName || '직원'}님이 차량 사용을 요청했습니다.`];
+        if (vehicleInfo) parts.push(`차량: ${vehicleInfo}`);
+        if (purpose) parts.push(`목적: ${purpose}`);
+        body = parts.join('\n');
+      }
+
+      data = {
+        ...dataMap,
+        type: 'vehicle_requested',
+      };
+    } else if (type === 'vehicle_approved') {
+      console.log('🚗 [차량 알림] 차량 사용 승인 → 요청자에게 알림');
+
+      const dataMap = data && typeof data === 'object' ? data : {};
+      const requesterName = dataMap['requester_name'] || '';
+      const requesterEmail = dataMap['requester_email'] || '';
+      const vehicleInfo = dataMap['vehicle_info'] || '';
+      const purpose = dataMap['purpose'] || '';
+
+      if (requesterEmail) {
+        const userToken = await getUserToken(supabase, requesterEmail);
+        if (userToken) {
+          targetTokens = [userToken];
+          targetEmails = [requesterEmail];
+          console.log(`  ✅ 요청자에게 알림: ${requesterEmail}`);
+        } else {
+          console.log(`  ❌ 요청자 FCM 토큰 없음: ${requesterEmail}`);
+        }
+      }
+
+      if (!title) title = '✅ 차량 사용 승인 완료';
+      if (!body) {
+        const parts = [`${requesterName ? requesterName + '님의 ' : ''}차량 사용 요청이 승인되었습니다.`];
+        if (vehicleInfo) parts.push(`차량: ${vehicleInfo}`);
+        if (purpose) parts.push(`목적: ${purpose}`);
+        body = parts.join('\n');
+      }
+
+      data = {
+        ...dataMap,
+        type: 'vehicle_approved',
+      };
     } else if (type === 'ai_service_reviewed') {
       console.log('🤖 [AI 서비스 신청서 알림] 검토완료 -> admin에게 알림');
       const result = await getPurchaseRoleTokens(supabase, ['admin']);

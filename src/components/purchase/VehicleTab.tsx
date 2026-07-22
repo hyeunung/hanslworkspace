@@ -473,6 +473,19 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
 
       if (error) throw error;
 
+      // 담당자(superadmin/admin)에게 신규 요청 푸시 알림
+      supabase.functions.invoke("send_fcm_notification", {
+        body: {
+          type: "vehicle_requested",
+          data: {
+            requester_name: currentUser?.name || "",
+            requester_email: currentUser?.email || "",
+            vehicle_info: formVehicle,
+            purpose: formPurpose,
+          },
+        },
+      }).catch(() => {});
+
       if (isCreateMode) {
         resetForm();
       } else {
@@ -521,12 +534,36 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
         toast.success("배차 요청이 승인되었습니다.");
         loadRequests();
         onBadgeRefresh?.();
+
+        // 요청자에게 승인 완료 푸시 알림 (출장 연동 안된 건만)
+        const req = requests.find((r) => r.id === requestId);
+        if (req?.requester_id && !req.business_trip_id) {
+          const { data: requester } = await supabase
+            .from("employees")
+            .select("email, name")
+            .eq("id", req.requester_id)
+            .single();
+
+          if (requester?.email) {
+            supabase.functions.invoke("send_fcm_notification", {
+              body: {
+                type: "vehicle_approved",
+                data: {
+                  requester_email: requester.email,
+                  requester_name: requester.name || "",
+                  vehicle_info: req.vehicle_info,
+                  purpose: req.purpose,
+                },
+              },
+            }).catch(() => {});
+          }
+        }
       } catch (err) {
         logger.error("배차 승인 실패", err);
         toast.error("승인 처리에 실패했습니다.");
       }
     },
-    [supabase, currentUser, loadRequests]
+    [supabase, currentUser, loadRequests, requests]
   );
 
   const handleReject = useCallback(async () => {
