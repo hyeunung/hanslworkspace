@@ -1312,21 +1312,12 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                               </PopoverContent>
                             </Popover>
                           ) : canCancelReturn ? (
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <button className="badge-stats bg-green-500 text-white cursor-pointer hover:bg-green-600">
-                                  카드반납
-                                </button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-2" side="right" align="start">
-                                <Button
-                                  className="button-base bg-red-500 hover:bg-red-600 text-white"
-                                  onClick={() => handleCardReturnCancel(u.id)}
-                                >
-                                  카드반납 취소
-                                </Button>
-                              </PopoverContent>
-                            </Popover>
+                            <button
+                              className="badge-stats bg-green-500 text-white cursor-pointer hover:bg-green-600"
+                              onClick={() => handleCardReturnCancel(u.id)}
+                            >
+                              카드반납
+                            </button>
                           ) : (
                             getStatusBadge(u.approval_status)
                           )}
