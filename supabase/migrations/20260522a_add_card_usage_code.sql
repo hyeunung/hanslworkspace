@@ -1,6 +1,6 @@
 -- 법인카드 사용 요청 코드(HCU) 자동 생성
--- 출장 미연동 카드가 승인완료되면 HCU+YYMMDD+3자리 일련번호 코드를 부여한다.
--- (출장 연동 카드는 출장코드를 그대로 사용하므로 코드 미생성)
+-- 출장 미연동 카드사용 건에 HCU+YYMMDD+3자리 일련번호 코드를 부여한다.
+-- 승인 상태와 무관하게 등록 즉시 생성. (출장 연동 카드는 출장코드를 그대로 사용하므로 코드 미생성)
 
 -- 1) 코드 칼럼 추가
 ALTER TABLE card_usages
@@ -30,13 +30,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 3) 승인완료 시 코드 자동 부여 트리거
---    승인완료/정산완료/반납완료(approved/settled/returned) && 출장 미연동 && 코드 미보유일 때만 생성
+-- 3) 코드 자동 부여 트리거
+--    출장 미연동 && 코드 미보유일 때 생성 (승인 상태 무관, 등록 즉시)
 CREATE OR REPLACE FUNCTION card_usages_assign_code()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF NEW.approval_status IN ('approved', 'settled', 'returned')
-     AND NEW.business_trip_id IS NULL
+  IF NEW.business_trip_id IS NULL
      AND (NEW.card_usage_code IS NULL OR btrim(NEW.card_usage_code) = '') THEN
     NEW.card_usage_code := generate_card_usage_code(
       COALESCE(timezone('Asia/Seoul', NEW.created_at), timezone('Asia/Seoul', now()))::date
@@ -51,7 +50,7 @@ CREATE TRIGGER card_usages_assign_code_trigger
   BEFORE INSERT OR UPDATE ON card_usages
   FOR EACH ROW EXECUTE FUNCTION card_usages_assign_code();
 
--- 4) 기존 승인완료(approved/settled/returned) 출장 미연동 카드에 코드 백필
+-- 4) 기존 출장 미연동 카드사용 건 전체에 코드 백필 (승인 상태 무관)
 DO $$
 DECLARE
   r record;
@@ -60,8 +59,7 @@ BEGIN
     SELECT id,
            COALESCE(timezone('Asia/Seoul', created_at), timezone('Asia/Seoul', now()))::date AS d
     FROM card_usages
-    WHERE approval_status IN ('approved', 'settled', 'returned')
-      AND business_trip_id IS NULL
+    WHERE business_trip_id IS NULL
       AND (card_usage_code IS NULL OR btrim(card_usage_code) = '')
     ORDER BY created_at, id
   LOOP

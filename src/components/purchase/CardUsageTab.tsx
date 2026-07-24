@@ -708,6 +708,41 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
     }
   }, [supabase, currentUser, usages, loadUsages, onBadgeRefresh, findOrCreatePlace, generatePurchaseOrderNumber]);
 
+  const handleCardReturnCancel = useCallback(async (id: number) => {
+    if (!confirm("카드반납을 취소하시겠습니까?\n반납 시 자동 생성된 발주도 함께 삭제됩니다.")) return;
+    try {
+      const usage = usages.find((u) => u.id === id);
+      if (!usage) throw new Error("카드사용 정보를 찾을 수 없습니다.");
+
+      // 1. 반납 시 자동 생성된 발주 삭제 (품목은 FK cascade로 함께 삭제)
+      const { error: prError } = await supabase
+        .from("purchase_requests")
+        .delete()
+        .eq("card_usage_id", id);
+      if (prError) throw prError;
+
+      // 2. 반납 상태 되돌리기 (영수증 있으면 settled, 없으면 approved)
+      const hasReceipts = (usage.receipts || []).length > 0;
+      const { error } = await supabase
+        .from("card_usages")
+        .update({
+          approval_status: hasReceipts ? "settled" : "approved",
+          card_returned: false,
+          card_returned_at: null,
+          card_returned_by: null,
+        })
+        .eq("id", id);
+      if (error) throw error;
+
+      toast.success("카드반납이 취소되었습니다.");
+      loadUsages();
+      onBadgeRefresh?.();
+    } catch (err) {
+      logger.error("카드반납 취소 실패", err);
+      toast.error("카드반납 취소에 실패했습니다.");
+    }
+  }, [supabase, usages, loadUsages, onBadgeRefresh]);
+
   const openReceiptModal = useCallback((usage: CardUsage) => {
     setReceiptModalUsage(usage);
     setReceiptFile(null);
@@ -1229,6 +1264,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                     const isOwner = currentUser?.id === u.requester_id;
                     const canUploadReceipt = (isOwner || isAppAdmin) && ["approved", "settled"].includes(u.approval_status) && !u.card_returned;
                     const canReturn = canReturnCard && ["approved", "settled"].includes(u.approval_status) && !u.card_returned && !u.business_trip_id;
+                    const canCancelReturn = canReturnCard && u.approval_status === "returned" && u.card_returned && !u.business_trip_id;
 
                     return (
                       <tr
@@ -1272,6 +1308,22 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                                   onClick={() => handleCardReturn(u.id)}
                                 >
                                   카드반납 처리
+                                </Button>
+                              </PopoverContent>
+                            </Popover>
+                          ) : canCancelReturn ? (
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button className="badge-stats bg-green-500 text-white cursor-pointer hover:bg-green-600">
+                                  카드반납
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-2" side="right" align="start">
+                                <Button
+                                  className="button-base bg-red-500 hover:bg-red-600 text-white"
+                                  onClick={() => handleCardReturnCancel(u.id)}
+                                >
+                                  카드반납 취소
                                 </Button>
                               </PopoverContent>
                             </Popover>
