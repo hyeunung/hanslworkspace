@@ -69,10 +69,11 @@ export default function UpdateNotificationModal() {
                     </p>
                   )}
                   {entry.image && (
+                    // 세로형 스크린샷도 스크롤 없이 변경사항 목록과 함께 보이도록 높이를 제한
                     <img
                       src={entry.image}
                       alt={entry.title}
-                      className="w-full rounded-md border border-gray-200 mb-2.5"
+                      className="w-auto max-w-full max-h-[260px] mx-auto rounded-md border border-gray-200 mb-2.5"
                     />
                   )}
                   <div className="space-y-1.5">

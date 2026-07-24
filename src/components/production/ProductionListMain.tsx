@@ -382,8 +382,13 @@ function NotifyTeamsPicker({ teams, onChange }: { teams: string[]; onChange: (te
 
 // 행 추가 전 신규 등록 알림 대상 선택 팝오버 — 양승진은 항상 고정 수신(해제 불가),
 // 부서는 1개 이상 필수 선택(중복 선택 가능). 선택 전에는 행 추가 진행 버튼이 비활성화된다.
-function NewRowNotifyPopover({ onConfirm }: { onConfirm: (teams: string[]) => void }) {
+// 생성 행 수(기본 1)를 입력하면 저장 시 수주번호를 순차 채번하며 그 개수만큼 행이 생성된다.
+const MAX_ADD_ROW_COUNT = 20
+function NewRowNotifyPopover({ onConfirm }: { onConfirm: (teams: string[], count: number) => void }) {
   const [teams, setTeams] = useState<string[]>([])
+  const [countText, setCountText] = useState('1')
+  // 입력 중 빈 값/이상값은 그대로 두되, 실제 사용값은 1~MAX로 보정
+  const count = Math.min(MAX_ADD_ROW_COUNT, Math.max(1, parseInt(countText, 10) || 1))
   const toggle = (team: string) => {
     setTeams(prev => prev.includes(team) ? prev.filter(t => t !== team) : [...prev, team])
   }
@@ -416,13 +421,27 @@ function NewRowNotifyPopover({ onConfirm }: { onConfirm: (teams: string[]) => vo
           </button>
         )
       })}
+      <div className="border-t border-gray-200 mt-0.5" />
+      <div className="flex items-center justify-between gap-2 px-1 py-0.5">
+        <span className="text-[10px] text-gray-500 whitespace-nowrap">생성 행 수</span>
+        <input
+          type="number"
+          min={1}
+          max={MAX_ADD_ROW_COUNT}
+          value={countText}
+          onChange={(e) => setCountText(e.target.value)}
+          onBlur={() => setCountText(String(count))}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="w-12 h-5 bg-white border border-gray-300 rounded px-1 text-[10px] text-right text-gray-700 focus:outline-none focus:border-hansl-500"
+        />
+      </div>
       <button
         type="button"
         disabled={teams.length === 0}
-        onClick={() => onConfirm(teams)}
+        onClick={() => onConfirm(teams, count)}
         className="hansl-btn-primary justify-center mt-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        <span className="button-text text-white">행 추가</span>
+        <span className="button-text text-white">{count > 1 ? `행 추가 (${count}행)` : '행 추가'}</span>
       </button>
       {teams.length === 0 && (
         <span className="text-[9px] text-red-500 px-1">알림 보낼 부서를 1개 이상 선택하세요</span>
@@ -680,6 +699,8 @@ export default function ProductionListMain() {
   // 행 추가 버튼 클릭 시 열리는 신규 등록 알림 대상 선택 팝오버 + 확정된 선택값
   const [addNotifyPicker, setAddNotifyPicker] = useState<'pcb' | 'cable' | null>(null)
   const [newRowNotifyTeams, setNewRowNotifyTeams] = useState<string[]>([])
+  // 행 추가 팝오버에서 입력한 생성 행 수 — 저장 시 이 개수만큼 동일 내용으로 행을 생성한다
+  const [addRowCount, setAddRowCount] = useState(1)
 
   // 필터·검색·저장뷰·제작구분(칩 드래그)·패널 접기 상태 — useProductionTableFilters로 분리
   const {
@@ -1283,11 +1304,21 @@ export default function ProductionListMain() {
       }
       // 신규 등록 알림(푸시+이메일) 대상 — DB 트리거가 이 칼럼을 읽어 선택된 부서+양승진(고정)에게 발송
       sanitized.new_row_notify_teams = newRowNotifyTeams
-      const created = await productionService.createProductionPcb(sanitized)
-      if (created?.id) pushUndo({ kind: 'deleteInserted', table: 'production_pcbs', id: created.id, label: '행 추가(PCB)' })
-      toast.success('신규 PCB 항목이 저장되었습니다.')
+      // 생성 행 수만큼 반복 생성 — 두 번째 행부터는 저장 시점 기준으로 수주번호를 새로 채번
+      const count = Math.max(1, addRowCount)
+      let created: ProductionPcb | null = null
+      for (let i = 0; i < count; i++) {
+        const rowData = { ...sanitized }
+        if (i > 0) {
+          rowData.sales_order_number = await productionService.generateNextSalesOrderNumber(getKstTodayISO())
+        }
+        created = await productionService.createProductionPcb(rowData)
+        if (created?.id) pushUndo({ kind: 'deleteInserted', table: 'production_pcbs', id: created.id, label: count > 1 ? `행 추가(PCB ${i + 1}/${count})` : '행 추가(PCB)' })
+      }
+      toast.success(count > 1 ? `신규 PCB 항목 ${count}건이 저장되었습니다.` : '신규 PCB 항목이 저장되었습니다.')
       setAddingPcbRow(null)
       setNewRowNotifyTeams([])
+      setAddRowCount(1)
       // 저장된 행의 요청일이 현재 월/연도 필터 밖이면(예: 6월을 보는데 오늘=7월로 저장),
       // 저장은 됐지만 목록에 안 보여 "저장이 안 된 것처럼" 보이므로 필터를 해당 행 기준으로 이동시켜 노출
       focusFilterOnRow('pcb', created?.request_date)
@@ -1340,11 +1371,21 @@ export default function ProductionListMain() {
       }
       // 신규 등록 알림(푸시+이메일) 대상 — DB 트리거가 이 칼럼을 읽어 선택된 부서+양승진(고정)에게 발송
       sanitized.new_row_notify_teams = newRowNotifyTeams
-      const created = await productionService.createProductionCable(sanitized)
-      if (created?.id) pushUndo({ kind: 'deleteInserted', table: 'production_cables', id: created.id, label: '행 추가(Cable)' })
-      toast.success('신규 Cable/Case 항목이 저장되었습니다.')
+      // 생성 행 수만큼 반복 생성 — 두 번째 행부터는 저장 시점 기준으로 수주번호를 새로 채번
+      const count = Math.max(1, addRowCount)
+      let created: ProductionCable | null = null
+      for (let i = 0; i < count; i++) {
+        const rowData = { ...sanitized }
+        if (i > 0) {
+          rowData.sales_order_number = await productionService.generateNextSalesOrderNumber(getKstTodayISO())
+        }
+        created = await productionService.createProductionCable(rowData)
+        if (created?.id) pushUndo({ kind: 'deleteInserted', table: 'production_cables', id: created.id, label: count > 1 ? `행 추가(Cable ${i + 1}/${count})` : '행 추가(Cable)' })
+      }
+      toast.success(count > 1 ? `신규 Cable/Case 항목 ${count}건이 저장되었습니다.` : '신규 Cable/Case 항목이 저장되었습니다.')
       setAddingCableRow(null)
       setNewRowNotifyTeams([])
+      setAddRowCount(1)
       focusFilterOnRow('cable', created?.request_date)
     } catch (err) {
       console.error(err)
@@ -4530,8 +4571,9 @@ export default function ProductionListMain() {
                   </button>
                   {addNotifyPicker === 'pcb' && (
                     <NewRowNotifyPopover
-                      onConfirm={(teams) => {
+                      onConfirm={(teams, count) => {
                         setNewRowNotifyTeams(teams)
+                        setAddRowCount(count)
                         setAddNotifyPicker(null)
                         handleAddClick('pcb')
                       }}
@@ -4951,7 +4993,7 @@ export default function ProductionListMain() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setAddingPcbRow(null)}
+                            onClick={() => { setAddingPcbRow(null); setAddRowCount(1) }}
                             className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-600"
                             title="취소"
                           >
@@ -5144,8 +5186,9 @@ export default function ProductionListMain() {
                   </button>
                   {addNotifyPicker === 'cable' && (
                     <NewRowNotifyPopover
-                      onConfirm={(teams) => {
+                      onConfirm={(teams, count) => {
                         setNewRowNotifyTeams(teams)
+                        setAddRowCount(count)
                         setAddNotifyPicker(null)
                         handleAddClick('cable')
                       }}
@@ -5391,7 +5434,7 @@ export default function ProductionListMain() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setAddingCableRow(null)}
+                            onClick={() => { setAddingCableRow(null); setAddRowCount(1) }}
                             className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-600"
                             title="취소"
                           >
