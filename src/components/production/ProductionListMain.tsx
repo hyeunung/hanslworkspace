@@ -4375,8 +4375,12 @@ export default function ProductionListMain() {
                     )
   }
 
-  const showPcbTable = (tableView === 'all' || tableView === 'pcb') && pcbFilter.categories.length > 0
-  const showCableTable = (tableView === 'all' || tableView === 'cable') && cableFilter.categories.length > 0
+  // 섹션(카드/필터)은 뷰 선택만 따르고, 표 본문만 제작구분 선택 여부를 따른다.
+  // 제작구분 칩을 모두 꺼도 필터 툴바는 남아 있어야 다시 켤 수 있다 (없으면 새로고침 외에 복구 불가).
+  const showPcbSection = tableView === 'all' || tableView === 'pcb'
+  const showCableSection = tableView === 'all' || tableView === 'cable'
+  const showPcbTable = showPcbSection && pcbFilter.categories.length > 0
+  const showCableTable = showCableSection && cableFilter.categories.length > 0
 
 
   return (
@@ -4405,7 +4409,7 @@ export default function ProductionListMain() {
 
       {/* 필터 툴바(PCB 전용) — PCB 뷰(전체/PCB)일 때만 표시. Cable만 볼 때는 Cable 표 자체 필터만 남긴다.
           아래 표와 붙이고(rounded-b-none/border-b-0), 헤더로 접기/펴기 */}
-      {(tableView === 'all' || tableView === 'pcb') && (
+      {showPcbSection && (
       <div className="card-professional rounded-b-none border-b-0 overflow-hidden">
         {/* 헤더: 좌측 사이드바처럼 접기/펴기 토글 */}
         <button
@@ -5027,9 +5031,17 @@ export default function ProductionListMain() {
           </div>
         )}
 
-        {/* 테이블 2: 케이블 & 케이스 제작현황 (PCB 표가 없으면 이 표가 필터에 붙어 상단 평평) */}
-        {showCableTable && (
-          <div className={`card-professional overflow-hidden ${!showPcbTable ? 'rounded-t-none' : ''}`}>
+        {/* PCB 뷰인데 제작구분이 모두 꺼진 경우 — 표 대신 안내만 표시 (필터 툴바는 위에 그대로 남음) */}
+        {showPcbSection && !showPcbTable && (
+          <div className="card-professional overflow-hidden rounded-t-none">
+            <div className="text-center py-8 text-xs text-gray-400">선택된 제작구분이 없습니다. 위 필터에서 제작구분을 선택해주세요.</div>
+          </div>
+        )}
+
+        {/* 테이블 2: 케이블 & 케이스 제작현황 (PCB 표가 없으면 이 표가 필터에 붙어 상단 평평)
+            제작구분을 모두 꺼도 카드·필터는 유지하고 표 본문만 안내로 대체한다. */}
+        {showCableSection && (
+          <div className="card-professional overflow-hidden">
             {/* Cable 테이블 전용 필터 — 자체 접기 토글 (상단 패널과 독립) */}
             <button
               type="button"
@@ -5106,6 +5118,10 @@ export default function ProductionListMain() {
               </div>
             )}
 
+            {!showCableTable ? (
+              <div className="text-center py-8 text-xs text-gray-400">선택된 제작구분이 없습니다. 위 필터에서 제작구분을 선택해주세요.</div>
+            ) : (
+            <>
             <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between bg-gray-50/50">
               <div className="flex items-center gap-2">
                 <span className="modal-section-title">Cable & Case 제작 현황</span>
@@ -5465,6 +5481,8 @@ export default function ProductionListMain() {
                 </tbody>
               </table>
             </div>
+            </>
+            )}
           </div>
         )}
       </div>
