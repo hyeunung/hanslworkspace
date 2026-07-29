@@ -103,12 +103,13 @@ export function usePurchaseTableActions({ currentUserRoles, onRefresh }: UsePurc
         return
       }
 
-      const { data: orderItems, error: itemsError } = await supabase
+      const { data: allOrderItems, error: itemsError } = await supabase
         .from('purchase_request_items')
         .select('*')
         .eq('purchase_order_number', purchase.purchase_order_number)
         .order('line_number')
-      if (itemsError || !orderItems || orderItems.length === 0) {
+      const orderItems = (allOrderItems || []).filter((item: PurchaseRequestItem) => !item.deleted_at)
+      if (itemsError || orderItems.length === 0) {
         toast.error('해당 발주요청번호의 품목 데이터를 찾을 수 없습니다.')
         return
       }
