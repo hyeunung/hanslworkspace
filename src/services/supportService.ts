@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/client'
 import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { logger } from '@/lib/logger'
 import { parseRoles } from '@/utils/roleHelper'
-import { removePurchaseFromMemory, removeItemFromMemory, findPurchaseInMemory, updatePurchaseInMemory } from '@/stores/purchaseMemoryStore'
+import { removePurchaseFromMemory, removeItemFromMemory, findPurchaseInMemory, updatePurchaseInMemory, notifyCacheListeners } from '@/stores/purchaseMemoryStore'
 
 export interface SupportAttachment {
   url: string
@@ -310,9 +310,48 @@ class SupportService {
         return { success: false, error: '문의 ID를 확인할 수 없습니다.' }
       }
 
+      // ✅ 입고일 변경 요청은 진입 경로와 무관하게 지연 알림 차단 플래그를 즉시 세움
+      // (플래그가 없으면 처리 완료 전까지 홈의 입고 지연 알림 모달이 계속 뜸)
+      if (payload.inquiry_type === 'delivery_date_change' && payload.purchase_request_id) {
+        await this.markDeliveryRevisionRequested(
+          payload.purchase_request_id,
+          employee?.name || user.email || 'unknown'
+        )
+      }
+
       return { success: true, inquiryId }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : '문의 접수 실패' }
+    }
+  }
+
+  // 입고일 변경 요청 접수 시 지연 알림 차단 플래그 설정 (실패해도 문의 접수 자체는 유지)
+  private async markDeliveryRevisionRequested(purchaseRequestId: number, byName: string): Promise<void> {
+    try {
+      const nowIso = new Date().toISOString()
+      const { error } = await this.supabase
+        .from('purchase_requests')
+        .update({
+          delivery_revision_requested: true,
+          delivery_revision_requested_at: nowIso,
+          delivery_revision_requested_by: byName
+        })
+        .eq('id', purchaseRequestId)
+
+      if (error) {
+        logger.error('입고일 변경 요청 플래그 업데이트 실패', error)
+        return
+      }
+
+      const updated = updatePurchaseInMemory(purchaseRequestId, (p) => ({
+        ...p,
+        delivery_revision_requested: true,
+        delivery_revision_requested_at: nowIso,
+        delivery_revision_requested_by: byName
+      }))
+      if (updated) notifyCacheListeners()
+    } catch (e) {
+      logger.error('입고일 변경 요청 플래그 업데이트 실패', e)
     }
   }
 
