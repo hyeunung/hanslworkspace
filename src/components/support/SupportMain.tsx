@@ -10,7 +10,7 @@ import { MessageCircle, Send, Calendar, Search, CheckCircle, Clock, AlertCircle,
 import { supportService, type SupportInquiry, type SupportInquiryType, type SupportAttachment, type SupportInquiryMessage, type SupportInquiryPayload } from '@/services/supportService'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { removePurchaseFromMemory, updatePurchaseInMemory, notifyCacheListeners } from '@/stores/purchaseMemoryStore'
+import { removePurchaseFromMemory } from '@/stores/purchaseMemoryStore'
 import { format } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { parseRoles } from '@/utils/roleHelper'
@@ -231,7 +231,6 @@ export default function SupportMain() {
   // ✅ 입고 지연 알림(DeliveryDateWarningModal)에서 진입한 경우: 입고일 변경 요청으로 화면 고정
   const [lockedInquiryType, setLockedInquiryType] = useState<string | null>(null)
   const [lockedPurchaseId, setLockedPurchaseId] = useState<number | null>(null)
-  const [entrySource, setEntrySource] = useState<string | null>(null)
   const [returnTo, setReturnTo] = useState<string | null>(null)
 
   const createRowId = () => `row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -585,7 +584,6 @@ export default function SupportMain() {
     const returnToParam = params.get('returnTo')
 
     if (returnToParam) setReturnTo(returnToParam)
-    if (sourceParam) setEntrySource(sourceParam)
 
     // 입고 지연 알림에서만 '입고일 변경 요청'으로 고정
     if (sourceParam === 'delivery-warning' && typeParam === 'delivery_date_change') {
@@ -1444,51 +1442,8 @@ ${itemsText}`;
     })
 
     if (result.success) {
-      // ✅ 입고 지연 알림 경로로 들어온 "입고일 변경 요청"은 차단 해제 플래그도 함께 올림
-      if (
-        entrySource === 'delivery-warning' &&
-        inquiryType === 'delivery_date_change' &&
-        selectedPurchase?.id
-      ) {
-        try {
-          const supabase = createClient()
-          const nowIso = new Date().toISOString()
-          const { data: { user } } = await supabase.auth.getUser()
-          const userEmail = user?.email || null
-
-          // 가능한 경우 employees에서 이름 조회 (없으면 기존 selectedPurchase.requester_name fallback)
-          let byName: string | null = null
-          if (userEmail) {
-            const { data: emp } = await supabase
-              .from('employees')
-              .select('name')
-              .eq('email', userEmail)
-              .maybeSingle()
-            byName = (emp as { name?: string } | null)?.name || null
-          }
-
-          const { error } = await supabase
-            .from('purchase_requests')
-            .update({
-              delivery_revision_requested: true,
-              delivery_revision_requested_at: nowIso,
-              delivery_revision_requested_by: byName || userEmail || 'unknown'
-            })
-            .eq('id', selectedPurchase.id)
-
-          if (!error) {
-            const updated = updatePurchaseInMemory(selectedPurchase.id, (p) => ({
-              ...p,
-              delivery_revision_requested: true,
-              delivery_revision_requested_at: nowIso,
-              delivery_revision_requested_by: byName || userEmail || 'unknown'
-            }))
-            if (updated) notifyCacheListeners()
-          }
-        } catch {
-          // 플래그 업데이트 실패는 문의 접수 자체를 막지 않음
-        }
-      }
+      // ℹ️ 입고일 변경 요청의 지연 알림 차단 플래그는 supportService.createInquiry에서
+      //    진입 경로와 무관하게 일괄 설정됨
 
       // ✅ 업체등록/수정 요청이면 lead buyer에게 푸시 알림 (실패해도 접수 흐름은 유지)
       if (inquiryType === 'new_vendor') {
