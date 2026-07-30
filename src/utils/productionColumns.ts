@@ -237,7 +237,8 @@ export const loadHiddenCols = (type: 'pcb' | 'cable'): string[] => {
 }
 
 // 내용이 길어질 수 있는 메모성 텍스트 칼럼 — 편집 시 여러 줄 textarea 팝오버로 띄운다
-export const MEMO_TEXT_FIELDS = ['reference', 'changes_memo', 'qa_notes', 'design_review', 'delivery_notes', 'spec_details', 'delivery_destination', 'received_destination']
+// (완제품입고는 분할입고 시 'YYYY-MM-DD N개' 줄이 쌓이므로 줄바꿈 보존을 위해 포함)
+export const MEMO_TEXT_FIELDS = ['reference', 'changes_memo', 'qa_notes', 'design_review', 'delivery_notes', 'spec_details', 'delivery_destination', 'received_destination', 'final_product_stock']
 
 // 같은 칼럼 다중선택 시 '값'을 일괄 편집할 수 있는 필드들. 여기 없는 필드는 색상/스타일 일괄변경만 가능.
 // (단일 클릭으로 편집 가능한 필드와 동일하게 맞춘 화이트리스트)
