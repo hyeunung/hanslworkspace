@@ -78,18 +78,26 @@ export function normalizeOrderNumber(input: string | null | undefined): string {
 }
 
 /**
+ * 임의의 텍스트에서 PO/SO 번호 토큰을 찾아 base + lineNumber 로 반환.
+ * 규격/비고 칼럼에 "F20260702_019-43" 처럼 라인 접미사가 붙은 경우 lineNumber 까지 보존한다.
+ */
+export function extractOrderNumberWithLine(text: string | null | undefined): ParsedOrderNumber | null {
+  if (!text) return null
+  const normalized = text.toUpperCase().replace(/\s+/g, '')
+
+  const exactPo = normalized.match(/F\d{6,8}[_-]\d{1,3}(?:[-_]\d{1,3})?/g)
+  if (exactPo?.length) return parseOrderNumberWithLine(exactPo[0])
+
+  const exactSo = normalized.match(/HS\d{6}[-_]\d{1,2}(?:[-_]\d{1,3})?/g)
+  if (exactSo?.length) return parseOrderNumberWithLine(exactSo[0])
+
+  return null
+}
+
+/**
  * 임의의 텍스트에서 PO/SO 번호 토큰을 찾아 정규화된 base 형태로 반환.
  * 셀 본문/비고 칼럼에서 발주번호 추출 시 사용.
  */
 export function extractOrderNumber(text: string | null | undefined): string | null {
-  if (!text) return null
-  const normalized = text.toUpperCase().replace(/\s+/g, '')
-
-  const exactPo = normalized.match(/F\d{6,8}[_-]\d{1,3}/g)
-  if (exactPo?.length) return normalizeOrderNumber(exactPo[0])
-
-  const exactSo = normalized.match(/HS\d{6}[-_]\d{1,2}/g)
-  if (exactSo?.length) return normalizeOrderNumber(exactSo[0])
-
-  return null
+  return extractOrderNumberWithLine(text)?.base || null
 }
