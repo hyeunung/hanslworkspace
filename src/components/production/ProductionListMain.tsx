@@ -382,7 +382,7 @@ function NotifyTeamsPicker({ teams, onChange }: { teams: string[]; onChange: (te
 
 // 행 추가 전 신규 등록 알림 대상 선택 팝오버 — 양승진은 항상 고정 수신(해제 불가),
 // 부서는 1개 이상 필수 선택(중복 선택 가능). 선택 전에는 행 추가 진행 버튼이 비활성화된다.
-// 생성 행 수(기본 1)를 입력하면 저장 시 수주번호를 순차 채번하며 그 개수만큼 행이 생성된다.
+// 생성 행 수(기본 1)를 입력하면 그 개수만큼 입력행이 생겨 각 행을 따로 작성할 수 있다.
 const MAX_ADD_ROW_COUNT = 20
 function NewRowNotifyPopover({ onConfirm }: { onConfirm: (teams: string[], count: number) => void }) {
   const [teams, setTeams] = useState<string[]>([])
@@ -694,13 +694,15 @@ MemoRow.displayName = 'MemoRow'
 
 export default function ProductionListMain() {
   const { pcbs, cables, loading, setLoading, employees, vendors, loadData } = useProductionData()
-  const [addingPcbRow, setAddingPcbRow] = useState<Omit<ProductionPcb, 'id' | 'created_at' | 'updated_at'> | null>(null)
-  const [addingCableRow, setAddingCableRow] = useState<Omit<ProductionCable, 'id' | 'created_at' | 'updated_at'> | null>(null)
+  // 행 추가 입력행 목록 — 팝오버에서 입력한 생성 행 수만큼 입력행이 생겨 각 행을 따로 작성한다
+  const [addingPcbRows, setAddingPcbRows] = useState<Array<Omit<ProductionPcb, 'id' | 'created_at' | 'updated_at'>>>([])
+  const [addingCableRows, setAddingCableRows] = useState<Array<Omit<ProductionCable, 'id' | 'created_at' | 'updated_at'>>>([])
+  // 단일 입력행을 참조하던 지점(칼럼 메뉴·빈 목록 판정 등)용 파생값 — 입력행이 하나라도 있으면 truthy
+  const addingPcbRow = addingPcbRows[0] ?? null
+  const addingCableRow = addingCableRows[0] ?? null
   // 행 추가 버튼 클릭 시 열리는 신규 등록 알림 대상 선택 팝오버 + 확정된 선택값
   const [addNotifyPicker, setAddNotifyPicker] = useState<'pcb' | 'cable' | null>(null)
   const [newRowNotifyTeams, setNewRowNotifyTeams] = useState<string[]>([])
-  // 행 추가 팝오버에서 입력한 생성 행 수 — 저장 시 이 개수만큼 동일 내용으로 행을 생성한다
-  const [addRowCount, setAddRowCount] = useState(1)
 
   // 필터·검색·저장뷰·제작구분(칩 드래그)·패널 접기 상태 — useProductionTableFilters로 분리
   const {
@@ -1223,17 +1225,23 @@ export default function ProductionListMain() {
     return () => window.removeEventListener('mousedown', close)
   }, [addNotifyPicker])
 
-  // 행 추가 인라인 모드로 전환 — 알림 대상 팝오버에서 부서 선택 후에만 호출된다
-  const handleAddClick = async (type: 'pcb' | 'cable') => {
+  // 행 추가 인라인 모드로 전환 — 알림 대상 팝오버에서 부서 선택 후에만 호출된다.
+  // count(생성 행 수)만큼 입력행을 만들어 각 행을 따로 작성할 수 있게 한다.
+  const handleAddClick = async (type: 'pcb' | 'cable', count: number) => {
     // 날짜 생성은 무조건 한국시간(KST) 기준 — UTC(toISOString)를 쓰면 KST 0~9시에 채번/요청일이 하루 밀린다
     const today = getKstTodayISO()
     setLoading(true)
     try {
       const nextNo = await productionService.generateNextSalesOrderNumber(today)
+      // 두 번째 행부터는 순차 예측 채번해 표시 — 실제 번호는 저장 시점에 다시 확정된다
+      const [noPrefix, noSeq] = nextNo.split('-')
+      const numberFor = (i: number) =>
+        i === 0 ? nextNo : `${noPrefix}-${String(parseInt(noSeq, 10) + i).padStart(2, '0')}`
       const currentUserStr = currentUserName || employee?.name || ''
+      const n = Math.max(1, count)
       if (type === 'pcb') {
-        setAddingPcbRow({
-          sales_order_number: nextNo,
+        setAddingPcbRows(Array.from({ length: n }, (_, i) => ({
+          sales_order_number: numberFor(i),
           production_category: 'LG_PCB',
           board_name: '',
           reference: '',
@@ -1252,11 +1260,11 @@ export default function ProductionListMain() {
           delivery_schedule: '',
           stock_count: 0,
           changes_memo: ''
-        })
-        setAddingCableRow(null) // 하나만 추가 가능하게
+        })))
+        setAddingCableRows([]) // 한 표에서만 추가 가능하게
       } else {
-        setAddingCableRow({
-          sales_order_number: nextNo,
+        setAddingCableRows(Array.from({ length: n }, (_, i) => ({
+          sales_order_number: numberFor(i),
           production_category: 'LG_Cable',
           board_name: '',
           reference: '',
@@ -1270,8 +1278,8 @@ export default function ProductionListMain() {
           revision_count: 1,
           quantity: 0,
           spec_details: ''
-        })
-        setAddingPcbRow(null)
+        })))
+        setAddingPcbRows([])
       }
     } catch (err) {
       console.error(err)
@@ -1282,9 +1290,9 @@ export default function ProductionListMain() {
   }
 
   const handleSavePcbInline = async () => {
-    if (!addingPcbRow) return
-    if (!addingPcbRow.board_name) {
-      toast.error('보드명을 입력해 주세요.')
+    if (addingPcbRows.length === 0) return
+    if (addingPcbRows.some(r => !r.board_name)) {
+      toast.error(addingPcbRows.length > 1 ? '모든 행의 보드명을 입력해 주세요.' : '보드명을 입력해 주세요.')
       return
     }
     if (newRowNotifyTeams.length === 0) {
@@ -1292,33 +1300,31 @@ export default function ProductionListMain() {
       return
     }
     try {
-      // 빈 문자열을 null로 변환하여 데이트/데시멀 컬럼 에러 방지
-      const sanitized = { ...addingPcbRow } as any
-      Object.keys(sanitized).forEach((key) => {
-        if (sanitized[key] === '') {
-          sanitized[key] = null
-        }
-      })
-      if (sanitized.hansl_manager) {
-        sanitized.hansl_manager = stripEmployeeTitle(sanitized.hansl_manager)
-      }
-      // 신규 등록 알림(푸시+이메일) 대상 — DB 트리거가 이 칼럼을 읽어 선택된 부서+양승진(고정)에게 발송
-      sanitized.new_row_notify_teams = newRowNotifyTeams
-      // 생성 행 수만큼 반복 생성 — 두 번째 행부터는 저장 시점 기준으로 수주번호를 새로 채번
-      const count = Math.max(1, addRowCount)
+      // 입력행마다 각자 작성한 내용으로 저장 — 두 번째 행부터는 저장 시점 기준으로 수주번호를 새로 채번
+      const count = addingPcbRows.length
       let created: ProductionPcb | null = null
       for (let i = 0; i < count; i++) {
-        const rowData = { ...sanitized }
-        if (i > 0) {
-          rowData.sales_order_number = await productionService.generateNextSalesOrderNumber(getKstTodayISO())
+        // 빈 문자열을 null로 변환하여 데이트/데시멀 컬럼 에러 방지
+        const sanitized = { ...addingPcbRows[i] } as any
+        Object.keys(sanitized).forEach((key) => {
+          if (sanitized[key] === '') {
+            sanitized[key] = null
+          }
+        })
+        if (sanitized.hansl_manager) {
+          sanitized.hansl_manager = stripEmployeeTitle(sanitized.hansl_manager)
         }
-        created = await productionService.createProductionPcb(rowData)
+        // 신규 등록 알림(푸시+이메일) 대상 — DB 트리거가 이 칼럼을 읽어 선택된 부서+양승진(고정)에게 발송
+        sanitized.new_row_notify_teams = newRowNotifyTeams
+        if (i > 0) {
+          sanitized.sales_order_number = await productionService.generateNextSalesOrderNumber(getKstTodayISO())
+        }
+        created = await productionService.createProductionPcb(sanitized)
         if (created?.id) pushUndo({ kind: 'deleteInserted', table: 'production_pcbs', id: created.id, label: count > 1 ? `행 추가(PCB ${i + 1}/${count})` : '행 추가(PCB)' })
       }
       toast.success(count > 1 ? `신규 PCB 항목 ${count}건이 저장되었습니다.` : '신규 PCB 항목이 저장되었습니다.')
-      setAddingPcbRow(null)
+      setAddingPcbRows([])
       setNewRowNotifyTeams([])
-      setAddRowCount(1)
       // 저장된 행의 요청일이 현재 월/연도 필터 밖이면(예: 6월을 보는데 오늘=7월로 저장),
       // 저장은 됐지만 목록에 안 보여 "저장이 안 된 것처럼" 보이므로 필터를 해당 행 기준으로 이동시켜 노출
       focusFilterOnRow('pcb', created?.request_date)
@@ -1349,9 +1355,9 @@ export default function ProductionListMain() {
   }
 
   const handleSaveCableInline = async () => {
-    if (!addingCableRow) return
-    if (!addingCableRow.board_name) {
-      toast.error('품명을 입력해 주세요.')
+    if (addingCableRows.length === 0) return
+    if (addingCableRows.some(r => !r.board_name)) {
+      toast.error(addingCableRows.length > 1 ? '모든 행의 품명을 입력해 주세요.' : '품명을 입력해 주세요.')
       return
     }
     if (newRowNotifyTeams.length === 0) {
@@ -1359,33 +1365,31 @@ export default function ProductionListMain() {
       return
     }
     try {
-      // 빈 문자열을 null로 변환하여 데이트/데시멀 컬럼 에러 방지
-      const sanitized = { ...addingCableRow } as any
-      Object.keys(sanitized).forEach((key) => {
-        if (sanitized[key] === '') {
-          sanitized[key] = null
-        }
-      })
-      if (sanitized.hansl_manager) {
-        sanitized.hansl_manager = stripEmployeeTitle(sanitized.hansl_manager)
-      }
-      // 신규 등록 알림(푸시+이메일) 대상 — DB 트리거가 이 칼럼을 읽어 선택된 부서+양승진(고정)에게 발송
-      sanitized.new_row_notify_teams = newRowNotifyTeams
-      // 생성 행 수만큼 반복 생성 — 두 번째 행부터는 저장 시점 기준으로 수주번호를 새로 채번
-      const count = Math.max(1, addRowCount)
+      // 입력행마다 각자 작성한 내용으로 저장 — 두 번째 행부터는 저장 시점 기준으로 수주번호를 새로 채번
+      const count = addingCableRows.length
       let created: ProductionCable | null = null
       for (let i = 0; i < count; i++) {
-        const rowData = { ...sanitized }
-        if (i > 0) {
-          rowData.sales_order_number = await productionService.generateNextSalesOrderNumber(getKstTodayISO())
+        // 빈 문자열을 null로 변환하여 데이트/데시멀 컬럼 에러 방지
+        const sanitized = { ...addingCableRows[i] } as any
+        Object.keys(sanitized).forEach((key) => {
+          if (sanitized[key] === '') {
+            sanitized[key] = null
+          }
+        })
+        if (sanitized.hansl_manager) {
+          sanitized.hansl_manager = stripEmployeeTitle(sanitized.hansl_manager)
         }
-        created = await productionService.createProductionCable(rowData)
+        // 신규 등록 알림(푸시+이메일) 대상 — DB 트리거가 이 칼럼을 읽어 선택된 부서+양승진(고정)에게 발송
+        sanitized.new_row_notify_teams = newRowNotifyTeams
+        if (i > 0) {
+          sanitized.sales_order_number = await productionService.generateNextSalesOrderNumber(getKstTodayISO())
+        }
+        created = await productionService.createProductionCable(sanitized)
         if (created?.id) pushUndo({ kind: 'deleteInserted', table: 'production_cables', id: created.id, label: count > 1 ? `행 추가(Cable ${i + 1}/${count})` : '행 추가(Cable)' })
       }
       toast.success(count > 1 ? `신규 Cable/Case 항목 ${count}건이 저장되었습니다.` : '신규 Cable/Case 항목이 저장되었습니다.')
-      setAddingCableRow(null)
+      setAddingCableRows([])
       setNewRowNotifyTeams([])
-      setAddRowCount(1)
       focusFilterOnRow('cable', created?.request_date)
     } catch (err) {
       console.error(err)
@@ -2245,8 +2249,8 @@ export default function ProductionListMain() {
 
     // 2. 모든 행(입력 중인 신규 행 포함)의 표시값 실측 — 표시 굵기 그대로 반영
     const list = type === 'pcb' ? filteredPcbs : filteredCables
-    const addingRow = type === 'pcb' ? addingPcbRow : addingCableRow
-    const rows: any[] = addingRow ? [...list, addingRow] : list
+    const addingRows = type === 'pcb' ? addingPcbRows : addingCableRows
+    const rows: any[] = addingRows.length > 0 ? [...list, ...addingRows] : list
 
     let maxValWidth = 0
     for (const item of rows) {
@@ -2290,13 +2294,13 @@ export default function ProductionListMain() {
     for (const f of Object.keys(MIN_COLUMN_WIDTH.pcb)) out[f] = computeColumnWidth('pcb', f)
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredPcbs, addingPcbRow, fontsLoaded])
+  }, [filteredPcbs, addingPcbRows, fontsLoaded])
   const cableColumnWidths = useMemo(() => {
     const out: Record<string, number> = {}
     for (const f of Object.keys(MIN_COLUMN_WIDTH.cable)) out[f] = computeColumnWidth('cable', f)
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredCables, addingCableRow, fontsLoaded])
+  }, [filteredCables, addingCableRows, fontsLoaded])
 
   const getColumnWidth = (type: 'pcb' | 'cable', field: string, _defaultWidth: number): number => {
     const cached = (type === 'pcb' ? pcbColumnWidths : cableColumnWidths)[field]
@@ -4577,9 +4581,8 @@ export default function ProductionListMain() {
                     <NewRowNotifyPopover
                       onConfirm={(teams, count) => {
                         setNewRowNotifyTeams(teams)
-                        setAddRowCount(count)
                         setAddNotifyPicker(null)
-                        handleAddClick('pcb')
+                        handleAddClick('pcb', count)
                       }}
                     />
                   )}
@@ -4652,8 +4655,13 @@ export default function ProductionListMain() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[10px] text-gray-500 whitespace-nowrap">
-                  {addingPcbRow && (
-                    <tr 
+                  {addingPcbRows.map((addingPcbRow, addRowIdx) => {
+                    // 입력행별 독립 편집 — 해당 인덱스의 행만 갱신 (아래 JSX는 이 섀도잉된 이름을 사용)
+                    const setAddingPcbRow = (next: typeof addingPcbRow) =>
+                      setAddingPcbRows(rows => rows.map((r, i) => (i === addRowIdx ? next : r)))
+                    return (
+                    <tr
+                      key={addRowIdx}
                       className="bg-[#f8fbff] adding-row"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -4997,16 +5005,17 @@ export default function ProductionListMain() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => { setAddingPcbRow(null); setAddRowCount(1) }}
+                            onClick={() => setAddingPcbRows(rows => rows.filter((_, i) => i !== addRowIdx))}
                             className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-600"
-                            title="취소"
+                            title="이 행 취소"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>
                     </tr>
-                  )}
+                    )
+                  })}
                   {filteredPcbs.length === 0 && !addingPcbRow ? (
                     <tr>
                       <td colSpan={38} className="text-center py-6 text-gray-400 border border-gray-200">검색 조건에 맞는 데이터가 없습니다.</td>
@@ -5204,9 +5213,8 @@ export default function ProductionListMain() {
                     <NewRowNotifyPopover
                       onConfirm={(teams, count) => {
                         setNewRowNotifyTeams(teams)
-                        setAddRowCount(count)
                         setAddNotifyPicker(null)
-                        handleAddClick('cable')
+                        handleAddClick('cable', count)
                       }}
                     />
                   )}
@@ -5256,8 +5264,13 @@ export default function ProductionListMain() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 text-[10px] text-gray-700 whitespace-nowrap">
-                  {addingCableRow && (
-                    <tr 
+                  {addingCableRows.map((addingCableRow, addRowIdx) => {
+                    // 입력행별 독립 편집 — 해당 인덱스의 행만 갱신 (아래 JSX는 이 섀도잉된 이름을 사용)
+                    const setAddingCableRow = (next: typeof addingCableRow) =>
+                      setAddingCableRows(rows => rows.map((r, i) => (i === addRowIdx ? next : r)))
+                    return (
+                    <tr
+                      key={addRowIdx}
                       className="bg-[#f8fbff] adding-row"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -5450,16 +5463,17 @@ export default function ProductionListMain() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => { setAddingCableRow(null); setAddRowCount(1) }}
+                            onClick={() => setAddingCableRows(rows => rows.filter((_, i) => i !== addRowIdx))}
                             className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-600"
-                            title="취소"
+                            title="이 행 취소"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>
                     </tr>
-                  )}
+                    )
+                  })}
                   {filteredCables.length === 0 && !addingCableRow ? (
                     <tr>
                       <td colSpan={21} className="text-center py-6 text-gray-400 border border-gray-200">검색 조건에 맞는 데이터가 없습니다.</td>
