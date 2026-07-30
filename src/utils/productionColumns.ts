@@ -210,6 +210,15 @@ export const columnGroupTitleFor = (type: 'pcb' | 'cable', field: string): strin
   return null
 }
 
+// ─── 분할입고/분할납품 로트 칼럼 ───────────────────────────────────────
+// 분할 그룹에서 행(로트)별로 따로 입력하는 칸 — PCB 입고 4칸 + 완제품 입고 + 납품 4칸.
+// 이 외 칼럼은 그룹 전체가 rowSpan으로 병합되어 하나의 값으로 관리·전파된다.
+export const PCB_LOT_FIELDS = [
+  'delivery_schedule', 'received_quantity', 'received_destination', 'pcb_stock_completed',
+  'final_product_stock',
+  'delivery_quantity', 'delivery_date', 'delivery_destination', 'delivery_completed',
+]
+
 // localStorage 숨긴 칼럼 저장 키 — 저장/복원이 항상 같은 키를 쓰도록 한곳에서 관리
 export const hiddenColsStorageKey = (type: 'pcb' | 'cable') => `hansl_prod_hidden_cols_${type}`
 
