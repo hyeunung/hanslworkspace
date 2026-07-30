@@ -40,7 +40,8 @@ import {
 import {
   HEADER_LETTER_SPACING, MIN_COLUMN_WIDTH, measureText,
   STICKY_FIELDS, HIDEABLE_SECTIONS, hideableFieldsFor, HEADER_SPAN_GROUPS,
-  hiddenColsStorageKey, loadHiddenCols, MEMO_TEXT_FIELDS, BULK_VALUE_EDITABLE, bulkSelectOptions
+  hiddenColsStorageKey, loadHiddenCols, MEMO_TEXT_FIELDS, BULK_VALUE_EDITABLE, bulkSelectOptions,
+  PCB_LOT_FIELDS
 } from '@/utils/productionColumns'
 import { toTsvCell, parseTsvGrid } from '@/utils/productionTsv'
 import { parseColorState, serializeColorState } from '@/utils/productionColors'
@@ -794,11 +795,12 @@ export default function ProductionListMain() {
     })
   }
 
-  // 납품 분할: 납품 수량 팝오버의 `[N]분할` — 같은 제작 행(앞 칼럼 전부 동일)을 N개로 만들어
-  // 분할 납품(같은 제작번호, 납품처/일자/수량만 다름)을 행 단위로 입력할 수 있게 한다.
-  // 새 행들은 납품 3칸(수량/일자/배송처)이 빈 상태로 시작한다. (수량 입력이 납품 입력의 시작이므로)
+  // 분할입고/분할납품: 입고(수량)·납품 수량 팝오버의 `[N]분할` — 같은 제작 행(병합 칼럼 전부 동일)을
+  // N개 로트 행으로 만들어 입고 4칸(일정/수량/입고처/입고완료)·완제품입고·납품 4칸(수량/일자/배송처/배송완료)을
+  // 행 단위로 나눠 입력할 수 있게 한다. 새 행들은 로트 칸(PCB_LOT_FIELDS)이 빈 상태로 시작하고,
+  // 원본 행의 기존 입고/납품 값은 첫 행(원본)에 그대로 남는다.
   const splitInputRef = useRef<HTMLInputElement | null>(null)
-  const handleSplitDelivery = useStableHandler(async (id: string, n: number) => {
+  const handleSplitLot = useStableHandler(async (id: string, n: number) => {
     if (!Number.isInteger(n) || n < 2 || n > 50) {
       toast.error('분할 개수는 2~50 사이 숫자로 입력해주세요.')
       return
@@ -807,17 +809,27 @@ export default function ProductionListMain() {
     if (!item) return
     try {
       const supabase = createClient()
-      // 앞 칼럼은 그대로 복사, 납품 3칸만 비움 (id/타임스탬프 제외)
+      // 병합 칼럼은 그대로 복사, 로트 칸(입고/완제품입고/납품)만 비움 (id/타임스탬프 제외)
       const { id: _id, created_at: _c, updated_at: _u, ...rest } = item as any
-      const copy = { ...rest, delivery_quantity: null, delivery_date: null, delivery_destination: null }
+      const copy: any = { ...rest }
+      for (const f of PCB_LOT_FIELDS) copy[f] = null
+      // 분할 행은 '신규 등록'이 아니므로 명시적 빈 배열로 신규 등록 알림(푸시/이메일)을 무음 처리
+      // (DB 트리거가 빈 배열을 무음 신호로 해석 — silent_new_row_notification 마이그레이션)
+      copy.new_row_notify_teams = []
+      // 로트 칸의 셀 색상도 새 행에는 물려주지 않는다 (빈 칸으로 시작)
+      if (copy.cell_colors && typeof copy.cell_colors === 'object') {
+        const cc = { ...copy.cell_colors }
+        for (const f of PCB_LOT_FIELDS) delete cc[f]
+        copy.cell_colors = cc
+      }
       const payloads = Array.from({ length: n - 1 }, () => ({ ...copy }))
       const { data, error } = await supabase.from('production_pcbs').insert(payloads).select('id')
       if (error) throw error
       for (const r of (data || [])) {
-        pushUndo({ kind: 'deleteInserted', table: 'production_pcbs', id: r.id, label: `납품 ${n}분할` })
+        pushUndo({ kind: 'deleteInserted', table: 'production_pcbs', id: r.id, label: `${n}분할` })
       }
       setEditingCell(null)
-      toast.success(`납품이 ${n}개 행으로 분할되었습니다. 각 행에 수량/일자/배송처를 입력하세요.`)
+      toast.success(`${n}개 행으로 분할되었습니다. 각 행에 입고/납품 정보를 나눠 입력하세요.`)
       await loadData()
     } catch (err) {
       console.error(err)
@@ -1510,8 +1522,9 @@ export default function ProductionListMain() {
     const notifyColumn = NOTIFY_TEAMS_COLUMN[field]
     const extraPayload = notifyColumn && notifyTeamsOverride !== undefined ? { [notifyColumn]: notifyTeamsOverride } : {}
 
-    // 납품 분할 그룹의 병합된 앞 칼럼 수정 → 그룹 전체 행에 같은 값 저장 (값이 어긋나면 병합이 풀림)
-    const targetIds = type === 'pcb' && !HEADER_SPAN_GROUPS.pcbDelivery.includes(field)
+    // 분할 그룹의 병합 칼럼 수정 → 그룹 전체 행에 같은 값 저장 (값이 어긋나면 병합이 풀림)
+    // 로트 칸(입고/완제품입고/납품)은 행별 값이므로 해당 행에만 저장한다.
+    const targetIds = type === 'pcb' && !PCB_LOT_FIELDS.includes(field)
       ? pcbGroupSiblings(id) : [id]
 
     // 되돌리기: 실제 값이 바뀔 때만 변경 전 행을 스냅샷 (색상 핸들러 경유 호출은 captureUndo=false)
@@ -1551,8 +1564,8 @@ export default function ProductionListMain() {
     // 안전장치: 선택된 셀 중 해당 필드인 것만 대상으로 삼는다(같은 칼럼 다중선택 전제).
     const rowIds = Array.from(new Set(
       selectedCells.filter(k => k.split('::')[1] === field).map(k => k.split('::')[0])
-        // 납품 분할 그룹의 병합된 앞 칼럼이면 그룹 전체 행으로 확장 (값이 어긋나면 병합이 풀림)
-        .flatMap(rid => type === 'pcb' && !HEADER_SPAN_GROUPS.pcbDelivery.includes(field) ? pcbGroupSiblings(rid) : [rid])
+        // 분할 그룹의 병합 칼럼이면 그룹 전체 행으로 확장 (값이 어긋나면 병합이 풀림) — 로트 칸은 행별 값
+        .flatMap(rid => type === 'pcb' && !PCB_LOT_FIELDS.includes(field) ? pcbGroupSiblings(rid) : [rid])
     ))
     if (rowIds.length === 0) return
 
@@ -1781,8 +1794,8 @@ export default function ProductionListMain() {
     try {
       const supabase = createClient()
       const table = type === 'pcb' ? 'production_pcbs' : 'production_cables'
-      // 납품 분할 그룹의 병합된 앞 칼럼이면 그룹 전체 행의 칸 색을 함께 변경 (색이 어긋나면 병합이 풀림)
-      const targetIds = type === 'pcb' && !HEADER_SPAN_GROUPS.pcbDelivery.includes(field)
+      // 분할 그룹의 병합 칼럼이면 그룹 전체 행의 칸 색을 함께 변경 (색이 어긋나면 병합이 풀림) — 로트 칸은 행별 색
+      const targetIds = type === 'pcb' && !PCB_LOT_FIELDS.includes(field)
         ? pcbGroupSiblings(id) : [id]
       // 되돌리기: 색상+편집중 텍스트를 한 번에 복원하도록 변경 전 행 전체 스냅샷
       pushRestoreUndo(type, targetIds, '칸 색상 변경')
@@ -1891,17 +1904,22 @@ export default function ProductionListMain() {
     }),
     [cables, cableFilter, categoryOrder, cableSearch, cableSort])
 
-  // ─── 납품 분할 그룹: 납품 3칸(수량/일자/배송처) 외 모든 값이 같은 '연속' 행을 한 묶음으로 본다 ───
-  // 분할 행은 앞 칼럼이 전부 동일 복제이므로, 렌더 시 첫 행의 앞 칼럼을 rowSpan으로 병합해
-  // 앞부분은 한 행처럼 보이고 납품 칸만 행 단위로 나뉘게 한다. (정렬로 떨어져 있으면 병합하지 않음)
+  // ─── 분할(로트) 그룹: 로트 칸(입고/완제품입고/납품 — PCB_LOT_FIELDS) 외 모든 값이 같은 '연속' 행을 한 묶음으로 본다 ───
+  // 분할 행은 병합 칼럼이 전부 동일 복제이므로, 렌더 시 첫 행의 병합 칼럼을 rowSpan으로 병합해
+  // 그 부분은 한 행처럼 보이고 로트 칸만 행 단위로 나뉘게 한다. (정렬로 떨어져 있으면 병합하지 않음)
   const pcbGroupInfo = useMemo(() => {
     const keyOf = (item: any) => {
-      const { id, created_at, updated_at, delivery_quantity, delivery_date, delivery_destination, cell_colors, ...rest } = item
-      // 납품 칸의 셀 색상은 행마다 달라도 병합 판정에 영향 없도록 키에서 제외
+      const { id, created_at, updated_at, cell_colors, ...rest } = item
+      // 로트 칸은 행마다 달라도 병합이 유지되어야 하므로 키에서 제외
+      for (const f of PCB_LOT_FIELDS) delete rest[f]
+      // 알림 대상 기록 칼럼(jsonb)은 완료 이벤트 메타데이터 — 행별로 달라도 병합 판정에서 제외
+      for (const c of Object.values(NOTIFY_TEAMS_COLUMN)) delete rest[c]
+      delete rest.new_row_notify_teams
+      // 로트 칸의 셀 색상도 행마다 달라도 병합 판정에 영향 없도록 키에서 제외
       let cc = cell_colors
       if (cc && typeof cc === 'object') {
-        const { delivery_quantity: _a, delivery_date: _b, delivery_destination: _c, ...ccRest } = cc
-        cc = ccRest
+        cc = { ...cc }
+        for (const f of PCB_LOT_FIELDS) delete cc[f]
       }
       return JSON.stringify({ ...rest, cell_colors: cc ?? null })
     }
@@ -2673,8 +2691,9 @@ export default function ProductionListMain() {
                 : { minWidth: '220px', maxWidth: '360px' }}
               onMouseDown={(e) => e.stopPropagation()}
             >
-              {field === 'delivery_quantity' && type === 'pcb' ? (
-                // 납품 수량: 제목 좌측 끝에 개수 입력 + 분할 버튼 — N개 행으로 분할 (앞 칼럼 복제, 납품 3칸은 빈 상태)
+              {(field === 'delivery_quantity' || field === 'received_quantity') && type === 'pcb' ? (
+                // 입고(수량)/납품 수량: 제목 좌측 끝에 개수 입력 + 분할 버튼 — N개 로트 행으로 분할
+                // (병합 칼럼 복제, 입고/완제품입고/납품 칸은 빈 상태로 시작 → 분할입고·분할납품을 행별 입력)
                 <div className="flex items-center justify-between gap-2 mb-1 px-0.5" data-split-ui>
                   <span className="flex items-center text-[9px] text-gray-500 shrink-0">
                     <input
@@ -2687,7 +2706,7 @@ export default function ProductionListMain() {
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           e.preventDefault()
-                          handleSplitDelivery(id, parseInt(splitInputRef.current?.value || '', 10))
+                          handleSplitLot(id, parseInt(splitInputRef.current?.value || '', 10))
                         }
                         if (e.key === 'Escape') setEditingCell(null)
                       }}
@@ -2699,10 +2718,10 @@ export default function ProductionListMain() {
                       onMouseDown={(e) => { e.preventDefault(); e.stopPropagation() }}
                       onClick={(e) => {
                         e.stopPropagation()
-                        handleSplitDelivery(id, parseInt(splitInputRef.current?.value || '', 10))
+                        handleSplitLot(id, parseInt(splitInputRef.current?.value || '', 10))
                       }}
                       className="ml-0.5 px-1.5 py-0 rounded border border-hansl-500/40 bg-blue-50 text-hansl-500 text-[9px] font-semibold hover:bg-blue-100 transition-colors"
-                      title="이 제작 항목을 N개 납품 행으로 분할"
+                      title="이 제작 항목을 N개 행으로 분할해 입고/납품을 나눠 입력"
                     >
                       분할
                     </button>
@@ -3754,12 +3773,13 @@ export default function ProductionListMain() {
   // 행 하나의 렌더에 영향을 주는 '그 행 관련' UI 상태 요약 — 이 값이 바뀐 행만 다시 그린다
   const rowSig = (type: 'pcb' | 'cable', item: any): string => {
     const sel = selectedCells.length ? selectedCells.filter(k => k.startsWith(item.id + '::')).join(',') : ''
+    // 편집/입고일 팝오버가 열린 행은 입력값·알림 대상 선택이 바뀔 때마다 다시 그린다
+    // (notifyTeams가 시그니처에 없으면 알림 드롭다운에서 선택해도 화면에 반영되지 않는다)
     const editing = editingCell && editingCell.type === type && editingCell.id === item.id
-      ? `E:${editingCell.field}:${editValue}` : ''
+      ? `E:${editingCell.field}:${editValue}:${notifyTeams.join(',')}` : ''
     const picker = activeColorPicker && activeColorPicker.type === type && activeColorPicker.id === item.id ? 'P' : ''
-    // 입고일 선택 팝오버가 열린 행은 입력값이 바뀔 때마다 다시 그린다
     const stockIn = stockInPicker && stockInPicker.type === type && stockInPicker.id === item.id
-      ? `S:${stockInPicker.field}:${stockInInput}` : ''
+      ? `S:${stockInPicker.field}:${stockInInput}:${notifyTeams.join(',')}` : ''
     // 제작번호 선택 팝오버가 열린 행도 필터 입력값이 바뀔 때마다 다시 그린다
     const orderNo = orderNoPicker && orderNoPicker.type === type && orderNoPicker.id === item.id
       ? `N:${orderNoInput}` : ''
@@ -3784,14 +3804,15 @@ export default function ProductionListMain() {
                                          rColor === 'blue' ? 'bg-blue-100' :
                                          'hover:bg-gray-50/50'
 
-                      // 납품 분할 그룹: 첫 행은 앞 칼럼을 rowSpan으로 병합해 그룹 전체 높이를 차지하고,
-                      // 이어지는 행(pos>0)은 앞 칼럼 없이 납품 3칸+삭제만 렌더한다.
+                      // 분할(로트) 그룹: 첫 행은 병합 칼럼을 rowSpan으로 병합해 그룹 전체 높이를 차지하고,
+                      // 이어지는 행(pos>0)은 로트 칸(입고 4칸/완제품입고/납품 4칸)+삭제만 렌더한다.
+                      // (HTML 테이블은 rowSpan이 차지한 칼럼을 건너뛰고 셀을 배치하므로 중간에 낀 로트 칸도 자리가 맞는다)
                       const grp = pcbGroupInfo.get(item.id)
                       const isGroupCont = !!grp && grp.pos > 0
                       const groupSpan = grp && grp.pos === 0 ? grp.size : undefined
 
-                      // 앞 칼럼(납품 3칸 이전 전부) — 분할 그룹 첫 행이면 각 셀에 rowSpan 주입
-                      const frontCellsRaw = isGroupCont ? null : (
+                      // 병합 세그먼트 A(제작번호~PCB 제작처) — 분할 그룹 첫 행이면 각 셀에 rowSpan 주입
+                      const mergedARaw = isGroupCont ? null : (
                         <>
                           <td
                             className={`px-2 py-1.5 text-center text-gray-400 sticky left-0 transition-colors ${activeColorPicker?.id === item.id && activeColorPicker?.type === 'pcb' ? 'z-20' : 'z-10'} w-[40px] min-w-[40px] max-w-[40px] border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer relative color-picker-trigger ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
@@ -3983,14 +4004,11 @@ export default function ProductionListMain() {
                           item.pcb_vendor || '-',
                           'px-2 py-1.5 text-gray-500 border border-gray-200'
                         )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'delivery_schedule',
-                          item,
-                          formatDbDateToDisplay(item.delivery_schedule),
-                          'px-2 py-1.5 text-gray-500 border border-gray-200'
-                        )}
+                        </>
+                      )
+                      // 병합 세그먼트 B — 로트 칸(입고 일정/수량) 사이에 낀 제작기간
+                      const mergedBRaw = isGroupCont ? null : (
+                        <>
                         {renderEditableCell(
                           item.id,
                           'pcb',
@@ -3999,31 +4017,11 @@ export default function ProductionListMain() {
                           item.pcb_lead_time || '-',
                           'px-2 py-1.5 border border-gray-200'
                         )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'received_quantity',
-                          item,
-                          item.received_quantity || 0,
-                          'px-2 py-1.5 text-center border border-gray-200',
-                          'number'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'received_destination',
-                          item,
-                          item.received_destination || '-',
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'pcb_stock_completed',
-                          item,
-                          formatCompletedDisplay(item.pcb_stock_completed),
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
+                        </>
+                      )
+                      // 병합 세그먼트 C — 부품정리/ASS'Y (입고완료와 완제품입고 사이)
+                      const mergedCRaw = isGroupCont ? null : (
+                        <>
                         {renderEditableCell(
                           item.id,
                           'pcb',
@@ -4056,14 +4054,11 @@ export default function ProductionListMain() {
                           formatDbDateToDisplay(item.assy_requested_date),
                           'px-2 py-1.5 border border-gray-200'
                         )}
-                        {renderEditableCell(
-                          item.id,
-                          'pcb',
-                          'final_product_stock',
-                          item,
-                          formatStockInDisplay(item.final_product_stock),
-                          'px-2 py-1.5 border border-gray-200'
-                        )}
+                        </>
+                      )
+                      // 병합 세그먼트 D — 완제품입고(로트 칸) 뒤의 IN-House Checking/리뷰
+                      const mergedDRaw = isGroupCont ? null : (
+                        <>
                         {renderEditableCell(
                           item.id,
                           'pcb',
@@ -4098,14 +4093,59 @@ export default function ProductionListMain() {
                         )}
                         </>
                       )
-                      const frontCells = frontCellsRaw == null ? null : (groupSpan
-                        ? React.Children.map(frontCellsRaw.props.children, (el: any) =>
+                      // 병합 세그먼트: 그룹 첫 행이면 각 셀에 rowSpan 주입 (이어지는 행은 세그먼트째 렌더 안 함)
+                      const mergeCells = (raw: React.ReactElement<any> | null) => raw == null ? null : (groupSpan
+                        ? React.Children.map(raw.props.children, (el: any) =>
                             React.isValidElement(el) ? React.cloneElement(el as React.ReactElement<any>, { rowSpan: groupSpan }) : el)
-                        : frontCellsRaw)
+                        : raw)
 
                       return (
                         <tr key={item.id} data-vrow className={`group transition-colors ${rowBgClass}`}>
-                          {frontCells}
+                          {mergeCells(mergedARaw)}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'delivery_schedule',
+                          item,
+                          formatDbDateToDisplay(item.delivery_schedule),
+                          'px-2 py-1.5 text-gray-500 border border-gray-200'
+                        )}
+                          {mergeCells(mergedBRaw)}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'received_quantity',
+                          item,
+                          item.received_quantity || 0,
+                          'px-2 py-1.5 text-center border border-gray-200',
+                          'number'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'received_destination',
+                          item,
+                          item.received_destination || '-',
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'pcb_stock_completed',
+                          item,
+                          formatCompletedDisplay(item.pcb_stock_completed),
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                          {mergeCells(mergedCRaw)}
+                        {renderEditableCell(
+                          item.id,
+                          'pcb',
+                          'final_product_stock',
+                          item,
+                          formatStockInDisplay(item.final_product_stock),
+                          'px-2 py-1.5 border border-gray-200'
+                        )}
+                          {mergeCells(mergedDRaw)}
                         {renderEditableCell(
                           item.id,
                           'pcb',
