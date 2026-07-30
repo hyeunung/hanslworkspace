@@ -1653,7 +1653,7 @@ export default function ProductionListMain() {
             value={bulkEditValue}
             onChange={(e) => setBulkEditValue(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') close() }}
-            className="h-6 bg-white border border-gray-300 rounded px-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-hansl-500 min-w-[120px]"
+            className="h-5 bg-white border border-gray-300 rounded px-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-hansl-500 min-w-[120px]"
           >
             <option value="">-- 선택 --</option>
             {opts.map(o => <option key={o} value={o}>{o}</option>)}
@@ -1685,7 +1685,7 @@ export default function ProductionListMain() {
             onChange={(e) => setBulkEditValue(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') close() }}
             placeholder="입력 후 Enter"
-            className="h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-hansl-500 w-[160px]"
+            className="h-5 bg-white border border-gray-300 rounded px-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-hansl-500 w-[160px]"
           />
         )}
         {applyBtn('py-1')}
@@ -2991,25 +2991,6 @@ export default function ProductionListMain() {
                 {NOTIFY_TEAMS_COLUMN[field] && (
                   <NotifyTeamsPicker teams={notifyTeams} onChange={setNotifyTeams} />
                 )}
-                {stockQtyEnabled && (
-                  <div className="flex items-center gap-1 mb-1">
-                    <span className="text-[10px] text-gray-500 shrink-0">수량</span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={stockInQty}
-                      onChange={(e) => setStockInQty(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') commitStockIn(stockInInput)
-                        if (e.key === 'Escape') setStockInPicker(null)
-                      }}
-                      placeholder={field === 'final_product_stock'
-                        ? `이번 입고 수량 (제작 ${rowQuantity > 0 ? rowQuantity : '-'}${item.quantity_unit || 'ea'})`
-                        : '납품 수량'}
-                      className="flex-1 min-w-0 h-5 bg-white border border-gray-300 rounded px-1 text-[10px] focus:outline-none focus:border-hansl-500"
-                    />
-                  </div>
-                )}
                 {field === 'final_product_stock' && isPartialStock && (
                   <div className="flex items-center justify-between gap-2 mb-1 px-0.5">
                     <span className="text-[9px] font-semibold text-amber-600">분할입고 누적 {stockTotal}/{rowQuantity} — 이번 입고분을 추가하세요</span>
@@ -3027,8 +3008,32 @@ export default function ProductionListMain() {
                     </button>
                   </div>
                 )}
-                <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">{stockPickerLabel(field)} — 직접 입력 또는 달력에서 선택</div>
+                {!stockQtyEnabled && (
+                  <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">{stockPickerLabel(field)} — 직접 입력 또는 달력에서 선택</div>
+                )}
+                {/* 수량 지원 필드는 '수량 | 입고일'을 한 행 2열로 배치 — 알림/수량 인풋과 같은 h-5 높이로 통일 */}
                 <div className="flex items-center gap-1">
+                  {stockQtyEnabled && (
+                    <>
+                      <span className="text-[10px] text-gray-500 shrink-0">수량</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={stockInQty}
+                        onChange={(e) => setStockInQty(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitStockIn(stockInInput)
+                          if (e.key === 'Escape') setStockInPicker(null)
+                        }}
+                        placeholder={field === 'final_product_stock' && rowQuantity > 0 ? `/${rowQuantity}` : '수량'}
+                        title={field === 'final_product_stock'
+                          ? `이번 입고 수량 (제작수량 ${rowQuantity > 0 ? rowQuantity : '-'}${item.quantity_unit || 'ea'})`
+                          : '납품 수량'}
+                        className="w-14 h-5 bg-white border border-gray-300 rounded px-1 text-[10px] focus:outline-none focus:border-hansl-500"
+                      />
+                      <span className="text-[10px] text-gray-500 shrink-0 pl-0.5">{stockPickerLabel(field)}</span>
+                    </>
+                  )}
                   <input
                     autoFocus
                     type="text"
@@ -3039,13 +3044,14 @@ export default function ProductionListMain() {
                       if (e.key === 'Escape') setStockInPicker(null)
                     }}
                     placeholder="예: 7/6"
-                    className="h-6 bg-white border border-gray-300 rounded px-1.5 text-[11px] focus:outline-none focus:border-hansl-500"
-                    style={{ width: '150px' }}
+                    title="직접 입력 또는 달력에서 선택"
+                    className={`h-5 bg-white border border-gray-300 rounded px-1 text-[10px] focus:outline-none focus:border-hansl-500 ${stockQtyEnabled ? 'flex-1 min-w-0' : ''}`}
+                    style={stockQtyEnabled ? { minWidth: '80px' } : { width: '150px' }}
                   />
                   <button
                     type="button"
                     onClick={() => commitStockIn(stockInInput)}
-                    className="inline-flex items-center justify-center h-[15px] box-border px-1.5 rounded border border-hansl-500 bg-hansl-500 text-white text-[10px] leading-none font-medium hover:bg-hansl-600 hover:border-hansl-600 transition-colors shrink-0"
+                    className="inline-flex items-center justify-center h-5 box-border px-1.5 rounded border border-hansl-500 bg-hansl-500 text-white text-[10px] leading-none font-medium hover:bg-hansl-600 hover:border-hansl-600 transition-colors shrink-0"
                   >
                     저장
                   </button>
