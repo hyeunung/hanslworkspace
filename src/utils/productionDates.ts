@@ -104,7 +104,31 @@ export const formatDateOrMemo = (value: string | null | undefined): string => {
   return value;
 };
 
+// ─── 완제품입고/배송완료 수량 기록 ──────────────────────────────────────
+// 입고/배송 팝오버에서 수량을 함께 입력하면 'YYYY-MM-DD N개' 한 줄로 저장한다.
+// 완제품입고는 분할입고 시 줄을 추가해 로트별 기록을 누적하고,
+// 누적 수량과 제작수량을 비교해 분할입고/전체입고를 구분 표시한다.
+export type StockEntry = { date: string; qty: number }
+
+// 값 전체가 'YYYY-MM-DD N개' 줄들로만 구성됐을 때만 파싱 (그 외는 null → 기존 하이브리드 값)
+export const parseStockEntries = (value: string | null | undefined): StockEntry[] | null => {
+  if (!value) return null
+  const lines = String(value).split('\n').map(l => l.trim()).filter(Boolean)
+  if (!lines.length) return null
+  const entries: StockEntry[] = []
+  for (const l of lines) {
+    const m = l.match(/^(\d{4}-\d{2}-\d{2})\s+(\d+)\s*개$/)
+    if (!m) return null
+    entries.push({ date: m[1], qty: Number(m[2]) })
+  }
+  return entries
+}
+
+export const stockEntriesTotal = (entries: StockEntry[]): number =>
+  entries.reduce((sum, e) => sum + e.qty, 0)
+
 // 완제품 입고 표시 정규화: 경로별로 섞인 값을 'MM월 DD일'로 통일해 보여준다.
+// - 'YYYY-MM-DD N개' 줄들(수량 기록) → 'MM월 DD일 N개' 줄들
 // - ISO(YYYY-MM-DD) → 'MM월 DD일' (엑셀 임포트분)
 // - 'MM월 DD일 입고' → 'MM월 DD일' (버튼 스탬프 구형: '입고' 제거)
 // - 그 외(완료/납품/분할입고 메모 등)는 의미가 있어 원문 유지
@@ -112,6 +136,14 @@ export const formatStockInDisplay = (value: string | null | undefined): string =
   if (!value) return '-';
   const s = String(value).trim();
   if (!s || s === '-') return '-';
+  // 'YYYY-MM-DD N개' 수량 기록 줄들 → 'MM월 DD일 N개'
+  const entries = parseStockEntries(s);
+  if (entries) {
+    return entries.map(e => {
+      const m = e.date.match(/^(\d{4})-(\d{2})-(\d{2})$/)!
+      return `${m[2]}월 ${m[3]}일 ${e.qty}개`
+    }).join('\n');
+  }
   // ISO(YYYY-MM-DD) → MM월 DD일 (엑셀 임포트분)
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (iso) return `${iso[2]}월 ${iso[3]}일`;
@@ -126,6 +158,7 @@ export const formatStockInDisplay = (value: string | null | undefined): string =
 };
 
 // 입고완료(PCB 제작) / 배송완료(납품) 표시 정규화: 완제품입고와 달리 'M/D 완료' 형식(0채움 없음)으로 통일
+// - 'YYYY-MM-DD N개'(납품 수량 기록) → 'M/D N개 완료'
 // - ISO(YYYY-MM-DD) → 'M/D 완료'
 // - 'MM월 DD일'/'M/D' + 선택적 상태어 → 'M/D 완료'
 // - 그 외 메모 원문은 의미가 있어 유지
@@ -133,6 +166,8 @@ export const formatCompletedDisplay = (value: string | null | undefined): string
   if (!value) return '-';
   const s = String(value).trim();
   if (!s || s === '-') return '-';
+  const isoQty = s.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d+)\s*개$/);
+  if (isoQty) return `${Number(isoQty[2])}/${Number(isoQty[3])} ${Number(isoQty[4])}개 완료`;
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (iso) return `${Number(iso[2])}/${Number(iso[3])} 완료`;
   const md = s.match(/^(\d{1,2})\s*월\s*(\d{1,2})\s*일(?:\s*(?:입고|완료|납품|배송))?$/);

@@ -24,6 +24,7 @@ import {
 } from '@/utils/productionStatus'
 import {
   formatDbDateToDisplay, formatDisplayDateToDb, parseAndFormatInputDate, toDateOrMemo, formatDateOrMemo, formatStockInDisplay, formatCompletedDisplay,
+  parseStockEntries, stockEntriesTotal,
   STOCK_WAITING_LABEL, stockPickerLabel
 } from '@/utils/productionDates'
 import {
@@ -840,6 +841,9 @@ export default function ProductionListMain() {
   // 완제품 입고 날짜 선택 팝오버: '입고대기' 클릭 시 열림 (직접 입력 + 달력 클릭 선택)
   const [stockInPicker, setStockInPicker] = useState<{ id: string, type: 'pcb' | 'cable', field: string } | null>(null)
   const [stockInInput, setStockInInput] = useState<string>('')
+  // 완제품입고/배송완료 팝오버의 수량 입력 — 입력 시 'YYYY-MM-DD N개'로 저장되어
+  // 완제품입고는 분할입고/전체입고 구분, 배송완료는 납품 수량 표시에 쓰인다
+  const [stockInQty, setStockInQty] = useState<string>('')
   // 완료 이벤트(ARTWORK/PCB입고완료/부품정리/완제품입고/납품배송완료)에서 선택된 알림 대상 팀
   const [notifyTeams, setNotifyTeams] = useState<string[]>([])
   const stockInPopoverRef = useRef<HTMLDivElement | null>(null)
@@ -1482,8 +1486,14 @@ export default function ProductionListMain() {
     if (field === 'parts_organization') {
       return getKstTodayISO()
     }
-    // pcb_stock_completed / final_product_stock / delivery_completed: 날짜-또는-메모 하이브리드, 날짜면 그대로 사용
-    return typeof valueToSave === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(valueToSave) ? valueToSave : ''
+    // pcb_stock_completed / final_product_stock / delivery_completed: 날짜-또는-메모 하이브리드.
+    // 'YYYY-MM-DD' 또는 'YYYY-MM-DD N개' 기록(분할입고는 여러 줄)이면 마지막 줄의 날짜를 사용
+    if (typeof valueToSave === 'string') {
+      const lines = valueToSave.trim().split('\n')
+      const m = lines[lines.length - 1].trim().match(/^(\d{4}-\d{2}-\d{2})(?:\s+\d+\s*개)?$/)
+      if (m) return m[1]
+    }
+    return ''
   }
 
   // 완료 이벤트 저장 시 선택된 팀에게 푸시 발송 (이메일은 Make.com이 notify_teams 칼럼 변경을 감지해 별도 발송)
@@ -1703,6 +1713,7 @@ export default function ProductionListMain() {
   const handleStockInPress = useStableHandler((id: string, type: 'pcb' | 'cable', field: string = 'final_product_stock') => {
     if (modifierSelectRef.current) return // Shift/Ctrl+클릭 선택 중에는 팝오버를 열지 않음
     setStockInInput('')
+    setStockInQty('')
     setNotifyTeams(NOTIFY_TEAMS_DEFAULT[field] || [])
     setStockInPicker({ id, type, field })
   })
@@ -1710,13 +1721,46 @@ export default function ProductionListMain() {
   // 팝오버에서 확정한 입고일 저장 — 달력 선택은 ISO(YYYY-MM-DD)로 스탬프되어 날짜가 곧 입고 기록이자
   // 입고 여부 판단 기준. 화면에는 formatStockInDisplay가 'MM월 DD일'로 표시한다.
   // 직접 입력은 handleCellSave가 날짜(예: 7/6)면 날짜로, 아니면 메모 원문으로 해석한다.
+  // 완제품입고/배송완료에서 수량을 함께 입력하면 'YYYY-MM-DD N개'로 저장하고,
+  // 완제품입고는 기존 수량 기록 뒤에 줄을 추가해 분할입고를 누적 기록한다.
   const commitStockIn = useStableHandler((val: string) => {
     const target = stockInPicker
     const teams = notifyTeams
+    const qty = parseInt(stockInQty, 10)
     setStockInPicker(null)
     if (!target || !val.trim()) return
-    handleCellSave(target, val.trim(), true, teams)
+    let v = val.trim()
+    if ((target.field === 'final_product_stock' || target.field === 'delivery_completed') && Number.isFinite(qty) && qty > 0) {
+      const parsed = toDateOrMemo(v, defaultMonthFor(target.type))
+      if (parsed && /^\d{4}-\d{2}-\d{2}$/.test(parsed)) {
+        v = `${parsed} ${qty}개`
+        if (target.field === 'final_product_stock') {
+          const list: any[] = target.type === 'pcb' ? liveDataRef.current.pcbs : liveDataRef.current.cables
+          const prevRaw = (list.find(i => i.id === target.id) as any)?.[target.field]
+          if (parseStockEntries(prevRaw)) v = `${String(prevRaw).trim()}\n${v}`
+        }
+      }
+    }
+    handleCellSave(target, v, true, teams)
   })
+
+  // 완제품입고 셀 표시값: 'YYYY-MM-DD N개' 수량 기록이면 누적/제작수량 비교 배지를 덧붙인다.
+  // 여러 줄이 접혀도 구분이 보이도록 배지는 첫 줄 끝에 붙인다.
+  // 분할입고(누적 < 제작수량) 상태는 isStockWaiting 분기가 따로 그리므로, 여기는 사실상 전체입고만 해당된다.
+  const stockInDisplayWithBadge = (item: any): string => {
+    const base = formatStockInDisplay(item.final_product_stock)
+    const entries = parseStockEntries(item.final_product_stock)
+    if (!entries) return base
+    const total = stockEntriesTotal(entries)
+    const q = Number(item.quantity) || 0
+    if (q <= 0) return base
+    const badge = total >= q
+      ? (entries.length > 1 ? `(전체입고 ${total}/${q})` : '(전체입고)')
+      : `(분할입고 ${total}/${q})`
+    const lines = base.split('\n')
+    lines[0] = `${lines[0]} ${badge}`
+    return lines.join('\n')
+  }
 
   // 입고일 팝오버 밖을 클릭하면 닫기
   useEffect(() => {
@@ -2887,14 +2931,24 @@ export default function ProductionListMain() {
     const artworkStockIn = (field === 'final_product_stock' || field === 'pcb_stock_completed') &&
       artworkStatusMatches(parseArtworkStatus(item.artwork_status), 'stock_in')
 
+    // 완제품입고 분할입고 상태: 'YYYY-MM-DD N개' 수량 기록이 있고 누적이 제작수량 미만이면
+    // 아직 입고 진행 중 — 기록을 표시하면서 '추가입고' 버튼으로 다음 로트를 이어서 입력한다
+    const stockEntries = field === 'final_product_stock' && !artworkStockIn ? parseStockEntries(item[field]) : null
+    const stockTotal = stockEntries ? stockEntriesTotal(stockEntries) : 0
+    const rowQuantity = Number(item.quantity) || 0
+    const isPartialStock = !!stockEntries && rowQuantity > 0 && stockTotal < rowQuantity
+
     // 완제품 입고/입고완료/배송완료: 값이 비어 있으면 대기 버튼 표시 (클릭 시 날짜 선택 팝오버)
     const isStockWaiting = (field === 'final_product_stock' || field === 'cable_actual_date' || field === 'pcb_stock_completed' || field === 'delivery_completed') &&
       !artworkStockIn &&
       (item[field] == null ||
        String(item[field]).trim() === '' ||
-       String(item[field]).trim() === '-')
+       String(item[field]).trim() === '-' ||
+       isPartialStock)
     const isStockPickerOpen = isStockWaiting && !!stockInPicker &&
       stockInPicker.id === id && stockInPicker.type === type && stockInPicker.field === field
+    // 수량 입력을 지원하는 완료 이벤트 — 완제품입고(분할/전체입고 구분), 배송완료(납품 수량)
+    const stockQtyEnabled = field === 'final_product_stock' || field === 'delivery_completed'
 
     // 선택된 셀은 transition-colors를 제거해 하이라이트가 150ms 페이드 없이 즉시 나타나게 한다
     const tdClassName = `${computedClassName} cursor-pointer ${item.row_color || item.cell_colors?.[field] ? '' : 'hover:bg-gray-100/50'} transition-colors select-none${isStockPickerOpen ? ' relative' : ''}`
@@ -2912,13 +2966,19 @@ export default function ProductionListMain() {
       >
         {isStockWaiting ? (
           <>
+            {isPartialStock && (
+              <div className="flex flex-col items-start gap-0.5 mb-0.5">
+                {renderCellDisplayValue(id, field, formatStockInDisplay(item[field]))}
+                <span className="text-[9px] font-semibold text-amber-600 whitespace-nowrap">분할입고 {stockTotal}/{rowQuantity}</span>
+              </div>
+            )}
             <button
               type="button"
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); handleStockInPress(id, type, field) }}
               className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-colors"
             >
-              {STOCK_WAITING_LABEL[field] || '입고대기'}
+              {isPartialStock ? '추가입고' : (STOCK_WAITING_LABEL[field] || '입고대기')}
             </button>
             {isStockPickerOpen && (
               <CellPopoverPortal
@@ -2930,6 +2990,42 @@ export default function ProductionListMain() {
               >
                 {NOTIFY_TEAMS_COLUMN[field] && (
                   <NotifyTeamsPicker teams={notifyTeams} onChange={setNotifyTeams} />
+                )}
+                {stockQtyEnabled && (
+                  <div className="flex items-center gap-1 mb-1">
+                    <span className="text-[10px] text-gray-500 shrink-0">수량</span>
+                    <input
+                      type="number"
+                      min={1}
+                      value={stockInQty}
+                      onChange={(e) => setStockInQty(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitStockIn(stockInInput)
+                        if (e.key === 'Escape') setStockInPicker(null)
+                      }}
+                      placeholder={field === 'final_product_stock'
+                        ? `이번 입고 수량 (제작 ${rowQuantity > 0 ? rowQuantity : '-'}${item.quantity_unit || 'ea'})`
+                        : '납품 수량'}
+                      className="flex-1 min-w-0 h-5 bg-white border border-gray-300 rounded px-1 text-[10px] focus:outline-none focus:border-hansl-500"
+                    />
+                  </div>
+                )}
+                {field === 'final_product_stock' && isPartialStock && (
+                  <div className="flex items-center justify-between gap-2 mb-1 px-0.5">
+                    <span className="text-[9px] font-semibold text-amber-600">분할입고 누적 {stockTotal}/{rowQuantity} — 이번 입고분을 추가하세요</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStockInPicker(null)
+                        setEditingCell({ id, type, field })
+                        setEditValue(String(item[field] ?? ''))
+                      }}
+                      className="text-[9px] text-gray-400 underline hover:text-gray-600 shrink-0"
+                      title="기록 원문을 직접 수정합니다"
+                    >
+                      기록 수정
+                    </button>
+                  </div>
                 )}
                 <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">{stockPickerLabel(field)} — 직접 입력 또는 달력에서 선택</div>
                 <div className="flex items-center gap-1">
@@ -3779,7 +3875,7 @@ export default function ProductionListMain() {
       ? `E:${editingCell.field}:${editValue}:${notifyTeams.join(',')}` : ''
     const picker = activeColorPicker && activeColorPicker.type === type && activeColorPicker.id === item.id ? 'P' : ''
     const stockIn = stockInPicker && stockInPicker.type === type && stockInPicker.id === item.id
-      ? `S:${stockInPicker.field}:${stockInInput}:${notifyTeams.join(',')}` : ''
+      ? `S:${stockInPicker.field}:${stockInInput}:${stockInQty}:${notifyTeams.join(',')}` : ''
     // 제작번호 선택 팝오버가 열린 행도 필터 입력값이 바뀔 때마다 다시 그린다
     const orderNo = orderNoPicker && orderNoPicker.type === type && orderNoPicker.id === item.id
       ? `N:${orderNoInput}` : ''
@@ -4142,7 +4238,7 @@ export default function ProductionListMain() {
                           'pcb',
                           'final_product_stock',
                           item,
-                          formatStockInDisplay(item.final_product_stock),
+                          stockInDisplayWithBadge(item),
                           'px-2 py-1.5 border border-gray-200'
                         )}
                           {mergeCells(mergedDRaw)}

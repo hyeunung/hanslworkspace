@@ -13,6 +13,7 @@ import {
   parsePartsStatus,
   partsStatusMatches,
 } from '@/utils/productionStatus'
+import { parseStockEntries, stockEntriesTotal } from '@/utils/productionDates'
 
 // 제작구분 칩의 기본 표시/그룹 순서 — 드래그로 재정렬 가능. 이 순서대로 테이블이 제작구분별로 위→아래 그룹핑됨
 export const DEFAULT_CATEGORY_ORDER = ['LG_PCB', 'LG_Socket Board', 'LG_Cable', 'LG_Case', 'PCB', 'Cable', 'Case']
@@ -157,6 +158,16 @@ export const applyFilterRule = (item: any, rule: FilterRule): boolean => {
       artworkStatusMatches(parseArtworkStatus(item.artwork_status), 'stock_in')) {
     if (rule.op === 'is_empty') return false
     if (rule.op === 'not_empty') return true
+  }
+  // 완제품입고 분할입고 기록('YYYY-MM-DD N개' 줄들): 누적 수량이 제작수량에 못 미치면
+  // 아직 입고대기(비어있음)로 취급해 기본 필터(입고대기만 보기)에서 사라지지 않게 한다
+  if (rule.field === 'final_product_stock' && (rule.op === 'is_empty' || rule.op === 'not_empty')) {
+    const entries = parseStockEntries(s)
+    if (entries) {
+      const q = Number(item.quantity) || 0
+      const done = q <= 0 || stockEntriesTotal(entries) >= q
+      return rule.op === 'is_empty' ? !done : done
+    }
   }
   // 부품정리: ARTWORK와 같은 하이브리드(status|||memo) 구조 — 동일하게 처리
   if (rule.field === PARTS_FIELD) {
