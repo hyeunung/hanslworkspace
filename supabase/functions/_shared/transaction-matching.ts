@@ -11,7 +11,7 @@
 // vendor 게이트는 두지 않는다. PO 100% 일치가 vendor 보다 강한 신호이고,
 // vendor 추출이 잘못된 경우(예: '퍼스트코어' vs 실제 '(주)환화') 에도 매칭이 살아남아야 한다.
 
-import { normalizeOrderNumber } from './order-number.ts'
+import { extractOrderNumberWithLine, normalizeOrderNumber } from './order-number.ts'
 import { calculateVendorSimilarity } from './vendor-matching.ts'
 
 export interface MatchInputItem {
@@ -298,8 +298,17 @@ export async function matchTransactionItems(
     }
 
     // 1a) 명시적 라인번호 일치
-    if (item.po_line_number != null) {
-      const exact = purchase.items.find((i) => i.line_number === item.po_line_number)
+    // 라인번호가 추출되지 않았어도 규격 칼럼에 "PO-NN" 접미사가 찍혀 있으면 그것을 신뢰한다.
+    // (유사도 폴백은 부품번호 vs 시스템 품명 간 노이즈 매칭을 만들 수 있어 라인번호가 항상 우선)
+    let poLineNumber = item.po_line_number ?? null
+    if (poLineNumber == null) {
+      const fromSpec = extractOrderNumberWithLine(item.specification)
+      if (fromSpec?.lineNumber != null && fromSpec.base === po) {
+        poLineNumber = fromSpec.lineNumber
+      }
+    }
+    if (poLineNumber != null) {
+      const exact = purchase.items.find((i) => i.line_number === poLineNumber)
       if (exact) {
         results.push({
           lineNumber: item.line_number,

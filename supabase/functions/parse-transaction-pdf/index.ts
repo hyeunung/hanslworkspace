@@ -4,7 +4,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4'
 // @ts-ignore - Deno runtime imports
 import { PDFDocument, degrees } from "https://esm.sh/pdf-lib@1.17.1"
-import { extractOrderNumber, parseOrderNumberWithLine } from '../_shared/order-number.ts'
+import { extractOrderNumberWithLine, parseOrderNumberWithLine } from '../_shared/order-number.ts'
 import { validateAndMatchVendor } from '../_shared/vendor-matching.ts'
 import { matchTransactionItems } from '../_shared/transaction-matching.ts'
 
@@ -501,6 +501,7 @@ items 각 항목:
 - confidence: low|med|high
 
 발주/수주번호에 라인 서픽스(예: F20260121_001-01)가 있으면 po_number에 전체를 포함하세요.
+규격 칼럼에 발주번호 형식 문자열(예: F20260121_001-07)이 인쇄된 경우: specification에 원문 그대로 유지하면서 po_number에도 라인 서픽스까지 전체를 복사하세요. specification을 비우지 마세요.
 
 행 생략 금지:
 - 모든 품목 행을 빠짐없이 추출
@@ -1158,6 +1159,8 @@ async function extractItemsLineRangeWithClaude(
 - ENIG(화학금도금), 필름, V-CUT, 네고, 잉크비처럼 품목명 칸에 찍힌 행도 amount 또는 tax_amount가 있으면 포함
 - 품목 행에 인쇄된 line_number가 없으면 line_number는 null로 반환
 - 품명 빈칸 금액행은 직전 행 remark로 합치지 말고 별도 item으로 유지
+- 발주/수주번호(예: F20260121_001-07, HS260201-01-02)가 보이면 po_number에 라인 서픽스까지 전체 포함, po_line_number에 서픽스 숫자
+- 규격 칼럼에 발주번호 형식 문자열이 인쇄된 경우 specification에 원문 그대로 유지하고 po_number에도 전체를 복사 (specification을 비우지 말 것)
 - 힌트: ${scopeHint}
 
 반드시 JSON만 출력:
@@ -1266,6 +1269,8 @@ async function extractMissingItemsWithClaude(
 - ENIG(화학금도금), 필름, V-CUT, 네고, 잉크비처럼 품목명 칸에 찍힌 행도 amount 또는 tax_amount가 있으면 포함
 - 품목 행에 인쇄된 line_number가 없으면 line_number는 null로 반환
 - 품명 빈칸 금액행은 직전 행 remark로 합치지 말고 별도 item으로 유지
+- 발주/수주번호(예: F20260121_001-07, HS260201-01-02)가 보이면 po_number에 라인 서픽스까지 전체 포함, po_line_number에 서픽스 숫자
+- 규격 칼럼에 발주번호 형식 문자열이 인쇄된 경우 specification에 원문 그대로 유지하고 po_number에도 전체를 복사 (specification을 비우지 말 것)
 - 힌트: ${scopeHint}
 
 이미 확보된 line_number:
@@ -1521,6 +1526,8 @@ function scoreParsedItem(item: ParsedItem): number {
   if ((item.amount || 0) !== 0) score += 1
   if (item.tax_amount !== null && item.tax_amount !== undefined) score += 1
   if (item.po_number) score += 2
+  // 발주 라인번호는 라인 매칭의 최우선 신호 — 병합 시 라인번호 보유 버전이 이기도록 가중
+  if (item.po_line_number !== null && item.po_line_number !== undefined) score += 2
   if (item.remark) score += 0.5
   return score
 }
@@ -1585,10 +1592,26 @@ function normalizeParsedItem(raw: any, fallbackLineNumber: number): ParsedItem {
   const specification = sanitizeText(raw?.specification)
   const remark = sanitizeText(raw?.remark)
 
-  const poRaw = sanitizeText(raw?.po_number) || extractOrderNumber(`${remark} ${itemName} ${specification}`) || ''
-  const parsed = poRaw ? parseOrderNumberWithLine(poRaw) : null
-  const poNumber = parsed?.base || undefined
-  const poLineNumber = parsed?.lineNumber ?? undefined
+  const poRaw = sanitizeText(raw?.po_number)
+  const parsed = (poRaw ? parseOrderNumberWithLine(poRaw) : null)
+    || extractOrderNumberWithLine(`${remark} ${itemName} ${specification}`)
+  let poNumber = parsed?.base || undefined
+  let poLineNumber = parsed?.lineNumber ?? undefined
+
+  // 모델이 po_number에 라인 접미사를 안 붙여도(예: "F20260702_019"),
+  // 별도 po_line_number 필드나 규격 칼럼의 "PO-NN" 접미사에서 라인번호를 복원한다.
+  if (poLineNumber === undefined) {
+    const fromModel = parsePositiveInt(raw?.po_line_number)
+    if (fromModel !== null) {
+      poLineNumber = fromModel
+    } else {
+      const fromSpec = extractOrderNumberWithLine(specification)
+      if (fromSpec?.lineNumber != null && (!poNumber || fromSpec.base === poNumber)) {
+        poNumber = poNumber || fromSpec.base
+        poLineNumber = fromSpec.lineNumber
+      }
+    }
+  }
 
   const confidenceRaw = sanitizeText(raw?.confidence).toLowerCase()
   const confidence: 'low' | 'med' | 'high' =
