@@ -7,6 +7,7 @@ import { PDFDocument, degrees } from "https://esm.sh/pdf-lib@1.17.1"
 import { extractOrderNumberWithLine, parseOrderNumberWithLine } from '../_shared/order-number.ts'
 import { validateAndMatchVendor } from '../_shared/vendor-matching.ts'
 import { matchTransactionItems } from '../_shared/transaction-matching.ts'
+import { extractStatementDateFromText, sanitizeStatementDate } from '../_shared/statement-date.ts'
 
 declare const Deno: {
   env: {
@@ -237,7 +238,7 @@ async function processExtractionInBackground(args: BackgroundExtractionArgs): Pr
         extraction_error: null,
         processing_finished_at: new Date().toISOString(),
         locked_by: null,
-        statement_date: parseResult.statement_date || null,
+        statement_date: sanitizeStatementDate(parseResult.statement_date),
         vendor_name: validatedVendorName || parseResult.vendor_name || null,
         total_amount: parseResult.total_amount || null,
         tax_amount: parseResult.tax_amount || null,
@@ -1638,16 +1639,10 @@ function normalizeDate(value: unknown): string | undefined {
   const text = sanitizeText(value)
   if (!text) return undefined
 
-  const fullDate = text.match(/(\d{4})[.\-/년\s]+(\d{1,2})[.\-/월\s]+(\d{1,2})/)
-  if (fullDate) {
-    const [, y, m, d] = fullDate
-    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
-  }
+  const isoDate = sanitizeStatementDate(text)
+  if (isoDate) return isoDate
 
-  const isoDate = text.match(/^\d{4}-\d{2}-\d{2}$/)
-  if (isoDate) return isoDate[0]
-
-  return undefined
+  return extractStatementDateFromText(text) || undefined
 }
 
 function sanitizeText(value: unknown): string {

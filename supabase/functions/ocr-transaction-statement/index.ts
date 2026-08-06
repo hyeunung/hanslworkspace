@@ -5,6 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 // @ts-ignore - Deno runtime imports
 import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts"
 import { matchTransactionItems } from "../_shared/transaction-matching.ts"
+import { extractStatementDateFromText, sanitizeStatementDate } from "../_shared/statement-date.ts"
 
 declare const Deno: {
   env: {
@@ -436,7 +437,7 @@ serve(async (req) => {
         processing_finished_at: new Date().toISOString(),
         locked_by: null,
         reset_before_extract: false,
-        statement_date: extractionResult.statement_date || null,
+        statement_date: sanitizeStatementDate(extractionResult.statement_date),
         vendor_name: resolvedVendor.vendorName || null,
         total_amount: extractionResult.total_amount ?? null,
         tax_amount: extractionResult.tax_amount ?? null,
@@ -1868,14 +1869,10 @@ function normalizeDate(value: unknown): string | undefined {
   const text = sanitizeText(value)
   if (!text) return undefined
 
-  const fullDate = text.match(/(\d{4})[.\-/년\s]+(\d{1,2})[.\-/월\s]+(\d{1,2})/)
-  if (fullDate) {
-    const [, y, m, d] = fullDate
-    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`
-  }
+  const isoDate = sanitizeStatementDate(text)
+  if (isoDate) return isoDate
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text
-  return undefined
+  return extractStatementDateFromText(text) || undefined
 }
 
 function sanitizeText(value: unknown): string {
