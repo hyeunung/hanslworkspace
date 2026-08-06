@@ -7,6 +7,11 @@ import * as XLSX from 'https://esm.sh/xlsx@0.18.5'
 import { extractOrderNumber, normalizeOrderNumber } from '../_shared/order-number.ts'
 import { validateAndMatchVendor } from '../_shared/vendor-matching.ts'
 import { matchTransactionItems } from '../_shared/transaction-matching.ts'
+import {
+  extractStatementDateFromCell,
+  extractStatementDateFromText,
+  sanitizeStatementDate,
+} from '../_shared/statement-date.ts'
 
 declare const Deno: {
   env: {
@@ -111,11 +116,12 @@ serve(async (req) => {
     currentStage = 'read_existing'
     const { data: existingStatement } = await supabase
       .from('transaction_statements')
-      .select('extracted_data')
+      .select('extracted_data, file_name')
       .eq('id', statementId)
       .single()
 
     const preservedActualReceivedDate = (existingStatement?.extracted_data as any)?.actual_received_date || null
+    const uploadedFileName = existingStatement?.file_name || ''
 
     currentStage = 'reset_statement'
     await resetStatementForProcessing(
@@ -128,7 +134,7 @@ serve(async (req) => {
     const fileBuffer = await downloadFile(fileUrl)
 
     currentStage = 'parse_excel'
-    const parseResult = parseExcelFile(fileBuffer)
+    const parseResult = parseExcelFile(fileBuffer, uploadedFileName)
 
     currentStage = 'match_items'
     const matchedItems = await matchTransactionItems(
@@ -177,7 +183,7 @@ serve(async (req) => {
         extraction_error: null,
         processing_finished_at: new Date().toISOString(),
         locked_by: null,
-        statement_date: parseResult.statement_date || null,
+        statement_date: sanitizeStatementDate(parseResult.statement_date),
         vendor_name: validatedVendorName || parseResult.vendor_name || null,
         total_amount: parseResult.total_amount || null,
         tax_amount: parseResult.tax_amount || null,
@@ -313,7 +319,7 @@ async function downloadFile(url: string): Promise<ArrayBuffer> {
   return await response.arrayBuffer()
 }
 
-function parseExcelFile(buffer: ArrayBuffer): ParseResult {
+function parseExcelFile(buffer: ArrayBuffer, fileName = ''): ParseResult {
   const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' })
   const sheetName = workbook.SheetNames[0]
   if (!sheetName) {
@@ -333,6 +339,7 @@ function parseExcelFile(buffer: ArrayBuffer): ParseResult {
     columnMap.poNumber = inferredPoColumn
   }
   const metadata = extractStatementMetadata(rows, headerRowIndex)
+  metadata.statement_date = resolveStatementDate(rows, headerRowIndex, fileName) ?? undefined
   const rawItems = extractItems(rows, headerRowIndex, columnMap)
   const items = rawItems.filter((item) => {
     const hasIdentity = Boolean(item.item_name || item.specification)
@@ -469,7 +476,6 @@ function inferPoColumnFromData(rows: any[][], headerRowIndex: number, colMap: Co
 }
 
 function extractStatementMetadata(rows: any[][], headerRowIndex: number): StatementMetadata {
-  let statementDate: string | undefined
   let vendorName: string | undefined
   let totalAmount: number | undefined
   let taxAmount: number | undefined
@@ -482,11 +488,6 @@ function extractStatementMetadata(rows: any[][], headerRowIndex: number): Statem
     const normalizedCells = row.map((cell) => sanitizeText(cell))
     const rowText = normalizedCells.filter(Boolean).join(' ')
     const rowLower = rowText.toLowerCase()
-
-    if (!statementDate) {
-      const date = extractDate(rowText)
-      if (date) statementDate = date
-    }
 
     if (!vendorName) {
       const vendor = extractVendorNameFromRow(normalizedCells)
@@ -520,13 +521,63 @@ function extractStatementMetadata(rows: any[][], headerRowIndex: number): Statem
   }
 
   return {
-    statement_date: statementDate,
     vendor_name: vendorName,
     total_amount: totalAmount,
     tax_amount: taxAmount,
     grand_total: grandTotal,
     po_number: poNumber,
   }
+}
+
+// ========== 명세서 날짜 결정 ==========
+//
+// 날짜는 의미가 확실한 출처에서만, 셀 단위로 추출한다. 우선순위:
+//   1. 표 헤더 위쪽 제목 영역의 명시적 날짜 ("2026년 7월 거래명세서" 등)
+//   2. 업로드 파일명 ("… 2026년 07월분 …" 등 사람이 붙인 라벨)
+//   3. 데이터의 일자 칼럼(납품일자 등) 중 가장 늦은 날짜
+// 데이터 행을 이어붙여 정규식으로 긁는 방식은 금지 (가짜 날짜 사고 원인).
+function resolveStatementDate(rows: any[][], headerRowIndex: number, fileName: string): string | null {
+  const titleDate = extractTitleAreaDate(rows, headerRowIndex)
+  if (titleDate) return titleDate
+
+  const fileNameDate = extractStatementDateFromText(fileName)
+  if (fileNameDate) return fileNameDate
+
+  return extractLatestDateFromDateColumn(rows, headerRowIndex)
+}
+
+function extractTitleAreaDate(rows: any[][], headerRowIndex: number): string | null {
+  for (let i = 0; i < headerRowIndex; i++) {
+    const row = rows[i] || []
+    for (const cell of row) {
+      const date = extractStatementDateFromCell(cell)
+      if (date) return date
+    }
+  }
+  return null
+}
+
+function extractLatestDateFromDateColumn(rows: any[][], headerRowIndex: number): string | null {
+  const header = rows[headerRowIndex] || []
+  const dateColumns: number[] = []
+  for (let i = 0; i < header.length; i++) {
+    const token = normalizeHeaderToken(String(header[i] || ''))
+    if (!token) continue
+    if (hasKeyword(token, ['납품일', '거래일', '출고일', '일자', '날짜', 'date'])) {
+      dateColumns.push(i)
+    }
+  }
+  if (!dateColumns.length) return null
+
+  let latest: string | null = null
+  for (let i = headerRowIndex + 1; i < rows.length; i++) {
+    const row = rows[i] || []
+    for (const colIndex of dateColumns) {
+      const date = extractStatementDateFromCell(getCellByIndex(row, colIndex), true)
+      if (date && (!latest || date > latest)) latest = date
+    }
+  }
+  return latest
 }
 
 function extractItems(rows: any[][], headerRowIndex: number, colMap: ColumnMap): ParsedItem[] {
@@ -673,23 +724,6 @@ function parseNullableAmount(value: unknown): number | null {
   if (!normalized || normalized === '-' || normalized === '무상' || normalized === 'W') return null
   const parsed = Number(normalized)
   return Number.isFinite(parsed) ? parsed : null
-}
-
-function extractDate(text: string): string | undefined {
-  const normalized = text.replace(/\s+/g, ' ')
-  const fullDateMatch = normalized.match(/(\d{4})[.\-/년\s]+(\d{1,2})[.\-/월\s]+(\d{1,2})/)
-  if (fullDateMatch) {
-    const [, y, m, d] = fullDateMatch
-    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
-  }
-
-  const yearMonthMatch = normalized.match(/(\d{4})[.\-/년\s]+(\d{1,2})[월]*/)
-  if (yearMonthMatch) {
-    const [, y, m] = yearMonthMatch
-    return `${y}-${m.padStart(2, '0')}-01`
-  }
-
-  return undefined
 }
 
 function extractVendorNameFromRow(cells: string[]): string | undefined {

@@ -4,6 +4,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4'
 // @ts-ignore - Deno runtime imports
 import * as XLSX from 'https://esm.sh/xlsx@0.18.5'
+import { extractStatementDateFromCell, sanitizeStatementDate } from '../_shared/statement-date.ts'
 
 declare const Deno: {
   env: {
@@ -144,7 +145,7 @@ serve(async (req) => {
         status: 'extracted',
         processing_finished_at: new Date().toISOString(),
         locked_by: null,
-        statement_date: parseResult.statement_date || null,
+        statement_date: sanitizeStatementDate(parseResult.statement_date),
         vendor_name: validatedVendorName || parseResult.vendor_name || null,
         total_amount: parseResult.total_amount || null,
         tax_amount: parseResult.tax_amount || null,
@@ -304,14 +305,14 @@ function parseExcelFile(buffer: ArrayBuffer): ParseResult {
   let vendorName: string | undefined
   let grandTotal: number | undefined
 
-  // 첫 몇 행에서 제목 정보 추출
-  for (let i = 0; i < headerRowIdx; i++) {
-    const rowText = rows[i].map((c: any) => String(c)).join(' ')
-
-    // 날짜 추출 (2026년 01월 등)
-    const dateMatch = rowText.match(/(\d{4})년?\s*(\d{1,2})월/)
-    if (dateMatch) {
-      statementDate = `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-01`
+  // 첫 몇 행(제목 영역)에서 셀 단위로 날짜 추출 — 행을 이어붙인 텍스트 스캔 금지 (가짜 날짜 사고 방지)
+  for (let i = 0; i < headerRowIdx && !statementDate; i++) {
+    for (const cell of rows[i] || []) {
+      const date = extractStatementDateFromCell(cell)
+      if (date) {
+        statementDate = date
+        break
+      }
     }
   }
 
