@@ -92,32 +92,52 @@ export interface ProductionCable {
   new_row_notify_teams?: string[]
 }
 
+// PostgREST 기본 응답 한도(1000행)에 걸려 데이터가 조용히 잘리지 않도록
+// 페이지 단위로 반복 조회하여 전체 행을 가져온다
+const FETCH_PAGE_SIZE = 1000
+
+async function fetchAllPages<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
+): Promise<T[]> {
+  const rows: T[] = []
+  for (let from = 0; ; from += FETCH_PAGE_SIZE) {
+    const { data, error } = await fetchPage(from, from + FETCH_PAGE_SIZE - 1)
+    if (error) throw error
+    const page = data ?? []
+    rows.push(...page)
+    if (page.length < FETCH_PAGE_SIZE) break
+  }
+  return rows
+}
+
 export const productionService = {
   /**
    * PCB 및 소켓보드 목록 조회
    */
   async getProductionPcbs(filters?: { query?: string; startDate?: string; endDate?: string }): Promise<ProductionPcb[]> {
     const supabase = createClient()
-    // 소프트 삭제된 행은 제외 (삭제 이력은 DB에 보존되지만 UI에는 노출하지 않는다)
-    let query = supabase.from('production_pcbs').select('*').is('deleted_at', null)
+    return fetchAllPages<ProductionPcb>((from, to) => {
+      // 소프트 삭제된 행은 제외 (삭제 이력은 DB에 보존되지만 UI에는 노출하지 않는다)
+      let query = supabase.from('production_pcbs').select('*').is('deleted_at', null)
 
-    if (filters?.startDate) {
-      query = query.gte('request_date', filters.startDate)
-    }
-    if (filters?.endDate) {
-      query = query.lte('request_date', filters.endDate)
-    }
-    if (filters?.query) {
-      const q = `%${filters.query}%`
-      query = query.or(`sales_order_number.ilike.${q},board_name.ilike.${q},client_name.ilike.${q}`)
-    }
+      if (filters?.startDate) {
+        query = query.gte('request_date', filters.startDate)
+      }
+      if (filters?.endDate) {
+        query = query.lte('request_date', filters.endDate)
+      }
+      if (filters?.query) {
+        const q = `%${filters.query}%`
+        query = query.or(`sales_order_number.ilike.${q},board_name.ilike.${q},client_name.ilike.${q}`)
+      }
 
-    // 기본적으로 제작 번호(수주번호) 내림차순 정렬
-    query = query.order('sales_order_number', { ascending: false })
-
-    const { data, error } = await query
-    if (error) throw error
-    return data || []
+      // 기본적으로 제작 번호(수주번호) 내림차순 정렬
+      // 제작번호는 여러 부품이 공유해 유일하지 않으므로 id 2차 정렬로 페이지 경계를 고정한다
+      return query
+        .order('sales_order_number', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to)
+    })
   },
 
   /**
@@ -125,26 +145,28 @@ export const productionService = {
    */
   async getProductionCables(filters?: { query?: string; startDate?: string; endDate?: string }): Promise<ProductionCable[]> {
     const supabase = createClient()
-    // 소프트 삭제된 행은 제외 (삭제 이력은 DB에 보존되지만 UI에는 노출하지 않는다)
-    let query = supabase.from('production_cables').select('*').is('deleted_at', null)
+    return fetchAllPages<ProductionCable>((from, to) => {
+      // 소프트 삭제된 행은 제외 (삭제 이력은 DB에 보존되지만 UI에는 노출하지 않는다)
+      let query = supabase.from('production_cables').select('*').is('deleted_at', null)
 
-    if (filters?.startDate) {
-      query = query.gte('request_date', filters.startDate)
-    }
-    if (filters?.endDate) {
-      query = query.lte('request_date', filters.endDate)
-    }
-    if (filters?.query) {
-      const q = `%${filters.query}%`
-      query = query.or(`sales_order_number.ilike.${q},board_name.ilike.${q},client_name.ilike.${q}`)
-    }
+      if (filters?.startDate) {
+        query = query.gte('request_date', filters.startDate)
+      }
+      if (filters?.endDate) {
+        query = query.lte('request_date', filters.endDate)
+      }
+      if (filters?.query) {
+        const q = `%${filters.query}%`
+        query = query.or(`sales_order_number.ilike.${q},board_name.ilike.${q},client_name.ilike.${q}`)
+      }
 
-    // 기본적으로 제작 번호(수주번호) 내림차순 정렬
-    query = query.order('sales_order_number', { ascending: false })
-
-    const { data, error } = await query
-    if (error) throw error
-    return data || []
+      // 기본적으로 제작 번호(수주번호) 내림차순 정렬
+      // 제작번호는 여러 부품이 공유해 유일하지 않으므로 id 2차 정렬로 페이지 경계를 고정한다
+      return query
+        .order('sales_order_number', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to)
+    })
   },
 
   /**
