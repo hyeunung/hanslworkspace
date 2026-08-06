@@ -6,6 +6,7 @@ import DataInitializer from '@/components/auth/DataInitializer'
 import AppLayout from '@/components/layout/AppLayout'
 import UpdateNotificationModal from '@/components/common/UpdateNotificationModal'
 import ProductAcceptanceCertificatePreview from '@/components/receipts/ProductAcceptanceCertificatePreview'
+import { Toaster } from '@/components/ui/sonner'
 import { logger } from '@/lib/logger'
 
 /**
@@ -65,6 +66,7 @@ export default function App() {
         />
       </Routes>
       <UpdateNotificationModal />
+      <Toaster richColors position="top-center" />
     </BrowserRouter>
   )
 }
