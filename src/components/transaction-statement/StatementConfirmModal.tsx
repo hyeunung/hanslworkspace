@@ -19,7 +19,8 @@ import {
   Search,
   RefreshCw,
   Trash2,
-  Plus
+  Plus,
+  Split
 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -449,6 +450,10 @@ export default function StatementConfirmModal({
   // 삭제된 행 추적 (OCR 품목 ID / 시스템 품목 item_id)
   const [deletedOCRItemIds, setDeletedOCRItemIds] = useState<Set<string>>(new Set());
   const [deletedSystemItemIds, setDeletedSystemItemIds] = useState<Set<number>>(new Set());
+
+  // 품목 행 분할 팝오버 (분할 개수 선택)
+  const [splitPopoverItemId, setSplitPopoverItemId] = useState<string | null>(null);
+  const [isSplittingItem, setIsSplittingItem] = useState(false);
 
   // 행 단위 무상샘플 처리 상태 (OCR item id → 새로 생성된 _S 발주 정보)
   const [freeSampleProcessedItems, setFreeSampleProcessedItems] = useState<Map<string, { purchaseId: number; itemId: number; purchaseOrderNumber: string }>>(new Map());
@@ -3593,6 +3598,94 @@ export default function StatementConfirmModal({
     }
   }, [statementWithItems, deletedOCRItemIds, statement.id, supabase]);
 
+  // 품목 행 분할: 선택한 개수만큼 행을 나누고 수량은 사용자가 직접 분배
+  const handleSplitOCRItem = useCallback(async (ocrItem: TransactionStatementItemWithMatch, splitCount: number) => {
+    if (!statementWithItems || splitCount < 2) return;
+
+    try {
+      setIsSplittingItem(true);
+
+      const activeItems = statementWithItems.items.filter(item => !deletedOCRItemIds.has(item.id));
+      const maxLineNumber = activeItems.length > 0
+        ? Math.max(...activeItems.map(item => item.line_number || 0))
+        : 0;
+
+      // 수정 중인 값이 있으면 그 값 기준으로 복제
+      const edited = editedOCRItems.get(ocrItem.id);
+      const itemName = (edited?.item_name !== undefined ? String(edited.item_name) : ocrItem.extracted_item_name) || '';
+      const unitPrice = edited?.unit_price !== undefined
+        ? Number(edited.unit_price)
+        : (ocrItem.extracted_unit_price ?? 0);
+
+      const rowsToInsert = Array.from({ length: splitCount - 1 }, (_, i) => ({
+        statement_id: statement.id,
+        line_number: maxLineNumber + i + 1,
+        extracted_item_name: itemName,
+        extracted_specification: ocrItem.extracted_specification,
+        extracted_po_number: ocrItem.extracted_po_number,
+        extracted_po_line_number: ocrItem.extracted_po_line_number,
+        extracted_quantity: 0,
+        extracted_unit_price: unitPrice,
+        extracted_amount: 0,
+        is_confirmed: false,
+        is_additional_item: false,
+        // 분할의 분할도 원본 행에 연결 (평탄화)
+        parent_item_id: ocrItem.parent_item_id || ocrItem.id,
+        // 원본 행의 매칭 후보를 복사해 좌측 발주 매칭이 바로 가능하도록
+        match_candidates_data: ocrItem.match_candidates || null
+      }));
+
+      const { data: newItems, error } = await supabase
+        .from('transaction_statement_items')
+        .insert(rowsToInsert)
+        .select('*');
+
+      if (error) {
+        toast.error(`행 분할에 실패했습니다: ${error.message}`);
+        return;
+      }
+
+      if (newItems && newItems.length > 0) {
+        setStatementWithItems(prev => {
+          if (!prev) return prev;
+          const items = [...prev.items];
+          const inserted = (newItems as TransactionStatementItemWithMatch[]).map(item => ({
+            ...item,
+            match_candidates: ocrItem.match_candidates || []
+          }));
+          const anchorId = ocrItem.parent_item_id || ocrItem.id;
+          // 같은 원본에 속한 마지막 행 뒤에 삽입
+          let insertIndex = -1;
+          items.forEach((item, idx) => {
+            if (item.id === anchorId || item.parent_item_id === anchorId) insertIndex = idx;
+          });
+          if (insertIndex >= 0) items.splice(insertIndex + 1, 0, ...inserted);
+          else items.push(...inserted);
+          return { ...prev, items };
+        });
+        toast.success(`${splitCount}개 행으로 분할되었습니다. 수량을 나눠 입력해 주세요.`);
+      }
+    } catch (err) {
+      logger.error('Error splitting OCR item:', err);
+      toast.error('행 분할 중 오류가 발생했습니다.');
+    } finally {
+      setIsSplittingItem(false);
+      setSplitPopoverItemId(null);
+    }
+  }, [statementWithItems, deletedOCRItemIds, editedOCRItems, statement.id, supabase]);
+
+  // 분할 팝오버 바깥 클릭 시 닫기 (팝오버가 열려 있을 때만 리스너 부착)
+  useEffect(() => {
+    if (!splitPopoverItemId) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-split-popover]')) return;
+      setSplitPopoverItemId(null);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [splitPopoverItemId]);
+
   useEffect(() => {
     if (!statementWithItems || itemMatches.size === 0) return;
 
@@ -5010,7 +5103,22 @@ export default function StatementConfirmModal({
                         const matched = itemMatches.get(item.id);
                         return matched?.purchase_order_number || matched?.sales_order_number || '';
                       };
-                      const visibleItems = unsortedItems;
+                      // 분할 행(parent_item_id)은 원본 행 바로 뒤에 배치
+                      const splitChildrenByParent = new Map<string, TransactionStatementItemWithMatch[]>();
+                      unsortedItems.forEach(item => {
+                        if (!item.parent_item_id) return;
+                        const list = splitChildrenByParent.get(item.parent_item_id) || [];
+                        list.push(item);
+                        splitChildrenByParent.set(item.parent_item_id, list);
+                      });
+                      const visibleItems: TransactionStatementItemWithMatch[] = [];
+                      unsortedItems.forEach(item => {
+                        // 부모가 화면에 있으면 부모 뒤에서 함께 렌더링되므로 건너뜀
+                        if (item.parent_item_id && unsortedItems.some(p => p.id === item.parent_item_id)) return;
+                        visibleItems.push(item);
+                        const children = splitChildrenByParent.get(item.id);
+                        if (children) visibleItems.push(...children);
+                      });
                       return visibleItems.map((ocrItem, rowIndex) => {
                       const getDisplayPOForItem = (item: TransactionStatementItemWithMatch) => getDisplayPOForMultiScope(item);
                       const matchedSystem = itemMatches.get(ocrItem.id);
@@ -5707,6 +5815,35 @@ export default function StatementConfirmModal({
                                 style={{ fontSize: '11px', fontWeight: 500, width: `${Math.max(180, (getOCRItemValue(ocrItem, 'item_name') as string).length * 8)}px` }}
                                 title={isOCRItemEdited(ocrItem, 'item_name') ? `원본: ${ocrItem.extracted_item_name}` : undefined}
                               />
+                              {!isEditDisabled && !isQuantityMatchConfirmed && (
+                                <div className="relative flex-shrink-0" data-split-popover>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSplitPopoverItemId(prev => prev === ocrItem.id ? null : ocrItem.id)}
+                                    disabled={isSplittingItem}
+                                    className="flex items-center text-gray-300 hover:text-blue-500 transition-colors"
+                                    title="행 분할 — 수량을 나눠 여러 발주 라인에 매칭"
+                                  >
+                                    <Split className="w-3 h-3" />
+                                  </button>
+                                  {splitPopoverItemId === ocrItem.id && (
+                                    <div className="absolute left-0 top-5 z-50 bg-white border border-gray-200 business-radius shadow-md p-1.5 flex items-center gap-1 whitespace-nowrap">
+                                      <span className="text-[10px] text-gray-500">분할 개수</span>
+                                      {[2, 3, 4, 5].map(count => (
+                                        <button
+                                          key={count}
+                                          type="button"
+                                          onClick={() => handleSplitOCRItem(ocrItem, count)}
+                                          disabled={isSplittingItem}
+                                          className="w-6 h-5 text-[10px] font-medium border border-gray-200 business-radius text-gray-700 hover:bg-blue-50 hover:border-blue-400 disabled:opacity-50"
+                                        >
+                                          {count}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </td>
                           <td className="p-1 text-right w-16">
