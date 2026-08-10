@@ -146,6 +146,29 @@ export function useRequestBadgeCounts() {
         }
       }
 
+      // admin은 스마트팜 부서(superadmin 전용 승인) pending 제외
+      if (isAdminRole && !isSuperAdmin && leaveCount > 0) {
+        try {
+          const { data: sfEmps } = await supabase
+            .from("employees")
+            .select("email")
+            .eq("department", "스마트팜");
+          const sfEmails = (sfEmps || [])
+            .map((e: { email: string | null }) => e.email)
+            .filter((email: string | null): email is string => !!email);
+          if (sfEmails.length > 0) {
+            const { count: sfCount } = await supabase
+              .from("leave")
+              .select("id", { count: "exact", head: true })
+              .eq("status", "pending")
+              .in("user_email", sfEmails);
+            leaveCount = Math.max(0, leaveCount - (sfCount || 0));
+          }
+        } catch {
+          // 실패 시 기존 카운트 유지
+        }
+      }
+
       setBadgeCounts({
         "발주/구매": purchasePendingCount,
         "카드사용": isCardVehicleApprover ? cardPendingRes.count || 0 : 0,
