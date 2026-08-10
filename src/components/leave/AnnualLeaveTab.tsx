@@ -381,6 +381,8 @@ export default function AnnualLeaveTab({ onBadgeRefresh }: AnnualLeaveTabProps) 
       const isRequesterSuperAdmin = requesterRoles.includes("superadmin");
 
       if (isRequesterSuperAdmin) return isSuperAdmin;
+      // 스마트팜 부서는 superadmin만 승인 가능
+      if ((leave.department || "") === "스마트팜") return isSuperAdmin;
       if (isSuperAdmin) return true;
       if (isAdmin) return true;
       if (isManager) {
@@ -410,7 +412,8 @@ export default function AnnualLeaveTab({ onBadgeRefresh }: AnnualLeaveTabProps) 
       const isRequesterSuperAdmin = requesterRoles.includes("superadmin");
 
       if (isSuperAdmin) return true;
-      if (isAdmin) return !isRequesterSuperAdmin;
+      // 스마트팜 부서는 superadmin만 승인 목록에 표시
+      if (isAdmin) return !isRequesterSuperAdmin && (l.department || "") !== "스마트팜";
       if (isManager) {
         if (requesterRoles.includes("admin") || isRequesterSuperAdmin) return false;
         if (requesterRoles.some((r: string) => r.endsWith("_manager"))) return false;
