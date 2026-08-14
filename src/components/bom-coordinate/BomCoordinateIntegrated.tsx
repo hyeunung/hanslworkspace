@@ -294,10 +294,15 @@ export default function BomCoordinateIntegrated() {
     return set;
   }, [processedCadBoards, resolveSalesOrderNumber]);
 
+  // 2025년 이하(HS2601 미만) 보드는 전량 제작 완료 확정(2026-08 사용자 확인) — 엑셀 이관분이라
+  // cad_drawings 완료 매칭으로 걸러지지 않는 건이 많아 제작번호 컷오프로 일괄 제외한다
+  const BOARD_SELECT_SO_CUTOFF = 'HS2601';
+
   // 드롭다운에 노출할 제작현황 보드: 이미 정리된 보드는 제외하되, 현재 선택된 값은 유지
   const availableProductionPcbs = useMemo(() => (
     productionPcbs.filter(p => (
-      p.sales_order_number === metadata.salesOrderNumber || !processedSalesOrderNumbers.has(p.sales_order_number)
+      p.sales_order_number === metadata.salesOrderNumber ||
+      (p.sales_order_number >= BOARD_SELECT_SO_CUTOFF && !processedSalesOrderNumbers.has(p.sales_order_number))
     ))
   ), [productionPcbs, processedSalesOrderNumbers, metadata.salesOrderNumber]);
 
