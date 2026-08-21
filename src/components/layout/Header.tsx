@@ -375,7 +375,18 @@ export default function Header({ user, onMenuClick }: HeaderProps) {
   useEffect(() => {
     loadOtherPendingCounts()
     const timer = window.setInterval(loadOtherPendingCounts, 30000)
-    return () => window.clearInterval(timer)
+    // 승인/신청 즉시 반영 (폴링은 Realtime 유실 대비 폴백)
+    const supabase = createClient()
+    const subscription = supabase
+      .channel('other-pending-header-badge')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'card_usages' }, () => loadOtherPendingCounts())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicle_requests' }, () => loadOtherPendingCounts())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_trips' }, () => loadOtherPendingCounts())
+      .subscribe()
+    return () => {
+      window.clearInterval(timer)
+      supabase.removeChannel(subscription)
+    }
   }, [loadOtherPendingCounts])
 
   // hr, superadmin: 신청서 승인 대기 개수

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePurchaseMemory } from "@/hooks/usePurchaseMemory";
@@ -7,6 +7,42 @@ import { logger } from "@/lib/logger";
 
 export type TemplateTabKey = "발주/구매" | "카드사용" | "출장" | "차량" | "연차";
 export type BadgeCounts = Record<TemplateTabKey, number>;
+
+// ── 공유 배지 스토어 ──────────────────────────────────────────────
+// 이 훅은 Navigation / FixedNavigation / RequestListMain 등 여러 곳에서
+// 동시에 마운트된다. 인스턴스마다 상태·Realtime 채널을 따로 가지면
+//  1) onBadgeRefresh()가 갱신한 상태가 배지를 그리는 다른 인스턴스에 전달되지 않고
+//  2) 동일한 채널 토픽을 중복 구독해 기존 구독이 끊긴다(중복 join 시 서버가 이전 채널을 닫음).
+// 그래서 카운트 상태와 폴링/Realtime 구독을 모듈 레벨 싱글톤으로 공유한다.
+let sharedBadgeCounts: BadgeCounts = {
+  "발주/구매": 0,
+  "카드사용": 0,
+  출장: 0,
+  차량: 0,
+  연차: 0,
+};
+const badgeListeners = new Set<() => void>();
+const subscribeBadgeStore = (cb: () => void): (() => void) => {
+  badgeListeners.add(cb);
+  return () => badgeListeners.delete(cb);
+};
+const getBadgeSnapshot = (): BadgeCounts => sharedBadgeCounts;
+function publishBadgeCounts(next: BadgeCounts) {
+  const changed = (Object.keys(next) as TemplateTabKey[]).some(
+    (k) => next[k] !== sharedBadgeCounts[k]
+  );
+  if (!changed) return;
+  sharedBadgeCounts = next;
+  badgeListeners.forEach((l) => l());
+}
+
+// 싱글톤 폴링/Realtime 관리 (마운트된 인스턴스가 하나라도 있으면 동작)
+let activeLoader: (() => void) | null = null;
+let hookInstanceCount = 0;
+let pollTimer: number | null = null;
+let realtimeChannel: ReturnType<ReturnType<typeof createClient>["channel"]> | null = null;
+// 동시 다발 호출(여러 인스턴스 + Realtime 이벤트 버스트) 합치기
+let inflightBadgeLoad: Promise<void> | null = null;
 
 const TRIP_APPROVER_ROLES = ["middle_manager", "final_approver", "ceo", "superadmin"];
 const HIGH_AMOUNT_APPROVER_ROLES = ["final_approver", "ceo", "superadmin"];
@@ -31,15 +67,9 @@ export function useRequestBadgeCounts() {
     [allPurchases, employee?.roles]
   );
 
-  const [badgeCounts, setBadgeCounts] = useState<BadgeCounts>({
-    "발주/구매": 0,
-    "카드사용": 0,
-    출장: 0,
-    차량: 0,
-    연차: 0,
-  });
+  const badgeCounts = useSyncExternalStore(subscribeBadgeStore, getBadgeSnapshot, getBadgeSnapshot);
 
-  const loadBadgeCounts = useCallback(async () => {
+  const doLoadBadgeCounts = useCallback(async () => {
     try {
       const isCardVehicleApprover =
         currentUserRoles.includes("superadmin") || currentUserRoles.includes("hr");
@@ -169,7 +199,7 @@ export function useRequestBadgeCounts() {
         }
       }
 
-      setBadgeCounts({
+      publishBadgeCounts({
         "발주/구매": purchasePendingCount,
         "카드사용": isCardVehicleApprover ? cardPendingRes.count || 0 : 0,
         출장: approvableTripCount + (myTripUnsettledRes.count || 0),
@@ -181,32 +211,56 @@ export function useRequestBadgeCounts() {
     }
   }, [currentUserRoles, employee, purchasePendingCount, supabase]);
 
+  const loadBadgeCounts = useCallback(async () => {
+    // 여러 인스턴스/Realtime 이벤트가 동시에 호출해도 조회는 1회로 합침
+    if (!inflightBadgeLoad) {
+      inflightBadgeLoad = doLoadBadgeCounts().finally(() => {
+        inflightBadgeLoad = null;
+      });
+    }
+    return inflightBadgeLoad;
+  }, [doLoadBadgeCounts]);
+
+  // 최신 클로저(권한/사용자 반영)를 싱글톤 로더로 등록하고, 입력이 바뀌면 즉시 재계산
   useEffect(() => {
-    let mounted = true;
-    loadBadgeCounts();
-    const timer = window.setInterval(() => {
-      if (mounted) loadBadgeCounts();
-    }, 30000);
-    return () => { mounted = false; window.clearInterval(timer); };
+    activeLoader = loadBadgeCounts;
+    void loadBadgeCounts();
   }, [loadBadgeCounts]);
 
+  // 폴링 + Realtime 구독은 전체 앱에서 1개만 유지 (첫 마운트에 시작, 마지막 언마운트에 정리)
   useEffect(() => {
-    const channel = supabase
-      .channel(`request-badge-realtime-${employee?.id || "guest"}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "business_trips" }, () => void loadBadgeCounts())
-      .on("postgres_changes", { event: "*", schema: "public", table: "card_usages" }, () => void loadBadgeCounts())
-      .on("postgres_changes", { event: "*", schema: "public", table: "vehicle_requests" }, () => void loadBadgeCounts())
-      .on("postgres_changes", { event: "*", schema: "public", table: "leave" }, () => void loadBadgeCounts())
-      .subscribe((status: string) => {
-        if (status === "SUBSCRIBED") {
-          logger.debug("배지 Realtime 구독 성공");
-        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          logger.warn("배지 Realtime 구독 이슈", { status });
+    hookInstanceCount += 1;
+    if (hookInstanceCount === 1) {
+      pollTimer = window.setInterval(() => activeLoader?.(), 30000);
+      realtimeChannel = supabase
+        .channel("request-badge-realtime")
+        .on("postgres_changes", { event: "*", schema: "public", table: "business_trips" }, () => activeLoader?.())
+        .on("postgres_changes", { event: "*", schema: "public", table: "card_usages" }, () => activeLoader?.())
+        .on("postgres_changes", { event: "*", schema: "public", table: "vehicle_requests" }, () => activeLoader?.())
+        .on("postgres_changes", { event: "*", schema: "public", table: "leave" }, () => activeLoader?.())
+        .subscribe((status: string) => {
+          if (status === "SUBSCRIBED") {
+            logger.debug("배지 Realtime 구독 성공");
+          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            logger.warn("배지 Realtime 구독 이슈", { status });
+          }
+        });
+    }
+    return () => {
+      hookInstanceCount -= 1;
+      if (hookInstanceCount === 0) {
+        if (pollTimer !== null) {
+          window.clearInterval(pollTimer);
+          pollTimer = null;
         }
-      });
-
-    return () => { void supabase.removeChannel(channel); };
-  }, [employee?.id, loadBadgeCounts, supabase]);
+        if (realtimeChannel) {
+          void supabase.removeChannel(realtimeChannel);
+          realtimeChannel = null;
+        }
+        activeLoader = null;
+      }
+    };
+  }, [supabase]);
 
   return { badgeCounts, loadBadgeCounts };
 }
