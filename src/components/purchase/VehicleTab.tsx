@@ -283,6 +283,10 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectTargetId, setRejectTargetId] = useState<number | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [deleteBlockedInfo, setDeleteBlockedInfo] = useState<{
+    vehicleCode: string;
+    cards: { card_number: string | null; usage_date_start: string | null; usage_date_end: string | null }[];
+  } | null>(null);
 
   const [now, setNow] = useState(() => new Date());
 
@@ -385,7 +389,18 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
     }
   }, [supabase]);
 
-  const handleDeleteRequest = useCallback(async (id: number) => {
+  const handleDeleteRequest = useCallback(async (id: number, vehicleCode?: string | null) => {
+    // 차량 신청 시 함께 요청된 법인카드 사용 내역이 있으면 삭제 불가 → 안내 팝업
+    const { data: linkedCards } = await supabase
+      .from("card_usages")
+      .select("id, card_number, usage_date_start, usage_date_end")
+      .eq("vehicle_request_id", id);
+
+    if (linkedCards && linkedCards.length > 0) {
+      setDeleteBlockedInfo({ vehicleCode: vehicleCode || "", cards: linkedCards });
+      return;
+    }
+
     if (!confirm("이 배차 요청을 삭제하시겠습니까?")) return;
     try {
       const { error } = await supabase.from("vehicle_requests").delete().eq("id", id);
@@ -393,10 +408,15 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
       toast.success("삭제되었습니다.");
       loadRequests();
       onBadgeRefresh?.();
-    } catch {
+    } catch (err) {
+      // 외래키 위반(23503): 연결된 카드사용 내역이 남아 있는 경우
+      if ((err as { code?: string })?.code === "23503") {
+        setDeleteBlockedInfo({ vehicleCode: vehicleCode || "", cards: [] });
+        return;
+      }
       toast.error("삭제에 실패했습니다.");
     }
-  }, [supabase, loadRequests]);
+  }, [supabase, loadRequests, onBadgeRefresh]);
 
   const loadEmployees = useCallback(async () => {
     try {
@@ -1304,7 +1324,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                         <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
                           <button
                             className="text-gray-300 hover:text-red-500 transition-colors"
-                            onClick={() => handleDeleteRequest(req.id)}
+                            onClick={() => handleDeleteRequest(req.id, req.vehicle_code)}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1652,6 +1672,47 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
               className="button-base bg-red-500 hover:bg-red-600 text-white"
             >
               반려
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 연결된 카드사용 내역으로 삭제 불가 안내 */}
+      <AlertDialog
+        open={deleteBlockedInfo !== null}
+        onOpenChange={(open) => { if (!open) setDeleteBlockedInfo(null); }}
+      >
+        <AlertDialogContent className="sm:max-w-[420px]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="modal-title">삭제할 수 없습니다</AlertDialogTitle>
+            <AlertDialogDescription className="text-[12px] text-gray-600 leading-relaxed">
+              차량 신청{deleteBlockedInfo?.vehicleCode ? ` (${deleteBlockedInfo.vehicleCode})` : ""} 시 함께 요청한
+              법인카드 사용 신청 내역이 있어 이 배차 요청을 삭제할 수 없습니다.
+              <br />
+              <span className="font-medium text-gray-900">카드사용 탭</span>에서 아래 카드사용 신청 내역을 먼저 삭제한 뒤 다시 시도해주세요.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteBlockedInfo && deleteBlockedInfo.cards.length > 0 && (
+            <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 space-y-1">
+              {deleteBlockedInfo.cards.map((c, i) => (
+                <div key={i} className="text-[12px] text-gray-700">
+                  <span className="font-medium">{c.card_number || "카드번호 미지정"}</span>
+                  {c.usage_date_start && (
+                    <span className="text-gray-500">
+                      {" "}· {c.usage_date_start}
+                      {c.usage_date_end && c.usage_date_end !== c.usage_date_start ? ` ~ ${c.usage_date_end}` : ""}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => setDeleteBlockedInfo(null)}
+              className="button-base bg-hansl-600 hover:bg-hansl-700 text-white"
+            >
+              확인
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
