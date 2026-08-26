@@ -4622,31 +4622,28 @@ export default function ProductionListMain() {
             <span className={`button-text ${tableView === key ? 'text-white' : 'text-gray-700'}`}>{label}</span>
           </button>
         ))}
-        {/* 접속자 — 이 화면을 열어둔 다른 접속자 목록 (엑셀 공동작업 아바타처럼 표시) */}
+        {/* 접속자 — 이 화면을 열어둔 다른 접속자 목록. 이니셜 아바타만 표시, 마우스오버 시 풀네임 툴팁 */}
         {remoteViewers.length > 0 && (
-          <div
-            className="ml-1 flex items-center"
-            title={`접속자: ${remoteViewers.map((v: RemoteViewer) => v.name).join(', ')}`}
-          >
+          <div className="ml-1 flex items-center">
+            <span className="mr-1.5 text-[10px] font-medium text-gray-500 select-none">접속자 :</span>
             {remoteViewers.slice(0, 5).map((v: RemoteViewer, i: number) => (
               <span
                 key={v.name}
-                className={`w-5 h-5 rounded-full text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-gray-50 select-none${i > 0 ? ' -ml-1.5' : ''}`}
+                title={v.name}
+                className={`w-5 h-5 rounded-full text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-gray-50 select-none cursor-default${i > 0 ? ' -ml-1.5' : ''}`}
                 style={{ backgroundColor: v.color }}
               >
                 {v.name.slice(0, 1)}
               </span>
             ))}
             {remoteViewers.length > 5 && (
-              <span className="-ml-1.5 w-5 h-5 rounded-full bg-gray-400 text-white text-[8px] font-bold flex items-center justify-center ring-2 ring-gray-50 select-none">
+              <span
+                title={remoteViewers.slice(5).map((v: RemoteViewer) => v.name).join(', ')}
+                className="-ml-1.5 w-5 h-5 rounded-full bg-gray-400 text-white text-[8px] font-bold flex items-center justify-center ring-2 ring-gray-50 select-none cursor-default"
+              >
                 +{remoteViewers.length - 5}
               </span>
             )}
-            <span className="ml-1.5 text-[10px] font-medium text-gray-500 select-none">
-              {remoteViewers.length === 1
-                ? `접속자: ${remoteViewers[0].name}`
-                : `접속자 ${remoteViewers.length}명`}
-            </span>
           </div>
         )}
       </div>
