@@ -18,10 +18,11 @@ export interface RemoteCellUser {
   anchor: boolean // 이름 라벨을 표시할 대표 셀인지 (편집 셀 또는 선택 앵커)
 }
 
-// 화면을 함께 열어둔 다른 접속자 (같은 사람이 여러 탭을 열어도 1명으로 합침)
+// 화면을 열어둔 접속자 (같은 사람이 여러 탭을 열어도 1명으로 합침, 본인 포함)
 export interface RemoteViewer {
   name: string
   color: string
+  isSelf?: boolean // 본인 여부 — 목록 맨 앞에 표시, 툴팁에 '(나)' 병기
 }
 
 interface PresencePayload {
@@ -185,7 +186,11 @@ export function useProductionPresence(args: {
       })
       if (p.editing) add(p.editing, { ...base, editing: true, anchor: true })
     }
-    const viewers = [...viewerByName.values()].sort((a, b) => a.name.localeCompare(b.name))
+    // 본인도 접속자 목록에 표시 (맨 앞). 본인의 다른 탭 접속은 이름이 같으므로 자연히 합쳐진다.
+    const selfName = name.trim() || '익명'
+    viewerByName.delete(selfName)
+    const others = [...viewerByName.values()].sort((a, b) => a.name.localeCompare(b.name))
+    const viewers: RemoteViewer[] = [{ name: selfName, color: colorFor(selfName), isSelf: true }, ...others]
     return { cellMap: map, viewers }
-  }, [remote])
+  }, [remote, name])
 }
