@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { createClient } from '@/lib/supabase/client'
@@ -119,9 +119,14 @@ export default function SystemActivityLogsPage() {
     return byEmail || log.actor_name || (log.actor_email ? log.actor_email.split('@')[0] : 'System')
   }
 
+  // 필터 변경 직후 이전 요청(다른 필터/페이지)이 뒤늦게 도착해 최신 결과를 덮어쓰는
+  // 경합을 막기 위한 요청 순번. 응답 도착 시 최신 순번이 아니면 결과를 버린다.
+  const loadSeqRef = useRef(0)
+
   // 데이터 로드 함수
   const loadLogs = useCallback(async () => {
     if (!isAuthorized) return
+    const seq = ++loadSeqRef.current
     setLoading(true)
     setError(null)
     try {
@@ -190,15 +195,17 @@ export default function SystemActivityLogsPage() {
       query = query.range(from, to)
 
       const { data, count, error: queryError } = await query
+      if (seq !== loadSeqRef.current) return // 더 최신 요청이 있으면 이 응답은 폐기
       if (queryError) throw queryError
 
       setLogs((data as LogEntry[]) || [])
       setTotalCount(count || 0)
     } catch (err: any) {
+      if (seq !== loadSeqRef.current) return
       console.error('Error fetching logs:', err)
       setError(err.message || '로그 데이터를 불러오는 도중 오류가 발생했습니다.')
     } finally {
-      setLoading(false)
+      if (seq === loadSeqRef.current) setLoading(false)
     }
   }, [isAuthorized, moduleFilter, levelFilter, sourceFilter, actionFilter, dateFilter, searchQuery, page, pageSize, employees])
 
