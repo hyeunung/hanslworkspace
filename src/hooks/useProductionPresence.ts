@@ -18,6 +18,12 @@ export interface RemoteCellUser {
   anchor: boolean // 이름 라벨을 표시할 대표 셀인지 (편집 셀 또는 선택 앵커)
 }
 
+// 화면을 함께 열어둔 다른 접속자 (같은 사람이 여러 탭을 열어도 1명으로 합침)
+export interface RemoteViewer {
+  name: string
+  color: string
+}
+
 interface PresencePayload {
   name: string
   color: string
@@ -129,13 +135,14 @@ function getSnapshot() {
 
 /**
  * 내 선택/편집 상태를 presence로 브로드캐스트하고,
- * 다른 접속자들의 셀 점유 현황을 `셀키 → 사용자 목록` Map으로 돌려준다.
+ * 다른 접속자들의 셀 점유 현황(`셀키 → 사용자 목록` Map)과
+ * 화면을 함께 보고 있는 사람 목록(viewers)을 돌려준다.
  */
 export function useProductionPresence(args: {
   name: string
   editing: string | null
   cells: string[]
-}): Map<string, RemoteCellUser[]> {
+}): { cellMap: Map<string, RemoteCellUser[]>; viewers: RemoteViewer[] } {
   const { name, editing, cells } = args
 
   useEffect(() => {
@@ -168,14 +175,17 @@ export function useProductionPresence(args: {
       if (list) list.push(user)
       else map.set(key, [user])
     }
+    const viewerByName = new Map<string, RemoteViewer>()
     for (const p of remote) {
       const base = { name: p.name, color: p.color }
+      if (!viewerByName.has(p.name)) viewerByName.set(p.name, base)
       p.cells.forEach((key, i) => {
         if (key === p.editing) return // 편집 셀은 아래에서 별도 표시
         add(key, { ...base, editing: false, anchor: !p.editing && i === 0 })
       })
       if (p.editing) add(p.editing, { ...base, editing: true, anchor: true })
     }
-    return map
+    const viewers = [...viewerByName.values()].sort((a, b) => a.name.localeCompare(b.name))
+    return { cellMap: map, viewers }
   }, [remote])
 }

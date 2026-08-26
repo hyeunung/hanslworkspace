@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProductionFilterViews, FilterDefaultSnapshot } from '@/hooks/useProductionFilterViews'
 import { useProductionData } from '@/hooks/useProductionData'
-import { useProductionPresence, RemoteCellUser } from '@/hooks/useProductionPresence'
+import { useProductionPresence, RemoteCellUser, RemoteViewer } from '@/hooks/useProductionPresence'
 import { useProductionUndo } from '@/hooks/useProductionUndo'
 import { useStableHandler } from '@/hooks/useStableHandler'
 import { useProductionTableFilters } from '@/hooks/useProductionTableFilters'
@@ -873,7 +873,7 @@ export default function ProductionListMain() {
   // ── 셀 프레즌스: 다른 접속자가 선택/편집 중인 셀을 실시간 표시 (구글시트式) ──
   // 내 선택(selectedCells)·편집(editingCell)을 presence로 공유하고,
   // 상대방들의 점유 현황을 `셀키 → 사용자 목록`으로 받아 셀에 색 테두리+이름 라벨을 그린다.
-  const remoteCellPresence = useProductionPresence({
+  const { cellMap: remoteCellPresence, viewers: remoteViewers } = useProductionPresence({
     name: currentUserName || employee?.name || '',
     editing: editingCell ? `${editingCell.id}::${editingCell.field}` : null,
     cells: selectedCells,
@@ -4622,6 +4622,33 @@ export default function ProductionListMain() {
             <span className={`button-text ${tableView === key ? 'text-white' : 'text-gray-700'}`}>{label}</span>
           </button>
         ))}
+        {/* 함께 보는 사람 — 이 화면을 열어둔 다른 접속자 목록 (엑셀 공동작업 아바타처럼 표시) */}
+        {remoteViewers.length > 0 && (
+          <div
+            className="ml-1 flex items-center"
+            title={`함께 보는 중: ${remoteViewers.map((v: RemoteViewer) => v.name).join(', ')}`}
+          >
+            {remoteViewers.slice(0, 5).map((v: RemoteViewer, i: number) => (
+              <span
+                key={v.name}
+                className={`w-5 h-5 rounded-full text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-gray-50 select-none${i > 0 ? ' -ml-1.5' : ''}`}
+                style={{ backgroundColor: v.color }}
+              >
+                {v.name.slice(0, 1)}
+              </span>
+            ))}
+            {remoteViewers.length > 5 && (
+              <span className="-ml-1.5 w-5 h-5 rounded-full bg-gray-400 text-white text-[8px] font-bold flex items-center justify-center ring-2 ring-gray-50 select-none">
+                +{remoteViewers.length - 5}
+              </span>
+            )}
+            <span className="ml-1.5 text-[10px] font-medium text-gray-500 select-none">
+              {remoteViewers.length === 1
+                ? `${remoteViewers[0].name}님이 함께 보는 중`
+                : `${remoteViewers.length}명이 함께 보는 중`}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* 필터 툴바(PCB 전용) — PCB 뷰(전체/PCB)일 때만 표시. Cable만 볼 때는 Cable 표 자체 필터만 남긴다.
