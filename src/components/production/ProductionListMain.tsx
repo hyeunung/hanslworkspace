@@ -4622,11 +4622,11 @@ export default function ProductionListMain() {
             <span className={`button-text ${tableView === key ? 'text-white' : 'text-gray-700'}`}>{label}</span>
           </button>
         ))}
-        {/* 함께 보는 사람 — 이 화면을 열어둔 다른 접속자 목록 (엑셀 공동작업 아바타처럼 표시) */}
+        {/* 접속자 — 이 화면을 열어둔 다른 접속자 목록 (엑셀 공동작업 아바타처럼 표시) */}
         {remoteViewers.length > 0 && (
           <div
             className="ml-1 flex items-center"
-            title={`함께 보는 중: ${remoteViewers.map((v: RemoteViewer) => v.name).join(', ')}`}
+            title={`접속자: ${remoteViewers.map((v: RemoteViewer) => v.name).join(', ')}`}
           >
             {remoteViewers.slice(0, 5).map((v: RemoteViewer, i: number) => (
               <span
@@ -4644,8 +4644,8 @@ export default function ProductionListMain() {
             )}
             <span className="ml-1.5 text-[10px] font-medium text-gray-500 select-none">
               {remoteViewers.length === 1
-                ? `${remoteViewers[0].name}님이 함께 보는 중`
-                : `${remoteViewers.length}명이 함께 보는 중`}
+                ? `접속자: ${remoteViewers[0].name}`
+                : `접속자 ${remoteViewers.length}명`}
             </span>
           </div>
         )}
