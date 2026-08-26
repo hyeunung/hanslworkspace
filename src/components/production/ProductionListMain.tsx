@@ -4626,22 +4626,28 @@ export default function ProductionListMain() {
         {remoteViewers.length > 0 && (
           <div className="ml-1 flex items-center">
             <span className="mr-1.5 text-[10px] font-medium text-gray-500 select-none">접속자 :</span>
+            {/* 브라우저 기본 title 툴팁은 1초 이상 정지해야 떠서 잘 안 보이므로, 즉시 뜨는 커스텀 툴팁 사용 */}
             {remoteViewers.slice(0, 5).map((v: RemoteViewer, i: number) => (
-              <span
-                key={v.name}
-                title={v.isSelf ? `${v.name} (나)` : v.name}
-                className={`w-5 h-5 rounded-full text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-gray-50 select-none cursor-default${i > 0 ? ' -ml-1.5' : ''}`}
-                style={{ backgroundColor: v.color }}
-              >
-                {v.name.slice(0, 1)}
+              <span key={v.name} className={`relative group${i > 0 ? ' -ml-1.5' : ''}`}>
+                <span
+                  className="w-5 h-5 rounded-full text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-gray-50 select-none cursor-default"
+                  style={{ backgroundColor: v.color }}
+                >
+                  {v.name.slice(0, 1)}
+                </span>
+                <span className="hidden group-hover:block absolute top-full left-1/2 -translate-x-1/2 mt-1 px-1.5 py-0.5 rounded bg-gray-800 text-white text-[10px] font-medium whitespace-nowrap z-50 pointer-events-none">
+                  {v.isSelf ? `${v.name} (나)` : v.name}
+                </span>
               </span>
             ))}
             {remoteViewers.length > 5 && (
-              <span
-                title={remoteViewers.slice(5).map((v: RemoteViewer) => v.name).join(', ')}
-                className="-ml-1.5 w-5 h-5 rounded-full bg-gray-400 text-white text-[8px] font-bold flex items-center justify-center ring-2 ring-gray-50 select-none cursor-default"
-              >
-                +{remoteViewers.length - 5}
+              <span className="relative group -ml-1.5">
+                <span className="w-5 h-5 rounded-full bg-gray-400 text-white text-[8px] font-bold flex items-center justify-center ring-2 ring-gray-50 select-none cursor-default">
+                  +{remoteViewers.length - 5}
+                </span>
+                <span className="hidden group-hover:block absolute top-full left-1/2 -translate-x-1/2 mt-1 px-1.5 py-0.5 rounded bg-gray-800 text-white text-[10px] font-medium whitespace-nowrap z-50 pointer-events-none">
+                  {remoteViewers.slice(5).map((v: RemoteViewer) => v.name).join(', ')}
+                </span>
               </span>
             )}
           </div>
