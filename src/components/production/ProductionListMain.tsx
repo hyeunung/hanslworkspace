@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProductionFilterViews, FilterDefaultSnapshot } from '@/hooks/useProductionFilterViews'
 import { useProductionData } from '@/hooks/useProductionData'
+import { useProductionPresence, RemoteCellUser } from '@/hooks/useProductionPresence'
 import { useProductionUndo } from '@/hooks/useProductionUndo'
 import { useStableHandler } from '@/hooks/useStableHandler'
 import { useProductionTableFilters } from '@/hooks/useProductionTableFilters'
@@ -868,6 +869,55 @@ export default function ProductionListMain() {
   const [selectedCells, setSelectedCells] = useState<string[]>([])
   // 셀 개수가 많은 선택(열 전체 등)에서 각 셀의 isSelected 판정이 O(1)이 되도록 Set을 함께 유지
   const selectedCellsSet = useMemo(() => new Set(selectedCells), [selectedCells])
+
+  // ── 셀 프레즌스: 다른 접속자가 선택/편집 중인 셀을 실시간 표시 (구글시트式) ──
+  // 내 선택(selectedCells)·편집(editingCell)을 presence로 공유하고,
+  // 상대방들의 점유 현황을 `셀키 → 사용자 목록`으로 받아 셀에 색 테두리+이름 라벨을 그린다.
+  const remoteCellPresence = useProductionPresence({
+    name: currentUserName || employee?.name || '',
+    editing: editingCell ? `${editingCell.id}::${editingCell.field}` : null,
+    cells: selectedCells,
+  })
+
+  // 행별 원격 프레즌스 시그니처 — MemoRow는 rowSig가 바뀐 행만 다시 그리므로,
+  // 원격 점유 셀이 시그니처에 없으면 프레즌스 갱신이 화면에 반영되지 않는다 (rowSig 함정)
+  const remotePresenceRowSig = useMemo(() => {
+    const m = new Map<string, string>()
+    remoteCellPresence.forEach((users, key) => {
+      const rowId = key.split('::')[0]
+      const part = key + '=' + users.map(u => `${u.name}${u.editing ? '*' : ''}${u.anchor ? '^' : ''}${u.color}`).join('+')
+      m.set(rowId, (m.get(rowId) || '') + part + ';')
+    })
+    return m
+  }, [remoteCellPresence])
+
+  // 원격 사용자 점유 셀의 테두리/배경 스타일 (내 선택이 있으면 내 파란 테두리가 우선)
+  const remotePresenceStyle = (users: RemoteCellUser[] | undefined, ownSelected: boolean, sticky: boolean): React.CSSProperties => {
+    if (!users || users.length === 0 || ownSelected) return {}
+    const c = users[0].color
+    return {
+      outline: `1.5px solid ${c}`,
+      outlineOffset: '-1.5px',
+      // 고정 칼럼은 반투명 배경 시 뒤 칼럼이 비쳐 보이므로 테두리만 표시 (자기 선택 표시와 동일 규칙)
+      ...(sticky ? {} : { backgroundColor: `${c}14` }),
+    }
+  }
+
+  // 원격 사용자의 이름 라벨 — 편집 셀/선택 앵커 셀의 우상단에 표시
+  const renderRemotePresenceTag = (users: RemoteCellUser[] | undefined) => {
+    const anchors = users?.filter(u => u.anchor)
+    if (!anchors || anchors.length === 0) return null
+    const u = anchors[0]
+    return (
+      <span
+        className="absolute top-0 right-0 z-20 px-1 rounded-bl text-[8px] font-semibold text-white leading-[11px] pointer-events-none select-none whitespace-nowrap"
+        style={{ backgroundColor: u.color }}
+        title={anchors.map(a => `${a.name}${a.editing ? ' (편집 중)' : ''}`).join(', ')}
+      >
+        {u.name}{anchors.length > 1 ? ` 외 ${anchors.length - 1}` : ''}{u.editing ? ' ✏️' : ''}
+      </span>
+    )
+  }
   const [isDragging, setIsDragging] = useState(false)
   const dragStartCellRef = useRef<{ id: string; field: string; type: 'pcb' | 'cable' } | null>(null)
   // 키보드 내비게이션용 앵커(선택 시작점)/포커스(활성 셀) — 클릭·드래그·방향키 이동 시 갱신
@@ -2916,6 +2966,8 @@ export default function ProductionListMain() {
 
     const isSelected = selectedCellsSet.has(`${id}::${field}`);
     const isStickyCell = cellClassName.includes('sticky');
+    const remoteUsers = remoteCellPresence.get(`${id}::${field}`);
+    const remoteTag = renderRemotePresenceTag(remoteUsers);
     const selectStyle: React.CSSProperties = isSelected ? {
       outline: '1.5px solid #3b82f6',
       outlineOffset: '-1.5px',
@@ -2923,7 +2975,12 @@ export default function ProductionListMain() {
       // 원래의 불투명 배경(흰색/셀 색상)을 유지한 채 테두리만 표시한다.
       ...(isStickyCell ? {} : { backgroundColor: 'rgba(59, 130, 246, 0.1)' }),
       ...cellStyle
-    } : cellStyle;
+    } : {
+      ...cellStyle,
+      ...remotePresenceStyle(remoteUsers, isSelected, isStickyCell),
+    };
+    // 이름 라벨은 absolute라 부모 셀이 positioned여야 한다 (sticky 셀은 이미 positioned)
+    if (remoteTag && !isStickyCell) selectStyle.position = 'relative';
 
     // ARTWORK가 '한슬 완제품 입고'인 행은 이미 완제품 재고가 있어 PCB 제작·완제품 입고 자체가 불필요하므로,
     // 해당 없음('-')으로 표시하고 입고대기 버튼을 띄우지 않는다. 구엑셀 이관 등 상태 코드 없이
@@ -2964,6 +3021,7 @@ export default function ProductionListMain() {
           : () => handleCellClick(id, type, field, item[field])}
         title={field === 'board_name' ? item.board_name : undefined}
       >
+        {remoteTag}
         {isStockWaiting ? (
           <>
             {isPartialStock && (
@@ -3086,15 +3144,23 @@ export default function ProductionListMain() {
     const isEditing = editingCell?.id === id && editingCell?.type === type && editingCell?.field === 'quantity'
     const unit = item.quantity_unit || 'ea'
     const isSelected = selectedCellsSet.has(`${id}::quantity`)
+    const remoteUsers = remoteCellPresence.get(`${id}::quantity`)
+    const remoteTag = renderRemotePresenceTag(remoteUsers)
     return (
       <td
         data-cell={`${id}::quantity`}
         className="px-2 py-1.5 text-gray-500 border border-gray-200 cursor-pointer select-none"
-        style={isSelected ? { outline: '1.5px solid #3b82f6', outlineOffset: '-1.5px', backgroundColor: 'rgba(59, 130, 246, 0.1)' } : undefined}
+        style={{
+          ...(isSelected
+            ? { outline: '1.5px solid #3b82f6', outlineOffset: '-1.5px', backgroundColor: 'rgba(59, 130, 246, 0.1)' }
+            : remotePresenceStyle(remoteUsers, isSelected, false)),
+          ...(remoteTag ? { position: 'relative' as const } : {}),
+        }}
         onMouseDown={(e) => handleCellMouseDown(e, id, 'quantity', type)}
         onMouseEnter={(e) => handleCellMouseEnter(e, id, 'quantity', type)}
         onClick={() => handleCellClick(id, type, 'quantity', item.quantity)}
       >
+        {remoteTag}
         <div className="flex items-center justify-center gap-1">
           {isEditing ? (
             <input
@@ -3151,11 +3217,13 @@ export default function ProductionListMain() {
     // 고정(sticky) 칼럼이라 반투명 배경 대신 테두리만 표시한다 (가로 스크롤 시 뒤 칼럼 비침 방지).
     const cellKey = `${item.id}::sales_order_number`
     const isSelected = selectedCellsSet.has(cellKey)
+    const remoteUsers = remoteCellPresence.get(cellKey)
+    const remoteTag = renderRemotePresenceTag(remoteUsers)
     return (
       <td
         data-cell={cellKey}
         className={`px-2 py-1.5 font-semibold text-gray-900 sticky left-[40px] z-10 truncate border-b border-gray-200 shadow-[inset_-1px_0_0_0_#e5e7eb] cursor-pointer select-none${isSelected ? '' : ' transition-colors'} ${getStickyBgClass(rColor)} ${rStrike ? 'line-through text-gray-400/80 font-normal' : ''}`}
-        style={{ width: `${width}px`, minWidth: `${width}px`, maxWidth: `${width}px`, ...(isSelected ? { outline: '1.5px solid #3b82f6', outlineOffset: '-1.5px' } : {}) }}
+        style={{ width: `${width}px`, minWidth: `${width}px`, maxWidth: `${width}px`, ...(isSelected ? { outline: '1.5px solid #3b82f6', outlineOffset: '-1.5px' } : remotePresenceStyle(remoteUsers, isSelected, true)) }}
         title="클릭: 셀 선택 · 다시 클릭: 제작번호 변경 — 기존 번호 선택 또는 직접 입력 후 Enter"
         onMouseDown={(e) => handleCellMouseDown(e, item.id, 'sales_order_number', type)}
         onMouseEnter={(e) => handleCellMouseEnter(e, item.id, 'sales_order_number', type)}
@@ -3172,6 +3240,7 @@ export default function ProductionListMain() {
           }
         }}
       >
+        {remoteTag}
         {item.sales_order_number}
         {isOpen && (
           <CellPopoverPortal
@@ -3894,7 +3963,9 @@ export default function ProductionListMain() {
     // 납품 분할 그룹 내 위치/크기 — 그룹 구성이 바뀌면(분할/삭제/정렬) rowSpan 병합을 다시 그린다
     const g = type === 'pcb' ? pcbGroupInfo.get(item.id) : undefined
     const grp = g ? `G${g.pos}/${g.size}` : ''
-    return sel + '|' + editing + '|' + picker + '|' + stockIn + '|' + orderNo + '|' + cols + '|' + expanded + '|' + grp
+    // 다른 접속자가 이 행의 셀을 선택/편집 중이면 그 변화도 다시 그린다 (셀 프레즌스)
+    const rp = remotePresenceRowSig.get(item.id) || ''
+    return sel + '|' + editing + '|' + picker + '|' + stockIn + '|' + orderNo + '|' + cols + '|' + expanded + '|' + grp + '|' + rp
   }
 
   // PCB 행 렌더 본문 — MemoRow가 (item, index)로 호출. 내부 커스텀 핸들러는 모두 useStableHandler로 안정화됨.
