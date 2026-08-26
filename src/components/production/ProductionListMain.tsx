@@ -4629,7 +4629,7 @@ export default function ProductionListMain() {
             {remoteViewers.slice(0, 5).map((v: RemoteViewer, i: number) => (
               <span
                 key={v.name}
-                title={v.name}
+                title={v.isSelf ? `${v.name} (나)` : v.name}
                 className={`w-5 h-5 rounded-full text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-gray-50 select-none cursor-default${i > 0 ? ' -ml-1.5' : ''}`}
                 style={{ backgroundColor: v.color }}
               >
