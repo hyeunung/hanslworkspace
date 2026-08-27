@@ -277,6 +277,12 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
     return roles.includes("superadmin");
   }, [currentUser?.roles]);
 
+  // 카드사용/영수증 삭제 권한: superadmin + admin
+  const canDeleteUsage = useMemo(() => {
+    const roles = parseRoles(currentUser?.roles);
+    return roles.includes("superadmin") || roles.includes("admin");
+  }, [currentUser?.roles]);
+
   // 영수증 내역 인라인 수정: 관리자는 제작현황처럼 항상, 요청자는 카드반납 전까지 가능
   const canEditDetailReceipts = useMemo(() => {
     if (!detailUsage) return false;
@@ -1252,7 +1258,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[60px]">영수증</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-right w-[90px]">합계금액</th>
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">비고(프로젝트 및 사용처)</th>
-                    {isAppAdmin && (
+                    {canDeleteUsage && (
                       <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[40px]"></th>
                     )}
                   </tr>
@@ -1366,7 +1372,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                         <td className="px-3 py-1.5 card-title truncate max-w-[150px]">
                           {u.description || "-"}
                         </td>
-                        {isAppAdmin && (
+                        {canDeleteUsage && (
                           <td className="px-3 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
                             <button
                               className="text-gray-300 hover:text-red-500 transition-colors"
@@ -1927,7 +1933,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
                           </td>
                           <td className="px-3 py-1.5 text-center">
                             <div className="flex gap-1 justify-center">
-                              {isAppAdmin && (
+                              {canDeleteUsage && (
                                 <button
                                   className="text-gray-300 hover:text-red-500 transition-colors"
                                   onClick={() => handleDeleteReceipt(r.id, r.receipt_url)}
