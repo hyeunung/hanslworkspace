@@ -470,6 +470,9 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
   const roles = useMemo(() => parseRoles(currentUser?.roles), [currentUser?.roles]);
   const isAppAdmin = useMemo(() => roles.includes("superadmin"), [roles]);
 
+  // 출장/영수증 삭제 권한: superadmin + admin
+  const canDeleteTrip = useMemo(() => roles.includes("superadmin") || roles.includes("admin"), [roles]);
+
   const canApproveTrip = useCallback((trip: BusinessTrip) => {
     const isHighAmount = Number(trip.expected_total_amount || 0) >= 1_000_000;
     if (isHighAmount) {
@@ -1797,8 +1800,8 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
   }, []);
 
   const handleDeleteExistingReceipt = useCallback(async (rowKey: string, receipt: BusinessTripExpenseReceipt) => {
-    if (!isAppAdmin) {
-      toast.error("영수증 삭제는 superadmin만 가능합니다.");
+    if (!canDeleteTrip) {
+      toast.error("영수증 삭제는 관리자만 가능합니다.");
       return;
     }
     try {
@@ -1828,7 +1831,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
       logger.error("출장 영수증 삭제 실패", err);
       toast.error("영수증 삭제에 실패했습니다.");
     }
-  }, [isAppAdmin, supabase]);
+  }, [canDeleteTrip, supabase]);
 
   const parseTripReceiptStorageInfo = useCallback((rawReceiptPath: string) => {
     const normalizeRaw = (raw: string) => {
@@ -2824,7 +2827,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                       <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left w-[76px]">정산승인자</th>
                     )}
                     <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">출장목적</th>
-                    {isAppAdmin && (
+                    {canDeleteTrip && (
                       <th className="px-3 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[40px]"></th>
                     )}
                   </tr>
@@ -3070,7 +3073,7 @@ export default function BusinessTripTab({ mode = "list", onBadgeRefresh }: Busin
                           </td>
                         )}
                         <td className="px-3 py-1.5 card-title truncate max-w-[220px]">{trip.trip_purpose}</td>
-                        {isAppAdmin && (
+                        {canDeleteTrip && (
                           <td className="px-3 py-1.5 text-center">
                             <button
                               className="text-gray-300 hover:text-red-500 transition-colors"
