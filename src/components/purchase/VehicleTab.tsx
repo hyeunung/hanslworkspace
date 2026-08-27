@@ -338,9 +338,10 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
     return roles.some((r: string) => VEHICLE_APPROVER_ROLES.includes(r));
   }, [currentUser?.roles]);
 
-  const isAppAdmin = useMemo(() => {
+  // 배차 요청 삭제 권한: superadmin + admin
+  const canDeleteRequest = useMemo(() => {
     const roles = parseRoles(currentUser?.roles);
-    return roles.includes("superadmin");
+    return roles.includes("superadmin") || roles.includes("admin");
   }, [currentUser?.roles]);
 
   const loadRequests = useCallback(async () => {
@@ -1167,7 +1168,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                     <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-left">
                       특이사항
                     </th>
-                    {isAppAdmin && (
+                    {canDeleteRequest && (
                       <th className="px-2 py-1.5 modal-label text-gray-900 whitespace-nowrap text-center w-[40px]"></th>
                     )}
                   </tr>
@@ -1320,7 +1321,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                       <td className="px-2 py-1.5 card-title truncate max-w-[100px]">
                         {req.notes || "-"}
                       </td>
-                      {isAppAdmin && (
+                      {canDeleteRequest && (
                         <td className="px-2 py-1.5 text-center" onClick={(e) => e.stopPropagation()}>
                           <button
                             className="text-gray-300 hover:text-red-500 transition-colors"
