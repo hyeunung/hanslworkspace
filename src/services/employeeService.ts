@@ -409,15 +409,45 @@ class EmployeeService {
     position: string | null
   }>; error?: string }> {
     try {
+      // 출퇴근 기록: PostgREST 1000행 한도 회피를 위해 페이지네이션으로 전량 조회
+      type RawAttendanceRow = {
+        id: number
+        employee_id: string
+        employee_name: string | null
+        date: string
+        clock_in: string | null
+        clock_out: string | null
+        status: string | null
+        remarks: string | null
+        note: string | null
+        user_email: string | null
+        created_at: string | null
+        updated_at: string | null
+        [key: string]: unknown
+      }
+      const fetchAllAttendance = async () => {
+        const PAGE = 1000
+        const all: RawAttendanceRow[] = []
+        for (let from = 0; ; from += PAGE) {
+          const { data, error } = await this.supabase
+            .from('attendance_records')
+            .select('*')
+            .gte('date', startDate)
+            .lte('date', endDate)
+            .order('date', { ascending: false })
+            .order('employee_name', { ascending: true })
+            .order('id', { ascending: true })
+            .range(from, from + PAGE - 1)
+          if (error) throw error
+          all.push(...(data || []))
+          if (!data || data.length < PAGE) break
+        }
+        return all
+      }
+
       // 출퇴근 기록, 직원 정보, 승인된 연차/출장을 병렬 조회
-      const [attendanceResult, employeesResult, leaveResult, tripResult] = await Promise.all([
-        this.supabase
-          .from('attendance_records')
-          .select('*')
-          .gte('date', startDate)
-          .lte('date', endDate)
-          .order('date', { ascending: false })
-          .order('employee_name', { ascending: true }),
+      const [attendanceData, employeesResult, leaveResult, tripResult] = await Promise.all([
+        fetchAllAttendance(),
         this.supabase
           .from('employees')
           .select('id, department, is_active, email, position'),
@@ -436,8 +466,6 @@ class EmployeeService {
           .lte('trip_start_date', endDate)
           .gte('trip_end_date', startDate),
       ])
-
-      if (attendanceResult.error) throw attendanceResult.error;
 
       // employee_id → { department, is_active, email, position } 매핑
       const empMap = new Map<string, { department: string | null; is_active: boolean; email: string | null; position: string | null }>()
@@ -492,13 +520,12 @@ class EmployeeService {
       }
 
       // 퇴사자(is_active=false) 제외 + 연차/출장 상태 반영
-      const attendanceData = attendanceResult.data || []
       const dataWithDept = attendanceData
-        .filter((record: { employee_id: string }) => {
+        .filter((record) => {
           const emp = empMap.get(record.employee_id)
           return !emp || emp.is_active
         })
-        .map((record: { employee_id: string; date: string; status: string | null; clock_in: string | null; clock_out: string | null; [key: string]: unknown }) => {
+        .map((record) => {
           const emp = empMap.get(record.employee_id)
           let status = record.status
           const position = emp?.position || null

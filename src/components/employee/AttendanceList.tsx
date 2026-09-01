@@ -4,111 +4,22 @@ import type { DateRange } from 'react-day-picker'
 import { createClient } from '@/lib/supabase/client'
 import { employeeService } from '@/services/employeeService'
 import { useTableSort } from '@/hooks/useTableSort'
-import { SortableHeader } from '@/components/ui/sortable-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ko } from 'date-fns/locale'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Search, X, Check, RotateCcw, Calendar as CalendarIcon } from 'lucide-react'
+import AttendanceCompactTable, { type AttendanceRecord } from '@/components/employee/AttendanceCompactTable'
+import { Search, X, RotateCcw, Calendar as CalendarIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface AttendanceListProps {
   canManageEmployees: boolean
 }
 
-interface AttendanceRecord {
-  id: number
-  employee_id: string
-  employee_name: string | null
-  date: string
-  clock_in: string | null
-  clock_out: string | null
-  status: string | null
-  remarks: string | null
-  note: string | null
-  user_email: string | null
-  created_at: string | null
-  updated_at: string | null
-  department: string | null
-  position: string | null
-}
-
 const STATUS_OPTIONS = ['정상 출근', '지각', '퇴근', '오전반차']
 
 // 상태 필터 드롭다운 기본 정렬 순서 (데이터에 있는 나머지 상태는 뒤에 붙음)
 const STATUS_FILTER_ORDER = ['정상 출근', '지각', '퇴근', '오전반차', '오후반차', '출장', '연차', '공가', '출근 전']
-
-// 상태별 배지 스타일 (Flutter 앱 AppColors 기준)
-const BADGE_CLASS = "badge-stats text-white w-[52px] text-center justify-center"
-
-function getStatusBadge(status: string | null) {
-  // 정규화: 다양한 상태값 변형을 통일
-  const normalized = (() => {
-    if (!status) return null
-    const s = status.trim()
-    if (s === '정상 출근' || s === '정상출근' || s === '정상' || s === '출근' || s === 'present') return '정상 출근'
-    if (s === '출근 전') return '출근 전'
-    return s
-  })()
-
-  switch (normalized) {
-    case '정상 출근':
-      return <span className={BADGE_CLASS} style={{ backgroundColor: '#34C759' }}>정상 출근</span>
-    case '출근 전':
-      return <span className={`${BADGE_CLASS} bg-gray-300`}>출근 전</span>
-    case '지각':
-      return <span className={BADGE_CLASS} style={{ backgroundColor: '#FF3B30' }}><span className="w-full flex justify-between"><span>지</span><span>각</span></span></span>
-    case '퇴근':
-      return <span className={BADGE_CLASS} style={{ backgroundColor: '#6B7280' }}><span className="w-full flex justify-between"><span>퇴</span><span>근</span></span></span>
-    case '오전반차':
-      return <span className={BADGE_CLASS} style={{ backgroundColor: '#FF9500' }}>오전 반차</span>
-    case '오후반차':
-      return <span className={BADGE_CLASS} style={{ backgroundColor: '#FF9500' }}>오후 반차</span>
-    case '출장':
-      return <span className={BADGE_CLASS} style={{ backgroundColor: '#1976D2' }}><span className="w-full flex justify-between"><span>출</span><span>장</span></span></span>
-    case '연차':
-      return <span className={BADGE_CLASS} style={{ backgroundColor: '#34C759' }}><span className="w-full flex justify-between"><span>연</span><span>차</span></span></span>
-    case '공가':
-      return <span className={BADGE_CLASS} style={{ backgroundColor: '#8E8E93' }}><span className="w-full flex justify-between"><span>공</span><span>가</span></span></span>
-    default:
-      return <span className={`${BADGE_CLASS} bg-gray-300`}>{status || '-'}</span>
-  }
-}
-
-// 출퇴근 시간 없이 배지로 표기할 상태들
-const NO_CLOCK_STATUSES: Record<string, { label: string; color: string }> = {
-  '출장': { label: '출장', color: '#1976D2' },
-  '연차': { label: '연차', color: '#34C759' },
-  '공가': { label: '공가', color: '#8E8E93' },
-}
-
-// 시간 포맷 (HH:MM:SS → HH:MM)
-function formatTime(time: string | null) {
-  if (!time) return '-'
-  return time.slice(0, 5)
-}
-
-// 출퇴근 시간 셀 렌더링 (시간이 없고 특정 상태면 배지 표시)
-function renderClockCell(time: string | null, status: string | null) {
-  if (time) return formatTime(time)
-  const badge = status ? NO_CLOCK_STATUSES[status] : null
-  if (badge) {
-    const chars = badge.label.split('')
-    if (chars.length === 2) {
-      return <span className={BADGE_CLASS} style={{ backgroundColor: badge.color }}><span className="w-full flex justify-between"><span>{chars[0]}</span><span>{chars[1]}</span></span></span>
-    }
-    return <span className={BADGE_CLASS} style={{ backgroundColor: badge.color }}>{badge.label}</span>
-  }
-  return '-'
-}
 
 const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토']
 
@@ -136,12 +47,6 @@ function addDays(dateStr: string, days: number) {
 function formatDateLabel(dateStr: string) {
   const date = new Date(dateStr + 'T00:00:00')
   return `${dateStr.replace(/-/g, '.')} (${DAY_LABELS[date.getDay()]})`
-}
-
-// 짧은 날짜 라벨 (09.01 (화)) — 표 날짜 칼럼용
-function formatDateShort(dateStr: string) {
-  const date = new Date(dateStr + 'T00:00:00')
-  return `${dateStr.slice(5).replace(/-/g, '.')} (${DAY_LABELS[date.getDay()]})`
 }
 
 // 기간 프리셋
@@ -585,170 +490,30 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
             <p className="card-subtitle whitespace-nowrap">해당 기간에 출퇴근 기록이 없습니다.</p>
           </div>
         ) : (
-          <Table className="w-auto">
-            <TableHeader>
-              <TableRow>
-                {isRange && (
-                  <TableHead className="w-[85px]">
-                    <SortableHeader
-                      sortKey="date"
-                      currentSortKey={sortConfig.key as string | null}
-                      sortDirection={sortConfig.direction}
-                      onSort={(key) => handleSort(key as keyof AttendanceRecord)}
-                    >
-                      날짜
-                    </SortableHeader>
-                  </TableHead>
-                )}
-                <TableHead className="w-[70px]">
-                  <SortableHeader
-                    sortKey="employee_name"
-                    currentSortKey={sortConfig.key as string | null}
-                    sortDirection={sortConfig.direction}
-                    onSort={(key) => handleSort(key as keyof AttendanceRecord)}
-                  >
-                    직원명
-                  </SortableHeader>
-                </TableHead>
-                <TableHead className="w-[80px]">
-                  <SortableHeader
-                    sortKey="department"
-                    currentSortKey={sortConfig.key as string | null}
-                    sortDirection={sortConfig.direction}
-                    onSort={(key) => handleSort(key as keyof AttendanceRecord)}
-                  >
-                    부서
-                  </SortableHeader>
-                </TableHead>
-                <TableHead className="w-[70px]">
-                  <SortableHeader
-                    sortKey="clock_in"
-                    currentSortKey={sortConfig.key as string | null}
-                    sortDirection={sortConfig.direction}
-                    onSort={(key) => handleSort(key as keyof AttendanceRecord)}
-                  >
-                    출근시간
-                  </SortableHeader>
-                </TableHead>
-                <TableHead className="w-[70px]">
-                  <SortableHeader
-                    sortKey="clock_out"
-                    currentSortKey={sortConfig.key as string | null}
-                    sortDirection={sortConfig.direction}
-                    onSort={(key) => handleSort(key as keyof AttendanceRecord)}
-                  >
-                    퇴근시간
-                  </SortableHeader>
-                </TableHead>
-                <TableHead className="w-[65px]">
-                  <SortableHeader
-                    sortKey="status"
-                    currentSortKey={sortConfig.key as string | null}
-                    sortDirection={sortConfig.direction}
-                    onSort={(key) => handleSort(key as keyof AttendanceRecord)}
-                  >
-                    상태
-                  </SortableHeader>
-                </TableHead>
-                <TableHead className="w-[120px]">비고</TableHead>
-                {canManageEmployees && <TableHead className="w-[50px]"></TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sortedData.map((record) => {
-                const isEditing = editingId === record.id
-
-                if (isEditing && canManageEmployees) {
-                  return (
-                    <TableRow key={record.id} className="bg-hansl-50/30">
-                      {isRange && <TableCell className="text-[11px] px-2 py-1.5 text-gray-500 whitespace-nowrap">{formatDateShort(record.date)}</TableCell>}
-                      <TableCell className="text-[11px] px-2 py-1.5 font-medium">{record.employee_name || '-'}</TableCell>
-                      <TableCell className="text-[11px] px-2 py-1.5 text-gray-500">{record.department || '-'}</TableCell>
-                      <TableCell className="text-[11px] px-2 py-1.5">
-                        <input
-                          type="time"
-                          value={editClockIn}
-                          onChange={(e) => setEditClockIn(e.target.value)}
-                          className="hansl-cell-input w-[100px]"
-                        />
-                      </TableCell>
-                      <TableCell className="text-[11px] px-2 py-1.5">
-                        <input
-                          type="time"
-                          value={editClockOut}
-                          onChange={(e) => setEditClockOut(e.target.value)}
-                          className="hansl-cell-input w-[100px]"
-                        />
-                      </TableCell>
-                      <TableCell className="text-[11px] px-2 py-1.5">
-                        <select
-                          value={editStatus}
-                          onChange={(e) => setEditStatus(e.target.value)}
-                          className="hansl-cell-input w-[90px]"
-                        >
-                          {!STATUS_OPTIONS.includes(editStatus) && <option value={editStatus}>{editStatus || '-'}</option>}
-                          {STATUS_OPTIONS.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
-                        </select>
-                      </TableCell>
-                      <TableCell className="text-[11px] px-2 py-1.5">
-                        <input
-                          value={editRemarks}
-                          onChange={(e) => setEditRemarks(e.target.value)}
-                          placeholder="비고"
-                          className="hansl-cell-input"
-                        />
-                      </TableCell>
-                      <TableCell className="text-[11px] px-2 py-1.5">
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => saveEdit(record)}
-                            disabled={isSaving}
-                            title="저장"
-                            className="hansl-icon-btn !p-0.5 text-green-600 hover:text-green-700 hover:bg-green-50 disabled:opacity-50"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={cancelEdit}
-                            disabled={isSaving}
-                            title="취소"
-                            className="hansl-icon-btn !p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-50"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )
-                }
-
-                return (
-                  <TableRow
-                    key={record.id}
-                    className={canManageEmployees ? 'cursor-pointer' : ''}
-                    onClick={() => canManageEmployees && startEdit(record)}
-                  >
-                    {isRange && <TableCell className="text-[11px] px-2 py-1.5 text-gray-500 whitespace-nowrap">{formatDateShort(record.date)}</TableCell>}
-                    <TableCell className="text-[11px] px-2 py-1.5 font-medium">{record.employee_name || '-'}</TableCell>
-                    <TableCell className="text-[11px] px-2 py-1.5 text-gray-500">{record.department || '-'}</TableCell>
-                    <TableCell className="text-[11px] px-2 py-1.5">{renderClockCell(record.clock_in, record.status)}</TableCell>
-                    <TableCell className="text-[11px] px-2 py-1.5">{renderClockCell(record.clock_out, record.status)}</TableCell>
-                    <TableCell className="text-[11px] px-2 py-1.5">{getStatusBadge(record.status)}</TableCell>
-                    <TableCell className="text-[11px] px-2 py-1.5 max-w-[200px] truncate text-gray-500">
-                      {record.remarks || record.note || '-'}
-                    </TableCell>
-                    {canManageEmployees && (
-                      <TableCell className="text-[11px] px-2 py-1.5 text-gray-400">수정</TableCell>
-                    )}
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+          <AttendanceCompactTable
+            rows={sortedData}
+            showDate={isRange}
+            sortKey={sortConfig.key as string | null}
+            sortDirection={sortConfig.direction}
+            onSort={(key) => handleSort(key)}
+            ctx={{
+              canManage: canManageEmployees,
+              editingId,
+              isSaving,
+              editClockIn,
+              setEditClockIn,
+              editClockOut,
+              setEditClockOut,
+              editStatus,
+              setEditStatus,
+              editRemarks,
+              setEditRemarks,
+              editStatusOptions: STATUS_OPTIONS,
+              startEdit,
+              saveEdit,
+              cancelEdit,
+            }}
+          />
         )}
       </div>
     </div>
