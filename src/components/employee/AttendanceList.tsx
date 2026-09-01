@@ -441,6 +441,22 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
       <Card className="border border-gray-200">
         <CardContent className="py-3">
           <div className="flex flex-wrap items-center gap-2">
+            {/* 상태 필터 (프리셋 칩과 동일 규격) */}
+            <div className="hansl-ctl-chip hansl-toggle-off">
+              <span className="font-semibold">상태</span>
+              <span className="text-gray-300">·</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className={`hansl-pill-select ${statusFilter !== 'all' ? 'text-hansl-500 font-bold' : ''}`}
+              >
+                <option value="all">전체</option>
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+
             {/* 직원 검색 */}
             <div className="relative w-[160px] flex-shrink-0 h-5 flex items-center">
               <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -467,7 +483,7 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
             {/* 기간 선택 — 새요청과 동일한 공용 달력(compact-calendar) 팝오버 */}
             <Popover open={datePopoverOpen} onOpenChange={openDatePopover}>
               <PopoverTrigger asChild>
-                <button type="button" className="hansl-btn ml-2">
+                <button type="button" className="hansl-ctl-chip hansl-toggle-off ml-2">
                   <CalendarIcon className="w-3 h-3 text-gray-400" />
                   {rangeTriggerLabel}
                 </button>
@@ -536,22 +552,6 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
                 {label}
               </button>
             ))}
-
-            {/* 상태 필터 (프리셋 칩과 동일 규격) */}
-            <div className="hansl-ctl-chip hansl-toggle-off ml-2">
-              <span className="font-semibold">상태</span>
-              <span className="text-gray-300">·</span>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className={`hansl-pill-select ${statusFilter !== 'all' ? 'text-hansl-500 font-bold' : ''}`}
-              >
-                <option value="all">전체</option>
-                {statusOptions.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </div>
 
             {/* 초기화 */}
             {hasActiveFilter && (
