@@ -6,7 +6,9 @@ import { employeeService } from '@/services/employeeService'
 import { useTableSort } from '@/hooks/useTableSort'
 import { SortableHeader } from '@/components/ui/sortable-header'
 import { Card, CardContent } from '@/components/ui/card'
-import { DateRangePicker } from '@/components/ui/date-range-picker'
+import { Calendar } from '@/components/ui/calendar'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ko } from 'date-fns/locale'
 import {
   Table,
   TableBody,
@@ -15,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Search, X, Check, RotateCcw } from 'lucide-react'
+import { Search, X, Check, RotateCcw, Calendar as CalendarIcon } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface AttendanceListProps {
@@ -223,23 +225,90 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
     }
   }, [supabase, loadRecords])
 
-  // 공용 DateRangePicker 연동 (하루 조회면 from만 전달)
-  const pickerRange = useMemo((): DateRange => ({
-    from: parseDate(startDate),
-    to: isRange ? parseDate(endDate) : undefined,
-  }), [startDate, endDate, isRange])
+  // 공용 달력(compact-calendar) 팝오버 연동 — 새요청 청구일/입고요청일과 동일 디자인.
+  // 열 때마다 선택을 비워서(오늘은 표시만) 원하는 날짜부터 새로 지정하게 한다.
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false)
+  const [draftRange, setDraftRange] = useState<DateRange | undefined>(undefined)
+  // 텍스트 직접 입력 (____.__.__ 마스크)
+  const [draftStartText, setDraftStartText] = useState('')
+  const [draftEndText, setDraftEndText] = useState('')
 
-  const handleRangeChange = (range: DateRange | undefined) => {
-    if (!range?.from) {
-      // 지우기 → 오늘로 복귀
-      const today = getToday()
-      setStartDate(today)
-      setEndDate(today)
-      return
+  const openDatePopover = (open: boolean) => {
+    if (open) {
+      setDraftRange(undefined)
+      setDraftStartText('')
+      setDraftEndText('')
     }
-    setStartDate(toDateStr(range.from))
-    setEndDate(toDateStr(range.to ?? range.from))
+    setDatePopoverOpen(open)
   }
+
+  // 달력 클릭 → 드래프트만 갱신 (적용은 확인 버튼에서)
+  const handleRangeChange = (range: DateRange | undefined) => {
+    setDraftRange(range)
+    if (range?.from) setDraftStartText(toDateStr(range.from).replace(/-/g, '.'))
+    setDraftEndText(range?.to ? toDateStr(range.to).replace(/-/g, '.') : range?.from ? toDateStr(range.from).replace(/-/g, '.') : '')
+  }
+
+  // 숫자만 받아 YYYY.MM.DD로 자동 포맷
+  const maskDateText = (raw: string) => {
+    const d = raw.replace(/\D/g, '').slice(0, 8)
+    if (d.length <= 4) return d
+    if (d.length <= 6) return `${d.slice(0, 4)}.${d.slice(4)}`
+    return `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6)}`
+  }
+
+  // YYYY.MM.DD → YYYY-MM-DD (실존 날짜만)
+  const parseMaskedDate = (text: string): string | null => {
+    const m = text.match(/^(\d{4})\.(\d{2})\.(\d{2})$/)
+    if (!m) return null
+    const [, y, mo, da] = m
+    const date = new Date(Number(y), Number(mo) - 1, Number(da))
+    if (date.getFullYear() !== Number(y) || date.getMonth() !== Number(mo) - 1 || date.getDate() !== Number(da)) return null
+    return `${y}-${mo}-${da}`
+  }
+
+  // 텍스트 입력 → 드래프트만 갱신 (적용은 확인 버튼에서)
+  const handleStartTextChange = (raw: string) => {
+    const masked = maskDateText(raw)
+    setDraftStartText(masked)
+    const parsed = parseMaskedDate(masked)
+    if (!parsed) return
+    const from = parseDate(parsed)
+    setDraftRange((r) => ({ from, to: r?.to && toDateStr(r.to) >= parsed ? r.to : undefined }))
+  }
+
+  const handleEndTextChange = (raw: string) => {
+    const masked = maskDateText(raw)
+    setDraftEndText(masked)
+    const parsed = parseMaskedDate(masked)
+    if (!parsed) return
+    const to = parseDate(parsed)
+    setDraftRange((r) => ({ from: r?.from && toDateStr(r.from) <= parsed ? r.from : to, to }))
+  }
+
+  // 확인 → 드래프트 적용 후 닫기 (선택 안 했으면 기존 기간 유지)
+  const confirmDateRange = () => {
+    if (draftRange?.from) {
+      const a = toDateStr(draftRange.from)
+      const b = draftRange.to ? toDateStr(draftRange.to) : a
+      setStartDate(a <= b ? a : b)
+      setEndDate(a <= b ? b : a)
+    }
+    setDatePopoverOpen(false)
+  }
+
+  // 지우기 → 드래프트 초기화 (다시 선택)
+  const clearDraftRange = () => {
+    setDraftRange(undefined)
+    setDraftStartText('')
+    setDraftEndText('')
+  }
+
+  // 트리거 라벨 (새요청 표기: 26.09.01)
+  const shortLabel = (dateStr: string) => dateStr.slice(2).replace(/-/g, '.')
+  const rangeTriggerLabel = isRange
+    ? `${shortLabel(startDate)} ~ ${shortLabel(endDate)}`
+    : shortLabel(startDate)
 
   const activePreset = useMemo((): PeriodPreset | null => {
     for (const p of ['today', 'week', 'month'] as PeriodPreset[]) {
@@ -395,13 +464,66 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
               )}
             </div>
 
-            {/* 기간 선택 (공용 달력) */}
-            <DateRangePicker
-              date={pickerRange}
-              onDateChange={handleRangeChange}
-              placeholder="기간 선택"
-              className="ml-2 w-auto"
-            />
+            {/* 기간 선택 — 새요청과 동일한 공용 달력(compact-calendar) 팝오버 */}
+            <Popover open={datePopoverOpen} onOpenChange={openDatePopover}>
+              <PopoverTrigger asChild>
+                <button type="button" className="hansl-btn ml-2">
+                  <CalendarIcon className="w-3 h-3 text-gray-400" />
+                  {rangeTriggerLabel}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0 border-gray-200 shadow-lg" align="start" side="bottom" sideOffset={8}>
+                <div className="bg-white business-radius-card p-3">
+                  <div className="mb-2 px-1">
+                    <div className="modal-label text-gray-600 text-center">날짜 선택 (1회: 당일, 2회: 기간)</div>
+                  </div>
+                  <div className="flex items-center justify-center gap-1 mb-2">
+                    <input
+                      value={draftStartText}
+                      onChange={(e) => handleStartTextChange(e.target.value)}
+                      placeholder="____.__.__"
+                      className="hansl-cell-input-lg !w-[84px] text-center"
+                    />
+                    <span className="text-gray-400 text-[11px]">~</span>
+                    <input
+                      value={draftEndText}
+                      onChange={(e) => handleEndTextChange(e.target.value)}
+                      placeholder="____.__.__"
+                      className="hansl-cell-input-lg !w-[84px] text-center"
+                    />
+                  </div>
+                  <Calendar
+                    mode="range"
+                    selected={draftRange}
+                    onSelect={handleRangeChange}
+                    locale={ko}
+                    className="compact-calendar"
+                    fromDate={new Date('2020-01-01')}
+                    toDate={new Date('2035-12-31')}
+                    defaultMonth={parseDate(startDate)}
+                    formatters={{
+                      formatCaption: (month) => `${month.getFullYear()}년 ${month.getMonth() + 1}월`,
+                    }}
+                    modifiers={{ today: new Date() }}
+                    modifiersClassNames={{
+                      today: 'bg-hansl-500 text-white font-semibold cursor-pointer hover:bg-hansl-600 rounded-md',
+                    }}
+                  />
+                  <div className="border-t border-gray-100 mt-3 pt-2 flex items-center justify-end gap-1.5">
+                    <button type="button" className="hansl-btn" onClick={clearDraftRange}>
+                      지우기
+                    </button>
+                    <button
+                      type="button"
+                      className="button-base bg-hansl-500 hover:bg-hansl-600 text-white"
+                      onClick={confirmDateRange}
+                    >
+                      확인
+                    </button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
 
             {/* 기간 프리셋 칩 */}
             {([['today', '오늘'], ['week', '최근 7일'], ['month', '이번 달']] as [PeriodPreset, string][]).map(([preset, label]) => (
