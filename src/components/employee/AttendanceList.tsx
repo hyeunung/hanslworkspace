@@ -1,10 +1,12 @@
 
-import { useState, useEffect, useMemo, useCallback, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import type { DateRange } from 'react-day-picker'
 import { createClient } from '@/lib/supabase/client'
 import { employeeService } from '@/services/employeeService'
 import { useTableSort } from '@/hooks/useTableSort'
 import { SortableHeader } from '@/components/ui/sortable-header'
 import { Card, CardContent } from '@/components/ui/card'
+import { DateRangePicker } from '@/components/ui/date-range-picker'
 import {
   Table,
   TableBody,
@@ -13,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Search, X, Check, ChevronLeft, ChevronRight, CalendarDays, RotateCcw } from 'lucide-react'
+import { Search, X, Check, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface AttendanceListProps {
@@ -150,9 +152,16 @@ function presetRange(preset: PeriodPreset): { start: string; end: string } {
   return { start: `${today.slice(0, 7)}-01`, end: today }
 }
 
-// 필터 pill 내부 date input 인라인 스타일 (ReceiptFilterToolbar와 동일 규격)
-const pillInputStyle: CSSProperties = {
-  border: 'none', borderBottom: '1px solid #d1d5db', boxShadow: 'none', background: 'none', outline: 'none', width: '92px',
+// YYYY-MM-DD ↔ Date 변환 (로컬 기준)
+function parseDate(dateStr: string) {
+  return new Date(dateStr + 'T00:00:00')
+}
+
+function toDateStr(date: Date) {
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
 }
 
 export default function AttendanceList({ canManageEmployees }: AttendanceListProps) {
@@ -214,28 +223,22 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
     }
   }, [supabase, loadRecords])
 
-  // 시작/종료가 뒤집히지 않게 보정하며 변경
-  const changeStartDate = (value: string) => {
-    if (!value) return
-    setStartDate(value)
-    if (value > endDate) setEndDate(value)
-  }
-  const changeEndDate = (value: string) => {
-    if (!value) return
-    setEndDate(value)
-    if (value < startDate) setStartDate(value)
-  }
+  // 공용 DateRangePicker 연동 (하루 조회면 from만 전달)
+  const pickerRange = useMemo((): DateRange => ({
+    from: parseDate(startDate),
+    to: isRange ? parseDate(endDate) : undefined,
+  }), [startDate, endDate, isRange])
 
-  // 기간 길이(일수)만큼 앞뒤로 이동 (하루 조회면 하루씩)
-  const rangeDays = useMemo(() => {
-    const start = new Date(startDate + 'T00:00:00')
-    const end = new Date(endDate + 'T00:00:00')
-    return Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1
-  }, [startDate, endDate])
-
-  const moveRange = (direction: 1 | -1) => {
-    setStartDate(addDays(startDate, direction * rangeDays))
-    setEndDate(addDays(endDate, direction * rangeDays))
+  const handleRangeChange = (range: DateRange | undefined) => {
+    if (!range?.from) {
+      // 지우기 → 오늘로 복귀
+      const today = getToday()
+      setStartDate(today)
+      setEndDate(today)
+      return
+    }
+    setStartDate(toDateStr(range.from))
+    setEndDate(toDateStr(range.to ?? range.from))
   }
 
   const activePreset = useMemo((): PeriodPreset | null => {
@@ -392,43 +395,13 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
               )}
             </div>
 
-            {/* 기간 선택 */}
-            <span className="hansl-filter-row-label ml-2">
-              <CalendarDays className="w-3.5 h-3.5" /> 기간:
-            </span>
-            <button
-              type="button"
-              onClick={() => moveRange(-1)}
-              title={`이전 ${rangeDays === 1 ? '날' : `${rangeDays}일`}`}
-              className="text-gray-400 hover:text-gray-700 transition-colors p-0.5"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </button>
-            <div className="hansl-filter-pill">
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => changeStartDate(e.target.value)}
-                className="hansl-pill-input"
-                style={pillInputStyle}
-              />
-              <span className="text-gray-400">~</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => changeEndDate(e.target.value)}
-                className="hansl-pill-input"
-                style={pillInputStyle}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => moveRange(1)}
-              title={`다음 ${rangeDays === 1 ? '날' : `${rangeDays}일`}`}
-              className="text-gray-400 hover:text-gray-700 transition-colors p-0.5"
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </button>
+            {/* 기간 선택 (공용 달력) */}
+            <DateRangePicker
+              date={pickerRange}
+              onDateChange={handleRangeChange}
+              placeholder="기간 선택"
+              className="ml-2 w-auto"
+            />
 
             {/* 기간 프리셋 칩 */}
             {([['today', '오늘'], ['week', '최근 7일'], ['month', '이번 달']] as [PeriodPreset, string][]).map(([preset, label]) => (
@@ -442,9 +415,9 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
               </button>
             ))}
 
-            {/* 상태 필터 */}
-            <div className="hansl-filter-pill ml-2">
-              <span className="hansl-pill-select font-semibold pointer-events-none">상태</span>
+            {/* 상태 필터 (프리셋 칩과 동일 규격) */}
+            <div className="hansl-ctl-chip hansl-toggle-off ml-2">
+              <span className="font-semibold">상태</span>
               <span className="text-gray-300">·</span>
               <select
                 value={statusFilter}
