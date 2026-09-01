@@ -1,18 +1,10 @@
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, type CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { employeeService } from '@/services/employeeService'
 import { useTableSort } from '@/hooks/useTableSort'
 import { SortableHeader } from '@/components/ui/sortable-header'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -21,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Search, X, Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, X, Check, ChevronLeft, ChevronRight, CalendarDays, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface AttendanceListProps {
@@ -46,6 +38,9 @@ interface AttendanceRecord {
 }
 
 const STATUS_OPTIONS = ['정상 출근', '지각', '퇴근', '오전반차']
+
+// 상태 필터 드롭다운 기본 정렬 순서 (데이터에 있는 나머지 상태는 뒤에 붙음)
+const STATUS_FILTER_ORDER = ['정상 출근', '지각', '퇴근', '오전반차', '오후반차', '출장', '연차', '공가', '출근 전']
 
 // 상태별 배지 스타일 (Flutter 앱 AppColors 기준)
 const BADGE_CLASS = "badge-stats text-white w-[52px] text-center justify-center"
@@ -111,24 +106,67 @@ function renderClockCell(time: string | null, status: string | null) {
   return '-'
 }
 
-export default function AttendanceList({ canManageEmployees }: AttendanceListProps) {
-  // 기본 날짜: 오늘 (KST)
-  const getToday = () => {
-    const now = new Date()
-    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000)
-    const yyyy = kstNow.getUTCFullYear()
-    const mm = String(kstNow.getUTCMonth() + 1).padStart(2, '0')
-    const dd = String(kstNow.getUTCDate()).padStart(2, '0')
-    return `${yyyy}-${mm}-${dd}`
-  }
+const DAY_LABELS = ['일', '월', '화', '수', '목', '금', '토']
 
-  const [selectedDate, setSelectedDate] = useState(getToday())
+// KST 기준 오늘 (YYYY-MM-DD)
+function getToday() {
+  const now = new Date()
+  const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000)
+  const yyyy = kstNow.getUTCFullYear()
+  const mm = String(kstNow.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(kstNow.getUTCDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+// YYYY-MM-DD에 일수 더하기
+function addDays(dateStr: string, days: number) {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const date = new Date(y, m - 1, d + days)
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+// 날짜 라벨 (2026.09.01 (화))
+function formatDateLabel(dateStr: string) {
+  const date = new Date(dateStr + 'T00:00:00')
+  return `${dateStr.replace(/-/g, '.')} (${DAY_LABELS[date.getDay()]})`
+}
+
+// 짧은 날짜 라벨 (09.01 (화)) — 표 날짜 칼럼용
+function formatDateShort(dateStr: string) {
+  const date = new Date(dateStr + 'T00:00:00')
+  return `${dateStr.slice(5).replace(/-/g, '.')} (${DAY_LABELS[date.getDay()]})`
+}
+
+// 기간 프리셋
+type PeriodPreset = 'today' | 'week' | 'month'
+
+function presetRange(preset: PeriodPreset): { start: string; end: string } {
+  const today = getToday()
+  if (preset === 'today') return { start: today, end: today }
+  if (preset === 'week') return { start: addDays(today, -6), end: today }
+  return { start: `${today.slice(0, 7)}-01`, end: today }
+}
+
+// 필터 pill 내부 date input 인라인 스타일 (ReceiptFilterToolbar와 동일 규격)
+const pillInputStyle: CSSProperties = {
+  border: 'none', borderBottom: '1px solid #d1d5db', boxShadow: 'none', background: 'none', outline: 'none', width: '92px',
+}
+
+export default function AttendanceList({ canManageEmployees }: AttendanceListProps) {
+  const [startDate, setStartDate] = useState(getToday())
+  const [endDate, setEndDate] = useState(getToday())
   const [searchKeyword, setSearchKeyword] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [records, setRecords] = useState<AttendanceRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [hasLoaded, setHasLoaded] = useState(false)
   const supabase = useMemo(() => createClient(), [])
+
+  // 여러 날 조회 여부 (날짜 칼럼 표시)
+  const isRange = startDate !== endDate
 
   // 인라인 편집 상태
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -140,11 +178,11 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
 
   // 데이터 조회
   const loadRecords = useCallback(async () => {
-    if (!selectedDate) return
+    if (!startDate || !endDate) return
 
     setLoading(true)
     try {
-      const result = await employeeService.getAttendanceRecords(selectedDate, selectedDate)
+      const result = await employeeService.getAttendanceRecords(startDate, endDate)
       if (result.success && result.data) {
         setRecords(result.data)
       } else {
@@ -156,9 +194,9 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
       setLoading(false)
       setHasLoaded(true)
     }
-  }, [selectedDate])
+  }, [startDate, endDate])
 
-  // 최초 마운트 + 날짜 변경 시 로드
+  // 최초 마운트 + 기간 변경 시 로드
   useEffect(() => {
     loadRecords()
   }, [loadRecords])
@@ -175,6 +213,52 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
       void supabase.removeChannel(channel)
     }
   }, [supabase, loadRecords])
+
+  // 시작/종료가 뒤집히지 않게 보정하며 변경
+  const changeStartDate = (value: string) => {
+    if (!value) return
+    setStartDate(value)
+    if (value > endDate) setEndDate(value)
+  }
+  const changeEndDate = (value: string) => {
+    if (!value) return
+    setEndDate(value)
+    if (value < startDate) setStartDate(value)
+  }
+
+  // 기간 길이(일수)만큼 앞뒤로 이동 (하루 조회면 하루씩)
+  const rangeDays = useMemo(() => {
+    const start = new Date(startDate + 'T00:00:00')
+    const end = new Date(endDate + 'T00:00:00')
+    return Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1
+  }, [startDate, endDate])
+
+  const moveRange = (direction: 1 | -1) => {
+    setStartDate(addDays(startDate, direction * rangeDays))
+    setEndDate(addDays(endDate, direction * rangeDays))
+  }
+
+  const activePreset = useMemo((): PeriodPreset | null => {
+    for (const p of ['today', 'week', 'month'] as PeriodPreset[]) {
+      const r = presetRange(p)
+      if (r.start === startDate && r.end === endDate) return p
+    }
+    return null
+  }, [startDate, endDate])
+
+  const applyPreset = (preset: PeriodPreset) => {
+    const r = presetRange(preset)
+    setStartDate(r.start)
+    setEndDate(r.end)
+  }
+
+  // 상태 필터 옵션: 기본 순서 + 데이터에 실제 존재하는 상태
+  const statusOptions = useMemo(() => {
+    const present = new Set(records.map((r) => r.status).filter(Boolean) as string[])
+    const ordered = STATUS_FILTER_ORDER.filter((s) => present.has(s))
+    const extras = Array.from(present).filter((s) => !STATUS_FILTER_ORDER.includes(s)).sort()
+    return [...ordered, ...extras]
+  }, [records])
 
   // 클라이언트 사이드 필터링
   const filteredRecords = useMemo(() => {
@@ -195,33 +279,20 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
     return result
   }, [records, searchKeyword, statusFilter])
 
-  // 정렬
-  const { sortedData, sortConfig, handleSort } = useTableSort<AttendanceRecord>(
-    filteredRecords,
-    'employee_name',
-    'asc'
-  )
+  // 정렬 — 기본은 서비스 정렬(날짜 내림차순 → 직원명 오름차순), 헤더 클릭 시 해당 칼럼 정렬
+  const { sortedData, sortConfig, handleSort } = useTableSort<AttendanceRecord>(filteredRecords)
 
-  // 빠른 날짜 이동
-  const moveDate = (days: number) => {
-    const [y, m, d] = selectedDate.split('-').map(Number)
-    const date = new Date(y, m - 1, d + days)
-    const yyyy = date.getFullYear()
-    const mm = String(date.getMonth() + 1).padStart(2, '0')
-    const dd = String(date.getDate()).padStart(2, '0')
-    setSelectedDate(`${yyyy}-${mm}-${dd}`)
+  const hasActiveFilter = searchKeyword !== '' || statusFilter !== 'all'
+
+  const resetFilters = () => {
+    setSearchKeyword('')
+    setStatusFilter('all')
   }
 
-  const goToToday = () => {
-    setSelectedDate(getToday())
-  }
-
-  // 날짜 포맷 (요일 표시)
-  const getDateLabel = () => {
-    const days = ['일', '월', '화', '수', '목', '금', '토']
-    const date = new Date(selectedDate + 'T00:00:00')
-    return `${selectedDate.replace(/-/g, '.')} (${days[date.getDay()]})`
-  }
+  // 표 제목 기간 라벨
+  const rangeLabel = isRange
+    ? `${formatDateLabel(startDate)} ~ ${formatDateLabel(endDate)}`
+    : formatDateLabel(startDate)
 
   // 인라인 편집 시작
   const startEdit = (record: AttendanceRecord) => {
@@ -294,93 +365,145 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
 
   return (
     <div className="space-y-3">
-      {/* 필터 영역 */}
-      <div className="bg-white business-radius-card border border-gray-200 p-4">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* 상태 필터 */}
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[100px] !h-7 !py-1 !px-2.5 !text-[11px] business-radius-button">
-              <SelectValue placeholder="상태" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">전체 상태</SelectItem>
-              <SelectItem value="정상 출근">정상 출근</SelectItem>
-              <SelectItem value="지각">지각</SelectItem>
-              <SelectItem value="퇴근">퇴근</SelectItem>
-              <SelectItem value="오전반차">오전반차</SelectItem>
-            </SelectContent>
-          </Select>
+      {/* 필터 영역 (제작현황 표준): 검색란 + 기간 pill/프리셋 칩 + 상태 pill */}
+      <Card className="border border-gray-200">
+        <CardContent className="py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* 직원 검색 */}
+            <div className="relative w-[160px] flex-shrink-0 h-5 flex items-center">
+              <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="직원명, 이메일 검색"
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
+                style={{ paddingLeft: '26px', height: '20px' }}
+                className="hansl-search-input"
+              />
+              {searchKeyword && (
+                <button
+                  type="button"
+                  onClick={() => setSearchKeyword('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  title="검색어 지우기"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
 
-          {/* 날짜 선택 */}
-          <div className="flex items-center gap-1">
-            <button type="button" onClick={() => moveDate(-1)} className="text-gray-400 hover:text-gray-700 transition-colors p-1">
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <Input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-[160px] business-radius-button"
-            />
-            <button type="button" onClick={() => moveDate(1)} className="text-gray-400 hover:text-gray-700 transition-colors p-1">
-              <ChevronRight className="h-4 w-4" />
-            </button>
-            <Button variant="outline" size="sm" onClick={goToToday} className="!h-7 !py-0 !text-[11px] business-radius-button">
-              오늘
-            </Button>
-          </div>
-
-          {/* 직원 검색 */}
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="직원명"
-              value={searchKeyword}
-              onChange={(e) => setSearchKeyword(e.target.value)}
-              className="pl-8 w-[100px] business-radius-button"
-            />
-          </div>
-
-          {(searchKeyword || statusFilter !== 'all') && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => { setSearchKeyword(''); setStatusFilter('all') }}
-              className="button-text"
-            >
-              <X className="h-4 w-4 mr-1" />
-              초기화
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* 테이블 */}
-      <div className="bg-white business-radius-card border border-gray-200 w-fit">
-        <div className="p-4 border-b border-gray-200">
-          <div className="flex justify-between items-center">
-            <h3 className="button-text font-semibold text-gray-900">{getDateLabel()} 출퇴근 기록</h3>
-            <span className="badge-stats bg-gray-100 text-gray-600">
-              {loading ? '로딩 중...' : `${filteredRecords.length}명`}
+            {/* 기간 선택 */}
+            <span className="hansl-filter-row-label ml-2">
+              <CalendarDays className="w-3.5 h-3.5" /> 기간:
             </span>
+            <button
+              type="button"
+              onClick={() => moveRange(-1)}
+              title={`이전 ${rangeDays === 1 ? '날' : `${rangeDays}일`}`}
+              className="text-gray-400 hover:text-gray-700 transition-colors p-0.5"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <div className="hansl-filter-pill">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => changeStartDate(e.target.value)}
+                className="hansl-pill-input"
+                style={pillInputStyle}
+              />
+              <span className="text-gray-400">~</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => changeEndDate(e.target.value)}
+                className="hansl-pill-input"
+                style={pillInputStyle}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => moveRange(1)}
+              title={`다음 ${rangeDays === 1 ? '날' : `${rangeDays}일`}`}
+              className="text-gray-400 hover:text-gray-700 transition-colors p-0.5"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+
+            {/* 기간 프리셋 칩 */}
+            {([['today', '오늘'], ['week', '최근 7일'], ['month', '이번 달']] as [PeriodPreset, string][]).map(([preset, label]) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => applyPreset(preset)}
+                className={`hansl-chip ${activePreset === preset ? 'hansl-chip-on' : 'hansl-chip-off'}`}
+              >
+                {label}
+              </button>
+            ))}
+
+            {/* 상태 필터 */}
+            <div className="hansl-filter-pill ml-2">
+              <span className="hansl-pill-select font-semibold pointer-events-none">상태</span>
+              <span className="text-gray-300">·</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className={`hansl-pill-select ${statusFilter !== 'all' ? 'text-hansl-500 font-bold' : ''}`}
+              >
+                <option value="all">전체</option>
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 초기화 */}
+            {hasActiveFilter && (
+              <button type="button" onClick={resetFilters} className="hansl-ctl-chip-reset" title="검색·상태 필터 초기화">
+                <RotateCcw className="w-3 h-3" /> 초기화
+              </button>
+            )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* 표 카드 — 제목행(기간·건수) + 테이블 */}
+      <div className="border rounded-lg overflow-hidden bg-white shadow-sm w-fit max-w-full">
+        <div className="px-4 py-2 border-b border-gray-200 flex items-center gap-2 bg-gray-50/50">
+          <span className="modal-section-title">{rangeLabel} 출퇴근 기록</span>
+          <span className="badge-stats bg-gray-100 text-gray-600">
+            {loading ? '로딩 중...' : isRange ? `${filteredRecords.length}건` : `${filteredRecords.length}명`}
+          </span>
         </div>
 
         {loading && !hasLoaded ? (
-          <div className="flex items-center justify-center py-20">
+          <div className="flex items-center justify-center py-20 px-32">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+              <div className="w-8 h-8 border-2 border-hansl-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
               <p className="mt-2 card-subtitle">출퇴근 기록을 불러오는 중...</p>
             </div>
           </div>
         ) : sortedData.length === 0 ? (
-          <div className="flex items-center justify-center py-20">
-            <p className="card-subtitle">해당 날짜에 출퇴근 기록이 없습니다.</p>
+          <div className="flex items-center justify-center py-20 px-32">
+            <p className="card-subtitle whitespace-nowrap">해당 기간에 출퇴근 기록이 없습니다.</p>
           </div>
         ) : (
           <Table className="w-auto">
             <TableHeader>
               <TableRow>
+                {isRange && (
+                  <TableHead className="w-[85px]">
+                    <SortableHeader
+                      sortKey="date"
+                      currentSortKey={sortConfig.key as string | null}
+                      sortDirection={sortConfig.direction}
+                      onSort={(key) => handleSort(key as keyof AttendanceRecord)}
+                    >
+                      날짜
+                    </SortableHeader>
+                  </TableHead>
+                )}
                 <TableHead className="w-[70px]">
                   <SortableHeader
                     sortKey="employee_name"
@@ -442,64 +565,65 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
                 if (isEditing && canManageEmployees) {
                   return (
                     <TableRow key={record.id} className="bg-hansl-50/30">
+                      {isRange && <TableCell className="text-[11px] px-2 py-1.5 text-gray-500 whitespace-nowrap">{formatDateShort(record.date)}</TableCell>}
                       <TableCell className="text-[11px] px-2 py-1.5 font-medium">{record.employee_name || '-'}</TableCell>
                       <TableCell className="text-[11px] px-2 py-1.5 text-gray-500">{record.department || '-'}</TableCell>
                       <TableCell className="text-[11px] px-2 py-1.5">
-                        <Input
+                        <input
                           type="time"
                           value={editClockIn}
                           onChange={(e) => setEditClockIn(e.target.value)}
-                          className="!h-auto !py-px !px-1.5 !text-[11px] !min-h-[20px] w-[100px] business-radius-input border border-gray-300 bg-white text-gray-700"
+                          className="hansl-cell-input w-[100px]"
                         />
                       </TableCell>
                       <TableCell className="text-[11px] px-2 py-1.5">
-                        <Input
+                        <input
                           type="time"
                           value={editClockOut}
                           onChange={(e) => setEditClockOut(e.target.value)}
-                          className="!h-auto !py-px !px-1.5 !text-[11px] !min-h-[20px] w-[100px] business-radius-input border border-gray-300 bg-white text-gray-700"
+                          className="hansl-cell-input w-[100px]"
                         />
                       </TableCell>
                       <TableCell className="text-[11px] px-2 py-1.5">
-                        <Select value={editStatus} onValueChange={setEditStatus}>
-                          <SelectTrigger className="!h-auto !py-px !px-1.5 !text-[11px] !min-h-[20px] w-[90px] business-radius-input border border-gray-300 bg-white text-gray-700">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {STATUS_OPTIONS.map((s) => (
-                              <SelectItem key={s} value={s}>{s}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <select
+                          value={editStatus}
+                          onChange={(e) => setEditStatus(e.target.value)}
+                          className="hansl-cell-input w-[90px]"
+                        >
+                          {!STATUS_OPTIONS.includes(editStatus) && <option value={editStatus}>{editStatus || '-'}</option>}
+                          {STATUS_OPTIONS.map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
                       </TableCell>
                       <TableCell className="text-[11px] px-2 py-1.5">
-                        <Input
+                        <input
                           value={editRemarks}
                           onChange={(e) => setEditRemarks(e.target.value)}
                           placeholder="비고"
-                          className="!h-auto !py-px !px-1.5 !text-[11px] !min-h-[20px] business-radius-input border border-gray-300 bg-white text-gray-700"
+                          className="hansl-cell-input"
                         />
                       </TableCell>
                       <TableCell className="text-[11px] px-2 py-1.5">
                         <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
+                          <button
+                            type="button"
                             onClick={() => saveEdit(record)}
                             disabled={isSaving}
-                            className="h-5 w-5 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                            title="저장"
+                            className="hansl-icon-btn !p-0.5 text-green-600 hover:text-green-700 hover:bg-green-50 disabled:opacity-50"
                           >
                             <Check className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
+                          </button>
+                          <button
+                            type="button"
                             onClick={cancelEdit}
                             disabled={isSaving}
-                            className="h-5 w-5 p-0 text-gray-400 hover:text-gray-600"
+                            title="취소"
+                            className="hansl-icon-btn !p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-50"
                           >
                             <X className="h-3.5 w-3.5" />
-                          </Button>
+                          </button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -512,6 +636,7 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
                     className={canManageEmployees ? 'cursor-pointer' : ''}
                     onClick={() => canManageEmployees && startEdit(record)}
                   >
+                    {isRange && <TableCell className="text-[11px] px-2 py-1.5 text-gray-500 whitespace-nowrap">{formatDateShort(record.date)}</TableCell>}
                     <TableCell className="text-[11px] px-2 py-1.5 font-medium">{record.employee_name || '-'}</TableCell>
                     <TableCell className="text-[11px] px-2 py-1.5 text-gray-500">{record.department || '-'}</TableCell>
                     <TableCell className="text-[11px] px-2 py-1.5">{renderClockCell(record.clock_in, record.status)}</TableCell>
