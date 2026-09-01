@@ -229,7 +229,7 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
   // 열 때마다 선택을 비워서(오늘은 표시만) 원하는 날짜부터 새로 지정하게 한다.
   const [datePopoverOpen, setDatePopoverOpen] = useState(false)
   const [draftRange, setDraftRange] = useState<DateRange | undefined>(undefined)
-  // 텍스트 직접 입력 (____.__.__ 마스크)
+  // 텍스트 직접 입력 (숫자 입력 시 YYYY.MM.DD 자동 포맷)
   const [draftStartText, setDraftStartText] = useState('')
   const [draftEndText, setDraftEndText] = useState('')
 
@@ -493,19 +493,19 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
                   <div className="mb-2 px-1">
                     <div className="modal-label text-gray-600 text-center">날짜 선택 (1회: 당일, 2회: 기간)</div>
                   </div>
-                  <div className="flex items-center justify-center gap-1 mb-2">
+                  <div className="flex items-center justify-center gap-1.5 mb-2">
                     <input
                       value={draftStartText}
                       onChange={(e) => handleStartTextChange(e.target.value)}
-                      placeholder="____.__.__"
-                      className="hansl-cell-input-lg !w-[84px] text-center"
+                      placeholder="시작일 입력"
+                      className="hansl-pill-input !w-[76px] text-center"
                     />
                     <span className="text-gray-400 text-[11px]">~</span>
                     <input
                       value={draftEndText}
                       onChange={(e) => handleEndTextChange(e.target.value)}
-                      placeholder="____.__.__"
-                      className="hansl-cell-input-lg !w-[84px] text-center"
+                      placeholder="종료일 입력"
+                      className="hansl-pill-input !w-[76px] text-center"
                     />
                   </div>
                   <Calendar
