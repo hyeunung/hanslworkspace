@@ -50,12 +50,13 @@ function formatDateLabel(dateStr: string) {
 }
 
 // 기간 프리셋
-type PeriodPreset = 'today' | 'week' | 'month'
+type PeriodPreset = 'today' | 'week' | 'days30' | 'month'
 
 function presetRange(preset: PeriodPreset): { start: string; end: string } {
   const today = getToday()
   if (preset === 'today') return { start: today, end: today }
   if (preset === 'week') return { start: addDays(today, -6), end: today }
+  if (preset === 'days30') return { start: addDays(today, -29), end: today }
   return { start: `${today.slice(0, 7)}-01`, end: today }
 }
 
@@ -216,7 +217,7 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
     : shortLabel(startDate)
 
   const activePreset = useMemo((): PeriodPreset | null => {
-    for (const p of ['today', 'week', 'month'] as PeriodPreset[]) {
+    for (const p of ['today', 'week', 'days30', 'month'] as PeriodPreset[]) {
       const r = presetRange(p)
       if (r.start === startDate && r.end === endDate) return p
     }
@@ -448,7 +449,7 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
             </Popover>
 
             {/* 기간 프리셋 칩 */}
-            {([['today', '오늘'], ['week', '최근 7일'], ['month', '이번 달']] as [PeriodPreset, string][]).map(([preset, label]) => (
+            {([['today', '오늘'], ['week', '최근 7일'], ['days30', '최근 30일'], ['month', '이번 달']] as [PeriodPreset, string][]).map(([preset, label]) => (
               <button
                 key={preset}
                 type="button"
