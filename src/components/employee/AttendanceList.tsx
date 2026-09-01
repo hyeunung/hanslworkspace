@@ -508,6 +508,7 @@ export default function AttendanceList({ canManageEmployees }: AttendanceListPro
                       className="hansl-pill-input !w-[76px] text-center"
                     />
                   </div>
+                  <div className="text-[9px] text-gray-400 text-center mb-2">(예: 20260804 → 2026.08.04)</div>
                   <Calendar
                     mode="range"
                     selected={draftRange}
