@@ -1872,14 +1872,18 @@ export default function ProductionListMain() {
     purchasePickerLoadingRef.current = true
     try {
       const supabase = createClient()
+      // 과거(엑셀 시절) 발주요청은 수주번호에 탭/공백이 붙어 있거나 대소문자가 다른 건이 있어
+      // 정확일치 대신 부분일치로 넓게 가져온 뒤, 공백 제거·대소문자 무시 기준으로 걸러낸다
+      const likePattern = `%${orderNo.replace(/[%_\\]/g, ch => `\\${ch}`)}%`
+      const normalize = (v: unknown) => String(v ?? '').replace(/\s+/g, '').toUpperCase()
       const { data, error } = await supabase
         .from('purchase_requests')
-        .select('id, purchase_order_number, request_date, requester_name, vendors:vendor_id(vendor_name)')
-        .eq('sales_order_number', orderNo)
+        .select('id, sales_order_number, purchase_order_number, request_date, requester_name, vendors:vendor_id(vendor_name)')
+        .ilike('sales_order_number', likePattern)
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
       if (error) throw error
-      const list = (data || []).map((p: any) => ({
+      const list = (data || []).filter((p: any) => normalize(p.sales_order_number) === normalize(orderNo)).map((p: any) => ({
         id: Number(p.id),
         purchase_order_number: p.purchase_order_number || null,
         request_date: p.request_date ? String(p.request_date).slice(0, 10) : null,
