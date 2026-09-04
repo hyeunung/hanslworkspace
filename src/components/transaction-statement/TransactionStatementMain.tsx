@@ -635,6 +635,27 @@ export default function TransactionStatementMain() {
     setPurchaseDropdown({ isOpen: false, statement: null, position: { top: 0, left: 0 } });
   };
 
+  // 발주/수주번호 셀 클릭: 1건이면 바로 상세모달, 여러 건이면 드롭다운
+  const handleOrderNumbersClick = (e: React.MouseEvent, statement: TransactionStatement) => {
+    e.stopPropagation();
+    const purchases = statement.matched_purchases || [];
+    if (purchases.length === 0) return;
+    if (purchases.length === 1) {
+      setSelectedPurchaseId(purchases[0].purchase_id);
+      setIsPurchaseModalOpen(true);
+      return;
+    }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setPurchaseDropdown({
+      isOpen: true,
+      statement,
+      position: {
+        top: rect.bottom + window.scrollY,
+        left: rect.left + window.scrollX
+      }
+    });
+  };
+
   // 파일 뷰어 열기 (이미지/PDF는 내장 뷰어, 엑셀은 Google Docs Viewer 새 창)
   const handleViewImage = (e: React.MouseEvent, imageUrl: string, updatedAt?: string) => {
     e.stopPropagation();
@@ -1110,13 +1131,13 @@ export default function TransactionStatementMain() {
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       <th className="w-[132px] px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">명세서코드</th>
+                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">발주/수주번호</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">종류</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">상태</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">수량/금액</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">업로드일</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">명세서일</th>
                       <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">거래처명</th>
-                      <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">발주/수주번호</th>
                       <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">합계금액</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">등록자</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">수량확인</th>
@@ -1139,6 +1160,23 @@ export default function TransactionStatementMain() {
                           <span className="inline-flex items-center business-radius-badge bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-700 tabular-nums">
                             {statement.statement_code || '-'}
                           </span>
+                        </td>
+                        <td className="px-2 py-2.5 whitespace-nowrap">
+                          {statement.matched_order_numbers && statement.matched_purchases && statement.matched_purchases.length > 0 ? (
+                            <button
+                              type="button"
+                              onClick={(e) => handleOrderNumbersClick(e, statement)}
+                              className="text-[11px] text-hansl-600 hover:text-hansl-700 hover:underline tabular-nums"
+                              title={statement.matched_order_numbers}
+                            >
+                              {statement.matched_purchases[0].purchase_order_number
+                                || statement.matched_purchases[0].sales_order_number
+                                || `발주 #${statement.matched_purchases[0].purchase_id}`}
+                              {statement.matched_purchases.length > 1 && ` 외 ${statement.matched_purchases.length - 1}개`}
+                            </button>
+                          ) : (
+                            <span className="text-[11px] text-gray-300">-</span>
+                          )}
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="flex items-center justify-center h-full">
@@ -1187,11 +1225,6 @@ export default function TransactionStatementMain() {
                         </td>
                         <td className="px-3 py-2.5 text-[11px] font-medium text-gray-900">
                           {statement.vendor_name || '-'}
-                        </td>
-                        <td className="px-3 py-2.5 text-[11px] text-gray-600 max-w-[180px]">
-                          <span className="block truncate tabular-nums" title={statement.matched_order_numbers || undefined}>
-                            {statement.matched_order_numbers || '-'}
-                          </span>
                         </td>
                         <td className="px-3 py-2.5 text-[11px] font-medium text-right text-gray-900">
                           {formatAmount(statement.grand_total ?? statement.total_amount)}
