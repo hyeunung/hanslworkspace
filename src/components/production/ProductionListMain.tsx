@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { productionService, ProductionPcb, ProductionCable } from '@/services/productionService'
@@ -50,6 +50,9 @@ import { parseColorState, serializeColorState } from '@/utils/productionColors'
 import ProductionSortControl from './ProductionSortControl'
 import ProductionColumnMenu from './ProductionColumnMenu'
 import ProductionFilterToolbar from './ProductionFilterToolbar'
+
+// 발주요청 상세 모달 (요청목록 발주/구매 탭과 동일 모달) — 무겁기 때문에 버튼을 눌렀을 때만 로드
+const PurchaseDetailModal = lazy(() => import('@/components/purchase/PurchaseDetailModal'))
 
 
 
@@ -855,8 +858,22 @@ export default function ProductionListMain() {
   const [orderNoInput, setOrderNoInput] = useState<string>('')
   const orderNoPopoverRef = useRef<HTMLDivElement | null>(null)
 
+  // 발주 상세 연동: 제작번호 셀의 '상세' 버튼 → 연결된 발주요청 상세 모달(발주/구매 탭과 동일)
+  // 같은 제작번호에 발주요청이 여러 건이면 선택 팝오버를 먼저 띄운다
+  const [purchaseDetailId, setPurchaseDetailId] = useState<number | null>(null)
+  const [purchasePicker, setPurchasePicker] = useState<{ id: string, type: 'pcb' | 'cable' } | null>(null)
+  const [purchasePickerList, setPurchasePickerList] = useState<Array<{
+    id: number
+    purchase_order_number: string | null
+    request_date: string | null
+    requester_name: string | null
+    vendor_name: string
+  }>>([])
+  const purchasePickerLoadingRef = useRef(false)
+  const purchasePickerPopoverRef = useRef<HTMLDivElement | null>(null)
+
   // 로그인 사용자 및 직원 정보
-  const { currentUserName, employee } = useAuth()
+  const { currentUserName, employee, currentUserRoles } = useAuth()
 
   // 업체 관리 DB 연동 상태
 
@@ -1843,6 +1860,63 @@ export default function ProductionListMain() {
     return () => document.removeEventListener('mousedown', onDown)
   }, [orderNoPicker])
 
+  // 제작번호 '상세' 버튼: 해당 제작번호(수주번호)로 연결된 발주요청을 찾아 상세 모달을 연다
+  // 1건이면 바로 모달, 여러 건이면 발주번호 선택 팝오버를 먼저 띄운다
+  const openPurchaseDetailForOrder = useStableHandler(async (type: 'pcb' | 'cable', item: any) => {
+    const orderNo = String(item?.sales_order_number || '').trim()
+    if (!orderNo) {
+      toast.error('제작번호가 없어 연결된 발주요청을 찾을 수 없습니다.')
+      return
+    }
+    if (purchasePickerLoadingRef.current) return
+    purchasePickerLoadingRef.current = true
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('purchase_requests')
+        .select('id, purchase_order_number, request_date, requester_name, vendors:vendor_id(vendor_name)')
+        .eq('sales_order_number', orderNo)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      const list = (data || []).map((p: any) => ({
+        id: Number(p.id),
+        purchase_order_number: p.purchase_order_number || null,
+        request_date: p.request_date ? String(p.request_date).slice(0, 10) : null,
+        requester_name: p.requester_name || null,
+        vendor_name: p.vendors?.vendor_name || '업체 미지정'
+      }))
+      if (list.length === 0) {
+        toast.info(`제작번호 ${orderNo}에 연결된 발주요청이 없습니다.`)
+        setPurchasePicker(null)
+        return
+      }
+      if (list.length === 1) {
+        setPurchasePicker(null)
+        setPurchaseDetailId(list[0].id)
+        return
+      }
+      setPurchasePickerList(list)
+      setPurchasePicker({ id: item.id, type })
+    } catch (e) {
+      console.error('발주요청 조회 실패', e)
+      toast.error('연결된 발주요청을 불러오지 못했습니다.')
+    } finally {
+      purchasePickerLoadingRef.current = false
+    }
+  })
+
+  // 발주요청 선택 팝오버 밖을 클릭하면 닫기
+  useEffect(() => {
+    if (!purchasePicker) return
+    const onDown = (e: MouseEvent) => {
+      if (purchasePickerPopoverRef.current?.contains(e.target as Node)) return
+      setPurchasePicker(null)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [purchasePicker])
+
 
   // 행 배경색 업데이트 핸들러
   const handleUpdateRowColor = useStableHandler(async (type: 'pcb' | 'cable', id: string, colorAction: string | null, isToggleStrike = false) => {
@@ -2389,6 +2463,9 @@ export default function ProductionListMain() {
       const btnWidth = measureText(STOCK_WAITING_LABEL[field] || '입고대기', 500) + 18
       if (btnWidth > maxValWidth) maxValWidth = btnWidth
     }
+
+    // 제작번호 칼럼: 값 우측에 발주요청 '상세' 버튼(라벨+패딩+보더+간격)이 함께 렌더되므로 그만큼 폭을 더한다
+    if (field === 'sales_order_number') maxValWidth += 34
 
     // 3. 좌우 여백 5px씩 + (border-r을 쓰는 비고정 칼럼은 border-box라 1px 보정)
     const borderAllowance = STICKY_FIELDS.includes(field) ? 0 : 1
@@ -3241,7 +3318,50 @@ export default function ProductionListMain() {
         }}
       >
         {remoteTag}
-        {item.sales_order_number}
+        <div className="flex items-center gap-1">
+          <span className="flex-1 truncate">{item.sales_order_number}</span>
+          <button
+            type="button"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); openPurchaseDetailForOrder(type, item) }}
+            className="shrink-0 text-[9px] font-medium leading-none text-gray-400 border border-gray-300 rounded px-1 py-[2px] bg-white/70 hover:text-hansl-500 hover:border-hansl-500 hover:bg-blue-50/60 transition-colors"
+            title="이 제작번호로 연결된 발주요청 상세 보기"
+          >
+            상세
+          </button>
+        </div>
+        {purchasePicker?.id === item.id && purchasePicker?.type === type && (
+          <CellPopoverPortal
+            innerRef={purchasePickerPopoverRef}
+            className="hansl-popover border-gray-300 p-1.5 cursor-default text-left"
+            style={{ width: '250px' }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-[9px] font-semibold text-gray-400 mb-1 px-0.5">
+              연결된 발주요청 {purchasePickerList.length}건 — 클릭하면 상세가 열립니다
+            </div>
+            <div className="max-h-[240px] overflow-y-auto flex flex-col">
+              {purchasePickerList.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => { setPurchasePicker(null); setPurchaseDetailId(p.id) }}
+                  className="text-left px-1.5 py-[3px] rounded hover:bg-blue-50 transition-colors"
+                >
+                  <span className="block text-[11px] font-medium text-gray-800">
+                    {p.purchase_order_number || `발주요청 #${p.id}`}
+                  </span>
+                  <span className="block text-[9px] text-gray-400">
+                    {p.vendor_name}
+                    {p.requester_name ? ` · ${p.requester_name}` : ''}
+                    {p.request_date ? ` · ${p.request_date}` : ''}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </CellPopoverPortal>
+        )}
         {isOpen && (
           <CellPopoverPortal
             innerRef={orderNoPopoverRef}
@@ -3519,6 +3639,7 @@ export default function ProductionListMain() {
   const handleCopyKey = useStableHandler((e: KeyboardEvent) => {
     if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return
     if ((e.key || '').toLowerCase() !== 'c') return
+    if (purchaseDetailId !== null) return // 발주 상세 모달이 열려 있으면 복사는 모달/브라우저에 양보
     const ae = document.activeElement as HTMLElement | null
     // 드래그 선택 직후 뜨는 '일괄 입력' 편집기는 autoFocus라서, 포커스만 있고 텍스트 선택이 없으면
     // 사용자 의도(선택한 셀 범위 복사)를 우선한다. 텍스트를 선택했다면 그 텍스트 복사에 양보.
@@ -3565,6 +3686,7 @@ export default function ProductionListMain() {
   })
 
   const handlePasteEvent = useStableHandler(async (e: ClipboardEvent) => {
+    if (purchaseDetailId !== null) return // 발주 상세 모달이 열려 있으면 붙여넣기는 모달/브라우저에 양보
     const ae = document.activeElement as HTMLElement | null
     // 편집칸에 붙여넣을 때는 브라우저 기본 동작에 양보 (복사한 내용 전체가 그 칸에 들어감).
     // 단, 드래그 선택 직후 autoFocus로 뜨는 '일괄 입력' 편집기는 예외 —
@@ -3737,8 +3859,8 @@ export default function ProductionListMain() {
     if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return
     if (editingCellRef.current) return
     if (selectedCells.length === 0) return
-    // 모달/팝오버(입고일·제작번호 선택 등)가 열려 있으면 그쪽 UI에 양보
-    if (isModalOpen || deleteConfirm || stockInPicker || orderNoPicker) return
+    // 모달/팝오버(입고일·제작번호 선택·발주 상세 등)가 열려 있으면 그쪽 UI에 양보
+    if (isModalOpen || deleteConfirm || stockInPicker || orderNoPicker || purchasePicker || purchaseDetailId !== null) return
 
     const ARROWS: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }
     const mod = e.ctrlKey || e.metaKey
@@ -3954,6 +4076,9 @@ export default function ProductionListMain() {
     // 제작번호 선택 팝오버가 열린 행도 필터 입력값이 바뀔 때마다 다시 그린다
     const orderNo = orderNoPicker && orderNoPicker.type === type && orderNoPicker.id === item.id
       ? `N:${orderNoInput}` : ''
+    // 발주요청 선택 팝오버가 열린 행도 목록이 바뀔 때마다 다시 그린다 (rowSig에 없으면 팝오버가 화면에 안 뜬다)
+    const purchasePick = purchasePicker && purchasePicker.type === type && purchasePicker.id === item.id
+      ? `PD:${purchasePickerList.map(p => p.id).join(',')}` : ''
     // 숨긴 칼럼 구성(행 추가 중엔 전 칼럼 표시)이 바뀌면 모든 행을 다시 그려야 한다
     const adding = type === 'pcb' ? !!addingPcbRow : !!addingCableRow
     const cols = adding ? 'ALL' : hiddenCols[type].join(',')
@@ -3965,7 +4090,7 @@ export default function ProductionListMain() {
     const grp = g ? `G${g.pos}/${g.size}` : ''
     // 다른 접속자가 이 행의 셀을 선택/편집 중이면 그 변화도 다시 그린다 (셀 프레즌스)
     const rp = remotePresenceRowSig.get(item.id) || ''
-    return sel + '|' + editing + '|' + picker + '|' + stockIn + '|' + orderNo + '|' + cols + '|' + expanded + '|' + grp + '|' + rp
+    return sel + '|' + editing + '|' + picker + '|' + stockIn + '|' + orderNo + '|' + purchasePick + '|' + cols + '|' + expanded + '|' + grp + '|' + rp
   }
 
   // PCB 행 렌더 본문 — MemoRow가 (item, index)로 호출. 내부 커스텀 핸들러는 모두 useStableHandler로 안정화됨.
@@ -5743,6 +5868,19 @@ export default function ProductionListMain() {
           </div>
         )}
       </div>
+
+      {/* 발주요청 상세 모달 — 제작번호 셀 '상세' 버튼으로 진입 (요청목록 발주/구매 탭과 동일 모달) */}
+      {purchaseDetailId !== null && (
+        <Suspense fallback={null}>
+          <PurchaseDetailModal
+            purchaseId={purchaseDetailId}
+            isOpen={purchaseDetailId !== null}
+            onClose={() => setPurchaseDetailId(null)}
+            currentUserRoles={currentUserRoles}
+            activeTab="purchase"
+          />
+        </Suspense>
+      )}
 
       {/* 등록 및 수정 모달 다이얼로그 */}
       {isModalOpen && (
