@@ -1116,6 +1116,7 @@ export default function TransactionStatementMain() {
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">업로드일</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">명세서일</th>
                       <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">거래처명</th>
+                      <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">발주/수주번호</th>
                       <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wider">합계금액</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">등록자</th>
                       <th className="px-3 py-2.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wider">수량확인</th>
@@ -1186,6 +1187,11 @@ export default function TransactionStatementMain() {
                         </td>
                         <td className="px-3 py-2.5 text-[11px] font-medium text-gray-900">
                           {statement.vendor_name || '-'}
+                        </td>
+                        <td className="px-3 py-2.5 text-[11px] text-gray-600 max-w-[180px]">
+                          <span className="block truncate tabular-nums" title={statement.matched_order_numbers || undefined}>
+                            {statement.matched_order_numbers || '-'}
+                          </span>
                         </td>
                         <td className="px-3 py-2.5 text-[11px] font-medium text-right text-gray-900">
                           {formatAmount(statement.grand_total ?? statement.total_amount)}
@@ -1327,6 +1333,11 @@ export default function TransactionStatementMain() {
                       <p className="text-[11px] font-medium text-gray-900">
                         {statement.vendor_name || '거래처 미확인'}
                       </p>
+                      {statement.matched_order_numbers && (
+                        <p className="text-[10px] text-gray-500 tabular-nums truncate">
+                          {statement.matched_order_numbers}
+                        </p>
+                      )}
                     </div>
                     {(statement.grand_total || statement.total_amount) && (
                       <p className="text-[12px] font-bold text-gray-900">
