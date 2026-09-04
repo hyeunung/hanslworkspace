@@ -1359,7 +1359,7 @@ class TransactionStatementService {
       }
 
       if (filters?.search) {
-        query = query.or(`statement_code.ilike.%${filters.search}%,vendor_name.ilike.%${filters.search}%,file_name.ilike.%${filters.search}%`);
+        query = query.or(`statement_code.ilike.%${filters.search}%,vendor_name.ilike.%${filters.search}%,file_name.ilike.%${filters.search}%,matched_order_numbers.ilike.%${filters.search}%`);
       }
 
       // offset이 있으면 range로 처리(한쪽만 사용), 없으면 limit만 적용

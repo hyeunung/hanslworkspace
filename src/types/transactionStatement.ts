@@ -74,6 +74,8 @@ export interface TransactionStatement {
   all_amounts_matched?: boolean;
   // 무상샘플 여부 (true면 발주 자동 생성, _S suffix)
   is_free_sample?: boolean;
+  // 매칭된 발주/수주번호 집계 (DB 트리거 자동 동기화, 검색/표시용)
+  matched_order_numbers?: string | null;
 }
 
 // 거래명세서 품목 타입
