@@ -4677,7 +4677,7 @@ export default function ProductionListMain() {
             <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="제작번호, 보드명, 업체명, 날짜(4월 6일) 검색..."
+              placeholder="전체 칼럼 검색 (담당자·메모·날짜 4월 6일 등)..."
               value={pcbSearch}
               onChange={(e) => setPcbSearch(e.target.value)}
               style={{ paddingLeft: '26px', height: '20px' }}
@@ -5313,7 +5313,7 @@ export default function ProductionListMain() {
                     <Search className="w-3 h-3 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
-                      placeholder="제작번호, 품명, 업체명, 날짜(4월 6일) 검색..."
+                      placeholder="전체 칼럼 검색 (담당자·메모·날짜 4월 6일 등)..."
                       value={cableSearch}
                       onChange={(e) => setCableSearch(e.target.value)}
                       style={{ paddingLeft: '26px', height: '20px' }}
