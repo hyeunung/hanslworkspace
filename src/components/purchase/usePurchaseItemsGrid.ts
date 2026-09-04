@@ -7,9 +7,9 @@ import { logger } from '@/lib/logger'
 // ─── 새발주 품목 테이블 엑셀식 그리드 로직 ─────────────────────────────
 // 제작현황 테이블의 셀 선택/키보드/복사·붙여넣기/Delete/일괄입력/되돌리기 동작을
 // 로컬 폼 배열(react-hook-form items) 위에 구현한 훅.
-// 셀은 항상 input이 열려있는 하이브리드 방식: input에 포커스가 있으면 키보드는
-// 네이티브 편집에 양보하고, 범위 선택(드래그/Shift+클릭) 시 포커스를 해제해
-// 복사/삭제/이동 키가 선택 영역에 동작한다.
+// 제작현황과 동일한 편집 모델: 평소엔 텍스트 셀로 표시하고, 선택된 셀 재클릭
+// 또는 Enter/F2로 그 셀에만 인라인 input(editingCell)을 렌더해 편집한다.
+// input에 포커스가 있는 동안 키보드는 네이티브 편집에 양보한다.
 
 export interface GridPos { r: number; c: number }
 
@@ -62,6 +62,19 @@ export function usePurchaseItemsGrid({ getItems, replace, currency, cols, contai
   const [selectedCells, setSelectedCells] = useState<string[]>([])
   const selectedSet = useMemo(() => new Set(selectedCells), [selectedCells])
 
+  // 편집 중인 셀 (제작현황과 동일: 이 셀에만 인라인 input이 렌더된다)
+  const [editingCell, setEditingCell] = useState<{ r: number; field: string } | null>(null)
+  const editingRef = useRef(editingCell)
+  editingRef.current = editingCell
+
+  const startEdit = (r: number, field: string) => {
+    if (READONLY_FIELDS.includes(field)) return
+    setEditingCell({ r, field })
+  }
+  const stopEdit = () => {
+    if (editingRef.current) setEditingCell(null)
+  }
+
   const anchorRef = useRef<GridPos | null>(null)
   const focusRef = useRef<GridPos | null>(null)
   const draggingRef = useRef(false)
@@ -104,20 +117,11 @@ export function usePurchaseItemsGrid({ getItems, replace, currency, cols, contai
 
   const rowCells = (r: number): string[] => colsRef.current.map(f => cellKey(r, f))
 
+  // 편집 종료 + 포커스 해제 (범위 선택/행 선택 등 편집과 공존할 수 없는 조작 직전에 호출)
   const blurGridInput = () => {
+    stopEdit()
     const ae = document.activeElement as HTMLElement | null
     if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) ae.blur()
-  }
-
-  const focusCellInput = (r: number, field: string) => {
-    // 셀 input은 항상 렌더돼 있으므로 즉시 포커스. 행이 방금 추가된 경우만 다음 틱에 재시도.
-    // (rAF는 탭이 백그라운드일 때 발화하지 않아 사용하지 않는다)
-    const query = () => containerRef.current?.querySelector<HTMLInputElement>(
-      `input[data-row-index="${r}"][data-field-name="${field}"]`
-    )
-    const el = query()
-    if (el) { el.focus(); el.select(); return }
-    setTimeout(() => { const el2 = query(); if (el2) { el2.focus(); el2.select() } }, 0)
   }
 
   const scrollCellIntoView = (r: number, field: string) => {
@@ -147,15 +151,23 @@ export function usePurchaseItemsGrid({ getItems, replace, currency, cols, contai
       setSelectedCells(prev => (prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]))
       return
     }
-    // 일반 클릭: 첫 클릭은 셀 선택만 (input 포커스를 막아 방향키 이동·복사·삭제가 셀 단위로 동작),
-    // 이미 단독 선택된 셀을 다시 클릭하면 편집(input 포커스) 진입 — 제작현황과 동일한 감각
-    const key = cellKey(r, colsRef.current[c])
+    // 일반 클릭: 첫 클릭은 셀 선택만, 이미 단독 선택된 셀을 다시 클릭하면
+    // 그 셀에 인라인 편집기를 연다 — 제작현황과 동일한 감각
+    const field = colsRef.current[c]
+    const key = cellKey(r, field)
+    // 편집 중인 셀 내부 클릭(커서 이동/텍스트 선택)은 네이티브 동작에 맡긴다
+    if (editingRef.current && editingRef.current.r === r && editingRef.current.field === field) return
     const isEditingClick = selectedCells.length === 1 && selectedCells[0] === key
     anchorRef.current = { r, c }
     focusRef.current = { r, c }
     draggingRef.current = true
     dragMovedRef.current = false
-    if (!isEditingClick) {
+    if (isEditingClick) {
+      // preventDefault: mousedown 기본 포커스 이동이 편집 input을 즉시 blur시키는 것 방지
+      // (편집기는 autoFocus로 포커스를 가져간다)
+      e.preventDefault()
+      startEdit(r, field)
+    } else {
       e.preventDefault()
       blurGridInput()
       setSelectedCells([key])
@@ -355,6 +367,7 @@ export function usePurchaseItemsGrid({ getItems, replace, currency, cols, contai
         e.preventDefault()
         const r = parseInt(ae.getAttribute('data-row-index') || '0', 10) || 0
         const c = Math.max(0, colsRef.current.indexOf(ae.getAttribute('data-field-name') || ''))
+        stopEdit()
         ae.blur()
         applyGridPaste(r, c, parseTsv(text))
         return
@@ -514,7 +527,7 @@ export function usePurchaseItemsGrid({ getItems, replace, currency, cols, contai
       }
       // 단일 선택 셀 편집 시작
       const [rStr, field] = splitKey(selectedCells[0])
-      if (!READONLY_FIELDS.includes(field)) focusCellInput(Number(rStr), field)
+      startEdit(Number(rStr), field)
       return
     }
 
@@ -578,6 +591,7 @@ export function usePurchaseItemsGrid({ getItems, replace, currency, cols, contai
       // 팝오버 안의 click 이벤트를 삼키는 문제 방지
       if (target.closest?.('[data-radix-popper-content-wrapper]')) return
       if (target.closest?.('[data-items-grid-bulk-menu]')) return
+      stopEdit()
       clearSelection()
     }
     document.addEventListener('mousedown', handleDocMouseDown)
@@ -603,23 +617,23 @@ export function usePurchaseItemsGrid({ getItems, replace, currency, cols, contai
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ─── 셀 input 전용 키 처리: Enter=아래 이동, ESC=선택 유지·포커스 해제 ─
+  // ─── 편집 input 전용 키 처리: Enter=편집 종료·아래 셀 선택, ESC=편집 종료·선택 유지 ─
   const onCellInputKeyDown = useStableHandler((e: React.KeyboardEvent<HTMLInputElement>, r: number, c: number) => {
+    // 편집 중 방향키/Tab이 window 내비게이션으로 새지 않게 전파를 끊는다 (커서 이동은 네이티브)
+    e.stopPropagation()
     if (e.key === 'Enter') {
-      // form submit 방지 + 엑셀처럼 아래 셀로 이동
+      // form submit 방지 + 제작현황처럼 편집을 닫고 아래 셀을 선택
       e.preventDefault()
+      stopEdit()
       const lastR = getItems().length - 1
       const nr = Math.min(lastR, r + 1)
       anchorRef.current = { r: nr, c }
       focusRef.current = { r: nr, c }
       setSelectedCells([cellKey(nr, colsRef.current[c])])
-      if (nr !== r) focusCellInput(nr, colsRef.current[c])
-      else (e.target as HTMLInputElement).blur()
       scrollCellIntoView(nr, colsRef.current[c])
     } else if (e.key === 'Escape') {
-      // blur 직후 window 핸들러가 같은 ESC로 선택까지 해제하지 않도록 전파를 끊는다
-      e.stopPropagation();
-      (e.target as HTMLInputElement).blur()
+      e.preventDefault()
+      stopEdit()
     }
   })
 
@@ -640,6 +654,9 @@ export function usePurchaseItemsGrid({ getItems, replace, currency, cols, contai
     selectedSet,
     selectedCells,
     selectedFullRows,
+    editingCell,
+    startEdit,
+    stopEdit,
     bulkMenuPos,
     bulkValue,
     setBulkValue,
