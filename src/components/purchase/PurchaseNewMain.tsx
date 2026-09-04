@@ -30,6 +30,7 @@ import { DatePickerPopover } from '@/components/ui/date-picker-popover';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import CardUsageTab from "@/components/purchase/CardUsageTab";
+import PurchaseItemsGrid from "@/components/purchase/PurchaseItemsGrid";
 import BusinessTripTab from "@/components/purchase/BusinessTripTab";
 import VehicleTab from "@/components/purchase/VehicleTab";
 import LeaveRequestForm from "@/components/leave/LeaveRequestForm";
@@ -237,7 +238,6 @@ export default function PurchaseNewMain() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [successDialogOpen, setSuccessDialogOpen] = useState(false);
-  const [inputValues, setInputValues] = useState<{[key: string]: string}>({});
   const [isContactDialogOpen, setIsContactDialogOpen] = useState(false);
   const [contactsForEdit, setContactsForEdit] = useState<{ id?: number; contact_name: string; contact_email: string; contact_phone: string; position: string; isNew?: boolean }[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
@@ -247,33 +247,6 @@ export default function PurchaseNewMain() {
   // 전체복사 버튼 상태
   const [isCopied, setIsCopied] = useState(false);
   const [productionOrders, setProductionOrders] = useState<Array<{ sales_order_number: string; board_name: string; client_name: string; created_at: string }>>([]);
-
-  // 품목 행 드래그 다중선택 (행 어디든 누르고 드래그하면 여러 행 선택, 선택된 행 중 하나라도 삭제하면 전체 삭제)
-  const [selectedRows, setSelectedRows] = useState<Set<number>>(new Set());
-  const isDraggingRowsRef = useRef(false);
-  const dragStartRowRef = useRef<number | null>(null);
-  const itemsTbodyRef = useRef<HTMLTableSectionElement>(null);
-
-  useEffect(() => {
-    const handleMouseUp = () => { isDraggingRowsRef.current = false; };
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => window.removeEventListener('mouseup', handleMouseUp);
-  }, []);
-
-  // 품목 테이블 바깥(빈 곳) 클릭 시 선택 해제 (엑셀처럼)
-  useEffect(() => {
-    const handleDocMouseDown = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (itemsTbodyRef.current && itemsTbodyRef.current.contains(target)) return;
-      // 팝오버(달력 등) 내부 클릭은 제외 — mousedown 시점 리렌더가 팝오버 안의 click 이벤트를 삼켜
-      // 청구일/입고요청일 날짜 선택이 안 되는 문제가 있었음
-      if (target.closest?.('[data-radix-popper-content-wrapper]')) return;
-      // 선택이 없을 때는 상태를 그대로 유지해 불필요한 전체 리렌더 방지
-      setSelectedRows(prev => (prev.size === 0 ? prev : new Set()));
-    };
-    document.addEventListener('mousedown', handleDocMouseDown);
-    return () => document.removeEventListener('mousedown', handleDocMouseDown);
-  }, []);
 
   const { control, handleSubmit: rhHandleSubmit, watch, setValue, reset, getValues } = useFormRH<FormValues>({
     defaultValues: buildDefaultFormValues("", "")
@@ -564,198 +537,6 @@ export default function PurchaseNewMain() {
     update(index, { ...item, amount_value: amount });
   };
 
-  // 엑셀 붙여넣기 핸들러
-  const handlePasteFromExcel = (e: React.ClipboardEvent) => {
-    // 붙여넣기 이벤트가 input 요소 내부에서 발생했다면, 해당 input의 기본 동작을 허용할 수도 있지만,
-    // 여기서는 대량 붙여넣기를 위해 테이블 전체 동작으로 처리
-    // 단, 단일 셀 붙여넣기(짧은 텍스트)인 경우는 제외하고 싶을 수 있으나,
-    // 탭 문자가 포함되어 있거나 개행이 포함된 경우 엑셀 데이터로 간주
-    
-    const clipboardData = e.clipboardData.getData('text');
-    if (!clipboardData) return;
-    
-    // 엑셀 데이터인지 확인 (탭이나 개행이 포함된 경우)
-    const isExcelData = clipboardData.includes('\t') || clipboardData.includes('\n');
-    if (!isExcelData) return; // 일반 텍스트 붙여넣기는 각 input의 기본 동작 따름
-
-    e.preventDefault(); // 기본 붙여넣기 방지
-    e.stopPropagation();
-
-    try {
-      // 행 분리
-      const rows = clipboardData.split(/\r\n|\n|\r/).filter(row => row.trim() !== '');
-      
-      if (rows.length === 0) return;
-
-      const currentItems = getValues("items");
-      
-      // 현재 포커스된 행 및 필드 찾기
-      let startIndex = 0;
-      let startFieldName = 'item_name';
-      
-      const activeElement = document.activeElement as HTMLInputElement;
-      let targetInput: HTMLInputElement | null = null;
-      
-      if (activeElement && activeElement.tagName === 'INPUT') {
-        targetInput = activeElement;
-      } else {
-        // fallback
-        const targetElement = e.target as HTMLElement;
-        if (targetElement) {
-          let element: HTMLElement | null = targetElement;
-          while (element && element.tagName !== 'INPUT') {
-            element = element.parentElement;
-            if (element && element.tagName === 'INPUT') {
-              targetInput = element as HTMLInputElement;
-              break;
-            }
-          }
-        }
-      }
-      
-      if (targetInput) {
-        // 행 인덱스 찾기
-        const rowIndexAttr = targetInput.getAttribute('data-row-index');
-        if (rowIndexAttr !== null) {
-          const parsedIndex = parseInt(rowIndexAttr, 10);
-          if (!isNaN(parsedIndex) && parsedIndex >= 0 && parsedIndex < currentItems.length) {
-            startIndex = parsedIndex;
-          }
-        } else {
-            // data-row-index가 없으면 DOM 구조로 찾기 (fallback)
-            let parent = targetInput.parentElement;
-            while (parent && parent.tagName !== 'TR') {
-              parent = parent.parentElement;
-            }
-            
-            if (parent && parent.tagName === 'TR') {
-              const tbody = parent.parentElement;
-              if (tbody && tbody.tagName === 'TBODY') {
-                const rowIndex = Array.from(tbody.children).indexOf(parent);
-                if (rowIndex >= 0 && rowIndex < currentItems.length) {
-                  startIndex = rowIndex;
-                }
-              }
-            }
-        }
-        
-        // 필드명 찾기
-        const fieldNameAttr = targetInput.getAttribute('data-field-name');
-        if (fieldNameAttr) {
-          startFieldName = fieldNameAttr;
-        }
-      }
-
-      // 필드 순서 정의 (화면상 순서와 일치해야 함)
-      const FIELDS = [
-        'item_name', 
-        'specification', 
-        'quantity', 
-        'unit_price_value', 
-        'amount_value', // ReadOnly (합계) - 건너뛰기용
-        ...(paymentCategory === "구매 요청" ? ['link'] : []),
-        'remark'
-      ];
-      
-      const startColIndex = FIELDS.indexOf(startFieldName);
-      if (startColIndex === -1) return; // 유효하지 않은 필드면 중단
-
-      // 업데이트할 데이터 준비
-      const updatedItems = [...currentItems];
-      let maxRowIndex = currentItems.length - 1;
-
-      // 붙여넣기 데이터 처리
-      rows.forEach((row, rIndex) => {
-        const columns = row.split('\t');
-        const targetRowIndex = startIndex + rIndex;
-        
-        // 필요한 경우 새 행 데이터 준비
-        if (targetRowIndex > maxRowIndex) {
-          updatedItems.push({
-            line_number: targetRowIndex + 1,
-            item_name: "",
-            specification: "",
-            quantity: 1,
-            unit_price_value: 0,
-          unit_price_currency: currency,
-            amount_value: 0,
-          amount_currency: currency,
-            remark: "",
-            link: "",
-          });
-          maxRowIndex++;
-        }
-        
-        // 현재 행 데이터
-        const currentItem = updatedItems[targetRowIndex];
-        
-        // 컬럼별 데이터 매핑
-        columns.forEach((colValue, cIndex) => {
-          const targetColIndex = startColIndex + cIndex;
-          
-          // 필드 범위를 벗어나면 무시
-          if (targetColIndex >= FIELDS.length) return;
-          
-          const fieldName = FIELDS[targetColIndex];
-          const cleanValue = colValue.trim();
-          
-          // 합계(amount_value) 필드는 입력 불가하므로 건너뜀 (데이터가 있어도 무시)
-          if (fieldName === 'amount_value') return;
-
-          // 데이터 타입 변환 및 할당
-          if (fieldName === 'quantity') {
-             const qty = parseInt(cleanValue.replace(/,/g, '') || '0') || 0;
-             currentItem.quantity = qty;
-          } else if (fieldName === 'unit_price_value') {
-             const price = parseFloat(cleanValue.replace(/,/g, '') || '0') || 0;
-             currentItem.unit_price_value = price;
-          } else if (fieldName === 'link') {
-             currentItem.link = cleanValue;
-          } else if (fieldName === 'remark') {
-             currentItem.remark = cleanValue;
-          } else if (fieldName === 'item_name') {
-             currentItem.item_name = cleanValue;
-          } else if (fieldName === 'specification') {
-             currentItem.specification = cleanValue;
-          }
-        });
-        
-        // 금액 재계산 (수량 * 단가)
-        currentItem.amount_value = currentItem.quantity * currentItem.unit_price_value;
-        
-        // 업데이트된 행 저장
-        updatedItems[targetRowIndex] = currentItem;
-      });
-        
-      // 상태 업데이트 (전체 리스트 교체 또는 개별 업데이트)
-      // useFieldArray의 update를 반복 호출하면 성능 이슈가 있을 수 있으므로,
-      // setValue로 전체를 업데이트하거나, 변경된 행만 update 호출
-      
-      // 변경된 행만 update 호출 (최적화)
-      const changedRowCount = Math.min(rows.length + (updatedItems.length - currentItems.length), updatedItems.length - startIndex);
-      
-      // 기존 행 업데이트
-      for (let i = 0; i < rows.length; i++) {
-        const targetIdx = startIndex + i;
-        if (targetIdx < currentItems.length) {
-          update(targetIdx, updatedItems[targetIdx]);
-        }
-      }
-      
-      // 새로 추가된 행 추가 (append)
-      if (updatedItems.length > currentItems.length) {
-        const newRows = updatedItems.slice(currentItems.length);
-        append(newRows);
-      }
-
-      toast.success(`${rows.length}개 행 데이터를 붙여넣었습니다.`);
-      
-    } catch (error) {
-      logger.error('Excel paste error:', error);
-      toast.error('엑셀 데이터 붙여넣기 중 오류가 발생했습니다.');
-    }
-  };
-
   // 보드 선택 시 품목 자동 채우기 핸들러
   const handleBoardSelect = async (selected: { value: string; label: string; boardName?: string; salesOrderNumber?: string | null } | null) => {
     setSelectedBoard(selected);
@@ -820,7 +601,6 @@ export default function PurchaseNewMain() {
 
             // 기존 항목 전체 교체
             replace(bomRows);
-            setSelectedRows(new Set());
             toast.success(`${items.length}개 품목을 불러왔습니다.`);
           } else {
             toast.warning('해당 보드의 BOM 데이터가 없습니다.');
@@ -2068,7 +1848,6 @@ export default function PurchaseNewMain() {
                         remark: '',
                         link: ''
                       });
-                      setSelectedRows(new Set());
                     }
                   }}
                 >
@@ -2114,214 +1893,14 @@ export default function PurchaseNewMain() {
                 </Button>
               </div>
             </div>
-            <div className="overflow-x-auto" onPaste={handlePasteFromExcel} tabIndex={0} style={{ outline: 'none' }}>
-              <div className="max-h-[calc(100vh-180px)] overflow-y-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50 sticky top-0 z-10">
-                    <tr className="border-b border-gray-200">
-                      <th className="px-2 py-2 text-left font-medium text-gray-700 w-10">#</th>
-                      <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[100px] sm:min-w-[120px]">
-                        품목<span className="text-red-500">*</span>
-                      </th>
-                      <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[250px] sm:min-w-[320px]">규격</th>
-                      <th className="px-2 py-2 text-center font-medium text-gray-700 w-20">
-                        수량<span className="text-red-500">*</span>
-                      </th>
-                      <th className="px-2 py-2 text-right font-medium text-gray-700 w-[140px] sm:w-[160px]">
-                        단가 ({currency})
-                      </th>
-                      <th className="px-2 py-2 text-right font-medium text-gray-700 min-w-[110px] sm:min-w-[140px]">
-                        합계 ({currency})
-                      </th>
-                      {paymentCategory === "구매 요청" && (
-                        <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[120px] sm:min-w-[150px]">링크</th>
-                      )}
-                      <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[100px] sm:min-w-[150px]">비고</th>
-                      <th className="px-2 py-2 text-center font-medium text-gray-700 w-10"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white" ref={itemsTbodyRef}>
-                    {fields.map((item, idx) => (
-                      <tr
-                        key={idx}
-                        className={`border-b border-gray-100 hover:bg-gray-50 select-none ${selectedRows.has(idx) ? 'bg-blue-200 hover:bg-blue-200' : ''}`}
-                        onMouseDown={(e) => {
-                          // 삭제 버튼 클릭은 선택 상태를 건드리지 않아야 "선택된 행 일괄삭제"가 정상 동작함
-                          if ((e.target as HTMLElement).closest('button')) return;
-                          isDraggingRowsRef.current = true;
-                          const prevAnchor = dragStartRowRef.current;
-                          if (e.ctrlKey || e.metaKey) {
-                            dragStartRowRef.current = idx;
-                            setSelectedRows(prev => {
-                              const next = new Set(prev);
-                              if (next.has(idx)) next.delete(idx); else next.add(idx);
-                              return next;
-                            });
-                          } else if (e.shiftKey && prevAnchor !== null) {
-                            const [lo, hi] = prevAnchor <= idx ? [prevAnchor, idx] : [idx, prevAnchor];
-                            const range = new Set<number>();
-                            for (let i = lo; i <= hi; i++) range.add(i);
-                            setSelectedRows(range);
-                          } else {
-                            dragStartRowRef.current = idx;
-                            setSelectedRows(new Set([idx]));
-                          }
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isDraggingRowsRef.current || dragStartRowRef.current === null) return;
-                          if ((e.buttons & 1) === 0) { isDraggingRowsRef.current = false; return; }
-                          const start = dragStartRowRef.current;
-                          const [lo, hi] = start <= idx ? [start, idx] : [idx, start];
-                          const range = new Set<number>();
-                          for (let i = lo; i <= hi; i++) range.add(i);
-                          setSelectedRows(range);
-                        }}
-                      >
-                        <td className="px-2 py-1 text-center text-gray-500">{idx + 1}</td>
-                        {/* 품목 */}
-                        <td className="px-2 py-1">
-                          <Input
-                            data-row-index={idx}
-                            data-field-name="item_name"
-                            value={item.item_name}
-                            onChange={(e) => update(idx, { ...item, item_name: e.target.value })}
-                            className="h-7 w-full bg-white border border-gray-200 text-xs"
-                            placeholder="품목명 입력"
-                          />
-                        </td>
-
-                        {/* 규격 */}
-                        <td className="px-2 py-1">
-                          <Input
-                            data-row-index={idx}
-                            data-field-name="specification"
-                            value={item.specification}
-                            onChange={(e) => update(idx, { ...item, specification: e.target.value })}
-                            className="h-7 w-full bg-white border border-gray-200 text-xs"
-                            placeholder="규격 입력"
-                          />
-                        </td>
-
-                        {/* 수량 */}
-                        <td className="px-2 py-1">
-                          <Input
-                            data-row-index={idx}
-                            data-field-name="quantity"
-                            type="number"
-                            min="1"
-                            value={item.quantity || ''}
-                            className="h-7 w-20 bg-white border border-gray-200 text-xs text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            placeholder="0"
-                            onChange={(e) => {
-                              const newQuantity = parseInt(e.target.value) || 0;
-                              update(idx, { ...item, quantity: newQuantity });
-                            }}
-                          />
-                        </td>
-
-                        {/* 단가 */}
-                        <td className="px-2 py-1">
-                          <div className="flex items-center">
-                            <Input
-                              data-row-index={idx}
-                              data-field-name="unit_price_value"
-                              type="text"
-                              inputMode="decimal"
-                              value={inputValues[`${idx}_unit_price_value`] ?? (item.unit_price_value === 0 ? "" : item.unit_price_value?.toLocaleString('ko-KR') || "")}
-                              onChange={(e) => {
-                                const raw = e.target.value.replace(/,/g, "");
-                                // 숫자와 소수점만 허용
-                                const cleanValue = raw.replace(/[^0-9.]/g, '');
-                                // 소수점 중복 방지
-                                const parts = cleanValue.split('.');
-                                const finalValue = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleanValue;
-                                
-                                // 입력 중인 값 저장 (소수점 유지)
-                                setInputValues(prev => ({...prev, [`${idx}_unit_price_value`]: finalValue}));
-                                
-                                // 계산용 숫자 값 저장
-                                const numVal = finalValue === '' ? 0 : parseFloat(finalValue) || 0;
-                                update(idx, { ...item, unit_price_value: numVal });
-                              }}
-                              onBlur={() => {
-                                // 포커스 벗어날 때 입력값 정리
-                                setInputValues(prev => {
-                                  const newState = {...prev};
-                                  delete newState[`${idx}_unit_price_value`];
-                                  return newState;
-                                });
-                              }}
-                              className="h-7 w-32 bg-white border border-gray-200 text-xs text-right"
-                              placeholder="0"
-                            />
-                            <span className="ml-1 text-xs text-gray-500">{currency === "KRW" ? "₩" : "$"}</span>
-                          </div>
-                        </td>
-
-                        {/* 합계 */}
-                        <td className="px-2 py-1">
-                          <div className="flex items-center justify-end">
-                            <span className="text-xs text-right font-medium">
-                              {(item.amount_value || 0).toLocaleString('ko-KR')}
-                            </span>
-                            <span className="ml-1 text-xs text-gray-500">{currency === "KRW" ? "₩" : "$"}</span>
-                          </div>
-                        </td>
-
-                        {/* 링크 (구매요청일 때만) */}
-                        {paymentCategory === "구매 요청" && (
-                          <td className="px-2 py-1">
-                            <Input
-                              data-row-index={idx}
-                              data-field-name="link"
-                              value={item.link || ''}
-                              onChange={(e) => update(idx, { ...item, link: e.target.value })}
-                              type="url"
-                              className="h-7 w-full bg-white border border-gray-200 text-xs"
-                              placeholder="https://..."
-                            />
-                          </td>
-                        )}
-
-                        {/* 비고 */}
-                        <td className="px-2 py-1">
-                          <Input
-                            data-row-index={idx}
-                            data-field-name="remark"
-                            value={item.remark || ''}
-                            onChange={(e) => update(idx, { ...item, remark: e.target.value })}
-                            className="h-7 w-full bg-white border border-gray-200 text-xs"
-                            placeholder="비고"
-                          />
-                        </td>
-                        {/* 삭제 버튼 */}
-                        <td className="px-2 py-1 text-center">
-                          {fields.length > 1 && (
-                            <Button
-                              type="button"
-                              onClick={() => {
-                                if (selectedRows.size > 1 && selectedRows.has(idx)) {
-                                  remove(Array.from(selectedRows));
-                                  setSelectedRows(new Set());
-                                } else {
-                                  remove(idx);
-                                  setSelectedRows(new Set());
-                                }
-                              }}
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 w-6 p-0 hover:bg-red-50"
-                            >
-                              <X className="w-3 h-3 text-red-600" />
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <PurchaseItemsGrid
+              fields={fields}
+              getItems={() => getValues('items')}
+              update={update}
+              replace={replace}
+              currency={currency}
+              paymentCategory={paymentCategory}
+            />
           </div>
           
           {/* 제출 버튼 */}
