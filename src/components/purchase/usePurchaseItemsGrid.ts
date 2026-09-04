@@ -147,12 +147,19 @@ export function usePurchaseItemsGrid({ getItems, replace, currency, cols, contai
       setSelectedCells(prev => (prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]))
       return
     }
-    // 일반 클릭: 단일 선택 + input 포커스는 네이티브 동작에 맡김
+    // 일반 클릭: 첫 클릭은 셀 선택만 (input 포커스를 막아 방향키 이동·복사·삭제가 셀 단위로 동작),
+    // 이미 단독 선택된 셀을 다시 클릭하면 편집(input 포커스) 진입 — 제작현황과 동일한 감각
+    const key = cellKey(r, colsRef.current[c])
+    const isEditingClick = selectedCells.length === 1 && selectedCells[0] === key
     anchorRef.current = { r, c }
     focusRef.current = { r, c }
     draggingRef.current = true
     dragMovedRef.current = false
-    setSelectedCells([cellKey(r, colsRef.current[c])])
+    if (!isEditingClick) {
+      e.preventDefault()
+      blurGridInput()
+      setSelectedCells([key])
+    }
   })
 
   const onCellMouseEnter = useStableHandler((e: React.MouseEvent, r: number, c: number) => {
