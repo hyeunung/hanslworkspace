@@ -12,8 +12,11 @@ import {
   artworkStatusMatches,
   parsePartsStatus,
   partsStatusMatches,
+  formatArtworkDisplay,
+  formatPartsDisplay,
 } from '@/utils/productionStatus'
 import { parseStockEntries, stockEntriesTotal } from '@/utils/productionDates'
+import { hideableFieldsFor } from '@/utils/productionColumns'
 
 // 제작구분 칩의 기본 표시/그룹 순서 — 드래그로 재정렬 가능. 이 순서대로 테이블이 제작구분별로 위→아래 그룹핑됨
 export const DEFAULT_CATEGORY_ORDER = ['LG_PCB', 'LG_Socket Board', 'LG_Cable', 'LG_Case', 'PCB', 'Cable', 'Case']
@@ -207,13 +210,21 @@ export const parseSearchDate = (q: string): { y: number | null; m: number; d: nu
   return null
 }
 
-export const SEARCH_TEXT_FIELDS = ['sales_order_number', 'board_name', 'client_name']
+// 전체 검색 대상 칼럼: 화면에 표시되는 모든 칼럼(PCB/Cable 합집합, 해당 표에 없는 필드는 undefined라 무시)
+export const SEARCH_TEXT_FIELDS = [...new Set([...hideableFieldsFor('pcb'), ...hideableFieldsFor('cable')])]
 export const matchesSearch = (item: any, query: string): boolean => {
   const q = query.trim()
   if (!q) return true
-  // 텍스트 매치 (기존과 동일한 3개 필드)
+  // 텍스트 매치: 하이브리드 상태 칼럼(ARTWORK/부품정리)은 저장 코드가 아닌 셀 표시 문자열로 비교
   const ql = q.toLowerCase()
-  const textHit = SEARCH_TEXT_FIELDS.some(f => String(item[f] ?? '').toLowerCase().includes(ql))
+  const textHit = SEARCH_TEXT_FIELDS.some(f => {
+    const raw = item[f]
+    if (raw == null || raw === '') return false
+    const text = f === ARTWORK_FIELD ? formatArtworkDisplay(String(raw))
+      : f === PARTS_FIELD ? formatPartsDisplay(String(raw))
+      : String(raw)
+    return text.toLowerCase().includes(ql)
+  })
   if (textHit) return true
   // 날짜 매치: 모든 날짜/혼합 칼럼의 ISO 값에서 (년)월일 일치
   const dq = parseSearchDate(q)
