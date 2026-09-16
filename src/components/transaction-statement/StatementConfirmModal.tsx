@@ -4234,6 +4234,11 @@ export default function StatementConfirmModal({
 
   // 거부
   const handleReject = async () => {
+    // 수량일치 완료건은 이미 발주 품목에 입고가 반영된 상태 — 거부하면 재추출/거부 어느 쪽도 못 하는 고립 상태가 되므로 차단
+    if (isQuantityMatchConfirmed) {
+      toast.error('수량일치가 완료된 거래명세서는 거부할 수 없습니다.');
+      return;
+    }
     const reason = prompt('거부 사유를 입력해주세요 (선택사항):');
     if (reason === null) return; // 취소
 
@@ -6124,8 +6129,9 @@ export default function StatementConfirmModal({
               variant="outline"
               size="sm"
               onClick={handleReject}
-              disabled={saving}
-              className={footerActionButtonEnabledClass}
+              disabled={saving || isQuantityMatchConfirmed}
+              title={isQuantityMatchConfirmed ? '수량일치가 완료된 거래명세서는 거부할 수 없습니다.' : undefined}
+              className={isQuantityMatchConfirmed ? footerActionButtonDisabledClass : footerActionButtonEnabledClass}
             >
               <XCircle className="w-3.5 h-3.5 mr-1" />
               거부

@@ -3015,10 +3015,19 @@ class TransactionStatementService {
     try {
       const { data: prev } = await this.supabase
         .from('transaction_statements')
-        .select('status')
+        .select('status, quantity_match_confirmed_at')
         .eq('id', statementId)
         .single();
-      const previousStatus = (prev as { status?: string } | null)?.status || null;
+      const prevRow = prev as { status?: string; quantity_match_confirmed_at?: string | null } | null;
+      const previousStatus = prevRow?.status || null;
+
+      // 수량일치 완료건은 발주 품목 입고가 이미 반영돼 있어 거부 시 재추출도 막힌 고립 상태가 된다 (TS-20260915-0002 사례)
+      if (prevRow?.quantity_match_confirmed_at) {
+        return {
+          success: false,
+          error: '수량일치가 완료된 거래명세서는 거부할 수 없습니다.'
+        };
+      }
 
       // Audit log를 update 직전에 먼저 기록 —
       // 그래야 직후 status update가 fire하는 DB fallback 트리거가
