@@ -701,6 +701,18 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
         .eq("id", id);
       if (error) throw error;
 
+      logger.info(`카드 반납 처리: ${usage.card_number} (${usage.card_usage_code ?? id})`, {
+        category: "card_usage",
+        action: "card_return",
+        target_table: "card_usages",
+        target_id: String(id),
+        card_number: usage.card_number,
+        requester_id: usage.requester_id,
+        usage_period: `${usage.usage_date_start}~${usage.usage_date_end}`,
+        receipt_count: receipts.length,
+        returned_by: currentUser?.id ?? null,
+      });
+
       toast.success(
         receipts.length > 0
           ? "카드 반납 처리 및 발주가 자동 등록되었습니다."
@@ -740,6 +752,19 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
         .eq("id", id);
       if (error) throw error;
 
+      logger.info(`카드 반납 취소: ${usage.card_number} (${usage.card_usage_code ?? id})`, {
+        category: "card_usage",
+        action: "card_return_cancel",
+        target_table: "card_usages",
+        target_id: String(id),
+        card_number: usage.card_number,
+        requester_id: usage.requester_id,
+        restored_status: hasReceipts ? "settled" : "approved",
+        previous_returned_by: usage.card_returned_by ?? null,
+        previous_returned_at: usage.card_returned_at ?? null,
+        cancelled_by: currentUser?.id ?? null,
+      });
+
       toast.success("카드반납이 취소되었습니다.");
       loadUsages();
       onBadgeRefresh?.();
@@ -747,7 +772,7 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
       logger.error("카드반납 취소 실패", err);
       toast.error("카드반납 취소에 실패했습니다.");
     }
-  }, [supabase, usages, loadUsages, onBadgeRefresh]);
+  }, [supabase, currentUser, usages, loadUsages, onBadgeRefresh]);
 
   const openReceiptModal = useCallback((usage: CardUsage) => {
     setReceiptModalUsage(usage);
