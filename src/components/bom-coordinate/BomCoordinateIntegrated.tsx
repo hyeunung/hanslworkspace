@@ -1194,6 +1194,20 @@ export default function BomCoordinateIntegrated() {
           .replace(/_\d{6}$/, '');
         const saveBoardName = `${cleanBoardName}_${dateStr}_정리본`;
 
+        // board_name은 unique — 같은 날 같은 보드를 다시 요청하면 INSERT가 충돌하므로 미리 안내한다
+        const { data: duplicateBoard, error: duplicateCheckError } = await supabase
+          .from('cad_drawings')
+          .select('code_number, status')
+          .eq('board_name', saveBoardName)
+          .maybeSingle();
+        if (duplicateCheckError) throw duplicateCheckError;
+        if (duplicateBoard) {
+          const statusLabel = duplicateBoard.status === 'completed' ? '저장 완료' : '검토 대기';
+          throw new Error(
+            `오늘 같은 보드명으로 이미 등록된 건이 있습니다 (${duplicateBoard.code_number ?? saveBoardName}, ${statusLabel}). 기존 건을 수정하거나 삭제한 뒤 다시 요청해주세요.`
+          );
+        }
+
         const codeNumber = await generateCodeNumber();
         logger.debug('📝 검토 요청 모드: 새 보드 생성', { saveBoardName, codeNumber, saveStatus });
         // 항상 새로 생성 (날짜로 구분되므로)
@@ -1411,7 +1425,12 @@ export default function BomCoordinateIntegrated() {
 
     } catch (error: unknown) {
       logger.error('Save error:', error);
-      toast.error(`저장에 실패했습니다: ${error instanceof Error ? error.message : error}`);
+      // Supabase(PostgrestError)는 Error 인스턴스가 아닌 일반 객체라 그대로 찍으면 [object Object]가 된다
+      const errorObj = (error && typeof error === 'object' ? error : {}) as { code?: string; message?: string };
+      const errorMessage = errorObj.code === '23505'
+        ? '이미 같은 이름 또는 번호로 등록된 건이 있습니다. 목록을 확인한 뒤 다시 시도해주세요.'
+        : errorObj.message || String(error);
+      toast.error(`저장에 실패했습니다: ${errorMessage}`);
     } finally {
       setIsSaving(false);
     }
