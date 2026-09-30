@@ -496,6 +496,31 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
     return diffMs / (1000 * 60 * 60);
   }, [combinedStart, combinedEnd]);
 
+  // 배차 가능 차량: 지금 출타중인지가 아니라, 신청한 운행 기간이 승인된 배차와 겹치는지로 판단
+  const availableVehicles = useMemo(() => {
+    const hasValidPeriod = !!combinedStart && !!combinedEnd && combinedEnd > combinedStart;
+    return COMPANY_VEHICLES.filter((v) => {
+      if (VEHICLE_FIXED_STATUS[v.label]?.status === "away") return false;
+      if (!hasValidPeriod) return true;
+      return !requests.some((r) => {
+        if (r.approval_status !== "approved") return false;
+        if (!r.vehicle_info?.startsWith(v.label)) return false;
+        const reqStart = new Date(r.start_at);
+        const reqEnd = new Date(r.end_at);
+        if (Number.isNaN(reqStart.getTime()) || Number.isNaN(reqEnd.getTime())) return false;
+        return reqStart < combinedEnd && reqEnd > combinedStart;
+      });
+    });
+  }, [requests, combinedStart, combinedEnd]);
+
+  // 기간을 바꿔 선택해 둔 차량이 다른 배차와 겹치게 되면 선택 해제
+  useEffect(() => {
+    if (formVehicle && !availableVehicles.some((v) => v.value === formVehicle)) {
+      setFormVehicle(null);
+      toast.error("선택한 기간에 이미 배차된 차량입니다. 다른 차량을 선택해주세요.");
+    }
+  }, [formVehicle, availableVehicles]);
+
   const employeeOptions = useMemo(
     () =>
       employees
@@ -820,7 +845,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
                 <div className="doc-form-cell-label">운행차량 <span className="required">*</span></div>
                 <div className="doc-select-container">
                   <ReactSelect
-                    options={COMPANY_VEHICLES.filter((v) => vehicleStatusMap[v.label]?.status !== "away")}
+                    options={availableVehicles}
                     value={formVehicle ? COMPANY_VEHICLES.find((v) => v.value === formVehicle) || null : null}
                     onChange={(opt) => setFormVehicle((opt as { value: string } | null)?.value || null)}
                     placeholder="차량 선택"
@@ -1371,7 +1396,7 @@ export default function VehicleTab({ mode = "list", onBadgeRefresh }: VehicleTab
               <div>
                 <Label className="modal-label mb-1.5 block text-[11px]">운행차량<span className="text-red-500 ml-0.5">*</span></Label>
                 <ReactSelect
-                  options={COMPANY_VEHICLES}
+                  options={availableVehicles}
                   value={formVehicle ? COMPANY_VEHICLES.find((v) => v.value === formVehicle) || null : null}
                   onChange={(opt) => setFormVehicle((opt as { value: string } | null)?.value || null)}
                   placeholder="차량 선택"
