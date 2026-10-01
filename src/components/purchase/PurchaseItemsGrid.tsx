@@ -1,14 +1,13 @@
 import { useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { X } from 'lucide-react'
 import { FormItem } from '@/types/purchase'
 import { usePurchaseItemsGrid } from './usePurchaseItemsGrid'
 
 // ─── 새발주 품목 목록 엑셀식 그리드 ────────────────────────────────────
-// 셀은 항상 input이 열려있고(기존 UX 유지), 그 위에 제작현황식 셀 선택·
-// 범위 복사/붙여넣기·Delete 비우기/행 삭제·일괄 입력·Ctrl+Z 되돌리기를 얹는다.
-// 조작 로직은 usePurchaseItemsGrid 훅에 있다.
+// 제작현황 테이블과 동일한 형식: 컴팩트 셀 테두리 표(production-compact-table),
+// 평소엔 텍스트 셀 → 선택된 셀 재클릭/Enter/F2 시 그 셀에만 인라인 편집기.
+// 셀 선택·범위 복사/붙여넣기·Delete·일괄 입력·Ctrl+Z 로직은 usePurchaseItemsGrid 훅에 있다.
 
 interface PurchaseItemsGridProps {
   fields: FormItem[]
@@ -35,6 +34,17 @@ const SELECTED_TD_STYLE: React.CSSProperties = {
   backgroundColor: 'rgba(59, 130, 246, 0.1)',
 }
 
+// 칼럼별 정렬/최소폭 (제작현황처럼 헤더에 폭을 지정)
+const COL_META: Record<string, { align: string; minWidth: number }> = {
+  item_name: { align: 'text-left', minWidth: 130 },
+  specification: { align: 'text-left', minWidth: 300 },
+  quantity: { align: 'text-center', minWidth: 56 },
+  unit_price_value: { align: 'text-right', minWidth: 100 },
+  amount_value: { align: 'text-right', minWidth: 90 },
+  link: { align: 'text-left', minWidth: 150 },
+  remark: { align: 'text-left', minWidth: 150 },
+}
+
 export default function PurchaseItemsGrid({
   fields,
   getItems,
@@ -45,7 +55,7 @@ export default function PurchaseItemsGrid({
 }: PurchaseItemsGridProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   // 단가 입력 중 소수점/콤마 표시 유지용 임시 값
-  const [inputValues, setInputValues] = useState<{ [key: string]: string }>({})
+  const [priceDraft, setPriceDraft] = useState<string | null>(null)
 
   const showLink = paymentCategory === '구매 요청'
   const cols = useMemo(
@@ -60,179 +70,144 @@ export default function PurchaseItemsGrid({
     return grid.selectedCells[0].split('::')[1]
   }, [grid.bulkMenuPos, grid.selectedCells])
 
-  const tdProps = (r: number, field: string) => {
-    const c = cols.indexOf(field)
-    const isSelected = grid.selectedSet.has(`${r}::${field}`)
-    return {
-      'data-grid-cell': `${r}::${field}`,
-      className: 'px-2 py-1 select-none',
-      style: isSelected ? SELECTED_TD_STYLE : undefined,
-      onMouseDown: (e: React.MouseEvent) => grid.onCellMouseDown(e, r, c),
-      onMouseEnter: (e: React.MouseEvent) => grid.onCellMouseEnter(e, r, c),
-    }
+  const currencySymbol = currency === 'KRW' ? '₩' : '$'
+
+  const displayValue = (item: FormItem, field: string): string => {
+    if (field === 'quantity') return item.quantity ? String(item.quantity) : ''
+    if (field === 'unit_price_value')
+      return item.unit_price_value ? `${item.unit_price_value.toLocaleString('ko-KR')} ${currencySymbol}` : ''
+    if (field === 'amount_value')
+      return `${(item.amount_value || 0).toLocaleString('ko-KR')} ${currencySymbol}`
+    return (item as unknown as Record<string, string>)[field] || ''
   }
 
-  const inputClass = 'h-7 w-full bg-transparent border border-gray-200 text-xs'
+  // 편집 input: 필드별 value/onChange (값은 onChange 즉시 폼에 반영되므로 커밋 단계가 따로 없다)
+  const renderEditInput = (item: FormItem, idx: number, field: string) => {
+    const c = cols.indexOf(field)
+    const common = {
+      'data-row-index': idx,
+      'data-field-name': field,
+      autoFocus: true,
+      onFocus: (e: React.FocusEvent<HTMLInputElement>) => e.currentTarget.select(),
+      onBlur: () => { setPriceDraft(null); grid.stopEdit() },
+      onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => grid.onCellInputKeyDown(e, idx, c),
+      className: `hansl-cell-input ${COL_META[field]?.align ?? ''}`,
+    }
+    if (field === 'quantity') {
+      return (
+        <input
+          {...common}
+          type="number"
+          min={1}
+          value={item.quantity || ''}
+          onChange={(e) => update(idx, { ...item, quantity: parseInt(e.target.value) || 0, amount_value: (parseInt(e.target.value) || 0) * (item.unit_price_value || 0) })}
+          className={`${common.className} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+        />
+      )
+    }
+    if (field === 'unit_price_value') {
+      return (
+        <input
+          {...common}
+          type="text"
+          inputMode="decimal"
+          value={priceDraft ?? (item.unit_price_value === 0 ? '' : item.unit_price_value?.toLocaleString('ko-KR') || '')}
+          onChange={(e) => {
+            // 숫자와 소수점만 허용, 소수점 중복 방지 (입력 중 표시는 draft로 유지)
+            const raw = e.target.value.replace(/,/g, '').replace(/[^0-9.]/g, '')
+            const parts = raw.split('.')
+            const finalValue = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : raw
+            setPriceDraft(finalValue)
+            const numVal = finalValue === '' ? 0 : parseFloat(finalValue) || 0
+            update(idx, { ...item, unit_price_value: numVal, amount_value: (item.quantity || 0) * numVal })
+          }}
+        />
+      )
+    }
+    const key = field as 'item_name' | 'specification' | 'link' | 'remark'
+    return (
+      <input
+        {...common}
+        type="text"
+        value={(item[key] as string) || ''}
+        onChange={(e) => update(idx, { ...item, [key]: e.target.value })}
+      />
+    )
+  }
+
+  const renderCell = (item: FormItem, idx: number, field: string) => {
+    const c = cols.indexOf(field)
+    const isEditing = grid.editingCell?.r === idx && grid.editingCell?.field === field
+    const isSelected = grid.selectedSet.has(`${idx}::${field}`)
+    const meta = COL_META[field]
+
+    if (isEditing) {
+      return (
+        <td
+          key={field}
+          data-grid-cell={`${idx}::${field}`}
+          className="border border-gray-200 p-0.5"
+          onMouseDown={(e) => grid.onCellMouseDown(e, idx, c)}
+        >
+          {renderEditInput(item, idx, field)}
+        </td>
+      )
+    }
+    return (
+      <td
+        key={field}
+        data-grid-cell={`${idx}::${field}`}
+        className={`border border-gray-200 cursor-pointer select-none whitespace-nowrap ${meta?.align ?? ''} ${isSelected ? '' : 'hover:bg-gray-100/50'}`}
+        style={isSelected ? SELECTED_TD_STYLE : undefined}
+        onMouseDown={(e) => grid.onCellMouseDown(e, idx, c)}
+        onMouseEnter={(e) => grid.onCellMouseEnter(e, idx, c)}
+      >
+        {displayValue(item, field) || ' '}
+      </td>
+    )
+  }
 
   return (
     <div ref={containerRef} className="overflow-x-auto" tabIndex={0} style={{ outline: 'none' }}>
       <div className="max-h-[calc(100vh-180px)] overflow-y-auto">
-        <table className="w-full text-xs">
-          <thead className="bg-gray-50 sticky top-0 z-10">
-            <tr className="border-b border-gray-200">
-              <th className="px-2 py-2 text-left font-medium text-gray-700 w-10">#</th>
-              <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[100px] sm:min-w-[120px]">
+        {/* [&_td]:h-[21px]: 제작현황 실측 행 높이(21px)와 동일하게 맞춤 */}
+        <table className="text-left border-separate border-spacing-0 w-full [&_th]:border-l-0 [&_td]:border-l-0 [&_th]:border-t-0 [&_td]:border-t-0 [&_td]:h-[21px] production-compact-table table-auto">
+          <thead className="whitespace-nowrap">
+            <tr>
+              <th className="hansl-th text-center" style={{ width: 34, minWidth: 34 }}>NO.</th>
+              <th className="hansl-th" style={{ minWidth: COL_META.item_name.minWidth }}>
                 품목<span className="text-red-500">*</span>
               </th>
-              <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[250px] sm:min-w-[320px]">규격</th>
-              <th className="px-2 py-2 text-center font-medium text-gray-700 w-20">
+              <th className="hansl-th" style={{ minWidth: COL_META.specification.minWidth }}>규격</th>
+              <th className="hansl-th text-center" style={{ minWidth: COL_META.quantity.minWidth }}>
                 수량<span className="text-red-500">*</span>
               </th>
-              <th className="px-2 py-2 text-right font-medium text-gray-700 w-[140px] sm:w-[160px]">
+              <th className="hansl-th text-right" style={{ minWidth: COL_META.unit_price_value.minWidth }}>
                 단가 ({currency})
               </th>
-              <th className="px-2 py-2 text-right font-medium text-gray-700 min-w-[110px] sm:min-w-[140px]">
+              <th className="hansl-th text-right" style={{ minWidth: COL_META.amount_value.minWidth }}>
                 합계 ({currency})
               </th>
-              {showLink && (
-                <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[120px] sm:min-w-[150px]">링크</th>
-              )}
-              <th className="px-2 py-2 text-left font-medium text-gray-700 min-w-[100px] sm:min-w-[150px]">비고</th>
-              <th className="px-2 py-2 text-center font-medium text-gray-700 w-10"></th>
+              {showLink && <th className="hansl-th" style={{ minWidth: COL_META.link.minWidth }}>링크</th>}
+              <th className="hansl-th" style={{ minWidth: COL_META.remark.minWidth }}>비고</th>
+              <th className="hansl-th text-center" style={{ width: 26, minWidth: 26 }}>삭제</th>
             </tr>
           </thead>
           <tbody className="bg-white">
             {fields.map((item, idx) => (
-              <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+              <tr key={idx} className="group">
                 {/* NO. 셀: 클릭/드래그로 행 전체 선택 (제작현황과 동일) */}
                 <td
-                  className="px-2 py-1 text-center text-gray-500 select-none cursor-pointer hover:bg-gray-100"
+                  className="border border-gray-200 text-center text-gray-500 select-none cursor-pointer hover:bg-gray-100"
                   style={grid.selectedFullRows.has(idx) ? SELECTED_TD_STYLE : undefined}
                   onMouseDown={(e) => grid.onRowNoMouseDown(e, idx)}
                   onMouseEnter={(e) => grid.onRowNoMouseEnter(e, idx)}
                 >
                   {idx + 1}
                 </td>
-
-                {/* 품목 */}
-                <td {...tdProps(idx, 'item_name')}>
-                  <Input
-                    data-row-index={idx}
-                    data-field-name="item_name"
-                    value={item.item_name}
-                    onChange={(e) => update(idx, { ...item, item_name: e.target.value })}
-                    onKeyDown={(e) => grid.onCellInputKeyDown(e, idx, cols.indexOf('item_name'))}
-                    className={inputClass}
-                    placeholder="품목명 입력"
-                  />
-                </td>
-
-                {/* 규격 */}
-                <td {...tdProps(idx, 'specification')}>
-                  <Input
-                    data-row-index={idx}
-                    data-field-name="specification"
-                    value={item.specification}
-                    onChange={(e) => update(idx, { ...item, specification: e.target.value })}
-                    onKeyDown={(e) => grid.onCellInputKeyDown(e, idx, cols.indexOf('specification'))}
-                    className={inputClass}
-                    placeholder="규격 입력"
-                  />
-                </td>
-
-                {/* 수량 */}
-                <td {...tdProps(idx, 'quantity')}>
-                  <Input
-                    data-row-index={idx}
-                    data-field-name="quantity"
-                    type="number"
-                    min="1"
-                    value={item.quantity || ''}
-                    className={`${inputClass} w-20 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
-                    placeholder="0"
-                    onChange={(e) => {
-                      const newQuantity = parseInt(e.target.value) || 0
-                      update(idx, { ...item, quantity: newQuantity })
-                    }}
-                    onKeyDown={(e) => grid.onCellInputKeyDown(e, idx, cols.indexOf('quantity'))}
-                  />
-                </td>
-
-                {/* 단가 */}
-                <td {...tdProps(idx, 'unit_price_value')}>
-                  <div className="flex items-center">
-                    <Input
-                      data-row-index={idx}
-                      data-field-name="unit_price_value"
-                      type="text"
-                      inputMode="decimal"
-                      value={inputValues[`${idx}_unit_price_value`] ?? (item.unit_price_value === 0 ? '' : item.unit_price_value?.toLocaleString('ko-KR') || '')}
-                      onChange={(e) => {
-                        const raw = e.target.value.replace(/,/g, '')
-                        // 숫자와 소수점만 허용, 소수점 중복 방지
-                        const cleanValue = raw.replace(/[^0-9.]/g, '')
-                        const parts = cleanValue.split('.')
-                        const finalValue = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleanValue
-                        setInputValues(prev => ({ ...prev, [`${idx}_unit_price_value`]: finalValue }))
-                        const numVal = finalValue === '' ? 0 : parseFloat(finalValue) || 0
-                        update(idx, { ...item, unit_price_value: numVal })
-                      }}
-                      onBlur={() => {
-                        setInputValues(prev => {
-                          const newState = { ...prev }
-                          delete newState[`${idx}_unit_price_value`]
-                          return newState
-                        })
-                      }}
-                      onKeyDown={(e) => grid.onCellInputKeyDown(e, idx, cols.indexOf('unit_price_value'))}
-                      className={`${inputClass} w-32 text-right`}
-                      placeholder="0"
-                    />
-                    <span className="ml-1 text-xs text-gray-500">{currency === 'KRW' ? '₩' : '$'}</span>
-                  </div>
-                </td>
-
-                {/* 합계 (계산 필드 — 선택/복사만 가능) */}
-                <td {...tdProps(idx, 'amount_value')}>
-                  <div className="flex items-center justify-end">
-                    <span className="text-xs text-right font-medium">
-                      {(item.amount_value || 0).toLocaleString('ko-KR')}
-                    </span>
-                    <span className="ml-1 text-xs text-gray-500">{currency === 'KRW' ? '₩' : '$'}</span>
-                  </div>
-                </td>
-
-                {/* 링크 (구매요청일 때만) */}
-                {showLink && (
-                  <td {...tdProps(idx, 'link')}>
-                    <Input
-                      data-row-index={idx}
-                      data-field-name="link"
-                      value={item.link || ''}
-                      onChange={(e) => update(idx, { ...item, link: e.target.value })}
-                      onKeyDown={(e) => grid.onCellInputKeyDown(e, idx, cols.indexOf('link'))}
-                      type="url"
-                      className={inputClass}
-                      placeholder="https://..."
-                    />
-                  </td>
-                )}
-
-                {/* 비고 */}
-                <td {...tdProps(idx, 'remark')}>
-                  <Input
-                    data-row-index={idx}
-                    data-field-name="remark"
-                    value={item.remark || ''}
-                    onChange={(e) => update(idx, { ...item, remark: e.target.value })}
-                    onKeyDown={(e) => grid.onCellInputKeyDown(e, idx, cols.indexOf('remark'))}
-                    className={inputClass}
-                    placeholder="비고"
-                  />
-                </td>
-
+                {cols.map(field => renderCell(item, idx, field))}
                 {/* 삭제 버튼: 선택된 행 무리에 포함돼 있으면 일괄 삭제 */}
-                <td className="px-2 py-1 text-center">
+                <td className="border border-gray-200 text-center">
                   {fields.length > 1 && (
                     <Button
                       type="button"
@@ -244,9 +219,9 @@ export default function PurchaseItemsGrid({
                       }}
                       size="sm"
                       variant="ghost"
-                      className="h-6 w-6 p-0 hover:bg-red-50"
+                      className="h-4 w-4 p-0 hover:bg-red-50 align-middle"
                     >
-                      <X className="w-3 h-3 text-red-600" />
+                      <X className="w-2.5 h-2.5 text-red-600" />
                     </Button>
                   )}
                 </td>
