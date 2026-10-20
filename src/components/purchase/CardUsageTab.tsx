@@ -444,14 +444,14 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
     const endDate = formDateRange?.to;
     try {
       setSubmitting(true);
-      const { error } = await supabase.from("card_usages").insert({
+      const { data: inserted, error } = await supabase.from("card_usages").insert({
         requester_id: currentUser?.id || null,
         card_number: formCard.value,
         usage_category: category,
         usage_date_start: format(startDate, "yyyy-MM-dd"),
         usage_date_end: endDate ? format(endDate, "yyyy-MM-dd") : null,
         description: formDescription.trim() || null,
-      });
+      }).select("id").single();
       if (error) throw error;
 
       // 담당자(superadmin/hr/admin)에게 신규 요청 푸시 알림
@@ -459,6 +459,8 @@ export default function CardUsageTab({ mode = "list", onBadgeRefresh }: CardUsag
         body: {
           type: "card_usage_requested",
           data: {
+            // 처리(승인/반려) 시 DB 트리거가 이 ID로 알림을 자동 읽음 처리
+            card_usage_id: String(inserted.id),
             requester_name: currentUser?.name || "",
             requester_email: currentUser?.email || "",
             card_number: formCard.value,
