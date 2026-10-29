@@ -19,6 +19,7 @@ import type {
   ExtractedData,
   OCRCorrection,
   ConfirmStatementRequest,
+  ConfirmItemRequest,
   SaveCorrectionRequest
 } from "@/types/transactionStatement";
 import { normalizeOrderNumber } from "@/types/transactionStatement";
@@ -145,6 +146,75 @@ class TransactionStatementService {
       chunks.push(values.slice(i, i + chunkSize));
     }
     return chunks;
+  }
+
+  /** 발주 품목에 확정(is_confirmed)된 명세서 수량 합계 (거부된 명세서 제외) */
+  private async getConfirmedStatementQuantity(purchaseItemId: number): Promise<number> {
+    const { data } = await this.supabase
+      .from('transaction_statement_items')
+      .select('confirmed_quantity, extracted_quantity, statement:transaction_statements!inner(status)')
+      .eq('matched_item_id', purchaseItemId)
+      .eq('is_confirmed', true)
+      .neq('statement.status', 'rejected');
+    return ((data || []) as Array<{ confirmed_quantity?: number | null; extracted_quantity?: number | null }>)
+      .reduce((sum, row) => sum + (Number(row.confirmed_quantity ?? row.extracted_quantity) || 0), 0);
+  }
+
+  /**
+   * 분할입고: 발주 품목별로 수량일치 확인을 마친 명세서들이 가져간 수량.
+   * received_quantity는 명세서 여러 장의 누적이므로, 다른 명세서 몫을 빼야 이 명세서와 비교할 수 있다.
+   */
+  private async getQuantityMatchedClaims(
+    purchaseItemIds: number[]
+  ): Promise<Map<number, Array<{ statementId: string; quantity: number }>>> {
+    const claims = new Map<number, Array<{ statementId: string; quantity: number }>>();
+    for (const idChunk of this.chunkArray(purchaseItemIds, 200)) { // PostgREST 1000행 한도: 품목당 명세서 여러 장이라 작게
+      const { data, error } = await this.supabase
+        .from('transaction_statement_items')
+        .select('statement_id, matched_item_id, confirmed_quantity, extracted_quantity, statement:transaction_statements!inner(status, quantity_match_confirmed_at)')
+        .in('matched_item_id', idChunk)
+        .not('statement.quantity_match_confirmed_at', 'is', null)
+        .neq('statement.status', 'rejected');
+      if (error) throw error;
+      ((data || []) as Array<{ statement_id: string; matched_item_id: number; confirmed_quantity?: number | null; extracted_quantity?: number | null }>)
+        .forEach((row) => {
+          const itemId = this.toNumericId(row.matched_item_id);
+          if (itemId == null) return;
+          const quantity = Number(row.confirmed_quantity ?? row.extracted_quantity) || 0;
+          claims.set(itemId, [...(claims.get(itemId) || []), { statementId: row.statement_id, quantity }]);
+        });
+    }
+    return claims;
+  }
+
+  /** 누적 입고수량에서 다른 명세서가 이미 가져간 수량을 뺀, 이 명세서와 비교할 입고수량 */
+  private getUnclaimedReceivedQuantity(
+    receivedQuantity: number | null | undefined,
+    claims: Array<{ statementId: string; quantity: number }> | undefined,
+    statementId: string
+  ): number | null {
+    if (receivedQuantity == null) return null;
+    const claimedByOthers = (claims || [])
+      .filter(claim => claim.statementId !== statementId)
+      .reduce((sum, claim) => sum + claim.quantity, 0);
+    return Number(receivedQuantity) - claimedByOthers;
+  }
+
+  /** 분할입고 명세서(수량 < 발주수량)는 발주 단가 × 명세서 수량을 이 명세서 몫 금액으로 본다 */
+  private getStatementShareAmount(
+    purchaseItem: { quantity?: number | null; unit_price_value?: number | null; amount_value?: number | null },
+    statementQuantity: number
+  ): number {
+    const orderedQuantity = Number(purchaseItem.quantity);
+    const unitPrice = Number(purchaseItem.unit_price_value);
+    if (
+      Number.isFinite(orderedQuantity) && orderedQuantity > 0 &&
+      Number.isFinite(statementQuantity) && statementQuantity < orderedQuantity &&
+      Number.isFinite(unitPrice) && purchaseItem.unit_price_value != null
+    ) {
+      return Math.round(unitPrice * statementQuantity);
+    }
+    return Number(purchaseItem.amount_value);
   }
 
   private detectFileTypeFromTarget(target: string): StatementFileType | null {
@@ -1431,16 +1501,16 @@ class TransactionStatementService {
           }
         });
       });
-      const itemInfoMap = new Map<number, { quantity: number; received_quantity: number | null; amount_value: number }>();
+      const itemInfoMap = new Map<number, { quantity: number; received_quantity: number | null; amount_value: number; unit_price_value: number | null }>();
       if (allItemIds.size > 0) {
         const itemIdChunks = this.chunkArray(Array.from(allItemIds), 500);
         for (const itemIdChunk of itemIdChunks) {
           const { data: itemRows, error: itemError } = await this.supabase
             .from('purchase_request_items')
-            .select('id, quantity, received_quantity, amount_value')
+            .select('id, quantity, received_quantity, amount_value, unit_price_value')
             .in('id', itemIdChunk);
           if (itemError) throw itemError;
-          (itemRows || []).forEach((row: { id: number; quantity?: number; received_quantity?: number; amount_value?: number }) => {
+          (itemRows || []).forEach((row: { id: number; quantity?: number; received_quantity?: number; amount_value?: number; unit_price_value?: number | null }) => {
             const rowId = this.toNumericId(row.id);
             if (rowId == null) return;
             const quantity = Number(row.quantity ?? 0);
@@ -1450,11 +1520,13 @@ class TransactionStatementService {
             itemInfoMap.set(rowId, {
               quantity: Number.isFinite(quantity) ? quantity : 0,
               received_quantity: Number.isFinite(receivedQuantity ?? NaN) ? receivedQuantity : null,
-              amount_value: Number.isFinite(amountValue) ? amountValue : 0
+              amount_value: Number.isFinite(amountValue) ? amountValue : 0,
+              unit_price_value: row.unit_price_value == null ? null : Number(row.unit_price_value)
             });
           });
         }
       }
+      const quantityClaims = await this.getQuantityMatchedClaims(Array.from(allItemIds));
 
       // 각 거래명세서에 매칭된 발주 목록 + 수량 일치 플래그 추가
       const statementsWithPurchases = await Promise.all(typedData.map(async (statement: StatementListRow) => {
@@ -1497,9 +1569,11 @@ class TransactionStatementService {
             if (item.matched_item_id) {
               const info = itemInfoMap.get(Number(item.matched_item_id));
               if (info == null) return false;
-              const systemQty = info.received_quantity;
+              const systemQty = this.getUnclaimedReceivedQuantity(
+                info.received_quantity, quantityClaims.get(Number(item.matched_item_id)), statement.id
+              );
               if (systemQty == null) return false;
-              return Number(systemQty) === ocrQty;
+              return systemQty === ocrQty;
             }
 
             // matched_item_id가 없으면 후보에서 best score로 선택하고 후보의 received_quantity 직접 사용
@@ -1520,9 +1594,13 @@ class TransactionStatementService {
 
             // 1순위: itemInfoMap에서 최신 received_quantity 조회
             const info = itemInfoMap.get(Number(selected.item_id));
-            const systemQty = info?.received_quantity ?? selected.received_quantity ?? null;
+            const systemQty = this.getUnclaimedReceivedQuantity(
+              info?.received_quantity ?? selected.received_quantity ?? null,
+              quantityClaims.get(Number(selected.item_id)),
+              statement.id
+            );
             if (systemQty == null) return false;
-            return Number(systemQty) === ocrQty;
+            return systemQty === ocrQty;
           });
         }
 
@@ -1534,11 +1612,12 @@ class TransactionStatementService {
             let sysTotal = 0;
             let allHaveCandidates = true;
             for (const item of stmtItems) {
+              const statementQty = Number(item.confirmed_quantity ?? item.extracted_quantity ?? 1);
               // matched_item_id가 있으면 DB에서 직접 금액 조회 (후보에 없을 수 있음)
               if (item.matched_item_id) {
                 const info = itemInfoMap.get(Number(item.matched_item_id));
                 if (info == null) { allHaveCandidates = false; break; }
-                const sysAmount = info.amount_value;
+                const sysAmount = this.getStatementShareAmount(info, statementQty);
                 if (!Number.isFinite(sysAmount)) { allHaveCandidates = false; break; }
                 sysTotal += sysAmount;
                 continue;
@@ -1560,7 +1639,10 @@ class TransactionStatementService {
               if (!selected) {
                 selected = candidates.reduce((a: MatchCandidate, b: MatchCandidate) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
               }
-              const sysAmount = Number(selected?.amount);
+              const selectedInfo = itemInfoMap.get(Number(selected.item_id));
+              const sysAmount = selectedInfo
+                ? this.getStatementShareAmount(selectedInfo, statementQty)
+                : Number(selected?.amount);
               if (!Number.isFinite(sysAmount)) { allHaveCandidates = false; break; }
               sysTotal += sysAmount;
             }
@@ -1720,6 +1802,7 @@ class TransactionStatementService {
           });
         }
       }
+      const quantityClaims = await this.getQuantityMatchedClaims(itemIds);
 
       const itemsWithMatch: TransactionStatementItemWithMatch[] = await Promise.all(
         (items || []).map(async (item: TransactionStatementItem) => {
@@ -1794,9 +1877,11 @@ class TransactionStatementService {
 
             if (item.matched_item_id) {
               const freshItem = itemMap.get(Number(item.matched_item_id));
-              const systemQty = freshItem?.received_quantity;
+              const systemQty = this.getUnclaimedReceivedQuantity(
+                freshItem?.received_quantity, quantityClaims.get(Number(item.matched_item_id)), statementId
+              );
               if (systemQty == null) return false;
-              return Number(systemQty) === ocrQty;
+              return systemQty === ocrQty;
             }
 
             const candidates = item.match_candidates || [];
@@ -1805,9 +1890,13 @@ class TransactionStatementService {
             const selected = candidates.reduce((a, b) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
 
             const freshItem = itemMap.get(Number(selected.item_id));
-            const systemQty = freshItem?.received_quantity ?? selected.received_quantity ?? null;
+            const systemQty = this.getUnclaimedReceivedQuantity(
+              freshItem?.received_quantity ?? selected.received_quantity ?? null,
+              quantityClaims.get(Number(selected.item_id)),
+              statementId
+            );
             if (systemQty == null) return false;
-            return Number(systemQty) === ocrQty;
+            return systemQty === ocrQty;
           });
         }
         if (allMatched !== (statement.all_quantities_matched ?? false)) {
@@ -1824,10 +1913,11 @@ class TransactionStatementService {
           let sysTotal = 0;
           let allHaveCandidates = true;
           for (const item of itemsWithMatch) {
+            const statementQty = Number(item.confirmed_quantity ?? item.extracted_quantity ?? 1);
             if (item.matched_item_id) {
               const freshItem = itemMap.get(Number(item.matched_item_id));
               if (!freshItem) { allHaveCandidates = false; break; }
-              const sysAmount = Number(freshItem.amount_value);
+              const sysAmount = this.getStatementShareAmount(freshItem, statementQty);
               if (!Number.isFinite(sysAmount)) { allHaveCandidates = false; break; }
               sysTotal += sysAmount;
               continue;
@@ -1836,7 +1926,10 @@ class TransactionStatementService {
             const candidates = item.match_candidates || [];
             if (candidates.length === 0) { allHaveCandidates = false; break; }
             const selected = candidates.reduce((a, b) => ((b.score ?? 0) > (a.score ?? 0) ? b : a), candidates[0]);
-            const sysAmount = Number(selected.amount);
+            const selectedItem = itemMap.get(Number(selected.item_id));
+            const sysAmount = selectedItem
+              ? this.getStatementShareAmount(selectedItem, statementQty)
+              : Number(selected.amount);
             if (!Number.isFinite(sysAmount)) { allHaveCandidates = false; break; }
             sysTotal += sysAmount;
           }
@@ -2600,8 +2693,8 @@ class TransactionStatementService {
       const regularItems = request.items.filter(item => !(item.is_additional_item && item.matched_purchase_id && !item.matched_item_id));
       const additionalItems = request.items.filter(item => item.is_additional_item && item.matched_purchase_id && !item.matched_item_id);
 
-      // 일반 품목: 확정 업데이트 + 발주 품목 반영을 병렬 처리
-      const regularResults = await Promise.all(regularItems.map(async (item) => {
+      // 일반 품목: 명세서 품목 확정을 먼저 끝낸 뒤(누적 수량 계산에 포함되도록) 발주 품목에 반영
+      await Promise.all(regularItems.map(async (item) => {
         const itemUpdateData: Record<string, unknown> = {
           is_confirmed: true,
           matched_purchase_id: item.matched_purchase_id,
@@ -2619,40 +2712,71 @@ class TransactionStatementService {
           .eq('id', item.itemId);
 
         if (itemError) throw itemError;
+      }));
 
-        // 매칭된 발주 품목이 있으면 단가/금액/회계상입고일 즉시 반영
-        if (item.matched_item_id) {
-          const updateData: {
-            unit_price_value?: number;
-            amount_value?: number;
-            accounting_received_date?: string;
-            is_statement_received?: boolean;
-            statement_received_date?: string;
-            statement_received_by_name?: string | null;
-          } = {};
+      // 매칭된 발주 품목별로 단가/금액/회계상입고일 반영 (분할입고: 한 발주 품목에 명세서 여러 장)
+      const itemsByPurchaseItem = new Map<number, ConfirmItemRequest[]>();
+      regularItems.forEach((item) => {
+        const purchaseItemId = this.toNumericId(item.matched_item_id);
+        if (purchaseItemId == null) return;
+        itemsByPurchaseItem.set(purchaseItemId, [...(itemsByPurchaseItem.get(purchaseItemId) || []), item]);
+      });
 
-          if (item.confirmed_unit_price !== undefined && item.confirmed_unit_price !== null) {
-            updateData.unit_price_value = item.confirmed_unit_price;
+      await Promise.all([...itemsByPurchaseItem.entries()].map(async ([purchaseItemId, groupItems]) => {
+        const { data: purchaseItem } = await this.supabase
+          .from('purchase_request_items')
+          .select('quantity')
+          .eq('id', purchaseItemId)
+          .single();
+        const orderedQuantity = Number(purchaseItem?.quantity);
+        const hasOrderedQuantity = Number.isFinite(orderedQuantity) && orderedQuantity > 0;
+
+        const updateData: {
+          unit_price_value?: number;
+          amount_value?: number;
+          accounting_received_date?: string;
+          is_statement_received?: boolean;
+          statement_received_date?: string;
+          statement_received_by_name?: string | null;
+        } = {};
+
+        const unitPrice = [...groupItems].reverse().find(item => item.confirmed_unit_price != null)?.confirmed_unit_price;
+        if (unitPrice != null) {
+          updateData.unit_price_value = unitPrice;
+        }
+
+        // 이번 명세서 수량이 발주 수량보다 적으면 분할입고 → 발주 금액을 명세서 금액으로 덮어쓰지 않고 단가 × 발주수량으로 유지
+        const statementQuantity = groupItems.reduce((sum, item) => sum + (Number(item.confirmed_quantity) || 0), 0);
+        const isPartialStatement = hasOrderedQuantity && statementQuantity < orderedQuantity;
+        if (isPartialStatement) {
+          if (unitPrice != null) {
+            updateData.amount_value = Math.round(unitPrice * orderedQuantity);
           }
-          if (item.confirmed_amount !== undefined && item.confirmed_amount !== null) {
-            updateData.amount_value = item.confirmed_amount;
-          }
-          if (request.accounting_received_date) {
-            updateData.accounting_received_date = request.accounting_received_date;
+        } else if (groupItems.some(item => item.confirmed_amount != null)) {
+          updateData.amount_value = groupItems.reduce((sum, item) => sum + (Number(item.confirmed_amount) || 0), 0);
+        }
+
+        if (request.accounting_received_date) {
+          updateData.accounting_received_date = request.accounting_received_date;
+          // 거래명세서 확인 완료는 지금까지 확정된 명세서 수량 합계가 발주 수량을 채웠을 때만
+          const cumulativeQuantity = isPartialStatement
+            ? await this.getConfirmedStatementQuantity(purchaseItemId)
+            : statementQuantity;
+          if (!hasOrderedQuantity || cumulativeQuantity >= orderedQuantity) {
             updateData.is_statement_received = true;
             updateData.statement_received_date = request.accounting_received_date;
             updateData.statement_received_by_name = confirmerName || null;
           }
+        }
 
-          if (Object.keys(updateData).length > 0) {
-            const { error: purchaseError } = await this.supabase
-              .from('purchase_request_items')
-              .update(updateData)
-              .eq('id', item.matched_item_id);
+        if (Object.keys(updateData).length > 0) {
+          const { error: purchaseError } = await this.supabase
+            .from('purchase_request_items')
+            .update(updateData)
+            .eq('id', purchaseItemId);
 
-            if (purchaseError) {
-              logger.warn('Failed to update purchase item (unit_price/amount/accounting_date)', { error: purchaseError });
-            }
+          if (purchaseError) {
+            logger.warn('Failed to update purchase item (unit_price/amount/accounting_date)', { error: purchaseError });
           }
         }
       }));
