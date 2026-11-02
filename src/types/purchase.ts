@@ -409,6 +409,7 @@ export interface Purchase {
   // JOIN으로 가져오는 필드들
   vendor_payment_schedule?: string | null;
   contact_name?: string | null;
+  vendor_alias?: string | null;
   deleted_at?: string | null;
 }
 

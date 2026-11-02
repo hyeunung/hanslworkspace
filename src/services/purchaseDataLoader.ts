@@ -3,8 +3,15 @@ import { purchaseMemoryCache, calculateMemoryUsage, notifyCacheListeners } from 
 import { logger } from '@/lib/logger'
 import type { Purchase, PurchaseRequestItem } from '@/types/purchase'
 
-// 초기 로드 제한
-const INITIAL_LOAD_LIMIT = 2000
+// PostgREST 1회 응답 상한 — .limit()을 더 크게 줘도 이 건수까지만 내려온다
+const PAGE_SIZE = 1000
+
+const PURCHASE_SELECT = `
+  *,
+  purchase_request_items(*),
+  vendors!vendor_id(vendor_payment_schedule, vendor_alias),
+  vendor_contacts!contact_id(contact_name)
+`
 
 // 실제 금액 계산 (검수 금액 또는 기본 금액)
 function calculateActualAmount(items: Pick<PurchaseRequestItem, 'amount_value'>[]): number {
@@ -40,8 +47,8 @@ function calculateApprovalStatus(middleStatus: string, finalStatus: string): str
 
 /**
  * 애플리케이션 시작 시 모든 구매 데이터를 메모리에 로드
- * - 최근 2000개까지만 로드 (초기 성능을 위해)
- * - 추가 데이터는 필요 시 증분 로드
+ * - 검색/필터가 메모리 기준으로 동작하므로 전체 건을 페이지 단위로 빠짐없이 로드
+ * - 한 페이지라도 실패하면 일부만 캐시하지 않고 에러 처리
  */
 export async function loadAllPurchaseData(userId?: string): Promise<void> {
   try {
@@ -62,36 +69,53 @@ export async function loadAllPurchaseData(userId?: string): Promise<void> {
       }
     }
     
-    // 2. 최근 2000개 구매 데이터 + 품목 + 벤더 정보 로드
-    const { data: rawData, error } = await supabase
+    // 2. 전체 구매 데이터 + 품목 + 벤더 정보 로드
+    const fetchPage = (from: number, withCount = false) => supabase
       .from('purchase_requests')
-      .select(`
-        *,
-        purchase_request_items(*),
-        vendors!vendor_id(vendor_payment_schedule),
-        vendor_contacts!contact_id(contact_name)
-      `)
+      .select(PURCHASE_SELECT, withCount ? { count: 'exact' } : undefined)
       .order('request_date', { ascending: false })
-      .limit(INITIAL_LOAD_LIMIT)
-    
-    if (error) {
-      throw error
+      .order('id', { ascending: false })
+      .range(from, from + PAGE_SIZE - 1)
+
+    const firstPage = await fetchPage(0, true)
+    if (firstPage.error) {
+      throw firstPage.error
     }
+
+    const restOffsets: number[] = []
+    for (let from = PAGE_SIZE; from < (firstPage.count ?? 0); from += PAGE_SIZE) {
+      restOffsets.push(from)
+    }
+    const restPages = await Promise.all(restOffsets.map((from) => fetchPage(from)))
+    const pageError = restPages.find((page) => page.error)?.error
+    if (pageError) {
+      throw pageError
+    }
+
+    // 페이지 사이에 새 발주가 들어와 밀린 행이 중복되지 않도록 id로 제거
+    const rawData = [
+      ...new Map(
+        [firstPage, ...restPages]
+          .flatMap((page) => (page.data || []) as unknown as Record<string, unknown>[])
+          .map((request) => [request.id, request])
+      ).values(),
+    ]
     
     // 3. 데이터 처리 및 변환
-    const processedData: Purchase[] = (rawData || [])
+    const processedData = rawData
       .filter((request: any) => !request.deleted_at)
-      .map((request: Record<string, unknown> & { purchase_request_items?: PurchaseRequestItem[]; vendors?: { vendor_payment_schedule?: string } | null; vendor_contacts?: { contact_name?: string } | null }) => {
+      .map((request: Record<string, unknown> & { purchase_request_items?: PurchaseRequestItem[]; vendors?: { vendor_payment_schedule?: string; vendor_alias?: string } | null; vendor_contacts?: { contact_name?: string } | null }) => {
         const activeItems = (request.purchase_request_items || []).filter(item => !item.deleted_at)
         return {
           ...request,
           purchase_request_items: activeItems,
           // JOIN된 데이터 플랫하게 추가
           vendor_payment_schedule: request.vendors?.vendor_payment_schedule || null,
+          vendor_alias: request.vendors?.vendor_alias || null,
           contact_name: request.vendor_contacts?.contact_name || null
         }
-      })
-    
+      }) as unknown as Purchase[]
+
     // 4. 메모리 캐시에 저장
     purchaseMemoryCache.allPurchases = processedData
     purchaseMemoryCache.lastFetch = Date.now()

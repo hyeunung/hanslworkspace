@@ -316,6 +316,31 @@ const checkFilterCondition = (fieldValue: unknown, condition: string, value: str
   }
 }
 
+// 발주/구매 목록에 나오지 않는 별도 양식
+const NON_PURCHASE_TEMPLATES = ['카드사용', '출장', '차량', '연차 신청']
+
+export const isPurchaseTemplate = (purchase: Pick<Purchase, 'po_template_type'>): boolean =>
+  !NON_PURCHASE_TEMPLATES.includes(purchase.po_template_type || '')
+
+// 검색 대상 칼럼 (화면에 보이는 글자 칼럼 기준)
+export const PURCHASE_SEARCH_HEADER_COLUMNS = [
+  'purchase_order_number',
+  'sales_order_number',
+  'requester_name',
+  'vendor_name',
+  'project_vendor',
+  'project_item',
+  'payment_category',
+  'progress_type',
+] as const
+
+export const PURCHASE_SEARCH_ITEM_COLUMNS = [
+  'item_name',
+  'specification',
+  'remark',
+  'link',
+] as const
+
 /**
  * 검색어 필터링
  */
@@ -326,39 +351,24 @@ export const filterBySearchTerm = (
   if (!searchTerm || searchTerm.trim() === '') return purchases
   
   const term = searchTerm.toLowerCase().trim()
+  const matches = (field: unknown) => !!field && String(field).toLowerCase().includes(term)
   
   return purchases.flatMap(purchase => {
+    const items = purchase.purchase_request_items || []
+    const purchaseRecord = purchase as unknown as Record<string, unknown>
+
     // 헤더 필드에서 검색어 매치 확인
-    const headerFields = [
-      purchase.purchase_order_number,
-      purchase.sales_order_number,
-      purchase.requester_name,
-      purchase.vendor_name,
-      purchase.contact_name,
-      purchase.project_item
-    ]
-    
-    const headerMatch = headerFields.some(field => 
-      field && String(field).toLowerCase().includes(term)
-    )
+    // 품목의 vendor_name은 헤더 복제값이라 품목별로 쪼개지 않도록 헤더 매치로 취급
+    const headerMatch =
+      PURCHASE_SEARCH_HEADER_COLUMNS.some(column => matches(purchaseRecord[column])) ||
+      matches(purchase.contact_name) ||
+      matches(purchase.vendor_alias) ||
+      items.some(item => matches(item.vendor_name))
     
     // 품목에서 검색어 매치 확인
-    const items = purchase.purchase_request_items || []
     const matchedItems = items.filter((item: PurchaseRequestItem) => {
       const itemRecord = item as unknown as Record<string, unknown>
-      const itemFields = [
-        item.item_name,
-        itemRecord.item_detail,
-        itemRecord.manufacturer,
-        itemRecord.model,
-        item.specification,
-        itemRecord.spec, // 하위 호환성을 위해 유지
-        item.remark
-      ]
-
-      return itemFields.some(field =>
-        field && String(field).toLowerCase().includes(term)
-      )
+      return PURCHASE_SEARCH_ITEM_COLUMNS.some(column => matches(itemRecord[column]))
     })
 
     // 헤더 매치만 있는 경우: 전체 purchase 반환

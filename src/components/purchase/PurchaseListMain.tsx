@@ -2,7 +2,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { usePurchaseMemory } from "@/hooks/usePurchaseMemory";
-import { useServerSearch } from "@/hooks/useServerSearch";
 import { useColumnSettings } from "@/hooks/useColumnSettings";
 import { usePurchaseTableFilters } from "@/hooks/usePurchaseTableFilters";
 import { usePurchaseSortRules } from "@/hooks/usePurchaseSortRules";
@@ -26,7 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 import { Purchase } from "@/types/purchase";
 import { parseRoles, getRoleCase, filterByEmployeeVisibility } from '@/utils/roleHelper';
-import { calculateTabCounts } from "@/utils/purchaseFilters";
+import { calculateTabCounts, isPurchaseTemplate } from "@/utils/purchaseFilters";
 import { purchaseYearsFor, newPurchaseRuleId, PurchaseOptionsKey } from "@/utils/purchaseTableFilters";
 import { compareByPurchaseSortRules } from "@/utils/purchaseTableSort";
 import { logger } from "@/lib/logger";
@@ -298,48 +297,34 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
     loadFilterOptions();
   }, [supabase]);
 
-  // ── 필터 파이프라인: 탭/직원/검색/규칙(메모리) → 템플릿 → 서버 폴백 병합 → 다중 정렬 ──
+  // 입고현황 자동 규칙(요청자=본인)은 기본 화면용이라 사용자가 건 필터로 치지 않는다
+  const userFilters = useMemo(() => tableFilters.advancedFilters.filter(f =>
+    !(activeTab === 'receipt' && f.field === 'requester_name' && f.condition === 'equals' && f.value === currentUserName)
+  ), [tableFilters.advancedFilters, activeTab, currentUserName]);
+
+  // ── 필터 파이프라인 ──
+  // 검색어/필터가 있으면 탭·기본 요청자와 무관하게 전체 데이터에서 찾고, 없으면 탭 화면을 보여준다
   const baseFilteredPurchases = useMemo(() => {
+    if (searchTerm.trim() || userFilters.length > 0) {
+      return getFilteredPurchases({ searchTerm, advancedFilters: userFilters });
+    }
     const employeeName = selectedEmployee === 'all' || selectedEmployee === '전체' ? null : selectedEmployee;
     return getFilteredPurchases({
       tab: activeTab as 'pending' | 'purchase' | 'receipt' | 'done',
       employeeName,
-      searchTerm,
       advancedFilters: tableFilters.advancedFilters,
     });
-  }, [getFilteredPurchases, activeTab, selectedEmployee, searchTerm, tableFilters.advancedFilters, purchases]);
+  }, [getFilteredPurchases, activeTab, selectedEmployee, searchTerm, userFilters, tableFilters.advancedFilters, purchases]);
 
-  // 발주/구매 템플릿 데이터만 표시 (기존 데이터 호환: '일반' 및 null 포함)
   const tabFilteredPurchases = useMemo(() => {
-    return baseFilteredPurchases.filter((p: Purchase) => {
-      const templateType = p.po_template_type;
-      return !templateType || templateType === '발주/구매' || templateType === '일반';
-    });
+    return baseFilteredPurchases.filter(isPurchaseTemplate);
   }, [baseFilteredPurchases]);
 
-  // 서버 폴백 검색 (메모리 결과 0건일 때 자동 실행)
-  const { serverResults, isSearching, hasSearchedServer } = useServerSearch(
-    searchTerm,
-    tabFilteredPurchases.length,
-    activeTab
-  );
-
-  // 메모리 결과 + 서버 결과 병합 후 다중 정렬 적용
+  // 다중 정렬 적용
   const displayPurchases = useMemo(() => {
-    let merged = tabFilteredPurchases;
-    if (serverResults.length > 0) {
-      const memoryIds = new Set(tabFilteredPurchases.map(p => p.id));
-      const filteredServer = serverResults
-        .filter(p => !memoryIds.has(p.id))
-        .filter(p => {
-          const t = p.po_template_type;
-          return !t || t === '발주/구매' || t === '일반';
-        });
-      merged = [...tabFilteredPurchases, ...filteredServer];
-    }
-    if (sortRules.length === 0) return merged;
-    return [...merged].sort((a, b) => compareByPurchaseSortRules(a, b, sortRules));
-  }, [tabFilteredPurchases, serverResults, sortRules]);
+    if (sortRules.length === 0) return tabFilteredPurchases;
+    return [...tabFilteredPurchases].sort((a, b) => compareByPurchaseSortRules(a, b, sortRules));
+  }, [tabFilteredPurchases, sortRules]);
 
   // ── 뷰 버튼 건수 배지 ─────────────────────────────────────────────────
   const [cachedTabCounts, setCachedTabCounts] = useState({ pending: 0, purchase: 0, receipt: 0, done: 0 });
@@ -651,12 +636,7 @@ export default function PurchaseListMain(_props: PurchaseListMainProps) {
             <div className="w-8 h-8 border-2 border-hansl-500 border-t-transparent rounded-full animate-spin" />
             <span className="ml-3 card-subtitle">로딩 중...</span>
           </div>
-        ) : displayPurchases.length === 0 && isSearching ? (
-          <div className="flex items-center justify-center py-12">
-            <Search className="w-6 h-6 text-hansl-500 animate-pulse mr-3" />
-            <span className="card-subtitle">서버에서 추가 검색 중...</span>
-          </div>
-        ) : displayPurchases.length === 0 && searchTerm && hasSearchedServer ? (
+        ) : displayPurchases.length === 0 && searchTerm ? (
           <div className="text-center py-12">
             <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">검색 결과가 없습니다</h3>

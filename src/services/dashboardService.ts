@@ -84,7 +84,7 @@ export class DashboardService {
       return dashboardCache.data
     }
 
-    // ✅ 발주요청 관리와 동일한 방식: 메모리 캐시(최근 2000건 + 품목) 기반으로 대시보드 구성
+    // ✅ 발주요청 관리와 동일한 방식: 메모리 캐시(전체 발주 + 품목) 기반으로 대시보드 구성
     // - DataInitializer에서 이미 loadAllPurchaseData를 수행하므로 대시보드 진입 시 추가 DB 쿼리를 줄일 수 있음
     // - 메모리가 없으면 기존 Supabase 쿼리 방식으로 폴백
     // - forceRefresh가 true면 메모리 캐시도 무시하고 DB에서 직접 조회
