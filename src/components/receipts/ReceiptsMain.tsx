@@ -22,7 +22,11 @@ import {
 } from "@/utils/receiptTable";
 import { extractStoragePathFromUrl } from "@/utils/receipt";
 import { logger } from "@/lib/logger";
+import { fetchAllPages } from "@/lib/supabase/fetchAllPages";
 import { parseRoles } from "@/utils/roleHelper";
+
+// OCR 조회 1회당 영수증 수 — 영수증당 작업이 여러 건이어도 1000행 상한에 닿지 않는 크기
+const OCR_LOOKUP_CHUNK_SIZE = 200;
 
 function printReceiptImages(imageUrls: string[], onPrintDone?: () => void) {
   const printWindow = window.open('', '_blank');
@@ -127,7 +131,7 @@ export default function ReceiptsMain() {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
+      const baseReceipts: any = await fetchAllPages<any>((from, to) => supabase
         .from('purchase_receipts')
         .select(`
           id,
@@ -144,18 +148,22 @@ export default function ReceiptsMain() {
           printed_by_name,
           group_id
         `)
-        .order('uploaded_at', { ascending: false });
+        .order('uploaded_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to));
 
-      if (error) throw error;
-
-      const baseReceipts = data || [];
       if (baseReceipts.length === 0) {
         setReceipts([]);
         return;
       }
 
       const receiptIds = baseReceipts.map((receipt: { id: number | string }) => receipt.id);
-      const { data: ocrJobs, error: ocrError } = await supabase
+      // 영수증 id 목록이 길어 URL 길이·1000행 상한에 걸리지 않도록 청크로 나눠 조회
+      const receiptIdChunks: Array<Array<number | string>> = [];
+      for (let i = 0; i < receiptIds.length; i += OCR_LOOKUP_CHUNK_SIZE) {
+        receiptIdChunks.push(receiptIds.slice(i, i + OCR_LOOKUP_CHUNK_SIZE));
+      }
+      const ocrPages = await Promise.all(receiptIdChunks.map((idChunk) => supabase
         .from('receipt_ocr_jobs')
         .select(`
           source_receipt_id,
@@ -170,8 +178,10 @@ export default function ReceiptsMain() {
             total_amount
           )
         `)
-        .in('source_receipt_id', receiptIds)
-        .order('created_at', { ascending: false });
+        .in('source_receipt_id', idChunk)
+        .order('created_at', { ascending: false })));
+      const ocrError = ocrPages.find((page) => page.error)?.error;
+      const ocrJobs = ocrPages.flatMap((page) => page.data || []);
 
       if (ocrError) {
         logger.warn('영수증 OCR 결과 조회 실패', { ocrError });
@@ -189,7 +199,7 @@ export default function ReceiptsMain() {
         totalAmount?: number | null;
       }>();
 
-      (ocrJobs || []).forEach((job: { source_receipt_id?: number | null; status?: string; receipt_ocr_results?: Array<{ merchant_name?: string | null; item_name?: string | null; payment_date?: string | null; quantity?: number | null; unit_price?: number | null; total_amount?: number | null }> | { merchant_name?: string | null; item_name?: string | null; payment_date?: string | null; quantity?: number | null; unit_price?: number | null; total_amount?: number | null } | null }) => {
+      ocrJobs.forEach((job: { source_receipt_id?: number | null; status?: string; receipt_ocr_results?: Array<{ merchant_name?: string | null; item_name?: string | null; payment_date?: string | null; quantity?: number | null; unit_price?: number | null; total_amount?: number | null }> | { merchant_name?: string | null; item_name?: string | null; payment_date?: string | null; quantity?: number | null; unit_price?: number | null; total_amount?: number | null } | null }) => {
         const sourceId = String(job.source_receipt_id || '');
         if (!sourceId || ocrByReceiptId.has(sourceId)) return;
         const result = Array.isArray(job.receipt_ocr_results)

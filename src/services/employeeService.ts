@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { Employee, EmployeeFilters, EmployeeUpsertData, PurchaseRole } from "@/types/purchase";
 import { logger } from "@/lib/logger";
+import { fetchAllPages } from "@/lib/supabase/fetchAllPages";
 import { parseRoles } from '@/utils/roleHelper';
 
 class EmployeeService {
@@ -446,18 +447,20 @@ class EmployeeService {
       }
 
       // 출퇴근 기록, 직원 정보, 승인된 연차/출장을 병렬 조회
-      const [attendanceData, employeesResult, leaveResult, tripResult] = await Promise.all([
+      const [attendanceData, employeesResult, leaveRows, tripResult] = await Promise.all([
         fetchAllAttendance(),
         this.supabase
           .from('employees')
           .select('id, department, is_active, email, position'),
         // 승인된 연차/반차/공가 조회 (해당 날짜 범위에 걸치는 것)
-        this.supabase
+        fetchAllPages<{ id: number; user_email: string; type: string; start_date: string; end_date: string; status: string }>((from, to) => this.supabase
           .from('leave')
-          .select('user_email, type, start_date, end_date, status')
+          .select('id, user_email, type, start_date, end_date, status')
           .eq('status', 'approved')
           .lte('start_date', endDate)
-          .gte('end_date', startDate),
+          .gte('end_date', startDate)
+          .order('id')
+          .range(from, to)),
         // 승인된 출장 조회 (해당 날짜 범위에 걸치는 것)
         this.supabase
           .from('business_trips')
@@ -477,27 +480,25 @@ class EmployeeService {
 
       // 연차/반차/공가: user_email → 해당 날짜의 leave type 매핑
       const leaveTypeMap = new Map<string, string>() // key: "email|date" → leave type
-      if (leaveResult.data) {
-        for (const leave of leaveResult.data) {
-          // 날짜 범위 내 각 날짜에 대해 매핑
-          const start = new Date(leave.start_date + 'T00:00:00')
-          const end = new Date(leave.end_date + 'T00:00:00')
-          const queryStart = new Date(startDate + 'T00:00:00')
-          const queryEnd = new Date(endDate + 'T00:00:00')
-          const from = start > queryStart ? start : queryStart
-          const to = end < queryEnd ? end : queryEnd
-          for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
-            const dateStr = d.toISOString().split('T')[0]
-            const key = `${leave.user_email}|${dateStr}`
-            // leave type → 근태 상태 변환
-            const statusMap: Record<string, string> = {
-              'annual': '연차',
-              'half_am': '오전반차',
-              'half_pm': '오후반차',
-              'official': '공가',
-            }
-            leaveTypeMap.set(key, statusMap[leave.type] || leave.type)
+      for (const leave of leaveRows) {
+        // 날짜 범위 내 각 날짜에 대해 매핑
+        const start = new Date(leave.start_date + 'T00:00:00')
+        const end = new Date(leave.end_date + 'T00:00:00')
+        const queryStart = new Date(startDate + 'T00:00:00')
+        const queryEnd = new Date(endDate + 'T00:00:00')
+        const from = start > queryStart ? start : queryStart
+        const to = end < queryEnd ? end : queryEnd
+        for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+          const dateStr = d.toISOString().split('T')[0]
+          const key = `${leave.user_email}|${dateStr}`
+          // leave type → 근태 상태 변환
+          const statusMap: Record<string, string> = {
+            'annual': '연차',
+            'half_am': '오전반차',
+            'half_pm': '오후반차',
+            'official': '공가',
           }
+          leaveTypeMap.set(key, statusMap[leave.type] || leave.type)
         }
       }
 

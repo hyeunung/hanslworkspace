@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client"
 import { ShippingAddress, ShippingAddressFormData, ShippingLabel, ShippingLabelFormData } from "@/types/shipping"
 import { logger } from "@/lib/logger"
+import { fetchAllPages } from "@/lib/supabase/fetchAllPages"
 
 /**
  * 택배 서비스 (3-테이블 구조: shipping_companies / shipping_company_addresses / shipping_contacts)
@@ -17,23 +18,26 @@ class ShippingService {
 
   /** shipping_contacts + companies + addresses 를 JOIN 해서 ShippingAddress shape 으로 반환 */
   private async fetchJoinedContacts(filter?: { id?: string; company_id?: string }): Promise<ShippingAddress[]> {
-    let query = this.supabase
-      .from('shipping_contacts')
-      .select(`
-        id, name, title, memo, phone, mobile, email, is_favorite,
-        created_at, updated_at, created_by,
-        company:shipping_companies!company_id(id, name),
-        address:shipping_company_addresses!address_id(id, address)
-      `)
-      .order('created_at', { ascending: false })
+    const data = await fetchAllPages<any>((from, to) => {
+      let query = this.supabase
+        .from('shipping_contacts')
+        .select(`
+          id, name, title, memo, phone, mobile, email, is_favorite,
+          created_at, updated_at, created_by,
+          company:shipping_companies!company_id(id, name),
+          address:shipping_company_addresses!address_id(id, address)
+        `)
 
-    if (filter?.id) query = query.eq('id', filter.id)
-    if (filter?.company_id) query = query.eq('company_id', filter.company_id)
+      if (filter?.id) query = query.eq('id', filter.id)
+      if (filter?.company_id) query = query.eq('company_id', filter.company_id)
 
-    const { data, error } = await query
-    if (error) throw error
+      return query
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to)
+    })
 
-    return (data ?? []).map((r: any) => {
+    return data.map((r: any) => {
       const legacy = [r.name, r.title].filter(Boolean).join(' ').trim()
       return {
         id: r.id,
@@ -267,26 +271,32 @@ class ShippingService {
 
   // ===== 발송 기록 =====
 
-  async getLabels(): Promise<{ success: boolean; data?: ShippingLabel[]; error?: string }> {
+  async getLabels(labelId?: string): Promise<{ success: boolean; data?: ShippingLabel[]; error?: string }> {
     try {
-      const { data, error } = await this.supabase
-        .from('shipping_labels')
-        .select(`
-          *,
-          sender_employee:employees!shipping_labels_sender_employee_id_fkey(id, name, phone),
-          receiver_contact:shipping_contacts!shipping_labels_receiver_contact_id_fkey(
-            id, name, title, memo, phone, mobile, email, is_favorite, created_at, updated_at, created_by,
-            company:shipping_companies!company_id(id, name),
-            address:shipping_company_addresses!address_id(id, address)
-          ),
-          receiver_address:shipping_company_addresses!receiver_address_id(id, address)
-        `)
-        .order('created_at', { ascending: false })
+      const data = await fetchAllPages<any>((from, to) => {
+        let query = this.supabase
+          .from('shipping_labels')
+          .select(`
+            *,
+            sender_employee:employees!shipping_labels_sender_employee_id_fkey(id, name, phone),
+            receiver_contact:shipping_contacts!shipping_labels_receiver_contact_id_fkey(
+              id, name, title, memo, phone, mobile, email, is_favorite, created_at, updated_at, created_by,
+              company:shipping_companies!company_id(id, name),
+              address:shipping_company_addresses!address_id(id, address)
+            ),
+            receiver_address:shipping_company_addresses!receiver_address_id(id, address)
+          `)
 
-      if (error) throw error
+        if (labelId) query = query.eq('id', labelId)
+
+        return query
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to)
+      })
 
       // UI 호환을 위해 receiver_address 를 ShippingAddress shape 으로 변환
-      const labels: ShippingLabel[] = (data ?? []).map((l: any) => {
+      const labels: ShippingLabel[] = data.map((l: any) => {
         const c = l.receiver_contact
         const overrideAddr = l.receiver_address?.address
         const contactAddr = c?.address?.address
@@ -348,10 +358,9 @@ class ShippingService {
         .single()
       if (error) throw error
 
-      // 조회는 getLabels의 포맷을 재사용
-      const all = await this.getLabels()
-      const created = all.data?.find((l: any) => l.id === data!.id)
-      return { success: true, data: created }
+      // 조회는 getLabels의 포맷을 재사용 (전체를 다시 받지 않도록 방금 만든 건만 조회)
+      const created = await this.getLabels(data!.id)
+      return { success: true, data: created.data?.[0] }
     } catch (error) {
       logger.error('발송 기록 생성 실패', error)
       return { success: false, error: error instanceof Error ? error.message : '알 수 없는 오류' }

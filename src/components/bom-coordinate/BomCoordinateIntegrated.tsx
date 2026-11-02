@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { createClient } from '@/lib/supabase/client';
 import { logger } from '@/lib/logger';
+import { fetchAllPages } from '@/lib/supabase/fetchAllPages';
 import { toast } from 'sonner';
 import { Package, Upload, FileText, X, AlertCircle, Loader2, Download, Eye, Plus, Check, ChevronsUpDown, RotateCcw, Save, Link2, Trash2, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -436,32 +437,32 @@ export default function BomCoordinateIntegrated() {
         }
 
         // 진행중인 PCB/소켓보드 수주 목록 로드
-        const { data: pcbData } = await supabase
-          .from('production_pcbs')
-          .select('sales_order_number, board_name')
-          .is('deleted_at', null)
-          .order('sales_order_number', { ascending: false });
-        if (pcbData) {
-          setProductionPcbs(pcbData);
+        try {
+          setProductionPcbs(await fetchAllPages<{ sales_order_number: string; board_name: string }>((from, to) => supabase
+            .from('production_pcbs')
+            .select('sales_order_number, board_name')
+            .is('deleted_at', null)
+            .order('sales_order_number', { ascending: false })
+            .order('id', { ascending: false })
+            .range(from, to)));
+        } catch (error) {
+          logger.error('Error loading production orders:', error);
+          toast.error('제작현황 수주 목록을 불러오지 못했습니다.');
         }
 
         // 이미 BOM/좌표 정리가 완료(completed)되어 저장된 보드 목록 (드롭다운에서 제외하기 위함)
         // 검토대기(pending) 상태는 삭제될 수 있으므로 계속 노출한다
         // PostgREST 1000행 한도 — 이관 보드 포함 시 넘을 수 있어 페이지 단위 조회
-        {
-          const PAGE = 1000;
-          const allCad: Array<{ sales_order_number?: string; board_name: string; status?: 'pending' | 'completed' }> = [];
-          for (let from = 0; ; from += PAGE) {
-            const { data: cadPage, error: cadPageError } = await supabase
-              .from('cad_drawings')
-              .select('sales_order_number, board_name, status')
-              .order('created_at', { ascending: false })
-              .range(from, from + PAGE - 1);
-            if (cadPageError || !cadPage) break;
-            allCad.push(...cadPage);
-            if (cadPage.length < PAGE) break;
-          }
-          setProcessedCadBoards(allCad);
+        try {
+          setProcessedCadBoards(await fetchAllPages<{ sales_order_number?: string; board_name: string; status?: 'pending' | 'completed' }>((from, to) => supabase
+            .from('cad_drawings')
+            .select('sales_order_number, board_name, status')
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
+            .range(from, to)));
+        } catch (error) {
+          logger.error('Error loading processed boards:', error);
+          toast.error('완료된 보드 목록을 불러오지 못했습니다.');
         }
 
         // 현재 사용자 정보 로드
@@ -524,27 +525,21 @@ export default function BomCoordinateIntegrated() {
       try {
         setLoadingBoards(true);
         // PostgREST 1000행 한도 — 이관 보드 포함 시 넘을 수 있어 페이지 단위 조회
-        const PAGE = 1000;
-        const boards: Array<Record<string, unknown>> = [];
-        for (let from = 0; ; from += PAGE) {
-          const { data: page, error } = await supabase
-            .from('cad_drawings')
-            .select('id, board_name, code_number, sales_order_number, created_at, artwork_manager, production_manager, status, is_migration_unconfirmed')
-            .order('created_at', { ascending: false })
-            .range(from, from + PAGE - 1);
-          if (error) throw error;
-          if (!page) break;
-          boards.push(...page);
-          if (page.length < PAGE) break;
-        }
+        const boards = await fetchAllPages<Record<string, unknown>>((from, to) => supabase
+          .from('cad_drawings')
+          .select('id, board_name, code_number, sales_order_number, created_at, artwork_manager, production_manager, status, is_migration_unconfirmed')
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to));
 
-        // 불일치/수동확인 건수 조회
-        const { data: mismatchData } = await supabase.rpc('get_board_mismatch_counts');
+        // 불일치/수동확인 건수 조회 — 보드당 1행이라 RPC 응답도 같은 한도에 걸린다
+        const mismatchData = await fetchAllPages<{ cad_drawing_id: string; mismatch_count: number; manual_count: number }>((from, to) => supabase
+          .rpc('get_board_mismatch_counts')
+          .order('cad_drawing_id')
+          .range(from, to));
         const mismatchMap = new Map<string, { mismatch_count: number; manual_count: number }>();
-        if (mismatchData) {
-          for (const row of mismatchData) {
-            mismatchMap.set(row.cad_drawing_id, { mismatch_count: row.mismatch_count, manual_count: row.manual_count });
-          }
+        for (const row of mismatchData) {
+          mismatchMap.set(row.cad_drawing_id, { mismatch_count: row.mismatch_count, manual_count: row.manual_count });
         }
 
         const boardsWithCounts = boards.map((b) => ({

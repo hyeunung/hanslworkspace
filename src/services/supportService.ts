@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client'
 import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { logger } from '@/lib/logger'
+import { fetchAllPages } from '@/lib/supabase/fetchAllPages'
 import { parseRoles } from '@/utils/roleHelper'
 import { removePurchaseFromMemory, removeItemFromMemory, findPurchaseInMemory, updatePurchaseInMemory, notifyCacheListeners } from '@/stores/purchaseMemoryStore'
 
@@ -9,6 +10,18 @@ export interface SupportAttachment {
   name: string
   size: number
   path: string
+}
+
+interface SupportStatementRow {
+  id: string
+  statement_code?: string
+  vendor_name?: string
+  statement_date?: string
+  uploaded_at: string
+  file_name?: string
+  total_amount?: number
+  grand_total?: number
+  status: string
 }
 
 export type SupportInquiryType =
@@ -721,18 +734,15 @@ class SupportService {
   // 모든 문의 목록 조회 (관리자용)
   async getAllInquiries(): Promise<{ success: boolean; data: SupportInquiry[]; error?: string }> {
     try {
-      const { data, error } = await this.supabase
+      const data = await fetchAllPages<SupportInquiry>((from, to) => this.supabase
         .from('support_inquires')
         .select('*')
         .order('created_at', { ascending: false })
-
-
-      if (error) {
-        throw error
-      }
+        .order('id', { ascending: false })
+        .range(from, to))
 
       // 완료되지 않은 문의를 먼저, 그 안에서 최신순 정렬
-      const sortedData = this.sortInquiriesByStatus(data || [])
+      const sortedData = this.sortInquiriesByStatus(data)
 
       return { success: true, data: sortedData }
     } catch (e) {
@@ -806,25 +816,27 @@ class SupportService {
         targetName = employee.name
       }
 
-      let query = this.supabase
-        .from('purchase_requests')
-        .select('id,purchase_order_number,vendor_name,request_date,created_at,requester_name,middle_manager_status,final_manager_status,delivery_request_date,revised_delivery_request_date,purchase_request_items(id,line_number,item_name,specification,quantity,unit_price_value,amount_value)')
-        .is('deleted_at', null)
-        .eq('requester_name', targetName)
-        .order('created_at', { ascending: false })
+      const data = await fetchAllPages<Record<string, unknown>>((from, to) => {
+        let query = this.supabase
+          .from('purchase_requests')
+          .select('id,purchase_order_number,vendor_name,request_date,created_at,requester_name,middle_manager_status,final_manager_status,delivery_request_date,revised_delivery_request_date,purchase_request_items(id,line_number,item_name,specification,quantity,unit_price_value,amount_value)')
+          .is('deleted_at', null)
+          .eq('requester_name', targetName)
 
-      if (startDate) {
-        query = query.gte('created_at', `${startDate}T00:00:00`)
-      }
-      if (endDate) {
-        query = query.lte('created_at', `${endDate}T23:59:59.999`)
-      }
+        if (startDate) {
+          query = query.gte('created_at', `${startDate}T00:00:00`)
+        }
+        if (endDate) {
+          query = query.lte('created_at', `${endDate}T23:59:59.999`)
+        }
 
-      const { data, error } = await query.limit(100)
+        return query
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to)
+      })
 
-      if (error) throw error
-
-      return { success: true, data: data || [] }
+      return { success: true, data }
     } catch (e) {
       return { success: false, data: [], error: e instanceof Error ? e.message : '발주요청 조회 실패' }
     }
@@ -1069,36 +1081,29 @@ class SupportService {
   // 거래명세서 목록 조회 (삭제 요청 폼용)
   async getStatementsForSupport(dateFrom?: string, dateTo?: string): Promise<{
     success: boolean
-    data: Array<{
-      id: string
-      statement_code?: string
-      vendor_name?: string
-      statement_date?: string
-      uploaded_at: string
-      file_name?: string
-      total_amount?: number
-      grand_total?: number
-      status: string
-    }>
+    data: SupportStatementRow[]
     error?: string
   }> {
     try {
-      let query = this.supabase
-        .from('transaction_statements')
-        .select('id,statement_code,vendor_name,statement_date,uploaded_at,file_name,total_amount,grand_total,status')
-        .order('uploaded_at', { ascending: false })
+      const data = await fetchAllPages<SupportStatementRow>((from, to) => {
+        let query = this.supabase
+          .from('transaction_statements')
+          .select('id,statement_code,vendor_name,statement_date,uploaded_at,file_name,total_amount,grand_total,status')
 
-      if (dateFrom) {
-        query = query.gte('uploaded_at', dateFrom)
-      }
-      if (dateTo) {
-        query = query.lte('uploaded_at', dateTo + 'T23:59:59')
-      }
+        if (dateFrom) {
+          query = query.gte('uploaded_at', dateFrom)
+        }
+        if (dateTo) {
+          query = query.lte('uploaded_at', dateTo + 'T23:59:59')
+        }
 
-      const { data, error } = await query
-      if (error) throw error
+        return query
+          .order('uploaded_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to)
+      })
 
-      return { success: true, data: data || [] }
+      return { success: true, data }
     } catch (e) {
       return { success: false, data: [], error: e instanceof Error ? e.message : '거래명세서 조회 실패' }
     }

@@ -2062,8 +2062,7 @@ class TransactionStatementService {
         // 거래처명으로 vendor_id 찾기
         const { data: vendors } = await this.supabase
           .from('vendors')
-          .select('id, vendor_name, vendor_alias')
-          .limit(100);
+          .select('id, vendor_name, vendor_alias');
 
         if (vendors) {
           // 유사도 높은 거래처 찾기 (vendor_alias도 비교)
