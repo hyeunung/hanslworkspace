@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import { logger } from '@/lib/logger'
+import { fetchAllPages } from '@/lib/supabase/fetchAllPages'
 
 export interface ProductionPcb {
   id: string
@@ -90,24 +91,6 @@ export interface ProductionCable {
   delivery_notify_teams?: string[]
   // 신규 등록(행 추가) 알림 대상 팀 — 양승진은 DB 트리거에서 항상 고정 포함
   new_row_notify_teams?: string[]
-}
-
-// PostgREST 기본 응답 한도(1000행)에 걸려 데이터가 조용히 잘리지 않도록
-// 페이지 단위로 반복 조회하여 전체 행을 가져온다
-const FETCH_PAGE_SIZE = 1000
-
-async function fetchAllPages<T>(
-  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
-): Promise<T[]> {
-  const rows: T[] = []
-  for (let from = 0; ; from += FETCH_PAGE_SIZE) {
-    const { data, error } = await fetchPage(from, from + FETCH_PAGE_SIZE - 1)
-    if (error) throw error
-    const page = data ?? []
-    rows.push(...page)
-    if (page.length < FETCH_PAGE_SIZE) break
-  }
-  return rows
 }
 
 export const productionService = {

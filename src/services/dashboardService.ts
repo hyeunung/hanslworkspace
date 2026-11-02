@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client'
 import { parseRoles } from '@/utils/roleHelper'
 import { logger } from '@/lib/logger'
+import { fetchAllPages } from '@/lib/supabase/fetchAllPages'
 import { purchaseMemoryCache, CACHE_DURATION, updatePurchaseInMemory } from '@/stores/purchaseMemoryStore'
 import type { 
   DashboardData, 
@@ -557,25 +558,29 @@ export class DashboardService {
     })
 
     // ✅ N+1 문제 해결: JOIN을 사용하여 한 번의 쿼리로 모든 관련 데이터 조회
-    const { data: allRequests, error: requestsError } = await this.supabase
-      .from('purchase_requests')
-      .select(`
-        *,
-        vendors(vendor_name),
-        purchase_request_items(
-          id,
-          item_name,
-          specification,
-          quantity,
-          unit_price_value,
-          amount_value
-        )
-      `)
-      .is('deleted_at', null)
-      .order('request_date', { ascending: false })
-      .limit(100) // 성능 최적화: 100개로 제한
-
-    if (requestsError) {
+    // 최근 N건만 받아 앱에서 거르면 오래된 승인 대기건이 빠지므로 DB에서 먼저 좁힌다
+    let allRequests: any
+    try {
+      allRequests = await fetchAllPages<any>((from, to) => this.supabase
+        .from('purchase_requests')
+        .select(`
+          *,
+          vendors(vendor_name),
+          purchase_request_items(
+            id,
+            item_name,
+            specification,
+            quantity,
+            unit_price_value,
+            amount_value
+          )
+        `)
+        .is('deleted_at', null)
+        .or('middle_manager_status.is.null,middle_manager_status.in.(pending,대기,""),final_manager_status.is.null,final_manager_status.in.(pending,대기,"")')
+        .order('request_date', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to))
+    } catch (requestsError) {
       logger.error('❌ 승인 대기 항목 조회 실패', requestsError)
       return []
     }
@@ -792,29 +797,33 @@ export class DashboardService {
     // ✅ JOIN을 사용하여 한 번의 쿼리로 모든 관련 데이터 조회
     // lead buyer 또는 superadmin은 모든 항목 조회, 그 외는 본인 것만
     // PurchaseItemsModal과 동일한 데이터 구조를 위해 purchase_request_items 전체 필드 조회
-    let query = this.supabase
-      .from('purchase_requests')
-      .select('*,vendors(vendor_name),purchase_request_items(*)')
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(500)  // 충분한 개수로 증가
-    
-    if (!isLeadBuyer) {
-      query = query.eq('requester_name', requesterName)
-    }
-    
-    const myRequests = await query
+    // 최근 N건만 받아 앱에서 거르면 오래된 대기건이 빠지므로, 아래 세 목록의 조건을 포함하는 범위로 DB에서 좁힌다
+    let allMyRequests: any[]
+    try {
+      allMyRequests = await fetchAllPages<any>((from, to) => {
+        let query = this.supabase
+          .from('purchase_requests')
+          .select('*,vendors(vendor_name),purchase_request_items(*)')
+          .is('deleted_at', null)
+          .or(`is_payment_completed.is.null,is_payment_completed.eq.false,is_received.is.null,is_received.eq.false,received_at.gte."${sevenDaysAgo}"`)
 
-    if (myRequests.error) {
-      logger.error('getMyPurchaseStatus 에러', myRequests.error)
+        if (!isLeadBuyer) {
+          query = query.eq('requester_name', requesterName)
+        }
+
+        return query
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to)
+      })
+    } catch (error) {
+      logger.error('getMyPurchaseStatus 에러', error)
       return {
         waitingPurchase: [],
         waitingDelivery: [],
         recentCompleted: []
       }
     }
-
-    const allMyRequests = myRequests.data || []
     
 
     // 클라이언트 사이드 필터링 (PurchaseListMain 구매/입고 탭과 동일한 로직)

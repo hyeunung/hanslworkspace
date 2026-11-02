@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { logger } from "@/lib/logger";
+import { fetchAllPages } from "@/lib/supabase/fetchAllPages";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
@@ -248,12 +249,15 @@ export default function AnnualLeaveTab({ onBadgeRefresh }: AnnualLeaveTabProps) 
   const loadAllLeaves = useCallback(async () => {
     if (!hasApprovalRole) return;
     try {
-      const [leaveRes, empRes] = await Promise.all([
-        supabase.from("leave").select("*").order("created_at", { ascending: false }),
+      const [leaveRows, empRes] = await Promise.all([
+        fetchAllPages<Record<string, unknown>>((from, to) => supabase
+          .from("leave")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to)),
         supabase.from("employees").select("email, department, roles, remaining_annual_leave"),
       ]);
-
-      if (leaveRes.error) throw leaveRes.error;
 
       const empMap = new Map<string, { department: string | null; roles: string[]; remaining_annual_leave: number | null }>();
       if (!empRes.error && empRes.data) {
@@ -266,7 +270,7 @@ export default function AnnualLeaveTab({ onBadgeRefresh }: AnnualLeaveTabProps) 
         }
       }
 
-      const mapped = (leaveRes.data || []).map((l: Record<string, unknown>) => {
+      const mapped = leaveRows.map((l: Record<string, unknown>) => {
         const emp = empMap.get(l.user_email as string);
         return {
           ...l,
@@ -279,6 +283,7 @@ export default function AnnualLeaveTab({ onBadgeRefresh }: AnnualLeaveTabProps) 
       setAllLeaves(mapped);
     } catch (err) {
       logger.error("전체 연차 목록 조회 실패", err);
+      toast.error("전체 연차 목록을 불러오지 못했습니다.");
     }
   }, [hasApprovalRole, supabase]);
 

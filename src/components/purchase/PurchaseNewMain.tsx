@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import type { User } from '@supabase/supabase-js';
 import { logger } from '@/lib/logger';
+import { fetchAllPages } from '@/lib/supabase/fetchAllPages';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -131,20 +132,18 @@ export default function PurchaseNewMain() {
   useEffect(() => {
     const loadBoards = async () => {
       // PostgREST 1000행 한도 — 이관 보드 포함 시 1000개를 넘으므로 페이지 단위로 전부 조회
-      const PAGE = 1000;
-      const all: { id: string; board_name: string; sales_order_number: string | null; is_migration_unconfirmed?: boolean }[] = [];
-      for (let from = 0; ; from += PAGE) {
-        const { data, error } = await supabase
+      try {
+        setBoards(await fetchAllPages<{ id: string; board_name: string; sales_order_number: string | null; is_migration_unconfirmed?: boolean }>((from, to) => supabase
           .from('cad_drawings')
           .select('id, board_name, sales_order_number, is_migration_unconfirmed')
           .eq('status', 'completed')
           .order('board_name')
-          .range(from, from + PAGE - 1);
-        if (error || !data) break;
-        all.push(...data);
-        if (data.length < PAGE) break;
+          .order('id')
+          .range(from, to)));
+      } catch (error) {
+        logger.error('BOM 보드 목록 로드 실패', error);
+        toast.error('BOM 보드 목록을 불러올 수 없습니다.');
       }
-      setBoards(all);
     };
     loadBoards();
   }, [supabase]);
@@ -442,19 +441,23 @@ export default function PurchaseNewMain() {
   useEffect(() => {
     const loadProductionOrders = async () => {
       try {
-        const [pcbRes, cableRes] = await Promise.all([
-          supabase.from('production_pcbs').select('sales_order_number, board_name, client_name, created_at').is('deleted_at', null).order('created_at', { ascending: false }),
-          supabase.from('production_cables').select('sales_order_number, board_name, client_name, created_at').is('deleted_at', null).order('created_at', { ascending: false })
-        ]);
+        const fetchOrders = (table: 'production_pcbs' | 'production_cables') => fetchAllPages<any>((from, to) => supabase
+          .from(table)
+          .select('sales_order_number, board_name, client_name, created_at')
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to));
+        const [pcbRows, cableRows] = await Promise.all([fetchOrders('production_pcbs'), fetchOrders('production_cables')]);
 
-        const combined = [
-          ...(pcbRes.data || []).map((r: any) => ({ sales_order_number: r.sales_order_number, board_name: r.board_name, client_name: r.client_name || '', created_at: r.created_at })),
-          ...(cableRes.data || []).map((r: any) => ({ sales_order_number: r.sales_order_number, board_name: r.board_name, client_name: r.client_name || '', created_at: r.created_at }))
-        ].sort((a, b) => b.created_at.localeCompare(a.created_at));
+        const combined = [...pcbRows, ...cableRows]
+          .map((r: any) => ({ sales_order_number: r.sales_order_number, board_name: r.board_name, client_name: r.client_name || '', created_at: r.created_at }))
+          .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
         setProductionOrders(combined);
       } catch (err) {
-        console.error("제작 수주 목록을 불러올 수 없습니다.", err);
+        logger.error('제작 수주 목록 로드 실패', err);
+        toast.error("제작 수주 목록을 불러올 수 없습니다.");
       }
     };
     loadProductionOrders();
